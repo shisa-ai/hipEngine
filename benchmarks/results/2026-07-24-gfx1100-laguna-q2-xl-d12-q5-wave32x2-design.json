@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "date": "2026-07-24",
+  "kind": "hipengine_laguna_q2_xl_d12_q5_wave32x2_design",
+  "status": "selected_design",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "physical_hip_wave_size": 32,
+    "vulkan_driver": "RADV NAVI31",
+    "vulkan_reported_subgroup_size": 64
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "source": {
+    "current_revision": "7e1cffa1cf9ed12518092ea0c84a2dff36b5059b",
+    "retained_baseline": "Laguna D9",
+    "hip_source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip:243-291,794-966,1298-1377",
+    "hip_source_sha256": "3444f9c7fbdcbdf7ea106c99a091ceefe819110ab8d2a9820f274062eb8aaf6b",
+    "vulkan_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "vulkan_source": [
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec.comp:45-245",
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_base.glsl:89-175",
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl:670-706",
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.cpp:4949-5041,7547-7571"
+    ],
+    "vulkan_source_sha256": {
+      "mul_mat_vec.comp": "d1375d407004ac5e2f7c590340be9aa7edcb203dd966ec3af29f807e5d866865",
+      "mul_mat_vec_base.glsl": "fc7bb5cc47bd9761f8a3484466e10d61d7866df41a150cdd47cfa1f389110323",
+      "dequant_funcs.glsl": "d70cf26d67104b333fdd2dedefdb060ea1409091465cfc81829c1f6d1b14683a",
+      "ggml-vulkan.cpp": "60a48c79dea74b2201a4066fa19be91783634de0846bcf1b73aefc40a33a2208"
+    },
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "completed; only already-documented nano-vllm-amd drift",
+    "baseline_profile_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json",
+    "baseline_profile_sha256": "b9c66c5402f2e9a92d865ce1dae2ee0a70f5e8b3c9acb86ce5dde515c4c7dae7",
+    "vulkan_review_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json",
+    "vulkan_review_sha256": "411a7357b33a5be502aa0a6ec68cdc2cc9e55614c070aed325f4ac3584694adf",
+    "tile16_rejection_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-output-tile16-rejected.json",
+    "tile16_rejection_sha256": "758ce9c2c3059a585a57f2c844bd424ad13825fd52e76207d2b525317521a0cc"
+  },
+  "audit": {
+    "retained_hip_pack8": {
+      "geometry": "one local128 workgroup owns eight adjacent output columns; four physical wave32 units cooperate on every output pack",
+      "per_q5_superblock": "logical thread t visits k=t then k=t+128; the first 64 threads hoist 8 outputs x 8 subblocks of d*scale and dmin*min into 1024 B LDS; one barrier publishes coefficients and one protects the next superblock",
+      "reduction": "each output performs the offsets 16,8,4,2,1 wave32 tree, then thread 0 adds logical wave sums in order 0,1,2,3",
+      "resources": {
+        "threads": 128,
+        "physical_waves": 4,
+        "outputs_per_workgroup": 8,
+        "lds_bytes": 1024,
+        "scratch_bytes": 0,
+        "attention_output_vgpr": 72,
+        "query_gate_pair_vgpr": 48
+      },
+      "short_families": [
+        {
+          "name": "q5_attention_output",
+          "calls_per_token": 47,
+          "ms_per_token": 2.659412071428571,
+          "kernel_sum_share_pct": 15.382196344948174,
+          "shapes": [
+            "12 x K6144/N3072 BF16->BF16 global output",
+            "35 x K9216/N3072 BF16->BF16 SWA output"
+          ]
+        },
+        {
+          "name": "q5_query_gate_pair",
+          "calls_per_token": 47,
+          "ms_per_token": 2.1885023571428572,
+          "kernel_sum_share_pct": 12.658426770571834,
+          "shapes": [
+            "12 x K3072/N6144+48 BF16->F32 global query/gate",
+            "35 x K3072/N9216+72 BF16->F32 SWA query/gate"
+          ]
+        }
+      ]
+    },
+    "vulkan_geometry": {
+      "finding": "The W7900 raw floating-point Q5_K DMMV pipeline defaults to the subgroup-sized workgroup on AMD. With the reported subgroup size 64 and rm_kq=2, one subgroup computes two output rows, K_PER_ITER=8, and reduces with subgroupAdd without cross-subgroup shared memory.",
+      "transfer_limit": "Vulkan uses F16 activations/F32 output and its own dot/FMA/subgroup association. It is not bit-exact evidence for hipEngine's BF16 input, BF16/F32 output, or retained four-logical-wave reduction.",
+      "supporting_ablation": "Disabling Vulkan Q8_1 MMVQ improves full tg128 from 94.513 to 98.568 tok/s, so D12 transfers only the raw subgroup geometry; it does not introduce activation quantization or integer dot products.",
+      "attribution_caveat": "The full-model ablation is not a Q5-family microbenchmark and cannot predict D12 speedup. Actual Laguna weights decide."
+    }
+  },
+  "selected_candidate": {
+    "name": "D12 exact raw-Q5 wave32x2 decode",
+    "registry_keys": [
+      [
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_f32_out"
+      ]
+    ],
+    "scope": "gfx1100 c=1 raw-Q5 attention-output singleton and unequal query/gate pair only; rows>1, shared-expert Q5 pairs, gfx1151, and all other shapes remain unchanged",
+    "geometry": {
+      "threads": 32,
+      "physical_waves": 1,
+      "outputs_per_workgroup": 2,
+      "launch_bounds_start": "__launch_bounds__(32, 8)",
+      "lds_bytes": 0,
+      "scratch_bytes_required": 0,
+      "preferred_vgpr_ceiling": 96,
+      "attention_output_workgroups": 1536,
+      "global_query_gate_workgroups": 3096,
+      "swa_query_gate_workgroups": 4644,
+      "wave_count_note": "Pack8 uses N/8 workgroups x 4 waves; wave32x2 uses N/2 workgroups x 1 wave. Total physical waves and output columns per physical wave remain exactly equal."
+    },
+    "exact_arithmetic_contract": [
+      "Physical lane l maintains four independent logical-thread partials for t=l,l+32,l+64,l+96 and two outputs. Within every 256-value Q5_K block those partials visit [l,l+128], [l+32,l+160], [l+64,l+192], and [l+96,l+224], exactly reproducing each retained logical thread's K sequence.",
+      "Lanes 0..7 produce the first output's eight d*scale/dmin*min pairs and lanes 8..15 produce the second output's pairs; wave shuffles broadcast coefficients without changing their FP32 construction. No coefficient LDS or block barrier is used.",
+      "Each of the four logical partial groups independently executes the retained offsets 16,8,4,2,1 shuffle tree. Lane 0 then starts from +0.0 and adds group sums in exact logical order 0,1,2,3 before the unchanged F32 or RNE-BF16 store.",
+      "The unequal query/gate wrapper keeps separate even output ranges, so no wave32x2 tile crosses from query weights/output into gate weights/output.",
+      "Weights remain raw 176-byte GGUF Q5_K blocks. There is no repack, sidecar, Q8_1 activation, output-column traffic sharing, post-op fusion, or changed public ABI."
+    ],
+    "why_selected": "It transfers Vulkan's one-subgroup/two-row geometry while preserving hipEngine's current bits through virtual logical waves. Unlike rejected tile16, it does not pair two pack8 groups or add synchronization: arithmetic, encoded-weight reads, physical-wave count, and outputs per physical wave remain constant while 1024 B LDS, all per-superblock barriers, and the final cross-wave exchange disappear.",
+    "fallback": "Retain the separately registered pack8_gemv_decode_bf16_{bf16,f32}_out singleton and existing unequal linear_pair key. Runtime selects D12 only for admitted gfx1100 c=1 production roles/shapes; rows>1, registry miss, unsupported backend, explicit rollback, shared Q5 pairs, and any failed family gate use current D9."
+  },
+  "source_byte_proxy": {
+    "interpretation": "Encoded weights are unchanged and dominate HBM. The tiny activation row is reread by four times as many workgroups, increasing the nominal weight+activation source-byte proxy by 80%; this must be cache-resident in practice for the barrier-free geometry to win.",
+    "rows": [
+      {
+        "shape": "K6144/N3072 attention output",
+        "encoded_weight_bytes": 12976128,
+        "pack8_activation_bytes": 4718592,
+        "wave32x2_activation_bytes": 18874368,
+        "pack8_total_proxy_bytes": 17694720,
+        "wave32x2_total_proxy_bytes": 31850496,
+        "change_pct": 80.0
+      },
+      {
+        "shape": "K9216/N3072 attention output",
+        "encoded_weight_bytes": 19464192,
+        "pack8_activation_bytes": 7077888,
+        "wave32x2_activation_bytes": 28311552,
+        "pack8_total_proxy_bytes": 26542080,
+        "wave32x2_total_proxy_bytes": 47775744,
+        "change_pct": 80.0
+      },
+      {
+        "shape": "K3072/N6144+48 query/gate",
+        "encoded_weight_bytes": 13077504,
+        "pack8_activation_bytes": 4755456,
+        "wave32x2_activation_bytes": 19021824,
+        "pack8_total_proxy_bytes": 17832960,
+        "wave32x2_total_proxy_bytes": 32099328,
+        "change_pct": 80.0
+      },
+      {
+        "shape": "K3072/N9216+72 query/gate",
+        "encoded_weight_bytes": 19616256,
+        "pack8_activation_bytes": 7133184,
+        "wave32x2_activation_bytes": 28532736,
+        "pack8_total_proxy_bytes": 26749440,
+        "wave32x2_total_proxy_bytes": 48148992,
+        "change_pct": 80.0
+      }
+    ],
+    "decision_rule": "Traffic arithmetic is not a rejection by itself because each 6-18 KiB activation row fits in cache and physical-wave/weight work is unchanged. Both actual-weight shapes must nevertheless win; no cache premise can waive that gate."
+  },
+  "red_green_gate": {
+    "red": [
+      "Import and resolve the two missing wave32x2 four-axis wrappers; compare synthetic K256/K512 and production K6144/K9216 N3072 BF16 output bit-for-bit to retained pack8.",
+      "Compare K3072 N6144+48 and N9216+72 F32 query/gate outputs bit-for-bit to the retained unequal pair, including a boundary fixture proving no two-output tile crosses projections.",
+      "Use adversarial BF16 activations and raw Q5 blocks that exercise all eight scale/min packing branches, high-bit planes, signed zeros, infinities/NaNs where the retained path defines them, and values sensitive to changing logical-wave association.",
+      "Prove rows>1, gfx1151, registry miss, shared-expert pair roles, unsupported shapes, and explicit rollback execute current registered fallbacks."
+    ],
+    "green": [
+      "Cached rocprof names local32 candidate symbols with zero LDS, scratch0, VGPR <=96 preferred, expected N/2 workgroups, exact outputs, and no hidden pack8/tile16 candidate calls in admitted roles.",
+      "Counterbalanced actual-weight output micro: 50 warmups/mode, 15 repetitions, at least 200 launches/sample; blk.0 K6144/N3072 and blk.1 K9216/N3072 must both improve HIP-event and synchronized-wall medians versus current pack8.",
+      "Counterbalanced actual-weight pair micro under the same protocol: blk.0 K3072/N6144+48 and blk.1 K3072/N9216+72 must both improve versus the retained unequal pair. Output and query/gate families are admitted independently; a failing family retains D9 even if the other wins.",
+      "Historical planning anchors are 36.143/51.194 us for global/SWA output and 44.827/56.790 us for global/SWA query+gate, but task #293 must rerun matched current controls and may not gate against historical samples.",
+      "Before runtime promotion, shared-weight execution must match all 48 post-layer hidden rows, full logits/argmax bits, complete K/V and KVLiveSpans, reset, and lifecycle. Clean short/512/1K/near-4K kernel-sum/span/profiled-child plus the complete category h16/h32 predicate remain mandatory."
+    ]
+  },
+  "amdahl": {
+    "canonical_d9_h32_decode_tok_s": 47.132308286752306,
+    "canonical_d9_ms_per_token": 21.216868775363473,
+    "target_ms_per_token": 20.0,
+    "remaining_ms_to_target": 1.2168687753634728,
+    "q5_attention_output_ms_per_token": 2.659412071428571,
+    "q5_query_gate_pair_ms_per_token": 2.1885023571428572,
+    "combined_candidate_family_ms_per_token": 4.847914428571428,
+    "fraction_of_output_family_required_to_reach_20ms_pct": 45.75705993203982,
+    "fraction_of_combined_families_required_to_reach_20ms_pct": 25.100871587002344,
+    "planning_combined_reduction_not_claim": [
+      {
+        "family_reduction_pct": 10.0,
+        "modeled_ms_per_token": 20.73207733250633,
+        "modeled_tok_s": 48.234433238972905
+      },
+      {
+        "family_reduction_pct": 20.0,
+        "modeled_ms_per_token": 20.247285889649188,
+        "modeled_tok_s": 49.38933570900087
+      },
+      {
+        "family_reduction_pct": 25.0,
+        "modeled_ms_per_token": 20.004890168220616,
+        "modeled_tok_s": 49.9877775679359
+      },
+      {
+        "family_reduction_pct": 30.0,
+        "modeled_ms_per_token": 19.762494446792044,
+        "modeled_tok_s": 50.60089973420969
+      }
+    ],
+    "zero_cost_ceiling_tok_s": {
+      "attention_output_only": 53.88669449450803,
+      "query_gate_only": 52.5531187502491,
+      "both_families": 61.09125719420056
+    },
+    "conclusion": "Unlike D10/D11, D12 has enough measured family share to close 50 tok/s in a planning model: it needs about 25.10% across both families, or 45.76% from attention output alone. This is an Amdahl bound, not a speedup claim; actual family and end-to-end walls decide."
+  },
+  "closed_alternatives": [
+    "Do not retry tile16/tile32 activation sharing: the best exact scratch-free tile16 candidate regressed actual global/SWA output by 16.69%/19.04%.",
+    "Do not port Vulkan Q8_1 MMVQ: disabling it improved the same W7900 tg128 run by 4.29%, and it changes hipEngine's exact arithmetic contract.",
+    "Do not force HIP wave64 or accept Vulkan subgroup reduction bits. D12 uses the native gfx1100 wave32 and explicitly reconstructs the retained four logical reductions.",
+    "Do not change shared-expert Q5 pairing in the first screen; it is a smaller retained family with different BF16 pair economics."
+  ],
+  "next_action": "Task #292 implements and correctness-gates the D12 wave32x2 leaf and wrappers without changing the D9 default. Task #293 runs matched actual-weight micros and admits output/query-gate roles independently before any clean full-model or category run."
+}

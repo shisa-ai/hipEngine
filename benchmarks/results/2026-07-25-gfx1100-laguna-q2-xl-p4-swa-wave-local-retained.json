@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_swa_split_wave_local_retained",
+  "date": "2026-07-25",
+  "status": "retained_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only c=1 greedy AR on Radeon Pro W7900/gfx1100, all 18 train+heldout prompts, h16/h32, two repetitions in both process orders; model load excluded",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "implementation_revision": "455d7e08a",
+    "description": "Exact SWA split gated reducer with wave-private scalar softmax statistics, width-32 weight broadcasts, no block barriers, and no LDS",
+    "registry_keys": [
+      "laguna_attention_decode/bf16/swa_context_split_exact_gated_wave_local_spans",
+      "laguna_attention_decode/bf16/swa_context_split_tile16_exact_gated_wave_local_spans"
+    ],
+    "dispatches_per_token": {"control": 772, "candidate": 772},
+    "workspace_delta_bytes": 0,
+    "persistent_weight_copy_delta_bytes": 0,
+    "default": "LAGUNA_SWA_SPLIT_WAVE_LOCAL=True on hip_gfx1100",
+    "rollback": "LagunaGGUFResidentSession(..., use_swa_split_wave_local=False) or scripts/laguna_target_ar_bench.py --disable-swa-split-wave-local",
+    "fallback": "Registered shared-statistics exact gated split reducers; permanently retained for explicit rollback, gfx1151, registry miss, unsupported backends, and non-split paths"
+  },
+  "correctness": {
+    "correctness_artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-wave-local-correctness.json",
+    "correctness_artifact_sha256": "1dea05580e28d79b6c28f989c34edd31d88ebb111dfdc4201ca8cf228323acb7",
+    "full_logits_and_argmax_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_bf16_kv_and_all_span_fields_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_returned_to_baseline": true,
+    "default_vs_rollback": {
+      "decode_steps": 16,
+      "passed": true,
+      "raw_sha256": "b0ab10a3a265e357bb473e638c617538ea38eecde9c2cd9a85708e1c8539e5fe",
+      "harness_sha256": "6cb859a5b2c4ed28982ed123422ea5b40937fce426f7ecf54b2135978b22292a",
+      "stdout_sha256": "05a605824c884525a3ae48c9e6d1e5f469a1b8d5135ce90f4730bce346d92962"
+    }
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_swa_wave_local_clean_profiles.sh",
+    "revision": "455d7e08a",
+    "summary_sha256": "e3a592a3941e12fa59a75c45cd222de0b7f3423672ba749fde46cc75c483fb8c",
+    "report_sha256": "7ff5bb674dfc0bf29164fd883eb904b11d1c8a97a45c54fba60b53a032a51538",
+    "contract_sha256": "d6d1b22f82f5f0591485396f75741c5f73a930a434e06893c776f76626324e35",
+    "harness_sha256": {
+      "runner": "42a735acebca488ba7a5da99bab23f49c461d64582ed642dca9a6b9011c471b0",
+      "child": "357cbd3701e126259cafbf2621be9014fbc1e971acc7f7d1b6540275c50bae4c",
+      "analyzer": "61dcc2aa5b33471bc4818dff26c7c7d610687f9e6f033c40b14a43890ca03902"
+    },
+    "contexts": [
+      {"label": "short", "reducer_delta_pct": -5.222584104923467, "complete_swa_delta_pct": -4.5495641652939405, "kernel_sum_delta_pct": -0.9376924112540097, "span_delta_pct": -0.8714074658085713, "profiled_child_tok_s_delta_pct": -0.08631966497405497},
+      {"label": "512", "reducer_delta_pct": -4.827589110466968, "complete_swa_delta_pct": -4.407290158289989, "kernel_sum_delta_pct": -1.9781430480765527, "span_delta_pct": -1.686550303722767, "profiled_child_tok_s_delta_pct": 2.1276583416761197},
+      {"label": "1024", "reducer_delta_pct": -4.628965516489114, "complete_swa_delta_pct": -4.28548109866912, "kernel_sum_delta_pct": -1.6055173509802678, "span_delta_pct": -1.4090146653929825, "profiled_child_tok_s_delta_pct": 1.3115673290991836},
+      {"label": "3968", "reducer_delta_pct": -4.672052956451123, "complete_swa_delta_pct": -4.238667421942233, "kernel_sum_delta_pct": -0.9627035764739778, "span_delta_pct": -0.6093872231769049, "profiled_child_tok_s_delta_pct": 0.11190673430241382}
+    ],
+    "ids_exact": true,
+    "finite": true,
+    "lifecycle": true,
+    "resource_gate": {
+      "workgroup": 128,
+      "grid_x": 9216,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "passed": true
+    },
+    "mechanical_gate_pass": true
+  },
+  "category_gate": {
+    "commands": [
+      "bash /tmp/run_laguna_swa_wave_local_category.sh",
+      "bash /tmp/run_laguna_swa_wave_local_category_reverse.sh"
+    ],
+    "protocol": "all 18 train+heldout prompts; serial and bulk; h16/h32; two repetitions; process order shared/wave-local then wave-local/shared; pooled synchronized seconds",
+    "aggregate": {
+      "control": {
+        "h16_decode_tok_s": 52.67518282594222,
+        "h32_decode_tok_s": 52.21128516865903,
+        "h16_e2e_output_tok_s": 6.93080627143894,
+        "h32_e2e_output_tok_s": 12.2253544884248,
+        "prefill_tok_s": 42.961630933021205,
+        "ttft_median_seconds": 1.9370136850047857
+      },
+      "candidate": {
+        "h16_decode_tok_s": 52.94866596552046,
+        "h32_decode_tok_s": 52.51425720911967,
+        "h16_e2e_output_tok_s": 6.927529623423259,
+        "h32_e2e_output_tok_s": 12.229385395491619,
+        "prefill_tok_s": 42.90729664779679,
+        "ttft_median_seconds": 1.9364905770635232
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 0.519187831738388,
+        "h32_decode_tok_s": 0.5802807563191514,
+        "h16_e2e_output_tok_s": -0.047276577750909876,
+        "h32_e2e_output_tok_s": 0.032971698862671595,
+        "prefill_tok_s": -0.12647165399545246,
+        "ttft_median_seconds": -0.027005898064225153
+      }
+    },
+    "all_train_and_heldout_category_decode_improve": true,
+    "category_decode_delta_range_pct": [0.23863223712472514, 0.705667431207635],
+    "all_e2e_prefill_ttft_guards_pass": true,
+    "all_ids_oracles_and_lifecycle_exact": true,
+    "comparison_sha256": "7289a2eec3d70ed471310d6299dc3c072ce2e7b5b61f38e46135d99b2d951932",
+    "report_sha256": "8fc44e91992882f95f8614eee421f2ab414f1a218dc78be15df5e6cfb43ae98a",
+    "harness_sha256": {
+      "forward": "b58363a0f1defc4b2b77cd63c17dcdf2a8dfa6bc55e859df7420e9a94560290d",
+      "reverse": "07f5d53cf433e9917ae7c35c14a9e531a251542cb03325cb78647c1ac0a3f148",
+      "benchmark": "a17563769e90eadc78d362da78db453996af2ecfeb0b9f418b3fe7e113f0c286",
+      "comparison": "5ccbed7f7414201e0b4db47bf01acde0e2a2730fc78cb7847cb56e71339df93e"
+    },
+    "raw_sha256": {
+      "control_forward": "e04188a3e82e61d0ff23ea151b5889b3ef9a7cae67e9986ed5d03733e435c5e1",
+      "candidate_forward": "9fd225d47c854bde69240c421029b0f17fb3b2ea168cbd65cf4ca2c212d41ef1",
+      "candidate_reverse": "2fc86d96e723898409cf7144c758e4c0df22cee5026614624aa992bcdd06f0a0",
+      "control_reverse": "b9de8478069865e5ece98a9872cc1c8f0448defeb2ac7214755fedc579e1d8a6"
+    },
+    "pass": true
+  },
+  "promotion_red": {
+    "result": "failed on absent gfx1100 LAGUNA_SWA_SPLIT_WAVE_LOCAL capability",
+    "log_sha256": "6018b80345a2cfc5839e904b04f39e28254c7b42529c6650abe0da42b9838a05"
+  },
+  "topline": {
+    "previous_retained_h32_decode_tok_s": 52.39118057387539,
+    "paired_control_h32_decode_tok_s": 52.21128516865903,
+    "new_h32_decode_tok_s": 52.51425720911967,
+    "new_ms_per_token": 19.042447768381255,
+    "paired_improvement_pct": 0.5802807563191514,
+    "improvement_vs_previous_retained_pct": 0.23491861396545133,
+    "matched_vulkan_h32_tok_s": 64.418,
+    "additional_speedup_required_pct": 22.66764003435837,
+    "objective_met": false
+  },
+  "acceptance": {
+    "correctness": true,
+    "mechanical": true,
+    "category": true,
+    "promote_gfx1100_default": true,
+    "matched_vulkan_beaten": false
+  }
+}

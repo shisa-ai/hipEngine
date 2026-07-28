@@ -77,6 +77,69 @@ __global__ void qwen35_router_logits_kernel(
   }
 }
 
+__global__ __launch_bounds__(256, 1)
+void qwen35_router_logits_bf16_f32w_wave0_tree_kernel(
+    const uint16_t* __restrict__ hidden,
+    const float* __restrict__ weight,
+    float* __restrict__ logits,
+    int64_t hidden_size,
+    int64_t num_experts) {
+  extern __shared__ float partial[];
+  const int64_t expert = static_cast<int64_t>(blockIdx.x);
+  const int64_t token = static_cast<int64_t>(blockIdx.y);
+  if (expert >= num_experts) {
+    return;
+  }
+  float acc = 0.0f;
+  const int64_t hidden_row = token * hidden_size;
+  const int64_t weight_row = expert * hidden_size;
+  constexpr int64_t kThreads = 256;
+  constexpr int64_t kItems = 8;
+  constexpr int64_t kStride = kThreads * kItems;
+  for (int64_t k = static_cast<int64_t>(threadIdx.x) * kItems;
+       k + 7 < hidden_size;
+       k += kStride) {
+    const int64_t h_off = hidden_row + k;
+    const int64_t w_off = weight_row + k;
+    acc += bf16_bits_to_float(hidden[h_off + 0]) * weight[w_off + 0];
+    acc += bf16_bits_to_float(hidden[h_off + 1]) * weight[w_off + 1];
+    acc += bf16_bits_to_float(hidden[h_off + 2]) * weight[w_off + 2];
+    acc += bf16_bits_to_float(hidden[h_off + 3]) * weight[w_off + 3];
+    acc += bf16_bits_to_float(hidden[h_off + 4]) * weight[w_off + 4];
+    acc += bf16_bits_to_float(hidden[h_off + 5]) * weight[w_off + 5];
+    acc += bf16_bits_to_float(hidden[h_off + 6]) * weight[w_off + 6];
+    acc += bf16_bits_to_float(hidden[h_off + 7]) * weight[w_off + 7];
+  }
+  for (int64_t k = (hidden_size & ~7) + threadIdx.x;
+       k < hidden_size;
+       k += kThreads) {
+    acc += bf16_bits_to_float(hidden[hidden_row + k]) * weight[weight_row + k];
+  }
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  if (threadIdx.x < 32) {
+    const int lane = static_cast<int>(threadIdx.x);
+    float value0 = partial[lane];
+    value0 += partial[lane + 128];
+    float value64 = partial[lane + 64];
+    value64 += partial[lane + 192];
+    value0 += value64;
+    float value32 = partial[lane + 32];
+    value32 += partial[lane + 160];
+    float value96 = partial[lane + 96];
+    value96 += partial[lane + 224];
+    value32 += value96;
+    value0 += value32;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      value0 += __shfl_down(value0, offset);
+    }
+    if (lane == 0) {
+      logits[token * num_experts + expert] = value0;
+    }
+  }
+}
+
 template <typename scalar_t, typename weight_t, int TOKENS_PER_BLOCK>
 __global__ void qwen35_router_logits_token_tile_kernel(
     const scalar_t* hidden,
@@ -664,6 +727,7 @@ extern "C" int hipengine_qwen35_router_logits_bf16_f32w(
 }
 
 extern "C" int hipengine_qwen35_router_logits_bf16_f32w_token_tile_8(
+
     const uint16_t* hidden,
     const float* weight,
     float* logits,
@@ -711,6 +775,33 @@ extern "C" int hipengine_qwen35_router_logits_bf16_f32w_token_tile_16(
           num_rows,
           threads,
           stream));
+}
+
+extern "C" int hipengine_qwen35_router_logits_bf16_f32w_wave0_tree(
+    const uint16_t* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (hidden == nullptr || weight == nullptr || logits == nullptr || tokens != 1 ||
+      hidden_size <= 0 || num_rows <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_router_logits_bf16_f32w_wave0_tree_kernel,
+      dim3(static_cast<unsigned int>(num_rows), 1, 1),
+      dim3(256, 1, 1),
+      static_cast<size_t>(256) * sizeof(float),
+      stream,
+      hidden,
+      weight,
+      logits,
+      hidden_size,
+      num_rows);
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_qwen35_router_logits_fp16_f32w(

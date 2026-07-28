@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "kind": "hipengine_laguna_q2_xl_mixed_local32_projection_design",
+  "status": "selected_design",
+  "pass": true,
+  "performance_claim": false,
+  "baseline": {
+    "revision": "b96e94e4e",
+    "h16_decode_tok_s": 61.55420990315515,
+    "h32_decode_tok_s": 60.9422647734879,
+    "ms_per_token": 16.40897337368132,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "matched_vulkan_h32_ms_per_token": 15.523553763440857,
+    "remaining_ms_per_token": 0.8854196102404632,
+    "additional_speedup_required_pct": 5.703717226951555
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "mixed_q5_q6_layers": [0, 46],
+    "global_q5_features": [6144, 48],
+    "swa_q5_features": [9216, 72],
+    "q6_features": [1024, 1024],
+    "input_features": 3072,
+    "output_dtype": "f32"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "retained_trace": {
+    "source_revision": "756a1dcd3",
+    "note": "The source revision is the committed explicit shared-Q5 candidate later promoted unchanged; its candidate traces have the same retained 723-dispatch selectors and kernel resources as b96e94e4e.",
+    "ranking_json_sha256": "4ac8eb68035b8aa840cdf3de95da036a7bbdad6e1932949bbadec63a35a103fb",
+    "ranking_script_sha256": "f057a801a83a18910ff0e15d4ad88a1ffed06199a01e9c31bf544bbe1b2f58a0",
+    "stable_processes_per_context": 2,
+    "contexts": {
+      "short": {
+        "kernel_sum_ms_per_token": 13.154691535714285,
+        "mixed_projection_ms_per_token": 2.1275369642857145,
+        "mixed_projection_calls_per_token": 47,
+        "mixed_projection_mean_us_per_call": 45.26674392097265,
+        "trace_sha256": [
+          "43ab7b45e2586c839c000ccec241fdfda808f1c3913d4d8b0e520c354f0e33bf",
+          "9f0e1299c1b02f9715d49c466270b19d6888680e5b0d781126a9cd3804bf11ab"
+        ]
+      },
+      "512": {
+        "kernel_sum_ms_per_token": 22.624229333333332,
+        "mixed_projection_ms_per_token": 2.1106,
+        "trace_sha256": [
+          "df4c7208ebb5905db1c22819ffb6fd339f47f5d4b758d46be53218737924b7c4",
+          "f915fbbb40dc68f2ff0d63fb042e973d170e0dc975ae74cfb1f0fbe39f8833df"
+        ]
+      },
+      "1024": {
+        "kernel_sum_ms_per_token": 24.904889083333334,
+        "mixed_projection_ms_per_token": 2.113062,
+        "trace_sha256": [
+          "8e817ebf6e79c32ec842464ed17cd7738e6d918d61fb828b70ceab7223f15885",
+          "6ae51dba8619d9c0905329e48af665af623cd2aafe2f330c6b6fa405166cf8b0"
+        ]
+      },
+      "3968": {
+        "kernel_sum_ms_per_token": 38.0457185,
+        "mixed_projection_ms_per_token": 2.104986,
+        "trace_sha256": [
+          "604915dbf2e6ab480e182e7e58c1c70af18dd29d9f2f275596a36d2743b23bc0",
+          "9d1f8ddb5c4d7b8fef02249b4d3b493ce5e49b960dec46d5f90cbdcc9c23c8ec"
+        ]
+      }
+    },
+    "current_q5_q6_resources": {
+      "calls_per_token": 47,
+      "workgroup_threads": 128,
+      "wavefront_size": 32,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "global_grid_threads": 131840,
+      "swa_grid_threads": 181376
+    },
+    "short_amdahl": {
+      "mixed_share_of_kernel_sum_pct": 16.173218189948166,
+      "mixed_share_of_canonical_wall_pct": 12.965692099288267,
+      "fraction_of_mixed_family_needed_to_close_wall_gap_pct": 41.617119942154716,
+      "perfect_family_removal_ceiling_tok_s": 70.02096787281918,
+      "interpretation": "The selected screen is an incremental measured candidate, not a claim that it will remove 41.62% or close Vulkan by itself."
+    }
+  },
+  "selection": {
+    "candidate": "exact all-local32 Q5/Q6 mixed attention projection",
+    "scope": "Only c=1 layers 0-46 with the actual Q5 query/gate plus Q6 key/value quant tuple; layer 47 Q6/Q8, rows>1, prefill, raw weights, output buffers, and all fallbacks remain unchanged.",
+    "registry_plan": "Add one separately registered attention_projection_quad/gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k local32 sibling; do not add a quant branch to engine/model code.",
+    "q5_ownership": "One local32 wave owns one adjacent Q5 output pair and calls the retained fixed-address-metadata helper unchanged.",
+    "q6_ownership": "One local32 wave owns one adjacent Q6 output pair. Each lane carries four independent accumulator partitions corresponding to original local128 thread ids lane+0/32/64/96 and replays each partition's k and k+128 FMA order. Each partition uses the retained wave shuffle tree; lane 0 adds partition totals in original wave 0..3 order.",
+    "q6_metadata": "Thirty-two exact d*scale coefficients for the two Q6 rows are loaded once by the wave and broadcast from their owning lanes; no LDS or barrier is required.",
+    "dispatches_per_token_delta": 0,
+    "new_persistent_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "layer47_changed": false,
+    "difference_from_rejected_screens": [
+      "Not the rejected local64 Q5 output packing: every independent owner is a separate local32 workgroup and total wave count is unchanged.",
+      "Not either rejected IQ2/shared-Q5 heterogeneous launch: no dependent MoE families or launch boundaries are combined.",
+      "Not GQA ownership: no query-head or work-item parallelism is removed.",
+      "Not the rejected local128 Q6 pair admission: this changes the Q6 workgroup schedule and removes block LDS/barriers inside the already-retained mixed dispatch.",
+      "Not arithmetic reassociation: all Q5 and Q6 per-partition FMA/reduction orders and F32 stores remain exact."
+    ]
+  },
+  "geometry": {
+    "global": {
+      "control": {
+        "q5_local128_blocks": 774,
+        "q6_local128_blocks": 256,
+        "total_workgroups": 1030,
+        "total_threads": 131840,
+        "total_wave32_units": 4120
+      },
+      "candidate": {
+        "q5_local32_blocks": 3096,
+        "q6_local32_blocks": 1024,
+        "total_workgroups": 4120,
+        "total_threads": 131840,
+        "total_wave32_units": 4120
+      }
+    },
+    "swa": {
+      "control": {
+        "q5_local128_blocks": 1161,
+        "q6_local128_blocks": 256,
+        "total_workgroups": 1417,
+        "total_threads": 181376,
+        "total_wave32_units": 5668
+      },
+      "candidate": {
+        "q5_local32_blocks": 4644,
+        "q6_local32_blocks": 1024,
+        "total_workgroups": 5668,
+        "total_threads": 181376,
+        "total_wave32_units": 5668
+      }
+    },
+    "invariant": "Grid threads and total wave32 work are exactly unchanged at both production shapes; only workgroup boundaries and Q6 per-wave output ownership change."
+  },
+  "source_audit": {
+    "current_kernel": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip::gguf_q5_q6_mixed_q6_fixed_meta_attention_decode_out_kernel",
+    "q5_helper": "gguf_q5_k_wave32x2_fixed_meta_decode_out_block",
+    "q6_helper": "gguf_q6_k_pack8_fixed_meta_decode_out_block",
+    "current_contract": "local128 blocks: four independent Q5 pair waves or one cooperative eight-output Q6 pack with 1 KiB metadata LDS and barriers",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "lineage_note": "Only already catalogued unrelated Qwen/PARO/smoke parent drift is reported; this is an in-tree scheduling specialization."
+  },
+  "frozen_gates": {
+    "red": "Add a separately registered production-shape all-local32 Q5/Q6 mixed wrapper fixture before runtime selection.",
+    "primitive_correctness": [
+      "F32 byte identity for all four outputs against the retained fixed-Q6-metadata mixed kernel",
+      "global K3072 outputs Q5 N6144+48 and Q6 N1024+1024",
+      "SWA K3072 outputs Q5 N9216+72 and Q6 N1024+1024",
+      "edge Q5/Q6 metadata, signed zeros, non-finite classes, output tails, and registry/shape rejection",
+      "unchanged layer-47 Q6/Q8 route"
+    ],
+    "codegen": [
+      "local32 wave32",
+      "zero LDS",
+      "zero private segment and zero VGPR/SGPR spills",
+      "record logical/allocated VGPR and SGPR before actual-weight timing",
+      "global and SWA grid-thread counts remain 131840 and 181376"
+    ],
+    "actual_weight_precondition": {
+      "layers": [0, 44, 1, 46],
+      "boundaries": ["global_first", "global_last", "swa_first", "swa_last"],
+      "warmups": 50,
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "requirement": "candidate inclusive HIP-event and synchronized-wall medians improve at every boundary and all four F32 outputs are byte-exact; remove on any failure"
+    },
+    "after_actual_weight_pass_only": [
+      "explicit/default-off runtime selector with retained local128 mixed fallback",
+      "16-transition full logits, all hidden/routed boundaries, active KV and every span field, reset/re-prefill, and lifecycle identity",
+      "cached rocprofv3 symbol/local32/grid/resource proof with 47 calls/token and unchanged 723 dispatches/token",
+      "two process orders at short/512/1K/near-4K with exact IDs and mixed-family/kernel/span/child guards",
+      "both complete 18-prompt category process orders before promotion"
+    ]
+  },
+  "decision": {
+    "action": "implement RED-first exact all-local32 mixed Q5/Q6 projection",
+    "reason": "It targets the largest remaining short kernel family with a new schedule that preserves total grid threads and wave parallelism while removing the local128 union's LDS/barriers and resource footprint from independent Q5 waves.",
+    "completion_claim": false
+  }
+}

@@ -244,3 +244,184 @@ def test_promotion_gate_is_fail_closed_per_category() -> None:
     rejected = _promotion_gate(aggregate, categories, (16, 32))
     assert rejected["pass"] is False
     assert "general_ja:h32:e2e_speedup" in rejected["failed_checks"]
+
+
+def test_iq3_signbit_schedule_cli_is_removed_after_clean_rejection(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert benchmark._parse_args().iq3_c1_down_schedule is None
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        [
+            "laguna_target_ar_bench.py",
+            "--iq3-c1-down-schedule",
+            "wave4_signbit_reduce",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        benchmark._parse_args()
+
+
+def test_iq3_wave10_fused_schedule_cli_keeps_explicit_wave4_rollback(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert benchmark._parse_args().iq3_c1_down_schedule is None
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        [
+            "laguna_target_ar_bench.py",
+            "--iq3-c1-down-schedule",
+            "wave4_reduce",
+        ],
+    )
+    assert benchmark._parse_args().iq3_c1_down_schedule == "wave4_reduce"
+
+
+def test_iq3_wave10_signbit_fused_schedule_cli_is_removed_after_clean_rejection(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        [
+            "laguna_target_ar_bench.py",
+            "--iq3-c1-down-schedule",
+            "wave10_signbit_fused",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        benchmark._parse_args()
+
+
+def test_persistent_wave_top10_router_cli_is_removed_after_clean_rejection(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--enable-persistent-router-wave-top10"],
+    )
+    with pytest.raises(SystemExit):
+        benchmark._parse_args()
+
+
+def test_q6_local32_standalone_cli_is_removed_after_clean_rejection(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--enable-q6-local32-standalone"],
+    )
+    with pytest.raises(SystemExit):
+        benchmark._parse_args()
+
+
+def test_q4_lm_head_local32_fixed_metadata_cli_defaults_on_with_rollback(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_q4_lm_head_local32_fixed_meta
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-q4-lm-head-local32-fixed-meta"],
+    )
+    assert benchmark._parse_args().disable_q4_lm_head_local32_fixed_meta
+
+
+def test_iq2_grid64_cli_is_defaults_on_with_explicit_disable(monkeypatch) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_iq2_grid64
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-iq2-grid64"],
+    )
+    assert benchmark._parse_args().disable_iq2_grid64
+
+
+def test_q5_fixed_metadata_cli_is_defaults_on_with_role_scoped_disable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    args = benchmark._parse_args()
+    assert not args.disable_q5_fixed_meta_output
+    assert not args.disable_q5_fixed_meta_query_gate
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        [
+            "laguna_target_ar_bench.py",
+            "--disable-q5-fixed-meta-output",
+            "--disable-q5-fixed-meta-query-gate",
+        ],
+    )
+    args = benchmark._parse_args()
+    assert args.disable_q5_fixed_meta_output
+    assert args.disable_q5_fixed_meta_query_gate
+
+
+def test_q5_shared_fixed_metadata_cli_defaults_on_with_explicit_disable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_q5_shared_fixed_meta
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-q5-shared-fixed-meta"],
+    )
+    assert benchmark._parse_args().disable_q5_shared_fixed_meta
+
+
+def test_mixed_attention_projection_cli_defaults_on_with_explicit_disable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_mixed_q5_q6_attention
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-mixed-q5-q6-attention"],
+    )
+    assert benchmark._parse_args().disable_mixed_q5_q6_attention
+
+
+def test_mixed_local32_fixed_metadata_cli_defaults_on_with_explicit_disable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_mixed_local32_fixed_meta_attention
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-mixed-local32-fixed-meta-attention"],
+    )
+    assert benchmark._parse_args().disable_mixed_local32_fixed_meta_attention
+
+
+def test_mixed_q6_fixed_metadata_cli_defaults_on_with_explicit_disable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py"])
+    assert not benchmark._parse_args().disable_mixed_q6_fixed_meta_attention
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["laguna_target_ar_bench.py", "--disable-mixed-q6-fixed-meta-attention"],
+    )
+    assert benchmark._parse_args().disable_mixed_q6_fixed_meta_attention

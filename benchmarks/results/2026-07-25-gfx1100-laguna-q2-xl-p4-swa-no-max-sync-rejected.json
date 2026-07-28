@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_swa_split_no_max_sync_rejection",
+  "status": "rejected_removed",
+  "date": "2026-07-25",
+  "implementation_revision": "549863302",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "Exact gated SWA split reducer omitting only the block-wide barriers in the thread-0 four-score maximum scan.",
+    "workspace_change_bytes": 0,
+    "dispatch_change": 0,
+    "correctness_artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-p4-swa-no-max-sync-correctness.json",
+    "correctness_artifact_sha256": "604d45b06220c63a7d181244928bfa488c14f67c15efab72cf22b3b6cafe54cb",
+    "correctness": {
+      "leaf_context_and_gated_bits_exact": true,
+      "full_state_16_transitions_exact": true,
+      "kl_divergence": 0.0,
+      "top1_agreement": 1.0,
+      "all_48_hidden_and_47_routed_boundaries_exact": true,
+      "active_kv_and_all_span_fields_exact": true,
+      "reset_and_lifecycle_exact": true
+    },
+    "actual_layer_screen": {
+      "live_counts": [70, 128, 257, 512],
+      "layers": [1, 47],
+      "all_event_and_wall_rows_improve": true,
+      "event_delta_pct_range": [-0.4958006833112871, -0.1815734201150443],
+      "wall_delta_pct_range": [-0.45238233404135686, -0.18249747758294355]
+    },
+    "resources": {
+      "workgroup": 128,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "promotion_contract": {
+    "path": "/tmp/laguna-swa-no-max-sync-promotion-contract.json",
+    "sha256": "c2fb9f8f6a39f0fde9b4a10f2598483de6ba1b63c0d71f956815095c9068f9cd",
+    "short_span_regression_limit_pct": 0.5,
+    "frozen_before_profile_completion": true
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_swa_no_max_sync_clean_profiles.sh",
+    "stopped_reason": "The complete two-order short gate failed before near-4K completion; category runs were therefore skipped.",
+    "completed_contexts": ["short", 512, 1024],
+    "process_orders_per_completed_context": 2,
+    "summary_sha256": "f1060d8dfe1488f342934672580b92ecbc17a1e92bbc03df5a3e61563540e3d9",
+    "report_sha256": "4e18ba6b0d7f67f4aa06fd440f4680e8deacb1f274ced030809cabaa91fa9a46",
+    "analyzer_sha256": "0cadb430743b5ad9eeaabd5db70e297ac4347eda6cc0c93abfd757baf53e575c",
+    "runner_sha256": "82fe9444323dd2eb6034c28373bcce9a801352fb89d1bfaf69e2679b928a1951",
+    "rows": [
+      {
+        "context": "short",
+        "stable_samples_per_arm": 28,
+        "reducer_delta_pct": -0.0008399017824789468,
+        "swa_score_plus_reducer_delta_pct": -0.021560622530480966,
+        "kernel_sum_delta_pct": 0.445882400462172,
+        "span_delta_pct": 1.172589216704889,
+        "profiled_child_tok_s_delta_pct": -0.1666336302661664
+      },
+      {
+        "context": 512,
+        "stable_samples_per_arm": 12,
+        "reducer_delta_pct": -0.5572033421479716,
+        "swa_score_plus_reducer_delta_pct": -0.5382170951851895,
+        "kernel_sum_delta_pct": -0.056469533098923996,
+        "span_delta_pct": 0.08367908731499174,
+        "profiled_child_tok_s_delta_pct": 0.19950831406818637
+      },
+      {
+        "context": 1024,
+        "stable_samples_per_arm": 12,
+        "reducer_delta_pct": -0.3199049921740582,
+        "swa_score_plus_reducer_delta_pct": -0.3339150290346593,
+        "kernel_sum_delta_pct": 0.09450199095168976,
+        "span_delta_pct": 0.16521357813121806,
+        "profiled_child_tok_s_delta_pct": 0.20748795412701693
+      }
+    ],
+    "checks": {
+      "all_reducer_improve": true,
+      "all_swa_improve": true,
+      "all_kernel_sum_inside_0_5pct": true,
+      "all_span_inside_0_5pct": false,
+      "all_child_inside_0_5pct": true,
+      "all_resources_pass": true,
+      "mechanical_gate_pass": false
+    }
+  },
+  "decision": {
+    "category_gate_run": false,
+    "promoted": false,
+    "reason": "The pooled short median dispatch span regressed 1.173%, exceeding the frozen 0.5% non-regression guard after both process orders. No third favorable-order rerun or guard waiver was used.",
+    "removed": [
+      "MAX_SCAN_SYNC template branch and candidate exports",
+      "Python wrappers and four-axis registry variants",
+      "runtime/session selector and backend validation",
+      "candidate tests and refactor-ledger entry"
+    ],
+    "retained_default": "Current-P4 exact split gated reducer with the original maximum-scan synchronization.",
+    "canonical_h32_decode_tok_s": 52.391
+  }
+}

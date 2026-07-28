@@ -32,6 +32,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+    gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out,
+    gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out,
+    gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
     gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
     gguf_iq4_xs_weighted_selected_down_bf16_bf16_out,
@@ -120,6 +123,48 @@ def _make_iq3_weight(num_experts: int, out_features: int, in_features: int) -> n
                 out[expert, row, start + 2 : start + IQ3_XXS_BLOCK_BYTES] = rng.integers(
                     0, 256, size=96, dtype=np.uint8
                 )
+    return out
+
+
+def _make_iq3_signbit_exhaustive_weight() -> np.ndarray:
+    """Encode every IQ3 grid byte and seven-bit sign selector at K1024."""
+
+    num_experts = 2
+    out_features = 3
+    blocks = 4
+    out = np.zeros(
+        (num_experts, out_features, blocks * IQ3_XXS_BLOCK_BYTES), dtype=np.uint8
+    )
+    for expert in range(num_experts):
+        for row in range(out_features):
+            for block in range(blocks):
+                start = block * IQ3_XXS_BLOCK_BYTES
+                scale = np.float16(0.0009765625 * (1 + expert + row + block))
+                out[expert, row, start : start + 2] = np.asarray(
+                    [scale], dtype=np.float16
+                ).view(np.uint8)
+                for grid_offset in range(64):
+                    base = block * 64 + grid_offset
+                    if row == 0:
+                        grid_index = base
+                    elif row == 1:
+                        grid_index = 255 - base
+                    else:
+                        grid_index = (73 * base + 19) & 255
+                    out[expert, row, start + 2 + grid_offset] = np.uint8(
+                        (grid_index + 37 * expert) & 255
+                    )
+                for group32 in range(8):
+                    aux = np.uint32((expert + row + block) & 15) << np.uint32(28)
+                    for local8 in range(4):
+                        base = block * 32 + group32 * 4 + local8
+                        selector = base if row != 1 else 127 - base
+                        selector = (selector + 29 * expert) & 127
+                        aux |= np.uint32(selector) << np.uint32(7 * local8)
+                    aux_start = start + 66 + 4 * group32
+                    out[expert, row, aux_start : aux_start + 4] = np.asarray(
+                        [aux], dtype="<u4"
+                    ).view(np.uint8)
     return out
 
 
@@ -326,6 +371,34 @@ def test_iq3_hip_table_matches_pinned_llamacpp_table() -> None:
     )
 
 
+def test_iq3_signbit_mapping_exhausts_pinned_grid_and_selectors() -> None:
+    source = _HIP_SOURCE.read_text()
+    initializer = source.split("IQ3_XXS_GRID[256] = {", 1)[1].split("};", 1)[0]
+    grid = np.asarray(
+        [int(value, 16) for value in re.findall(r"0x([0-9a-fA-F]{8})u", initializer)],
+        dtype="<u4",
+    )
+    magnitudes = np.frombuffer(grid.tobytes(), dtype=np.uint8).astype(np.float32)
+    positive_bits = magnitudes.view(np.uint32)
+    assert magnitudes.size == 1024
+    assert np.all(magnitudes > 0)
+
+    for selector in range(128):
+        signs = selector | ((selector.bit_count() & 1) << 7)
+        for bit in range(8):
+            sign = (signs >> bit) & 1
+            expected = (-magnitudes if sign else magnitudes).view(np.uint32)
+            actual = positive_bits | np.uint32(sign << 31)
+            np.testing.assert_array_equal(actual, expected)
+
+    candidate_body = source.split(
+        "__device__ inline float iq3_xxs_group_dot_signbit(", 1
+    )[1].split("\n}\n", 1)[0]
+    assert "signed1.bits |= ((signs >> j) & 1U) << 31" in candidate_body
+    assert "signed2.bits |= ((signs >> (j + 4)) & 1U) << 31" in candidate_body
+    assert "?" not in candidate_body
+
+
 def test_iq_gemv_registry_and_build_plan() -> None:
     assert resolve(
         backend="hip_gfx1100",
@@ -339,6 +412,24 @@ def test_iq_gemv_registry_and_build_plan() -> None:
         quant="gguf_iq3_xxs",
         variant="selected_dual_silu_gemv_decode_bf16_bf16_out",
     ) is gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq3_xxs",
+        variant="selected_gemv_decode_k1024_wave4_bf16_bf16_out",
+    ) is gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq3_xxs",
+        variant="selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+    ) is gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq3_xxs",
+        variant="selected_gemv_decode_tile4_bf16_bf16_out",
+    ) is gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",
@@ -388,6 +479,31 @@ def test_iq_gemv_wrappers_validate_contract_before_loading() -> None:
             in_features=256,
             out_features=1,
             threads=32,
+        )
+    with pytest.raises(ValueError, match="in_features=1024"):
+        gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out(
+            1,
+            2,
+            3,
+            4,
+            x_rows=1,
+            rows=1,
+            num_experts=1,
+            in_features=512,
+            out_features=1,
+        )
+    with pytest.raises(ValueError, match="threads"):
+        gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out(
+            1,
+            2,
+            3,
+            4,
+            x_rows=1,
+            rows=1,
+            num_experts=1,
+            in_features=1024,
+            out_features=1,
+            threads=64,
         )
     with pytest.raises(ValueError, match="top_k"):
         gguf_iq4_xs_weighted_selected_down_bf16_bf16_out(
@@ -492,6 +608,132 @@ def test_selected_iq_real_fixture_rows_match_cpu_oracle(
         np.max(np.abs(actual_f32 - expected_f32) / np.maximum(np.abs(expected_f32), 1.0))
     )
     assert max_rel <= 0.02
+
+
+def test_iq3_selected_k1024_wave4_signbit_exhaustive_is_bit_exact(
+    iq_library,
+) -> None:
+    rows = 10
+    in_features = 1024
+    qweight = _make_iq3_signbit_exhaustive_weight()
+    exhaustive_blocks = qweight[0, 0].reshape(4, IQ3_XXS_BLOCK_BYTES)
+    np.testing.assert_array_equal(
+        exhaustive_blocks[:, 2:66].reshape(-1), np.arange(256, dtype=np.uint8)
+    )
+    encoded_selectors = []
+    for block in exhaustive_blocks:
+        for group32 in range(8):
+            aux = int.from_bytes(
+                block[66 + 4 * group32 : 70 + 4 * group32], "little"
+            )
+            encoded_selectors.extend((aux >> (7 * local8)) & 127 for local8 in range(4))
+    assert encoded_selectors == list(range(128))
+
+    selected = np.asarray([0, 1, 0, -1, 1, 0, 1, 0, 1, 0], dtype=np.int64)
+    edge_bits = np.asarray(
+        [
+            0x0000,
+            0x8000,
+            0x0001,
+            0x8001,
+            0x0080,
+            0x8080,
+            0x3F80,
+            0xBF80,
+            0x4380,
+            0xC380,
+        ],
+        dtype=np.uint16,
+    )
+    cases = (
+        _f32_to_bf16_u16(_make_x(rows, in_features)),
+        np.resize(edge_bits, (rows, in_features)).copy(),
+    )
+    for x_bf16 in cases:
+        local128 = _run_selected(
+            gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+            iq_library,
+            x_bf16=x_bf16,
+            selected=selected,
+            qweight=qweight,
+            threads=128,
+        )
+        retained = _run_selected(
+            gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out,
+            iq_library,
+            x_bf16=x_bf16,
+            selected=selected,
+            qweight=qweight,
+            threads=32,
+        )
+        candidate = _run_selected(
+            gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out,
+            iq_library,
+            x_bf16=x_bf16,
+            selected=selected,
+            qweight=qweight,
+            threads=32,
+        )
+        np.testing.assert_array_equal(candidate, retained)
+        np.testing.assert_array_equal(candidate, local128)
+
+
+def test_iq3_selected_k1024_wave4_is_bit_exact_to_local128(iq_library) -> None:
+    top_k = 10
+    in_features = 1024
+    out_features = 19
+    qweight = _make_iq3_weight(9, out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(_make_x(top_k, in_features))
+    selected = np.asarray([8, 0, 5, 2, 7, -1, 3, 8, 1, 6], dtype=np.int64)
+    baseline = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    candidate = _run_selected(
+        gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=32,
+    )
+    np.testing.assert_array_equal(candidate, baseline)
+
+
+@pytest.mark.parametrize("tokens", [1, 2, 5, 8])
+def test_iq3_selected_output_tile4_is_bit_exact_to_tile1(
+    iq_library, tokens: int
+) -> None:
+    top_k = 10
+    in_features = 1024
+    out_features = 19
+    x_bf16 = _f32_to_bf16_u16(_make_x(tokens, in_features))
+    selected = np.asarray(
+        [(-1 if lane % 17 == 0 else (7 * lane + 3) % 5) for lane in range(tokens * top_k)],
+        dtype=np.int64,
+    )
+    qweight = _make_iq3_weight(5, out_features, in_features)
+    tile1 = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    tiled = _run_selected(
+        gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    np.testing.assert_array_equal(tiled, tile1)
 
 
 def test_iq3_laguna_k1024_local128_is_bit_exact_to_local256(iq_library) -> None:

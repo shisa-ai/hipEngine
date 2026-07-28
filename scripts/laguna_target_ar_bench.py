@@ -31,7 +31,9 @@ from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
-DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+DEFAULT_PROMPTS = (
+    ROOT / "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl"
+)
 DEFAULT_TEMPLATE = ROOT / "tests/fixtures/laguna_poolside_v1_template.json"
 DEFAULT_ORACLE = ROOT / "tests/fixtures/laguna_poolside_v1_oracle.json"
 DEFAULT_ORACLE_LOGPROBS = ROOT / "tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy"
@@ -44,7 +46,7 @@ DEFAULT_CACHE = Path(
 )
 DEFAULT_MODEL_SHA256 = "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
 EXPECTED_CATEGORIES = frozenset(("code", "general_en", "general_ja", "mixed_ja_en"))
-EXPECTED_PROMPT_COUNT = 10
+EXPECTED_PROMPT_COUNT = 18
 RETAINED_HORIZONS = (16, 32)
 
 
@@ -59,6 +61,80 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=64)
+    parser.add_argument(
+        "--iq3-c1-down-schedule",
+        choices=("serial_weighted", "wave4_reduce", "wave10_fused"),
+        default=None,
+        help="override the backend default; wave4_reduce is the gfx1100 rollback",
+    )
+    parser.add_argument(
+        "--disable-iq2-grid64",
+        action="store_true",
+        help="roll back the exact expanded-magnitude IQ2 c=1 default",
+    )
+    parser.add_argument(
+        "--disable-q5-fixed-meta-output",
+        action="store_true",
+        help="roll back exact fixed-metadata Q5 c=1 attention output",
+    )
+    parser.add_argument(
+        "--disable-q5-fixed-meta-query-gate",
+        action="store_true",
+        help="roll back exact fixed-metadata Q5 c=1 query/gate",
+    )
+    parser.add_argument(
+        "--disable-q5-shared-fixed-meta",
+        action="store_true",
+        help="restore the exact local128 pack8 pair for c=1 shared Q5 gate/up",
+    )
+    parser.add_argument(
+        "--disable-mixed-q5-q6-attention",
+        action="store_true",
+        help="restore the exact Q5/Q6 pair and Q8 singleton projection chain",
+    )
+    parser.add_argument(
+        "--disable-mixed-q6-fixed-meta-attention",
+        action="store_true",
+        help="restore generic Q6 blocks inside the exact mixed projection quad",
+    )
+    parser.add_argument(
+        "--disable-mixed-local32-fixed-meta-attention",
+        action="store_true",
+        help="restore the exact local128 fixed-Q6 Q5/Q6 projection quad",
+    )
+    parser.add_argument(
+        "--disable-q4-lm-head-local32-fixed-meta",
+        action="store_true",
+        help="restore the registered exact local128 Q4_K c=1 LM head",
+    )
+    parser.add_argument("--global-split-min-live", type=int)
+    parser.add_argument("--swa-split-min-live", type=int)
+    parser.add_argument("--swa-split-tile16-min-live", type=int)
+    parser.add_argument(
+        "--disable-swa-split-tile16",
+        action="store_true",
+        help="roll back the architecture-qualified SWA exact tile16 crossover",
+    )
+    parser.add_argument(
+        "--disable-split-attention",
+        action="store_true",
+        help="roll back architecture-qualified Laguna split-attention defaults",
+    )
+    parser.add_argument(
+        "--disable-split-gate-fusion",
+        action="store_true",
+        help="use the exact unfused split-reducer plus attention-gate chain",
+    )
+    parser.add_argument(
+        "--disable-swa-split-wave-local",
+        action="store_true",
+        help="use the exact shared-statistics SWA split reducer",
+    )
+    parser.add_argument(
+        "--disable-head-kv-fusion",
+        action="store_true",
+        help="use separate exact head RMSNorm/RoPE and BF16 KV append launches",
+    )
     parser.add_argument(
         "--output-horizons",
         type=lambda value: tuple(int(item) for item in value.split(",") if item),
@@ -166,6 +242,77 @@ def _session(
         prefill_chunk_size=args.chunk_size,
         global_prefill_variant=global_prefill_variant,
         swa_prefill_variant=swa_prefill_variant,
+        iq3_c1_down_schedule=getattr(args, "iq3_c1_down_schedule", None),
+        use_iq2_grid64=(
+            False if getattr(args, "disable_iq2_grid64", False) else None
+        ),
+        use_q5_fixed_meta_output=(
+            False
+            if getattr(args, "disable_q5_fixed_meta_output", False)
+            else None
+        ),
+        use_q5_fixed_meta_query_gate=(
+            False
+            if getattr(args, "disable_q5_fixed_meta_query_gate", False)
+            else None
+        ),
+        use_q5_shared_fixed_meta=(
+            False
+            if getattr(args, "disable_q5_shared_fixed_meta", False)
+            else None
+        ),
+        use_mixed_q5_q6_attention=(
+            False
+            if getattr(args, "disable_mixed_q5_q6_attention", False)
+            else None
+        ),
+        use_mixed_q6_fixed_meta_attention=(
+            False
+            if getattr(args, "disable_mixed_q6_fixed_meta_attention", False)
+            else None
+        ),
+        use_mixed_local32_fixed_meta_attention=(
+            False
+            if getattr(
+                args,
+                "disable_mixed_local32_fixed_meta_attention",
+                False,
+            )
+            else None
+        ),
+        use_q4_lm_head_local32_fixed_meta=(
+            False
+            if getattr(
+                args,
+                "disable_q4_lm_head_local32_fixed_meta",
+                False,
+            )
+            else None
+        ),
+        global_split_min_live=getattr(args, "global_split_min_live", None),
+        swa_split_min_live=getattr(args, "swa_split_min_live", None),
+        swa_split_tile16_min_live=getattr(
+            args,
+            "swa_split_tile16_min_live",
+            None,
+        ),
+        use_swa_split_tile16=(
+            False if getattr(args, "disable_swa_split_tile16", False) else None
+        ),
+        use_split_attention=(
+            False if getattr(args, "disable_split_attention", False) else None
+        ),
+        use_split_gate_fusion=(
+            False if getattr(args, "disable_split_gate_fusion", False) else None
+        ),
+        use_swa_split_wave_local=(
+            False
+            if getattr(args, "disable_swa_split_wave_local", False)
+            else None
+        ),
+        use_head_kv_fusion=(
+            False if getattr(args, "disable_head_kv_fusion", False) else None
+        ),
     )
 
 
@@ -553,6 +700,39 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
+            iq3_c1_down_schedule=args.iq3_c1_down_schedule,
+            use_iq2_grid64=False if args.disable_iq2_grid64 else None,
+            use_q5_fixed_meta_output=(
+                False if args.disable_q5_fixed_meta_output else None
+            ),
+            use_q5_fixed_meta_query_gate=(
+                False if args.disable_q5_fixed_meta_query_gate else None
+            ),
+            use_q5_shared_fixed_meta=(
+                False if args.disable_q5_shared_fixed_meta else None
+            ),
+            use_mixed_q5_q6_attention=(
+                False if args.disable_mixed_q5_q6_attention else None
+            ),
+            use_mixed_q6_fixed_meta_attention=(
+                False if args.disable_mixed_q6_fixed_meta_attention else None
+            ),
+            use_mixed_local32_fixed_meta_attention=(
+                False if args.disable_mixed_local32_fixed_meta_attention else None
+            ),
+            use_q4_lm_head_local32_fixed_meta=(
+                False if args.disable_q4_lm_head_local32_fixed_meta else None
+            ),
+            global_split_min_live=args.global_split_min_live,
+            swa_split_min_live=args.swa_split_min_live,
+            swa_split_tile16_min_live=args.swa_split_tile16_min_live,
+            use_swa_split_tile16=False if args.disable_swa_split_tile16 else None,
+            use_split_attention=False if args.disable_split_attention else None,
+            use_split_gate_fusion=False if args.disable_split_gate_fusion else None,
+            use_swa_split_wave_local=(
+                False if args.disable_swa_split_wave_local else None
+            ),
+            use_head_kv_fusion=False if args.disable_head_kv_fusion else None,
         )
         load_seconds = time.perf_counter() - load_started
         oracle_gate = _oracle_gate(owner, args)
@@ -624,7 +804,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "pass": passed,
         "performance_claim": claim,
         "performance_claim_scope": (
-            "target-only c=1 greedy AR; canonical 10-prompt four-category suite; "
+            "target-only c=1 greedy AR; canonical 18-prompt train+heldout four-category suite; "
             f"output horizons {list(horizons)}; model load excluded"
         ),
         "provenance": provenance,
@@ -652,6 +832,29 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_tokens_max": max(prompt["prompt_tokens"] for prompt in prompts),
             "context_length": args.context_length,
             "prefill_chunk_size": args.chunk_size,
+            "iq3_c1_down_schedule": owner.iq3_c1_down_schedule,
+            "global_split_min_live": owner.global_split_min_live,
+            "swa_split_min_live": owner.swa_split_min_live,
+            "swa_split_tile16_min_live": owner.swa_split_tile16_min_live,
+            "use_swa_split_tile16": owner.use_swa_split_tile16,
+            "use_split_attention": owner.use_split_attention,
+            "use_split_gate_fusion": owner.use_split_gate_fusion,
+            "use_swa_split_wave_local": owner.use_swa_split_wave_local,
+            "use_head_kv_fusion": owner.use_head_kv_fusion,
+            "use_iq2_grid64": owner.use_iq2_grid64,
+            "use_q5_fixed_meta_output": owner.use_q5_fixed_meta_output,
+            "use_q5_fixed_meta_query_gate": owner.use_q5_fixed_meta_query_gate,
+            "use_q5_shared_fixed_meta": owner.use_q5_shared_fixed_meta,
+            "use_mixed_q5_q6_attention": owner.use_mixed_q5_q6_attention,
+            "use_mixed_q6_fixed_meta_attention": (
+                owner.use_mixed_q6_fixed_meta_attention
+            ),
+            "use_mixed_local32_fixed_meta_attention": (
+                owner.use_mixed_local32_fixed_meta_attention
+            ),
+            "use_q4_lm_head_local32_fixed_meta": (
+                owner.use_q4_lm_head_local32_fixed_meta
+            ),
             "output_horizons": list(horizons),
             "repetitions": args.repetitions,
             "warmups": {

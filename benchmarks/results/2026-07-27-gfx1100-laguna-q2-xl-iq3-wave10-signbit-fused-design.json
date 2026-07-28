@@ -1,0 +1,493 @@
+{
+  "admission_plan": {
+    "clean_and_category_adjudication": [
+      "Freeze two process orders at short/512/1024/3968. Every order must improve IQ3-wave10 family and complete kernel sum, keep span <=+0.5%, keep profiled-child throughput >=-0.5%, and preserve exact 45/2/678 topology/resources/IDs/lifecycle/no-compiler. Stop on first failure; no third order or pooled waiver.",
+      "Only after all contexts pass, run both complete 18-prompt train+heldout category orders. Require aggregate and every category decode positive at h16/h32, E2E/prefill/TTFT within frozen guards, exact IDs/state/lifecycle, and no rerun/waiver.",
+      "Promote sign-bit wave10 as gfx1100 c=1 default only if every gate passes; otherwise remove runtime ownership while retaining the exact separately registered primitive."
+    ],
+    "codegen_and_trace": {
+      "required": {
+        "allocated_vgpr_max": 88,
+        "barriers": 1,
+        "cndmask_max": 3,
+        "ds_bpermute": 20,
+        "group_segment_fixed_size_max": 20,
+        "logical_sgpr_max": 18,
+        "logical_vgpr_max": 86,
+        "private_segment_fixed_size": 0,
+        "rocprof_lds_allocation_max": 512,
+        "scratch_bytes": 0,
+        "sgpr_spills": 0,
+        "sign_compares": 0,
+        "static_instructions_max": 454,
+        "text_bytes_max": 2700,
+        "vgpr_spills": 0,
+        "wavefront_size": 32,
+        "workgroup_x": 320
+      },
+      "trace": "After non-profiled exact-key prebuild, cache-only rocprofv3 must name the distinct candidate at grid/local 983040/320, VGPR<=88/LDS<=512/scratch0, finite output, and no compiler under profiling."
+    },
+    "commit_boundaries": [
+      "Commit this design before implementation.",
+      "Commit primitive correctness before runtime ownership.",
+      "Commit runtime correctness before clean measurement.",
+      "Commit retained default or mechanical rejection immediately after adjudication."
+    ],
+    "correctness": [
+      "Exhaust all 128 sign selectors and all 256 IQ3 grid entries under signed-zero/subnormal/extreme finite BF16 activations, distinct/repeated/invalid experts, odd output tails, and signed/zero/subnormal F32 routing weights. Candidate and retained wave10 final BF16 outputs must be byte-identical.",
+      "Independent CPU IQ3_XXS dequantization and slot-order weighted oracle must pass KL<=0.05 and top-1>=90%; candidate versus registered retained wave10 requires KL0/top-1 100%.",
+      "Repeat the mandatory all-45 production-weight transfer and frozen layer-1/45 timing protocol once after repository admission; both event and wall must improve at both endpoints."
+    ],
+    "primitive_red_green": [
+      "Add a candidate-specific local320 HIP kernel/C export, strict wrapper/package export, one exact gfx1100 four-axis key, and explicit gfx1151 absence; keep the retained wave10 key/body callable and byte-distinct.",
+      "RED freezes five non-null pointers, tokens==1, top_k==10, num_experts>0, K==1024, N>0, and threads==320 before library load. No runtime capability/session/CLI seam enters the primitive commit.",
+      "The registered wave4 producer plus weighted_sum chain remains the mandatory unfused fallback; retained wave10 is the immediate fused control/rollback."
+    ],
+    "runtime_owner_after_primitive_commit": [
+      "Add a separate false gfx1100 capability and explicit wave10_signbit_fused schedule/CLI choice at the existing IQ3 c=1 seam. Current wave10_fused default, rows/prefill, key miss, gfx1151, and unsupported backends stay unchanged.",
+      "Fresh shared-weight mixed_ja_en_review must compare retained wave10 against sign-bit wave10 through bulk prefill, all 48 hidden + 47 routed boundaries, 16 transitions, active K/V and all KVLiveSpans fields, reset/re-prefill, ownership, lifecycle, KL0, and top-1 100%.",
+      "Cache-only two-transition full-model trace requires exactly 90 candidate calls (45/token), zero candidate prefill and zero retained-wave10 decode calls, four unchanged reducers (2/token), and exactly 678 model kernels/token with expected resources/IDs/finite/lifecycle/no-compiler."
+    ]
+  },
+  "baseline": {
+    "additional_h32_speedup_required_pct": 1.8144711534139324,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "canonical_wall_ms_per_token": 15.805224168463194,
+    "commit": "330dbdbb8bb38a59a19eaba7d977834d75684341",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "residual_analyzer_sha256": "5ee8b1c08b4c8c847ecc4687810adfd84390880960c102a2dc1a432ca6acecf5",
+    "residual_path": "/tmp/laguna-post-wave10-residual.json",
+    "residual_sha256": "123481869b6f173fd0121e6cd9b71543a13257c33f39c83eec7ded82b95a87a2",
+    "retained_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json",
+    "retained_artifact_sha256": "f1fd3c7d9f8d881d5699e1a77bfdf6fcbedb0322f2186b54d27642bf61a96ee2",
+    "short_iq3_wave10_ms_per_token": 1.4411954285714286,
+    "short_kernel_sum_ms_per_token": 12.736967071428571
+  },
+  "builder_sha256": "55f2d38ec235074d89e15cd18a6da517dcd05cef0047396ee7c45f16f3ab0b4c",
+  "cache_only_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "candidate_calls": 2,
+    "compiler_allowed_under_profiler": false,
+    "finite": true,
+    "harness_sha256": "2cb55bd2df4b2a583d621987234d2e8a0d572f20547fb0a1ec90515865854020",
+    "kernel_rows": [
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 88,
+        "duration_ns": 272761,
+        "grid_x": 983040,
+        "kernel_name": "(anonymous namespace)::gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 320
+      },
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 88,
+        "duration_ns": 26280,
+        "grid_x": 983040,
+        "kernel_name": "(anonymous namespace)::gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 320
+      }
+    ],
+    "kernel_trace_sha256": "d519617b8ed36ababe3cfce8ce95339e541d7774d4b81915fb6c729af358227d",
+    "no_compiler_under_profiler": true,
+    "prebuilt_candidate_required": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/trace_laguna_iq3_wave10_signbit_candidate.py",
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "6d289ec8b7379a78e9038166ba561c037df8e1248d030924cc020b2503d9d668",
+    "profile_command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-iq3-wave10-signbit-trace --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_iq3_wave10_signbit_candidate.py",
+    "profile_stderr_sha256": "6d8faf3424ee7ecaa20b419fbea9e0e29f98586b37959d370441dd120187969a",
+    "profile_stdout_sha256": "6d289ec8b7379a78e9038166ba561c037df8e1248d030924cc020b2503d9d668",
+    "resource_interpretation": "rocprofv3 reports the same local320, allocated VGPR88/SGPR128/LDS512/scratch0 class as retained wave10. The first call is cold; the second 26.280-us call is plausibility evidence, not timing evidence."
+  },
+  "closed_mechanisms_respected": [
+    "Do not restore the rejected standalone wave4 sign-bit owner; only the newly measured composition inside retained wave10 is in scope.",
+    "Do not retry IQ3 two-output tiling, SWA full-weight staging, mixed K3072 specialization, Q5 SWAR ownership, IQ2 local64, SWA dim4, Q8_1, row4, or serial route ownership.",
+    "Do not alter route/output topology, arithmetic order, BF16 boundaries, routing reduction, allocations, launch count, or prompt/token behavior."
+  ],
+  "codegen": {
+    "candidate": {
+      "barriers": 1,
+      "cndmask": 3,
+      "ds_bpermute": 20,
+      "group_segment_fixed_size": 20,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 18,
+      "sgpr_spill_count": 0,
+      "sign_compares": 0,
+      "static_instructions": 454,
+      "text_bytes": 2700,
+      "vgpr_count": 86,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate_hsaco_sha256": "438598c8e0a5ea2716b62281731425a6c977f7039beb10f00e7bad99209c18b0",
+    "candidate_isa_sha256": "5bf5498bcc4f083a03b23da2e75bac22972d579d3ab24cb5c089deedda80e5b2",
+    "candidate_objdump_sha256": "ba936c08cb6ac3ae0a3fe98811efc0f3807b1f094f75dc06c3b41cc0b2fb15ad",
+    "candidate_readobj_sha256": "53a9eb723ff6f7f32b4f2de4a70be12474d258389b2645f050dce1c6abdf7b6d",
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "control": {
+      "barriers": 1,
+      "cndmask": 35,
+      "ds_bpermute": 20,
+      "group_segment_fixed_size": 20,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 26,
+      "sgpr_spill_count": 0,
+      "sign_compares": 32,
+      "static_instructions": 495,
+      "text_bytes": 2860,
+      "vgpr_count": 83,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "control_hsaco_sha256": "297f52c4134dcd3d84022fda0df3169f27290e754fe33cddae8a1cc86da0bf5d",
+    "control_isa_sha256": "492f70bcce96df95e589637c8559710587d946d49ab48e1a8321f5e721157651",
+    "delta": {
+      "cndmask": -32,
+      "logical_sgpr": -8,
+      "logical_vgpr": 3,
+      "sign_compares": -32,
+      "static_instructions": -41,
+      "text_bytes": -160
+    },
+    "interpretation": "The candidate removes all 32 sign compares/cndmasks and contracts 41 instructions/160 text bytes. Logical VGPR rises 83->86 but remains in allocated VGPR88; logical SGPR falls 26->18. Topology, LDS, shuffles, barrier, stores, private/spill/scratch classes are unchanged."
+  },
+  "date": "2026-07-27",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation_status": {
+    "benchmark_changelog_update": false,
+    "benchmark_scoreboard_update": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "default": "unchanged retained wave10_fused",
+    "repository_primitive": "not implemented",
+    "runtime_owner": "not implemented"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_wave10_signbit_fused_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "path": "/tmp/laguna-iq3-wave10-signbit-lineage.txt",
+    "result": "Only already-catalogued unrelated Qwen/PARO/smoke parent drift; no new parent drift affects this in-tree IQ3 composition.",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "in_features": 1024,
+    "iq3_layers": 45,
+    "num_experts": 256,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "selected_experts": 10,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "canonical_h32_tok_s_before": 63.27021934907704,
+    "conservative_ratio": 0.07146689945244011,
+    "iq3_wave10_ms_per_token_before": 1.4411954285714286,
+    "kernel_sum_ms_per_token_after": 12.633969302643541,
+    "kernel_sum_ms_per_token_before": 12.736967071428571,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "method": "Apply only the smallest first/last event-or-wall improvement (7.146690%) to the immutable retained short IQ3-wave10 family; leave every other kernel and host interval unchanged.",
+    "model_kernels_per_token_after": 678,
+    "model_kernels_per_token_before": 678,
+    "modeled_h32_delta_pct": 0.6559437251977274,
+    "modeled_h32_tok_s_after": 63.68523638281615,
+    "modeled_saving_ms_per_token": 0.10299776878503063,
+    "note": "The approximately 0.1030-ms/token ceiling is planning evidence only, not a default/full-model throughput claim; it does not by itself beat matched Vulkan.",
+    "performance_claim": false,
+    "remaining_gap_pct": 1.1509776624608614
+  },
+  "performance_claim": false,
+  "rejected_discriminators_before_selection": {
+    "iq3_wave10_two_output": {
+      "decision": "reject out of tree",
+      "harness_sha256": "3f8b38cf317c7f9f97ccc68e0269c2dd9a361fd4d60fe93f4d179bfb201d48f9",
+      "raw_sha256": "f3efca49db1017abf24a5f4c730d2ddcacad4bb389f94808c4b84228a7969f6b",
+      "reason": "Exact outputs, but doubled per-wave state overwhelms halved workgroups at both production endpoints.",
+      "rows": [
+        {
+          "bf16_bit_exact": true,
+          "event_delta_pct": 17.64233553716734,
+          "layer_id": 1,
+          "wall_delta_pct": 20.21760716843741
+        },
+        {
+          "bf16_bit_exact": true,
+          "event_delta_pct": 20.15416864679771,
+          "layer_id": 45,
+          "wall_delta_pct": 16.39813633644611
+        }
+      ],
+      "source_sha256": "882310af1f47d04a4533e2114944244967d19b9de45bb047f3312c667d81e62e",
+      "stdout_sha256": "dad5c33f727f8d51eb382ae03584245825164cb6804cb2a75f15f38e0e705584"
+    },
+    "mixed_q5_q6_k3072_specialization": {
+      "codegen": {
+        "logical_vgpr_candidate": 74,
+        "logical_vgpr_control": 75,
+        "static_instructions_candidate": 895,
+        "static_instructions_control": 948
+      },
+      "decision": "reject out of tree",
+      "harness_sha256": "4007a300373c60ce3cb21c0208bea6f08ac104da223cb4b7fd42a870066ee219",
+      "hsaco_sha256": "08a07e2bcbf93a1c31ca90b0b6f68a9570ded2cab76a580c0ea0a615a3ad6ca1",
+      "objdump_sha256": "33dcc29055d0208a2121afe7b773ce99e98d7c257b45e8830acfe10ee26fd2c7",
+      "readobj_sha256": "bd729f44737b2ccb68d93c1ac083983f3cb49d04680ca0b85b0b7c1feba963e1",
+      "reason": "Constant folding contracts codegen but regresses both dominant SWA endpoints; global-layer wins cannot waive them.",
+      "rows": [
+        {
+          "all_outputs_exact": true,
+          "event_delta_pct": -0.8337302750500708,
+          "features": [
+            6144,
+            1024,
+            1024,
+            48
+          ],
+          "layer_id": 0,
+          "wall_delta_pct": -2.340903405804673
+        },
+        {
+          "all_outputs_exact": true,
+          "event_delta_pct": -2.3885833295292813,
+          "features": [
+            6144,
+            1024,
+            1024,
+            48
+          ],
+          "layer_id": 44,
+          "wall_delta_pct": 0.3590592590644315
+        },
+        {
+          "all_outputs_exact": true,
+          "event_delta_pct": 1.4398242577091436,
+          "features": [
+            9216,
+            1024,
+            1024,
+            72
+          ],
+          "layer_id": 1,
+          "wall_delta_pct": 1.2998695425529005
+        },
+        {
+          "all_outputs_exact": true,
+          "event_delta_pct": 2.701266068597996,
+          "features": [
+            9216,
+            1024,
+            1024,
+            72
+          ],
+          "layer_id": 46,
+          "wall_delta_pct": 3.524367802096684
+        }
+      ],
+      "source_sha256": "0ad734c179c003f4c6896bc9b5d177c08c3edf2d9562f51f7d86f98e23981da7",
+      "stdout_sha256": "2df36573fcc578c76d8f9dae9f99239e27a0ba0bf2feb9872151d29677854fae"
+    },
+    "swa_full_weight_stage": {
+      "decision": "reject out of tree",
+      "harness_sha256": "abc5c6fb41ddf6a70874ff0c4cf03372fbfb9cfd8a6e859e7a533f87001d1c34",
+      "raw_sha256": "0f1bf3158e94e56ad107385f8ce070246f8978c3771b3816c23fb4775a0fea68",
+      "reason": "One exact softmax scan plus one barrier and 2 KiB LDS regresses every synchronized-wall row, including 21.87-21.95% at live 257.",
+      "rows": [
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 3.9614967112289845,
+          "gated_bit_exact": true,
+          "layer_id": 1,
+          "live_count": 70,
+          "score_producer": "wave32",
+          "wall_delta_pct": 4.043421576430228
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 3.880593011994349,
+          "gated_bit_exact": true,
+          "layer_id": 46,
+          "live_count": 70,
+          "score_producer": "wave32",
+          "wall_delta_pct": 3.8700898766337755
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 3.9644250419159865,
+          "gated_bit_exact": true,
+          "layer_id": 47,
+          "live_count": 70,
+          "score_producer": "wave32",
+          "wall_delta_pct": 3.8564562841734373
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 4.496093898640741,
+          "gated_bit_exact": true,
+          "layer_id": 1,
+          "live_count": 128,
+          "score_producer": "wave32",
+          "wall_delta_pct": 4.675966638549944
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 4.553599243764483,
+          "gated_bit_exact": true,
+          "layer_id": 46,
+          "live_count": 128,
+          "score_producer": "wave32",
+          "wall_delta_pct": 4.579505920495008
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 4.537615478985368,
+          "gated_bit_exact": true,
+          "layer_id": 47,
+          "live_count": 128,
+          "score_producer": "wave32",
+          "wall_delta_pct": 4.6042978136911605
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 21.899846941560085,
+          "gated_bit_exact": true,
+          "layer_id": 1,
+          "live_count": 257,
+          "score_producer": "tile16",
+          "wall_delta_pct": 21.949772851331552
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 21.736272689835424,
+          "gated_bit_exact": true,
+          "layer_id": 46,
+          "live_count": 257,
+          "score_producer": "tile16",
+          "wall_delta_pct": 21.866470209739152
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 21.901089889334415,
+          "gated_bit_exact": true,
+          "layer_id": 47,
+          "live_count": 257,
+          "score_producer": "tile16",
+          "wall_delta_pct": 21.949218815973314
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 2.5522319269174476,
+          "gated_bit_exact": true,
+          "layer_id": 1,
+          "live_count": 512,
+          "score_producer": "tile16",
+          "wall_delta_pct": 2.555463182779527
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": 2.884703689943069,
+          "gated_bit_exact": true,
+          "layer_id": 46,
+          "live_count": 512,
+          "score_producer": "tile16",
+          "wall_delta_pct": 2.5613032393119406
+        },
+        {
+          "context_bit_exact": true,
+          "event_delta_pct": -6.721863419101837,
+          "gated_bit_exact": true,
+          "layer_id": 47,
+          "live_count": 512,
+          "score_producer": "tile16",
+          "wall_delta_pct": 1.172051670893226
+        }
+      ],
+      "stdout_sha256": "63023600f637c9efb77022f25f2f1ffb3a7dfa4eae9a41c0f30565f145d6ffdc"
+    }
+  },
+  "schema": 1,
+  "selected_design": {
+    "description": "Keep the retained local320 ten-wave fused weighted-down topology, but let each physical route wave call the already-proven load-free IEEE-754 sign-bit IQ3 reconstruction helper instead of 32 compare/select operations.",
+    "fallbacks": [
+      "retained wave10_fused key on explicit disable, candidate key miss, shape/backend miss, rows, or prefill",
+      "registered wave4 producer plus weighted_sum remains the mandatory unfused fallback and explicit rollback",
+      "no gfx1151/cuda/cpu alias without independent implementation and measurement"
+    ],
+    "name": "exact IQ3 K1024 wave10 fused sign-bit reconstruction",
+    "ownership_invariants": [
+      "Keep one local320 workgroup per output, ten physical wave32 route owners, four K256 accumulators per wave, all activation/weight addresses, 20 shuffle transports, route BF16 rounding, 20-byte LDS tuple, one barrier, slot-order F32 weighted fmaf chain from +0.0, and final BF16 store unchanged.",
+      "Change only sign reconstruction inside each eight-value IQ3 group: materialize the same positive codebook magnitudes and insert the same sign bits into IEEE-754 FP32 before the unchanged multiply/FMA order.",
+      "Keep exactly 45 fused calls plus two non-IQ3 weighted reducers and 678 model kernels/token; add no allocation, workspace, sidecar, weight copy, launch, prompt/token condition, or output tiling."
+    ],
+    "planned_four_axis_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq3_xxs",
+      "selected_weighted_down_gemv_decode_k1024_wave10_signbit_bf16_bf16_out"
+    ],
+    "planned_wrapper": "gguf_iq3_xxs_weighted_selected_down_k1024_wave10_signbit_bf16_bf16_out",
+    "scope": "gfx1100 c=1 only, top_k=10, IQ3_XXS K1024/N3072, BF16 activation/output, F32 routing weights",
+    "why_new_despite_prior_wave4_signbit_rejection": "The prior sign-bit owner ran a separate local32 producer followed by 45 weighted reducers at 723 model kernels/token and failed span/child guards. The retained runtime now uses the independently proven local320 fused owner at 678 kernels/token. Composing sign-bit reconstruction inside that body preserves the retained launch/workgroup/LDS/reduction topology and is a new measured kernel body, not a retry of the rejected wave4 runtime route."
+  },
+  "selection_probe": {
+    "all_actual_layers": 45,
+    "all_bf16_bit_exact": true,
+    "candidate_library_path": "/tmp/hipengine-laguna-wave10-signbit-cache/gguf_iq_gemv-b3a8be61e680ceed/gguf_iq_gemv_wave10_signbit.so",
+    "candidate_library_sha256": "7c13dcee381f7467b5122a133041577b55de4b9d25a7d34ecb7a2be419a36f13",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_wave10_signbit_actual.py",
+    "harness_sha256": "33acb3d253072f1a1110a019f6ea87bc255dc12a9470dc246f0dd840de4c0584",
+    "promotion_precondition": "All 45 actual outputs are BF16-bit exact and both event/wall medians improve at layers 1 and 45 without rerun.",
+    "protocol": {
+      "launches_per_sample": 300,
+      "repetitions": 15,
+      "warmups": 50
+    },
+    "raw_path": "/tmp/laguna-iq3-wave10-signbit-actual.json",
+    "raw_sha256": "e04720df7d6ec9dbe6989df4c38701331159982ec3a67a74e932a929eba95c83",
+    "rows": [
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 28.6020565032959,
+        "candidate_wall_us": 29.107900336384773,
+        "control_event_us": 31.095809936523438,
+        "control_wall_us": 31.348263534406822,
+        "event_delta_pct": -8.01958025315338,
+        "layer_id": 1,
+        "wall_delta_pct": -7.146689945244011,
+        "weight_name": "blk.1.ffn_down_exps.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 29.317156473795574,
+        "candidate_wall_us": 29.61063990369439,
+        "control_event_us": 32.121175130208336,
+        "control_wall_us": 31.96900322412451,
+        "event_delta_pct": -8.72950209650245,
+        "layer_id": 45,
+        "wall_delta_pct": -7.377031131988643,
+        "weight_name": "blk.45.ffn_down_exps.weight"
+      }
+    ],
+    "source_builder_sha256": "c4f3174e025a816550cc0163f62056b545bcda5dce270e557de4e81b049f799a",
+    "source_sha256": "4dcb4f41de9e6f12735241a2d6a302053e2146c9588d5ce9e5916b2c5ee805c9",
+    "stdout_sha256": "7cbf8838226f4bef20ca59bd5553e241a56b2f0e660c5b7f93ca4d67edd1a8b0",
+    "total_weight_bytes_transferred": 13872660480
+  },
+  "source_sha256": {
+    "docs/LAGUNA-decode.md_before_design": "17a3048311189bfa83b8cceea9442fb898f0fbcfbb9b3e1b989482ff9a0bde86",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "b54a46cf986d71ea612953413ed15385e5ed9ba54b09d44671576bb6faeaebc9"
+  },
+  "status": "candidate_selected"
+}

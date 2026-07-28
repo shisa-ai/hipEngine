@@ -1,0 +1,698 @@
+{
+  "baseline": {
+    "candidate_schedule": "wave10_signbit_fused",
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "control_schedule": "wave10_fused",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "runtime_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-signbit-fused-runtime-correctness.json",
+    "runtime_artifact_sha256": "ba38c9053cd17753f27da5bcb6b87fc6ed369aff28a9e3e716dbce04be1ff624",
+    "runtime_full_state_passed": true,
+    "runtime_revision": "a0744f8e6cb517aa78880aaeea4af929cfa1dfd8",
+    "runtime_trace_passed": true
+  },
+  "builder_sha256": "b7d16ae4fee2919511213d093c6e076e3c9d1befea281e084060718a04651166",
+  "clean_gate": {
+    "acceptance": {
+      "candidate_calls_per_token": {
+        "fused": 45,
+        "reducers": 2
+      },
+      "contexts": [
+        "short",
+        "512"
+      ],
+      "control_calls_per_token": {
+        "fused": 45,
+        "reducers": 2
+      },
+      "inclusive_iq3_and_kernel_sum_improve_each_order": true,
+      "model_kernels_per_token": {
+        "candidate": 678,
+        "control": 678
+      },
+      "process_orders": 2,
+      "profiled_child_throughput_regression_min_pct": -0.5,
+      "rerun_or_guard_waiver_allowed": false,
+      "span_regression_max_pct": 0.5,
+      "stable_samples_per_arm": {
+        "512": 12,
+        "short": 28
+      },
+      "stop_on_first_failed_context": true
+    },
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_child_inside_0_5pct": true,
+      "all_order_iq3_family_improve": true,
+      "all_order_kernel_sum_improve": true,
+      "all_order_span_inside_0_5pct": false,
+      "all_resources_calls_dispatches_compiler_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "command": "bash /tmp/run_laguna_iq3_wave10_signbit_fused_clean_profiles.sh",
+    "contract_frozen_before_launch": true,
+    "contract_sha256": "08be68420398dee0557fdbea4ad60496135d31addeee38076e035407b8e2fc25",
+    "failure": {
+      "context": "512",
+      "guard": "span_pct < 0.5",
+      "observed_pct": 0.8623523055998561,
+      "order": "b",
+      "pooled_result_cannot_waive_per_order_failure": true,
+      "pooled_span_pct": -0.7355396631524513,
+      "simultaneous_iq3_family_pct": -5.040916534181883,
+      "simultaneous_kernel_sum_pct": -0.014495374672729433,
+      "simultaneous_profiled_child_tok_s_pct": 0.40791861595756984
+    },
+    "harness_sha256": {
+      "analyzer": "29efb32a93c56ab192155f9dfbde6eb84a3d2dbba65571dbfbca54c39e966df4",
+      "child": "35f5e7bb519a08227a85f9844b9acc0328ab8be48b3e91fd754629b50137f0cb",
+      "runner": "a82b1414560f61778202d80ead79c60e3010329b782aed8f5fe7309e2cbf85c6"
+    },
+    "preflight": {
+      "json_sha256": "bb6075b61b73ed926f6dd35acb7f6a930b8684d8e06bd725601e8f015d4784a6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "bb6075b61b73ed926f6dd35acb7f6a930b8684d8e06bd725601e8f015d4784a6"
+    },
+    "profiles": [
+      {
+        "candidate_pooled": {
+          "all_weighted_ms": 0.00619,
+          "iq3_family_ms": 1.3413818214285715,
+          "kernel_sum_ms": 12.621201321428572,
+          "profiled_child_tok_s": 58.894668996344514,
+          "selected_body_ms": 1.3413818214285715,
+          "span_median_ms": 15.3758215,
+          "stable_samples": 28
+        },
+        "control_pooled": {
+          "all_weighted_ms": 0.0062428928571428574,
+          "iq3_family_ms": 1.4337720714285713,
+          "kernel_sum_ms": 12.812413142857142,
+          "profiled_child_tok_s": 58.67418095342622,
+          "selected_body_ms": 1.4337720714285713,
+          "span_median_ms": 15.6776005,
+          "stable_samples": 28
+        },
+        "label": "short",
+        "orders": [
+          {
+            "candidate": {
+              "bench_sha256": "118920943c46764fe3e032c34f9a0d166169f372b07522bfbaab99cc07feab0c",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                605,
+                2825,
+                268,
+                1172,
+                7024,
+                69452,
+                56703,
+                1117,
+                268,
+                341,
+                558,
+                572,
+                9489,
+                95,
+                268,
+                370,
+                658
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_signbit_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 14,
+              "stderr_sha256": "5535a202abb2f6dd1ab69143c6182566396d3b79dda5b0c3a04230be8ef5aaf2",
+              "trace_sha256": "6ffa416bea509814719fa02a4d10fb8b4bec4e6d0763b30c5706c1048ace4374",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "control": {
+              "bench_sha256": "93858be08edca3af2393af4b54818c586cee81803cbe9133c87cb01c9a0b5b9f",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                605,
+                2825,
+                268,
+                1172,
+                7024,
+                69452,
+                56703,
+                1117,
+                268,
+                341,
+                558,
+                572,
+                9489,
+                95,
+                268,
+                370,
+                658
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 14,
+              "stderr_sha256": "23a91e11c7dacb04b7585950992ada43c8676a991e2088f588c6203105c24083",
+              "trace_sha256": "b7c73f63fffcb6c8f8388c8ba3311a2a137dfd3ef12745bb40c8f21efb1e0149",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "delta_pct": {
+              "all_weighted_pct": -1.9882512426570242,
+              "iq3_family_pct": -6.057876698518594,
+              "kernel_sum_pct": -1.8125816805042438,
+              "profiled_child_tok_s_pct": 0.2660005164520918,
+              "selected_body_pct": -6.057876698518594,
+              "span_pct": -5.039505085127727
+            },
+            "order": "a",
+            "pass": true
+          },
+          {
+            "candidate": {
+              "bench_sha256": "1bd83c7813374ea0be4fda98f94aabbff598420e842848697e338774fbac72a2",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                605,
+                2825,
+                268,
+                1172,
+                7024,
+                69452,
+                56703,
+                1117,
+                268,
+                341,
+                558,
+                572,
+                9489,
+                95,
+                268,
+                370,
+                658
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_signbit_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 14,
+              "stderr_sha256": "20a5ff4b54fbe968b67ad297dfcc53799bedbb83176957bf2078b2d55eb530de",
+              "trace_sha256": "b0be9393cfd9ee5650c6b8827aae92f56a965db10beb0aa00188de52db16d680",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "control": {
+              "bench_sha256": "7989e5d9dcbaf2e9b0238a1874d71f00729e3bc7d9133e3ccc007e50d730b581",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                605,
+                2825,
+                268,
+                1172,
+                7024,
+                69452,
+                56703,
+                1117,
+                268,
+                341,
+                558,
+                572,
+                9489,
+                95,
+                268,
+                370,
+                658
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 14,
+              "stderr_sha256": "b9812bcb94a6073e9536939ed5e3128d7f4ac231162caaa0d18f8faf7cd2968e",
+              "trace_sha256": "c415434f8b601c82760c3859e27953a2beca0015d6e1fdada4c44c3b33428f63",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "delta_pct": {
+              "all_weighted_pct": 0.3233620379921254,
+              "iq3_family_pct": -6.828461605711267,
+              "kernel_sum_pct": -1.171287789769171,
+              "profiled_child_tok_s_pct": 0.9701246254966378,
+              "selected_body_pct": -6.828461605711267,
+              "span_pct": -1.0457977920498296
+            },
+            "order": "b",
+            "pass": true
+          }
+        ],
+        "pass": true,
+        "pooled_delta_pct": {
+          "all_weighted_ms": -0.8472491576135166,
+          "iq3_family_ms": -6.443858953672088,
+          "kernel_sum_ms": -1.4923950648217277,
+          "profiled_child_tok_s": 0.37578375928810637,
+          "selected_body_ms": -6.443858953672088,
+          "span_median_ms": -1.9249055364052636
+        },
+        "pooled_waiver_allowed": false
+      },
+      {
+        "candidate_pooled": {
+          "all_weighted_ms": 0.0062200833333333335,
+          "iq3_family_ms": 1.3144184166666668,
+          "kernel_sum_ms": 22.09099891666667,
+          "profiled_child_tok_s": 37.518483910110604,
+          "selected_body_ms": 1.3144184166666668,
+          "span_median_ms": 24.887315,
+          "stable_samples": 12
+        },
+        "control_pooled": {
+          "all_weighted_ms": 0.005950083333333333,
+          "iq3_family_ms": 1.3950385833333332,
+          "kernel_sum_ms": 22.192026583333334,
+          "profiled_child_tok_s": 37.31421621560994,
+          "selected_body_ms": 1.3950385833333332,
+          "span_median_ms": 25.0717275,
+          "stable_samples": 12
+        },
+        "label": "512",
+        "orders": [
+          {
+            "candidate": {
+              "bench_sha256": "0e0bbec2472482c57428555999dd2bbfcf387c2ac70d097e14de02fbfe2f3298",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                2930,
+                22746,
+                4187,
+                6453,
+                99,
+                268,
+                33586,
+                81,
+                1548
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_signbit_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 6,
+              "stderr_sha256": "d6231040b3ca8ae526114f88a5fd3080cdab06b0f05a21242b9563753a2ce17d",
+              "trace_sha256": "dbcb306f6fc107030b1b6fc8deab983bc0d528ddbf33dc2c2415601c26fac2b1",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "control": {
+              "bench_sha256": "7aa95a2bb7275b33f5b260cec50f48780d4433a48be655aa597196dc79ac9216",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                2930,
+                22746,
+                4187,
+                6453,
+                99,
+                268,
+                33586,
+                81,
+                1548
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 6,
+              "stderr_sha256": "a74240f9f5f2e475f973a6cf068d7b81b62d7e6b620ee2656a3c333b4dc60c17",
+              "trace_sha256": "1693856459624c2ffa4cae2a813f0aeb6d34103ca778d5e27767a7cd2d94a876",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "delta_pct": {
+              "all_weighted_pct": 0.5646067415730371,
+              "iq3_family_pct": -6.519862667921938,
+              "kernel_sum_pct": -0.8961778878105897,
+              "profiled_child_tok_s_pct": 0.6881521996397577,
+              "selected_body_pct": -6.519862667921938,
+              "span_pct": -0.8844213956124336
+            },
+            "order": "a",
+            "pass": true
+          },
+          {
+            "candidate": {
+              "bench_sha256": "7cada187bd490d546b8d415a346eebb1fae3c1d1daf2f3404084933bf99895d4",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                2930,
+                22746,
+                4187,
+                6453,
+                99,
+                268,
+                33586,
+                81,
+                1548
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_signbit_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 6,
+              "stderr_sha256": "4671f44d8d2214c293dbd41b9cc314645f1f19924ce9b378c3207f5ff5d6e3f6",
+              "trace_sha256": "a30979a97e1466e48f0f031da9cd7c4f6bd3668501cbf6059babbeba0a9bbd02",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "control": {
+              "bench_sha256": "17a9ec16af6f808f3818abb4d5578c4d0b797e81e399bcd6acbf902e3e6d46d7",
+              "compiler_spawned_under_profiler": false,
+              "dispatches_per_token": 678,
+              "finite": true,
+              "generated_ids": [
+                2930,
+                22746,
+                4187,
+                6453,
+                99,
+                268,
+                33586,
+                81,
+                1548
+              ],
+              "lifecycle": true,
+              "schedule": "wave10_fused",
+              "selected_calls_per_token": 45,
+              "selected_resources": [
+                [
+                  983040,
+                  1,
+                  320,
+                  88,
+                  128,
+                  512,
+                  0
+                ]
+              ],
+              "stable_steps": 6,
+              "stderr_sha256": "74e0e0f4ab735d3f64fb3b818e9106516585d86c84dfa7c254aad5e6383c2669",
+              "trace_sha256": "d7468e5f7d1073c0cb59f334cab62089b6150f6fa9cf478f436c387eb3b17f63",
+              "weighted_reducer_calls_per_token": 2,
+              "weighted_resources": [
+                [
+                  3072,
+                  1,
+                  256,
+                  8,
+                  128,
+                  0,
+                  0
+                ]
+              ]
+            },
+            "delta_pct": {
+              "all_weighted_pct": 8.488589704198212,
+              "iq3_family_pct": -5.040916534181883,
+              "kernel_sum_pct": -0.014495374672729433,
+              "profiled_child_tok_s_pct": 0.40791861595756984,
+              "selected_body_pct": -5.040916534181883,
+              "span_pct": 0.8623523055998561
+            },
+            "order": "b",
+            "pass": false
+          }
+        ],
+        "pass": false,
+        "pooled_delta_pct": {
+          "all_weighted_ms": 4.53775157210683,
+          "iq3_family_ms": -5.779063577871158,
+          "kernel_sum_ms": -0.4552430860124246,
+          "profiled_child_tok_s": 0.54742592828525,
+          "selected_body_ms": -5.779063577871158,
+          "span_median_ms": -0.7355396631524513
+        },
+        "pooled_waiver_allowed": false
+      }
+    ],
+    "report_sha256": "4f3fea504502084a7a7fdcc77ae4679e3d604624bc04b00166bf19453d2e737f",
+    "summary_sha256": "9646a1a91837a87dccda4e1b341a7b69238f41fc779e2a5c78ed163bedd712fb",
+    "termination": {
+      "category_gate_skipped": true,
+      "category_outputs": 0,
+      "completed_contexts": [
+        "short",
+        "512"
+      ],
+      "created_1024_or_3968_roots": 0,
+      "created_profile_roots": 8,
+      "exit_status": 3,
+      "skipped_contexts": [
+        "1024",
+        "3968"
+      ],
+      "third_order_or_rerun_performed": false
+    }
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_default_unchanged": true,
+    "categories_run": false,
+    "completion_claim": false,
+    "next_action": "Do not retry unchanged wave10 sign-bit ownership; re-rank an independent exact contraction while the Vulkan objective remains open",
+    "primitive_retained": true,
+    "runtime_integration_removed": true,
+    "runtime_promoted": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_wave10_signbit_fused_rejected",
+  "performance_claim": false,
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s": 63.27021934907704,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "reason": "runtime rejected before categories; retained default and canonical measurement are unchanged"
+  },
+  "runtime_removal": {
+    "production_runtime_diff_empty": true,
+    "production_runtime_matches_revision": "55b06ff15",
+    "production_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f",
+      "hipengine/runtime/laguna_moe.py": "5b374f1fd9e1b557355d2293bd24fd049128bf4434f6857e4ad01f08dd6fd4ed",
+      "scripts/laguna_target_ar_bench.py": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+    },
+    "rejection_green_result": "2 passed",
+    "rejection_green_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87",
+    "rejection_red_result": "2 failed only while capability/schedule/CLI remained",
+    "rejection_red_sha256": "419b3006da57f29e06371d9f0d5cbc3ea004e5ccf1cd6d189d07f2b1469ba19b",
+    "removed": [
+      "LAGUNA_IQ3_WAVE10_SIGNBIT_FUSED capability/export",
+      "wave10_signbit_fused runtime schedule and exact-key fallback",
+      "laguna_target_ar_bench.py wave10_signbit_fused CLI choice",
+      "temporary docs/REFACTOR.md owner row"
+    ],
+    "retained": [
+      "gfx1100 sign-bit HIP body/C export/Python wrapper/four-axis key",
+      "gfx1151 alias exclusion",
+      "primitive exhaustive/CPU/all-45/codegen/trace evidence",
+      "retained wave10 default plus wave4 and serial fallbacks"
+    ]
+  },
+  "schema": 1,
+  "source_provenance": {
+    "files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f"
+      },
+      {
+        "path": "hipengine/runtime/laguna_moe.py",
+        "sha256": "5b374f1fd9e1b557355d2293bd24fd049128bf4434f6857e4ad01f08dd6fd4ed"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+      },
+      {
+        "path": "tests/test_laguna_moe_gpu.py",
+        "sha256": "2c48ce27462ab706c7ea04ee358a956109af617e68af09904d616345e52e8298"
+      },
+      {
+        "path": "tests/test_laguna_target_ar_bench.py",
+        "sha256": "19820cfdc211a4d284c67227666a9f0501e31079b6d2b9dd510746cdf75c02ae"
+      }
+    ]
+  },
+  "status": "runtime_rejected_primitive_retained",
+  "validation": {
+    "adjacent_result": "98 passed after excluding exactly the unchanged stale gfx1151 resolver test",
+    "adjacent_sha256": "3465dfdabcd2a6655674fd82ca948c9c444aa28eae2b9f9be50a59480d529f2f",
+    "lineage_note": "Only already-catalogued unrelated Qwen/PARO/smoke drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "unfiltered_result": "98 passed plus one unchanged stale resolver failure because it omits three required keyword arguments",
+    "unfiltered_sha256": "997d2e12695d519ea3d72014a7b0c6ece4f550b32d297b8e9547c572c3dba99c"
+  }
+}

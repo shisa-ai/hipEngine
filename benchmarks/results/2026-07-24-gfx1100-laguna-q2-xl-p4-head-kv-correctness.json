@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_head_rmsnorm_rope_kv_correctness",
+  "date": "2026-07-24",
+  "status": "correctness_admitted_default_off_pending_clean_retention_gate",
+  "performance_claim": false,
+  "performance_claim_scope": "Actual-layer measurements establish the candidate's independent mechanical precondition only. No full-model throughput or retained-default claim is made.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "Current-P4.1 recomposition of exact c=1 head RMSNorm plus partial RoPE plus BF16 KV append",
+    "base_revision": "2c952055ea7b31063fc3cc864cf0c60cf3b0ce8e",
+    "internal_body_lineage": "7081f64dccd7d92b9db91af39102d83c914ee57e",
+    "candidate_code_patch_sha256": "84f51e1e2e41afdc62d3af8d0671e3b2cd3319a266418fc46fe9a5377165c701",
+    "registry_keys": [
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_f32_bf16_spans",
+      "head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/swa_f32_bf16_spans"
+    ],
+    "default": false,
+    "explicit_selector": "LagunaGGUFResidentSession(..., use_head_kv_fusion=True)",
+    "fallback": "Registered F32 head RMSNorm+partial RoPE followed by registered global/SWA BF16 writer",
+    "unchanged_paths": [
+      "rows and prompt prefill",
+      "P2 exact score producers and reducers",
+      "P4.1 gated reducers",
+      "gfx1151 and unsupported backends"
+    ]
+  },
+  "red_green": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_head_kv_fusion.py::test_laguna_p4_head_kv_registry_plan_and_fail_closed_validation tests/test_laguna_gguf_runner.py::test_laguna_p4_head_kv_is_explicit_and_gfx1100_only_before_retention",
+    "red_result": "collection failed on intentionally absent resolve_laguna_head_kv_fusion",
+    "red_log_sha256": "149bdc6c3c0c4fe545b666504678339d61a492c1ff546eae4fcbe653f940be43",
+    "green_result": "3 passed for the complete head/KV fixture; 2 passed for focused plan/validation"
+  },
+  "synthetic_correctness": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_head_kv_fusion.py",
+    "result": "3 passed",
+    "coverage": [
+      "global positions 0/255/256/4095 with permuted block-256 offsets",
+      "SWA positions 0/1/511/512/513/1024 with reversed ring offsets",
+      "F32 query and key output bits",
+      "BF16 key and value cache bits",
+      "live_counts, token_positions, evict_mask, row_positions ABI validation"
+    ],
+    "test_sha256": "bf28acde0b5e53b54c90c34b03aa308b738e69183779bbb9f974682876ef84f1"
+  },
+  "actual_weight_micro": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_d14_head_kv.py",
+    "protocol": {
+      "warmups_per_mode": 50,
+      "iterations_per_sample": 500,
+      "counterbalanced_repetitions": 15,
+      "position": 101
+    },
+    "rows": [
+      {
+        "layer": 0,
+        "attention_type": "full_attention",
+        "event_us": {"control": 13.500873565673828, "candidate": 8.674448013305664, "delta_pct": -35.74898712213277},
+        "wall_us": {"control": 13.523722067475319, "candidate": 8.71321838349104, "delta_pct": -35.570855863369054},
+        "bit_exact": true
+      },
+      {
+        "layer": 44,
+        "attention_type": "full_attention",
+        "event_us": {"control": 13.497446060180664, "candidate": 9.036775588989258, "delta_pct": -33.04825558333589},
+        "wall_us": {"control": 13.523422181606293, "candidate": 9.005921892821789, "delta_pct": -33.405008200726904},
+        "bit_exact": true
+      },
+      {
+        "layer": 1,
+        "attention_type": "sliding_attention",
+        "event_us": {"control": 13.388086318969727, "candidate": 8.117972373962402, "delta_pct": -39.364206500073436},
+        "wall_us": {"control": 13.417120091617107, "candidate": 8.16672993823886, "delta_pct": -39.13202026609752},
+        "bit_exact": true
+      },
+      {
+        "layer": 47,
+        "attention_type": "sliding_attention",
+        "event_us": {"control": 13.387845993041992, "candidate": 8.24205207824707, "delta_pct": -38.43630945164236},
+        "wall_us": {"control": 13.4140201844275, "candidate": 8.277731947600842, "delta_pct": -38.290446608910266},
+        "bit_exact": true
+      }
+    ],
+    "raw_sha256": "d9501c3093f79af2ad95ba47cee0a0341218d67493fb7eb256db6279e95d92d8",
+    "harness_sha256": "e8ba42e1c3eb1c5b6321d0f85132f5ccbff66f75e624286f696447b7aa7b30ac",
+    "stdout_sha256": "c57376defc7c64f8f6b39a1fab56598ecf78e1d405bed3475ab47e1e74bb2279"
+  },
+  "full_state_correctness": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/laguna_p4_head_kv_correctness.py",
+    "prompt_id": "mixed_ja_en_review",
+    "decode_steps": 16,
+    "full_logits_and_argmax_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_kv_and_all_span_fields_exact": true,
+    "reset_and_reprefill_exact": true,
+    "tracked_peak": {"bytes": 40459057576, "allocations": 1500},
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "11922cfb1258a4acb073f964a590ebf2939492e6face4bd98912b319c6560a84",
+    "harness_sha256": "e94968e3e9b1658b40cb2f7b9235d40e55a1b41997fa833884f6d62c4cf5315e",
+    "stdout_sha256": "48a03610c4c14b9ea407aeb850e36dc31855ea3059f15c3f3f7539ec77d51fea"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -f csv --output-directory /tmp/laguna-p4-head-kv-trace-1784930791 -- uv run pytest -q tests/test_laguna_head_kv_fusion.py::test_laguna_p4_fused_head_kv_is_bit_exact_to_registered_chain",
+    "global": {"calls": 4, "grid_x": 14336, "workgroup_x": 256, "vgpr": 16, "sgpr": 128, "static_lds_bytes": 0, "dynamic_lds_bytes": 1024, "scratch_bytes": 0},
+    "swa": {"calls": 6, "grid_x": 20480, "workgroup_x": 256, "vgpr": 16, "sgpr": 128, "static_lds_bytes": 0, "dynamic_lds_bytes": 1024, "scratch_bytes": 0},
+    "trace_sha256": "5a2d3bf2af1e96caee5ec7062cca1ffefc7c13d1cfe10cfa8d5ae8978dc391ae"
+  },
+  "validation": {
+    "focused_result": "114 passed, followed by one known unrelated stale gfx1151 test failure for missing _resolve_gguf_linear_pair_kind arguments",
+    "ruff": "passed",
+    "compileall": "passed",
+    "git_diff_check": "passed",
+    "lineage": "Only previously catalogued unrelated nano-vllm monolithic references drift"
+  },
+  "next_action": "Commit this default-off correctness unit, then run clean short/512/1K/near-4K profiles and both orders of the complete 18-prompt category/heldout gate before deciding promotion."
+}

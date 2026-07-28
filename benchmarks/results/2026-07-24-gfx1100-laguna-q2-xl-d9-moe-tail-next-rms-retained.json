@@ -1,0 +1,564 @@
+{
+  "acceptance_policy": {
+    "canonical_decode_and_e2e_improve": true,
+    "clean_profiled_child_throughput_improve": true,
+    "clean_short_and_context_kernel_sum_improve": true,
+    "clean_short_and_context_span_improve": true,
+    "every_category_decode_and_e2e_improves": true,
+    "full_suite_correctness_lifecycle_pass": true,
+    "pass": true,
+    "prefill_non_regressive_within_half_percent": true,
+    "registered_unfused_fallback": true,
+    "synthetic_and_actual_model_bf16_bit_exact": true
+  },
+  "canonical_full_suite": {
+    "aggregate_default_bulk": {
+      "baseline_d7": {
+        "h16_decode_tok_s": 46.82749017571982,
+        "h16_e2e_output_tok_s": 6.880860388464827,
+        "h32_decode_tok_s": 46.40852546020478,
+        "h32_e2e_output_tok_s": 11.97180645030558,
+        "prefill_tok_s": 43.093001371733,
+        "ttft_median_seconds": 1.87303684145445
+      },
+      "candidate_d9": {
+        "h16_decode_tok_s": 47.5762814310924,
+        "h16_e2e_output_tok_s": 6.909168860306418,
+        "h32_decode_tok_s": 47.132308286752306,
+        "h32_e2e_output_tok_s": 12.038207197450902,
+        "prefill_tok_s": 43.18963030675214,
+        "ttft_median_seconds": 1.8708374230191112
+      },
+      "candidate_repetitions": [
+        {
+          "h16_decode_tok_s": 47.77216324020143,
+          "h16_e2e_output_tok_s": 6.950047377436282,
+          "h32_decode_tok_s": 47.351883783646436,
+          "h32_e2e_output_tok_s": 12.108254466410262,
+          "prefill_tok_s": 43.45743765821985
+        },
+        {
+          "h16_decode_tok_s": 47.38199942381395,
+          "h16_e2e_output_tok_s": 6.86876840665139,
+          "h32_decode_tok_s": 46.91475977829055,
+          "h32_e2e_output_tok_s": 11.968965725555089,
+          "prefill_tok_s": 42.92510347561013
+        }
+      ],
+      "candidate_vs_d7_pct": {
+        "h16_decode_tok_s": 1.5990420425326057,
+        "h16_e2e_output_tok_s": 0.4114088971932661,
+        "h32_decode_tok_s": 1.5595902247921511,
+        "h32_e2e_output_tok_s": 0.5546426716882547,
+        "prefill_tok_s": 0.22423347630300405,
+        "ttft_median_seconds": -0.1174252629025152
+      }
+    },
+    "categories": {
+      "code": {
+        "baseline_d7": {
+          "h16_decode_tok_s": 47.575587438757736,
+          "h16_e2e_output_tok_s": 7.689950317460236,
+          "h32_decode_tok_s": 47.140929034835686,
+          "h32_e2e_output_tok_s": 13.207027208342314,
+          "prefill_tok_s": 43.33418602155563
+        },
+        "candidate_d9": {
+          "h16_decode_tok_s": 48.45800365573921,
+          "h16_e2e_output_tok_s": 7.718717394759739,
+          "h32_decode_tok_s": 48.00760774847672,
+          "h32_e2e_output_tok_s": 13.28314600742162,
+          "prefill_tok_s": 43.38365609103289
+        },
+        "candidate_vs_d7_pct": {
+          "h16_decode_tok_s": 1.8547668341822865,
+          "h16_e2e_output_tok_s": 0.3740866470123505,
+          "h32_decode_tok_s": 1.8384845852329024,
+          "h32_e2e_output_tok_s": 0.5763507402424706,
+          "prefill_tok_s": 0.11415945243011816
+        }
+      },
+      "general_en": {
+        "baseline_d7": {
+          "h16_decode_tok_s": 48.15832830628911,
+          "h16_e2e_output_tok_s": 8.462064189956154,
+          "h32_decode_tok_s": 47.61743501056913,
+          "h32_e2e_output_tok_s": 14.347581478457649,
+          "prefill_tok_s": 43.05653238988688
+        },
+        "candidate_d9": {
+          "h16_decode_tok_s": 49.01267816605781,
+          "h16_e2e_output_tok_s": 8.513733731084278,
+          "h32_decode_tok_s": 48.41780869760229,
+          "h32_e2e_output_tok_s": 14.456523998967334,
+          "prefill_tok_s": 43.22199084655778
+        },
+        "candidate_vs_d7_pct": {
+          "h16_decode_tok_s": 1.7740438462377606,
+          "h16_e2e_output_tok_s": 0.6106020938656087,
+          "h32_decode_tok_s": 1.6808416640995194,
+          "h32_e2e_output_tok_s": 0.7593093001301954,
+          "prefill_tok_s": 0.3842818905448242
+        }
+      },
+      "general_ja": {
+        "baseline_d7": {
+          "h16_decode_tok_s": 46.097625024296555,
+          "h16_e2e_output_tok_s": 6.340900968452104,
+          "h32_decode_tok_s": 45.75855962591608,
+          "h32_e2e_output_tok_s": 11.128990038645536,
+          "prefill_tok_s": 42.995501601269055
+        },
+        "candidate_d9": {
+          "h16_decode_tok_s": 46.82906091198691,
+          "h16_e2e_output_tok_s": 6.372976399859505,
+          "h32_decode_tok_s": 46.457317098738024,
+          "h32_e2e_output_tok_s": 11.198341106735892,
+          "prefill_tok_s": 43.145032011053154
+        },
+        "candidate_vs_d7_pct": {
+          "h16_decode_tok_s": 1.5867105676373505,
+          "h16_e2e_output_tok_s": 0.5058497454381694,
+          "h32_decode_tok_s": 1.527053033431125,
+          "h32_e2e_output_tok_s": 0.6231568888958705,
+          "prefill_tok_s": 0.3477815218224656
+        }
+      },
+      "mixed_ja_en": {
+        "baseline_d7": {
+          "h16_decode_tok_s": 44.886146518452655,
+          "h16_e2e_output_tok_s": 5.24403541932376,
+          "h32_decode_tok_s": 44.52696499367409,
+          "h32_e2e_output_tok_s": 9.375602648787696,
+          "prefill_tok_s": 42.87964870762187
+        },
+        "candidate_d9": {
+          "h16_decode_tok_s": 45.321902696155284,
+          "h16_e2e_output_tok_s": 5.257739468155716,
+          "h32_decode_tok_s": 44.95273398159995,
+          "h32_e2e_output_tok_s": 9.406839030422244,
+          "prefill_tok_s": 42.954580430941455
+        },
+        "candidate_vs_d7_pct": {
+          "h16_decode_tok_s": 0.9708032689406565,
+          "h16_e2e_output_tok_s": 0.2613263972523594,
+          "h32_decode_tok_s": 0.9562048255171707,
+          "h32_e2e_output_tok_s": 0.33316665397062906,
+          "prefill_tok_s": 0.1747489207071462
+        }
+      }
+    },
+    "checks": {
+      "accepted_bulk_state": true,
+      "aggregate_decode_and_e2e_improve": true,
+      "aggregate_prefill_within_half_percent": true,
+      "aggregate_ttft_within_half_percent": true,
+      "all_category_decode_and_e2e_improve": true,
+      "all_category_prefill_within_half_percent": true,
+      "lifecycle": true,
+      "pass": true,
+      "quality_gate": true,
+      "same_mode_repeats_deterministic": true,
+      "serial_bulk_pairs_exact": true
+    },
+    "protocol": {
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "context_length": 4096,
+      "decode_scope": "horizon-1 synchronized forward_token calls after first token",
+      "e2e_scope": "TTFT plus decode scope; model load excluded",
+      "f16_prefill": {
+        "backend_min_rows": null,
+        "backend_strategy": null,
+        "effective_min_rows": null,
+        "effective_strategy": "gemv",
+        "requested": "auto",
+        "rows_one_always_gemv": true
+      },
+      "fixed_horizon_after_stop": true,
+      "order": "alternating serial/bulk by repetition plus prompt index",
+      "output_horizons": [
+        16,
+        32
+      ],
+      "prefill_chunk_size": 128,
+      "prompt_count": 10,
+      "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompt_tokens_max": 122,
+      "prompt_tokens_min": 68,
+      "protocol_eligible": true,
+      "repetitions": 2,
+      "sampling": "greedy argmax",
+      "ttft_scope": "prefill start through synchronized first-token argmax",
+      "warmups": {
+        "bulk": 1,
+        "output_tokens": 2,
+        "serial": 1
+      }
+    },
+    "target": {
+      "additional_speedup_required_pct": 6.084343876817355,
+      "candidate_h32_decode_tok_s": 47.132308286752306,
+      "candidate_ms_per_token": 21.216868775363473,
+      "decode_tok_s": 50.0,
+      "remaining_ms_to_20": 1.2168687753634728
+    }
+  },
+  "change": {
+    "baseline": "registered BF16 routed/shared add, BF16 post-attention/MoE add, then local256 GGUF F32-weight RMSNorm",
+    "baseline_revision": "51a437bc729eb5476a8bf71a31b2a9718e880263",
+    "candidate": "one local256 dual-output leaf preserving both BF16 add boundaries and the exact RMS reduction order",
+    "candidate_revision": "30cf6f0755ee53afc1c72e9106fbab887ea067bc",
+    "dispatches_per_token": {
+      "candidate_d9": 775,
+      "change": -94,
+      "control_d7": 869
+    },
+    "fallback": "the three separately registered primitives for rows>1, gfx1151, registry miss, and explicit rollback",
+    "implementation_revision": "30cf6f0755ee53afc1c72e9106fbab887ea067bc",
+    "registry_key": [
+      "hip_gfx1100",
+      "moe_tail+next_rmsnorm",
+      "bf16",
+      "laguna_aggregate_gguf_f32_weight_out"
+    ],
+    "scope": "47 sparse add/add/next-RMS boundaries per c=1 token, including final output_norm"
+  },
+  "clean_profiles": {
+    "all_kernel_sum_improve": true,
+    "all_profiled_child_improve": true,
+    "all_span_improve": true,
+    "commands": [
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-short-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --disable-d9 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-short-control/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-short-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-short-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-512-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 512 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-512-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-512-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 512 --disable-d9 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-512-control/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 1024 --disable-d9 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-control/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 1024 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-1024-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-candidate --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 3968 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-candidate/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-control --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --prompt-length 3968 --disable-d9 --output /tmp/laguna-q2-xl-d9-clean-30cf6f075-3968-control/bench.json"
+    ],
+    "protocol": "matched cached rocprofv3 code_merge_intervals streams; two warmup rows excluded; candidate/control order alternated by context",
+    "rows": [
+      {
+        "candidate_bench_sha256": "4d80755a92690984e0394b379b0302650ef99e69b9ad5a9bbb7615c311f374b6",
+        "candidate_tail": {
+          "calls_per_token": 47.0,
+          "lds_block_size": 1024,
+          "median_us": 8.24,
+          "ms_per_token": 0.3892052857142835,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "f05753a116363498cffeab41b13bb1ec81b8996186cb4300dbf1124d484caf5b",
+        "control_bench_sha256": "00a1c172fe8c842219e87db740fad98210e64e4af7fb6a5f61fe561522c42eec",
+        "control_trace_sha256": "571eb87135eaba3ca1932158129e42a2a9dcc445f09925beb13bc240f805f0f4",
+        "dispatches_per_token": {
+          "candidate_d9": 775,
+          "change": -94,
+          "control_d7": 869
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms": {
+          "candidate_d9": 17.28889692857143,
+          "change_pct": -0.3201005431838655,
+          "control_d7": 17.3444165
+        },
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d9": 45.15791344206131,
+          "change_pct": 3.104060322431623,
+          "control_d7": 43.798385146852084
+        },
+        "prompt_tokens": 69,
+        "span_median_ms": {
+          "candidate_d9": 20.388559,
+          "change_pct": -2.667095744633119,
+          "control_d7": 20.947242000000003
+        },
+        "stable_steps": 14
+      },
+      {
+        "candidate_bench_sha256": "7bbecca6dc2dfd3d5724479813e77d60dde0c69c4e88374eeeba588a7e33647f",
+        "candidate_tail": {
+          "calls_per_token": 47.0,
+          "lds_block_size": 1024,
+          "median_us": 8.14,
+          "ms_per_token": 0.3850756666666666,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "e6f00b935866af25a64d365449b1bc1592118f314c869d519ff27a085c1d272b",
+        "control_bench_sha256": "f08d8e6e16550e8f8f9f29f6991b717841e99e9a7844daed8f76523376e002d4",
+        "control_trace_sha256": "3c27ae225abd40cc8563443156c8697d28d42c196cde6e0f2c293d16c214aa21",
+        "dispatches_per_token": {
+          "candidate_d9": 775,
+          "change": -94,
+          "control_d7": 869
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms": {
+          "candidate_d9": 30.533592833333334,
+          "change_pct": -0.5150906871365879,
+          "control_d7": 30.69168283333333
+        },
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d9": 27.89378101744484,
+          "change_pct": 2.387082553379205,
+          "control_d7": 27.243457203600364
+        },
+        "prompt_tokens": 512,
+        "span_median_ms": {
+          "candidate_d9": 33.798195,
+          "change_pct": -1.5513323838161175,
+          "control_d7": 34.330779500000006
+        },
+        "stable_steps": 6
+      },
+      {
+        "candidate_bench_sha256": "b628cf552ea7ad767e976a006a4c89542b004b4e541834cc74c97937e1ec4505",
+        "candidate_tail": {
+          "calls_per_token": 47.0,
+          "lds_block_size": 1024,
+          "median_us": 8.16,
+          "ms_per_token": 0.3861110000000001,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "857b19467aa82fac7274eedd06bc7c12d34e4c67ee325b0d732bfbb693aa15ef",
+        "control_bench_sha256": "41871c706ebf5f9de6d4abacecba5f78575d375655d15ec5db0fd1401c6b13d9",
+        "control_trace_sha256": "c0ca4ef42cd02663ca1775190d9326b0821e9c6be77f4e6b0891f816389ca38c",
+        "dispatches_per_token": {
+          "candidate_d9": 775,
+          "change": -94,
+          "control_d7": 869
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms": {
+          "candidate_d9": 33.451754666666666,
+          "change_pct": -0.46245287563420057,
+          "control_d7": 33.607172
+        },
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d9": 25.730003320363895,
+          "change_pct": 2.2973331202629232,
+          "control_d7": 25.152174094426446
+        },
+        "prompt_tokens": 1024,
+        "span_median_ms": {
+          "candidate_d9": 36.712002,
+          "change_pct": -1.431061849078763,
+          "control_d7": 37.245001
+        },
+        "stable_steps": 6
+      },
+      {
+        "candidate_bench_sha256": "6ba78f6fb2af9b72bcca5b97eea07680286e381a7ee8ec4446bab9bf79c13854",
+        "candidate_tail": {
+          "calls_per_token": 47.0,
+          "lds_block_size": 1024,
+          "median_us": 8.12,
+          "ms_per_token": 0.3847381666666663,
+          "scratch_size": 0,
+          "sgpr_count": 128,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        "candidate_trace_sha256": "c1f1d8e8d93b4129d92991911574735ad1878d62f9491348afe962d1213bfbaf",
+        "control_bench_sha256": "fce9135245a2b2c3257fdfd2bd0c523b67e396a43ea002a1c2fa7ae5b2d0f615",
+        "control_trace_sha256": "25976eeaa847ba8a50755765ed2491a19aeaafd4ca7f4ec742adaa42792bdc26",
+        "dispatches_per_token": {
+          "candidate_d9": 775,
+          "change": -94,
+          "control_d7": 869
+        },
+        "finite": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms": {
+          "candidate_d9": 50.235568666666666,
+          "change_pct": -0.11659890599670097,
+          "control_d7": 50.29421116666667
+        },
+        "lifecycle_exact": true,
+        "profiled_child_tok_s": {
+          "candidate_d9": 17.954302734855435,
+          "change_pct": 1.014691069586915,
+          "control_d7": 17.77395203088538
+        },
+        "prompt_tokens": 3968,
+        "span_median_ms": {
+          "candidate_d9": 53.617888,
+          "change_pct": -0.7513044581800798,
+          "control_d7": 54.023770999999996
+        },
+        "stable_steps": 6
+      }
+    ],
+    "summary_sha256": "db32f653ca3f31cfec135366b179a32c49bb9905f53d3a883d337a65b8bc43e5"
+  },
+  "correctness": {
+    "accepted_bulk_state_artifact_pass": true,
+    "actual_model_checkpoints": 18,
+    "actual_sparse_tail_boundaries_exact": 47,
+    "adversarial_first_rounding_boundary_proven": true,
+    "complete_kv_payload_and_live_spans_exact": true,
+    "finite_logits": true,
+    "focused_tests": "87 passed",
+    "full_logits_and_argmax_bits_exact": true,
+    "poolside_first_token_kl": 0.00015682291693663912,
+    "poolside_first_token_top1_agreement": 1.0,
+    "reset_exact": true,
+    "same_mode_repeats_deterministic": true,
+    "serial_bulk_pairs_exact": 20,
+    "synthetic_hidden_17_and_3072_bf16_bit_exact": true,
+    "synthetic_kl_max": 0.0,
+    "synthetic_top1_agreement": 1.0,
+    "tracked_peak_allocated_bytes": 40455911848,
+    "tracked_peak_allocations": 1496,
+    "tracked_returned_to_zero": true
+  },
+  "date": "2026-07-24",
+  "evidence": {
+    "baseline_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json",
+    "baseline_artifact_sha256": "dbc4905cd162c5999ef71bd4a0b75f7bf035417aef826a2197b84e5ec3908c53",
+    "candidate_tracked_clean": true,
+    "canonical_command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-d9-target-ar.json",
+    "category_comparison_sha256": "ce94e17d115a21f366be4a729670d110380706edd5afce840955131183a50c06",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "correctness_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-correctness.json",
+    "correctness_artifact_sha256": "9468222763bec8e47de83539f9aac6b4a134cb9f73aaaa4357942b79ff122ea3",
+    "profile_summary_sha256": "db32f653ca3f31cfec135366b179a32c49bb9905f53d3a883d337a65b8bc43e5",
+    "raw_canonical_sha256": "be4214c85db6c95a191476b2689a08b6f4e5399e6a8398e7359749450454e066",
+    "require_cached_build": true
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d9_moe_tail_next_rms_retention",
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "notes": [
+    "D9 improves every clean profile kernel sum/span/child row and every category decode/E2E row, so it becomes the gfx1100 c=1 default.",
+    "The constructor rollback remains temporarily for bisection and should be removed after downstream DFlash/MTP refresh per docs/REFACTOR.md.",
+    "The promoted 47.132 h32 decode tok/s still misses 50 tok/s by 1.217 ms/token and needs another 6.084% throughput improvement."
+  ],
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon Pro W7900, Laguna S 2.1 UD-Q2_K_XL, BF16 KV, exact gfx1100 c=1 aggregate sparse MoE tail plus next RMSNorm, clean short/512/1K/near-4K profiles, and canonical ten-prompt h16/h32 target-only AR suite",
+  "provenance": {
+    "build_profile": "laguna_target_ar_category",
+    "collected_at": "2026-07-23T18:52:24.954693+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_target_ar_bench.py",
+      "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--template",
+      "tests/fixtures/laguna_poolside_v1_template.json",
+      "--oracle",
+      "tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "--oracle-logprobs",
+      "tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "--bulk-correctness-artifact",
+      "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json",
+      "--backend",
+      "hip_gfx1100",
+      "--context-length",
+      "4096",
+      "--chunk-size",
+      "128",
+      "--output-horizons",
+      "16,32",
+      "--repetitions",
+      "2",
+      "--warmup-output-tokens",
+      "2",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "--require-cached-build",
+      "--direct-gguf",
+      "--safety-reserve-gib",
+      "4",
+      "--model-sha256",
+      "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+      "--quant-label",
+      "UD-Q2_K_XL",
+      "--output",
+      "/tmp/laguna-q2-xl-d9-target-ar.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "30cf6f0755ee53afc1c72e9106fbab887ea067bc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        19841767952,
+        39683535904
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 39684584480,
+      "value": "df888623f998292ac71205832949069be4151323f2b6a293625764fcf9cac3c9"
+    },
+    "model_path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "UD-Q2_K_XL",
+    "repetitions": 2,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "balanced_serial_vs_bulk_prefill_plus_eager_c1_decode",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 2
+  },
+  "schema": 1,
+  "status": "retained_exact_default"
+}

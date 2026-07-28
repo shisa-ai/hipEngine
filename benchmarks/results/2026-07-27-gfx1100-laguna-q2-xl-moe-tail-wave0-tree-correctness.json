@@ -1,0 +1,528 @@
+{
+  "actual_model_gate": {
+    "actual_sparse_layers_exact": 47,
+    "all_endpoint_event_and_wall_positive": true,
+    "all_hidden_and_norm_finite": true,
+    "all_hidden_bf16_exact": true,
+    "all_norm_bf16_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_moe_tail_wave0_tree_admission.py",
+    "harness_sha256": "483d94c82ee1bab7ba1c816a6a577606c7a62d4fb28494a5edafa0fc8c6ff33d",
+    "layer_hashes": [
+      {
+        "hidden_sha256": "822021466e0423f3d4a67f58c0fc1e8f60a8c5bc6ea1bf7e8455ecf7d6d540de",
+        "layer": 1,
+        "norm_sha256": "7bf77212b45a5d7dc6583e3abb4f9f347c14b8323875a7ae72a225b5d40448e5"
+      },
+      {
+        "hidden_sha256": "35ba45082e9bd65c77091fedb930a776c5222c601202119bbac86f4ab4631c39",
+        "layer": 2,
+        "norm_sha256": "d5bd9886de9a421413dcd9ba380e8ccdd27658506a23f0979ede76b03e153068"
+      },
+      {
+        "hidden_sha256": "78642784da7732c841a963c3efb0c3104a36be711a5456d7befa1fb43553e225",
+        "layer": 3,
+        "norm_sha256": "e957d0cd6527036991db009427dc8774f80719dcad693ddf68af73263e9127b4"
+      },
+      {
+        "hidden_sha256": "164fd4b2dec80a458704928ab5c9db9772a76df4761fb42feee45fc2044f5524",
+        "layer": 4,
+        "norm_sha256": "bf95e98b84d3128d72bbab921ec5980f62e07af1e99e722bf96eeebe933cf3a4"
+      },
+      {
+        "hidden_sha256": "59e13a216104203dca723100ce1054286f8fefc67853e80b6d7edbefe3998339",
+        "layer": 5,
+        "norm_sha256": "2ed4b6f5b70377b9283cc945a6a0b2be6ff57840bf4e3c06ca4f6316959401ea"
+      },
+      {
+        "hidden_sha256": "bee6a968507f595ea6defc6a2c6f8684c7569c1c68ec7465f91d8163fde578fe",
+        "layer": 6,
+        "norm_sha256": "ae5d8318b22d72b686cb1bfd8bb4eca9f79c7c2b71327417cc02428bf6295128"
+      },
+      {
+        "hidden_sha256": "372b17df896a6cedbc9efd6dd84211162821ed69257da95d6742567375fcb1fd",
+        "layer": 7,
+        "norm_sha256": "86d5d3cc54ce85dcaa04253f91274384910e7d0f2289340d2be273cb3319285f"
+      },
+      {
+        "hidden_sha256": "205a6575c76f59443d5c26e823a17d3c6d030bf07488bb6d1240e030be290071",
+        "layer": 8,
+        "norm_sha256": "5dde5798c2d2ad080d930b6446db55c2e69492f00a36cc127093af9f2e772a2b"
+      },
+      {
+        "hidden_sha256": "97047d6e29833a8ef68a08f9b1517cd681a68c2c5c767d19a89d52b2d56d2f81",
+        "layer": 9,
+        "norm_sha256": "34e75bd8cac210f941523013ea63382cc8f8b11f554e8d834b46229ba250be1a"
+      },
+      {
+        "hidden_sha256": "758e34fffea3a2e3a9ad62194fc09bc3b7dbd96fe619d669e985e55425727363",
+        "layer": 10,
+        "norm_sha256": "3f34b8ac039842f1647adea80f5388e6688c60e3fcdc5456d0b83cebb57ac4f7"
+      },
+      {
+        "hidden_sha256": "a31df5da2874b130b709bef67896bff1547e6dc62fb22282304dc7a268bbed85",
+        "layer": 11,
+        "norm_sha256": "6625196398b968a095320af061caf447c8117eeb9c587715e97a6f9d2fb79793"
+      },
+      {
+        "hidden_sha256": "4cc3cdfedfda378c58b92db1160b9141542d81f7e1770a3a66ed16177bda9718",
+        "layer": 12,
+        "norm_sha256": "3141fef2402d9c91f6692619a20b31010d2bffb179d6ed98201b2afaa319c169"
+      },
+      {
+        "hidden_sha256": "0d687fe92549af9813fc98e47f29f04627bc4dead16163e2f64b3e94d441256e",
+        "layer": 13,
+        "norm_sha256": "07ec1c50fd6644560318e14f13d9a4171cb6ddd31e0b7da0b076201ce922b540"
+      },
+      {
+        "hidden_sha256": "ee16231b1c3e0853ade43bb837d0668f928b0beab2ae4bb2def1c48c47d4e938",
+        "layer": 14,
+        "norm_sha256": "bd8331ba3f32bae85f360fec8db1a450d5b3bbab622595cc10548411e220a558"
+      },
+      {
+        "hidden_sha256": "b1cdc7a67880b739e6d36d29b3286a25f920979ab3afdb2be6793d04496f7689",
+        "layer": 15,
+        "norm_sha256": "d1a57a779f2dec7408f7a02888fe4bbfd526f55aa98cbb5c89794a94e11c7275"
+      },
+      {
+        "hidden_sha256": "611bdf654e282dc7f58134bea9bed9b8ba27e055a2828c25949e0488b5c0ff1d",
+        "layer": 16,
+        "norm_sha256": "e4fc837bfd4e7ee752dde2babb7f7c056a671a129a6173bcfca192dd8593eefe"
+      },
+      {
+        "hidden_sha256": "f7d1c52efb370644484f94f695a71963215314e7f81ea5c2078c017df7e7d80e",
+        "layer": 17,
+        "norm_sha256": "0ae100120c0fafdf4a31be65dc22c8371a848d7b445c4cc5a823d4be2ff923ac"
+      },
+      {
+        "hidden_sha256": "e5c41cf2d85a730aa5117230fb932a9d0043bab28f25bfdd9dd76bc3221b6504",
+        "layer": 18,
+        "norm_sha256": "d8dd2990fc754f46145fe2aa0e66f7bda126ad1ff503b73d8fe497e43432898f"
+      },
+      {
+        "hidden_sha256": "31d4066513103651e91abe06842b4a38188a5fbfd6773a6ce2b4254d3bf0495c",
+        "layer": 19,
+        "norm_sha256": "e468bd6772ce1208327a349749bede068af19800214df6c7eb0dea3fe5227a39"
+      },
+      {
+        "hidden_sha256": "92aa6bc8dfb4bbdc00183541f45098ebd80f8a4e091c6140715ac4fffa335363",
+        "layer": 20,
+        "norm_sha256": "b6afafe27ad28e2e701a00a9efb23309ef9c0b851f51bb55f2de5b5c2d32c1d9"
+      },
+      {
+        "hidden_sha256": "bb68c76f67372f6c725c5b535abd68f0d70e76302c8b22b17138101e83ca6b52",
+        "layer": 21,
+        "norm_sha256": "09944bc076533e2edd7a4f98bd17d4f380cadd21225c4dc0ced2215d398237c6"
+      },
+      {
+        "hidden_sha256": "ee8a598d2ce23c427a6f069b1169167cbf1a388669cffd9f5aa7147babdf5936",
+        "layer": 22,
+        "norm_sha256": "1ef54c5b16ddbf9b9be4db8e19d539a87b70330c6cf0cf14ff53a75cc222cedb"
+      },
+      {
+        "hidden_sha256": "205c14ee0bf2c21959e5715e3134fa27dd01d75f4eb2aa7905d6cccc0d1d3509",
+        "layer": 23,
+        "norm_sha256": "f9556fdcefdbbf1a0b7c8292acc96b634879fadc45b7301a6f6658e6344a9776"
+      },
+      {
+        "hidden_sha256": "b78a4f385ec3bb72189291ada915519ef056850371f608afa91b34043f8ff1d1",
+        "layer": 24,
+        "norm_sha256": "d26d4561f336e57efe99bebb6470bcc4b844e44da9a1ccc353cd2a3f889d2229"
+      },
+      {
+        "hidden_sha256": "b4d89b63e69b356492507c08233d83aebfa79ae92efb1e21cd42907c6fd4a9d3",
+        "layer": 25,
+        "norm_sha256": "daa5453d68508382788743432557b555c89817438c6c22448dd8c7fdeca8c84d"
+      },
+      {
+        "hidden_sha256": "40d4b59a044f6f42c965576a44159716f9c9e7d8ec38946630434f48de4e8d3f",
+        "layer": 26,
+        "norm_sha256": "9f9ebb0a5e4ec5281fc95d492ef60a63e6a740a03e8dcd2e02e42071813e087f"
+      },
+      {
+        "hidden_sha256": "be06fd5d086c26056fc61c0eb90a627d857d7c0b6df78f46654f2226302540ba",
+        "layer": 27,
+        "norm_sha256": "9795ad01f2560d0cc61376a892f7a0dbcd773d7db71f61b5f2153f64e6fc30d6"
+      },
+      {
+        "hidden_sha256": "e0636baf49ae5e73734431789f704e2d5635ef9e13248e678b78064dba7ba26b",
+        "layer": 28,
+        "norm_sha256": "76320c69faa6f30ab32d3bc68151599202a3d0dfa15c9af4b94193bd04988b16"
+      },
+      {
+        "hidden_sha256": "3336454e490490caf90ad199616f313f981af2af507694661c120007d7157d03",
+        "layer": 29,
+        "norm_sha256": "247580f3a2f8fded61c5aeca69d56bd2ae6863445239c7dd7f47d2165ff14081"
+      },
+      {
+        "hidden_sha256": "533566f11a9be3e8fcee7cdfc4c968dbb510ce40e2b8cd2da6c6a4eaf5bbc113",
+        "layer": 30,
+        "norm_sha256": "89eb28cfad9c2084555aee79d98f4be5b36393f0908eadf13fd899eb218b0a87"
+      },
+      {
+        "hidden_sha256": "0d2f505d6ff8b1413890b3b2408afb3d2df42b1098021971b6f8a70f61714b2d",
+        "layer": 31,
+        "norm_sha256": "f297917f617c9ee90ff5e54bbb34ffdc403b7b428956d8bf2fbc7463f2d5f121"
+      },
+      {
+        "hidden_sha256": "23d3d9638c60e4d9ba0698f85055214d7cec8a947e78ee32c09817d4391b6cd6",
+        "layer": 32,
+        "norm_sha256": "0ff5f577ec3494a3f17d1533d2ebf3d0f60554da57d1a58fb6137a4cd9735238"
+      },
+      {
+        "hidden_sha256": "f434d92ea2a8197428c1ac5f54e3bbf661584ee974a806812297b6f884988925",
+        "layer": 33,
+        "norm_sha256": "faa7f2f2f8f4a5068a9a4ea79aad92414d614886ac1db3ce81830019be220a2c"
+      },
+      {
+        "hidden_sha256": "06bf90578e92c839165216985b02c873d23b20ee189c0c85c26229f494c75485",
+        "layer": 34,
+        "norm_sha256": "e131b96790108843641820e2a2a63ffeca3756122884f4a7294c0b48e7204cac"
+      },
+      {
+        "hidden_sha256": "99a201049190a70013d6daee500c72a6ac82735d1cd897ba32572a387ad748d5",
+        "layer": 35,
+        "norm_sha256": "4884caa341fa6d684b987efa2f1636e64fd71887372940b065767e8703f4798f"
+      },
+      {
+        "hidden_sha256": "50152fb22b57235bd0ac31e9b8caeb8b163bc4756ce0bfcc9687ca022a73ca5a",
+        "layer": 36,
+        "norm_sha256": "4c5d05a5c6fd4d26565032fff9645a8e7078413843e6a04cc2f48b4c07c1c488"
+      },
+      {
+        "hidden_sha256": "c9f3fa0cab8b7a23493528e03ae34e74db5393f10b6068bf555e23c20ad0acd3",
+        "layer": 37,
+        "norm_sha256": "3881cb0886151ab90902b5c29b9745889f1e17a65f21cf6b6486555d58d5cedb"
+      },
+      {
+        "hidden_sha256": "b15494a820b01fb319cadda853ed7deb3618cb372a37be341bb878f297bfccce",
+        "layer": 38,
+        "norm_sha256": "a0e1d63c7cf3225a7343f22fe790c75af4b5f5c0c3eb2e49700db800f4fbbcbe"
+      },
+      {
+        "hidden_sha256": "d3476d50d15d3a2b95fdfc9b401e1dbf3fad20c543a29612a034cbea705065a5",
+        "layer": 39,
+        "norm_sha256": "d00dbb311318b41d9c57865e9141bde9b77fb65a6ea15e99087b245243c7b4e2"
+      },
+      {
+        "hidden_sha256": "a25620f7b18c1db89e212ead9864cd9c7d15b767f5ba886b9138d35f50fa7081",
+        "layer": 40,
+        "norm_sha256": "794b9885a60fa96ed360652c6f7b5cdf845d5ebd2ac6ae44fd4863568a1626b6"
+      },
+      {
+        "hidden_sha256": "d2a7d7a9b924f04729ac542dfd2975c594ae0b62ba5e11937dc7400f7d8a3937",
+        "layer": 41,
+        "norm_sha256": "2a5e903f5b4b25fd38ab6f3c1ab4f4071428ea153ca984d0b67eb24586fbc009"
+      },
+      {
+        "hidden_sha256": "da9113db450fa3db089a9f8b6a7ec45649132864925b54f8c1283675b9682dd8",
+        "layer": 42,
+        "norm_sha256": "fe74971a5801e247352819a278ee891f336d4a2b5b0a3bb874bacd867ced65f8"
+      },
+      {
+        "hidden_sha256": "a3a00103a7fccac012af74875b82a1e522b712874f8d2cf449a04a4a11cb2f17",
+        "layer": 43,
+        "norm_sha256": "cf41607ef94a848ccb3acd4dcc54756c67beb4896268b21f83019a0e8a6a1255"
+      },
+      {
+        "hidden_sha256": "fb8ef75aa67ae71cec968dffe77c3b5a1d39b3c4e250225701db747e27fe34bd",
+        "layer": 44,
+        "norm_sha256": "251508983f1476dbbad5ec4ada4c2b70efbc15d6e76b701aaf35ca474bcc4efd"
+      },
+      {
+        "hidden_sha256": "e7ad02125eecefc7f27270a5816828d0f2316308a3e983f7c36a60e11150f7de",
+        "layer": 45,
+        "norm_sha256": "306812695af66774e39249bbbcfd81e1556d0234ed1ab4e42c26f357263d9c2d"
+      },
+      {
+        "hidden_sha256": "21d26437747ad2d3b9fcfbae2de4d57d9ef46ed50bce31f91966125ca24b2b1b",
+        "layer": 46,
+        "norm_sha256": "3d138be6a761dcf66cb964746b2b6058f8449aabdfc4bcaedbefdd98451ae4a8"
+      },
+      {
+        "hidden_sha256": "fdbcc4208e7233317fe3566cc2c0ea5acd53ce8fb6fea010a107740675ea9d17",
+        "layer": 47,
+        "norm_sha256": "7e6ecdab49563040f184cee6e56a89d160cb2dee03e3605e1d9b499bbe232b3c"
+      }
+    ],
+    "next_token_id": 2825,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "raw_sha256": "c30f12a6ea1a05c40420194e48e842e96154d4c352ac7f94529912efc5160569",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "557ef84711715212eeff840b62b19fe72a77007df93135e8e95bb7f57d1bffce",
+    "timing_protocol": {
+      "counterbalanced_repetitions": 15,
+      "favorable_rerun_allowed": false,
+      "launches_per_sample": 1000,
+      "measured_processes": 1,
+      "target_layers": [
+        1,
+        47
+      ],
+      "timers": [
+        "HIP event",
+        "device-synchronized wall"
+      ],
+      "warmups_per_mode": 50
+    },
+    "timing_rows": [
+      {
+        "event_delta_pct": -2.8506118182159423,
+        "event_us": {
+          "retained": 6.732649803161621,
+          "wave0_tree": 6.5407280921936035
+        },
+        "layer": 1,
+        "wall_delta_pct": -2.8057159562087763,
+        "wall_us": {
+          "retained": 6.742722820490599,
+          "wave0_tree": 6.553541170433164
+        }
+      },
+      {
+        "event_delta_pct": -2.777190955638298,
+        "event_us": {
+          "retained": 6.733088970184326,
+          "wave0_tree": 6.546098232269287
+        },
+        "layer": 47,
+        "wall_delta_pct": -2.866462652746815,
+        "wall_us": {
+          "retained": 6.745313061401248,
+          "wave0_tree": 6.5519611816853285
+        }
+      }
+    ],
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40069978164,
+      "peak_allocations": 1161,
+      "total_allocated_bytes": 40069978164,
+      "total_freed_bytes": 40069978164
+    },
+    "tracked_peak": {
+      "active_allocations": 1161,
+      "current_allocated_bytes": 40069978164,
+      "peak_allocated_bytes": 40069978164,
+      "peak_allocations": 1161,
+      "total_allocated_bytes": 40069978164,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "builder_sha256": "67000735ac30534557b7073b5901aaec009fed2beb23a0d85d50c76537ca7e35",
+  "cache_only_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "allocated_lds_bytes": 1024,
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 16,
+    "candidate_calls": 1,
+    "child_sha256": "e1a3b619c0e9f558ac03a1f02681a472cf86bbc7ccf3b82809cd35b0c0d55c44",
+    "duration_ns": 13320,
+    "finite": true,
+    "grid_x": 256,
+    "harness_sha256": "b5f5f24104af05bddb1fd0cd064a8a542b81596ceb03948d13a3f5d552fb966b",
+    "hidden_bf16_exact": true,
+    "kernel_name": "(anonymous namespace)::laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel(unsigned short const*, unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, long, float)",
+    "no_compiler_under_profiler": true,
+    "norm_bf16_exact": true,
+    "preflight_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/trace_laguna_moe_tail_wave0_tree.py",
+    "preflight_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preflight_stdout_sha256": "e76e0634d7d5140666434ee12f0a078fc6082200f8a36f3e483b5464a39dad24",
+    "profile_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-moe-tail-wave0-tree-rocprof -o wave0-tree -- .venv/bin/python -u /tmp/trace_laguna_moe_tail_wave0_tree.py",
+    "profile_stderr_sha256": "35a4b50240b2f760d292719dc7124a02d84ac24f855c98ae72b19ff02bfd589a",
+    "profile_stdout_sha256": "e76e0634d7d5140666434ee12f0a078fc6082200f8a36f3e483b5464a39dad24",
+    "scratch_bytes": 0,
+    "trace_sha256": "60d376cb9d7f8dea4a8d81a271bf623bd7d6027155f6d889b07fe52786ea08c7",
+    "tracked_returned_to_baseline": true,
+    "workgroup_x": 256
+  },
+  "codegen": {
+    "analyzer_sha256": "09a55138720ca61ef961b5a574759190ff527511b180c9ba3aa7c0279430ad9c",
+    "baseline": {
+      "ds_bpermute_b32": 0,
+      "ds_load_2addr_b32": 6,
+      "ds_load_2addr_stride64_b32": 2,
+      "group_segment_fixed_size": 1024,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 9,
+      "sgpr_count": 24,
+      "sgpr_spill_count": 0,
+      "static_instructions": 266,
+      "text_bytes": 1404,
+      "vgpr_count": 13,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate": {
+      "ds_bpermute_b32": 5,
+      "ds_load_2addr_b32": 4,
+      "ds_load_2addr_stride64_b32": 0,
+      "group_segment_fixed_size": 1024,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 2,
+      "sgpr_count": 24,
+      "sgpr_spill_count": 0,
+      "static_instructions": 225,
+      "text_bytes": 1276,
+      "vgpr_count": 14,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "checks": {
+      "all_frozen_ceilings_pass": true,
+      "barriers_exactly_two": true,
+      "fixed_lds_bytes": 1024,
+      "private_spills_zero": true
+    },
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22",
+    "delta": {
+      "barriers": -7,
+      "logical_sgpr": 0,
+      "logical_vgpr": 1,
+      "static_instructions": -41,
+      "text_bytes": -128
+    },
+    "disasm_sha256": "deccbb791a5cfcd611a99f33a15cf499b844d0435299019e5c79e624c7ba89ca",
+    "fatbin_sha256": "7d3f90f5ef2cfef6b53f54d9e2fa0b285b3fdb958ecd62c198ba2caae3d7ee51",
+    "hsaco_sha256": "97804d2ecdff3b998c2cb99221ef78f0b76ef7c61fe52216d99aa19271dab35c",
+    "library_sha256": "1dc71ec9c03e6e5f9d9263323ed9811fde26b246a4a10e83d32d2a966903fd3f",
+    "readobj_sha256": "ccdd9d7193c64b3447192e43480381aaea8d5e4a0749b4d3672a8c571a3b7e80",
+    "symbols_sha256": "f75bb7dbc594adf263dc0ab77348d6cfa6e96ecf66e8f5213925a9f572756fe6"
+  },
+  "cpu_reference_gate": {
+    "all_hidden_bf16_exact": true,
+    "all_norm_bf16_exact": true,
+    "cases": 10,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/check_laguna_moe_tail_wave0_tree_cpu.py",
+    "harness_sha256": "b23382606001f6c5580b249ca3b9756ce852e65d3b8b3ff8a6118ff5d069fb3e",
+    "hidden": 3072,
+    "kl_max": 0.0,
+    "kl_threshold": 0.05,
+    "raw_sha256": "94d232fc74027e4fa16eea7e662a7ed545d45178448ba77c3ef7b9e5c79fe24e",
+    "stdout_sha256": "0a979659fbd30c8da70786b8cdfb4a03300d2440d89de0ee75aec13aff1dfa6a",
+    "top1_agreement": 1.0,
+    "top1_threshold": 0.9,
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit primitive admission, then add a separate false/default-off runtime owner and full-state correctness gate before clean measurement.",
+    "performance_claim": false,
+    "primitive_admitted": true,
+    "runtime_owner_present": false
+  },
+  "design": {
+    "artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-moe-tail-wave0-tree-design.json",
+    "artifact_sha256": "8066b8225f478e5d20abf3d31b1d70946c048cb7975dd26d39fbf457c2b5c703"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "allocation_workspace_delta_bytes": 0,
+    "backend_capability_present": false,
+    "cpu_alias": false,
+    "cuda_alias": false,
+    "gfx1151_excluded": true,
+    "kernel": "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel",
+    "key": [
+      "hip_gfx1100",
+      "moe_tail+next_rmsnorm",
+      "bf16",
+      "laguna_aggregate_wave0_tree_gguf_f32_weight_out"
+    ],
+    "launch_topology_delta": 0,
+    "package_exported": true,
+    "persistent_weight_copy_delta_bytes": 0,
+    "required_fallbacks": [
+      "retained hip_gfx1100/moe_tail+next_rmsnorm/bf16/laguna_aggregate_gguf_f32_weight_out",
+      "registered BF16 add + BF16 add + F32-weight RMSNorm chain"
+    ],
+    "runtime_owner_present": false,
+    "source_hashes": {
+      "hipengine/kernels/hip_gfx1100/fused/__init__.py": "ed97acbb486dd44dd69aaa9f4ce9a5bbdec2028f6324428e564c2e8a3d023526",
+      "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip": "5583aa8d469926520fe96ca946732cd67ad775eca6abc1dd6c573b041080cdc9",
+      "hipengine/kernels/hip_gfx1100/fused/paro_combine.py": "e662642deb1dc1d71cd6696e22c6d83be480f2e4431963359c25dd739252cc5c",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3431a3aa152422bba6dc228247cd05885b0c9e4c2ddb3a7751283bfa7c4d05a9",
+      "tests/test_laguna_moe_tail_wave0_tree.py": "aae6a8323f7c635b0c559c0f5a1b181550d2513e5bbdc608798e3a29b8e79f76"
+    },
+    "symbol": "hipengine_laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out",
+    "wrapper": "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out"
+  },
+  "kind": "hipengine_laguna_q2_xl_moe_tail_wave0_tree_correctness",
+  "math_identity": {
+    "candidate_equals_retained_body_plus_only_frozen_reduction": true,
+    "changed": "nine dynamic barriers become one publication barrier, exact wave-0 cross-wave/lane tree, and one scalar-publication barrier",
+    "unchanged": [
+      "both BF16 add/rounding boundaries and hidden store/reload",
+      "per-thread square accumulation and exact stride128..1 association",
+      "rsqrtf(total/features+eps) and norm multiply/store association",
+      "local256 one-block ownership, fixed LDS1024, pointers, and outputs"
+    ]
+  },
+  "model": {
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47
+  },
+  "performance_claim": false,
+  "red_green": {
+    "base_commit": "5363ce5722fa5b61971860753e67f86164799b44",
+    "coverage": [
+      "mechanical retained-body plus frozen-reduction identity and strict symbol count",
+      "six non-null pointer and positive-feature validation before build",
+      "package/four-axis identity, retained and unfused fallbacks, gfx1151/cuda/cpu absence, and no runtime owner",
+      "hidden17/3072 random and signed-zero/subnormal/finite BF16 edge fixtures exact to retained D9, unfused chain, and CPU reference"
+    ],
+    "current_test_sha256": "aae6a8323f7c635b0c559c0f5a1b181550d2513e5bbdc608798e3a29b8e79f76",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_tail_wave0_tree.py",
+    "green_log_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "green_result": "4 passed",
+    "post_implementation_test_only_repair": {
+      "change": "import and call register_gguf_ops inside the registry/fallback test; no production source changed",
+      "log_sha256": "b4bce193ccc13d677e0bdd59ee987047fab2541d1a71dcc61c0b334afe76a654",
+      "result_before_repair": "3 passed, one test failed because the fallback assertion had not registered gguf_ops"
+    },
+    "red_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_tail_wave0_tree.py",
+    "red_log_sha256": "fca1f165df78b71b78e36537c813d26fedfe04cb809f1a0557a73e82b637c31f",
+    "red_result": "4 failed only on absent body/symbol, wrapper validation, package/key, and executable candidate",
+    "test_sha256_at_red": "94941d8c810535ce16c93541f32f498244eeea1ea260ab3aee8765bc1c0a9a90"
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "reason": "primitive correctness only; no runtime owner, default, or full-model throughput claim"
+  },
+  "schema": 1,
+  "source_revision": "5363ce5722fa5b61971860753e67f86164799b44",
+  "status": "primitive_admitted_runtime_unselected",
+  "validation": {
+    "adjacent_filtered_result": "131 passed after excluding exactly that unchanged stale node",
+    "adjacent_filtered_sha256": "9f5f5655b6320f60b13f40d460855031534fc18cc7f76bfbe9327af53479a42b",
+    "adjacent_unfiltered_result": "131 passed plus one documented unchanged stale gfx1151 resolver test failure",
+    "adjacent_unfiltered_sha256": "9adb7b7132d4300a42b0f01cf04deb4b4a8e28c9524e7b942f4287375240fa6a",
+    "cpu_registry_build_result": "25 passed",
+    "cpu_registry_build_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "fixtures_passed": true,
+    "fixtures_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+    "lineage_note": "Only already-catalogued unrelated external drift; selected D9 body is in-tree.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "registry_smoke_passed": true,
+    "registry_smoke_sha256": "159c48de9337ea6a260024b63a5eac9a158602ab443d94038d9938b29d538311",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "dc6ed014b4c55d967257eac516d5d216665a2619937dd4cc3b07c7b59a03b32b"
+  }
+}

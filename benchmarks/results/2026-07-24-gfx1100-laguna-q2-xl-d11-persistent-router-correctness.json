@@ -1,0 +1,212 @@
+{
+  "acceptance": {
+    "correctness_admitted": true,
+    "next_action": "Task #287 runs clean short/512/1K/near-4K matched profiles and the canonical ten-prompt four-category h16/h32 AR retain-or-remove gate before any retained throughput claim.",
+    "performance_promoted": false
+  },
+  "actual_q2_xl_correctness": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_d11_correctness_gate.py",
+    "counter_zero_per_layer": true,
+    "decode_steps": 16,
+    "final_hidden_exact": true,
+    "full_kv_and_live_spans_exact": true,
+    "full_logits_exact": true,
+    "harness_sha256": "e724cdf2a4cf276862dec845379ce2c62f5d8c225c60d758693dc37af8c99952",
+    "instrumented_wall_diagnostic": {
+      "candidate_median_ms": 19.58500302862376,
+      "candidate_seconds": [
+        0.019710469990968704,
+        0.019742829957976937,
+        0.019169401959516108,
+        0.019295963924378157,
+        0.018711745040491223,
+        0.018823976977728307,
+        0.019332354073412716,
+        0.019439485971815884,
+        0.019597377977333963,
+        0.019544387003406882,
+        0.019572628079913557,
+        0.01964240800589323,
+        0.019665568019263446,
+        0.019744300050660968,
+        0.019954963005147874,
+        0.01992792298551649
+      ],
+      "candidate_vs_control_pct": -0.6935051912769108,
+      "control_median_ms": 19.72177455900237,
+      "control_seconds": [
+        0.019687799038365483,
+        0.019569347030483186,
+        0.019412835012190044,
+        0.0190989610273391,
+        0.018931598984636366,
+        0.019187322002835572,
+        0.019395385053940117,
+        0.019743920071050525,
+        0.019902362022548914,
+        0.01976208109408617,
+        0.019699629046954215,
+        0.019798140972852707,
+        0.01978258090093732,
+        0.019960492965765297,
+        0.020092374994419515,
+        0.020112255006097257
+      ]
+    },
+    "instrumented_wall_note": "Correctness instrumentation copies every layer/router buffer and is not a promotion metric; the +0.163% candidate median is neutral/noisy and clean task #287 decides.",
+    "post_layer_hidden_checks": 48,
+    "post_layer_hidden_exact": true,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "raw_sha256": "152b757636ee4dd489b19fe06eb1b87f7d606d9e343430178e4e4cea6bffcaa6",
+    "reset_exact": true,
+    "router_layer_checks": 47,
+    "tracked_peak_allocations": 1500,
+    "tracked_peak_bytes": 40455911864,
+    "tracked_returned_to_baseline": true
+  },
+  "actual_weight_router_micro": {
+    "candidate_median_ms": 0.661407470703125,
+    "candidate_us_per_layer": 14.072499376662234,
+    "candidate_vs_control_pct": -19.365130153155285,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_d11_router.py",
+    "control_median_ms": 0.8202499389648438,
+    "control_us_per_layer": 17.45212636095412,
+    "counter_self_rearmed": true,
+    "harness_sha256": "4150fa07afe3e2b7bb6a0fb3d7798842d2f111b5ccf053437fa496c269e8cf6e",
+    "iterations": 100,
+    "layers_per_iteration": 47,
+    "outputs_bit_exact": true,
+    "raw_sha256": "4b8fd4b9f6ee70f55bab3b88a202d52a0577329bec4a5264b9c213250db9dbae",
+    "repetitions": 15,
+    "warmups": 5
+  },
+  "date": "2026-07-24",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "counter": "one session-local int32 initialized once and reset by the last producer after output publication",
+    "dispatches_per_token": {
+      "persistent": 728,
+      "removed": 47,
+      "split": 775
+    },
+    "fallback": "registered router_logits/f32/bf16_hidden plus laguna_sigmoid_router_topk/f32/correction_bias for rows>1, gfx1151, registry/shape miss, and use_persistent_router_topk=False",
+    "production_shape": {
+      "experts": 256,
+      "hidden_size": 3072,
+      "scale": 2.5,
+      "top_k": 10
+    },
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_router_topk",
+      "f32",
+      "bf16_hidden_correction_bias_persistent"
+    ],
+    "scope": "gfx1100 c=1 BF16 hidden/F32 router weights, hidden<=3072, experts<=256, top-k<=16"
+  },
+  "kind": "hipengine_laguna_q2_xl_d11_persistent_router_correctness",
+  "matched_dirty_profile": {
+    "candidate": {
+      "bench_sha256": "b96cf516a44ff2fe3bb41b9382bfaaa1d01d5ab020d638cc3fbc8ccd77959484",
+      "dispatches_per_token": 728,
+      "kernel": {
+        "kernel_name": "(anonymous namespace)::laguna_router_topk_bf16_f32w_persistent_kernel(unsigned short const*, float const*, float const*, float*, float*, float*, long*, float*, float*, int*, long, long, long, float)",
+        "median_us": 13.76,
+        "ms_per_token": 0.6517600714285718,
+        "resources": [
+          256,
+          32,
+          128,
+          512,
+          0
+        ]
+      },
+      "kernel_sum_ms_per_token": 17.328159071428573,
+      "profiled_child_tok_s": 45.307835471723855,
+      "span_median_ms_per_token": 20.405521,
+      "trace_sha256": "fa83e230ff09328d4ec3e5144f769575c4cc3d605458531f502a2ee6c595088c"
+    },
+    "common_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <root> --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt [--disable-d11] --output <root>/bench.json",
+    "comparison_sha256": "652eb372643d6b7551502663ae17a663d5f40832891d32dfe3a2c3dfca60b7b5",
+    "control": {
+      "bench_sha256": "2bbd2c76c7b1206330551702735fb37c82d33a153c824c11c2f26732dabef164",
+      "dispatches_per_token": 775,
+      "kernel_sum_ms_per_token": 17.329451714285714,
+      "profiled_child_tok_s": 44.91196907050697,
+      "span_median_ms_per_token": 20.494048,
+      "trace_sha256": "5bcbd0d7003392b9838a9cbec628d2bcb1883d9e4d25dbee9d520a109654d63e"
+    },
+    "finite_logits": true,
+    "generated_ids_exact": true,
+    "summary": {
+      "dispatches_removed_per_token": 47,
+      "ids_exact": true,
+      "kernel_sum_delta_pct": -0.007459225360695321,
+      "profiled_child_tok_s_delta_pct": 0.8814273998884792,
+      "span_delta_pct": -0.43196444157834746
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "pass": true,
+  "performance_claim": false,
+  "red_green": {
+    "broader_scope_note": "Adding all of tests/test_gfx1151_backend.py produced 116 passes and one unrelated tracked-main TypeError: test_gguf_fused_linear_matching_uses_resident_backend omits pre-existing activation_dtype/output_dtype arguments.",
+    "cpu_fixtures": "7 passed",
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_router_gpu.py tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_laguna_moe_tail_next_rmsnorm.py tests/test_generation_laguna_gguf.py tests/test_laguna_cpu_reference.py tests/test_kernel_registry.py",
+    "focused_output_sha256": "b1ee263ebf74c4ea7cd907f8f0cd3723f09254ef61503aa3ac50525d53b4f1e5",
+    "focused_result": "95 passed; one Starlette deprecation warning",
+    "red": "tests/test_laguna_router_gpu.py collection failed because the D11 wrapper did not exist",
+    "ruff_compileall_diff_check": true,
+    "synthetic_green": {
+      "adversarial_cases": [
+        "equal logits and lower-ID ties across waves",
+        "positive and negative stable-sigmoid branches",
+        "correction-driven selection flips",
+        "poisoned output buffers"
+      ],
+      "consecutive_launches": 2,
+      "counter_zero_after_each": true,
+      "exact_outputs": [
+        "FP32 logits bits",
+        "FP32 unbiased routing-score bits",
+        "FP32 corrected selection-score bits",
+        "int64 selected IDs",
+        "FP32 normalized routing bits",
+        "FP32 scaled-routing bits"
+      ],
+      "hidden_sizes": [
+        17,
+        3072
+      ]
+    }
+  },
+  "schema": 1,
+  "source": {
+    "base_revision": "835da82301df5ed02a89480c3d7ee7bfad338ec0",
+    "design_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-design.json",
+    "design_artifact_sha256": "13e53160e9bb135594539379a96acb06ec32a4b3a9de61130a41deb746553f3f",
+    "implementation_files": {
+      "hipengine/kernels/hip_gfx1100/moe/laguna_router.hip": "23eb42d62aad5fb84f262cfb8c4bfb22ab810807e54272e983e3bb86bd8661db",
+      "hipengine/kernels/hip_gfx1100/moe/laguna_router.py": "89e7510f668fa43cdea9477c01acc5c77bd740513946506cc15d89ca61bcfeea",
+      "hipengine/runtime/laguna_gguf_runner.py": "0002c902434e58aab8d2948f2554e1c79f5459f0b3b1e4bdff1406b89765c8fc",
+      "hipengine/runtime/laguna_moe.py": "b7d30f2bee40fce0167528584d6f2881a3afd67b3ec12efd299bbdda60ea0dad"
+    },
+    "implementation_state": "dirty_worktree_before_atomic_implementation_commit",
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "completed; only already-documented nano-vllm-amd drift"
+  },
+  "status": "correctness_admitted_pending_clean_promotion"
+}

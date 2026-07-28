@@ -57,6 +57,140 @@ __device__ __constant__ uint16_t IQ2_XS_GRID_PACKED[512] = {
     0xa495u, 0xa665u, 0xa698u, 0xa80au, 0xa820u, 0xa822u, 0xa828u, 0xa8a0u, 0xa8a8u, 0xa904u, 0xa984u, 0xa986u, 0xaa28u, 0xaa2au, 0xaa91u, 0xaaaau,
 };
 
+// Canonical llama.cpp IQ2_XS magnitudes, eight unsigned bytes per selector.
+// This exact decode sibling trades 3 KiB of code-object constant data for fewer
+// selector shifts, integer magnitude reconstructions, and uint-to-float casts.
+__device__ __constant__ uint64_t IQ2_XS_GRID_MAGNITUDES[512] = {
+    0x0808080808080808ULL, 0x080808080808082bULL, 0x0808080808081919ULL, 0x0808080808082b08ULL,
+    0x0808080808082b2bULL, 0x0808080808190819ULL, 0x0808080808191908ULL, 0x080808080819192bULL,
+    0x0808080808192b19ULL, 0x08080808082b0808ULL, 0x08080808082b082bULL, 0x08080808082b1919ULL,
+    0x08080808082b2b08ULL, 0x0808080819080819ULL, 0x0808080819081908ULL, 0x080808081908192bULL,
+    0x0808080819082b19ULL, 0x0808080819190808ULL, 0x080808081919082bULL, 0x0808080819191919ULL,
+    0x0808080819192b08ULL, 0x08080808192b0819ULL, 0x08080808192b1908ULL, 0x080808082b080808ULL,
+    0x080808082b08082bULL, 0x080808082b081919ULL, 0x080808082b082b08ULL, 0x080808082b190819ULL,
+    0x080808082b191908ULL, 0x080808082b192b19ULL, 0x080808082b2b0808ULL, 0x0808081908080819ULL,
+    0x0808081908081908ULL, 0x080808190808192bULL, 0x0808081908082b19ULL, 0x0808081908190808ULL,
+    0x080808190819082bULL, 0x0808081908191919ULL, 0x0808081908192b08ULL, 0x0808081908192b2bULL,
+    0x08080819082b0819ULL, 0x08080819082b1908ULL, 0x0808081919080808ULL, 0x080808191908082bULL,
+    0x0808081919081919ULL, 0x0808081919082b08ULL, 0x0808081919190819ULL, 0x0808081919191908ULL,
+    0x08080819192b0808ULL, 0x08080819192b2b08ULL, 0x080808192b080819ULL, 0x080808192b081908ULL,
+    0x080808192b190808ULL, 0x0808082b08080808ULL, 0x0808082b0808082bULL, 0x0808082b08081919ULL,
+    0x0808082b08082b08ULL, 0x0808082b08190819ULL, 0x0808082b08191908ULL, 0x0808082b082b0808ULL,
+    0x0808082b19080819ULL, 0x0808082b19081908ULL, 0x0808082b19190808ULL, 0x0808082b19191919ULL,
+    0x0808082b2b080808ULL, 0x0808082b2b082b2bULL, 0x0808190808080819ULL, 0x0808190808081908ULL,
+    0x080819080808192bULL, 0x0808190808082b19ULL, 0x0808190808190808ULL, 0x080819080819082bULL,
+    0x0808190808191919ULL, 0x0808190808192b08ULL, 0x08081908082b0819ULL, 0x08081908082b1908ULL,
+    0x0808190819080808ULL, 0x080819081908082bULL, 0x0808190819081919ULL, 0x0808190819082b08ULL,
+    0x0808190819190819ULL, 0x0808190819191908ULL, 0x080819081919192bULL, 0x08081908192b0808ULL,
+    0x080819082b080819ULL, 0x080819082b081908ULL, 0x080819082b190808ULL, 0x0808191908080808ULL,
+    0x080819190808082bULL, 0x0808191908081919ULL, 0x0808191908082b08ULL, 0x0808191908190819ULL,
+    0x0808191908191908ULL, 0x08081919082b0808ULL, 0x0808191919080819ULL, 0x0808191919081908ULL,
+    0x0808191919190808ULL, 0x08081919192b0819ULL, 0x080819192b080808ULL, 0x0808192b08080819ULL,
+    0x0808192b08081908ULL, 0x0808192b08190808ULL, 0x0808192b082b192bULL, 0x0808192b19080808ULL,
+    0x0808192b1908082bULL, 0x0808192b2b081908ULL, 0x08082b0808080808ULL, 0x08082b080808082bULL,
+    0x08082b0808081919ULL, 0x08082b0808082b08ULL, 0x08082b0808082b2bULL, 0x08082b0808190819ULL,
+    0x08082b0808191908ULL, 0x08082b08082b0808ULL, 0x08082b08082b1919ULL, 0x08082b0819080819ULL,
+    0x08082b0819081908ULL, 0x08082b0819190808ULL, 0x08082b0819192b08ULL, 0x08082b082b080808ULL,
+    0x08082b082b2b0808ULL, 0x08082b082b2b2b2bULL, 0x08082b1908080819ULL, 0x08082b1908081908ULL,
+    0x08082b1908190808ULL, 0x08082b1919080808ULL, 0x08082b192b080819ULL, 0x08082b192b082b19ULL,
+    0x08082b2b08080808ULL, 0x08082b2b082b0808ULL, 0x08082b2b082b2b08ULL, 0x08082b2b2b19192bULL,
+    0x08082b2b2b2b0808ULL, 0x0819080808080819ULL, 0x0819080808081908ULL, 0x081908080808192bULL,
+    0x0819080808082b19ULL, 0x0819080808190808ULL, 0x081908080819082bULL, 0x0819080808191919ULL,
+    0x0819080808192b08ULL, 0x08190808082b0819ULL, 0x08190808082b1908ULL, 0x0819080819080808ULL,
+    0x081908081908082bULL, 0x0819080819081919ULL, 0x0819080819082b08ULL, 0x0819080819190819ULL,
+    0x0819080819191908ULL, 0x08190808192b0808ULL, 0x08190808192b2b2bULL, 0x081908082b080819ULL,
+    0x081908082b081908ULL, 0x081908082b190808ULL, 0x0819081908080808ULL, 0x081908190808082bULL,
+    0x0819081908081919ULL, 0x0819081908082b08ULL, 0x0819081908190819ULL, 0x0819081908191908ULL,
+    0x08190819082b0808ULL, 0x0819081919080819ULL, 0x0819081919081908ULL, 0x0819081919190808ULL,
+    0x081908192b080808ULL, 0x081908192b191908ULL, 0x081908192b19192bULL, 0x0819082b08080819ULL,
+    0x0819082b08081908ULL, 0x0819082b0808192bULL, 0x0819082b08190808ULL, 0x0819082b19080808ULL,
+    0x0819082b192b0808ULL, 0x0819190808080808ULL, 0x081919080808082bULL, 0x0819190808081919ULL,
+    0x0819190808082b08ULL, 0x0819190808190819ULL, 0x0819190808191908ULL, 0x08191908082b0808ULL,
+    0x0819190819080819ULL, 0x0819190819081908ULL, 0x0819190819082b19ULL, 0x0819190819190808ULL,
+    0x08191908192b1908ULL, 0x081919082b080808ULL, 0x0819191908080819ULL, 0x0819191908081908ULL,
+    0x0819191908190808ULL, 0x0819191919080808ULL, 0x0819192b08080808ULL, 0x0819192b08191908ULL,
+    0x0819192b19082b19ULL, 0x08192b0808080819ULL, 0x08192b0808081908ULL, 0x08192b0808190808ULL,
+    0x08192b080819082bULL, 0x08192b0819080808ULL, 0x08192b0819191908ULL, 0x08192b082b08192bULL,
+    0x08192b1908080808ULL, 0x08192b1908081919ULL, 0x08192b19192b192bULL, 0x08192b2b19190819ULL,
+    0x08192b2b2b2b2b19ULL, 0x082b080808080808ULL, 0x082b08080808082bULL, 0x082b080808081919ULL,
+    0x082b080808082b08ULL, 0x082b080808082b2bULL, 0x082b080808190819ULL, 0x082b080808191908ULL,
+    0x082b0808082b0808ULL, 0x082b080819080819ULL, 0x082b080819081908ULL, 0x082b080819190808ULL,
+    0x082b08082b080808ULL, 0x082b08082b2b0808ULL, 0x082b081908080819ULL, 0x082b081908081908ULL,
+    0x082b081908190808ULL, 0x082b081919080808ULL, 0x082b081919082b08ULL, 0x082b0819192b1919ULL,
+    0x082b082b08080808ULL, 0x082b082b082b082bULL, 0x082b082b2b080808ULL, 0x082b082b2b2b2b08ULL,
+    0x082b190808080819ULL, 0x082b190808081908ULL, 0x082b190808190808ULL, 0x082b1908082b2b19ULL,
+    0x082b190819080808ULL, 0x082b191908080808ULL, 0x082b191919080819ULL, 0x082b19191919082bULL,
+    0x082b19192b192b19ULL, 0x082b192b08080819ULL, 0x082b192b08192b2bULL, 0x082b192b2b2b192bULL,
+    0x082b2b0808080808ULL, 0x082b2b0808082b08ULL, 0x082b2b0808082b2bULL, 0x082b2b08082b0808ULL,
+    0x082b2b0819191919ULL, 0x082b2b082b082b08ULL, 0x082b2b082b2b082bULL, 0x082b2b19192b2b08ULL,
+    0x082b2b192b190808ULL, 0x082b2b2b08082b08ULL, 0x082b2b2b082b0808ULL, 0x082b2b2b2b08082bULL,
+    0x082b2b2b2b082b08ULL, 0x082b2b2b2b082b2bULL, 0x1908080808080819ULL, 0x1908080808081908ULL,
+    0x190808080808192bULL, 0x1908080808082b19ULL, 0x1908080808190808ULL, 0x190808080819082bULL,
+    0x1908080808191919ULL, 0x1908080808192b08ULL, 0x19080808082b0819ULL, 0x19080808082b1908ULL,
+    0x1908080819080808ULL, 0x190808081908082bULL, 0x1908080819081919ULL, 0x1908080819082b08ULL,
+    0x1908080819082b2bULL, 0x1908080819190819ULL, 0x1908080819191908ULL, 0x19080808192b0808ULL,
+    0x19080808192b1919ULL, 0x190808082b080819ULL, 0x190808082b081908ULL, 0x190808082b190808ULL,
+    0x1908081908080808ULL, 0x190808190808082bULL, 0x1908081908081919ULL, 0x1908081908082b08ULL,
+    0x1908081908190819ULL, 0x1908081908191908ULL, 0x19080819082b0808ULL, 0x1908081919080819ULL,
+    0x1908081919081908ULL, 0x1908081919190808ULL, 0x190808192b080808ULL, 0x190808192b081919ULL,
+    0x190808192b2b082bULL, 0x1908082b08080819ULL, 0x1908082b08081908ULL, 0x1908082b08190808ULL,
+    0x1908082b0819082bULL, 0x1908082b082b2b19ULL, 0x1908082b19080808ULL, 0x1908190808080808ULL,
+    0x190819080808082bULL, 0x1908190808081919ULL, 0x1908190808082b08ULL, 0x1908190808190819ULL,
+    0x1908190808191908ULL, 0x1908190808192b19ULL, 0x19081908082b0808ULL, 0x1908190819080819ULL,
+    0x1908190819081908ULL, 0x1908190819190808ULL, 0x190819082b080808ULL, 0x190819082b191908ULL,
+    0x1908191908080819ULL, 0x1908191908081908ULL, 0x1908191908190808ULL, 0x19081919082b1908ULL,
+    0x1908191919080808ULL, 0x190819192b192b2bULL, 0x1908192b08080808ULL, 0x1908192b08082b2bULL,
+    0x1908192b19081908ULL, 0x1908192b19190808ULL, 0x19082b0808080819ULL, 0x19082b0808081908ULL,
+    0x19082b0808190808ULL, 0x19082b0819080808ULL, 0x19082b0819081919ULL, 0x19082b0819191908ULL,
+    0x19082b08192b082bULL, 0x19082b1908080808ULL, 0x19082b1908190819ULL, 0x19082b1919081908ULL,
+    0x19082b1919190808ULL, 0x19082b19192b2b19ULL, 0x19082b2b08081908ULL, 0x1919080808080808ULL,
+    0x191908080808082bULL, 0x1919080808081919ULL, 0x1919080808082b08ULL, 0x1919080808190819ULL,
+    0x1919080808191908ULL, 0x19190808082b0808ULL, 0x19190808082b2b08ULL, 0x1919080819080819ULL,
+    0x1919080819081908ULL, 0x1919080819190808ULL, 0x191908082b080808ULL, 0x1919081908080819ULL,
+    0x1919081908081908ULL, 0x1919081908190808ULL, 0x1919081908191919ULL, 0x1919081919080808ULL,
+    0x191908191908082bULL, 0x1919082b08080808ULL, 0x1919082b19081908ULL, 0x1919082b2b2b2b2bULL,
+    0x1919190808080819ULL, 0x1919190808081908ULL, 0x1919190808190808ULL, 0x19191908082b0819ULL,
+    0x1919190819080808ULL, 0x19191908192b0808ULL, 0x191919082b080819ULL, 0x191919082b2b0819ULL,
+    0x1919191908080808ULL, 0x1919191908082b08ULL, 0x191919192b080808ULL, 0x191919192b082b08ULL,
+    0x1919192b082b0819ULL, 0x1919192b192b2b08ULL, 0x1919192b2b2b0819ULL, 0x19192b0808080808ULL,
+    0x19192b0808191908ULL, 0x19192b0819080819ULL, 0x19192b0819190808ULL, 0x19192b082b192b19ULL,
+    0x19192b1908192b2bULL, 0x19192b1919080808ULL, 0x19192b191908082bULL, 0x19192b2b2b081919ULL,
+    0x192b080808080819ULL, 0x192b080808081908ULL, 0x192b080808190808ULL, 0x192b080819080808ULL,
+    0x192b080819191908ULL, 0x192b0808192b082bULL, 0x192b08082b08192bULL, 0x192b08082b2b2b19ULL,
+    0x192b081908080808ULL, 0x192b082b082b1908ULL, 0x192b082b19082b2bULL, 0x192b082b2b19082bULL,
+    0x192b190808080808ULL, 0x192b19080819192bULL, 0x192b191908190808ULL, 0x192b191919080808ULL,
+    0x192b191919081919ULL, 0x192b19192b2b1908ULL, 0x192b2b0808080819ULL, 0x192b2b08192b2b2bULL,
+    0x192b2b19082b1919ULL, 0x192b2b2b0808192bULL, 0x192b2b2b19191908ULL, 0x192b2b2b192b082bULL,
+    0x2b08080808080808ULL, 0x2b0808080808082bULL, 0x2b08080808081919ULL, 0x2b08080808082b08ULL,
+    0x2b08080808190819ULL, 0x2b08080808191908ULL, 0x2b080808082b0808ULL, 0x2b080808082b2b2bULL,
+    0x2b08080819080819ULL, 0x2b08080819081908ULL, 0x2b08080819190808ULL, 0x2b0808082b080808ULL,
+    0x2b0808082b08082bULL, 0x2b0808082b2b2b08ULL, 0x2b0808082b2b2b2bULL, 0x2b08081908080819ULL,
+    0x2b08081908081908ULL, 0x2b0808190808192bULL, 0x2b08081908190808ULL, 0x2b08081919080808ULL,
+    0x2b08081919190819ULL, 0x2b08081919192b19ULL, 0x2b08082b08080808ULL, 0x2b08082b082b0808ULL,
+    0x2b08082b2b080808ULL, 0x2b08082b2b08082bULL, 0x2b08082b2b2b0808ULL, 0x2b08082b2b2b2b08ULL,
+    0x2b08190808080819ULL, 0x2b08190808081908ULL, 0x2b08190808190808ULL, 0x2b0819080819082bULL,
+    0x2b08190808191919ULL, 0x2b08190819080808ULL, 0x2b081908192b0808ULL, 0x2b0819082b082b19ULL,
+    0x2b08191908080808ULL, 0x2b08191919081908ULL, 0x2b0819192b2b1919ULL, 0x2b08192b08192b08ULL,
+    0x2b08192b192b2b2bULL, 0x2b082b0808080808ULL, 0x2b082b0808082b08ULL, 0x2b082b08082b1919ULL,
+    0x2b082b0819192b2bULL, 0x2b082b082b080808ULL, 0x2b082b082b08082bULL, 0x2b082b082b2b2b08ULL,
+    0x2b082b190808192bULL, 0x2b082b2b082b082bULL, 0x2b082b2b2b080808ULL, 0x2b082b2b2b082b08ULL,
+    0x2b082b2b2b19192bULL, 0x2b082b2b2b2b2b08ULL, 0x2b19080808080819ULL, 0x2b19080808081908ULL,
+    0x2b19080808190808ULL, 0x2b19080819080808ULL, 0x2b1908081919192bULL, 0x2b1908082b081908ULL,
+    0x2b19081908080808ULL, 0x2b190819082b082bULL, 0x2b190819192b1908ULL, 0x2b19082b1919192bULL,
+    0x2b19082b2b082b19ULL, 0x2b19190808080808ULL, 0x2b19190808081919ULL, 0x2b19190819081908ULL,
+    0x2b19190819190808ULL, 0x2b19190819192b08ULL, 0x2b191919082b2b19ULL, 0x2b1919192b190808ULL,
+    0x2b1919192b19082bULL, 0x2b19192b19080819ULL, 0x2b192b0819190819ULL, 0x2b192b082b2b192bULL,
+    0x2b192b1919082b19ULL, 0x2b192b2b08191919ULL, 0x2b192b2b192b0808ULL, 0x2b2b080808080808ULL,
+    0x2b2b08080808082bULL, 0x2b2b080808082b08ULL, 0x2b2b080808082b2bULL, 0x2b2b0808082b0808ULL,
+    0x2b2b0808082b2b2bULL, 0x2b2b08082b2b0808ULL, 0x2b2b081919190819ULL, 0x2b2b081919192b19ULL,
+    0x2b2b08192b2b192bULL, 0x2b2b082b08080808ULL, 0x2b2b082b0808082bULL, 0x2b2b082b08082b08ULL,
+    0x2b2b082b082b2b2bULL, 0x2b2b082b2b080808ULL, 0x2b2b082b2b2b0808ULL, 0x2b2b190819080808ULL,
+    0x2b2b19082b191919ULL, 0x2b2b192b192b1919ULL, 0x2b2b192b2b192b08ULL, 0x2b2b2b0808082b2bULL,
+    0x2b2b2b08082b0808ULL, 0x2b2b2b08082b082bULL, 0x2b2b2b08082b2b08ULL, 0x2b2b2b082b2b0808ULL,
+    0x2b2b2b082b2b2b08ULL, 0x2b2b2b1908081908ULL, 0x2b2b2b192b081908ULL, 0x2b2b2b192b08192bULL,
+    0x2b2b2b2b082b2b08ULL, 0x2b2b2b2b082b2b2bULL, 0x2b2b2b2b2b190819ULL, 0x2b2b2b2b2b2b2b2bULL,
+};
+
 // Generated from llama.cpp ggml/src/ggml-common.h (MIT).  Each u32 packs four
 // unsigned IQ3 grid magnitudes in little-endian byte order.
 __device__ __constant__ uint32_t IQ3_XXS_GRID[256] = {
@@ -216,6 +350,47 @@ __device__ inline float iq2_xs_pair16_dot(
   return db * sum0 + db * sum1;
 }
 
+__device__ inline float iq2_xs_pair16_dot_grid64(
+    const uint8_t* __restrict__ block,
+    int group8_even,
+    const float* __restrict__ x_values) {
+  const int group32 = group8_even >> 2;
+  const int local8 = group8_even & 3;
+  const uint32_t packed_q =
+      load_u32_le(block + 2 + 2 * (4 * group32 + local8));
+  const uint16_t q0 = static_cast<uint16_t>(packed_q);
+  const uint16_t q1 = static_cast<uint16_t>(packed_q >> 16);
+  const uint8_t scale_byte = block[66 + group32];
+  const uint32_t scale =
+      (static_cast<uint32_t>(scale_byte) >> (4 * (local8 >> 1))) & 0x0FU;
+  const float db = fp16_bytes_to_float(block) *
+                   (0.5f + static_cast<float>(scale)) * 0.25f;
+  const uint32_t signs0 = iq3_sign_byte(static_cast<uint32_t>(q0 >> 9));
+  const uint32_t signs1 = iq3_sign_byte(static_cast<uint32_t>(q1 >> 9));
+  const uint64_t grid0 = IQ2_XS_GRID_MAGNITUDES[q0 & 511U];
+  const uint64_t grid1 = IQ2_XS_GRID_MAGNITUDES[q1 & 511U];
+  float sum0 = 0.0f;
+  float sum1 = 0.0f;
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const uint32_t magnitude0 =
+        static_cast<uint32_t>(grid0 >> (8 * j)) & 255U;
+    const uint32_t magnitude1 =
+        static_cast<uint32_t>(grid1 >> (8 * j)) & 255U;
+    union FloatBits {
+      float value;
+      uint32_t bits;
+    } signed0, signed1;
+    signed0.value = static_cast<float>(magnitude0);
+    signed1.value = static_cast<float>(magnitude1);
+    signed0.bits |= ((signs0 >> j) & 1U) << 31;
+    signed1.bits |= ((signs1 >> j) & 1U) << 31;
+    sum0 += signed0.value * x_values[j];
+    sum1 += signed1.value * x_values[8 + j];
+  }
+  return db * sum0 + db * sum1;
+}
+
 __device__ inline float iq3_xxs_group_dot(
     const uint8_t* __restrict__ block,
     int group8,
@@ -238,6 +413,37 @@ __device__ inline float iq3_xxs_group_dot(
     sum += ((signs & (1U << j)) != 0U ? -magnitude1 : magnitude1) * x_values[j];
     sum += ((signs & (1U << (j + 4))) != 0U ? -magnitude2 : magnitude2) *
            x_values[j + 4];
+  }
+  return db * sum;
+}
+
+__device__ inline float iq3_xxs_group_dot_signbit(
+    const uint8_t* __restrict__ block,
+    int group8,
+    const float* __restrict__ x_values) {
+  const uint8_t* __restrict__ qs = block + 2;
+  const int group32 = group8 >> 2;
+  const int local8 = group8 & 3;
+  const uint32_t aux = load_u32_le(qs + 64 + 4 * group32);
+  const float d = fp16_bytes_to_float(block);
+  const float db = d * (0.5f + static_cast<float>(aux >> 28)) * 0.5f;
+  const uint32_t signs = iq3_sign_byte((aux >> (7 * local8)) & 127U);
+  const uint32_t grid1 = IQ3_XXS_GRID[qs[group32 * 8 + 2 * local8]];
+  const uint32_t grid2 = IQ3_XXS_GRID[qs[group32 * 8 + 2 * local8 + 1]];
+
+  float sum = 0.0f;
+#pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    union FloatBits {
+      float value;
+      uint32_t bits;
+    } signed1, signed2;
+    signed1.value = static_cast<float>((grid1 >> (8 * j)) & 255U);
+    signed2.value = static_cast<float>((grid2 >> (8 * j)) & 255U);
+    signed1.bits |= ((signs >> j) & 1U) << 31;
+    signed2.bits |= ((signs >> (j + 4)) & 1U) << 31;
+    sum += signed1.value * x_values[j];
+    sum += signed2.value * x_values[j + 4];
   }
   return db * sum;
 }
@@ -355,6 +561,80 @@ __device__ inline void reduce_block_quad(
       value_c += wave_sums_c[i];
       value_d += wave_sums_d[i];
     }
+  }
+}
+
+__device__ inline float permlanex16_f32(float value) {
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_permlanex16(
+      data.bits, data.bits, 0x76543210U, 0xFEDCBA98U, false, false);
+  return data.value;
+}
+
+template <int DPP_CTRL>
+__device__ inline float dpp_move_f32(float value) {
+  union FloatBits {
+    float value;
+    int bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_mov_dpp(
+      data.bits, DPP_CTRL, 0xF, 0xF, true);
+  return data.value;
+}
+
+__device__ inline void reduce_block_quad_local64_dpp(
+    float& value_a,
+    float& value_b,
+    float& value_c,
+    float& value_d) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+
+  value_a += permlanex16_f32(value_a);
+  value_b += permlanex16_f32(value_b);
+  value_c += permlanex16_f32(value_c);
+  value_d += permlanex16_f32(value_d);
+#define IQ2_DPP_REDUCE_STEP(CTRL) \
+  value_a += dpp_move_f32<CTRL>(value_a); \
+  value_b += dpp_move_f32<CTRL>(value_b); \
+  value_c += dpp_move_f32<CTRL>(value_c); \
+  value_d += dpp_move_f32<CTRL>(value_d)
+  IQ2_DPP_REDUCE_STEP(0x108);
+  IQ2_DPP_REDUCE_STEP(0x104);
+  IQ2_DPP_REDUCE_STEP(0x102);
+  IQ2_DPP_REDUCE_STEP(0x101);
+#undef IQ2_DPP_REDUCE_STEP
+
+  __shared__ float wave_sums_a[2];
+  __shared__ float wave_sums_b[2];
+  __shared__ float wave_sums_c[2];
+  __shared__ float wave_sums_d[2];
+  if (lane == 0) {
+    wave_sums_a[wave] = value_a;
+    wave_sums_b[wave] = value_b;
+    wave_sums_c[wave] = value_c;
+    wave_sums_d[wave] = value_d;
+  }
+  __syncthreads();
+  if (tid == 0) {
+    value_a = 0.0f;
+    value_b = 0.0f;
+    value_c = 0.0f;
+    value_d = 0.0f;
+    value_a += wave_sums_a[0];
+    value_b += wave_sums_b[0];
+    value_c += wave_sums_c[0];
+    value_d += wave_sums_d[0];
+    value_a += wave_sums_a[1];
+    value_b += wave_sums_b[1];
+    value_c += wave_sums_c[1];
+    value_d += wave_sums_d[1];
   }
 }
 
@@ -624,6 +904,440 @@ __global__ void gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel(
 }
 
 __launch_bounds__(256, 2)
+__global__ void gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ gate_weight,
+    const uint8_t* __restrict__ up_weight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = 2 * static_cast<int>(blockIdx.x);
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const bool has_second = out_col + 1 < out_features;
+  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* __restrict__ gate_row0 =
+      valid_expert ? gate_weight + weight_offset : gate_weight;
+  const uint8_t* __restrict__ gate_row1 =
+      valid_expert && has_second ? gate_row0 + row_bytes : gate_weight;
+  const uint8_t* __restrict__ up_row0 =
+      valid_expert ? up_weight + weight_offset : up_weight;
+  const uint8_t* __restrict__ up_row1 =
+      valid_expert && has_second ? up_row0 + row_bytes : up_weight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+
+  float gate_acc0 = 0.0f;
+  float up_acc0 = 0.0f;
+  float gate_acc1 = 0.0f;
+  float up_acc1 = 0.0f;
+  if (valid_expert) {
+    const int pairs16 = in_features / 16;
+    for (int pair16 = threadIdx.x; pair16 < pairs16;
+         pair16 += blockDim.x) {
+      const int block_idx = pair16 >> 4;
+      const int group8_even = (pair16 & 15) * 2;
+      const int x_offset = pair16 * 16;
+      float x_values[16];
+#pragma unroll
+      for (int j = 0; j < 16; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const int64_t block_offset =
+          static_cast<int64_t>(block_idx) * IQ2_XS_BLOCK_BYTES;
+      gate_acc0 += iq2_xs_pair16_dot_grid64(
+          gate_row0 + block_offset, group8_even, x_values);
+      up_acc0 += iq2_xs_pair16_dot_grid64(
+          up_row0 + block_offset, group8_even, x_values);
+      if (has_second) {
+        gate_acc1 += iq2_xs_pair16_dot_grid64(
+            gate_row1 + block_offset, group8_even, x_values);
+        up_acc1 += iq2_xs_pair16_dot_grid64(
+            up_row1 + block_offset, group8_even, x_values);
+      }
+    }
+  }
+  reduce_block_quad(gate_acc0, up_acc0, gate_acc1, up_acc1);
+  if (threadIdx.x == 0) {
+    const float gate0 = bf16_bits_to_float(float_to_bf16_bits(gate_acc0));
+    const float up0 = bf16_bits_to_float(float_to_bf16_bits(up_acc0));
+    const float sig0 = 1.0f / (1.0f + expf(-gate0));
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(gate0 * sig0 * up0);
+    if (has_second) {
+      const float gate1 = bf16_bits_to_float(float_to_bf16_bits(gate_acc1));
+      const float up1 = bf16_bits_to_float(float_to_bf16_bits(up_acc1));
+      const float sig1 = 1.0f / (1.0f + expf(-gate1));
+      out[static_cast<int64_t>(row) * out_features + out_col + 1] =
+          float_to_bf16_bits(gate1 * sig1 * up1);
+    }
+  }
+}
+
+__launch_bounds__(256, 2)
+__global__ void gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ gate_weight,
+    const uint8_t* __restrict__ up_weight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = 2 * static_cast<int>(blockIdx.x);
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const bool has_second = out_col + 1 < out_features;
+  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* __restrict__ gate_row0 =
+      valid_expert ? gate_weight + weight_offset : gate_weight;
+  const uint8_t* __restrict__ gate_row1 =
+      valid_expert && has_second ? gate_row0 + row_bytes : gate_weight;
+  const uint8_t* __restrict__ up_row0 =
+      valid_expert ? up_weight + weight_offset : up_weight;
+  const uint8_t* __restrict__ up_row1 =
+      valid_expert && has_second ? up_row0 + row_bytes : up_weight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+
+  float gate_acc0 = 0.0f;
+  float up_acc0 = 0.0f;
+  float gate_acc1 = 0.0f;
+  float up_acc1 = 0.0f;
+  if (valid_expert) {
+    const int pairs16 = in_features / 16;
+    for (int pair16 = threadIdx.x; pair16 < pairs16;
+         pair16 += blockDim.x) {
+      const int block_idx = pair16 >> 4;
+      const int group8_even = (pair16 & 15) * 2;
+      const int x_offset = pair16 * 16;
+      float x_values[16];
+#pragma unroll
+      for (int j = 0; j < 16; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const int64_t block_offset =
+          static_cast<int64_t>(block_idx) * IQ2_XS_BLOCK_BYTES;
+      gate_acc0 += iq2_xs_pair16_dot_grid64(
+          gate_row0 + block_offset, group8_even, x_values);
+      up_acc0 += iq2_xs_pair16_dot_grid64(
+          up_row0 + block_offset, group8_even, x_values);
+      if (has_second) {
+        gate_acc1 += iq2_xs_pair16_dot_grid64(
+            gate_row1 + block_offset, group8_even, x_values);
+        up_acc1 += iq2_xs_pair16_dot_grid64(
+            up_row1 + block_offset, group8_even, x_values);
+      }
+    }
+  }
+  reduce_block_quad_local64_dpp(gate_acc0, up_acc0, gate_acc1, up_acc1);
+  if (threadIdx.x == 0) {
+    const float gate0 = bf16_bits_to_float(float_to_bf16_bits(gate_acc0));
+    const float up0 = bf16_bits_to_float(float_to_bf16_bits(up_acc0));
+    const float sig0 = 1.0f / (1.0f + expf(-gate0));
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(gate0 * sig0 * up0);
+    if (has_second) {
+      const float gate1 = bf16_bits_to_float(float_to_bf16_bits(gate_acc1));
+      const float up1 = bf16_bits_to_float(float_to_bf16_bits(up_acc1));
+      const float sig1 = 1.0f / (1.0f + expf(-gate1));
+      out[static_cast<int64_t>(row) * out_features + out_col + 1] =
+          float_to_bf16_bits(gate1 * sig1 * up1);
+    }
+  }
+}
+
+__launch_bounds__(32, 16)
+__global__ void gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  constexpr int IN_FEATURES = 1024;
+  constexpr int BLOCKS = IN_FEATURES / QK_K;
+  const int lane = threadIdx.x;
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  constexpr int ROW_BYTES = BLOCKS * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * ROW_BYTES;
+  const uint8_t* __restrict__ weight_row = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * ROW_BYTES
+      : qweight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * IN_FEATURES;
+
+  // Reconstruct the local128 baseline's four independent wave partitions in
+  // one wave. Each accumulator keeps the same 32-lane dot and shuffle tree;
+  // lane zero then adds wave totals in the original 0..3 order.
+  float partials[BLOCKS] = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (valid_expert) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      const int x_offset = block_idx * QK_K + lane * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const uint8_t* __restrict__ block =
+          weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+      partials[block_idx] = iq3_xxs_group_dot(block, lane, x_values);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      partials[block_idx] += __shfl_down(partials[block_idx], offset);
+    }
+  }
+  if (lane == 0) {
+    float total = 0.0f;
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      total += partials[block_idx];
+    }
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(total);
+  }
+}
+
+__launch_bounds__(32, 16)
+__global__ void gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  constexpr int IN_FEATURES = 1024;
+  constexpr int BLOCKS = IN_FEATURES / QK_K;
+  const int lane = threadIdx.x;
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  constexpr int ROW_BYTES = BLOCKS * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * ROW_BYTES;
+  const uint8_t* __restrict__ weight_row = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * ROW_BYTES
+      : qweight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * IN_FEATURES;
+
+  // Preserve the retained wave4 ownership and reduction boundaries; only the
+  // exact IQ3 sign construction differs from the fallback producer.
+  float partials[BLOCKS] = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (valid_expert) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      const int x_offset = block_idx * QK_K + lane * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const uint8_t* __restrict__ block =
+          weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+      partials[block_idx] = iq3_xxs_group_dot_signbit(block, lane, x_values);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      partials[block_idx] += __shfl_down(partials[block_idx], offset);
+    }
+  }
+  if (lane == 0) {
+    float total = 0.0f;
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      total += partials[block_idx];
+    }
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(total);
+  }
+}
+
+__launch_bounds__(320, 1)
+__global__ void gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const float* __restrict__ routing_weights,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int num_experts,
+    int out_features) {
+  constexpr int TOP_K = 10;
+  constexpr int IN_FEATURES = 1024;
+  constexpr int BLOCKS = IN_FEATURES / QK_K;
+  constexpr int ROW_BYTES = BLOCKS * IQ3_XXS_BLOCK_BYTES;
+  const int out_col = blockIdx.x;
+  const int route = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  if (out_col >= out_features) return;
+
+  const int64_t expert_id = selected[route];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * ROW_BYTES;
+  const uint8_t* __restrict__ weight_row = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * ROW_BYTES
+      : qweight;
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(route) * IN_FEATURES;
+
+  // Preserve the retained wave4 producer exactly inside each of ten route
+  // waves. Only the workgroup grouping and producer/reducer boundary change.
+  float partials[BLOCKS] = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (valid_expert) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      const int x_offset = block_idx * QK_K + lane * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const uint8_t* __restrict__ block =
+          weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+      partials[block_idx] = iq3_xxs_group_dot(block, lane, x_values);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      partials[block_idx] += __shfl_down(partials[block_idx], offset);
+    }
+  }
+
+  __shared__ uint16_t route_values[TOP_K];
+  if (lane == 0) {
+    float route_total = 0.0f;
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      route_total += partials[block_idx];
+    }
+    route_values[route] = float_to_bf16_bits(route_total);
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    // Replay weighted_sum_out_kernel from +0.0 in original route-slot order.
+    float total = 0.0f;
+#pragma unroll
+    for (int slot = 0; slot < TOP_K; ++slot) {
+      total = fmaf(
+          bf16_bits_to_float(route_values[slot]), routing_weights[slot], total);
+    }
+    out[out_col] = float_to_bf16_bits(total);
+  }
+}
+
+__launch_bounds__(320, 1)
+__global__ void gguf_iq3_xxs_weighted_selected_down_k1024_wave10_signbit_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const float* __restrict__ routing_weights,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int num_experts,
+    int out_features) {
+  constexpr int TOP_K = 10;
+  constexpr int IN_FEATURES = 1024;
+  constexpr int BLOCKS = IN_FEATURES / QK_K;
+  constexpr int ROW_BYTES = BLOCKS * IQ3_XXS_BLOCK_BYTES;
+  const int out_col = blockIdx.x;
+  const int route = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  if (out_col >= out_features) return;
+
+  const int64_t expert_id = selected[route];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * ROW_BYTES;
+  const uint8_t* __restrict__ weight_row = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * ROW_BYTES
+      : qweight;
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(route) * IN_FEATURES;
+
+  // Preserve the retained wave10 ownership and every arithmetic boundary;
+  // only the exact IQ3 sign construction differs from the control body.
+  float partials[BLOCKS] = {0.0f, 0.0f, 0.0f, 0.0f};
+  if (valid_expert) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      const int x_offset = block_idx * QK_K + lane * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const uint8_t* __restrict__ block =
+          weight_row + static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+      partials[block_idx] = iq3_xxs_group_dot_signbit(block, lane, x_values);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      partials[block_idx] += __shfl_down(partials[block_idx], offset);
+    }
+  }
+
+  __shared__ uint16_t route_values[TOP_K];
+  if (lane == 0) {
+    float route_total = 0.0f;
+#pragma unroll
+    for (int block_idx = 0; block_idx < BLOCKS; ++block_idx) {
+      route_total += partials[block_idx];
+    }
+    route_values[route] = float_to_bf16_bits(route_total);
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float total = 0.0f;
+#pragma unroll
+    for (int slot = 0; slot < TOP_K; ++slot) {
+      total = fmaf(
+          bf16_bits_to_float(route_values[slot]), routing_weights[slot], total);
+    }
+    out[out_col] = float_to_bf16_bits(total);
+  }
+}
+
+__launch_bounds__(256, 2)
 __global__ void gguf_iq3_xxs_selected_gemv_kernel(
     const uint16_t* __restrict__ x,
     const int64_t* __restrict__ selected,
@@ -674,6 +1388,82 @@ __global__ void gguf_iq3_xxs_selected_gemv_kernel(
   if (threadIdx.x == 0) {
     out[static_cast<int64_t>(row) * out_features + out_col] =
         float_to_bf16_bits(total);
+  }
+}
+
+template <int OUTPUT_TILE>
+__launch_bounds__(128, 2)
+__global__ void gguf_iq3_xxs_selected_gemv_output_tile_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  static_assert(OUTPUT_TILE == 2 || OUTPUT_TILE == 4, "IQ3 output tile must be 2 or 4");
+  const int out_col = OUTPUT_TILE * static_cast<int>(blockIdx.x);
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  const int valid_columns = min(OUTPUT_TILE, out_features - out_col);
+  const int row_bytes = (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ weight_base = valid_expert
+      ? qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes
+      : qweight;
+  const int x_row = selected_x_row(row, x_rows, rows);
+  const uint16_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+
+  float acc[OUTPUT_TILE];
+#pragma unroll
+  for (int column = 0; column < OUTPUT_TILE; ++column) {
+    acc[column] = 0.0f;
+  }
+  if (valid_expert) {
+    const int groups8 = in_features / 8;
+    for (int group8_linear = threadIdx.x; group8_linear < groups8;
+         group8_linear += blockDim.x) {
+      const int block_idx =
+          __builtin_amdgcn_readfirstlane(group8_linear >> 5);
+      const int group8 = group8_linear & 31;
+      const int x_offset = block_idx * QK_K + group8 * 8;
+      float x_values[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
+      }
+      const int64_t block_offset =
+          static_cast<int64_t>(block_idx) * IQ3_XXS_BLOCK_BYTES;
+#pragma unroll
+      for (int column = 0; column < OUTPUT_TILE; ++column) {
+        if (column < valid_columns) {
+          const uint8_t* __restrict__ weight_row =
+              weight_base + static_cast<int64_t>(column) * row_bytes;
+          acc[column] += iq3_xxs_group_dot(
+              weight_row + block_offset, group8, x_values);
+        }
+      }
+    }
+  }
+  if constexpr (OUTPUT_TILE == 2) {
+    reduce_block_pair(acc[0], acc[1]);
+  } else {
+    reduce_block_quad(acc[0], acc[1], acc[2], acc[3]);
+  }
+  if (threadIdx.x == 0) {
+#pragma unroll
+    for (int column = 0; column < OUTPUT_TILE; ++column) {
+      if (column < valid_columns) {
+        out[static_cast<int64_t>(row) * out_features + out_col + column] =
+            float_to_bf16_bits(acc[column]);
+      }
+    }
   }
 }
 
@@ -952,6 +1742,43 @@ int launch_selected(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int OUTPUT_TILE, typename Kernel>
+int launch_selected_output_tiled(
+    Kernel kernel,
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight == nullptr || out == nullptr ||
+      x_rows <= 0 || rows <= 0 || rows % x_rows != 0 || num_experts <= 0 ||
+      in_features <= 0 || in_features % QK_K != 0 || out_features <= 0 ||
+      threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + OUTPUT_TILE - 1) / OUTPUT_TILE),
+      static_cast<unsigned int>(rows));
+  kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_iq2_xs_selected_gemv_bf16_bf16_out(
@@ -1089,6 +1916,210 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || gate_weight == nullptr ||
+      up_weight == nullptr || out == nullptr || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows != 0 || num_experts <= 0 || in_features <= 0 ||
+      in_features % QK_K != 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 1) / 2),
+      static_cast<unsigned int>(rows));
+  gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      gate_weight,
+      up_weight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || gate_weight == nullptr ||
+      up_weight == nullptr || out == nullptr || x_rows != 1 || rows <= 0 ||
+      num_experts <= 0 || in_features <= 0 || in_features % QK_K != 0 ||
+      out_features <= 0 || threads != 64) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(64U);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 1) / 2),
+      static_cast<unsigned int>(rows));
+  gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      gate_weight,
+      up_weight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const float* routing_weights,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || routing_weights == nullptr ||
+      qweight == nullptr || out == nullptr || tokens != 1 || top_k != 10 ||
+      num_experts <= 0 || in_features != 1024 || out_features <= 0 ||
+      threads != 320) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(320U);
+  const dim3 grid(static_cast<unsigned int>(out_features));
+  gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      routing_weights,
+      qweight,
+      out,
+      static_cast<int>(num_experts),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_weighted_selected_down_k1024_wave10_signbit_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const float* routing_weights,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || routing_weights == nullptr ||
+      qweight == nullptr || out == nullptr || tokens != 1 || top_k != 10 ||
+      num_experts <= 0 || in_features != 1024 || out_features <= 0 ||
+      threads != 320) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(320U);
+  const dim3 grid(static_cast<unsigned int>(out_features));
+  gguf_iq3_xxs_weighted_selected_down_k1024_wave10_signbit_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      routing_weights,
+      qweight,
+      out,
+      static_cast<int>(num_experts),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight == nullptr ||
+      out == nullptr || x_rows <= 0 || rows <= 0 || rows % x_rows != 0 ||
+      num_experts <= 0 || in_features != 1024 || out_features <= 0 ||
+      threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32U);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
+  gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight == nullptr ||
+      out == nullptr || x_rows <= 0 || rows <= 0 || rows % x_rows != 0 ||
+      num_experts <= 0 || in_features != 1024 || out_features <= 0 ||
+      threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32U);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
+  gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel<<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     const uint16_t* x,
     const int64_t* selected,
@@ -1103,6 +2134,33 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_selected(
       gguf_iq3_xxs_selected_gemv_kernel,
+      x,
+      selected,
+      qweight,
+      out,
+      x_rows,
+      rows,
+      num_experts,
+      in_features,
+      out_features,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_gemv_tile4_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_output_tiled<4>(
+      gguf_iq3_xxs_selected_gemv_output_tile_kernel<4>,
       x,
       selected,
       qweight,

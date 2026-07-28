@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_split_reducer_gate_retained",
+  "status": "retained_default",
+  "revision": "46539dedb8b84e4f7511f3320fa740e2f41092a6",
+  "date": "2026-07-24",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "fuse the existing FP32 softplus head gate and RNE BF16 store into the retained exact global/SWA split reducers",
+    "dispatch_change_per_split_layer": -1,
+    "maximum_dispatch_change_per_token": -48,
+    "workspace_change_bytes": 0,
+    "default_selector": "hip_gfx1100.LAGUNA_SPLIT_GATE_FUSION=true",
+    "rollback": "LagunaGGUFResidentSession(use_split_gate_fusion=False)",
+    "unfused_fallback_retained": true,
+    "candidate_code_patch_sha256": "476a45e140cee0879e5117fc459117bcb3739501aa3188c8f46c50ba10f13b5b"
+  },
+  "actual_layer_screens": {
+    "protocol": "50 warmups, 15 counterbalanced repetitions, 200 launches per sample; inclusive split attention plus gate; actual layer query/gate/KV state",
+    "live_128": {
+      "raw_sha256": "eaa0b5caf5f327fdbefa13a4bbd613a96247e679b18eb552196c865be06c2a59",
+      "harness_sha256": "c996b3e5f3f017bbc322b09e347710fba5162af99965224864c04df5195a9ef2",
+      "rows": [
+        {"layer": 0, "type": "global", "event_delta_pct": -9.01945, "wall_delta_pct": -9.107569},
+        {"layer": 1, "type": "swa", "event_delta_pct": -6.006458, "wall_delta_pct": -6.13566},
+        {"layer": 44, "type": "global", "event_delta_pct": -10.049755, "wall_delta_pct": -9.600848},
+        {"layer": 47, "type": "swa", "event_delta_pct": -5.912761, "wall_delta_pct": -6.059935}
+      ]
+    },
+    "live_257": {
+      "raw_sha256": "644b628f816b35ac3c34a37dfd8b736975557990b474b55a23295f62bbd92a8a",
+      "harness_sha256": "4395c1a82c2235cc3b5bb0ae3f2ad89c5b7e98754ec2a24c4bfa30e4c543ed45",
+      "rows": [
+        {"layer": 0, "type": "global", "event_delta_pct": -5.404337, "wall_delta_pct": -5.425549},
+        {"layer": 1, "type": "swa_tile16", "event_delta_pct": -3.00097, "wall_delta_pct": -2.887398},
+        {"layer": 44, "type": "global", "event_delta_pct": -5.422006, "wall_delta_pct": -5.518954},
+        {"layer": 47, "type": "swa_tile16", "event_delta_pct": -3.128195, "wall_delta_pct": -3.002796}
+      ]
+    },
+    "all_context_f32_and_gated_bf16_outputs_bit_exact": true,
+    "all_event_and_wall_rows_improve": true
+  },
+  "category_gate": {
+    "protocol": "two complete 18-prompt/two-repetition pairs; process order control/candidate then candidate/control; bulk rows pooled by synchronized seconds; greedy h16/h32",
+    "prompts": 18,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "includes_category_heldouts": true,
+    "control": {
+      "h16_decode_tok_s": 51.88222504293254,
+      "h32_decode_tok_s": 51.49714369559839,
+      "h16_e2e_output_tok_s": 6.920529416878491,
+      "h32_e2e_output_tok_s": 12.19130925679297,
+      "prefill_tok_s": 42.98125822791096,
+      "ttft_median_seconds": 1.9349819765193388
+    },
+    "candidate": {
+      "h16_decode_tok_s": 52.229349856209645,
+      "h32_decode_tok_s": 51.82523832739064,
+      "h16_e2e_output_tok_s": 6.920958936756091,
+      "h32_e2e_output_tok_s": 12.200758843024486,
+      "prefill_tok_s": 42.943511912518595,
+      "ttft_median_seconds": 1.9352713574189693
+    },
+    "candidate_vs_control_pct": {
+      "h16_decode_tok_s": 0.6690630808332987,
+      "h32_decode_tok_s": 0.6371122905993287,
+      "h16_e2e_output_tok_s": 0.006206459820146115,
+      "h32_e2e_output_tok_s": 0.0775108401605884,
+      "prefill_tok_s": -0.0878204057969123,
+      "ttft_median_seconds": 0.014955224552060109
+    },
+    "all_category_decode_delta_pct": {
+      "code_h16_h32": [0.508531, 0.36994],
+      "general_en_h16_h32": [0.623255, 0.562337],
+      "general_ja_h16_h32": [0.832069, 0.949748],
+      "mixed_ja_en_h16_h32": [0.784533, 0.787025]
+    },
+    "train_aggregate_decode_delta_pct_h16_h32": [0.551316, 0.513236],
+    "heldout_aggregate_decode_delta_pct_h16_h32": [0.815975, 0.791542],
+    "worst_e2e_delta_pct": -0.144658,
+    "e2e_nonregression_guard_pct": -0.5,
+    "all_scope_and_category_decode_improve": true,
+    "all_scope_and_category_e2e_within_nonregression_guard": true,
+    "prefill_and_ttft_within_half_percent": true,
+    "ids_poolside_oracle_and_lifecycle_exact": true,
+    "raw_sha256": {
+      "control_forward": "7a933a3b95289f3381697ed03c9912fa7ec23c1193dc97907acfad1ffd08e8b8",
+      "candidate_forward": "bdc4f5ddea4753cf67c635ec1952b187d2516d5812c8aa6f4b68d9962bb87f42",
+      "candidate_reverse": "f20c9f352ad6bf9808e3f549445ec1ecbe3fc92a9906bddc75512e4137de857e",
+      "control_reverse": "e6be79ad6aefc0866ef973d3bcedc9ec9aa87407b912566bf0d903b5c68c75fc"
+    },
+    "comparison_harness_sha256": "330787998016904c07e688d010692085f1e2da455d4adcc1f95e1a92bda15638",
+    "comparison_sha256": "a04a4ad19704ffa71049a3b6ebeec791059e2a337e148f4d44fed639e327bd1d",
+    "raw_repo_state_disclosure": "candidate/control pair was run from the same uncommitted candidate patch; raw repo.tracked_clean=false and the exact code patch hash is recorded above"
+  },
+  "correctness": {
+    "artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p4-split-gate-correctness.json",
+    "full_logits_hidden_routed_kv_spans_reset_exact": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true,
+    "rocprof_expected_kernels": true
+  },
+  "rollup": {
+    "previous_retained_h32_decode_tok_s": 51.436,
+    "new_h32_decode_tok_s": 51.82523832739064,
+    "old_to_new_pct": 0.7567429959379535,
+    "new_ms_per_token": 19.295617970587905,
+    "matched_vulkan_h32_tok_s": 64.336,
+    "additional_speedup_required_pct": 24.14028777557435,
+    "vulkan_beating_complete": false
+  },
+  "decision": {
+    "action": "retain and promote on gfx1100",
+    "reason": "exact fused bodies independently improve every actual global/SWA layer event and wall row; every train/heldout category improves h16/h32 decode and all unaffected E2E/prefill/TTFT rows remain inside the declared nonregression guards",
+    "next": "adjudicate a genuinely new dynamic-command/AQL submission owner; do not restore D8 graph capture or D16 host packets"
+  }
+}

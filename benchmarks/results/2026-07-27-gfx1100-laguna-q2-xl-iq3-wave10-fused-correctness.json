@@ -1,0 +1,310 @@
+{
+  "actual_weight_transfer": {
+    "actual_layer_count": 45,
+    "actual_layers": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45
+    ],
+    "all_45_outputs_bf16_bit_exact": true,
+    "all_endpoint_event_and_wall_positive": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_wave10_fused_repository_actual.py",
+    "endpoint_rows": [
+      {
+        "bf16_bit_exact": true,
+        "candidate_fused_event_us": 30.800736745198567,
+        "candidate_fused_wall_us": 31.264422771831352,
+        "event_delta_pct": -8.511863198472225,
+        "layer_id": 1,
+        "mismatches": 0,
+        "retained_inclusive_event_us": 33.666372299194336,
+        "retained_inclusive_wall_us": 33.6836565596362,
+        "wall_delta_pct": -7.18221842548965,
+        "weight_name": "blk.1.ffn_down_exps.weight",
+        "weight_nbytes": 308281344
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_fused_event_us": 31.329549153645832,
+        "candidate_fused_wall_us": 31.651863052199285,
+        "event_delta_pct": -7.679680352186646,
+        "layer_id": 45,
+        "mismatches": 0,
+        "retained_inclusive_event_us": 33.935702641805015,
+        "retained_inclusive_wall_us": 33.86395672957102,
+        "wall_delta_pct": -6.532295369489615,
+        "weight_name": "blk.45.ffn_down_exps.weight",
+        "weight_nbytes": 308281344
+      }
+    ],
+    "harness_sha256": "2b03f4e5b2fd423ef58a7e7c932468a0b99b19bf196723d49db95a3b2649e0ce",
+    "library_path": "/home/lhl/.cache/hipengine/build/gguf_iq_gemv-a913e7f1e1f2a081/gguf_iq_gemv.so",
+    "library_sha256_at_measurement": "44c4c94a3bc85a9794d03d1fbe10ce6a73983909f4f51082a9186bcd2ca54adc",
+    "memory_stats": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 308375672,
+      "peak_allocations": 7,
+      "total_allocated_bytes": 13872754808,
+      "total_freed_bytes": 13872754808
+    },
+    "note": "This isolated repository primitive transfer is an admission precondition, not full-model/default throughput evidence.",
+    "protocol": {
+      "launches_per_sample": 300,
+      "order": "counterbalanced",
+      "repetitions": 15,
+      "timed_layers": [
+        1,
+        45
+      ],
+      "warmups": 50
+    },
+    "raw_sha256": "0f94865fbd8b34d1e3afe6323d846c8baf51528b7ff7a9ed0887d95cea79d5be",
+    "selected_experts": [
+      193,
+      7,
+      89,
+      221,
+      3,
+      127,
+      44,
+      255,
+      18,
+      166
+    ],
+    "stdout_sha256": "b6b2b3a1c53e8789ddfec1480820777c1ad60fda42d89ab9c84b22872fe7f38f",
+    "tracked_returned_to_zero": true
+  },
+  "arithmetic_contract": [
+    "Ten physical wave32 route owners preserve the retained K1024 wave4 IQ3 decode, four accumulators, shuffle trees, 0..3 add, and BF16 route rounding.",
+    "The ten exact BF16 route values occupy one 20-byte LDS tuple; after one barrier thread 0 starts from +0.0 and replays the registered slot-order F32 routing-weight fmaf chain.",
+    "The retained wave4 producer and registered weighted reducer remain unchanged, separately registered, and callable as the mandatory unfused fallback."
+  ],
+  "builder_sha256": "22a397e6825e203153a166e9b12c4819daed6ab4d5ee5b36d1112f8c9cc4b43b",
+  "cache_only_trace": {
+    "agent_info_sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "candidate_calls": 2,
+    "finite": true,
+    "harness_sha256": "6d70095eb7c5031f7c15fd2e20d730ab41ba6753ad57dad10862c104051dbc29",
+    "kernel_trace_path": "/tmp/laguna-iq3-wave10-fused-repository-trace/trace_kernel_trace.csv",
+    "kernel_trace_sha256": "2299c6cd104d0906a0cbd8fee3bc8fc7eb7d67ea4a009f7e0ff66b34272b805f",
+    "no_compiler_under_profiler": true,
+    "note": "The first 258.401-us dispatch is cold-residency diagnostic; the second 26.120-us row is the plausible-duration gate. Trace timings are not promotion evidence.",
+    "passed": true,
+    "prebuilt_exact_key": true,
+    "rows": [
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 88,
+        "duration_ns": 258401,
+        "grid_x": 983040,
+        "kernel_name": "(anonymous namespace)::gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 320
+      },
+      {
+        "allocated_lds_bytes": 512,
+        "allocated_sgpr": 128,
+        "allocated_vgpr": 88,
+        "duration_ns": 26120,
+        "grid_x": 983040,
+        "kernel_name": "(anonymous namespace)::gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int)",
+        "scratch_bytes": 0,
+        "workgroup_x": 320
+      }
+    ],
+    "stderr_sha256": "1f54cf2cf272cad292c4027dca8a8f2f98b8c55c0659f461b8eef85753c6602a",
+    "stdout_sha256": "6caf8f67ce7f172e8f3e14f15045a81f1031146015b4a940b20b107381f1291a",
+    "summary_sha256": "2091440319d1cc8b118b6aea75f9628fd32f3a79e9863e3d2dd4600ca703d6a3"
+  },
+  "codegen": {
+    "all_frozen_ceilings_pass": true,
+    "allocated_lds_bytes": 512,
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 88,
+    "barriers": 1,
+    "ds_bpermute": 20,
+    "fatbin_sha256": "8284fb5c99adc9b5e43ed2be3738d094e7d776367d9e5e4410f4f32e60767a71",
+    "global_stores": 1,
+    "group_segment_fixed_size": 20,
+    "hsaco_sha256": "297f52c4134dcd3d84022fda0df3169f27290e754fe33cddae8a1cc86da0bf5d",
+    "isolated_isa_sha256": "492f70bcce96df95e589637c8559710587d946d49ab48e1a8321f5e721157651",
+    "logical_sgpr": 26,
+    "logical_vgpr": 83,
+    "max_flat_workgroup_size": 320,
+    "objdump_sha256": "b43eefdbaa9a54583d44294fac712b2a5c3736d969d414083f83a9aecdc69581",
+    "private_segment_fixed_size": 0,
+    "readobj_sha256": "5581b0703d4d29bc9c448e62d1e49e21eea4da2b622972490ea47f14e7443a3a",
+    "scratch_bytes": 0,
+    "sgpr_spills": 0,
+    "static_instructions": 495,
+    "summary_sha256": "d025d65bfe31a49a60c1fc4489d1452ae0b9b4a85e446c27b4a614ae6dd9a730",
+    "text_bytes": 2860,
+    "vgpr_spills": 0,
+    "wavefront_size": 32
+  },
+  "cpu_reference_gate": {
+    "candidate_control_mismatches": 0,
+    "harness_sha256": "3dcaf55f637436c4ed8348c5f7357fccd2d1c41b83b005035f2d54ac78153916",
+    "kl_max": 3.2134952288885384e-07,
+    "kl_mean": 3.2134952288885384e-07,
+    "passed": true,
+    "shape": [
+      10,
+      23,
+      1024
+    ],
+    "stdout_sha256": "b6a10f893bea9ea6983e297b24c17cf29709cced08a0166c5dd76e6457b3a719",
+    "top1_agreement": 1.0
+  },
+  "date": "2026-07-27",
+  "design": {
+    "artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-design.json",
+    "artifact_sha256": "43404d1a98826f6c8981835e8ee8807f710dee717746278d27930d48682c9040",
+    "commit": "eccd996952c5c543bf6ea10f53a249f863f88322"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100",
+    "wavefront_size": 32
+  },
+  "implementation": {
+    "allocation_or_workspace_change": false,
+    "default_changed": false,
+    "fallback": "selected_gemv_decode_k1024_wave4_bf16_bf16_out followed by registered weighted_sum_out_bf16_f32w",
+    "four_axis_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq3_xxs",
+      "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
+    ],
+    "gfx1151_alias": false,
+    "kernel": "gguf_iq3_xxs_weighted_selected_down_k1024_wave10_kernel",
+    "runtime_capability": false,
+    "runtime_owner": false,
+    "scope": "separately registered gfx1100 primitive only",
+    "source_files": {
+      "gfx1151_exclusion": {
+        "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "sha256": "95898b915731d6587d8fbcd97ea8e810866fd8e11046d2c4b4c065fa244364bf"
+      },
+      "hip": {
+        "path": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip",
+        "sha256": "b54a46cf986d71ea612953413ed15385e5ed9ba54b09d44671576bb6faeaebc9"
+      },
+      "package": {
+        "path": "hipengine/kernels/hip_gfx1100/quant/__init__.py",
+        "sha256": "a282d5c9e6c35cc71025dd23cb1000a48e7be9c9ba9e3fa020339f92b9b00d97"
+      },
+      "test": {
+        "path": "tests/test_laguna_iq3_wave10_fused.py",
+        "sha256": "ac5c5f5d399ca4009358c8bcafd042becb423d493ec270682c1e9f0dee22df56"
+      },
+      "wrapper": {
+        "path": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.py",
+        "sha256": "9a8236517de22693de6f9dbc8f8be102acc0b6ba6c1ae5f20d8a3d6bafdda955"
+      }
+    },
+    "symbol": "hipengine_gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out",
+    "wrapper": "gguf_iq3_xxs_weighted_selected_down_k1024_wave10_bf16_bf16_out"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_wave10_fused_correctness",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "iq3_layers": 45,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "shape": [
+      256,
+      3072,
+      1024
+    ],
+    "top_k": 10
+  },
+  "next_gate": {
+    "primitive_commit_required_before_runtime_owner": true,
+    "required": "16-transition full state plus cache-only 45-candidate/2-unchanged-reducer/678-model-kernel trace before clean measurement",
+    "runtime_owner": "separate explicit/default-off gfx1100 c=1 unit"
+  },
+  "performance_claim": false,
+  "red_green": {
+    "coverage": [
+      "strict non-null, tokens=1, top_k=10, num_experts>0, K1024, N>0, and local320 validation before library load",
+      "distinct package export/four-axis key, retained fallback identity, and gfx1151/cuda/cpu exclusion",
+      "all 128 selectors and 256 grid entries, distinct/repeated/invalid experts, routing signed-zero and finite edges, and BF16 signed-zero/subnormal/finite edges",
+      "candidate versus retained wave4 plus registered weighted reducer byte identity and independent CPU KL/top-1"
+    ],
+    "green_result": "7 passed",
+    "green_stdout_sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a",
+    "red_result": "7 failed solely on absent wrapper/key/source/exclusion",
+    "red_stdout_sha256": "776b82e21128e57434856929f2916b1e3af83fb52d3d5c83e3635a765f05ec67"
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s": 61.99155148671624,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "reason": "primitive correctness/admission only; no runtime/default/full-model performance claim"
+  },
+  "schema": 1,
+  "status": "primitive_admitted_runtime_unselected",
+  "validation": {
+    "adjacent_result": "57 passed after excluding only the unchanged stale gfx1151 resolver test",
+    "adjacent_stdout_sha256": "5603b3bdbd979d86e8c62be43291039331c1f18d392c470cba56f4eba489b84d",
+    "cpu_registry_build_result": "25 passed",
+    "cpu_registry_build_stdout_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "lineage_note": "Only already-catalogued unrelated parent drift; no drift affects this in-tree IQ3 body.",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_stdout_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "unfiltered_result": "57 passed, one unchanged stale resolver test failed because it omits three required keyword arguments",
+    "unfiltered_stdout_sha256": "d700beac5ecd2b1c2dd3449ebb9577826409352f7de901bba38933ad01b4fa00"
+  }
+}

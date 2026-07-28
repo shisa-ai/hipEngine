@@ -1,0 +1,75 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 50.254,
+    "canonical_ms_per_token": 19.899,
+    "name": "P0 exact IQ3 wave4 producer plus slot-order reducer",
+    "revision": "f852b7225"
+  },
+  "candidate": {
+    "description": "one local32 wave owns four adjacent K1024 raw-IQ3 outputs, shares BF16 activation loads, accumulates routes in FP32, applies routing weights before the final BF16 store",
+    "dispatches_per_sparse_layer": 1,
+    "external_reference": "llama.cpp Vulkan MMVQ-off row4 ownership reviewed in docs/LAGUNA-decode.md section 4.7",
+    "persistent_weight_copy": false,
+    "scratch_kernel_body": false
+  },
+  "checks": {
+    "actual_weight_inclusive_event_win": false,
+    "actual_weight_inclusive_wall_win": false,
+    "full_18_prompt_quality_gate_required": false,
+    "primitive_cpu_source_quality_pass": true,
+    "selection_pass": false,
+    "synthetic_kl_max_le_0_05": true,
+    "synthetic_top1_ge_0_90": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject and remove before runtime integration",
+    "next": "close the IQ3-only P1 ladder and proceed to P2 attention; raw-Q5/raw-IQ2 row4 remain separately ranked later work",
+    "reason": "The route-serial row4/F32 association is dramatically slower than retained route-parallel wave4: actual layer-1/layer-45 producer-plus-reducer HIP-event time regresses 146.14%/93.00% and synchronized wall regresses 140.04%/83.37%. The frozen family-specific inclusive-win precondition fails."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p1_iq3_row4_f32_selection_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "counterbalanced_repetitions": 15,
+    "iterations_per_sample": 300,
+    "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+    "shape": [256, 3072, 1024],
+    "warmups_per_mode": 50
+  },
+  "provenance": {
+    "candidate_source_diff_sha256": "de1d6e03ed76803e3737779c1903ec277bc5f16fe68beab2b16a2b0dd94599f4",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_p1_row4_f32.py",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "harness_sha256": "bb93735dfecb6b6cc5d7bc0f08a5ec0426b3968bf77ce64089642fb715aed679",
+    "raw_sha256": "3625473f981b705cf2a73e89d2238d1af842bd1ee7607db3b670e9df9b198fea",
+    "red_sha256": "8345e2f18475e01cd23d72bd356efe7697fc628697b6948b151518eec62c9378"
+  },
+  "rows": [
+    {
+      "event_delta_pct": 146.1374296734165,
+      "event_us": {"row4_f32": 82.88134892781575, "wave4_exact": 33.67279370625814},
+      "layer_id": 1,
+      "quality": {"bf16_equal": false, "kl_max": 1.0942117357536725e-07, "max_abs": 0.001953125, "top1_agreement": 1.0},
+      "wall_delta_pct": 140.03856507060863,
+      "wall_us": {"row4_f32": 81.18732327905794, "wave4_exact": 33.82261648463706}
+    },
+    {
+      "event_delta_pct": 92.99585834459742,
+      "event_us": {"row4_f32": 61.07982635498047, "wave4_exact": 31.648257573445637},
+      "layer_id": 45,
+      "quality": {"bf16_equal": false, "kl_max": 1.643604937764982e-07, "max_abs": 0.00390625, "top1_agreement": 1.0},
+      "wall_delta_pct": 83.3691488061169,
+      "wall_us": {"row4_f32": 58.33379652661582, "wave4_exact": 31.812219725300867}
+    }
+  ]
+}

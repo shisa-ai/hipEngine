@@ -1,0 +1,233 @@
+{
+  "admission_plan": {
+    "actual_model": [
+      "all 12 actual global layers at live70/126: F32 context and BF16 gated outputs byte exact",
+      "one frozen layer0/44 50-warmup/15-counterbalanced/500-window inclusive event+wall screen; every row must improve",
+      "tracked ownership returns to baseline; one measurement process and no favorable rerun"
+    ],
+    "codegen_and_trace": [
+      "Clang22 local256/eight-wave, five barriers, dynamic LDS16928 at capacity4096, private/spills/scratch0, allocated VGPR<=40",
+      "non-profiled require-cached warmup then cache-only rocprof with distinct symbol, 12 calls/token, 666 model kernels/token, exact IDs/finite/lifecycle/no compiler"
+    ],
+    "promotion": [
+      "both clean process orders at short/512/1K/3968; every eligible order improves inclusive family and kernel sum, span<=+0.5%, child>=-0.5%",
+      "short topology exactly 12 candidate/zero scalar/zero standalone gate/666 model kernels; long topology unchanged 678",
+      "only then both complete 18-prompt natural-completion orders; aggregate and every train/heldout category h16/h32 decode positive, E2E>=-0.5%, prefill>=-0.5%, TTFT<=+0.5%",
+      "any failure removes runtime ownership; no third order, rerun, pooled waiver, or prompt-conditioned branch"
+    ],
+    "red_green": [
+      "dedicated HIP body/C wrapper/package/four-axis key and explicit gfx1151/cuda/CPU absence",
+      "mechanical source identity against admitted one-page body plus only the frozen D15 epilogue",
+      "strict non-null gate/gated_out and production-shape validation before build/launch"
+    ],
+    "runtime_correctness": [
+      "separate false/default-off owner commit after primitive admission",
+      "shared-weight bulk prefill, all 48 hidden/47 routed boundaries, 16 transitions crossing live127, active K/V and every span field, reset/re-prefill, KL0/top-1 100%",
+      "live127 test and trace prove zero candidate and unchanged split-exact ownership"
+    ],
+    "synthetic_and_cpu": [
+      "live 1/70/126/256, live257 untouched sentinel, permuted/nonzero pages, causal/future/eviction",
+      "signed-zero/subnormal/finite and non-finite gate/context edges",
+      "F32 context and BF16 gated bytes exact to one-page plus registered softplus fallback",
+      "independent CPU KL<=0.05 and top-1>=90%"
+    ]
+  },
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "canonical_ms_per_token": 15.805224168463194,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "post_single_page_rejection_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-rejected.json",
+    "post_single_page_rejection_artifact_sha256": "e54c1fa2bb4b396d14dd1b6be77823a79e2821b2585d6985334a879d5e9ee8a3",
+    "remaining_gap_pct": 1.8144711534139324,
+    "retained_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-iq3-wave10-fused-retained.json",
+    "retained_artifact_sha256": "f1fd3c7d9f8d881d5699e1a77bfdf6fcbedb0322f2186b54d27642bf61a96ee2"
+  },
+  "builder_sha256": "030625cf756c21c0e006ca29b66341229bca72ba9a0c66457935295f53b88ff9",
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "default_changed": false,
+    "implemented": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit design only, then admit the primitive under RED/GREEN before any runtime owner.",
+    "performance_claim": false,
+    "runtime_owner_present": false,
+    "selected": true
+  },
+  "fallback": {
+    "required_unfused_chain": [
+      "laguna_attention_decode/bf16/global_context_single_page_spans",
+      "attention_gate/f32/softplus_broadcast_bf16_out"
+    ],
+    "retained_runtime_controls": [
+      "laguna_attention_decode/bf16/global_context_spans plus registered softplus gate below live127",
+      "laguna_attention_decode/bf16/global_context_split_exact_gated_spans at live>=127",
+      "rows/prefill, gfx1151, cuda, CPU, exact-key misses, and explicit disable"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_global_single_page_gated_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "only already-catalogued unrelated external drift",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "shape": {
+      "block_size": 256,
+      "context_capacity": 4096,
+      "global_layers": 12,
+      "head_dim": 128,
+      "kv_heads": 8,
+      "query_heads": 48
+    }
+  },
+  "residual_ranking": {
+    "artifact_path": "/tmp/laguna-post-single-page-residual-rank.json",
+    "artifact_sha256": "91d2ee214124e58b6b9d1f74dc401751ae6a44239f2f21c611ab1cb694a289da",
+    "builder_path": "/tmp/rank_laguna_post_single_page.py",
+    "builder_sha256": "a019186a5e120dfc68f3b2b7e0c9ed999e6204eb03c23fe99535b692d463fc04",
+    "current_short_orders": {
+      "a": {
+        "control_inclusive_ms": 0.5557641428571428,
+        "delta_pct": -9.888585831245456,
+        "one_page_plus_separate_gate_ms": 0.5008069285714286
+      },
+      "b": {
+        "control_inclusive_ms": 0.5663532142857143,
+        "delta_pct": -11.212134779595518,
+        "one_page_plus_separate_gate_ms": 0.5028529285714286
+      }
+    },
+    "d15_generic_gate_composition": {
+      "artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-rejected.json",
+      "artifact_sha256": "c5fc52e8d707cb2e188dd017ebea5019484108bbadf615b60e35cf08717d8e5a",
+      "body_delta_pct": -1.8483632026433328,
+      "body_ratio": 0.9815163679735667,
+      "bundle_rejected_for_category_gate": true,
+      "clean_summary": "/tmp/laguna-q2-xl-d15-clean-profile-summary.json",
+      "clean_summary_sha256": "d123efa70d71c982b9626eeddede2eaf5e91f7de2d32d29b5b224520e2e1306b",
+      "control_global_body_ms": 0.5411351428571428,
+      "control_global_inclusive_ms": 0.5893892857142857,
+      "correctness_passed": true,
+      "fused_global_body_ms": 0.531133,
+      "inclusive_delta_pct": -9.884177932363414,
+      "mechanical_passed": true
+    },
+    "interpretation": "Current one-page plus separate gate already improves the inclusive global family 9.889%/11.212%. If the proven in-workgroup gate epilogue adds zero incremental duration, the smaller order saves 0.095009 ms/token and models h32 63.653 tok/s (+0.605%). This is a ranking ceiling, not a performance claim.",
+    "zero_increment_gate_epilogue_ceiling": {
+      "canonical_baseline_ms": 15.805224168463194,
+      "canonical_baseline_tok_s": 63.27021934907704,
+      "interpretation": "Planning ceiling only: assumes the exact D15 gate epilogue adds zero duration to the admitted one-page body; no new body or full-model throughput has been measured.",
+      "matched_vulkan_h32_tok_s": 64.41823922786776,
+      "minimum_saving_ms": 0.09500935714285708,
+      "modeled_gain_pct": 0.6047616680224799,
+      "modeled_h32_tok_s": 63.652853382974,
+      "orders": {
+        "a": {
+          "control_scalar_plus_gate_ms": 0.5557641428571428,
+          "delta_pct": -17.09526574608087,
+          "modeled_fused_one_page_ms": 0.46075478571428574,
+          "saving_ms": 0.09500935714285708
+        },
+        "b": {
+          "control_scalar_plus_gate_ms": 0.5663532142857143,
+          "delta_pct": -18.35362712189327,
+          "modeled_fused_one_page_ms": 0.4624068571428571,
+          "saving_ms": 0.10394635714285716
+        }
+      },
+      "remaining_gap_after_model_pct": 1.2024376036824824
+    }
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "reason": "design selection only; no new kernel, runtime owner, default, or full-model throughput measurement"
+  },
+  "schema": 1,
+  "selection": {
+    "allocation_workspace_delta_bytes": 0,
+    "body_identity_contract": {
+      "allowed_changes": [
+        "add non-null F32 gate and BF16 gated_out pointers",
+        "bind context_value to the existing final F32 accumulator",
+        "store unchanged F32 context",
+        "append exactly D15's context_value * laguna_softplus_f32(gate[q_head]) then RNE BF16 store"
+      ],
+      "base": "laguna_global_attention_decode_single_page_bf16_kernel",
+      "forbidden_changes": [
+        "score/value arithmetic or reduction association",
+        "barrier count or local256/eight-wave ownership",
+        "KVLiveSpans fields, visibility, eviction, position, or live-count semantics",
+        "page-zero K/V translations or one-page guard",
+        "dynamic LDS layout/size"
+      ]
+    },
+    "description": "Compose the admitted one-page physical-slot contraction with D15's bit-exact F32 softplus/multiply/RNE-BF16 epilogue inside the same local256 query-head workgroup. Preserve both F32 context and BF16 gated context.",
+    "future_runtime_eligibility": "full-attention c=1 with live_count<=126, only after split selection is false",
+    "key": [
+      "hip_gfx1100",
+      "laguna_attention_decode+attention_gate",
+      "bf16",
+      "global_single_page_softplus_bf16_spans"
+    ],
+    "launch_topology": {
+      "candidate_short": {
+        "gated_single_page": 12,
+        "model_kernels_per_token": 666,
+        "scalar_global": 0,
+        "softplus_gate": 0
+      },
+      "control_short": {
+        "model_kernels_per_token": 678,
+        "scalar_global": 12,
+        "softplus_gate": 12
+      },
+      "launch_delta_per_short_token": -12,
+      "live_at_or_above_127": "unchanged retained 12 score + 12 gated-reducer split calls; candidate absent"
+    },
+    "materially_distinct_from_rejections": [
+      "not the rejected standalone one-page owner: removes the separate gate launch and context reread",
+      "not the rejected generic D15/D17 bundle: global-only, one-page address-specialized, and does not restore head/KV, SWA token4/token8, or all-or-none selectors",
+      "not D15's generic global body: both K and V physical slots stay page-zero direct"
+    ],
+    "name": "exact gated single-page global attention",
+    "persistent_weight_copy_delta_bytes": 0,
+    "primitive_validity": "full-attention c=1 with 0<live_count<=256 and production 48/8/128/block256 shape"
+  },
+  "source_composition": {
+    "admitted_one_page": {
+      "artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-single-page-correctness.json",
+      "artifact_sha256": "7fac097e048b9e8eaacd3540086371ca46389d9e8873824c9f21304af84d3f3c",
+      "commit": "b9a4233168bba2a81e2f9382aefa2afde9cb4697",
+      "current_source": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+      "current_source_sha256": "d0fb4012aaa7c8d7ecf570640d3e361841bbb21cb035d877e17df2166cc46bc0"
+    },
+    "exact_gate_epilogue": {
+      "all_context_mechanical_gate_passed": true,
+      "bundle_category_gate_failed": true,
+      "correctness_passed": true,
+      "design_commit": "a03128f65194b8b828776c940f9e628079796a5d",
+      "historical_source_path": "/tmp/laguna_kv_attention_d15.hip",
+      "historical_source_sha256": "95b65e66966d0c0b94ff77a42d4a465a0ae0b14b71bbd963be82db47eb114db5",
+      "reason_source_is_reused_but_owner_is_not": "The exact epilogue is a proven primitive composition; the rejected generic all-global/SWA/head bundle and selector remain removed.",
+      "rejection_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d15-attention-boundaries-rejected.json",
+      "rejection_artifact_sha256": "c5fc52e8d707cb2e188dd017ebea5019484108bbadf615b60e35cf08717d8e5a",
+      "source_commit": "7a9dd1f609db181ec6f08a270f4fb8cd267ecd38"
+    }
+  },
+  "source_revision": "24b8e83c866ffea0655917db20a070d7dbc61ced",
+  "status": "selected_design_only_not_implemented"
+}

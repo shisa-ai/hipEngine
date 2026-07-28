@@ -1,0 +1,264 @@
+{
+  "base_revision": "ff4caa91d1e8039b56fe1a908ca46e852a068a1f",
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_ms_per_token": 15.805224168463194,
+    "immutable_rank": {
+      "path": "/tmp/laguna-post-wave0-residual-rank.txt",
+      "sha256": "e3eac267b8bcd6e4253f013f591f1b0af19ce9926f11bb8798b23bcc3aa2312d",
+      "stable_token_windows": 28,
+      "trace_roots": [
+        "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-a",
+        "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-b"
+      ],
+      "trace_sha256": [
+        "54964fbb65dacdeb2e2e96b85e696ccab648bacd6a663ae20e83247f3118c60d",
+        "216d9226032da2365efd6d24e53de93dabda4b9d4436d597865ebaf3d52ac2f8"
+      ]
+    },
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "profiled_dispatches_per_token": 683,
+    "runtime_copies_per_token": 5,
+    "runtime_copy_breakdown": {
+      "d2h_argmax_id_i64": 1,
+      "d2h_argmax_value_f32": 1,
+      "h2d_kv_row_position_i64": 1,
+      "h2d_scratch_position_i64": 1,
+      "h2d_token_i64": 1
+    },
+    "trace_evidence": {
+      "artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-router-projection-wave0-tree-runtime-correctness.json",
+      "artifact_sha256": "8bf526f8178bea066a978f70a40828ba333e7190e072cfe105259cf58c94fe19",
+      "description": "The admitted then rejected router-projection owner records a first-candidate stride of 683 profiler dispatches: five runtime copies plus exactly 678 model kernels/token."
+    }
+  },
+  "candidate_abi": {
+    "allocation_delta": {
+      "bytes": -8,
+      "count": -2
+    },
+    "backend_or_quant_branch_added": false,
+    "bulk_and_reset": "prepare_rows still publishes the consecutive chunk start into row_positions; reset still writes -1 and clears live metadata",
+    "c1_publication": "one synchronous 16-byte H2D copy of (token_id, next_position), followed by token-serial KV state validation with no second position copy",
+    "capability_or_default_added_in_design": false,
+    "kernel_registry_key_added": false,
+    "kv_ownership": "resident Laguna session borrows the scratch position view for every KVLiveSpans.row_positions pointer; standalone LagunaKVCache callers retain an owned 8-byte row-position allocation",
+    "lifecycle": "KV cache closes before the borrowing scratch owner; borrowed views are never freed independently and standalone KV ownership remains idempotent",
+    "modeled_model_kernels_per_token": 678,
+    "modeled_profiled_dispatches_per_token": 681,
+    "modeled_runtime_copies_per_token": 3,
+    "runtime_copy_delta_per_token": -2,
+    "scope": "Laguna resident c=1 control publication only; no kernel math, weight, workspace, row/prefill, or sampling-read change",
+    "scratch_owner": "one 16-byte DeviceBuffer",
+    "unfused_fallback": "reads the same scratch.position view at +8 and remains numerically/semantically unchanged",
+    "views": {
+      "position": {
+        "dtype": "int64",
+        "nbytes": 8,
+        "offset_bytes": 8
+      },
+      "token_id": {
+        "dtype": "int64",
+        "nbytes": 8,
+        "offset_bytes": 0
+      }
+    }
+  },
+  "current_ownership": {
+    "c1_allocations": [
+      "LagunaEagerScratch.token_id: owned 8-byte allocation",
+      "LagunaEagerScratch.position: owned 8-byte allocation",
+      "LagunaKVCache._row_position: owned 8-byte allocation"
+    ],
+    "default_fused_head_kv_reads": "KVLiveSpans.row_positions; scratch.position is consumed only by the registered unfused fallback",
+    "forward_publication": [
+      "copy token to scratch.token_id",
+      "copy position to scratch.position for the registered unfused head/RoPE fallback",
+      "LagunaKVCache.prepare_position copies the same position to KVLiveSpans.row_positions"
+    ],
+    "rows_prefill": "separate LagunaRowsScratch token/position arrays plus one KV consecutive-chunk start scalar"
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "select exact shared Laguna c=1 control publication for runtime admission",
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "completion_claim": false,
+    "default_changed": false,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "performance_claim": false,
+    "required_relative_gain_to_beat_vulkan_pct": 1.8144711534139324,
+    "runtime_owner_added": false
+  },
+  "direct_screen": {
+    "candidate": {
+      "bytes_per_token": 16,
+      "copies_per_token": 1,
+      "median_us_per_token": 22.640144499999998,
+      "position_alias_offset_bytes": 8,
+      "samples_us_per_token": [
+        22.640144499999998,
+        22.969673999999998,
+        22.668774499999998,
+        22.68846,
+        22.6714795,
+        22.5919035,
+        22.599109000000002,
+        22.6485245,
+        22.626309000000003,
+        22.702595000000002,
+        22.8951925,
+        22.5128275,
+        22.6359295,
+        22.623853999999998,
+        22.5046325
+      ]
+    },
+    "candidate_alias_exact": true,
+    "candidate_delta_pct": -66.20759464537083,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_control_publication.py",
+    "control": {
+      "bytes_per_token": 24,
+      "copies_per_token": 3,
+      "median_us_per_token": 66.99772999999999,
+      "samples_us_per_token": [
+        66.9717045,
+        67.01744000000001,
+        66.99772999999999,
+        66.9628095,
+        66.76112699999999,
+        67.0363905,
+        66.789192,
+        67.306459,
+        67.24723350000001,
+        67.07891599999999,
+        66.5451085,
+        66.6435095,
+        66.735666,
+        75.2784295,
+        69.507
+      ]
+    },
+    "counterbalanced_repetitions": 15,
+    "harness_path": "/tmp/bench_laguna_control_publication.py",
+    "harness_sha256": "3c2892bd6865272b6136ca65f2aaebcc2ab3bd001b5eb898230683991d5a85e7",
+    "limitation": "This is a planning screen of the exact host operation count and ownership payload, not a full-model or product-throughput measurement.",
+    "median_saving_us_per_token": 44.35758549999999,
+    "performance_claim": false,
+    "raw_path": "/tmp/laguna-control-publication-screen.json",
+    "raw_sha256": "0ef7127f5cc5296e8e0a342cc7887f1902e0e34750dddce52825cd8769f87c04",
+    "readback_exact": true,
+    "scope": "exact synchronous host publication contract only; excludes model kernels and the two unchanged D2H sampling reads",
+    "stdout_path": "/tmp/laguna-control-publication-screen.stdout",
+    "stdout_sha256": "0ef7127f5cc5296e8e0a342cc7887f1902e0e34750dddce52825cd8769f87c04",
+    "tokens_per_sample": 2000,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40,
+      "peak_allocations": 4,
+      "total_allocated_bytes": 40,
+      "total_freed_bytes": 40
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true,
+    "warmups": 100
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "runtime": "HIP 7.2 synchronous hipMemcpy control publication",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_control_publication_design",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "note": "The candidate is a net-new in-tree runtime ownership change and ports no external kernel body.",
+    "result": "pass; only already-catalogued unrelated external drift remains",
+    "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "modeled_ceiling": {
+    "basis": "subtract only the measured 44.3575855-us exact control-publication saving from the canonical 15.805224-ms/token boundary",
+    "canonical_ms_per_token": 15.805224168463194,
+    "modeled_h32_decode_tok_s": 63.448287867683376,
+    "modeled_improvement_pct": 0.2814412853919368,
+    "modeled_ms_per_token": 15.760866582963194,
+    "modeled_saving_ms_per_token": 0.04435758549999999,
+    "modeled_wall_reduction_pct": 0.28065141643804387,
+    "note": "Planning ceiling only; not measured full-model throughput and not a benchmark-rollup claim.",
+    "remaining_to_vulkan_pct": 1.5287273979829763
+  },
+  "next_action": "Commit selection evidence/docs only. Then add a separate RED/GREEN default-off runtime/memory admission with fake-runtime ownership tests, shared-weight full state, and cache-only 681-dispatch tracing before clean/category timing.",
+  "production_scope": {
+    "benchmark_rollup_changed": false,
+    "canonical_topline_changed": false,
+    "default_changed": false,
+    "kernel_body_or_key_added": false,
+    "production_files_changed": false,
+    "runtime_owner_added": false,
+    "source_hashes": {
+      "hipengine/runtime/laguna_gguf_runner.py": "41c44b980a0ae7d4f2e90aba49cee32d9202c304f67fd930c67123af3e53b231",
+      "hipengine/runtime/laguna_kv.py": "2e1f37a2adf1264ca1658ac7a55580d5e0699ce42da3c802b73ac07da0e45c42"
+    }
+  },
+  "residual_selection": {
+    "closed_premises_not_reopened": [
+      "Q5/Q6/IQ2/IQ3/IQ4 arithmetic, geometry, and ownership variants",
+      "global/SWA attention and reducer variants",
+      "router projection, selector, and persistent/composite ownership",
+      "add/RMSNorm, MoE-tail, and head/KV wave-0 ownership",
+      "graph replay, packet submission, native AQL, and prompt-conditioned branches",
+      "the exact D13 gate/up plus SiLU composite, which already removed 46 launches and regressed every clean kernel-sum context"
+    ],
+    "rationale": "All larger ranked kernel families are retained at their best exact form or closed by direct rejection evidence. The five synchronous runtime copies sit outside the 678-model-kernel count and are materially independent of rejected kernel-owner premises.",
+    "selected": "coalesce c=1 token and position publication and share the published position with KVLiveSpans"
+  },
+  "runtime_admission_contract": {
+    "cache_only_trace_required": "exactly 681 profiler dispatches/token = three runtime copies plus 678 unchanged model kernels; zero extra copies, unchanged kernel names/counts/resources/IDs, finite logits, lifecycle cleanup, and no compiler",
+    "category_gate": "only after every clean order passes, run both complete mtp-bench train/heldout category orders and require every retained decode/E2E plus aggregate prefill/TTFT guard",
+    "clean_gate": {
+      "contexts": [
+        "short",
+        "512",
+        "1024",
+        "3968"
+      ],
+      "every_order_requires": [
+        "runtime-copy family and complete dispatch span improve",
+        "model-kernel sum does not regress beyond +0.5%",
+        "profiled-child throughput does not regress beyond -0.5%",
+        "exact 3-runtime-copy/678-model-kernel topology, IDs, finite logits, lifecycle, and no compiler"
+      ],
+      "orders_per_context": 2,
+      "stop_on_first_failed_context": true,
+      "third_order_rerun_or_pooled_waiver_allowed": false
+    },
+    "focused_required": [
+      "one scratch-owned 16-byte control allocation with exact +0/+8 non-owning views, bounded nbytes, partial-allocation cleanup, idempotent free, and no double-free",
+      "borrowed KV row-position pointer is shared by all global/SWA append/decode spans, excluded from KV resident bytes/allocation count/free, while standalone KV ownership remains byte/count/lifecycle compatible",
+      "c=1 forward publishes exact token/position values with one 16-byte H2D copy; borrowed prepare_position adds no copy but preserves token-serial validation",
+      "bulk prepare/discard/commit and reset preserve existing publication, cursor, pending-position, and metadata behavior",
+      "session constructor wires scratch before KV, passes only the position view, cleans partial failures, and closes the borrower before its owner",
+      "registered fused head/KV and unfused head/RoPE fallback observe the identical absolute position pointer/value"
+    ],
+    "full_state_required": "fresh shared-weight control/candidate comparison over bulk prefill, 16 c=1 transitions, all logits/IDs, 48 hidden plus 47 routed boundaries, active K/V and every KVLiveSpans field, reset, re-prefill, ownership, and teardown at KL=0/top-1=100%",
+    "promotion": "make the shared publication the gfx1100 Laguna resident default only after all gates pass; retain separate publication as explicit rollback until a later cleanup unit",
+    "red_first": true
+  },
+  "schema": 1,
+  "status": "selected_pending_runtime_admission"
+}

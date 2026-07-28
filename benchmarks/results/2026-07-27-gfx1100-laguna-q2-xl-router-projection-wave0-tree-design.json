@@ -1,0 +1,397 @@
+{
+  "actual_model_screen": {
+    "all_256_logits_f32_bit_exact": true,
+    "all_endpoint_event_and_wall_positive": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_router_projection_wave0_tree_actual.py",
+    "favorable_rerun_used": false,
+    "harness_sha256": "073a59da5472664773151fd2e8344679569ac300656afc248e58b7c41e891597",
+    "input_token_id": 605,
+    "one_allowed_measured_process": true,
+    "output_token_id": 2825,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 1000,
+      "timing_scope": "direct cached C exports on captured actual hidden/weight pointers",
+      "warmups_per_mode": 50
+    },
+    "raw_path": "/tmp/laguna-router-projection-wave0-tree-actual.json",
+    "raw_sha256": "4fc8d78ceea2a4d38ae4c329892d80ea96cdcb1705882bf0ff7d480794714281",
+    "rows": [
+      {
+        "call_index": 0,
+        "event_delta_pct": -8.151208304413949,
+        "event_samples_us": {
+          "candidate": [
+            4.0658698081970215,
+            4.090888977050781,
+            4.106540203094482,
+            4.091119766235352,
+            4.056028842926025,
+            4.026548862457275,
+            4.03826904296875,
+            4.017189025878906,
+            4.018148899078369,
+            4.017189025878906,
+            4.02495002746582,
+            4.025629997253418,
+            4.02542781829834,
+            4.025908946990967,
+            4.01862907409668
+          ],
+          "control": [
+            4.38319206237793,
+            4.5259928703308105,
+            4.447832107543945,
+            4.390232086181641,
+            4.42091178894043,
+            4.405393123626709,
+            4.404871940612793,
+            4.376551151275635,
+            4.377831935882568,
+            4.374392032623291,
+            4.382311820983887,
+            4.381231784820557,
+            4.830605983734131,
+            4.380191802978516,
+            4.381552219390869
+          ]
+        },
+        "event_us": {
+          "candidate": 4.025908946990967,
+          "control": 4.38319206237793
+        },
+        "f32_bit_exact": true,
+        "layer": 1,
+        "wall_delta_pct": -8.170271352676362,
+        "wall_samples_us": {
+          "candidate": [
+            4.1280570439994335,
+            4.231349099427462,
+            4.08696592785418,
+            4.038435872644186,
+            4.109677160158753,
+            4.071546019986272,
+            4.037686157971621,
+            4.0354859083890915,
+            4.033896140754223,
+            4.0311559569090605,
+            4.032015101984143,
+            4.026556154713035,
+            4.026805050671101,
+            4.028656054288149,
+            4.034855868667364
+          ],
+          "control": [
+            4.423611098900437,
+            4.483171971514821,
+            4.513472085818648,
+            4.404780920594931,
+            4.4231119100004435,
+            4.438112024217844,
+            4.420340992510319,
+            4.394531017169356,
+            4.391310038045049,
+            4.38487995415926,
+            4.385581007227302,
+            4.383801016956568,
+            4.384500905871391,
+            4.380390979349613,
+            4.384889965876937
+          ]
+        },
+        "wall_us": {
+          "candidate": 4.0354859083890915,
+          "control": 4.394531017169356
+        }
+      },
+      {
+        "call_index": 46,
+        "event_delta_pct": -8.138376247263912,
+        "event_samples_us": {
+          "candidate": [
+            4.04410982131958,
+            4.0183892250061035,
+            4.016189098358154,
+            4.020150184631348,
+            4.027669906616211,
+            4.026869773864746,
+            4.024710178375244,
+            4.025629997253418,
+            4.019029140472412,
+            4.0175089836120605,
+            4.01731014251709,
+            4.035749912261963,
+            4.018509864807129,
+            4.0185089111328125,
+            4.026508808135986
+          ],
+          "control": [
+            4.5431928634643555,
+            4.375472068786621,
+            4.3763108253479,
+            4.37283182144165,
+            4.381471157073975,
+            4.384751796722412,
+            4.385191917419434,
+            4.3819122314453125,
+            4.381311893463135,
+            4.374631881713867,
+            4.372352123260498,
+            4.398390769958496,
+            4.375951766967773,
+            4.372352123260498,
+            4.373311996459961
+          ]
+        },
+        "event_us": {
+          "candidate": 4.020150184631348,
+          "control": 4.3763108253479
+        },
+        "f32_bit_exact": true,
+        "layer": 47,
+        "wall_delta_pct": -8.090115888407967,
+        "wall_samples_us": {
+          "candidate": [
+            4.038946004584432,
+            4.035585094243288,
+            4.033775068819523,
+            4.036055877804756,
+            4.031906137242913,
+            4.030125914141536,
+            4.0291850455105305,
+            4.030334996059537,
+            4.033085890114307,
+            4.0350561030209064,
+            4.0453660767525434,
+            4.0579261258244514,
+            4.036125959828496,
+            4.037126200273633,
+            4.028795985504985
+          ],
+          "control": [
+            4.494252847507596,
+            4.393850918859243,
+            4.390230868011713,
+            4.382241051644087,
+            4.382891114801168,
+            4.382879938930273,
+            4.381350940093398,
+            4.380211001262069,
+            4.385370062664151,
+            4.391359863802791,
+            4.396260948851705,
+            4.400341073051095,
+            4.394510993734002,
+            4.39123110845685,
+            4.3866310734301805
+          ]
+        },
+        "wall_us": {
+          "candidate": 4.0350561030209064,
+          "control": 4.390230868011713
+        }
+      }
+    ],
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "2ff89565e22a869ec8fda585a1040271e192dae5044042efce31b49922c2a0b3",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40069957684,
+      "peak_allocations": 1161,
+      "total_allocated_bytes": 40069957684,
+      "total_freed_bytes": 40069957684
+    },
+    "tracked_peak": {
+      "active_allocations": 1161,
+      "current_allocated_bytes": 40069957684,
+      "peak_allocated_bytes": 40069957684,
+      "peak_allocations": 1161,
+      "total_allocated_bytes": 40069957684,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "candidate": {
+    "allocation_delta_bytes": 0,
+    "arithmetic_contract": [
+      "preserve BF16 hidden conversion, F32 weight reads, eight-term source order, K traversal, per-thread partial, and F32 logit store",
+      "publish all 256 partials once to the unchanged 1,024-byte dynamic LDS",
+      "wave 0 exactly replay stride-128, stride-64, and stride-32 additions for each lane",
+      "replay stride-16/8/4/2/1 with five wave32 shuffle-down additions in the same association",
+      "keep selector, routing buffers, correction bias, top-10 normalization, rows/prefill, and every downstream owner unchanged"
+    ],
+    "fallback": "registered router_logits/f32/bf16_hidden one-expert local256 body; rows/prefill, unsupported shapes/backends, explicit disable, and key miss retain it",
+    "future_registry_key": [
+      "hip_gfx1100",
+      "router_logits",
+      "f32",
+      "bf16_hidden_wave0_tree"
+    ],
+    "launch_delta_per_token": 0,
+    "modeled_model_kernels_per_token": 678,
+    "persistent_weight_copy_delta_bytes": 0,
+    "scope": "c=1, hidden_size=3072, num_experts=256 only; one local256 block per expert and 47 calls/token",
+    "source": "/tmp/laguna_router_projection_wave0_tree_probe.hip",
+    "source_sha256": "d9fafaf77993213b50c423311897a3e46a7424ab713dba1139e12491fad4caf4",
+    "workspace_delta_bytes": 0
+  },
+  "codegen": {
+    "analyzer_sha256": "cf0b26d1afd943e5772d7aafbd8379af804453f784f984a255d8310d48b75c6e",
+    "candidate": {
+      "ds_bpermute_b32": 5,
+      "ds_load_2addr_b32": 4,
+      "ds_load_2addr_stride64_b32": 0,
+      "ds_load_b32": 0,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 1,
+      "sgpr_count": 28,
+      "sgpr_spill_count": 0,
+      "static_instructions": 220,
+      "text_bytes": 1208,
+      "v_fma_f32": 0,
+      "vgpr_count": 22,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "codegen_sha256": "3216aca7ba2d0890e1462f348de642c687ad7bf9a8061d055ea54efe6a6f5e75",
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22",
+    "control": {
+      "ds_bpermute_b32": 0,
+      "ds_load_2addr_b32": 0,
+      "ds_load_2addr_stride64_b32": 0,
+      "ds_load_b32": 3,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 2,
+      "sgpr_count": 30,
+      "sgpr_spill_count": 0,
+      "static_instructions": 226,
+      "text_bytes": 1140,
+      "v_fma_f32": 0,
+      "vgpr_count": 22,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "delta": {
+      "ds_bpermute_b32": 5,
+      "s_barrier": -1,
+      "sgpr_count": -2,
+      "static_instructions": -6,
+      "text_bytes": 68,
+      "vgpr_count": 0
+    },
+    "disasm_sha256": "1d6c313d872fcf028982a18897171274c74e0fd634ffe056388aa96447a018b6",
+    "fatbin_sha256": "7eea8a690488f94fd610d0a4ff6cba0bbf4a8a1f3da3eace065d709b6bf2bd37",
+    "hsaco_sha256": "21e80788234d614b22c474f83b8f3ff858b8a59b0283ac710a26bdf2977837c6",
+    "interpretation": "At production shape, control executes the initial barrier plus eight loop barriers (two static barrier opcodes); candidate executes one initial barrier, adds five ds_bpermute shuffles, keeps logical VGPR22/private/spills0/wave32, reduces logical SGPR30->28, and contracts static instructions 226->220. Dynamic LDS remains 1,024 bytes.",
+    "library_sha256": "50422057513bea14bf3ca4f2950effa6275b5ac4dc5077bd4c4d3f142faaa28b",
+    "readobj_sha256": "d0aa1fed0a96cbd361047b522df227b0f265b6c640fb91b8966b021b66378977",
+    "symbols": {
+      "candidate": "_ZN12_GLOBAL__N_148laguna_router_logits_bf16_f32w_wave0_tree_kernelEPKtPKfPfll",
+      "control": "_ZN12_GLOBAL__N_127qwen35_router_logits_kernelItfEEvPKT_PKT0_Pfll"
+    },
+    "symbols_sha256": "a772bc0f6a9018a0bb4da486682920b33c58e7882c0993a54c3328d1fa5245f4"
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "action": "select exact c=1 Laguna router-projection wave-0 reduction tree for primitive admission",
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "completion_claim": false,
+    "default_changed": false,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "performance_claim": false,
+    "required_relative_gain_to_beat_vulkan_pct": 1.8144711534139324,
+    "runtime_owner_added": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "parent": "nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed (retained router body); candidate reduction is net-new in-tree",
+    "result": "pass; only already-catalogued unrelated external drift remains"
+  },
+  "model": {
+    "hidden_size": 3072,
+    "num_experts": 256,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_router_layers": 47
+  },
+  "modeled_ceiling": {
+    "basis": "apply only the smallest observed endpoint event/wall gain to the immutable 0.319143-ms/token router-projection family",
+    "canonical_ms_per_token": 15.805224168463194,
+    "modeled_h32_decode_tok_s": 63.37374519298402,
+    "modeled_saving_ms_per_token": 0.025819038549741838,
+    "modeled_vs_canonical_pct": 0.1636249170179127,
+    "note": "Planning ceiling only; not a full-model throughput or default claim.",
+    "remaining_to_vulkan_pct": 1.6481494532208485,
+    "smallest_endpoint_gain_pct": 8.090115888407967
+  },
+  "next_action": "Commit selection evidence/docs only. Then add the primitive under RED/GREEN and the frozen synthetic/CPU/all-47-actual/codegen/cache-only trace gates. Runtime ownership remains a later separate unit.",
+  "primitive_admission_contract": {
+    "red_first": true,
+    "required": [
+      "exact source body, strict raw-pointer wrapper, package export, four-axis key, and explicit gfx1151 exclusion",
+      "synthetic hidden17/3072 random, signed-zero, subnormal, large-finite, odd/tail shapes and no-write unsupported-shape fixtures against retained control",
+      "independent CPU F32-logit quality gate at KL <=0.05 and top-1 >=90%",
+      "all 47 actual code_merge_intervals router inputs/weights F32-bit exact and finite",
+      "repeat endpoint event/wall transfer without a favorable rerun",
+      "integrated Clang-22 codegen/resource ceilings and cache-only distinct-symbol rocprof trace with no compiler",
+      "registered retained projection plus unchanged selector remains an executable unfused fallback"
+    ],
+    "runtime_admission_later_requires": "separate false/default-off exact-key owner, 16-transition shared-weight full state, and exact 47-candidate/zero-control-projection/678-model-kernel cache-only tracing before clean/category timing",
+    "runtime_owner_forbidden_in_primitive_unit": true
+  },
+  "production_scope": {
+    "benchmark_rollup_changed": false,
+    "canonical_topline_changed": false,
+    "capability_or_runtime_owner_added": false,
+    "default_changed": false,
+    "kernel_body_or_key_added": false,
+    "production_files_changed": false
+  },
+  "residual_selection": {
+    "excluded": [
+      "all previously rejected Q5/Q6/IQ2/IQ3/IQ4 owners",
+      "attention and SWA reducer owners",
+      "selector and persistent/composite-router owners",
+      "router expert tile2/4/8 activation-reuse geometries",
+      "add/norm and D9 wave-0 owners",
+      "graph, packet, native-AQL, and prompt-conditioned premises"
+    ],
+    "previous_global_head_rejection": {
+      "path": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-global-head-wave0-tree-rejected.json",
+      "sha256": "4566275309036f0a46d822559c391f4feaf381fc97f3a26e279a826fdb805c86"
+    },
+    "rank_output_sha256": "e3eac267b8bcd6e4253f013f591f1b0af19ce9926f11bb8798b23bcc3aa2312d",
+    "rejected_router_tiling_screen": {
+      "path": "/tmp/laguna-router-projection-tile-actual.json",
+      "result": "F32-bit exact at actual layers 1/47, but tile2/4/8 regress event/wall 8.07-45.48%; no repository body or runtime route retained",
+      "sha256": "c3981d566440aceb29b2afa0803c3641ddeeb33e7947bd6041faebf369a92ca9"
+    },
+    "roots": [
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-a",
+      "/tmp/laguna-q2-xl-moe-tail-wave0-tree-clean-fc79fb1d8-short-control-b"
+    ],
+    "router_projection_ms_per_token": 0.319143,
+    "selection_rationale": "After global-head wave-0 runtime rejection, the 47-call BF16-hidden/F32-weight router projection is the largest independent open exact family. Expert tile2/4/8 is already rejected; this candidate preserves one expert per block and changes only the reduction implementation.",
+    "source": "two immutable retained short control traces; no full-model rerun",
+    "stable_samples": 28,
+    "trace_sha256": [
+      "54964fbb65dacdeb2e2e96b85e696ccab648bacd6a663ae20e83247f3118c60d",
+      "216d9226032da2365efd6d24e53de93dabda4b9d4436d597865ebaf3d52ac2f8"
+    ]
+  },
+  "schema": 1,
+  "status": "selected_pending_primitive_admission"
+}

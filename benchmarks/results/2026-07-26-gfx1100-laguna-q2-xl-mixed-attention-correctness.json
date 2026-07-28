@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "date": "2026-07-26",
+  "status": "correctness_admitted_pending_formal_performance_gate",
+  "baseline": {
+    "revision": "af6c17939",
+    "h32_decode_tok_s": 57.7109131212639,
+    "dispatches_per_token": 772,
+    "vulkan_matched_target_tok_s": 64.41823922786776
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "device": 0,
+    "queues": 1
+  },
+  "candidate": {
+    "layer": "attention_projection_quad",
+    "variant": "mixed_pack8_gemv_decode_bf16_f32_out",
+    "quant_keys": [
+      "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+      "gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k"
+    ],
+    "default": false,
+    "selector": "LagunaGGUFResidentSession(use_mixed_q5_q6_attention=True)",
+    "fallback": "retained exact Q5/Q6 pairs plus layer-47 Q6 pair and Q8 singletons",
+    "corrected_inventory": {
+      "layers_0_to_46": "Q5 query/gate plus Q6 K/V",
+      "layer_47": "Q6 query/gate plus Q8 K/V",
+      "note": "The frozen task hypothesis called layer 47 a Q5/Q6 role reversal; source GGUF inspection corrected it before runtime admission."
+    },
+    "dataflow": {
+      "layers_0_to_46": "four independent fixed-metadata Q5 wave32 output-pair owners per local128 Q5 block plus generic local128 Q6 pack8 blocks",
+      "layer_47": "generic local128 Q6 pair blocks plus generic local128 Q8 singleton-equivalent blocks",
+      "rows": 1,
+      "output": "F32"
+    }
+  },
+  "red": {
+    "kernel_import_log_sha256": "c712fe69fa293762f8e58db954a0e25671bcdd3763f19adb3cb6c090bd080b93",
+    "runtime_import_log_sha256": "5b48dfdc983432a44d4ea290fa369a91f88d544b02ea01b99ff7b2cf7ce92cf"
+  },
+  "actual_weight_screen": {
+    "protocol": {
+      "warmups": 50,
+      "repetitions": 15,
+      "launches_per_sample": 200,
+      "order": "counterbalanced",
+      "timers": ["HIP event", "synchronized wall"]
+    },
+    "rows": [
+      {
+        "layer": 0,
+        "quants": ["Q5_K", "Q6_K", "Q6_K", "Q5_K"],
+        "features": [6144, 1024, 1024, 48],
+        "control_event_us": 42.22745895385742,
+        "candidate_event_us": 38.04344415664673,
+        "event_delta_pct": -9.908279827546885,
+        "control_wall_us": 42.36958106048405,
+        "candidate_wall_us": 38.29587600193918,
+        "wall_delta_pct": -9.614692797480151,
+        "all_outputs_f32_bit_exact": true
+      },
+      {
+        "layer": 1,
+        "quants": ["Q5_K", "Q6_K", "Q6_K", "Q5_K"],
+        "features": [9216, 1024, 1024, 72],
+        "control_event_us": 52.03335762023926,
+        "candidate_event_us": 49.68259811401367,
+        "event_delta_pct": -4.51779322676501,
+        "control_wall_us": 51.974415546283126,
+        "candidate_wall_us": 50.07903557270765,
+        "wall_delta_pct": -3.646755723280126,
+        "all_outputs_f32_bit_exact": true
+      },
+      {
+        "layer": 46,
+        "quants": ["Q5_K", "Q6_K", "Q6_K", "Q5_K"],
+        "features": [9216, 1024, 1024, 72],
+        "control_event_us": 52.306580543518066,
+        "candidate_event_us": 49.14810657501221,
+        "event_delta_pct": -6.0383873992261305,
+        "control_wall_us": 52.10296483710408,
+        "candidate_wall_us": 50.1946359872818,
+        "wall_delta_pct": -3.662610862526783,
+        "all_outputs_f32_bit_exact": true
+      },
+      {
+        "layer": 47,
+        "quants": ["Q6_K", "Q8_0", "Q8_0", "Q6_K"],
+        "features": [9216, 1024, 1024, 72],
+        "control_event_us": 93.97022247314453,
+        "candidate_event_us": 78.39747905731201,
+        "event_delta_pct": -16.571998028719158,
+        "control_wall_us": 92.74690528400242,
+        "candidate_wall_us": 79.55232518725097,
+        "wall_delta_pct": -14.226437050754448,
+        "all_outputs_f32_bit_exact": true
+      }
+    ],
+    "q5_q6_raw_sha256": "f8645b64aad339fd48687a9b0a5b7f69df27c44580966df3d7cfa892d6a0602e",
+    "q5_q6_harness_sha256": "4e4917d809b71bb7b3be0c7eab7422dfc85c5a7c797e0d2ab920e503270670b2",
+    "q6_q8_raw_sha256": "0716e2ce1cc59f243937f6763b7acf240d6ba3cd247c8da28536e81269571d5b",
+    "q6_q8_harness_sha256": "8b12bd14000f6d2997bd4d826bde6567db29e0095d2a3aa063b8d0d72b1f43e7"
+  },
+  "full_state_gate": {
+    "passed": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "decode_transitions": 16,
+    "full_logits_exact": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0,
+    "hidden_boundaries_exact": 48,
+    "routed_boundaries_exact": 47,
+    "active_kv_and_all_live_spans_exact": true,
+    "reset_exact": true,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_peak_allocations": 1500,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "3d6d5d56565356ee612e8df7a8e624e4bc6ddfbe8844816bcd44f9254bcf3186",
+    "stdout_sha256": "7e3f36b7e41ce75d9f7a413b14a2a62a215f0f2baf2e909fa71977ae0611b5f3",
+    "harness_sha256": "a45806a0fb3382cd302843ed40806aa0086126a0e74a1a118b652f500d2ce513"
+  },
+  "cached_trace": {
+    "decode_transitions": 2,
+    "dispatches_per_token": 723,
+    "control_dispatches_per_token": 772,
+    "removed_dispatches_per_token": 49,
+    "candidate_calls_per_token": 48,
+    "q5_q6_calls_total": 94,
+    "q6_q8_calls_total": 2,
+    "q5_q6_resources": {
+      "workgroup": 128,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "q6_q8_resources": {
+      "workgroup": 128,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "q5_q6_duration_us_range": [43.52, 56.52],
+    "q6_q8_duration_us_range": [64.801, 65.28],
+    "finite_logits": true,
+    "lifecycle_clean": true,
+    "trace_sha256": "0c245aeafb85be3809a823d73e8a14083627128bbadbf8cc69ed384a3dc0b802",
+    "child_sha256": "c630d6fe2ae90718f077d71e3d5d3ef2ec28d16f3211351c98fc96b0df3d2a37",
+    "harness_sha256": "3169db2cab668d1db776dba2f39355bf35dd7a05aeaf3d935218d332bd0d2241"
+  },
+  "focused_tests": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_gguf_q5_q6_mixed_attention_decode.py tests/test_laguna_gguf_runner.py -k 'mixed_attention or attention_projection_pairs'",
+    "passed": 6,
+    "log_sha256": "700bc0322b00f8e8db3ce495047983b54ab27ab59ed1fedac05f3aeba47dae24"
+  },
+  "regression_tests": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_gguf_q5_q6_mixed_attention_decode.py tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_q6_k_pair_gemv_decode.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "passed": 97,
+    "log_sha256": "19d98b2e634a75d8f10b7ce9b574156a0eacd1624123ee84ae2ca46f01d0aa23"
+  },
+  "validation": {
+    "ruff": true,
+    "compileall": true,
+    "json": true,
+    "diff_check": true,
+    "benchmark_readme_sync": true,
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "commands": {
+    "actual_q5_q6": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_q5_q6_mixed_actual.py",
+    "actual_q6_q8": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_q6_q8_mixed_actual.py",
+    "state": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_mixed_attention_correctness.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-mixed-attention-trace --output-file trace -- .venv/bin/python -u /tmp/trace_laguna_mixed_attention_model.py"
+  },
+  "next_gate": "Commit this default-off correctness admission, then run both clean process orders at short/512/1K/near-4K. Only if every mechanical row passes may both complete 18-prompt process orders run. Any failure removes the candidate."
+}

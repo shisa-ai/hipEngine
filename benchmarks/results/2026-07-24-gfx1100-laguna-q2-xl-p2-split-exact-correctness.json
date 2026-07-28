@@ -1,0 +1,289 @@
+{
+  "actual_query_kv_gate": {
+    "all_event_and_wall_positive": true,
+    "all_exact": true,
+    "harness_sha256": "daa198badef172fc9a9e47c07d12628ec29b7e2c383763f735294afff35cda69",
+    "layers": [
+      {
+        "attention_type": "full_attention",
+        "event_delta_pct": -9.084726276583865,
+        "event_us": {
+          "baseline": 39.64402389526367,
+          "split_exact": 36.04247283935547
+        },
+        "f32_bit_exact": true,
+        "layer": 0,
+        "wall_delta_pct": -9.266299138545964,
+        "wall_us": {
+          "baseline": 39.72300002351403,
+          "split_exact": 36.04214801453054
+        }
+      },
+      {
+        "attention_type": "sliding_attention",
+        "event_delta_pct": -13.311772880016715,
+        "event_us": {
+          "baseline": 62.52126693725586,
+          "split_exact": 54.198577880859375
+        },
+        "f32_bit_exact": true,
+        "layer": 1,
+        "wall_delta_pct": -13.45868138036337,
+        "wall_us": {
+          "baseline": 62.61506397277117,
+          "split_exact": 54.187902016565204
+        }
+      },
+      {
+        "attention_type": "full_attention",
+        "event_delta_pct": -8.527148894823366,
+        "event_us": {
+          "baseline": 40.0922737121582,
+          "split_exact": 36.673545837402344
+        },
+        "f32_bit_exact": true,
+        "layer": 44,
+        "wall_delta_pct": -8.61766018293122,
+        "wall_us": {
+          "baseline": 40.164386155083776,
+          "split_exact": 36.70315584167838
+        }
+      },
+      {
+        "attention_type": "sliding_attention",
+        "event_delta_pct": -13.217883218829963,
+        "event_us": {
+          "baseline": 62.49422836303711,
+          "split_exact": 54.23381423950195
+        },
+        "f32_bit_exact": true,
+        "layer": 47,
+        "wall_delta_pct": -13.370102636835156,
+        "wall_us": {
+          "baseline": 62.59322213009,
+          "split_exact": 54.22444408759475
+        }
+      }
+    ],
+    "live_count": 128,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "0c7c26aebadbd5c76cdb6cafb007f13c532ee3ab0efdc663e165977fcee562cd",
+    "tracked_returned_to_baseline": true
+  },
+  "commands": {
+    "actual_query_kv": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p2_actual_attention.py",
+    "full_model_correctness": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/laguna_p2_split_exact_correctness.py",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. rocprofv3 --kernel-trace --output-directory /tmp/laguna-p2-split-exact-trace --output-file epyc -- uv run python /tmp/trace_laguna_p2_split_exact.py",
+    "synthetic_crossover": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p2_split_exact.py"
+  },
+  "created_at": "2026-07-24T09:19:00Z",
+  "default_changed": false,
+  "experiment": {
+    "candidate": "independent wave32 score blocks plus a reducer that replays the retained global or SWA softmax/value association",
+    "complete_kv_live_spans_fields": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask",
+      "row_positions"
+    ],
+    "fallback": "retained global baseline and gfx1100 SWA token4 exact kernels below threshold or when split is disabled",
+    "global_threshold": 127,
+    "plan": "docs/LAGUNA-decode.md P2.1",
+    "scratch": {
+      "bytes_per_buffer": 786432,
+      "duplicate_kv": false,
+      "elements_per_buffer": 196608,
+      "per_token_allocations": 0,
+      "persistent_weight_copy": false,
+      "physical_slot_dtype": "int32",
+      "score_dtype": "fp32",
+      "session_owned_reusable": true,
+      "total_bytes": 1572864
+    },
+    "swa_threshold": 65
+  },
+  "full_model_correctness": {
+    "active_kv_and_kv_live_spans_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "decode_steps": 16,
+    "final_hidden_exact": true,
+    "full_logits_exact": true,
+    "harness_sha256": "9253fe716dc44d6602cbf4a694f0b00b49e3328ddaaff2d024dfcc23dff00e88",
+    "kl": 0.0,
+    "post_layer_hidden_exact": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "raw_sha256": "dc8086b7d86150c39b0359170b2b28568d7abbfa094e0734361e5fe93e417f33",
+    "reset_exact": true,
+    "top1_agreement": 1.0,
+    "tracked_peak_allocations": 1498,
+    "tracked_peak_bytes": 40457484712,
+    "tracked_returned_to_baseline": true
+  },
+  "implementation_parent_revision": "b811caeb8d566608e9c077d8835194df60b709d1",
+  "kind": "hipengine_laguna_q2_xl_p2_split_exact_correctness",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next_gate": "Commit the default-off exact split implementation, then run clean short/512/1K/near-4K full-model profiles and the complete category/heldout promotion gate before any backend default or topline change.",
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "compiler": "Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1
+  },
+  "resource_gate": {
+    "context128_trace_geometry": {
+      "global_reduce": {
+        "grid_workitems_x": 12288,
+        "grid_y": 1
+      },
+      "global_score": {
+        "grid_workitems_x": 1536,
+        "grid_y": 128
+      },
+      "swa_reduce": {
+        "grid_workitems_x": 9216,
+        "grid_y": 1
+      },
+      "swa_score": {
+        "grid_workitems_x": 2304,
+        "grid_y": 128
+      }
+    },
+    "global_reduce": {
+      "lds_bytes": 32,
+      "local_size": 256,
+      "scratch_bytes": 0,
+      "sgpr": 41,
+      "vgpr": 19
+    },
+    "global_score": {
+      "lds_bytes": 0,
+      "local_size": 32,
+      "scratch_bytes": 0,
+      "sgpr": 54,
+      "vgpr": 8
+    },
+    "hsaco_sha256": "bf694334c6a030e263c54eca843f482c7029d6e8878d5f6a4d3dc451b7033d7a",
+    "swa_reduce": {
+      "lds_bytes": 24,
+      "local_size": 128,
+      "scratch_bytes": 0,
+      "sgpr": 43,
+      "vgpr": 11
+    },
+    "swa_score": {
+      "lds_bytes": 0,
+      "local_size": 32,
+      "scratch_bytes": 0,
+      "sgpr": 54,
+      "vgpr": 7
+    },
+    "trace_db_sha256": "3ae6f5cc934f71a02133cd207e24a77f8de6323da30710701ed263c46d0b52a2",
+    "trace_harness_sha256": "60c95495fff54718c9c2de17f5d6a9ff0617ff1183b464fa598ad67b3394cc44"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "70633428b0e2e00403ee6e7ac1b3a45321a34ccab0d8aa07749eb8f463bd2657",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "14f601573b955d474a24b76002377f2b5644107bd977d10812d32f0aec799125",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "99dbca1c737953004c7c27b749ce061e8c313cc5f155ba36e669605312530197",
+    "hipengine/runtime/laguna_gguf_runner.py": "1f7d41db8fb662d6ae796581351cc19cb0e0a894ca720e4370c47f862f623c86",
+    "hipengine/runtime/laguna_kv.py": "c22b49418331f632a492bfbd6dac1b08bf8c53cc08fadc11652b49bb9a126b62",
+    "scripts/laguna_target_ar_bench.py": "7acf6bbbe98fe7d33b06932100916d82020d3a412c040a5619cbf7e69db90e09",
+    "tests/test_laguna_kv_attention.py": "ebb7e8bf51d3557b1750c3e784d51e4b6ec193ce19bb8ce549cb72213575f99d"
+  },
+  "status": "accepted_correctness",
+  "synthetic_crossover": {
+    "all_outputs_bit_exact": true,
+    "confirmation_raw_sha256": "0e281831d5918b1ff5732139698631099a55bfee46e6c074dba4cd1c946835b7",
+    "contexts": [
+      1,
+      31,
+      32,
+      33,
+      63,
+      64,
+      65,
+      127,
+      128,
+      129,
+      255,
+      256,
+      257,
+      511,
+      512,
+      1024,
+      4095,
+      4096
+    ],
+    "first_raw_sha256": "e2d8688c71f04336ce45e5423eed5bda466b07849f98d19256b7e897f4109cf4",
+    "global_selected_boundary": [
+      {
+        "context": 127,
+        "event_delta_pct": -4.433645011634624,
+        "exact": true,
+        "wall_delta_pct": -4.518304327577205
+      },
+      {
+        "context": 128,
+        "event_delta_pct": -3.6002080348791154,
+        "exact": true,
+        "wall_delta_pct": -3.474804347647542
+      },
+      {
+        "context": 129,
+        "event_delta_pct": -3.6530612837985754,
+        "exact": true,
+        "wall_delta_pct": -4.0483907397119605
+      }
+    ],
+    "harness_sha256": "ed1239638e0b3c8f17e1e43c12b5ea57b4416236f20467870f8adf72285c41cd",
+    "later_landmarks": {
+      "global_4096": {
+        "context": 4096,
+        "event_delta_pct": -20.097059803853,
+        "exact": true,
+        "wall_delta_pct": -19.8962603559106
+      },
+      "swa_512": {
+        "context": 512,
+        "event_delta_pct": -14.182210057158484,
+        "exact": true,
+        "wall_delta_pct": -14.350013457379674
+      }
+    },
+    "selection_rule": "lowest live count with three consecutive positive event+wall buckets and no later measured regression",
+    "swa_selected_boundary": [
+      {
+        "context": 65,
+        "event_delta_pct": -0.6663552450824617,
+        "exact": true,
+        "wall_delta_pct": -0.8563074532607629
+      },
+      {
+        "context": 66,
+        "event_delta_pct": -0.6894112284815401,
+        "exact": true,
+        "wall_delta_pct": -0.595861884631399
+      },
+      {
+        "context": 67,
+        "event_delta_pct": -0.5480368178081618,
+        "exact": true,
+        "wall_delta_pct": -0.7276559696289708
+      }
+    ]
+  },
+  "validation": {
+    "focused": "uv run pytest -q tests/test_laguna_kv_attention.py",
+    "lineage": "required kernel lineage scan completed; no external body was copied for this in-tree exact specialization",
+    "result": "8 passed"
+  }
+}

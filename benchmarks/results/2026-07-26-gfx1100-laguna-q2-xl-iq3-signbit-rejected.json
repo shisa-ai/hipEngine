@@ -1,0 +1,752 @@
+{
+  "based_on_revision": "0f02931bcc2a73ecb81c8ec1badc9c4a3f701bc9",
+  "builder_sha256": "74da34d32564fc2310f623440e590770d705de9d23abf35054726a312d96dc53",
+  "clean_profile": {
+    "checks": {
+      "all_completed_order_inclusive_improve": true,
+      "all_completed_order_kernel_sum_inside_0_5pct": true,
+      "all_completed_order_producer_improve": true,
+      "all_ids_finite_lifecycle_exact": true,
+      "all_resources_and_dispatches_pass": true,
+      "all_short_order_child_inside_0_5pct": false,
+      "all_short_order_span_inside_0_5pct": false,
+      "mechanical_gate_pass": false
+    },
+    "profiles": [
+      {
+        "candidate_pooled": {
+          "all_weighted_ms": 0.1330555357142857,
+          "inclusive_ms": 1.541925607142857,
+          "kernel_sum_ms": 12.998259357142862,
+          "producer_ms": 1.4149016428571428,
+          "profiled_child_tok_s": 57.07518740454908,
+          "span_median_ms": 15.947396999999999,
+          "stable_samples": 28
+        },
+        "completed_orders": [
+          "a",
+          "b"
+        ],
+        "context": "short",
+        "control_pooled": {
+          "all_weighted_ms": 0.13243539285714284,
+          "inclusive_ms": 1.5812248928571428,
+          "kernel_sum_ms": 13.060727178571428,
+          "producer_ms": 1.4547466785714285,
+          "profiled_child_tok_s": 56.8916759207963,
+          "span_median_ms": 15.943986,
+          "stable_samples": 28
+        },
+        "orders": [
+          {
+            "candidate": {
+              "all_weighted_ms": 0.133424,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "b9b3dec37207e040b8ece7ce0c99fed4a4fc8a748a17735a0ea77881f32236ec",
+              "inclusive_ms": 1.5328551428571429,
+              "kernel_sum_ms": 12.93472578571429,
+              "lifecycle": true,
+              "mode": "candidate",
+              "order": "a",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4054940714285715,
+              "profiled_child_tok_s": 56.59293577878959,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "d2f18cfe917e301a7048f63ddde67676464b51e60b2207d766923f9a11b233b2",
+                "trace_kernel_trace.csv": "33d071c9fcde28b4e7ddaad0651a1b6c45882db3a7b05459cd249c22d90c9f2e"
+              },
+              "span_median_ms": 15.9327845,
+              "stable_samples": 14,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "candidate_vs_control_pct": {
+              "all_weighted_pct": 0.9491599801769723,
+              "inclusive_pct": -2.7354048755097726,
+              "kernel_sum_pct": -0.7403532174789729,
+              "producer_pct": -3.053925095945087,
+              "profiled_child_tok_s_pct": -1.1242881712359543,
+              "span_pct": 0.5709830200139487
+            },
+            "control": {
+              "all_weighted_ms": 0.1321695,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "b9b3dec37207e040b8ece7ce0c99fed4a4fc8a748a17735a0ea77881f32236ec",
+              "inclusive_ms": 1.575964142857143,
+              "kernel_sum_ms": 13.031202714285712,
+              "lifecycle": true,
+              "mode": "control",
+              "order": "a",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4497689285714286,
+              "profiled_child_tok_s": 57.236438284053975,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "efdae260cd1d5f85863e40b24d9fe4fefa17a10c7b33d2790826635545d18358",
+                "trace_kernel_trace.csv": "07cfb8347444bfc7b377409ab96203ae330df076a6083eb291d4eebc0219797d"
+              },
+              "span_median_ms": 15.8423275,
+              "stable_samples": 14,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "order": "a",
+            "pass": false
+          },
+          {
+            "candidate": {
+              "all_weighted_ms": 0.13268707142857142,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "b9b3dec37207e040b8ece7ce0c99fed4a4fc8a748a17735a0ea77881f32236ec",
+              "inclusive_ms": 1.5509960714285713,
+              "kernel_sum_ms": 13.061792928571432,
+              "lifecycle": true,
+              "mode": "candidate",
+              "order": "b",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.424309214285714,
+              "profiled_child_tok_s": 57.21237012526581,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "4691d35302fdd8ad83aa4e577272c2bb265b4cbbf36da09e70cb1a7aa2ce878b",
+                "trace_kernel_trace.csv": "428c8a050284d116a52d2fb46613d45b9e082d5c807ab552ac44c6b99c7ea7fc"
+              },
+              "span_median_ms": 16.390949499999998,
+              "stable_samples": 14,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "candidate_vs_control_pct": {
+              "all_weighted_pct": -0.010711490576587046,
+              "inclusive_pct": -2.236992915023006,
+              "kernel_sum_pct": -0.21740387474706857,
+              "producer_pct": -2.426157539911411,
+              "profiled_child_tok_s_pct": 1.5022164600616117,
+              "span_pct": 1.9305675390967947
+            },
+            "control": {
+              "all_weighted_ms": 0.13270128571428572,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "b9b3dec37207e040b8ece7ce0c99fed4a4fc8a748a17735a0ea77881f32236ec",
+              "inclusive_ms": 1.5864856428571428,
+              "kernel_sum_ms": 13.090251642857146,
+              "lifecycle": true,
+              "mode": "control",
+              "order": "b",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4597244285714286,
+              "profiled_child_tok_s": 56.3656362595563,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "0999e9b94d1052ac1eaf16e41b8a642ce623128f28472e9e9e3a4927862f51c2",
+                "trace_kernel_trace.csv": "531e42f4ef82fe394c9085671f9398846af1fa672a93f2667bf6fa8fd9821cd5"
+              },
+              "span_median_ms": 16.0805045,
+              "stable_samples": 14,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "order": "b",
+            "pass": false
+          }
+        ],
+        "pooled_delta_pct": {
+          "all_weighted_ms": 0.4682606694207392,
+          "inclusive_ms": -2.485369784640512,
+          "kernel_sum_ms": -0.4782874687946581,
+          "producer_ms": -2.7389672924645336,
+          "profiled_child_tok_s": 0.3225629774173955,
+          "span_median_ms": 0.021393646482126272
+        }
+      },
+      {
+        "candidate_pooled": {
+          "all_weighted_ms": 0.12736816666666667,
+          "inclusive_ms": 1.5193310833333333,
+          "kernel_sum_ms": 22.428266416666666,
+          "producer_ms": 1.39780625,
+          "profiled_child_tok_s": 36.57870908571038,
+          "span_median_ms": 25.462016499999997,
+          "stable_samples": 12
+        },
+        "completed_orders": [
+          "a",
+          "b"
+        ],
+        "context": "512",
+        "control_pooled": {
+          "all_weighted_ms": 0.13044108333333335,
+          "inclusive_ms": 1.56150875,
+          "kernel_sum_ms": 22.506508916666675,
+          "producer_ms": 1.4370543333333334,
+          "profiled_child_tok_s": 36.294727907676666,
+          "span_median_ms": 25.523736,
+          "stable_samples": 12
+        },
+        "orders": [
+          {
+            "candidate": {
+              "all_weighted_ms": 0.129215,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "15c06eaa2c8da02bbda1e2aa0f41a17448f80554b0eff5b0f658ed0184afb460",
+              "inclusive_ms": 1.5249613333333332,
+              "kernel_sum_ms": 22.415694,
+              "lifecycle": true,
+              "mode": "candidate",
+              "order": "a",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4017063333333333,
+              "profiled_child_tok_s": 36.31597537123961,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "25f5c6114c626576a60c10507853d82d5ad0649ad616e8aa12cee01a8f2022ca",
+                "trace_kernel_trace.csv": "532c13bda562c4e264bd6ee4b93a829f0f0b44569a3ef2ebd2ee5d9be1082b9f"
+              },
+              "span_median_ms": 25.4654945,
+              "stable_samples": 6,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "candidate_vs_control_pct": {
+              "all_weighted_pct": -0.8485468555168296,
+              "inclusive_pct": -2.1539299934789202,
+              "kernel_sum_pct": -0.3873625850697282,
+              "producer_pct": -2.264051353035157,
+              "profiled_child_tok_s_pct": 0.34309683857516315,
+              "span_pct": -0.22818563865415475
+            },
+            "control": {
+              "all_weighted_ms": 0.13032083333333333,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "15c06eaa2c8da02bbda1e2aa0f41a17448f80554b0eff5b0f658ed0184afb460",
+              "inclusive_ms": 1.558531,
+              "kernel_sum_ms": 22.502861666666664,
+              "lifecycle": true,
+              "mode": "control",
+              "order": "a",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4341768333333333,
+              "profiled_child_tok_s": 36.19180244124035,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "73e922e8895ab9fdb33d75a84c838a72888954922b69274a9c40bf09b6bb59ed",
+                "trace_kernel_trace.csv": "333ab7c1cfd55abccfe6a3b460684f33c9023f022acdd48c4d38060080f93c38"
+              },
+              "span_median_ms": 25.523736,
+              "stable_samples": 6,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "order": "a",
+            "pass": true
+          },
+          {
+            "candidate": {
+              "all_weighted_ms": 0.12552133333333335,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "15c06eaa2c8da02bbda1e2aa0f41a17448f80554b0eff5b0f658ed0184afb460",
+              "inclusive_ms": 1.5137008333333335,
+              "kernel_sum_ms": 22.440838833333338,
+              "lifecycle": true,
+              "mode": "candidate",
+              "order": "b",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.3939061666666666,
+              "profiled_child_tok_s": 36.82112260167499,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "bd9d449d8d83b80be4eb9496b97dc47c333690b898b4afc42bf271cef71e5b28",
+                "trace_kernel_trace.csv": "c06249e41d28d79081061ec2f4c2c9d0874eb6e4ae9d223fdf50fdc3676809ff"
+              },
+              "span_median_ms": 25.462016499999997,
+              "stable_samples": 6,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "candidate_vs_control_pct": {
+              "all_weighted_pct": -3.8602546951113537,
+              "inclusive_pct": -3.2461556342395115,
+              "kernel_sum_pct": -0.3079380383686159,
+              "producer_pct": -3.1963781618828957,
+              "profiled_child_tok_s_pct": 1.153090311044913,
+              "span_pct": -0.31375580992936136
+            },
+            "control": {
+              "all_weighted_ms": 0.13056133333333333,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "15c06eaa2c8da02bbda1e2aa0f41a17448f80554b0eff5b0f658ed0184afb460",
+              "inclusive_ms": 1.5644865000000001,
+              "kernel_sum_ms": 22.510156166666683,
+              "lifecycle": true,
+              "mode": "control",
+              "order": "b",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4399318333333333,
+              "profiled_child_tok_s": 36.401381795109124,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "33cf228f9b32e0841c5cce510e03698d40f4daaa5991191048855bfb47ed38d1",
+                "trace_kernel_trace.csv": "0421e7666037a7284d030c692379ffa3d58913d94a6cc0dd5553f04774476705"
+              },
+              "span_median_ms": 25.542156499999997,
+              "stable_samples": 6,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "order": "b",
+            "pass": true
+          }
+        ],
+        "pooled_delta_pct": {
+          "all_weighted_ms": -2.3557889800823295,
+          "inclusive_ms": -2.7010842345050357,
+          "kernel_sum_ms": -0.3476438762213707,
+          "producer_ms": -2.731148184376242,
+          "profiled_child_tok_s": 0.782430932547773,
+          "span_median_ms": -0.24181217044402237
+        }
+      },
+      {
+        "completed_orders": [
+          "a"
+        ],
+        "context": "1024",
+        "orders": [
+          {
+            "candidate": {
+              "all_weighted_ms": 0.12590133333333334,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "3f5924a9b3972ddf397918a09c1e644f825e928f4c25185ce3ea9eb46e350910",
+              "inclusive_ms": 1.5178565,
+              "kernel_sum_ms": 24.734865333333328,
+              "lifecycle": true,
+              "mode": "candidate",
+              "order": "a",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.3978551666666665,
+              "profiled_child_tok_s": 33.80818461213523,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_signbit_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "5a92a7bda6b76e5439da131f2a4bde8e738cbf7cf27524f1959365ee2cf7f40b",
+                "trace_kernel_trace.csv": "c9033841a36e190b3a3823d46d4462240963d170895658d42fa8eba54210f469"
+              },
+              "span_median_ms": 27.786553,
+              "stable_samples": 6,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "candidate_vs_control_pct": {
+              "all_weighted_pct": -3.9073938622992466,
+              "inclusive_pct": -1.763632474525223,
+              "kernel_sum_pct": -0.07456911072589723,
+              "producer_pct": -1.5617367397972481,
+              "profiled_child_tok_s_pct": 0.5713854981352462,
+              "span_pct": 0.0104989858058957
+            },
+            "control": {
+              "all_weighted_ms": 0.13102083333333334,
+              "dispatches_per_token": 723,
+              "finite": true,
+              "generated_ids_sha256": "3f5924a9b3972ddf397918a09c1e644f825e928f4c25185ce3ea9eb46e350910",
+              "inclusive_ms": 1.5451065,
+              "kernel_sum_ms": 24.753323666666663,
+              "lifecycle": true,
+              "mode": "control",
+              "order": "a",
+              "producer_calls_per_token": 45,
+              "producer_ms": 1.4200323333333333,
+              "profiled_child_tok_s": 33.616107051405876,
+              "resources": [
+                [
+                  "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                  98304,
+                  10,
+                  32,
+                  88,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "sha256": {
+                "bench.json": "0cafad0e22640b27a3c470a3a67f4c447d039ae2e563c288afe7dc3fbf500ad8",
+                "trace_kernel_trace.csv": "49dad1baa61e6e6811abff5e6aaa50c7beceb5e843d61f3dcba39aa433fface7"
+              },
+              "span_median_ms": 27.783636,
+              "stable_samples": 6,
+              "weighted_reducer_calls_per_token": 47
+            },
+            "order": "a",
+            "pass": true
+          }
+        ]
+      }
+    ],
+    "raw_processes": [
+      {
+        "context": "short",
+        "mode": "control",
+        "order": "a",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-short-control-a",
+        "sha256": {
+          "bench.json": "efdae260cd1d5f85863e40b24d9fe4fefa17a10c7b33d2790826635545d18358",
+          "stderr.log": "8536ccaecc31072fc215ddc2b7e0576b9b2dd3e4beae4ee4b70dec7787c04246",
+          "stdout.log": "efdae260cd1d5f85863e40b24d9fe4fefa17a10c7b33d2790826635545d18358",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "07cfb8347444bfc7b377409ab96203ae330df076a6083eb291d4eebc0219797d"
+        }
+      },
+      {
+        "context": "short",
+        "mode": "candidate",
+        "order": "a",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-short-candidate-a",
+        "sha256": {
+          "bench.json": "d2f18cfe917e301a7048f63ddde67676464b51e60b2207d766923f9a11b233b2",
+          "stderr.log": "8a6f213133144b28c7ffdf93ac4558ce7789a6fd9e91882bc5f7d0d93d7d2e96",
+          "stdout.log": "d2f18cfe917e301a7048f63ddde67676464b51e60b2207d766923f9a11b233b2",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "33d071c9fcde28b4e7ddaad0651a1b6c45882db3a7b05459cd249c22d90c9f2e"
+        }
+      },
+      {
+        "context": "short",
+        "mode": "control",
+        "order": "b",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-short-control-b",
+        "sha256": {
+          "bench.json": "0999e9b94d1052ac1eaf16e41b8a642ce623128f28472e9e9e3a4927862f51c2",
+          "stderr.log": "687e7b54a25bcbe241e8453ab04aa602c1fdcaf4f2b9259e77dbaf809e44a60d",
+          "stdout.log": "0999e9b94d1052ac1eaf16e41b8a642ce623128f28472e9e9e3a4927862f51c2",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "531e42f4ef82fe394c9085671f9398846af1fa672a93f2667bf6fa8fd9821cd5"
+        }
+      },
+      {
+        "context": "short",
+        "mode": "candidate",
+        "order": "b",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-short-candidate-b",
+        "sha256": {
+          "bench.json": "4691d35302fdd8ad83aa4e577272c2bb265b4cbbf36da09e70cb1a7aa2ce878b",
+          "stderr.log": "595405c8921c43a1587dc9348a5c054adb9375c897eba72136cd9fbe80329582",
+          "stdout.log": "4691d35302fdd8ad83aa4e577272c2bb265b4cbbf36da09e70cb1a7aa2ce878b",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "428c8a050284d116a52d2fb46613d45b9e082d5c807ab552ac44c6b99c7ea7fc"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "control",
+        "order": "a",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-512-control-a",
+        "sha256": {
+          "bench.json": "73e922e8895ab9fdb33d75a84c838a72888954922b69274a9c40bf09b6bb59ed",
+          "stderr.log": "156409040e0ab965702285e227b94de4f047146946311599b1764e9fb1eb4a9a",
+          "stdout.log": "73e922e8895ab9fdb33d75a84c838a72888954922b69274a9c40bf09b6bb59ed",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "333ab7c1cfd55abccfe6a3b460684f33c9023f022acdd48c4d38060080f93c38"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "candidate",
+        "order": "a",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-512-candidate-a",
+        "sha256": {
+          "bench.json": "25f5c6114c626576a60c10507853d82d5ad0649ad616e8aa12cee01a8f2022ca",
+          "stderr.log": "5a9266d2b6fd3278c2d0e223c4f2a1c13ef136e72987dc550373dfea68def11b",
+          "stdout.log": "25f5c6114c626576a60c10507853d82d5ad0649ad616e8aa12cee01a8f2022ca",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "532c13bda562c4e264bd6ee4b93a829f0f0b44569a3ef2ebd2ee5d9be1082b9f"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "control",
+        "order": "b",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-512-control-b",
+        "sha256": {
+          "bench.json": "33cf228f9b32e0841c5cce510e03698d40f4daaa5991191048855bfb47ed38d1",
+          "stderr.log": "0de2f451ec4e4803dcef7097cb71d244f0c9b67437bc09c19e5f2ee4ca2119fc",
+          "stdout.log": "33cf228f9b32e0841c5cce510e03698d40f4daaa5991191048855bfb47ed38d1",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "0421e7666037a7284d030c692379ffa3d58913d94a6cc0dd5553f04774476705"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "candidate",
+        "order": "b",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-512-candidate-b",
+        "sha256": {
+          "bench.json": "bd9d449d8d83b80be4eb9496b97dc47c333690b898b4afc42bf271cef71e5b28",
+          "stderr.log": "14690a3189cb995a64e5c16b1003f64e430e9f4fb04ce672863048992fd4541a",
+          "stdout.log": "bd9d449d8d83b80be4eb9496b97dc47c333690b898b4afc42bf271cef71e5b28",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "c06249e41d28d79081061ec2f4c2c9d0874eb6e4ae9d223fdf50fdc3676809ff"
+        }
+      },
+      {
+        "context": "1024",
+        "mode": "control",
+        "order": "a",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-1024-control-a",
+        "sha256": {
+          "bench.json": "0cafad0e22640b27a3c470a3a67f4c447d039ae2e563c288afe7dc3fbf500ad8",
+          "stderr.log": "2bc6cfb698829080ab2dd16f32d2b9b9469a492b2297c6edf108c1cacadc1490",
+          "stdout.log": "0cafad0e22640b27a3c470a3a67f4c447d039ae2e563c288afe7dc3fbf500ad8",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "49dad1baa61e6e6811abff5e6aaa50c7beceb5e843d61f3dcba39aa433fface7"
+        }
+      },
+      {
+        "context": "1024",
+        "mode": "candidate",
+        "order": "a",
+        "root": "/tmp/laguna-q2-xl-iq3-signbit-clean-0f02931bc-1024-candidate-a",
+        "sha256": {
+          "bench.json": "5a92a7bda6b76e5439da131f2a4bde8e738cbf7cf27524f1959365ee2cf7f40b",
+          "stderr.log": "6d13397f8fa8f4e331657e10d71e0a43ae5f4ba665849759b95c5428bc5b7a07",
+          "stdout.log": "5a92a7bda6b76e5439da131f2a4bde8e738cbf7cf27524f1959365ee2cf7f40b",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "c9033841a36e190b3a3823d46d4462240963d170895658d42fa8eba54210f469"
+        }
+      }
+    ],
+    "stopped": {
+      "1024_order_b_candidate": "interrupted after decisive short failure; incomplete profiler output excluded",
+      "1024_order_b_control": "not started",
+      "3968_both_orders": "not started",
+      "complete_category_suite": "forbidden and not run"
+    },
+    "task_owned_orphan_terminated": true,
+    "w7900_vram_returned_to_baseline_bytes": 27959296
+  },
+  "cleanup": {
+    "benchmark_cli_choice_removed": true,
+    "gfx1151_alias_exclusion_retained": true,
+    "primitive_body_wrapper_registry_key_and_oracle_retained": true,
+    "regression_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_gpu.py tests/test_laguna_gguf_runner.py tests/test_laguna_target_ar_bench.py",
+    "regression_output_sha256": "70bd93f29a65727e5cc0991aac37bb59b433f6d667824853361ad51e262a38ec",
+    "regression_result": "44 passed",
+    "retained_wave4_default_unchanged": true,
+    "runtime_rejection_assertions_added": true,
+    "runtime_schedule_map_entry_removed": true,
+    "serial_fallback_unchanged": true,
+    "source_files": [
+      {
+        "path": "hipengine/runtime/laguna_moe.py",
+        "sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "476dc822608921523d259993a0bea351898560896fdf63f11a01e4fe0c697213"
+      },
+      {
+        "path": "tests/test_laguna_moe_gpu.py",
+        "sha256": "a2dd714a252f9d8bec2be616087af148290d847aad7e26c05d8db5464b3f73f7"
+      },
+      {
+        "path": "tests/test_laguna_target_ar_bench.py",
+        "sha256": "3e14a319612f98003d332fc06135a1213dbe12d4c782a0c84fb99a74a4a71715"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip",
+        "sha256": "2a0393f776bc0d73b8c66b451de22a87351d9111594baa36b4d496b7169a1c6e"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.py",
+        "sha256": "75fb33f670813fb9ad0a60c5bdc935e25e9502d0430a88751cb76b15fccb15aa"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "sha256": "ea51421fbe53d40e2fb099d2340b5cddddb6bb53b6a9802bcef03c85847f0512"
+      }
+    ]
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "reject runtime promotion and retain the primitive only as diagnostic exact kernel evidence",
+    "additional_speedup_required_pct": 4.350869291461135,
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "completion_claim": false,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "next_action": "Re-rank retained traces with sign-bit runtime integration mechanically closed; do not retry sign-bit insertion without a materially different end-to-end mechanism.",
+    "performance_claim": false
+  },
+  "frozen_contract": {
+    "analyzer_sha256": "785964d80e4ec0b198a5113f4d50181f8422b3efca8693c1a959536c70196d02",
+    "category_allowed_only_after_mechanical_pass": true,
+    "child_sha256": "91e90c5d12c1a4045c9b9a83656c2408f27016a89b983be80bbc6d57bda5bf4a",
+    "command": "bash /tmp/run_laguna_iq3_signbit_clean_profiles.sh",
+    "contexts": [
+      "short",
+      "512",
+      "1024",
+      "3968"
+    ],
+    "kernel_sum_and_span_regression_max_pct": 0.5,
+    "no_third_order_or_guard_waiver": true,
+    "process_orders": 2,
+    "profiled_child_throughput_regression_min_pct": -0.5,
+    "require_inclusive_family_improves_each_order": true,
+    "require_producer_improves_each_order": true,
+    "runner_sha256": "40202f140cea6b888b734fa176ca880c642483663964955593cecdca7b16e9ed",
+    "stable_samples_per_arm": {
+      "1024": 12,
+      "3968": 12,
+      "512": 12,
+      "short": 28
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq3_signbit_runtime_rejected",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "output_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "result": "only already-catalogued unrelated drift"
+  },
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-design.json",
+      "sha256": "3f7fb58986eb3c4f2bbd5896403830812e6cf89f520bf03093c21071efaee2b1"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-correctness.json",
+      "sha256": "bb5a14ebf6ea53544e9dc38c1784f6a45f1e74ccb84282bc410bfb009c1d168d"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq3-signbit-runtime-correctness.json",
+      "sha256": "c7e996b060c277c8b4934e1b11ec6751a6c19863bf54da3c7184e471f7b93b32"
+    }
+  ],
+  "rejection": {
+    "complete_category_suite_skipped": true,
+    "failing_context": "short",
+    "failing_orders": [
+      "a",
+      "b"
+    ],
+    "order_a_profiled_child_tok_s_change_pct": -1.1242881712359543,
+    "order_a_span_change_pct": 0.5709830200139487,
+    "order_b_span_change_pct": 1.9305675390967947,
+    "reason": "Both short process orders exceed the frozen +0.5% dispatch-span guard, and order A also exceeds the -0.5% profiled-child throughput guard. Target producer/inclusive/kernel improvements cannot waive an end-to-end failure.",
+    "remaining_contexts_skipped": true
+  },
+  "schema": 1,
+  "status": "rejected_runtime_integration_removed"
+}

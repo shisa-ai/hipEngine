@@ -1,0 +1,260 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-design.json",
+    "design_artifact_sha256": "5096c01d238a89b931e3dc5dbd0f1afc0cb8c62bdf4bde58faaeeb707afa332d",
+    "immutable_control_trace": "/tmp/laguna-q2-xl-router-projection-wave0-tree-clean-8c709ba81-short-control-a/trace_kernel_trace.csv",
+    "immutable_control_trace_sha256": "0b934f80b208c4f5e844ac268a4a5dbff1329402474df126f86204bcc727af4f",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "categories_run": false,
+    "clean_contexts_run": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "runtime_correctness_admitted": true,
+    "runtime_default_changed": false,
+    "runtime_promoted": false
+  },
+  "full_state": {
+    "active_kv_and_live_spans_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "decode_steps": 16,
+    "final_hidden_exact": true,
+    "full_logits_exact": true,
+    "generated_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "kl_divergence": 0.0,
+    "live_span_fields_checked": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "peak_tracked_allocations": 1499,
+    "peak_tracked_bytes": 40459057576,
+    "post_layer_hidden_exact": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "reset_prefill_exact": true,
+    "resident_nbytes_delta": 0,
+    "result": {
+      "path": "/tmp/laguna-argmax-pair-runtime-correctness.json",
+      "sha256": "847d0f70a7d2d9574a77e10ac1278f73ce94f17dc5522bbfde96631b96929872"
+    },
+    "scratch_allocation_delta": -1,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "future_clean_gate": {
+    "categories_blocked_until_all_clean_orders_pass": true,
+    "contexts": [
+      "short",
+      "512",
+      "1024",
+      "3968"
+    ],
+    "each_order_cycle_span_regression_max_pct": 0.5,
+    "each_order_model_kernel_sum": "candidate <= control",
+    "each_order_profiled_child_throughput_regression_min_pct": -0.5,
+    "mechanical": "exact IDs, finite logits, -1 allocation/0 bytes, resources, lifecycle, no compiler",
+    "process_orders_per_context": 2,
+    "stop_on_first_failed_context": true,
+    "third_order_rerun_or_pooled_waiver_allowed": false,
+    "topology": "control 683 = five copies + 678 kernels; candidate 682 = four copies + the identical 678-kernel multiset"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+    },
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "kind": "hipengine_laguna_q2_xl_argmax_pair_readback_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "shared-weight mixed_ja_en_review bulk prefill, 16 c=1 transitions, reset/re-prefill; code_merge_intervals two-transition cache-only trace"
+  },
+  "performance_claim": false,
+  "profile": {
+    "candidate_dispatches_per_token": 682,
+    "candidate_kv_allocation_count": 245,
+    "candidate_resident_nbytes": 40069953588,
+    "candidate_runtime_copies_per_token": 4,
+    "candidate_scratch_allocation_count": 23,
+    "child": {
+      "path": "/tmp/laguna-argmax-pair-runtime-trace-child.json",
+      "sha256": "0c0aa5d30f10355423e12e2e53f8861c0a71528ecbd34ee33c7012bf716bf622"
+    },
+    "contract": {
+      "path": "/tmp/laguna-argmax-pair-runtime-validation-frozen-contract.json",
+      "sha256": "7cbed265ba7ba5354e622764075e9675bf4b92495c33822c143bba2296ae675b"
+    },
+    "control_dispatches_per_token": 683,
+    "control_runtime_copies_per_token": 5,
+    "decode_transitions": 2,
+    "finite_final_logits": true,
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "iq3_wave10_calls_per_token": 45,
+    "iq3_wave10_resources": {
+      "allocated_lds_bytes": 512,
+      "allocated_vgpr": 88,
+      "grid_x": 983040,
+      "scratch_bytes": 0,
+      "workgroup_x": 320
+    },
+    "model_kernel_name_resource_multiset_exact": true,
+    "model_kernel_signature_sha256": "2f053ea1f558d881a47b374bb9579b5fa0f36930163371253a0936c40529c053",
+    "model_kernels_per_token": 678,
+    "no_compiler_under_profiler": true,
+    "preflight": {
+      "path": "/tmp/laguna-argmax-pair-runtime-trace-preflight.stdout",
+      "sha256": "620134e03add4275bd8f609268d09806fa252692101345bfaa2220d68e59b354"
+    },
+    "profile_rerun": false,
+    "profile_stderr": {
+      "path": "/tmp/laguna-argmax-pair-runtime-profile.stderr",
+      "sha256": "0050b5d393bac1781c990b7d076081ad7956291e139c85389361838deb00103f"
+    },
+    "router_projection_calls_per_token": 47,
+    "router_projection_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 24,
+      "grid_x": 65536,
+      "grid_y": 1,
+      "profiler_static_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "source_dynamic_lds_bytes": 1024,
+      "workgroup_x": 256
+    },
+    "summary": {
+      "path": "/tmp/laguna-argmax-pair-runtime-trace-summary.json",
+      "sha256": "b97cb475007bc653e60f684a8dd9ef7c128b4622efe2ce00e8004e78666dbe83"
+    },
+    "trace": {
+      "path": "/tmp/laguna-argmax-pair-runtime-trace/trace_kernel_trace.csv",
+      "sha256": "d470e432be59003d3140a323e04b6c5653c0696fea274dc2d877df0acea86137"
+    },
+    "tracked_returned_to_baseline": true,
+    "validation_manifest": {
+      "path": "/tmp/laguna-argmax-pair-runtime-validation-manifest.json",
+      "sha256": "b029c7fd0f8c568dcd092403bb25dd2608da95abe609c986a99c886db1929d45"
+    }
+  },
+  "provenance": {
+    "builder_sha256": "4b3a52ae1c35f642b72360d14eb24adcecf5039d6112cbaaea2d9012f0782b3f",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "a92c2c00a26c567bfa27bbf28eec61e19150df73676e0e0981f86bf0d31beda9"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "5306358f13fd550f333c51b6650df510457d715ad05f655501305fc35d843a3e"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "c27f94b06fad2135867ca136040bb608aeb5f6293009c4ee0d3cfb4fecdad902"
+      },
+      {
+        "path": "tests/test_laguna_argmax_pair_readback_runtime.py",
+        "sha256": "b83f3c3979605bbcda35cef2630d4072ad1c438b19603cc5e874b6cc755c16e9"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "6920c29ab1590f6694cdd11079c8c1a3edd42841795edc44c9b513c112d37fa1"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "81ad6bbd902193cc7fbc3e90b1e27c1e8e8b402669acd774899bc32add10ed68"
+      }
+    ]
+  },
+  "red_green": {
+    "coverage": [
+      "fail-closed gfx1100/gfx1151 capability resolution",
+      "exact 12-byte owner and +0/+8 non-owning views",
+      "allocation failure, owner-only free, and idempotent close",
+      "one-copy bit-exact int64/FP32 parsing",
+      "both scalar sampling sites and separate-owner fallback",
+      "session constructor, benchmark CLI, and telemetry"
+    ],
+    "green_result": "5 passed",
+    "green_sha256": "4d2df7a96ce4a667da3ccf295f2d16c728a65ed0e861a3baa919f7bb469b02b5",
+    "red_result": "5 failed only on absent capability/owner/parser/routes/CLI",
+    "red_sha256": "f5060979bfecb4b70641eed2d154aa7950f7b9d00710788912c74597f09e0fa8"
+  },
+  "revision": "0737acf495083a6e154a7bfe9aa6cb406559e1a7",
+  "runtime_implementation": {
+    "argmax_kernel_pointer_abi_unchanged": true,
+    "argmax_kernel_source_registry_unchanged": true,
+    "benchmark_option": "--enable-argmax-pair-readback",
+    "candidate": "one scratch-owned exact 12-byte result plus one D2H read",
+    "candidate_owner_nbytes": 12,
+    "capability": "LAGUNA_ARGMAX_PAIR_READBACK=False",
+    "control": "separate int64 ID and FP32 value owners plus two scalar D2H reads",
+    "id_offset_bytes": 0,
+    "kv_allocation_delta": 0,
+    "model_kernel_contract": {
+      "candidate": 678,
+      "control": 678
+    },
+    "resident_nbytes_delta": 0,
+    "runtime_copy_contract": {
+      "candidate": 4,
+      "control": 5
+    },
+    "scratch_allocation_delta": -1,
+    "separate_owner_fallback_retained": true,
+    "session_option": "use_argmax_pair_readback=True",
+    "value_offset_bytes": 8
+  },
+  "schema": 1,
+  "status": "runtime_correctness_admitted_default_off",
+  "validation": {
+    "adjacent_result": "95 passed with one unrelated Starlette warning",
+    "adjacent_sha256": "b1ee263ebf74c4ea7cd907f8f0cd3723f09254ef61503aa3ac50525d53b4f1e5",
+    "cpu_deterministic_result": "29 passed after compileall",
+    "cpu_deterministic_sha256": "1a2a90c18d6dcf3f37aba0ba726c8e55a21c6aff0d8a6b8bec68ca92f4311644",
+    "fixture_registry_cpu_build_smokes_passed": true,
+    "fixture_smokes_sha256": "95e26632ca11b6500a84c2ab4c0057ec08a02447b9f6f45781878cc46da9ef56",
+    "focused_result": "5 passed",
+    "focused_sha256": "4d2df7a96ce4a667da3ccf295f2d16c728a65ed0e861a3baa919f7bb469b02b5",
+    "lineage_note": "only already-catalogued unrelated external drift; no argmax kernel source or registry change",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_passed": true,
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "targeted_compile_passed": true,
+    "targeted_compile_sha256": "17498c94ca05a3b0cf61d528222725b988586dfe8c51477f464b3a4de3f63b68"
+  }
+}

@@ -123,6 +123,8 @@ def test_laguna_dflash_accepts_direct_target_residency_options(
             "4",
             "--quant-label",
             "UD-Q2_K_XL",
+            "--iq3-selected-down-tile",
+            "4",
         ],
     )
 
@@ -131,6 +133,7 @@ def test_laguna_dflash_accepts_direct_target_residency_options(
     assert args.direct_gguf is True
     assert args.safety_reserve_gib == pytest.approx(4.0)
     assert args.quant_label == "UD-Q2_K_XL"
+    assert args.iq3_selected_down_tile == 4
 
 
 def test_laguna_dflash_refresh_uses_promoted_chunk_policy() -> None:

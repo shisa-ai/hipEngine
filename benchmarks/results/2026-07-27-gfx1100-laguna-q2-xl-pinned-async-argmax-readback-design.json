@@ -1,0 +1,398 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_ms_per_token": 15.805224168463194,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "model_kernels_per_token": 678,
+    "profiled_dispatches_per_token": 683,
+    "runtime_copies_per_token": 5,
+    "runtime_copy_breakdown": {
+      "d2h_argmax_id": 1,
+      "d2h_argmax_value": 1,
+      "h2d_kv_row_position": 1,
+      "h2d_scratch_position": 1,
+      "h2d_token": 1
+    }
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "production_source_changed": false,
+    "runtime_default_changed": false,
+    "runtime_owner_added": false,
+    "selected_for_separate_runtime_admission": true
+  },
+  "future_admission": {
+    "no_rerun_third_order_or_pooled_waiver": true,
+    "steps": [
+      "separate default-off runtime RED/GREEN for pinned staging ownership/failures/teardown, both scalar sites, one-final-fence scheduling, and blocking fallback",
+      "fresh shared-weight bulk prefill plus 16 c=1 transitions with complete logits/IDs/hidden/KV/KVLiveSpans/reset/lifecycle at KL0/top-1 100%",
+      "non-profiled require-cached preflight then one rocprof process proving unchanged 683 dispatches/token = 3 H2D + 2 D2H + corresponding 678-model-kernel multiset plus runtime call/fence telemetry",
+      "both frozen process orders at short/512/1K/3968 under kernel-sum/span/child guards; categories only if all clean rows pass"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+    },
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "immutable_evidence": {
+    "closed_premises": [
+      "all ranked model-kernel ownership leaves under retained or directly rejected exact routes",
+      "shared H2D token/position publication",
+      "paired-device argmax result ownership",
+      "mapped-host argmax output ownership",
+      "unchanged graph, packet, native-AQL, and prompt-conditioned routes"
+    ],
+    "lineage": {
+      "path": "/tmp/laguna-pinned-async-selection-lineage.log",
+      "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+    },
+    "rank": {
+      "path": "/tmp/laguna-post-wave0-residual-rank.txt",
+      "sha256": "e3eac267b8bcd6e4253f013f591f1b0af19ce9926f11bb8798b23bcc3aa2312d",
+      "stable_windows": 28
+    },
+    "trace_sha256": [
+      "0b934f80b208c4f5e844ac268a4a5dbff1329402474df126f86204bcc727af4f",
+      "f758b18e39b766dd814c26b14eadfc8a67b781df492a43a0db9162a5ca282132"
+    ]
+  },
+  "kind": "hipengine_laguna_q2_xl_pinned_async_argmax_readback_design",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "resident c=1 greedy target AR residual; actual-vocab two-stage argmax synchronization/readback screen"
+  },
+  "modeled_ceiling": {
+    "basis": "subtract only the measured complete argmax/readback synchronization-boundary saving from canonical wall; leave all model kernels and other host intervals unchanged",
+    "canonical_ms_per_token": 15.805224168463194,
+    "interpretation": "planning ceiling only; not full-model throughput evidence",
+    "modeled_gain_pct": 0.195095773066023,
+    "modeled_h32_decode_tok_s": 63.39365687263669,
+    "modeled_ms_per_token": 15.774448885463194,
+    "remaining_gap_to_matched_vulkan_pct": 1.616222199154005,
+    "subtract_only_direct_saving_us_per_token": 30.775283
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "8727cd10c8156f75084c558d5e5f27bcb74ba1fdf51b286800791eda39247f89",
+    "sources": [
+      {
+        "path": "hipengine/core/hip.py",
+        "sha256": "c508f62847a053c4dd1c3462426d3b141318e9602ab02c71ae94b23834652b59"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "713dbd9215c7371b45e3f4e0bd1317e952bb8380d4c2da72c545087f14bf8759"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/linear/lm_head.hip",
+        "sha256": "0559f90c2711ab21acc11acfe75d259081b3b60b735ec223f7fdbd4969172686"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/linear/lm_head.py",
+        "sha256": "16f125baa5ca0a0ad5d9e9ab83c972f3ca719d3bc699666760cb90018063c126"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "74f10df84ad497e85e4fbeabd6121aa8f3b0093deddd9b9f7b1bc4b71bffcf89"
+      }
+    ]
+  },
+  "revision": "607feec940be0429716a0af4d1c1ae5537465bf4",
+  "schema": 1,
+  "screen": {
+    "cached_library": {
+      "path": "/home/lhl/.cache/hipengine/build/lm_head-08cef1b98c9d00e0/lm_head.so",
+      "sha256": "f436e7af83d7a405a01f4093ca2cba24f78b10791fff98c3648800404f7f2ab0"
+    },
+    "candidate": {
+      "async_d2h_copies": 2,
+      "d2h_copies_per_token": 2,
+      "device_output_allocations": 2,
+      "device_output_nbytes": 12,
+      "final_fences": 1,
+      "host_get_device_pointer_called": false,
+      "host_ptr": 140302820876288,
+      "host_registration_flags": 0,
+      "host_staging_nbytes": 4096,
+      "kernel_source_or_signature_changed": false,
+      "pre_readback_fence": false
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_pinned_async_argmax_readback.py --json /tmp/laguna-pinned-async-argmax-screen.json",
+    "compiler_ran": false,
+    "contract": {
+      "path": "/tmp/laguna-pinned-async-argmax-frozen-contract.json",
+      "sha256": "85ecada22879f782371fa732892190c37f39bb2fcb66c5a4d94239eec2b5cef3"
+    },
+    "control": {
+      "blocking_d2h_copies": 2,
+      "d2h_copies_per_token": 2,
+      "device_output_allocations": 2,
+      "device_output_nbytes": 12,
+      "pre_readback_fences": 1
+    },
+    "correctness": {
+      "all_id_and_f32_value_bits_exact": true,
+      "all_minimum_index_ties_exact": true,
+      "all_sentinels_replaced": true,
+      "default_and_nonblocking_streams_exact": true,
+      "fixtures": 15
+    },
+    "harness": {
+      "path": "/tmp/bench_laguna_pinned_async_argmax_readback.py",
+      "sha256": "2f3aa9e2903a0036b0df485ac24e7fd031dab4a7e59adf10d82f4507b68dad4c"
+    },
+    "lifecycle": {
+      "host_unregistered_and_closed": true,
+      "nonblocking_stream_created_and_destroyed": true
+    },
+    "protocol": {
+      "alternating_two_actual_vocab_logit_buffers": true,
+      "counterbalanced": true,
+      "repetitions": 15,
+      "timed_boundary": "two-stage argmax launch + host result availability",
+      "timed_stream": "default stream, matching canonical target-AR benchmark",
+      "tokens_per_sample": 1000,
+      "warmups_per_arm": 100
+    },
+    "raw": {
+      "path": "/tmp/laguna-pinned-async-argmax-screen.json",
+      "sha256": "cbdaeb11f36dfd2045c0223d134c760fd434e63085ba9d597df99a35a5170b0a"
+    },
+    "samples": [
+      {
+        "candidate_us_per_token": 51.555404,
+        "control_us_per_token": 82.67894199999999,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 0,
+        "saving_pct": 37.64385132069057,
+        "saving_us_per_token": 31.12353799999999
+      },
+      {
+        "candidate_us_per_token": 51.353381,
+        "control_us_per_token": 82.14010400000001,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 1,
+        "saving_pct": 37.48074509377296,
+        "saving_us_per_token": 30.78672300000001
+      },
+      {
+        "candidate_us_per_token": 51.30856,
+        "control_us_per_token": 82.128664,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 2,
+        "saving_pct": 37.52661068491264,
+        "saving_us_per_token": 30.820104
+      },
+      {
+        "candidate_us_per_token": 53.583623,
+        "control_us_per_token": 83.96814900000001,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 3,
+        "saving_pct": 36.185775632615176,
+        "saving_us_per_token": 30.384526000000008
+      },
+      {
+        "candidate_us_per_token": 51.315021,
+        "control_us_per_token": 82.325557,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 4,
+        "saving_pct": 37.66817635986356,
+        "saving_us_per_token": 31.010536000000002
+      },
+      {
+        "candidate_us_per_token": 51.331120999999996,
+        "control_us_per_token": 82.050462,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 5,
+        "saving_pct": 37.43957102886271,
+        "saving_us_per_token": 30.719341
+      },
+      {
+        "candidate_us_per_token": 51.376862,
+        "control_us_per_token": 82.061693,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 6,
+        "saving_pct": 37.392393305851,
+        "saving_us_per_token": 30.684831000000003
+      },
+      {
+        "candidate_us_per_token": 51.27404,
+        "control_us_per_token": 82.066573,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 7,
+        "saving_pct": 37.52140716293832,
+        "saving_us_per_token": 30.792533000000006
+      },
+      {
+        "candidate_us_per_token": 51.464493000000004,
+        "control_us_per_token": 82.305156,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 8,
+        "saving_pct": 37.471119063306304,
+        "saving_us_per_token": 30.840662999999992
+      },
+      {
+        "candidate_us_per_token": 51.477222999999995,
+        "control_us_per_token": 82.079133,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 9,
+        "saving_pct": 37.283422572214555,
+        "saving_us_per_token": 30.601910000000004
+      },
+      {
+        "candidate_us_per_token": 51.569544,
+        "control_us_per_token": 83.18719800000001,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 10,
+        "saving_pct": 38.00783625384281,
+        "saving_us_per_token": 31.61765400000001
+      },
+      {
+        "candidate_us_per_token": 51.384881,
+        "control_us_per_token": 82.467519,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 11,
+        "saving_pct": 37.69076404493264,
+        "saving_us_per_token": 31.082637999999996
+      },
+      {
+        "candidate_us_per_token": 51.294441,
+        "control_us_per_token": 82.117743,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 12,
+        "saving_pct": 37.53549583066354,
+        "saving_us_per_token": 30.823302000000005
+      },
+      {
+        "candidate_us_per_token": 51.282239999999994,
+        "control_us_per_token": 82.096963,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 13,
+        "saving_pct": 37.53454680168864,
+        "saving_us_per_token": 30.814723000000008
+      },
+      {
+        "candidate_us_per_token": 51.295871,
+        "control_us_per_token": 82.019352,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 14,
+        "saving_pct": 37.458819474701535,
+        "saving_us_per_token": 30.723481
+      }
+    ],
+    "shape": {
+      "stage1_blocks": 98,
+      "threads": 256,
+      "vocab_size": 100352
+    },
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "cbdaeb11f36dfd2045c0223d134c760fd434e63085ba9d597df99a35a5170b0a",
+    "timing": {
+      "all_repetitions_candidate_faster": true,
+      "candidate_median_us_per_token": 51.353381,
+      "control_median_us_per_token": 82.128664,
+      "saving_pct": 37.472036559610906,
+      "saving_us_per_token": 30.775283
+    },
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 804004,
+      "peak_allocations": 6,
+      "total_allocated_bytes": 804004,
+      "total_freed_bytes": 804004
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_during": {
+      "active_allocations": 6,
+      "current_allocated_bytes": 804004,
+      "peak_allocated_bytes": 804004,
+      "peak_allocations": 6,
+      "total_allocated_bytes": 804004,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "selection": {
+    "candidate": "same device outputs and two D2H copies; non-mapped pinned host page at +0/+8; enqueue both copies on producing stream; one final fence; parse host bits",
+    "current": "ordinary separate ID/value device outputs; producing-stream/device pre-fence; two blocking D2H calls",
+    "d2h_copy_count_changed": false,
+    "device_output_ownership_changed": false,
+    "fallback": "current pre-fence plus separate blocking reads",
+    "future_capability": "LAGUNA_PINNED_ASYNC_ARGMAX_READBACK=False",
+    "host_get_device_pointer_called": false,
+    "host_registration_flags": 0,
+    "host_staging_nbytes": 4096,
+    "kernel_source_signature_registry_math_changed": false,
+    "modeled_profiled_dispatches_per_token": 683,
+    "modeled_runtime_copies_per_token": 5,
+    "reason": "all ownership alternatives are now directly rejected; scheduling the unchanged copies before one final fence is an independent exact host boundary",
+    "rows_prefill_verifier_changed": false,
+    "selected": "single-fence pinned async scalar argmax readback",
+    "surface": "post-argmax synchronization and D2H scheduling"
+  },
+  "status": "selected_design_only"
+}

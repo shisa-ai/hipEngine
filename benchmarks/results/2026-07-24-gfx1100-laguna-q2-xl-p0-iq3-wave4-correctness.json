@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T16:50:00Z",
+  "kind": "hipengine_laguna_q2_xl_p0_exact_iq3_ownership_correctness",
+  "status": "accepted_correctness",
+  "performance_claim": false,
+  "default_changed": false,
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "compiler": "Clang 22 decode profile",
+    "gpu_max_hw_queues": 1
+  },
+  "experiment": {
+    "plan": "docs/LAGUNA-decode.md P0",
+    "baseline": "one local128 output block loops ten routes serially and emits the weighted BF16 result",
+    "route_parallel_candidate": "one local32 wave per (route, output), four independent K256 partials reproducing the local128 wave trees, followed by the existing slot-order weighted reducer",
+    "row4_candidate": "four adjacent outputs per local128 route block followed by the same reducer",
+    "persistent_weight_copy": false,
+    "existing_exact_fallback_retained": true,
+    "candidate_default": false
+  },
+  "actual_weight_microbench": {
+    "weight_shape": [256, 3072, 1024],
+    "top_k": 10,
+    "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+    "all_selected_distinct": true,
+    "warmups": 50,
+    "repetitions": 15,
+    "launches_per_sample": 300,
+    "layers": {
+      "1": {
+        "bf16_bit_exact": {
+          "local128_reduce": true,
+          "row4_reduce": true,
+          "wave4_reduce": true
+        },
+        "event_us": {
+          "serial_weighted": 50.10113398234049,
+          "local128_reduce": 61.30053838094076,
+          "row4_reduce": 40.625508626302086,
+          "wave4_reduce": 31.89634641011556
+        },
+        "wave4_event_delta_pct": -36.33607889721958,
+        "row4_event_delta_pct": -18.912995780451492,
+        "wall_us": {
+          "serial_weighted": 50.06236334641775,
+          "wave4_reduce": 31.9387666725864
+        },
+        "wave4_wall_delta_pct": -36.202039740755055
+      },
+      "45": {
+        "bf16_bit_exact": {
+          "local128_reduce": true,
+          "row4_reduce": true,
+          "wave4_reduce": true
+        },
+        "event_us": {
+          "serial_weighted": 49.17233149210612,
+          "local128_reduce": 57.844250996907554,
+          "row4_reduce": 41.81854565938314,
+          "wave4_reduce": 32.99955368041992
+        },
+        "wave4_event_delta_pct": -32.88999589999611,
+        "row4_event_delta_pct": -14.955129459142114,
+        "wall_us": {
+          "serial_weighted": 48.76354670462509,
+          "wave4_reduce": 33.59808664148053
+        },
+        "wave4_wall_delta_pct": -31.099993925803105
+      }
+    },
+    "raw_sha256": "ad5bdfeaa816f1fa293660f5c5b2c41d9590b3b0eda2efb77346189ae5066b6e",
+    "harness_sha256": "5c6fe78cbbba4f6db01a86eb50137983fc6cfb8f1324fa5512f8734031457718"
+  },
+  "full_model_correctness": {
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "decode_steps": 16,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "full_logits_exact": true,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "active_kv_and_kv_live_spans_exact": true,
+    "reset_exact": true,
+    "lifecycle_returned_to_baseline": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0,
+    "raw_sha256": "fca5858a65b5720df3aa1cc2727fe7ddc60fde706c20844c0bb91cc52e7bbb24",
+    "harness_sha256": "d996d942dc32db3cba6c032e0d3e3ff865750ff267aaca4d2fd0277cce9436"
+  },
+  "resource_trace": {
+    "kernel": "gguf_iq3_xxs_selected_gemv_k1024_wave4_kernel",
+    "workgroup_size_x": 32,
+    "grid_workitems_x": 98304,
+    "grid_y": 10,
+    "route_output_workgroups": 30720,
+    "vgpr": 88,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "cold_trace_duration_ns": 163880,
+    "reducer_kernel": "weighted_sum_out_kernel<unsigned short, float>",
+    "reducer_duration_ns": 7120,
+    "trace_sha256": "cccded661439e871c926b0277f2b3313121f7f62a12ca40614408649fce0b1e6",
+    "harness_sha256": "45ae17fcbe2c38493d3b260f21e485b56dba413756d24d6c6c69da882b3fbf50"
+  },
+  "red_green": {
+    "kernel_red_sha256": "7fc208cd5491939b6175596f88bf0dda5c956c7e07d83a9f49c0805aba28f6e2",
+    "runtime_red_sha256": "54c74ea4ae8f26ec14c092b37190e2e1ffee8ded7837b7550fc7505225f6f9f7",
+    "green": "focused registry, wave4 exactness, weighted fallback, and plan-selector tests pass"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "0f5643827ce581b2900fb7ccc4a094cdb533cb647ae043db9b1efd6721cef284",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.py": "36ef4fbd21504ca2edc311542c7f5915b788d0a4199cf12cdf85355615ce3931",
+    "hipengine/runtime/laguna_moe.py": "7a6f64067260372ff173f802d971fc4ff5834a2b13fb4d8137e974302465e0fc",
+    "hipengine/runtime/laguna_gguf_runner.py": "f1cfc2a6c7913ae8a2ef6e6c8d90a5c87749d15f3905b4bf891dbcd12b0b054f",
+    "scripts/laguna_target_ar_bench.py": "f9f562c88304cc0b49b1057195858937752d214874e81fab43dac98bf70ae41c"
+  },
+  "commands": {
+    "microbench": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_p0_exact.py",
+    "full_model_correctness": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/laguna_iq3_p0_wave4_correctness.py",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main rocprofv3 --kernel-trace --stats --output-format csv --output-directory /tmp/laguna-iq3-p0-wave4-rocprof -- python3 /tmp/trace_laguna_iq3_p0_wave4.py"
+  },
+  "next_gate": "Run clean context profiles and the complete counterbalanced category benchmark before making wave4_reduce the gfx1100 default."
+}

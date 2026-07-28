@@ -1,0 +1,242 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 51.436,
+    "canonical_ms_per_token": 19.441,
+    "name": "retained raw Q5_K wave32x2 with P0 IQ3 wave4, P2 exact split attention, and SWA tile16"
+  },
+  "candidate": {
+    "all_model_q5_raw_bytes": 2143274496,
+    "all_model_q5_replacement_overhead_bytes": 48710784,
+    "attention_output_q5_raw_bytes": 836960256,
+    "attention_output_q5_replacement_overhead_bytes": 19021824,
+    "description": "bit-lossless Q5_K T16 replacement layout plus an exact local32 wave32x2 direct kernel preserving the retained raw accumulator and reduction tree",
+    "duplicate_layout_disallowed": true,
+    "replacement_layout_overhead_pct": 2.2727272727272707
+  },
+  "checks": {
+    "bf16_bit_equal_all_layers": true,
+    "candidate_event_win_all_layers": false,
+    "candidate_wall_win_all_layers": false,
+    "generic_t16_event_win_all_layers": false,
+    "selection_pass": false,
+    "source_wrapper_tests_removed": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject and remove before runtime replacement materialization or complete-model/category gates",
+    "next": "retain raw Q5_K wave32x2. P3 is closed; P4 is not reopened because no reusable dynamic-command-buffer or independently winning fused-body premise exists beyond rejected D8/D16/D17 mechanisms.",
+    "reason": "The exact wave32x2 T16 replacement regresses actual first/last global and SWA Q5 attention-output events by 5.28-9.07% and synchronized wall by 9.48-11.73%; the existing generic T16 leaf is slower still. The layout therefore loses the mandatory actual-weight performance precondition despite byte equality and modest replacement overhead."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0; GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p3_q5_t16_repack_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "production_rows": [
+    {
+      "event_delta_pct": {
+        "candidate_t16_wave32x2": 5.313345741905873,
+        "existing_t16_local128_tile16": 16.456503267604706
+      },
+      "event_us": {
+        "candidate_t16_wave32x2": 30.008399486541748,
+        "existing_t16_local128_tile16": 33.18357467651367,
+        "retained_raw_wave32x2": 28.494393825531006
+      },
+      "layer_id": 0,
+      "quality": {
+        "bf16_equal": true,
+        "generic_t16_bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "raw_bytes": 12976128,
+      "replacement_resident_delta_pct": 2.2727272727272707,
+      "role": "q5_attention_output",
+      "shape": [
+        3072,
+        6144
+      ],
+      "t16_bytes": 13271040,
+      "wall_delta_pct": {
+        "candidate_t16_wave32x2": 9.766168983965319,
+        "existing_t16_local128_tile16": 13.516747037108278
+      },
+      "wall_us": {
+        "candidate_t16_wave32x2": 31.028585508465767,
+        "existing_t16_local128_tile16": 32.0887949783355,
+        "retained_raw_wave32x2": 28.26789510436356
+      }
+    },
+    {
+      "event_delta_pct": {
+        "candidate_t16_wave32x2": 5.277238268432893,
+        "existing_t16_local128_tile16": 20.217013134466598
+      },
+      "event_us": {
+        "candidate_t16_wave32x2": 30.642414093017578,
+        "existing_t16_local128_tile16": 34.9908447265625,
+        "retained_raw_wave32x2": 29.10640001296997
+      },
+      "layer_id": 44,
+      "quality": {
+        "bf16_equal": true,
+        "generic_t16_bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "raw_bytes": 12976128,
+      "replacement_resident_delta_pct": 2.2727272727272707,
+      "role": "q5_attention_output",
+      "shape": [
+        3072,
+        6144
+      ],
+      "t16_bytes": 13271040,
+      "wall_delta_pct": {
+        "candidate_t16_wave32x2": 9.483895123344999,
+        "existing_t16_local128_tile16": 14.53309081343075
+      },
+      "wall_us": {
+        "candidate_t16_wave32x2": 31.696194782853127,
+        "existing_t16_local128_tile16": 33.15796493552625,
+        "retained_raw_wave32x2": 28.950554551556706
+      }
+    },
+    {
+      "event_delta_pct": {
+        "candidate_t16_wave32x2": 9.066281649155727,
+        "existing_t16_local128_tile16": 19.527445415077914
+      },
+      "event_us": {
+        "candidate_t16_wave32x2": 44.28711414337158,
+        "existing_t16_local128_tile16": 48.53494167327881,
+        "retained_raw_wave32x2": 40.60568809509277
+      },
+      "layer_id": 1,
+      "quality": {
+        "bf16_equal": true,
+        "generic_t16_bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "raw_bytes": 19464192,
+      "replacement_resident_delta_pct": 2.2727272727272707,
+      "role": "q5_attention_output",
+      "shape": [
+        3072,
+        9216
+      ],
+      "t16_bytes": 19906560,
+      "wall_delta_pct": {
+        "candidate_t16_wave32x2": 11.49009380492705,
+        "existing_t16_local128_tile16": 13.03190211838372
+      },
+      "wall_us": {
+        "candidate_t16_wave32x2": 45.50214041955769,
+        "existing_t16_local128_tile16": 46.13139433786273,
+        "retained_raw_wave32x2": 40.81272054463625
+      }
+    },
+    {
+      "event_delta_pct": {
+        "candidate_t16_wave32x2": 8.626978863373381,
+        "existing_t16_local128_tile16": 20.509410408109495
+      },
+      "event_us": {
+        "candidate_t16_wave32x2": 44.25951957702637,
+        "existing_t16_local128_tile16": 49.10095691680908,
+        "retained_raw_wave32x2": 40.744500160217285
+      },
+      "layer_id": 46,
+      "quality": {
+        "bf16_equal": true,
+        "generic_t16_bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "raw_bytes": 19464192,
+      "replacement_resident_delta_pct": 2.2727272727272707,
+      "role": "q5_attention_output",
+      "shape": [
+        3072,
+        9216
+      ],
+      "t16_bytes": 19906560,
+      "wall_delta_pct": {
+        "candidate_t16_wave32x2": 11.728302311827555,
+        "existing_t16_local128_tile16": 17.5370413128636
+      },
+      "wall_us": {
+        "candidate_t16_wave32x2": 45.775839826092124,
+        "existing_t16_local128_tile16": 48.15571941435337,
+        "retained_raw_wave32x2": 40.97067518159747
+      }
+    }
+  ],
+  "protocol": {
+    "actual_layers": [
+      0,
+      44,
+      1,
+      46
+    ],
+    "counterbalanced_repetitions": 15,
+    "global_layers": [
+      0,
+      44
+    ],
+    "launches_per_sample": 200,
+    "swa_layers": [
+      1,
+      46
+    ],
+    "warmups_per_mode": 50
+  },
+  "provenance": {
+    "candidate_patch_sha256": "72d678c48746bc4b41f01c66f63daee7b33ab61b0f56636b3973822c15b665f4",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "micro_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_p3_q5_t16_output.py",
+    "micro_harness_sha256": "a85ffca1c34c445de9636d8aec715161fe6353edb89889a872b07fe33b1ff46b",
+    "micro_raw_sha256": "6f6838b4ce98907470fea44b62d0188aba766cb6d6ee961655d323a80d1dbed4",
+    "red_sha256": "812ebf3dbed98f57cb7459d14a7c8c225254260db873e452d90258c855ec6262",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file laguna_p3_q5_t16 --output-directory /tmp/laguna-p3-q5-t16-trace -- uv run python /tmp/trace_laguna_p3_q5_t16_wave32x2.py",
+    "trace_csv_sha256": "8d191528f45ff2bd590c02642a52aabc11c1da0b9810173664ef79526bb1e0eb",
+    "trace_harness_sha256": "425ae05e72869a20195c40e6a1f291ceee2a0e0e9345c4b439ba15f579b19e05"
+  },
+  "resources": {
+    "candidate_t16_wave32x2": {
+      "grid_size_x_threads": 49152,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 104,
+      "workgroup_size": 32
+    },
+    "retained_raw_wave32x2": {
+      "grid_size_x_threads": 49152,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 96,
+      "workgroup_size": 32
+    },
+    "trace_note": "single ordered execution capture only; trace durations are not used for selection"
+  },
+  "source_revision": "26e853c3e8e0cb5aa57e800f4f8d1fddb8e40c63"
+}

@@ -1,0 +1,77 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 50.254,
+    "canonical_ms_per_token": 19.899,
+    "name": "P0 exact IQ3 wave4 producer plus slot-order reducer",
+    "revision": "f852b7225"
+  },
+  "candidate": {
+    "activation": "BF16 quantized to GGML Q8_1 in a reusable 11520-byte workspace",
+    "description": "K1024 raw-IQ3_XXS x Q8_1 signed-dot4 producer followed by the retained slot-order reducer",
+    "external_source": "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/vecdotq.cuh:1106-1143",
+    "external_source_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "persistent_weight_copy": false,
+    "scratch_kernel_body": false,
+    "timed_activation_quantization": true,
+    "workspace_bytes": 11520
+  },
+  "checks": {
+    "actual_weight_inclusive_event_win": false,
+    "actual_weight_inclusive_wall_win": false,
+    "full_18_prompt_quality_gate_required": false,
+    "primitive_exact_to_source_oracle": true,
+    "selection_pass": false,
+    "synthetic_kl_max_le_0_05": true,
+    "synthetic_top1_ge_0_90": true
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "reject and remove before runtime integration",
+    "next": "adjudicate P1 raw-IQ3 Vulkan-style row4 F32 association",
+    "reason": "Including the mandatory activation quantizer, Q8_1/dot4 regresses actual layer-1/layer-45 producer-plus-reducer HIP-event time by 16.16%/13.63% and synchronized wall by 13.61%/11.03%. The frozen P1 family-specific inclusive-win precondition fails, so the full 18-prompt model gate is neither required nor permitted."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; HIP_VISIBLE_DEVICES=0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_p1_iq3_q8_selection_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "counterbalanced_repetitions": 15,
+    "iterations_per_sample": 300,
+    "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+    "shape": [256, 3072, 1024],
+    "warmups_per_mode": 50
+  },
+  "provenance": {
+    "candidate_source_diff_sha256": "309b508d5824779b17843e29651bdaa53e092b3a8ab168bd66c328ec29421692",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq3_p1_q8.py",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "harness_sha256": "53b6781b0fb90c77845ac21f7eb38d71dc8b14814d048373ef203a497e018aa6",
+    "raw_sha256": "29203f102745fc4437a1c635ab90f6e7932e632d1147553ea4f0dd249356f7a4"
+  },
+  "rows": [
+    {
+      "event_delta_pct": 16.162772250965276,
+      "event_us": {"q8_1_dp4a": 37.755419413248696, "wave4_exact": 32.50216801961263},
+      "layer_id": 1,
+      "quality": {"bf16_equal": false, "kl_max": 6.579556515605245e-07, "max_abs": 0.00439453125, "top1_agreement": 1.0},
+      "wall_delta_pct": 13.607055163353522,
+      "wall_us": {"q8_1_dp4a": 37.33371306831638, "wave4_exact": 32.862143125385046}
+    },
+    {
+      "event_delta_pct": 13.632128807432053,
+      "event_us": {"q8_1_dp4a": 37.81848907470703, "wave4_exact": 33.28151067097982},
+      "layer_id": 45,
+      "quality": {"bf16_equal": false, "kl_max": 8.594147230616106e-07, "max_abs": 0.00439453125, "top1_agreement": 1.0},
+      "wall_delta_pct": 11.029190957685975,
+      "wall_us": {"q8_1_dp4a": 37.453980185091496, "wave4_exact": 33.73345321354767}
+    }
+  ]
+}

@@ -28,6 +28,30 @@ from hipengine.runtime.laguna_gguf_runner import (
 )
 from tests._laguna_synthetic import make_laguna_info
 
+from inspect import signature
+from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.registry import KernelKey
+from hipengine.runtime.laguna_gguf_runner import (
+    LAGUNA_DFLASH_CAPTURE_DEPTHS,
+    LagunaEagerLibraries,
+    LagunaEagerScratch,
+    LagunaHiddenCaptureTargets,
+    LagunaRowsScratch,
+    capture_laguna_hidden_rows,
+    capture_laguna_hidden_tap,
+    capture_laguna_routing_rows,
+    launch_laguna_mixed_attention_projections,
+    resolve_laguna_eager_kernel_plan,
+    resolve_laguna_head_kv_fusion,
+    resolve_laguna_iq2_grid64,
+    resolve_laguna_mixed_attention_projections,
+    resolve_laguna_mixed_local32_fixed_meta_attention,
+    resolve_laguna_mixed_q6_fixed_meta_attention,
+    resolve_laguna_q4_lm_head_local32_fixed_meta,
+    resolve_laguna_q5_shared_fixed_meta,
+    resolve_laguna_q5_wave32x2_variants,
+)
+
 
 class _FakeRuntime:
     def __init__(self, *, fail_malloc_at: int | None = None) -> None:
@@ -144,6 +168,7 @@ def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
         "f32",
         "top1_i64",
     )
+    assert plan.moe_tail_next_rmsnorm is None
 
 
 def test_laguna_eager_scratch_is_bounded_by_max_head_width_and_frees() -> None:
@@ -531,8 +556,12 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
         4,
         8,
         libraries=libraries,
+        registered_variant="wave32x2_gemv_decode_bf16_bf16_out",
     )
     assert calls[-1][1][1]["use_gemv_decode"] is True
+    assert calls[-1][1][1]["registered_variant"] == (
+        "wave32x2_gemv_decode_bf16_bf16_out"
+    )
 
     with pytest.raises(ValueError, match="resident layout"):
         runner_module.launch_laguna_weight_linear(
@@ -593,6 +622,7 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
         stream=7,
         libraries=libraries,
         runtime="runtime-sentinel",
+        query_gate_decode_variant="wave32x2_gemv_decode_bf16_f32_out",
     )
     assert [name for name, _ in calls] == ["pair", "pair"]
     qg_args, qg_kwargs = calls[0][1]
@@ -600,12 +630,16 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     assert qg_kwargs["out_features_b"] == 72
     assert qg_kwargs["output_dtype"] == "f32"
     assert qg_kwargs["registered_decode_only"] is True
+    assert qg_kwargs["registered_decode_variant"] == (
+        "wave32x2_gemv_decode_bf16_f32_out"
+    )
     assert qg_kwargs["libraries"] is libraries.linear
     kv_args, kv_kwargs = calls[1][1]
     assert kv_args == (k_weight, v_weight, 10, 30, 40, 1, 3072, 1024)
     assert kv_kwargs["out_features_b"] == 1024
     assert kv_kwargs["output_dtype"] == "f32"
     assert kv_kwargs["registered_decode_only"] is True
+    assert kv_kwargs.get("registered_decode_variant") is None
     assert kv_kwargs["libraries"] is libraries.linear
 
     calls.clear()
@@ -1075,3 +1109,525 @@ def test_laguna_eager_plan_rejects_non_s21_shapes() -> None:
         )
     with pytest.raises(ValueError, match="HIP backend"):
         resolve_laguna_eager_kernel_plan(config, backend="cpu_reference")
+
+
+def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert resolve_laguna_iq2_grid64("hip_gfx1100")
+    assert resolve_laguna_iq2_grid64("hip_gfx1100", True)
+    assert not resolve_laguna_iq2_grid64("hip_gfx1100", False)
+    assert not resolve_laguna_iq2_grid64("hip_gfx1151")
+
+
+def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert resolve_laguna_head_kv_fusion("hip_gfx1100")
+    assert not resolve_laguna_head_kv_fusion("hip_gfx1100", False)
+    assert not resolve_laguna_head_kv_fusion("hip_gfx1151")
+
+    candidate = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_head_kv_fusion=True,
+    )
+    assert candidate.global_head_kv is not None
+    assert candidate.swa_head_kv is not None
+    assert candidate.global_head_kv_key in candidate.kernel_keys
+    assert candidate.swa_head_kv_key in candidate.kernel_keys
+
+    rollback = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_head_kv_fusion=False,
+    )
+    assert rollback.global_head_kv is None
+    assert rollback.swa_head_kv is None
+    assert rollback.global_head_kv_key not in rollback.kernel_keys
+    assert rollback.swa_head_kv_key not in rollback.kernel_keys
+
+    unsupported = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1151",
+        use_head_kv_fusion=True,
+    )
+    assert unsupported.global_head_kv is None
+    assert unsupported.swa_head_kv is None
+
+
+def test_laguna_mixed_attention_projection_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_MIXED_ATTENTION_PROJECTIONS", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_MIXED_ATTENTION_PROJECTIONS", False
+    ) is False
+    assert resolve_laguna_mixed_attention_projections("hip_gfx1100")
+    assert resolve_laguna_mixed_attention_projections("hip_gfx1100", True)
+    assert not resolve_laguna_mixed_attention_projections("hip_gfx1100", False)
+    assert not resolve_laguna_mixed_attention_projections("hip_gfx1151")
+
+
+def test_laguna_mixed_local32_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_MIXED_LOCAL32_FIXED_METADATA", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_MIXED_LOCAL32_FIXED_METADATA", False
+    ) is False
+    assert resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100")
+    assert resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100", True)
+    assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1100", False)
+    assert not resolve_laguna_mixed_local32_fixed_meta_attention("hip_gfx1151")
+
+
+def test_laguna_mixed_q6_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_MIXED_Q6_FIXED_METADATA", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_MIXED_Q6_FIXED_METADATA", False
+    ) is False
+    assert resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100")
+    assert resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100", True)
+    assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1100", False)
+    assert not resolve_laguna_mixed_q6_fixed_meta_attention("hip_gfx1151")
+
+
+def test_laguna_q4_lm_head_local32_fixed_metadata_defaults_on_with_rollback() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA", None
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA", None
+    ) is None
+    assert resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100")
+    assert resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100", True)
+    assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1100", False)
+    assert not resolve_laguna_q4_lm_head_local32_fixed_meta("hip_gfx1151", True)
+
+
+def test_laguna_q6_local32_standalone_runtime_selection_is_removed() -> None:
+    assert not hasattr(runner_module, "resolve_laguna_q6_local32_standalone")
+    assert "use_q6_local32_standalone" not in signature(
+        runner_module.LagunaGGUFResidentSession
+    ).parameters
+
+
+def test_laguna_q5_shared_fixed_metadata_default_is_gfx1100_only_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_Q5_SHARED_FIXED_METADATA", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_Q5_SHARED_FIXED_METADATA", False
+    ) is False
+    assert resolve_laguna_q5_shared_fixed_meta("hip_gfx1100")
+    assert resolve_laguna_q5_shared_fixed_meta("hip_gfx1100", True)
+    assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1100", False)
+    assert not resolve_laguna_q5_shared_fixed_meta("hip_gfx1151")
+
+
+def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:
+    retained = (
+        "wave32x2_gemv_decode_bf16_bf16_out",
+        "wave32x2_gemv_decode_bf16_f32_out",
+    )
+    fixed_meta = (
+        "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
+        "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_Q5_FIXED_METADATA", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "LAGUNA_Q5_FIXED_METADATA", False
+    ) is False
+    assert resolve_laguna_q5_wave32x2_variants("hip_gfx1100") == fixed_meta
+    assert resolve_laguna_q5_wave32x2_variants("hip_gfx1151") == (None, None)
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100",
+        fixed_meta_output=False,
+        fixed_meta_query_gate=False,
+    ) == retained
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100", output=False, query_gate=False
+    ) == (None, None)
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1151", output=True, query_gate=True
+    ) == retained
+
+
+def test_laguna_d9_plan_is_gfx1100_only_and_explicitly_disableable() -> None:
+    plan = resolve_laguna_eager_kernel_plan(_config(), backend="hip_gfx1100")
+    assert plan.moe_tail_next_rmsnorm is not None
+    assert (
+        plan.moe_tail_next_rmsnorm_key.layer,
+        plan.moe_tail_next_rmsnorm_key.quant,
+        plan.moe_tail_next_rmsnorm_key.variant,
+    ) == (
+        "moe_tail+next_rmsnorm",
+        "bf16",
+        "laguna_aggregate_gguf_f32_weight_out",
+    )
+    assert plan.moe_tail_next_rmsnorm_key in plan.kernel_keys
+
+    fallback = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1100",
+        use_moe_tail_next_rmsnorm=False,
+    )
+    assert fallback.moe_tail_next_rmsnorm is None
+    assert fallback.moe_tail_next_rmsnorm_key not in fallback.kernel_keys
+
+
+def test_laguna_d9_dispatch_is_c1_only_with_exact_three_kernel_fallback() -> None:
+    calls = []
+
+    def fused(*args, **kwargs):
+        calls.append(("fused", args, kwargs))
+
+    def add(*args, **kwargs):
+        calls.append(("add", args, kwargs))
+
+    def rmsnorm(*args, **kwargs):
+        calls.append(("rmsnorm", args, kwargs))
+
+    assert runner_module.launch_laguna_moe_tail_next_rmsnorm(
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        1,
+        3_072,
+        1e-6,
+        fused=fused,
+        add=add,
+        rmsnorm=rmsnorm,
+        stream=9,
+        fused_library="fused-lib",
+        gguf_ops_library="ops-lib",
+        runtime="runtime",
+    )
+    assert [call[0] for call in calls] == ["fused"]
+    assert calls[0][1] == (1, 2, 3, 6, 7, 5, 3_072, 1e-6)
+    assert calls[0][2] == {
+        "stream": 9,
+        "library": "fused-lib",
+        "runtime": "runtime",
+    }
+
+    calls.clear()
+    assert not runner_module.launch_laguna_moe_tail_next_rmsnorm(
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        2,
+        17,
+        1e-5,
+        fused=fused,
+        add=add,
+        rmsnorm=rmsnorm,
+        stream=11,
+        fused_library="fused-lib",
+        gguf_ops_library="ops-lib",
+        runtime="runtime",
+    )
+    assert [call[0] for call in calls] == ["add", "add", "rmsnorm"]
+    assert calls[0][1] == (1, 2, 4, 34)
+    assert calls[1][1] == (3, 4, 5, 34)
+    assert calls[2][1] == (5, 6, 7, 2, 17, 1e-5)
+    assert all(call[2]["library"] == "ops-lib" for call in calls)
+
+
+def test_laguna_q4_local32_lm_head_uses_pack8_library() -> None:
+    libraries = LagunaEagerLibraries(
+        **{
+            field: object()
+            for field in LagunaEagerLibraries.__dataclass_fields__
+        }
+    )
+
+    assert libraries.linear[
+        "gguf_q4_k:local32_fixed_meta_gemv_decode_bf16_f32_out"
+    ] is libraries.q4_decode_linear
+
+
+def test_laguna_mixed_attention_projection_quad_is_registry_owned_and_fail_closed(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[tuple, dict]] = []
+    resolved_keys: list[KernelKey] = []
+    libraries = SimpleNamespace(
+        linear={"gguf_q5_k": "q5-library", "gguf_q6_k": "q6-library"}
+    )
+
+    def weight(name: str, quant: str, ptr: int):
+        allocation = SimpleNamespace(tensor=SimpleNamespace(ptr=ptr))
+        return SimpleNamespace(
+            spec=SimpleNamespace(name=name, layout=LAYOUT_RAW_GGUF, quant_key=quant),
+            allocation=lambda kind: allocation,
+        )
+
+    def registered(key: KernelKey) -> bool:
+        resolved_keys.append(key)
+        return key.backend == "hip_gfx1100" and "gguf_q4_k" not in key.quant
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(runner_module, "is_registered", registered)
+    monkeypatch.setattr(runner_module, "resolve", lambda **kwargs: candidate)
+
+    q5_qg = (
+        weight("q", "gguf_q5_k", 101),
+        weight("k", "gguf_q6_k", 102),
+        weight("v", "gguf_q6_k", 103),
+        weight("gate", "gguf_q5_k", 104),
+    )
+    assert launch_laguna_mixed_attention_projections(
+        *q5_qg,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime="runtime",
+    )
+    assert resolved_keys[-1] == KernelKey(
+        "hip_gfx1100",
+        "attention_projection_quad",
+        "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
+        "mixed_pack8_gemv_decode_bf16_f32_out",
+    )
+    assert calls[-1][0] == (
+        10,
+        101,
+        102,
+        103,
+        104,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+    )
+    assert calls[-1][1] == {
+        "stream": 7,
+        "library": "q5-library",
+        "runtime": "runtime",
+    }
+
+    assert launch_laguna_mixed_attention_projections(
+        *q5_qg,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime="runtime",
+        variant="mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    )
+    assert resolved_keys[-1].variant == (
+        "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+    )
+
+    q6_q8 = (
+        weight("q", "gguf_q6_k", 201),
+        weight("k", "gguf_q8_0", 202),
+        weight("v", "gguf_q8_0", 203),
+        weight("gate", "gguf_q6_k", 204),
+    )
+    assert launch_laguna_mixed_attention_projections(
+        *q6_q8,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert resolved_keys[-1].quant == (
+        "gguf_q6_k+gguf_q8_0+gguf_q8_0+gguf_q6_k"
+    )
+    assert calls[-1][1]["library"] == "q6-library"
+
+    before = len(calls)
+    assert not launch_laguna_mixed_attention_projections(
+        *q5_qg,
+        10,
+        20,
+        30,
+        40,
+        50,
+        2,
+        3072,
+        6144,
+        1024,
+        1024,
+        48,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert len(calls) == before
+
+
+def test_laguna_attention_projection_prefers_explicit_local32_variant(
+    monkeypatch,
+) -> None:
+    variants: list[str] = []
+    accept_local32 = [True]
+
+    def mixed(*args, **kwargs):
+        del args
+        variant = kwargs["variant"]
+        variants.append(variant)
+        return accept_local32[0] or variant != (
+            "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+        )
+
+    monkeypatch.setattr(runner_module, "launch_laguna_mixed_attention_projections", mixed)
+    weight = SimpleNamespace(spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF))
+
+    def launch() -> bool:
+        return runner_module.launch_laguna_attention_projections(
+            weight,
+            weight,
+            weight,
+            weight,
+            10,
+            20,
+            30,
+            40,
+            50,
+            1,
+            3072,
+            6144,
+            1024,
+            1024,
+            48,
+            backend="hip_gfx1100",
+            stream=0,
+            libraries=SimpleNamespace(),
+            runtime=None,
+            use_mixed_q5_q6_attention=True,
+            use_mixed_q6_fixed_meta_attention=True,
+            use_mixed_local32_fixed_meta_attention=True,
+        )
+
+    assert launch()
+    assert variants == ["mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"]
+
+    variants.clear()
+    accept_local32[0] = False
+    assert launch()
+    assert variants == [
+        "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+        "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
+    ]
+
+
+def test_laguna_scalar_lm_head_candidate_is_decode_only(monkeypatch) -> None:
+    variants: list[str | None] = []
+
+    def launch(*args, **kwargs) -> None:
+        del args
+        variants.append(kwargs.get("registered_variant"))
+
+    monkeypatch.setattr(runner_module, "launch_gguf_linear", launch)
+    monkeypatch.setattr(runner_module, "_read_i64", lambda *args: 7)
+    monkeypatch.setattr(runner_module, "_read_f32", lambda *args: 1.25)
+    monkeypatch.setattr(
+        runner_module,
+        "_buffer_view",
+        lambda buffer, offset, nbytes: (buffer.ptr, offset, nbytes),
+    )
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    weight = SimpleNamespace(
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=200))
+    )
+    session.weights = SimpleNamespace(
+        config=SimpleNamespace(
+            hidden_size=3072,
+            vocab_size=100_352,
+            rms_norm_eps=1.0e-6,
+        ),
+        root=lambda slot: weight,
+    )
+    session.scratch = SimpleNamespace(
+        final_norm=SimpleNamespace(ptr=10),
+        logits=SimpleNamespace(ptr=20),
+        argmax_block_values=SimpleNamespace(ptr=30),
+        argmax_block_indices=SimpleNamespace(ptr=40),
+        argmax_id=SimpleNamespace(ptr=50),
+        argmax_value=SimpleNamespace(ptr=60),
+        hidden=SimpleNamespace(ptr=70),
+    )
+    session.rows_scratch = SimpleNamespace(
+        hidden=SimpleNamespace(ptr=80),
+        final_norm=SimpleNamespace(ptr=90),
+        logits=SimpleNamespace(ptr=100),
+    )
+    session.kernel_plan = SimpleNamespace(
+        rmsnorm=lambda *args, **kwargs: None,
+        argmax=lambda *args, **kwargs: None,
+    )
+    session.libraries = SimpleNamespace(
+        linear={},
+        argmax=object(),
+        gguf_ops=object(),
+    )
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.backend = "hip_gfx1100"
+    session._q4_lm_head_variant = (
+        "local32_fixed_meta_gemv_decode_bf16_f32_out"
+    )
+
+    result = session._project_and_sample(input_token_id=3, position=11, stream=0)
+    prefill_result = session._project_rows_last(
+        input_token_id=5,
+        position=12,
+        row_index=0,
+        stream=0,
+    )
+
+    assert variants == ["local32_fixed_meta_gemv_decode_bf16_f32_out", None]
+    assert result.next_token_id == prefill_result.next_token_id == 7
+    assert result.next_token_logit == prefill_result.next_token_logit == 1.25

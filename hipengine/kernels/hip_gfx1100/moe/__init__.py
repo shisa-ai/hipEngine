@@ -2,6 +2,8 @@
 
 from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
     build_laguna_router,
+    laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10,
+    laguna_sigmoid_correction_topk_compact_wave32_f32,
     laguna_sigmoid_correction_topk_f32,
     plan_laguna_router_build,
     register_laguna_router_kernels,
@@ -37,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
     qwen35_router_logits_bf16_f32w_token_tile_8,
     qwen35_router_logits_bf16_f32w_token_tile_16,
+    qwen35_router_logits_bf16_f32w_wave0_tree,
     qwen35_router_logits_f32_f32w,
     qwen35_router_logits_fp16,
     qwen35_router_logits_fp16_f32w,
@@ -57,6 +60,8 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 __all__ = [
     "build_laguna_router",
     "build_qwen35_moe_group_scatter",
+    "laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10",
+    "laguna_sigmoid_correction_topk_compact_wave32_f32",
     "laguna_sigmoid_correction_topk_f32",
     "build_qwen35_router",
     "plan_laguna_router_build",
@@ -82,6 +87,7 @@ __all__ = [
     "qwen35_router_logits_bf16_f32w_auto_256",
     "qwen35_router_logits_bf16_f32w_token_tile_8",
     "qwen35_router_logits_bf16_f32w_token_tile_16",
+    "qwen35_router_logits_bf16_f32w_wave0_tree",
     "qwen35_router_logits_f32_f32w",
     "qwen35_router_logits_fp16",
     "qwen35_router_logits_fp16_f32w",

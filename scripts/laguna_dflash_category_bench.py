@@ -86,6 +86,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=RETAINED_CHUNK_SIZE)
     parser.add_argument("--candidate-budget", type=int, default=ADMITTED_BUDGET)
+    parser.add_argument(
+        "--iq3-selected-down-tile",
+        type=int,
+        choices=(1, 4),
+        default=1,
+        help="explicit gfx1100 IQ3 selected-down output tile (default: baseline tile1)",
+    )
     parser.add_argument("--output-tokens", type=int, default=DEFAULT_OUTPUT_TOKENS)
     parser.add_argument("--repetitions", type=int, default=DEFAULT_REPETITIONS)
     parser.add_argument("--warmup-output-tokens", type=int, default=6)
@@ -687,6 +694,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         repacked_cache=None if args.direct_gguf else args.repacked_cache,
         model_sha256=args.model_sha256,
         prefill_chunk_size=args.chunk_size,
+        iq3_selected_down_tile=args.iq3_selected_down_tile,
     ) as target:
         runtime = target.runtime
         target_load_seconds = time.perf_counter() - target_started
@@ -854,6 +862,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "output_tokens_including_first": args.output_tokens,
             "timed_decode_output_tokens_per_run": args.output_tokens - 1,
             "candidate_budget": args.candidate_budget,
+            "target_iq3_selected_down_tile": args.iq3_selected_down_tile,
             "repetitions": args.repetitions,
             "context_length": args.context_length,
             "prefill_chunk_size": args.chunk_size,

@@ -10,7 +10,7 @@ Mirrors the AWQ PARO ``gemv_awq_pack8_kernel`` structure
 scale/min hoist into shared memory) but with the inner k loop swapped for
 raw GGUF Q4_K block dequant.
 
-Four launch entry points are registered:
+The four retained launch entry points remain registered:
 
 * ``pack8_gemv_decode_bf16_bf16_out`` and ``pack8_gemv_decode_fp16_fp16_out``
   for the attention QKV/O surfaces (BF16-only hidden in qwen35moe today;
@@ -18,6 +18,10 @@ Four launch entry points are registered:
 * ``pack8_gemv_decode_bf16_f32_out`` and ``pack8_gemv_decode_fp16_f32_out``
   for the lm-head logits projection (F32 output feeds straight into the
   sampler).
+
+The separately registered, rows=1-only
+``local32_fixed_meta_gemv_decode_bf16_f32_out`` sibling is primitive-admitted
+for Laguna's Q4_K lm head but remains runtime-unselected.
 
 No new ABI and no resident weight sidecar/repack: raw GGUF Q4_K bytes stay
 on device.
@@ -38,6 +42,9 @@ _SYM_BF16_BF16 = "hipengine_gguf_q4_k_pack8_gemv_decode_bf16_bf16_out"
 _SYM_FP16_FP16 = "hipengine_gguf_q4_k_pack8_gemv_decode_fp16_fp16_out"
 _SYM_BF16_F32 = "hipengine_gguf_q4_k_pack8_gemv_decode_bf16_f32_out"
 _SYM_FP16_F32 = "hipengine_gguf_q4_k_pack8_gemv_decode_fp16_f32_out"
+_SYM_LOCAL32_FIXED_META_BF16_F32 = (
+    "hipengine_gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out"
+)
 _Q4_K_BLOCK = 256
 
 
@@ -81,7 +88,7 @@ def build_gguf_q4_k_pack8_gemv(
     )
 
 
-def _make_launch(symbol: str):
+def _make_launch(symbol: str, *, require_single_row: bool = False):
     def launch(
         x_ptr: int,
         qweight_ptr: int,
@@ -95,6 +102,8 @@ def _make_launch(symbol: str):
         runtime: HipRuntime | None = None,
     ) -> None:
         _check_common(rows, in_features, out_features)
+        if require_single_row and rows != 1:
+            raise ValueError("local32 fixed-metadata decode requires rows == 1")
         library = library or build_gguf_q4_k_pack8_gemv(load=True)
         runtime = runtime or get_hip_runtime()
         fn = getattr(library, symbol)
@@ -128,6 +137,10 @@ gguf_q4_k_pack8_gemv_decode_bf16_bf16_out = _make_launch(_SYM_BF16_BF16)
 gguf_q4_k_pack8_gemv_decode_fp16_fp16_out = _make_launch(_SYM_FP16_FP16)
 gguf_q4_k_pack8_gemv_decode_bf16_f32_out = _make_launch(_SYM_BF16_F32)
 gguf_q4_k_pack8_gemv_decode_fp16_f32_out = _make_launch(_SYM_FP16_F32)
+gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out = _make_launch(
+    _SYM_LOCAL32_FIXED_META_BF16_F32,
+    require_single_row=True,
+)
 
 
 def _check_common(rows: int, in_features: int, out_features: int) -> None:
@@ -166,6 +179,16 @@ def register_gguf_q4_k_pack8_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_pack8_gemv_decode_fp16_f32_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k",
+            "local32_fixed_meta_gemv_decode_bf16_f32_out",
+        ),
+        gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
 
 
 register_gguf_q4_k_pack8_gemv_kernels()
@@ -173,6 +196,7 @@ register_gguf_q4_k_pack8_gemv_kernels()
 
 __all__ = [
     "build_gguf_q4_k_pack8_gemv",
+    "gguf_q4_k_local32_fixed_meta_gemv_decode_bf16_f32_out",
     "gguf_q4_k_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q4_k_pack8_gemv_decode_fp16_f32_out",

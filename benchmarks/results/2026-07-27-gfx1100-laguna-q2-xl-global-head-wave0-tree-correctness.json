@@ -1,0 +1,388 @@
+{
+  "actual_model_gate": {
+    "all_finite": true,
+    "all_layers_all_fields_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-global-head-wave0.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/admit_laguna_global_head_wave0_tree_actual.py",
+    "endpoint_rows": [
+      {
+        "all_fields_exact": true,
+        "candidate_event_us": 4.5841169357299805,
+        "candidate_wall_us": 4.578232998028398,
+        "control_event_us": 5.771046161651611,
+        "control_wall_us": 5.783780012279749,
+        "event_delta_pct": -20.566968148838104,
+        "exact_fields": [
+          "base_offsets",
+          "evict_mask",
+          "key",
+          "key_cache",
+          "live_counts",
+          "query",
+          "row_positions",
+          "token_positions",
+          "value_cache"
+        ],
+        "layer": 0,
+        "position": 69,
+        "wall_delta_pct": -20.84358346430555
+      },
+      {
+        "all_fields_exact": true,
+        "candidate_event_us": 4.46479606628418,
+        "candidate_wall_us": 4.474672023206949,
+        "control_event_us": 5.764767169952393,
+        "control_wall_us": 5.777529906481504,
+        "event_delta_pct": -22.550279401465378,
+        "exact_fields": [
+          "base_offsets",
+          "evict_mask",
+          "key",
+          "key_cache",
+          "live_counts",
+          "query",
+          "row_positions",
+          "token_positions",
+          "value_cache"
+        ],
+        "layer": 44,
+        "position": 69,
+        "wall_delta_pct": -22.55043079591761
+      }
+    ],
+    "global_layers": 12,
+    "harness_sha256": "c6fea54e9ddfcf6fc7af15dc6f5c9dea810412a64fa8be7a4b30ecb47e1290c1",
+    "input_token_id": 605,
+    "library_sha256": "01a0adaee37f6d6daf21ccd453b9981475f2896f304fb3298ce19410600db0ab",
+    "output_token_id": 2825,
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 1000,
+      "timing_scope": "direct cached C exports; wrapper calls are used only for equality",
+      "warmups_per_mode": 50
+    },
+    "raw_sha256": "7a4fe6ebc317457f8e4a272da5fac406358d104a0cde7b1b568891581fa0c87f",
+    "source_sha256": "7c41ac1ee1db3c9afc4ff4ab4fb1b8cd3d7065f578501569871fbd9f31a59f25",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "7fed2a53e8c3af1e2a0b87e0cdb9c791de3906ff18166e7551fdbdd03d30d070",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 40070641716,
+      "peak_allocations": 1205,
+      "total_allocated_bytes": 40070641716,
+      "total_freed_bytes": 40070641716
+    },
+    "tracked_peak": {
+      "active_allocations": 1205,
+      "current_allocated_bytes": 40070641716,
+      "peak_allocated_bytes": 40070641716,
+      "peak_allocations": 1205,
+      "total_allocated_bytes": 40070641716,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "base_revision": "b1a04ac43",
+  "cache_only_trace": {
+    "candidate_calls": 1,
+    "child_sha256": "2e7086b581b48757f8f8e62b2f7a74f7bb716ce4151c9753f1ec8b59fc455e84",
+    "cpu_and_bf16_gate_passed": true,
+    "duration_ns": 6440,
+    "dynamic_lds_request_bytes": 1024,
+    "grid": [
+      14336,
+      1,
+      1
+    ],
+    "harness_sha256": "2a313f08ca89053c8b468064c75332cdac4caf7524430aaf08d1e5c450cc2457",
+    "kernel_name": "(anonymous namespace)::laguna_global_head_rmsnorm_partial_rotary_write_kv_wave0_tree_f32_bf16_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, float, long, long, long, long, long, long, long)",
+    "no_compiler_under_profile": true,
+    "preflight_command": "same child without rocprofv3 under require_cached",
+    "profile_command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-head-wave0-tree-rocprof --output-file trace -- uv run python -u /tmp/trace_laguna_global_head_wave0_tree.py",
+    "profiler_stderr_sha256": "da9f0767f6b5e844386c326e00285499033ce5ed31da6364c51b0575b592c3e5",
+    "profiler_stdout_sha256": "2e7086b581b48757f8f8e62b2f7a74f7bb716ce4151c9753f1ec8b59fc455e84",
+    "scratch_bytes": 0,
+    "sgpr_count": 128,
+    "static_lds_bytes": 0,
+    "trace_sha256": "8ae8e2fa45bcfdc6988cd66f18a5ec86297c1e8b6cb4b5392666c40a44e5dcf2",
+    "tracked_returned_to_baseline": true,
+    "vgpr_count": 16,
+    "workgroup": [
+      256,
+      1,
+      1
+    ]
+  },
+  "codegen": {
+    "allocated_expectation": "local256, VGPR16, SGPR128, static LDS0 plus dynamic request 1024, scratch0",
+    "analyzer_sha256": "8ed64818e514dbfb9992da1b88133cc6396756e5906aaabf2a2e714f4337d817",
+    "baseline_global": {
+      "ds_bpermute_b32": 0,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 4,
+      "sgpr_count": 69,
+      "sgpr_spill_count": 0,
+      "static_instructions": 814,
+      "text_bytes": 3976,
+      "v_fma_f32": 6,
+      "v_mul_f32_e32": 19,
+      "vgpr_count": 15,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate_global_wave0_tree": {
+      "ds_bpermute_b32": 10,
+      "group_segment_fixed_size": 0,
+      "private_segment_fixed_size": 0,
+      "s_barrier": 4,
+      "sgpr_count": 67,
+      "sgpr_spill_count": 0,
+      "static_instructions": 662,
+      "text_bytes": 3296,
+      "v_fma_f32": 0,
+      "v_mul_f32_e32": 19,
+      "vgpr_count": 12,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "codegen_sha256": "abb8030ddbc9c1718bdc4f8d19f246f4df285f9af88840fe23dc86c3afd7e8b6",
+    "compile_profile": "-O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22",
+    "delta": {
+      "ds_bpermute_b32": 10,
+      "s_barrier": 0,
+      "sgpr_count": -2,
+      "static_instructions": -152,
+      "text_bytes": -680,
+      "vgpr_count": -3
+    },
+    "disasm_sha256": "1b17fb6091d9d662979f8b2bf45d2a797926761ae03f29ad7a535dd5b38caba9",
+    "dynamic_barriers": {
+      "candidate": 2,
+      "retained": 9
+    },
+    "fatbin_sha256": "32c7ce09c151939d9c9edc611e83c796cc52d2cdf8e5800034b4a29e700fe397",
+    "hsaco_sha256": "05c636a82b2f5f8a47216dc959e1da4eb0b5fbecc415a96f24bcf4fb8e6fab65",
+    "library_sha256": "9389608961a03997e9f0a0facb81c23428dcdffedcb3dc53fe15991dddd84b0d",
+    "matches_frozen_selection_counts": true,
+    "readobj_sha256": "bb64543d2e5362516e6d52ee16613fa7316bb8d2172f4de5f1ec069979acdc68",
+    "symbols": {
+      "baseline": "_ZN12_GLOBAL__N_159laguna_head_rmsnorm_partial_rotary_write_kv_f32_bf16_kernelILb1EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_PtS4_PKiPlS7_PhPKlfllllllll",
+      "candidate": "_ZN12_GLOBAL__N_177laguna_global_head_rmsnorm_partial_rotary_write_kv_wave0_tree_f32_bf16_kernelEPKfS1_S1_S1_S1_S1_S1_PfS2_PtS3_PKiPlS6_PhPKlflllllll"
+    },
+    "symbols_sha256": "afd96f4920507189945cbc965cb95b964069574fb7950cb43a0300b266865056"
+  },
+  "date": "2026-07-27",
+  "development_diagnostics": {
+    "report_finalization_failure": {
+      "decision": "invalid; no result row or timing was persisted or printed",
+      "failure": "the first harness hashed a planned cache path instead of the loaded CDLL path after in-memory work",
+      "harness_sha256": "41a9496fdca35ac34b5c723ed83e366b8d6f0f996d37e8f16b59e263eb7fc42d",
+      "stderr_sha256": "5df6bbc8299fedcb69da3830576aedde8b69915a266f0665ab505865639d8a0f",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "specialized_wrapper_scope": {
+      "decision": "host-overhead diagnostic only; the object is correct but candidate strict wrapper validation is not comparable with retained wrapper validation",
+      "endpoint_rows": [
+        {
+          "event_delta_pct": 11.568057535289666,
+          "event_us": {
+            "candidate": 10.038256645202637,
+            "control": 8.997428894042969
+          },
+          "layer": 0,
+          "wall_delta_pct": 11.559872098384073,
+          "wall_us": {
+            "candidate": 10.048838099464774,
+            "control": 9.007574059069157
+          }
+        },
+        {
+          "event_delta_pct": 11.306706006300704,
+          "event_us": {
+            "candidate": 9.87795639038086,
+            "control": 8.87453842163086
+          },
+          "layer": 44,
+          "wall_delta_pct": 11.315050679474247,
+          "wall_us": {
+            "candidate": 9.910627035424113,
+            "control": 8.903222857043147
+          }
+        }
+      ],
+      "handoff": "later runtime ownership must include wrapper overhead in the frozen full-model gate",
+      "raw_sha256_reported_before_overwrite": "9064c074833c9e1080a7a1d92daed5f6d5c8230f673ebf266765092ff4b624ff",
+      "stdout_sha256": "b0ba029b6192c6dc1fb3c1e22b8c2a5fe4829a153993073a5c53e89ced511634"
+    },
+    "unspecialized_wrapper_scope": {
+      "decision": "invalid for kernel selection; source missed compile-time Threads=256 and timing included unequal Python validation overhead",
+      "endpoint_rows": [
+        {
+          "event_delta_pct": 16.331707619043414,
+          "event_us": {
+            "candidate": 10.036174774169922,
+            "control": 8.627204895019531
+          },
+          "layer": 0,
+          "wall_delta_pct": 18.691207333121817,
+          "wall_us": {
+            "candidate": 10.168950073421001,
+            "control": 8.567568147554994
+          }
+        },
+        {
+          "event_delta_pct": 15.020236638809648,
+          "event_us": {
+            "candidate": 9.679853439331055,
+            "control": 8.415782928466797
+          },
+          "layer": 44,
+          "wall_delta_pct": 15.032955700685125,
+          "wall_us": {
+            "candidate": 9.681283961981535,
+            "control": 8.416095981374383
+          }
+        }
+      ],
+      "raw_sha256_reported_before_overwrite": "031db402972389230aac26234a7d80521afda8fba56a10cefdbe2116f5e139e8",
+      "source_sha256": "84243116dce7987903b38a8581fa0353eaf85e04c4fce4aa9596478f96cf5d2f",
+      "stdout_sha256": "b77d646ac6e8df117200793c64d260312c8f1b0d3d8b27c01bc1ec1d2082699d"
+    }
+  },
+  "full_model_performance_claim": false,
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_global_head_wave0_tree_correctness",
+  "model": {
+    "global_layers": 12,
+    "head_dim": 128,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "swa_layers": 36
+  },
+  "next_action": "Commit primitive admission only. Then add a separate false/default-off gfx1100 global-only owner with full shared-weight state and exact 12 candidate + 36 retained SWA / 678 model-kernel cache-only tracing before any clean timing.",
+  "primitive": {
+    "backend_exclusions": [
+      "hip_gfx1151",
+      "cuda_sm86",
+      "cpu_reference"
+    ],
+    "c_symbol": "hipengine_laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_bf16_spans",
+    "changed": "after one 256-partial publication, wave 0 gathers eight lane-aligned values, replays strides 128/64/32, uses five wave32 shuffles for strides 16..1, and publishes the identical scalar with one final barrier",
+    "dynamic_lds_request_bytes": 1024,
+    "kernel": "laguna_global_head_rmsnorm_partial_rotary_write_kv_wave0_tree_f32_bf16_kernel",
+    "local_size": 256,
+    "preserved": [
+      "complete KVLiveSpans ABI and page-256 translation",
+      "all F32 Q/K and RNE BF16 K/V stores",
+      "metadata update and ownership",
+      "each source square and retained stride128/64/32/16/8/4/2/1 FP32 association",
+      "rsqrtf, norm, partial-RoPE and output association"
+    ],
+    "registry_key": "hip_gfx1100/head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/global_wave0_tree_f32_bf16_spans",
+    "required_fallback": "global_f32_bf16_spans plus the registered head-RMSNorm/RoPE and global KV-write chain",
+    "scope": "separately registered gfx1100 global c=1 primitive; no runtime owner",
+    "shape_guards": {
+      "block_size": 256,
+      "head_dim": 128,
+      "num_kv_heads": 8,
+      "num_q_heads": 48,
+      "spans_mode": "uniform",
+      "storage_dtype": "bf16"
+    },
+    "swa_route": "unchanged swa_f32_bf16_spans only",
+    "wrapper": "laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_spans"
+  },
+  "production_scope": {
+    "allocation_or_workspace_changed": false,
+    "benchmark_rollup_changed": false,
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_topline_changed": false,
+    "capability_added": false,
+    "default_changed": false,
+    "gfx1151_alias_excluded": true,
+    "primitive_body_export_wrapper_and_key_added": true,
+    "retained_global_body_changed": false,
+    "runtime_owner_added": false,
+    "session_or_cli_changed": false,
+    "swa_body_or_key_changed": false,
+    "vulkan_h32_decode_tok_s": 64.41823922786776
+  },
+  "red_green": {
+    "adjacent_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 python3 -m pytest tests/test_laguna_global_head_wave0_tree.py tests/test_laguna_head_kv_fusion.py tests/test_laguna_global_single_page_attention.py tests/test_laguna_global_single_page_gated_attention.py -q",
+    "adjacent_result": "15/15 passed",
+    "adjacent_sha256": "511fb971caf59261241ec2a3919d9d10c7dcb9ec044ee07d50b2db465184f057",
+    "green_result": "4/4 passed",
+    "green_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "red_command": "python3 -m pytest tests/test_laguna_global_head_wave0_tree.py -q",
+    "red_result": "4/4 failed only on absent source/symbol, strict wrapper, package/key/backend scope, and executable primitive",
+    "red_sha256": "7e560c23cf76ec9932d258e9260159d9fa1880d014c13c588eb6e8c6497bf7fe"
+  },
+  "schema": 1,
+  "source_hashes": {
+    "hipengine/kernels/hip_gfx1100/attention/__init__.py": "5890f2a5a2ae6343fe62675c6ae36945168275f3fe2f2b928ccb10d456e77063",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "282274fa324c0e1543dac873e8439f0b2676c9dcd556c470afad16306dc6d10b",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "7c41ac1ee1db3c9afc4ff4ab4fb1b8cd3d7065f578501569871fbd9f31a59f25",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "caa48f05fd080848dad97547ba5a51323757b2297875932d2145c1793ebd40e6",
+    "tests/test_laguna_global_head_wave0_tree.py": "d4ba830d8a11d9852d5d2ea1ac55860550c1b43111bc08a40602caf2210fcb48"
+  },
+  "status": "admitted_primitive_only",
+  "synthetic_cpu_gate": {
+    "all_field_bits_exact": true,
+    "controls": [
+      "retained current-P4 global composite",
+      "registered unfused head/RoPE plus KV-write chain"
+    ],
+    "cpu_thresholds": {
+      "max_kl": 0.05,
+      "min_top1": 0.9
+    },
+    "edge_inputs": "signed zero, subnormal, and large finite F32 Q/K/V values",
+    "field_contract": [
+      "F32 query bits",
+      "F32 key bits",
+      "BF16 key cache",
+      "BF16 value cache",
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask",
+      "row_positions"
+    ],
+    "passed": true,
+    "positions": [
+      0,
+      255,
+      256,
+      4095
+    ],
+    "trace_fixture_metrics": {
+      "key_kl": 5.206861372194509e-15,
+      "key_top1": 1.0,
+      "query_kl": 7.0517403464155766e-15,
+      "query_top1": 1.0
+    }
+  },
+  "validation": {
+    "fixtures_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+    "lineage_note": "only already-catalogued unrelated external drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "registry_build_command": "python3 -m pytest tests/test_kernel_registry.py tests/test_build.py tests/test_laguna_gguf_runner.py -q",
+    "registry_build_result": "39/39 passed",
+    "registry_build_sha256": "07c2eef926162e0090994bc913805aa08a8b2cbb5b21d2c933b937a10300713f",
+    "registry_smoke_sha256": "159c48de9337ea6a260024b63a5eac9a158602ab443d94038d9938b29d538311",
+    "static_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

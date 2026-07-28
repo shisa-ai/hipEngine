@@ -120,6 +120,13 @@ class LagunaKVCache:
         prefill_global_qrow6: bool,
         prefill_dense_initial: bool,
         row_position: DeviceBuffer,
+        split_score_scratch: DeviceBuffer | None,
+        split_physical_scratch: DeviceBuffer | None,
+        global_split_min_live: int | None,
+        swa_split_min_live: int | None,
+        swa_split_tile16_min_live: int | None,
+        split_gate_fusion: bool,
+        swa_split_wave_local: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -131,6 +138,13 @@ class LagunaKVCache:
         self.prefill_global_qrow6 = bool(prefill_global_qrow6)
         self.prefill_dense_initial = bool(prefill_dense_initial)
         self._row_position = row_position
+        self._split_score_scratch = split_score_scratch
+        self._split_physical_scratch = split_physical_scratch
+        self.global_split_min_live = global_split_min_live
+        self.swa_split_min_live = swa_split_min_live
+        self.swa_split_tile16_min_live = swa_split_tile16_min_live
+        self.split_gate_fusion = bool(split_gate_fusion)
+        self.swa_split_wave_local = bool(swa_split_wave_local)
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -333,25 +347,112 @@ class LagunaKVCache:
         query_ptr: int,
         out_ptr: int,
         *,
+        gate_ptr: int | None = None,
+        gated_out_ptr: int | None = None,
         scale: float = _LAGUNA_HEAD_DIM**-0.5,
         stream: int = 0,
         library=None,
-    ) -> None:
-        """Run ungated global or SWA context attention for the current row."""
+    ) -> bool:
+        """Run context attention, optionally fusing the split-path BF16 gate."""
 
         state = self.layer(layer_id)
         self._check_prepared()
-        fn = self._resolve("laguna_attention_decode", state.attention_variant)
+        if (gate_ptr is None) != (gated_out_ptr is None):
+            raise ValueError("gate_ptr and gated_out_ptr must be provided together")
+        use_gated = gate_ptr is not None and self.split_gate_fusion
+        live_count = min(self.position + 1, state.capacity)
+        split_threshold = (
+            self.global_split_min_live
+            if state.attention_type == FULL_ATTENTION
+            else self.swa_split_min_live
+        )
+        use_split = split_threshold is not None and live_count >= split_threshold
+        use_tile16 = (
+            state.attention_type == SLIDING_ATTENTION
+            and self.swa_split_tile16_min_live is not None
+            and live_count >= self.swa_split_tile16_min_live
+        )
         common = (
             query_ptr,
             state.key_cache.ptr,
             state.value_cache.ptr,
             out_ptr,
-            state.spans,
         )
+        if use_split:
+            if self._split_score_scratch is None or self._split_physical_scratch is None:
+                raise RuntimeError("Laguna split attention scratch is unavailable")
+            variant = (
+                (
+                    "global_context_split_exact_gated_spans"
+                    if use_gated
+                    else "global_context_split_exact_spans"
+                )
+                if state.attention_type == FULL_ATTENTION
+                else (
+                    (
+                        (
+                            "swa_context_split_tile16_exact_gated_wave_local_spans"
+                            if self.swa_split_wave_local and use_gated
+                            else "swa_context_split_tile16_exact_gated_spans"
+                        )
+                        if use_gated
+                        else "swa_context_split_tile16_exact_spans"
+                    )
+                    if use_tile16
+                    else (
+                        (
+                            "swa_context_split_exact_gated_wave_local_spans"
+                            if self.swa_split_wave_local and use_gated
+                            else "swa_context_split_exact_gated_spans"
+                        )
+                        if use_gated
+                        else "swa_context_split_exact_spans"
+                    )
+                )
+            )
+            fn = self._resolve("laguna_attention_decode", variant)
+            gated_args = (
+                (int(gate_ptr), int(gated_out_ptr)) if use_gated else ()
+            )
+            split_common = (
+                *common,
+                *gated_args,
+                self._split_score_scratch.ptr,
+                self._split_physical_scratch.ptr,
+                state.spans,
+                live_count,
+            )
+            if state.attention_type == FULL_ATTENTION:
+                fn(
+                    *split_common,
+                    self.context_length,
+                    state.q_heads,
+                    _LAGUNA_KV_HEADS,
+                    _LAGUNA_HEAD_DIM,
+                    scale,
+                    stream=stream,
+                    library=library,
+                    runtime=self.runtime,
+                )
+            else:
+                fn(
+                    *split_common,
+                    state.q_heads,
+                    _LAGUNA_KV_HEADS,
+                    _LAGUNA_HEAD_DIM,
+                    scale,
+                    sliding_window=self.sliding_window,
+                    stream=stream,
+                    library=library,
+                    runtime=self.runtime,
+                )
+            return use_gated
+
+        fn = self._resolve("laguna_attention_decode", state.attention_variant)
+        fallback_common = (*common, state.spans)
         if state.attention_type == FULL_ATTENTION:
             fn(
-                *common,
+                *fallback_common,
                 self.context_length,
                 state.q_heads,
                 _LAGUNA_KV_HEADS,
@@ -363,7 +464,7 @@ class LagunaKVCache:
             )
         else:
             fn(
-                *common,
+                *fallback_common,
                 state.q_heads,
                 _LAGUNA_KV_HEADS,
                 _LAGUNA_HEAD_DIM,
@@ -373,6 +474,7 @@ class LagunaKVCache:
                 library=library,
                 runtime=self.runtime,
             )
+        return False
 
     def attend_prefill(
         self,
@@ -856,6 +958,80 @@ def resolve_laguna_swa_prefill_variant(
     return parsed
 
 
+def resolve_laguna_split_thresholds(
+    backend: str,
+    *,
+    context_length: int,
+    sliding_window: int,
+    global_split_min_live: int | None = None,
+    swa_split_min_live: int | None = None,
+    use_split_attention: bool | None = None,
+) -> tuple[int | None, int | None]:
+    """Resolve explicit split crossovers or architecture-qualified defaults."""
+
+    context = int(context_length)
+    window = min(int(sliding_window), context)
+    if context <= 0 or window <= 0:
+        raise ValueError("Laguna split threshold capacities must be positive")
+    has_explicit_threshold = (
+        global_split_min_live is not None or swa_split_min_live is not None
+    )
+    if use_split_attention is False:
+        if has_explicit_threshold:
+            raise ValueError(
+                "use_split_attention=False cannot be combined with split thresholds"
+            )
+        return None, None
+    if has_explicit_threshold:
+        return global_split_min_live, swa_split_min_live
+
+    global_default = backend_package_capability(
+        backend,
+        "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
+        None,
+    )
+    swa_default = backend_package_capability(
+        backend,
+        "LAGUNA_SWA_SPLIT_MIN_LIVE",
+        None,
+    )
+    parsed_global = None if global_default is None else int(global_default)
+    parsed_swa = None if swa_default is None else int(swa_default)
+    return (
+        parsed_global if parsed_global is not None and parsed_global <= context else None,
+        parsed_swa if parsed_swa is not None and parsed_swa <= window else None,
+    )
+
+
+def resolve_laguna_swa_split_tile16_threshold(
+    backend: str,
+    *,
+    sliding_window: int,
+    swa_split_tile16_min_live: int | None = None,
+    use_swa_split_tile16: bool | None = None,
+) -> int | None:
+    """Resolve the explicit SWA tile16 crossover or backend-qualified default."""
+
+    window = int(sliding_window)
+    if window <= 0:
+        raise ValueError("Laguna SWA tile16 threshold capacity must be positive")
+    if use_swa_split_tile16 is False:
+        if swa_split_tile16_min_live is not None:
+            raise ValueError(
+                "use_swa_split_tile16=False cannot be combined with an explicit threshold"
+            )
+        return None
+    if swa_split_tile16_min_live is not None:
+        return int(swa_split_tile16_min_live)
+    default = backend_package_capability(
+        backend,
+        "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
+        None,
+    )
+    parsed = None if default is None else int(default)
+    return parsed if parsed is not None and parsed <= window else None
+
+
 def allocate_laguna_kv_cache(
     config: _LagunaKVConfig,
     *,
@@ -869,6 +1045,13 @@ def allocate_laguna_kv_cache(
     prefill_cached_meta: bool = False,
     prefill_global_qrow6: bool = False,
     prefill_dense_initial: bool = False,
+    global_split_min_live: int | None = None,
+    swa_split_min_live: int | None = None,
+    swa_split_tile16_min_live: int | None = None,
+    use_swa_split_tile16: bool | None = None,
+    use_split_attention: bool | None = None,
+    use_split_gate_fusion: bool | None = None,
+    use_swa_split_wave_local: bool | None = None,
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
@@ -892,6 +1075,84 @@ def allocate_laguna_kv_cache(
     layer_types, head_counts, sliding_window = _validate_config(config, context)
     has_global = FULL_ATTENTION in layer_types
     has_sliding = SLIDING_ATTENTION in layer_types
+    if use_split_attention is False and (
+        swa_split_tile16_min_live is not None
+        or use_swa_split_tile16 is True
+        or use_swa_split_wave_local is True
+    ):
+        raise ValueError(
+            "use_split_attention=False cannot be combined with split thresholds"
+        )
+    selected_global_split, selected_swa_split = resolve_laguna_split_thresholds(
+        backend,
+        context_length=context,
+        sliding_window=sliding_window,
+        global_split_min_live=global_split_min_live,
+        swa_split_min_live=swa_split_min_live,
+        use_split_attention=use_split_attention,
+    )
+    parsed_global_split = _validate_split_threshold(
+        selected_global_split,
+        context,
+        "global_split_min_live",
+    )
+    parsed_swa_split = _validate_split_threshold(
+        selected_swa_split,
+        sliding_window,
+        "swa_split_min_live",
+    )
+    selected_swa_tile16 = (
+        None
+        if use_split_attention is False
+        else resolve_laguna_swa_split_tile16_threshold(
+            backend,
+            sliding_window=sliding_window,
+            swa_split_tile16_min_live=swa_split_tile16_min_live,
+            use_swa_split_tile16=use_swa_split_tile16,
+        )
+    )
+    parsed_swa_tile16 = _validate_split_threshold(
+        selected_swa_tile16,
+        sliding_window,
+        "swa_split_tile16_min_live",
+    )
+    selected_split_gate_fusion = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_SPLIT_GATE_FUSION",
+            False,
+        )
+        if use_split_gate_fusion is None
+        else use_split_gate_fusion
+    )
+    selected_swa_split_wave_local = (
+        False
+        if use_split_attention is False
+        else bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
+                False,
+            )
+            if use_swa_split_wave_local is None
+            else use_swa_split_wave_local
+        )
+    )
+    if selected_swa_split_wave_local and (
+        parsed_swa_split is None or not selected_split_gate_fusion
+    ):
+        raise ValueError(
+            "SWA wave-local reduction requires exact split attention and "
+            "split-gate fusion"
+        )
+    _validate_split_backend(
+        backend,
+        parsed_global_split,
+        parsed_swa_split,
+        parsed_swa_tile16,
+        split_gate_fusion=selected_split_gate_fusion,
+        swa_split_wave_local=selected_swa_split_wave_local,
+    )
     buffers: list[DeviceBuffer] = []
 
     def allocate_raw(nbytes: int) -> DeviceBuffer:
@@ -931,6 +1192,31 @@ def allocate_laguna_kv_cache(
             else None
         )
         row_position = metadata((ctypes.c_int64 * 1)(-1), (1,), DType.INT64)
+        split_enabled = any(
+            threshold is not None
+            for threshold in (
+                parsed_global_split,
+                parsed_swa_split,
+                parsed_swa_tile16,
+            )
+        )
+        split_elements = max(
+            (
+                q_heads * (context if attention_type == FULL_ATTENTION else sliding_window)
+                for attention_type, q_heads in zip(layer_types, head_counts, strict=True)
+            ),
+            default=0,
+        )
+        split_score_scratch = (
+            allocate_raw(split_elements * DType.FP32.itemsize)
+            if split_enabled
+            else None
+        )
+        split_physical_scratch = (
+            allocate_raw(split_elements * DType.INT32.itemsize)
+            if split_enabled
+            else None
+        )
 
         states: list[LagunaKVLayerState] = []
         element_bytes = DType.BF16.itemsize
@@ -1036,12 +1322,100 @@ def allocate_laguna_kv_cache(
             prefill_global_qrow6=prefill_global_qrow6,
             prefill_dense_initial=prefill_dense_initial,
             row_position=_buffer_for_tensor(row_position, buffers),
+            split_score_scratch=split_score_scratch,
+            split_physical_scratch=split_physical_scratch,
+            global_split_min_live=parsed_global_split,
+            swa_split_min_live=parsed_swa_split,
+            swa_split_tile16_min_live=parsed_swa_tile16,
+            split_gate_fusion=(selected_split_gate_fusion and split_enabled),
+            swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
             runtime=runtime,
         )
     except Exception:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
         raise
+
+
+def _validate_split_backend(
+    backend: str,
+    global_threshold: int | None,
+    swa_threshold: int | None,
+    swa_tile16_threshold: int | None,
+    *,
+    split_gate_fusion: bool,
+    swa_split_wave_local: bool,
+) -> None:
+    if all(
+        threshold is None
+        for threshold in (global_threshold, swa_threshold, swa_tile16_threshold)
+    ):
+        return
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
+
+    register_laguna_kv_attention_kernels()
+    load_backend_kernel_package(backend)
+    requested = [
+        (global_threshold, "global_context_split_exact_spans"),
+        (swa_threshold, "swa_context_split_exact_spans"),
+        (swa_tile16_threshold, "swa_context_split_tile16_exact_spans"),
+    ]
+    if split_gate_fusion:
+        requested.extend(
+            (
+                (global_threshold, "global_context_split_exact_gated_spans"),
+                (swa_threshold, "swa_context_split_exact_gated_spans"),
+                (
+                    swa_tile16_threshold,
+                    "swa_context_split_tile16_exact_gated_spans",
+                ),
+            )
+        )
+    if swa_split_wave_local:
+        requested.extend(
+            (
+                (
+                    swa_threshold,
+                    "swa_context_split_exact_gated_wave_local_spans",
+                ),
+                (
+                    swa_tile16_threshold,
+                    "swa_context_split_tile16_exact_gated_wave_local_spans",
+                ),
+            )
+        )
+    for threshold, variant in requested:
+        if threshold is None:
+            continue
+        if (
+            resolve(
+                backend=backend,
+                layer="laguna_attention_decode",
+                quant="bf16",
+                variant=variant,
+                missing="none",
+            )
+            is None
+        ):
+            raise ValueError(
+                f"Laguna split attention variant {variant!r} is unavailable "
+                f"for backend {backend!r}"
+            )
+
+
+def _validate_split_threshold(
+    value: int | None,
+    capacity: int,
+    name: str,
+) -> int | None:
+    if value is None:
+        return None
+    parsed = int(value)
+    if parsed <= 0 or parsed > int(capacity):
+        raise ValueError(f"{name} must be within [1, {capacity}]")
+    return parsed
 
 
 def _validate_config(
@@ -1099,6 +1473,8 @@ __all__ = [
     "LagunaKVLayerState",
     "allocate_laguna_kv_cache",
     "resolve_laguna_global_prefill_variant",
+    "resolve_laguna_split_thresholds",
     "resolve_laguna_swa_decode_variant",
+    "resolve_laguna_swa_split_tile16_threshold",
     "resolve_laguna_swa_prefill_variant",
 ]

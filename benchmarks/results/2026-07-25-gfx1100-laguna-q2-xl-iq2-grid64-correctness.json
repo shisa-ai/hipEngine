@@ -1,0 +1,198 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 52.514,
+    "canonical_ms_per_token": 19.042,
+    "name": "retained current-P4 compact-grid exact IQ2 tile2 plus wave-local SWA reducer"
+  },
+  "candidate": {
+    "description": "exact c=1 IQ2 selected gate/up+SiLU tile2 sibling using one canonical uint64 magnitude-grid entry per selector",
+    "default_enabled": false,
+    "persistent_weight_copy": false,
+    "constant_data_delta_bytes": 3072,
+    "rows_greater_than_one_fallback": "retained compact-grid tile2 route"
+  },
+  "checks": {
+    "actual_layer_bf16_bit_equal": true,
+    "candidate_event_win_all_layers": true,
+    "candidate_wall_win_all_layers": true,
+    "c1_runtime_route_traced": true,
+    "full_model_state_exact": true,
+    "magnitude_table_exactly_expands_packed_grid": true,
+    "rows_greater_than_one_retained_compact_grid": true,
+    "selection_pass": true,
+    "tracked_memory_returned_to_baseline": true
+  },
+  "date": "2026-07-25",
+  "decision": {
+    "action": "admit as a separately registered default-off gfx1100 candidate",
+    "next": "commit correctness admission, then run two clean process orders at short/512/1K/near-4K followed by both complete 18-prompt category orders before any default change",
+    "reason": "The exact expanded-magnitude body is BF16-bit equal, improves both first/last actual IQ2 layers by about 30-34%, contracts ISA and VGPR materially, preserves bulk prefill on the retained route, and passes full state plus trace gates. Promotion still requires clean whole-model and category evidence."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0; GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "isa_audit": {
+    "retained_compact_grid": {
+      "disassembly_lines": 1246,
+      "logical_vgpr": 132,
+      "logical_sgpr": 30,
+      "lds_bytes": 128,
+      "private_bytes": 0,
+      "spills": 0,
+      "uint_to_float_conversions": 66,
+      "integer_left_shifts": 56,
+      "integer_right_shifts": 80,
+      "integer_masks": 81,
+      "multiplies": 78,
+      "global_loads": 22,
+      "parity_popc": 8
+    },
+    "expanded_magnitudes": {
+      "disassembly_lines": 986,
+      "logical_vgpr": 110,
+      "logical_sgpr": 31,
+      "lds_bytes": 128,
+      "private_bytes": 0,
+      "spills": 0,
+      "uint_to_float_conversions": 10,
+      "integer_left_shifts": 61,
+      "integer_right_shifts": 24,
+      "integer_masks": 71,
+      "multiplies": 14,
+      "global_loads": 22,
+      "parity_popc": 8
+    },
+    "delta": {
+      "disassembly_lines_pct": -20.86677367576244,
+      "logical_vgpr": -22,
+      "uint_to_float_conversions": -56,
+      "multiplies": -64
+    },
+    "sign_only_lut_control": {
+      "retained": false,
+      "reason": "adds eight random global loads, raises logical VGPR 132 to 134, and regresses retained compact-grid events at both actual layers",
+      "layer_1_event_delta_pct": 1.2781858016889913,
+      "layer_45_event_delta_pct": 1.6885984206705285
+    }
+  },
+  "kind": "hipengine_laguna_q2_xl_iq2_grid64_correctness",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "production_rows": [
+    {
+      "event_delta_pct": -33.73174164907152,
+      "event_us": {
+        "expanded_magnitudes": 37.938435077667236,
+        "retained_compact_grid": 57.24978446960449
+      },
+      "layer_id": 1,
+      "quality": {
+        "bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "role": "iq2_selected_gate_up_silu",
+      "shape": [256, 1024, 3072],
+      "wall_delta_pct": -33.43226742596891,
+      "wall_us": {
+        "expanded_magnitudes": 37.90621994994581,
+        "retained_compact_grid": 56.943835224956274
+      }
+    },
+    {
+      "event_delta_pct": -30.78490238662428,
+      "event_us": {
+        "expanded_magnitudes": 39.52707529067993,
+        "retained_compact_grid": 57.10759162902832
+      },
+      "layer_id": 45,
+      "quality": {
+        "bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0
+      },
+      "role": "iq2_selected_gate_up_silu",
+      "shape": [256, 1024, 3072],
+      "wall_delta_pct": -29.996274563812754,
+      "wall_us": {
+        "expanded_magnitudes": 40.05150054581463,
+        "retained_compact_grid": 57.21338442526758
+      }
+    }
+  ],
+  "protocol": {
+    "actual_layers": [1, 45],
+    "counterbalanced_repetitions": 15,
+    "launches_per_sample": 200,
+    "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+    "warmups_per_mode": 50
+  },
+  "provenance": {
+    "candidate_code_patch_sha256": "e3e0f8477d2dc1a18531fc6116e1aecf4af54c33644d9a97ca9894b3c23bcfce",
+    "canonical_values_sha256": "06e47aaca60b4dc1d9b5a3f34540437058a6b142b4d7a59d5ded769b4d1bf1de",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "expanded_disassembly_sha256": "c0806538a29dc89361403ce088e52dea6b5c2f218fcf98a53b8008b7ebf6f951",
+    "green_sha256": "12a9a4a8915fb8d2bb5b4227220247cde267c1a0620203589fe47280d5be4a7f",
+    "micro_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq2_grid64_repo_actual.py",
+    "micro_harness_sha256": "f6933f4d884bafd56c1d42705b96c60ceddb6e5e5edcae0a27f4418ea700c426",
+    "micro_raw_sha256": "7d31c94b99282f9f5e0897998b259706a5aca164f07e51c0bde51ea7b8bfb34e",
+    "red_sha256": "d77fcff05735243355b8d4a711f74d5bb7166a55f5e1a3b072ab96b0d548e804",
+    "retained_disassembly_sha256": "92909565a87d6c80d8c06c7b61f510299a7016b49a956c88fc5e2b47d0d7139a",
+    "state_harness_sha256": "9d7305253d70e5e950d96e125b70c7c77939b430d504bb88a4d891a2b9924caa",
+    "state_raw_sha256": "a20b42e95107a866404fd6b1ca41adf5a057ec2879943d98dc47753b60f058ba",
+    "state_stdout_sha256": "984bea55bc5d5a8437cbe40aec591ee45a895b430e98a402b4c656dcbc4369d7",
+    "trace_child_sha256": "e4bd72d3afaa55b076c6f7604db59171a131d13db93b3f6b04ffc0a06f1e6de5",
+    "trace_csv_sha256": "1ece12028b5c252a80a709d76b411723a993fe47069e8973f73165482baa8b09",
+    "trace_harness_sha256": "17734869effccefe2b4fe2fde82be5cbecb64c5587c5e1ded923b3991bc9168c",
+    "trace_stdout_sha256": "d19d434224ec2d68a539f9867d3a3a8fabcdaf4746abc96ed46e6c17add74eaf"
+  },
+  "resources": {
+    "candidate_expanded_magnitudes_c1": {
+      "call_count_over_two_decode_transitions": 92,
+      "duration_us": {
+        "max": 44.96,
+        "median": 40.281,
+        "min": 39.24
+      },
+      "grid_y": 10,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 112,
+      "workgroup_size": 64
+    },
+    "retained_compact_grid_rows_greater_than_one": {
+      "call_count_over_bulk_prefill": 46,
+      "grid_y": 690,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 136,
+      "workgroup_size": 64
+    }
+  },
+  "state_gate": {
+    "active_kv_and_live_spans_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "decode_steps": 16,
+    "final_hidden_exact": true,
+    "full_logits_exact": true,
+    "head_kv_fusion": true,
+    "peak_allocated_bytes": 40459057576,
+    "peak_allocations": 1500,
+    "post_layer_hidden_exact": true,
+    "reset_exact": true,
+    "swa_split_wave_local": true
+  }
+}

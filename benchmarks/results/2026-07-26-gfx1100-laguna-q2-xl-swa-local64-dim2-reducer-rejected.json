@@ -1,0 +1,299 @@
+{
+  "based_on_revision": "54fca4ebea51a30dbd1da50ce7fa001a72ff07bb",
+  "clean_profile": {
+    "analyzer_sha256": "eb5c41d390d075528a8d10448127465df33e2034bad2c16a1bdc350352d5fa9e",
+    "candidate_reducer": "36 local64/grid4608/VGPR24/SGPR128/LDS0/scratch0 calls/token",
+    "checks": {
+      "all_child_inside_0_5pct": true,
+      "all_kernel_sum_inside_0_5pct": true,
+      "all_reducer_improve": false,
+      "all_resources_pass": true,
+      "all_span_inside_0_5pct": true,
+      "all_swa_improve": false,
+      "mechanical_gate_pass": false
+    },
+    "child_sha256": "7f1c244a32360aec32b1cbb68722f924afb31b5d58c2435459e7956330252ca2",
+    "command": "bash /tmp/run_laguna_swa_dim2_clean_profiles.sh",
+    "completed_contexts": [
+      "short",
+      "512"
+    ],
+    "control_reducer": "36 local128/grid9216/VGPR24/SGPR128/LDS0/scratch0 calls/token",
+    "dispatches_per_stable_token": 723,
+    "process_orders_per_context": 2,
+    "profiles": [
+      {
+        "candidate": {
+          "kernel_sum_ms": 12.994337428571429,
+          "profiled_child_tok_s": 57.18166615918443,
+          "reducer_ms": 1.4699024642857144,
+          "score_ms": 0.23494732142857144,
+          "span_median_ms": 15.930829,
+          "swa_ms": 1.7048497857142857
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": -0.022918192949072935,
+          "profiled_child_tok_s_pct": 0.6319509872054541,
+          "reducer_pct": -0.24398943485631763,
+          "score_pct": 1.1066125486684841,
+          "span_pct": 0.29826320212646973,
+          "swa_pct": -0.06000905652502331
+        },
+        "context": "short",
+        "control": {
+          "kernel_sum_ms": 12.997316178571435,
+          "profiled_child_tok_s": 56.82257533340938,
+          "reducer_ms": 1.4734976428571427,
+          "score_ms": 0.2323758214285714,
+          "span_median_ms": 15.8834545,
+          "swa_ms": 1.7058734642857143
+        },
+        "ids_finite_lifecycle_exact": true,
+        "resource_gate": true,
+        "stable_samples_per_arm": 28
+      },
+      {
+        "candidate": {
+          "kernel_sum_ms": 22.479946,
+          "profiled_child_tok_s": 36.493784831831746,
+          "reducer_ms": 8.721708916666666,
+          "score_ms": 0.7760403333333333,
+          "span_median_ms": 25.502029999999998,
+          "swa_ms": 9.49774925
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": -0.16701008333018796,
+          "profiled_child_tok_s_pct": 0.450578943084623,
+          "reducer_pct": 0.07280916572991458,
+          "score_pct": 2.2420161885757794,
+          "span_pct": -0.23805608162209557,
+          "swa_pct": 0.2465911710112012
+        },
+        "context": "512",
+        "control": {
+          "kernel_sum_ms": 22.517552583333345,
+          "profiled_child_tok_s": 36.33008910034172,
+          "reducer_ms": 8.715363333333334,
+          "score_ms": 0.7590229166666667,
+          "span_median_ms": 25.562884,
+          "swa_ms": 9.47438625
+        },
+        "ids_finite_lifecycle_exact": true,
+        "resource_gate": true,
+        "stable_samples_per_arm": 12
+      }
+    ],
+    "raw_processes": [
+      {
+        "context": "short",
+        "mode": "control",
+        "order": "a",
+        "sha256": {
+          "bench.json": "42ca011118de31b6870a77c23835d1c943c7fb26fc588a3ca70cbd342156959e",
+          "stderr.log": "57b5b48aff37c9bdaf9c23e71f89824b00cbbd565a87c27345683a8e758fdf7c",
+          "stdout.log": "42ca011118de31b6870a77c23835d1c943c7fb26fc588a3ca70cbd342156959e",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "7e4d48eae17964c50e30b6b7bc659d87aabe6fa36a75d786a8d438140c9d5ddd"
+        }
+      },
+      {
+        "context": "short",
+        "mode": "control",
+        "order": "b",
+        "sha256": {
+          "bench.json": "6e8596ea4ea83f6930f1c8247e1863b84e39bff8b847ff2cf2ba7a44ff7c18c3",
+          "stderr.log": "02a89cb1c56d499e5bc92b81143ccb39d00376a8ea59480ae6e5cc4c9f1ce89b",
+          "stdout.log": "6e8596ea4ea83f6930f1c8247e1863b84e39bff8b847ff2cf2ba7a44ff7c18c3",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "93ccb70e76d11bcd7d487399323daa66b0a13c4af7063349610186ab0904011b"
+        }
+      },
+      {
+        "context": "short",
+        "mode": "candidate",
+        "order": "a",
+        "sha256": {
+          "bench.json": "e3bee15d1ff8402f5f8e56788d1a4d278989e9a4b1fc4f575829adff0b20ffa9",
+          "stderr.log": "cd1681caecb64c9a177def5d259a42de1a34905d30ab0e985276e83cc3f3dc01",
+          "stdout.log": "e3bee15d1ff8402f5f8e56788d1a4d278989e9a4b1fc4f575829adff0b20ffa9",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "a9c6ceb6291226e5e555713f6e902f07accf6c9e1c06db943017a21d19cee0c9"
+        }
+      },
+      {
+        "context": "short",
+        "mode": "candidate",
+        "order": "b",
+        "sha256": {
+          "bench.json": "f392b0c2d0876e455045c27ac71118776adb7f1c71789037a707d63e67d88fdb",
+          "stderr.log": "0025b79fdf26975c8ad2eabc2a1e35e81f11369c8c27e47d07d92036ec72b816",
+          "stdout.log": "f392b0c2d0876e455045c27ac71118776adb7f1c71789037a707d63e67d88fdb",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "e43d45bcc18dfa73c1c216b19d5a3f732d17692ee47191fad43f721c6c784022"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "control",
+        "order": "a",
+        "sha256": {
+          "bench.json": "4a04681ed59622168be907cbee5408755453c52a4cf274326f5dfbfbbdea536f",
+          "stderr.log": "2cb09d57466887c0ad9a2a2978689ebb9c5fda62b3b79118c6954c28d5cef193",
+          "stdout.log": "4a04681ed59622168be907cbee5408755453c52a4cf274326f5dfbfbbdea536f",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "e9b612beb656eb9d6426c697382993a4acee3f872163384a61c27db58177805d"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "control",
+        "order": "b",
+        "sha256": {
+          "bench.json": "935bafcdc3390f6e3313e223f1622f9ee28426536b935137e4c9e05e9885e311",
+          "stderr.log": "2eb2d3debf494ded6d96d3d6c5df0a73cc2e0777248c3fbc9c687f2d9d2c9f0c",
+          "stdout.log": "935bafcdc3390f6e3313e223f1622f9ee28426536b935137e4c9e05e9885e311",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "e7c1ffad8972bb4325cabe5bdc13489eb85fb878cf246eb809d6dc7e7d1033c2"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "candidate",
+        "order": "a",
+        "sha256": {
+          "bench.json": "2e8b9ca67c6715672325d482498eae06891d58909988576b3787b95be8a1684a",
+          "stderr.log": "a16b7ef8538b9691f47ee3a96d7ac510e8065984dc2ef971add24eb76467834f",
+          "stdout.log": "2e8b9ca67c6715672325d482498eae06891d58909988576b3787b95be8a1684a",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "87b05ed12286b36734876f9c1854424cf51f8bf405896cd7b9ac98de1663ac8d"
+        }
+      },
+      {
+        "context": "512",
+        "mode": "candidate",
+        "order": "b",
+        "sha256": {
+          "bench.json": "3253bccb25e1ef7243bbb795d5efe0b2e0cc03f9e483676b946d7485f469162a",
+          "stderr.log": "adc3e7c6535329d08a3b65b4bbad09d43702487e2f9cdcc226cdcaf8e0a35388",
+          "stdout.log": "3253bccb25e1ef7243bbb795d5efe0b2e0cc03f9e483676b946d7485f469162a",
+          "trace_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+          "trace_kernel_trace.csv": "49ef00345901697314ea24ebe69098bc15a3a29aa4465302d0d61ce04f8af545"
+        }
+      }
+    ],
+    "report_sha256": "58013829c374e93b90475adfe10a6cb58703b27b79626dd8eb373ac3e2805f0d",
+    "runner_sha256": "e7a5fee3cf3cd8919cc6d3e99f16e7b3e3a1549db49c796a9868f9a7c34f8066",
+    "stopped_contexts": [
+      "1024",
+      "3968"
+    ],
+    "summary_sha256": "9ab1fb20729c265d5936e00fe52560b61f5cf02e18adbd7199331e28d9a0880a"
+  },
+  "cleanup": {
+    "benchmark_cli_selector_removed": true,
+    "gfx1100_capability_removed": true,
+    "gfx1151_alias_exclusions_retained": true,
+    "kv_owner_selector_and_dispatch_removed": true,
+    "primitive_wrappers_registry_keys_and_oracle_retained": true,
+    "refactor_debt_removed": true,
+    "regression_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_split_reduce_wave_local.py tests/test_laguna_gguf_runner.py",
+    "regression_output_sha256": "cb27fd7f42b6d224dfa05db3fc71777af0a383bcb32d6cfe1be44ebfcab22739",
+    "regression_result": "33 passed",
+    "retained_local128_wave_local_default_unchanged": true,
+    "runtime_constructor_selector_removed": true,
+    "source_files": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ad29b26a2a48e4909af091d923ce2857ad78dae22c4097c541bc1c7b35a6acf5"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "sha256": "e60503ccccdc1b03c24c377283686c0457da4829dbdb531665d594894332cf67"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "023c13328dd9524ab94e337d8bbc92bdbe25a2a5b98d70d28fbc7557ea2e01ef"
+      },
+      {
+        "path": "hipengine/runtime/laguna_kv.py",
+        "sha256": "2e1f37a2adf1264ca1658ac7a55580d5e0699ce42da3c802b73ac07da0e45c42"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "476dc822608921523d259993a0bea351898560896fdf63f11a01e4fe0c697213"
+      },
+      {
+        "path": "tests/test_laguna_gguf_runner.py",
+        "sha256": "39ab602a486d5974bf0652a576e1f05b9eae09abb3db192679c02adf68e31fd6"
+      },
+      {
+        "path": "tests/test_laguna_kv_attention.py",
+        "sha256": "3b40c2cfed477c9da2df8bbad0fcb67e10babc597d017cbadc27f1c25d188650"
+      }
+    ]
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "reject runtime promotion and retain the primitive only as diagnostic exact kernel evidence",
+    "additional_speedup_required_pct": 4.350869291461135,
+    "canonical_h32_decode_tok_s": 61.73234556191569,
+    "completion_claim": false,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "next_action": "Re-rank the post-local32 retained traces with local64 dim2 closed; do not retry dimension packing without a materially different mechanism."
+  },
+  "frozen_contract": {
+    "category_allowed_only_after_mechanical_pass": true,
+    "no_third_order_or_guard_waiver": true,
+    "path": "/tmp/laguna-swa-dim2-promotion-contract.json",
+    "require_complete_swa_improves_every_context": true,
+    "require_reducer_improves_every_context": true,
+    "sha256": "e70ece702d60cd859cc1081d642983cbc8aad5d2032c9bbb58aab4dbbd38d66c"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_swa_local64_dim2_reducer_rejected",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "output_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "result": "only already catalogued unrelated drift"
+  },
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-design.json",
+      "sha256": "f8a1b24a630d93ff5bc404ad632f398d2b9739f42a134cfd84e2db3aacd449ba"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-reducer-correctness.json",
+      "sha256": "50876562df77de229b6298bba75054c6121babf0bcce2f5e3b98aa4234ced104"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-swa-local64-dim2-runtime-correctness.json",
+      "sha256": "75935287127f58629ef11add1ecc99c8823e3231ec63184626991307b4bd987e"
+    }
+  ],
+  "rejection": {
+    "complete_category_suite_skipped": true,
+    "complete_swa_change_pct": 0.2465911710112012,
+    "failing_context": 512,
+    "kernel_sum_change_pct": -0.16701008333018796,
+    "profiled_child_tok_s_change_pct": 0.450578943084623,
+    "reason": "The candidate improves the short reducer but regresses both the targeted reducer and complete SWA at context 512, violating the frozen every-context improvement rule.",
+    "reducer_change_pct": 0.07280916572991458,
+    "remaining_contexts_skipped": true,
+    "span_change_pct": -0.23805608162209557
+  },
+  "schema": 1,
+  "status": "rejected_runtime_integration_removed"
+}

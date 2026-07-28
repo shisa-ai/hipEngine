@@ -1,0 +1,530 @@
+{
+  "date": "2026-07-26",
+  "decision": {
+    "action": "remove runtime integration and retain exact primitive diagnostic only",
+    "additional_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "category_orders_run": 0,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank immutable retained traces with compact-wave32 runtime selection mechanically closed; do not retry the unchanged selector schedule.",
+    "performance_claim": false
+  },
+  "frozen_clean_gate": {
+    "candidate_pooled": {
+      "kernel_sum_ms": 13.011995214285719,
+      "profiled_child_tok_s": 57.06037693468617,
+      "router_family_ms": 0.8452114642857143,
+      "selector_family_ms": 0.5237736428571429,
+      "span_median_ms": 16.0209775,
+      "stable_samples": 28
+    },
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_child_inside_0_5pct": false,
+      "all_order_kernel_sum_improves": false,
+      "all_order_router_family_improves": false,
+      "all_order_selector_family_improves": false,
+      "all_order_span_inside_0_5pct": false,
+      "all_resources_calls_and_dispatches_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "contract": {
+      "acceptance": {
+        "candidate_resources": {
+          "grid_x": 32,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 72,
+          "workgroup": 32
+        },
+        "candidate_selector_calls_per_token": 47,
+        "category_gate_requires_all_contexts": true,
+        "control_resources": {
+          "grid_x": 256,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 32,
+          "workgroup": 256
+        },
+        "finite_logits": true,
+        "generated_ids_exact": true,
+        "kernel_sum_improves_in_every_order": true,
+        "lifecycle_returns_to_baseline": true,
+        "model_kernels_per_token": 723,
+        "profiled_child_throughput_regression_min_pct": -0.5,
+        "retained_projection_calls_per_token": 47,
+        "router_family_improves_in_every_order": true,
+        "selector_family_improves_in_every_order": true,
+        "span_regression_max_pct": 0.5,
+        "stop_on_first_failed_context": true,
+        "third_order_or_guard_waiver_allowed": false
+      },
+      "command": "bash /tmp/run_laguna_router_selector_compact_wave32_clean_profiles.sh",
+      "contexts": [
+        "short",
+        "512",
+        "1024",
+        "3968"
+      ],
+      "frozen_before_launch": true,
+      "hardware": {
+        "backend": "hip_gfx1100",
+        "device": "AMD Radeon Pro W7900",
+        "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+      },
+      "harness_sha256": {
+        "analyzer": "64fa3fc678c7895c3ac2e42e9f0ebe2d19a72d34dc21d0f1af0a23d2b8d03ceb",
+        "child": "ea691220012263354cbe7ebed02787c1228d0339c4bc004dcab866fa6b171031",
+        "runner": "f35a4c5265d71edd3e1de3f96c6a546985f135706326460b650c53af6d24a0cd"
+      },
+      "model": {
+        "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+        "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+      },
+      "orders": {
+        "1024": [
+          "control-a",
+          "candidate-a",
+          "candidate-b",
+          "control-b"
+        ],
+        "3968": [
+          "candidate-a",
+          "control-a",
+          "control-b",
+          "candidate-b"
+        ],
+        "512": [
+          "candidate-a",
+          "control-a",
+          "control-b",
+          "candidate-b"
+        ],
+        "short": [
+          "control-a",
+          "candidate-a",
+          "candidate-b",
+          "control-b"
+        ]
+      },
+      "revision": "91c9971d869d8eaa774b9f0379eb91cbd3ecf348",
+      "runtime_artifact": {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json",
+        "sha256": "75de071052301c1a6027e84d339a552b2086c118bf5e02c8c0e4fc60665b0a8a"
+      },
+      "schema": 1
+    },
+    "contract_sha256": "317aed4881bc54b72d52bbf4d484431bd2ff9b49e08aa70c2a95c0bd25bf4af4",
+    "control_pooled": {
+      "kernel_sum_ms": 12.859373892857144,
+      "profiled_child_tok_s": 57.96643930850384,
+      "router_family_ms": 0.7319389642857143,
+      "selector_family_ms": 0.40578125,
+      "span_median_ms": 15.6803755,
+      "stable_samples": 28
+    },
+    "orders": [
+      {
+        "candidate": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 13.049519142857147,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "profiled_child_tok_s": 57.08322635629317,
+          "projection_calls_per_token": 47,
+          "projection_resources": [
+            [
+              "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)",
+              65536,
+              1,
+              256,
+              24,
+              128,
+              0,
+              0
+            ]
+          ],
+          "raw_sha256": {
+            "bench.json": "3abf31de9a78bdfae1ea1d0263ed0ecbe775c87fb309ff2ef5cad4ecf1d29904",
+            "stderr.log": "4937fda2ea9fb5f8811bade481f9140fd97c2893357b229115529ad604a55d77",
+            "stdout.log": "3abf31de9a78bdfae1ea1d0263ed0ecbe775c87fb309ff2ef5cad4ecf1d29904",
+            "trace_kernel_trace.csv": "c226085afefb40ee1ee8f6a260309549dece75ddbc979a02d501c1d39edbd456"
+          },
+          "router_family_mean_ms": 0.8507829285714286,
+          "selector_calls_per_token": 47,
+          "selector_family_mean_ms": 0.5251846428571428,
+          "selector_resources": [
+            [
+              "void (anonymous namespace)::laguna_sigmoid_correction_topk_compact_wave_kernel<32>(float const*, float const*, float*, float*, long*, float*, float*, float)",
+              32,
+              1,
+              32,
+              72,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 16.331285,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": 1.7866992987424002,
+          "profiled_child_tok_s_pct": -1.5870188113190742,
+          "router_family_pct": 16.890938169878964,
+          "selector_family_pct": 30.577819484844703,
+          "span_pct": 4.363014893980188
+        },
+        "control": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.820456142857141,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "profiled_child_tok_s": 58.003756889399725,
+          "projection_calls_per_token": 47,
+          "projection_resources": [
+            [
+              "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)",
+              65536,
+              1,
+              256,
+              24,
+              128,
+              0,
+              0
+            ]
+          ],
+          "raw_sha256": {
+            "bench.json": "7b11df9b10b245e64aeaba415d52a023df39f60e7db0ed81b85c77316a313b3e",
+            "stderr.log": "fe5474285ecde49a38d5abf3f392140c6c9f3edb7ad446cc534349b801ae9cdd",
+            "stdout.log": "7b11df9b10b245e64aeaba415d52a023df39f60e7db0ed81b85c77316a313b3e",
+            "trace_kernel_trace.csv": "173257e98bdf0a012bd29c7e814d5f1ac1f2b28b30f2e69d662a9dc7aacd7a70"
+          },
+          "router_family_mean_ms": 0.7278433571428572,
+          "selector_calls_per_token": 47,
+          "selector_family_mean_ms": 0.4022005,
+          "selector_resources": [
+            [
+              "(anonymous namespace)::laguna_sigmoid_correction_topk_kernel(float const*, float const*, float*, float*, long*, float*, float*, long, long, float)",
+              256,
+              1,
+              256,
+              32,
+              128,
+              512,
+              0
+            ]
+          ],
+          "span_median_ms": 15.648537000000001,
+          "stable_steps": 14
+        },
+        "order": "a",
+        "pass": false
+      },
+      {
+        "candidate": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.97447128571429,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "profiled_child_tok_s": 57.02824338952647,
+          "projection_calls_per_token": 47,
+          "projection_resources": [
+            [
+              "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)",
+              65536,
+              1,
+              256,
+              24,
+              128,
+              0,
+              0
+            ]
+          ],
+          "raw_sha256": {
+            "bench.json": "70a2a12df05a045378671ae7f10b6037f0589a9335e1f18e46af6e958b4b0e71",
+            "stderr.log": "ecc2d144ebdc54f90bfd8a7dfc3ebb7d4a0fc5343d28fcfe0698e1a27f478a81",
+            "stdout.log": "70a2a12df05a045378671ae7f10b6037f0589a9335e1f18e46af6e958b4b0e71",
+            "trace_kernel_trace.csv": "a415676c5e520c3006e5e1f9ac2a237af4cbc99d26409db102d200eb32711713"
+          },
+          "router_family_mean_ms": 0.8396399999999999,
+          "selector_calls_per_token": 47,
+          "selector_family_mean_ms": 0.5223626428571428,
+          "selector_resources": [
+            [
+              "void (anonymous namespace)::laguna_sigmoid_correction_topk_compact_wave_kernel<32>(float const*, float const*, float*, float*, long*, float*, float*, float)",
+              32,
+              1,
+              32,
+              72,
+              128,
+              0,
+              0
+            ]
+          ],
+          "span_median_ms": 15.873955500000001,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "kernel_sum_pct": 0.5906180831267704,
+          "profiled_child_tok_s_pct": -1.61851569661573,
+          "router_family_pct": 14.076163347917259,
+          "selector_family_pct": 27.604087056723102,
+          "span_pct": 0.3059770561914199
+        },
+        "control": {
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "kernel_sum_mean_ms": 12.898291642857147,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "profiled_child_tok_s": 57.96643930850384,
+          "projection_calls_per_token": 47,
+          "projection_resources": [
+            [
+              "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)",
+              65536,
+              1,
+              256,
+              24,
+              128,
+              0,
+              0
+            ]
+          ],
+          "raw_sha256": {
+            "bench.json": "fb9cd6282f72ca61099ebb8fd309e6f1d2b8522c864433610d887fe7def98b0c",
+            "stderr.log": "da8da40d3abe9628df31d145730a35e2d8bb047a3a85b3368e523b2473a5e9a1",
+            "stdout.log": "fb9cd6282f72ca61099ebb8fd309e6f1d2b8522c864433610d887fe7def98b0c",
+            "trace_kernel_trace.csv": "9273e8e7bc28b9968000bc235a46b0492fcb0725585cc749b797df8fced43410"
+          },
+          "router_family_mean_ms": 0.7360345714285714,
+          "selector_calls_per_token": 47,
+          "selector_family_mean_ms": 0.409362,
+          "selector_resources": [
+            [
+              "(anonymous namespace)::laguna_sigmoid_correction_topk_kernel(float const*, float const*, float*, float*, long*, float*, float*, long, long, float)",
+              256,
+              1,
+              256,
+              32,
+              128,
+              512,
+              0
+            ]
+          ],
+          "span_median_ms": 15.825533,
+          "stable_steps": 14
+        },
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "pooled_delta_pct": {
+      "kernel_sum_ms": 1.1868487742886957,
+      "profiled_child_tok_s": -1.563080956198648,
+      "router_family_ms": 15.475675640596688,
+      "selector_family_ms": 29.077832664062942,
+      "span_median_ms": 2.172154614537125
+    },
+    "report_sha256": "5be7efbfa0c372bee446e60c37298d2e4845c70f099a7c431147cc680ae792ad",
+    "stopped_before": [
+      "512",
+      "1024",
+      "3968",
+      "complete_18_prompt_categories"
+    ],
+    "summary_sha256": "1f52d79db9ecfdafa9c451d87d763e1351194fba7a668903a778993b034b1b10",
+    "third_order_or_guard_waiver": false,
+    "through": "short",
+    "w7900_vram_returned_to_baseline_bytes": 27959296
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "interpretation": {
+    "decisive_failures": [
+      "order A/B selector family regresses 30.578%/27.604%",
+      "order A/B complete router family regresses 16.891%/14.076%",
+      "order A/B complete kernel sum regresses 1.787%/0.591%",
+      "order A/B profiled-child throughput regresses 1.587%/1.619%",
+      "order A dispatch span regresses 4.363%, above the 0.5% guard"
+    ],
+    "ids_resources_dispatches_and_lifecycle_exact": true,
+    "isolated_primitive_event_improvement_pct": 25.783,
+    "isolated_primitive_wall_improvement_pct": 25.77,
+    "isolated_win_reversed_in_full_model": true,
+    "no_benchmark_gaming_or_prompt_conditioning": true
+  },
+  "kind": "hipengine_laguna_q2_xl_router_selector_compact_wave32_rejection",
+  "model": {
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json",
+      "sha256": "737399979a3717dbcc784d221851f679d343c1186b17538c7285e3c0a8aebd0b"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-correctness.json",
+      "sha256": "d65f8eaef4e6e53800f8d6993dd19df71e2fed326f6a51dff9a635fdcc159bc6"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-runtime-correctness.json",
+      "sha256": "75de071052301c1a6027e84d339a552b2086c118bf5e02c8c0e4fc60665b0a8a"
+    }
+  ],
+  "provenance": {
+    "builder_sha256": "b75fe4e6cce26250756b8b4683149fa0d617b6ae91ea0fa185760e4b544942f5",
+    "primitive_commit": "21bb10009",
+    "runtime_commit": "91c9971d869d8eaa774b9f0379eb91cbd3ecf348"
+  },
+  "regression_validation": {
+    "adjacent_exclusion": "unchanged stale gfx1151 test_gguf_fused_linear_matching_uses_resident_backend call missing three current resolver arguments",
+    "adjacent_passed": 88,
+    "adjacent_sha256": "31d4f6ed061187bd4bcaecd24059371e79ed220f567109eaef744423f52fcf35",
+    "compileall_sha256": "b9a7a7bdf18f0940bd1e4f2a0af1284a0286a3c6256b77f010dadfe940fead1a",
+    "idle_vram_bytes_after": 27959296,
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "removal": {
+    "backend_capability_removed": true,
+    "benchmark_cli_and_telemetry_removed": true,
+    "category_work_skipped": true,
+    "permanent_rejection_test": {
+      "path": "tests/test_laguna_router_compact_wave32_runtime.py",
+      "sha256": "a8058f507133015e148af6aa41a6d4a9d2fa87818abc12f0f58d1dd78782ead5"
+    },
+    "production_byte_identical_to_primitive_commit": true,
+    "production_files": [
+      {
+        "current_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7",
+        "matches_primitive_commit": true,
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "primitive_commit_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7"
+      },
+      {
+        "current_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "primitive_commit_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "current_sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_moe.py",
+        "primitive_commit_sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca"
+      },
+      {
+        "current_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7",
+        "matches_primitive_commit": true,
+        "path": "scripts/laguna_target_ar_bench.py",
+        "primitive_commit_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7"
+      }
+    ],
+    "retained": [
+      "gfx1100 laguna_sigmoid_router_topk/f32/correction_bias_compact_wave32 key",
+      "laguna_sigmoid_correction_topk_compact_wave32_f32 wrapper and kernel body",
+      "synthetic CPU/all-tie/extreme/signed-zero and all-47-actual-weight evidence",
+      "gfx1151 alias exclusion",
+      "registered correction_bias control as the only runtime route"
+    ],
+    "rows_and_c1_use_registered_control": true,
+    "runtime_plan_session_and_dispatch_removed": true
+  },
+  "schema": 1,
+  "source_revision": "91c9971d869d8eaa774b9f0379eb91cbd3ecf348",
+  "status": "rejected_runtime_selection_removed_primitive_retained"
+}

@@ -1,0 +1,147 @@
+{
+  "cleanup": {
+    "adjacent_result": "90 passed",
+    "argmax_kernel_registry_unchanged": true,
+    "production_matches_design_commit": true,
+    "removed": [
+      "LAGUNA_ARGMAX_PAIR_READBACK capability/resolver",
+      "12-byte owner and +0/+8 views",
+      "one-copy parser and both runtime routes",
+      "session option and benchmark CLI/telemetry",
+      "temporary refactor row"
+    ],
+    "retained": [
+      "separate int64 ID and FP32 value owners/reads",
+      "all design/full-state/trace/clean evidence"
+    ]
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "categories_run": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "runtime_integration_removed": true,
+    "runtime_promoted": false
+  },
+  "evidence": {
+    "amendment": {
+      "path": "/tmp/laguna-argmax-pair-clean-analyzer-amendment.json",
+      "sha256": "546491300834e743e57e0b92ace97fb23495d38a1c3a091d3c24c0eb7d81718e"
+    },
+    "contract": {
+      "path": "/tmp/laguna-argmax-pair-clean-frozen-contract.json",
+      "sha256": "c64b6b2da0e186e27a97a8b175af2d9a0756f8442458831dbf164a77c7184da3"
+    },
+    "runtime": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-argmax-readback-runtime-correctness.json",
+      "sha256": "456e4dc60f3ca7eb6c6c81468ffb140a8f0aec8042c2728b6427d6030ee6c6f8"
+    },
+    "stop": {
+      "path": "/tmp/laguna-argmax-pair-clean-stop-manifest.json",
+      "sha256": "31f19d33206d95ffc6ac2db22b67d37bfa749e26d85998accfc8781ae0b85344"
+    },
+    "summary": {
+      "path": "/tmp/laguna-q2-xl-argmax-pair-clean-profile-summary.json",
+      "sha256": "74dd68b986a515a30a4370e50ffc2f47baaa8fc61059e5655275e067df859284"
+    }
+  },
+  "kind": "hipengine_laguna_q2_xl_argmax_pair_runtime_rejection",
+  "measured_revision": "bd42b4919462ebf3ac72c93fd498076b05150f3c",
+  "model": {
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "b09f1dd8da2a4214c2d364d57c639f456babb6ac5a9cae710e40ded8eee61f19",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "ae25ae6296ff6f1681cad894bb2ff3a18697843016955829c2d60e06c664206f"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "713dbd9215c7371b45e3f4e0bd1317e952bb8380d4c2da72c545087f14bf8759"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "f6a4ff95631c792b8730ca61240e68e882262c846086280014dfa3c1d79197ab"
+      },
+      {
+        "path": "tests/test_laguna_argmax_pair_readback_runtime.py",
+        "sha256": "9857e9e5ccc371bead1b99e4ba853b58ca01ece782090f90849c6f9667cec8bf"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "7ed9a33fd1c76c3888e806bc0a16bc844eddfb88ef1d1538e0421ee3c064f719"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "c3ac6011a29596ba3a67272def3a19cc2d4de3ca05440c749259c13b6269ac55"
+      }
+    ]
+  },
+  "rollup": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false
+  },
+  "schema": 1,
+  "short_gate": {
+    "checks": {
+      "all_683_682_copy_model_signature_resources_compiler_pass": true,
+      "all_allocation_deltas_exact": true,
+      "all_ids_finite_lifecycle_exact": true,
+      "every_order_child_inside_0_5pct": false,
+      "every_order_cycle_span_inside_0_5pct": false,
+      "every_order_model_kernel_sum_non_regressive": true,
+      "mechanical_gate_pass": false
+    },
+    "official_analyzer_exit_code": 3,
+    "orders": [
+      {
+        "delta": {
+          "cycle_span_pct": -0.4042413304505277,
+          "model_kernel_sum_pct": -0.06475384985182853,
+          "model_segment_span_pct": 0.02664016867410801,
+          "profiled_child_step_median_saving_us": 22.235093638300896,
+          "profiled_child_tok_s_pct": 0.13060884353397473
+        },
+        "order": "a",
+        "passed": true
+      },
+      {
+        "delta": {
+          "cycle_span_pct": 1.1837377433844498,
+          "model_kernel_sum_pct": -1.2975362965975124,
+          "model_segment_span_pct": -4.440694733888007,
+          "profiled_child_step_median_saving_us": -224.37318693846464,
+          "profiled_child_tok_s_pct": -1.305513188104701
+        },
+        "order": "b",
+        "passed": false
+      }
+    ],
+    "passed": false,
+    "pooled": {
+      "cycle_span_median_ms": 0.26019466661371116,
+      "model_kernel_sum_ms": -0.6846835214871172,
+      "model_segment_span_median_ms": -1.5589871251561083,
+      "profiled_child_tok_s": -0.32050525652731476
+    }
+  },
+  "status": "rejected_runtime_removed",
+  "stop_proof": {
+    "categories": 0,
+    "context_1024_processes": 0,
+    "context_3968_processes": 0,
+    "context_512_processes": 0,
+    "manifest": {
+      "path": "/tmp/laguna-argmax-pair-clean-stop-manifest.json",
+      "sha256": "31f19d33206d95ffc6ac2db22b67d37bfa749e26d85998accfc8781ae0b85344"
+    },
+    "short_processes": 4,
+    "third_order": 0
+  }
+}

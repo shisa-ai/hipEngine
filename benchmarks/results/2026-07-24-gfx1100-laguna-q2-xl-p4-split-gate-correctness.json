@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_split_reducer_gate_correctness",
+  "status": "passed_exact",
+  "revision": "46539dedb8b84e4f7511f3320fa740e2f41092a6",
+  "date": "2026-07-24",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "P2 exact global/SWA split reducers additionally apply the existing FP32 softplus per-head gate and RNE BF16 store while retaining the F32 context output",
+    "registry_variants": [
+      "global_context_split_exact_gated_spans",
+      "swa_context_split_exact_gated_spans",
+      "swa_context_split_tile16_exact_gated_spans"
+    ],
+    "unfused_fallback": "registered exact split reducer followed by attention_gate/f32/softplus_broadcast_bf16_out",
+    "kv_live_spans_abi_unchanged": true,
+    "workspace_change_bytes": 0,
+    "candidate_code_patch_sha256": "476a45e140cee0879e5117fc459117bcb3739501aa3188c8f46c50ba10f13b5b"
+  },
+  "red_green": {
+    "red_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_build_plan_registry_and_validation",
+    "red_reason": "missing gated split wrapper import",
+    "red_output_sha256": "ef12284f751e9d83a50bdcb206da0c3bd0112c2359539a0b7c1f454dac1a1660",
+    "green_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_split_gate_fusion.py",
+    "green_result": "9 passed",
+    "runner_regression_command": "PYTHONPATH=. uv run pytest -q tests/test_laguna_gguf_runner.py",
+    "runner_regression_result": "15 passed",
+    "fixture_sha256": "88afb53df5edcc2d81ba16e3f4406462c414ad2e1c0a344662d343c76ff84eca"
+  },
+  "leaf_exactness": {
+    "global_live_257_context_f32_bit_exact": true,
+    "global_live_257_gated_bf16_bit_exact": true,
+    "swa_tile16_live_257_context_f32_bit_exact": true,
+    "swa_tile16_live_257_gated_bf16_bit_exact": true
+  },
+  "full_state_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_p4_split_gate_default_correctness.py",
+    "harness_sha256": "08f7594da0fb139615f2c4513cf2608e4bfe17ba0222db5404b2f66d9c8b8bde",
+    "raw_sha256": "e4596d86994edf537505a63fe1ee20815f3e5c42e6b90da813d0bd5509d94a95",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "decode_steps": 16,
+    "full_logits_exact": true,
+    "top1_agreement": 1.0,
+    "kl_divergence": 0.0,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_kv_and_all_live_span_fields_exact": true,
+    "reset_exact": true,
+    "tracked_returned_to_baseline": true
+  },
+  "category_correctness": {
+    "prompts": 18,
+    "repetitions": 2,
+    "process_orders": 2,
+    "horizons": [16, 32],
+    "cross_mode_repeat_candidate_and_process_order_ids_exact": true,
+    "poolside_oracle": true,
+    "all_four_raw_lifecycle_gates": true,
+    "comparison_sha256": "a04a4ad19704ffa71049a3b6ebeec791059e2a337e148f4d44fed639e327bd1d"
+  },
+  "rocprof_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-p4-split-gate-trace --output-file epyc -- .venv/bin/python -u /tmp/trace_laguna_p4_split_gate.py",
+    "harness_sha256": "015a552b3886b477e7ebd0e56c33d3ef2dc3839a2d60851547b68784ad126770",
+    "csv_sha256": "a6ba42c6fa6754e66dd0fa4de670961dcb5eae974d333f0908b6b73e1e7f7b27",
+    "rows": [
+      {
+        "kernel": "laguna_global_attention_split_exact_gated_reduce_kernel",
+        "duration_us": 49.801,
+        "workgroup": 256,
+        "vgpr": 24,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "laguna_swa_attention_split_exact_gated_reduce_kernel",
+        "live_count": 128,
+        "duration_us": 70.521,
+        "workgroup": 128,
+        "vgpr": 24,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "laguna_swa_attention_split_exact_gated_reduce_kernel",
+        "live_count": 257,
+        "duration_us": 135.002,
+        "workgroup": 128,
+        "vgpr": 24,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    ],
+    "expected_score_producers_also_present": true,
+    "standalone_softplus_gate_absent_from_fused_calls": true
+  },
+  "correctness_gate": {
+    "required_kl_max": 0.05,
+    "required_top1_min": 0.9,
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true
+  }
+}

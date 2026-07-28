@@ -1,0 +1,123 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 52.514,
+    "canonical_ms_per_token": 19.042,
+    "description": "retained wave32 local64 exact IQ2 tile2 with __launch_bounds__(256, 2)"
+  },
+  "candidate": {
+    "description": "unchanged wave32 local64 exact IQ2 selected gate/up+SiLU tile2 body with __launch_bounds__(64, 8)",
+    "repo_source_changed": false,
+    "runtime_or_registry_added": false
+  },
+  "checks": {
+    "actual_layer_event_improves_both": true,
+    "actual_layer_wall_improves_both": false,
+    "bf16_bit_exact": true,
+    "full_model_gate_skipped_after_precondition_failure": true,
+    "performance_precondition_pass": false,
+    "runtime_registry_trace_category_work_skipped": true
+  },
+  "code_object_census": {
+    "common_resources": {
+      "group_segment_bytes": 128,
+      "private_segment_bytes": 0,
+      "sgpr_count": 30,
+      "sgpr_spill_count": 0,
+      "vgpr_count": 132,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "isa_identical_to_baseline": [
+      "256x1",
+      "128x1",
+      "128x2",
+      "128x4",
+      "64x1",
+      "64x2",
+      "64x4"
+    ],
+    "isa_text_sha256_baseline_and_noops": "79591ff32121455cd33a0936adf940a14673f314f02ff08eaca4f81a0ed20da7",
+    "isa_text_sha256_lb64x8": "5d671e22ec0a8e5b0dd5ec6a5c0ba0c9b581e1e4e0b0e22b5f950460f86d3a67",
+    "only_nonidentical_candidate": "64x8"
+  },
+  "date": "2026-07-25",
+  "decision": {
+    "action": "reject before repository implementation",
+    "next": "retain __launch_bounds__(256, 2) and select a genuinely different exact current-profile device-work contraction",
+    "reason": "The only bound that changes ISA has mixed synchronized-wall results: layer 1 regresses 0.616% while layer 45 improves 0.206%, failing the mandatory all-layer event-and-wall precondition."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0; GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_iq2_launch_bounds_rejected",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "protocol": {
+    "layers": [1, 45],
+    "launches_per_sample": 200,
+    "order": "counterbalanced",
+    "repetitions": 15,
+    "selected_experts": [193, 7, 89, 221, 3, 127, 44, 255, 18, 166],
+    "shape": [256, 1024, 3072],
+    "warmups": 50
+  },
+  "provenance": {
+    "candidate_patch_sha256": "211684d40103d5a4d036ff54dd2d59d45e52122f043ea14ddbb1e46d2bd3414a",
+    "candidate_source_sha256": "73fcf07f108c590c20bb5e1936046334158ab88f74cc830d3a8ca7803db8d9f0",
+    "code_object_census_sha256": "6fb2c5a1bb346bb4aec8959e34e996f2bf9d8243959d325bc0b972851c156aba",
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_iq2_launch_bounds_actual.py",
+    "harness_sha256": "96900efb391a6320a2e5a494c5860cd9e49155ccf2f7fe579d5add809b4c2287",
+    "raw_stdout_sha256": "19da1fb36003120a39540d51cabf34209bddf6a9dd3c84faec06a1c5d6d45fc5",
+    "retained_source_sha256": "0f5643827ce581b2900fb7ccc4a094cdb533cb647ae043db9b1efd6721cef284"
+  },
+  "results": [
+    {
+      "candidate": {
+        "event_us": 55.53239822387695,
+        "wall_us": 55.79719436354935
+      },
+      "control": {
+        "event_us": 55.90559005737305,
+        "wall_us": 55.455489782616496
+      },
+      "delta_pct": {
+        "event": -0.6675393875873681,
+        "wall": 0.6161780957526952
+      },
+      "layer": 1,
+      "quality": {
+        "complete_bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "top1_agreement": 1.0
+      }
+    },
+    {
+      "candidate": {
+        "event_us": 56.5618371963501,
+        "wall_us": 56.6924549639225
+      },
+      "control": {
+        "event_us": 56.73004150390625,
+        "wall_us": 56.8092055618763
+      },
+      "delta_pct": {
+        "event": -0.2964995319888364,
+        "wall": -0.20551351985838018
+      },
+      "layer": 45,
+      "quality": {
+        "complete_bf16_equal": true,
+        "kl_max": 0.0,
+        "max_abs": 0.0,
+        "top1_agreement": 1.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,491 @@
+{
+  "baseline": {
+    "additional_h32_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_decode_tok_s": 61.99155148671624,
+    "canonical_h32_ms_per_token": 16.131230401844086,
+    "dispatches_per_token": 723,
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "matched_vulkan_h32_ms_per_token": 15.523553763440857,
+    "q6_calls_per_token": 50,
+    "revision": "02511ec8a49e33ef1ffea3ee5f3f4a2476e66a3f"
+  },
+  "codegen_probe": {
+    "cached_trace": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 80,
+      "child_sha256": "1707569707c177701dad5bd31045cb4313c2c25ce8a8013a1328c40ec254ce57",
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q6-local32-standalone-trace --output-file trace -- uv run python -u /tmp/trace_laguna_q6_local32_standalone.py",
+      "compiler_spawned_under_profiler": false,
+      "duration_ns": 11080,
+      "grid_x": 49152,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "stderr_sha256": "10fdaec7aba546316596e9390c9a329a9ccabdc088a08da1c58e34e9ff3e59de",
+      "stdout_sha256": "8c14248fc9ab3ace466e7ca10fa31d9e85a7673848dd756ad903bf7b33539593",
+      "symbol_named": true,
+      "trace_sha256": "a23ffb6ce251e2f287b81e0aabb12cb2d3d5e03b481ff413400244d6af83427e",
+      "workgroup_x": 32
+    },
+    "candidate": {
+      "allocated_lds_bytes_trace": 0,
+      "allocated_sgpr_trace": 128,
+      "allocated_vgpr_trace": 80,
+      "ds_bpermute_b32": 56,
+      "local_size": 32,
+      "logical_sgpr": 18,
+      "logical_vgpr": 75,
+      "private_bytes": 0,
+      "scratch_bytes_trace": 0,
+      "spill_count": 0,
+      "static_barriers": 0,
+      "static_instructions": 451,
+      "static_lds_bytes": 0,
+      "text_bytes": 2816,
+      "wavefront_size": 32
+    },
+    "candidate_hsaco_sha256": "520442ef079c008986d6b5047d56455c0d9cf20bc1131ce9d77dd133408acda8",
+    "candidate_objdump_sha256": "44761ac69641cd86296f1948da52884b5052489e87c8565827f561efd9c2da03",
+    "candidate_readobj_sha256": "d0ca8a72987720c6f78b7f81bf04e4a8b468c3f65af9cc806df9dd68cee37066",
+    "candidate_vs_control": {
+      "allocated_lds_delta_bytes": -1024,
+      "logical_sgpr_delta": -16,
+      "logical_vgpr_delta": 3,
+      "note": "The candidate adds 16 metadata broadcasts but removes the cross-wave exchange/barrier and generic Q6 decode expansion. The VGPR increase is admitted only because every actual endpoint wins.",
+      "static_barrier_delta": -1,
+      "static_instruction_delta_pct": -36.11898016997167,
+      "text_byte_delta_pct": -31.25
+    },
+    "control": {
+      "allocated_lds_bytes_trace": 1024,
+      "allocated_sgpr_trace": 128,
+      "allocated_vgpr_trace": 72,
+      "ds_bpermute_b32": 40,
+      "local_size": 128,
+      "logical_sgpr": 34,
+      "logical_vgpr": 72,
+      "private_bytes": 0,
+      "scratch_bytes_trace": 0,
+      "spill_count": 0,
+      "static_barriers": 1,
+      "static_instructions": 706,
+      "static_lds_bytes": 256,
+      "text_bytes": 4096,
+      "wavefront_size": 32
+    }
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "implement RED-first exact standalone Q6 local32 fixed-metadata sibling",
+    "canonical_h32_unchanged": 61.99155148671624,
+    "completion_claim": false,
+    "default_changed": false,
+    "reason": "The candidate reuses already-retained exact local32 Q6 arithmetic, preserves total threads/waves and all numerical boundaries, is bit-exact across all 50 actual runtime weights, and improves every representative endpoint by at least 26% in both timers."
+  },
+  "difference_from_rejected_q6_pair": {
+    "rejected_artifact": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q6-fixed-metadata-pair-rejected.json",
+    "rejected_mechanism": "local128 cooperative fixed-metadata Q6 attention pair with F32 outputs and one flattened pair dispatch; rejected after short profiled-child -0.951%",
+    "selected_mechanism": "standalone local32 output-pair BF16 linears with unchanged dispatch count, total waves, and exact same-ABI registry fallback",
+    "why_not_duplicate": "Different output dtype, ownership, runtime roles, and resource shape; the local32 block is already retained in the all-local32 mixed projection and independently wins all 50 BF16 surfaces."
+  },
+  "frozen_gates": {
+    "actual_weight_precondition": {
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "requirement": "Every endpoint improves both HIP-event and synchronized-wall medians; remove candidate on any failure.",
+      "warmups_per_mode": 50,
+      "weights": "all 50 Q6 runtime tensors bit-exact; timed endpoints are dense down, first/last shared down, layer-47 attention output, and layer-47 shared gate/up"
+    },
+    "after_actual_weight_pass_only": [
+      "Add an explicit/default-off gfx1100 session/CLI selector; pass the variant through c=1 BF16 raw single-linears and retain registry fallback.",
+      "Shared-weight 16-transition full logits/IDs, 48 hidden and 47 routed boundaries, active K/V and every KVLiveSpans field, reset/re-prefill, ownership, and lifecycle identity.",
+      "Cached full-model trace proves exactly 50 candidate calls/token, zero retained standalone Q6 BF16 calls when selected, unchanged 723 model kernels/token, admitted resources, and no compiler under profiling.",
+      "Two process orders at short/512/1024/3968: Q6 family and complete kernel sum improve in every order; span regression <0.5%; equal-process child throughput >-0.5%; IDs/resources/lifecycle pass.",
+      "Both complete 18-prompt category process orders: pooled h16/h32 and every train/heldout category decode improve; E2E/prefill/TTFT/state/lifecycle guards pass before gfx1100 promotion."
+    ],
+    "codegen": [
+      "Repository candidate is local32/wave32, logical VGPR <=75, allocated VGPR <=80, logical SGPR <=18, LDS0, private0, zero spills, and scratch0.",
+      "BF16/BF16 body has <=451 static instructions, <=2816 text bytes, zero barriers, and <=56 ds_bpermute instructions under pinned Clang 22.",
+      "N3072/N1024 grids preserve 49,152/16,384 total threads and 1,536/512 physical waves.",
+      "Non-profiled require-cached warmup precedes rocprofv3; trace names the sibling and no compiler runs under profiling."
+    ],
+    "failure_action": "Remove runtime selector/capability integration; retain the independently admitted primitive only if its primitive gate passes.",
+    "primitive_correctness": [
+      "BF16 bytes match the registered local128 Q6 pack8 body at K256/1024/3072/9216/12288 and N2/8/1024/3072 boundaries.",
+      "Cover minimum/maximum signed scales, low/high ql/qh fields, signed-zero/subnormal/finite-edge BF16 activations, K-block/output-pair boundaries, and all 50 actual runtime Q6 weights.",
+      "CPU reference remains KL <=0.05 and top-1 >=90%; exact sibling requires KL0, top-1 100%, and complete BF16 identity.",
+      "Existing local128 key, F32 outputs, pairs, selected paths, rows>1, and prefill behavior remain unchanged."
+    ],
+    "red": "Before implementation, add failing coverage for the absent c=1 BF16/BF16 standalone wrapper/key, exact output-pair sibling corpus, rows>1 fallback, and gfx1151 exclusion. No runtime selector in the primitive unit."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_q6_local32_standalone_design",
+  "model": {
+    "activation_dtype": "bf16",
+    "id": "Poolside Laguna S 2.1",
+    "output_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "out_of_tree_selection_probe": {
+    "all_50_actual_runtime_weights_bf16_bit_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_q6_local32_standalone_actual.py",
+    "event_improvement_range_pct": [
+      26.354400706091408,
+      49.50091183007894
+    ],
+    "harness_sha256": "1657ce69ca2dea7234fa770c3701fce0e9cb0f0f5e57e6900d0527f6ab5d5b19",
+    "performance_protocol": {
+      "all_50_runtime_q6_surfaces_bit_checked": true,
+      "counterbalanced_repetitions": 15,
+      "launches_per_sample": 200,
+      "timers": [
+        "HIP event",
+        "synchronized wall"
+      ],
+      "warmups": 50
+    },
+    "performance_rows": [
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 50.857157707214355,
+        "candidate_wall_us": 51.35830491781235,
+        "control_event_us": 97.88031578063965,
+        "control_wall_us": 97.59258478879929,
+        "event_delta_pct": -48.04148586811803,
+        "role": "dense_down",
+        "shape": [
+          3072,
+          12288
+        ],
+        "wall_delta_pct": -47.37478771675413,
+        "weight": "blk.0.ffn_down.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 9.009864926338196,
+        "candidate_wall_us": 9.073375258594751,
+        "control_event_us": 12.234084606170654,
+        "control_wall_us": 12.290469603613019,
+        "event_delta_pct": -26.354400706091408,
+        "role": "shared_down_first",
+        "shape": [
+          3072,
+          1024
+        ],
+        "wall_delta_pct": -26.17552012880404,
+        "weight": "blk.1.ffn_down_shexp.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 9.43107008934021,
+        "candidate_wall_us": 9.545630309730768,
+        "control_event_us": 13.011095523834229,
+        "control_wall_us": 13.004075735807419,
+        "event_delta_pct": -27.515172937866684,
+        "role": "shared_down_last",
+        "shape": [
+          3072,
+          1024
+        ],
+        "wall_delta_pct": -26.595088311840854,
+        "weight": "blk.46.ffn_down_shexp.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 39.05648946762085,
+        "candidate_wall_us": 39.407690055668354,
+        "control_event_us": 77.34097957611084,
+        "control_wall_us": 75.90683992020786,
+        "event_delta_pct": -49.50091183007894,
+        "role": "attention_output_layer47",
+        "shape": [
+          3072,
+          9216
+        ],
+        "wall_delta_pct": -48.08413827121096,
+        "weight": "blk.47.attn_output.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 11.306685209274292,
+        "candidate_wall_us": 11.403604876250029,
+        "control_event_us": 15.734119415283203,
+        "control_wall_us": 15.828469768166542,
+        "event_delta_pct": -28.139065740840643,
+        "role": "shared_gate_layer47",
+        "shape": [
+          1024,
+          3072
+        ],
+        "wall_delta_pct": -27.955102146485377,
+        "weight": "blk.47.ffn_gate_shexp.weight"
+      },
+      {
+        "bf16_bit_exact": true,
+        "candidate_event_us": 11.292885541915894,
+        "candidate_wall_us": 11.34470570832491,
+        "control_event_us": 15.677515268325806,
+        "control_wall_us": 15.795370563864708,
+        "event_delta_pct": -27.967631677377057,
+        "role": "shared_up_layer47",
+        "shape": [
+          1024,
+          3072
+        ],
+        "wall_delta_pct": -28.177020840027943,
+        "weight": "blk.47.ffn_up_shexp.weight"
+      }
+    ],
+    "probe_library_sha256": "13c4c8692bb73b1e9a74a4d85186c101aa43c79403dabb64edeed28e84d4d202",
+    "probe_source_sha256": "b09d9f6facccec609838dac2730dc5ee6d4e7499bf5edb96af1303206ff76860",
+    "purpose": "Selection evidence only. Repository RED/GREEN, repeated actual-weight, full-state, trace, clean-context, and category gates remain mandatory.",
+    "raw_path": "/tmp/laguna-q6-local32-standalone-actual.json",
+    "raw_sha256": "bdef7ab6e2d63d80649a862d671193a733fef3edf5f0e0fdf905ef3a27905de7",
+    "stdout_sha256": "05d8e1104e764ea2db3fe073c9c965b7fb1aa415ea523a08934c9b32e0e15b13",
+    "wall_improvement_range_pct": [
+      26.17552012880404,
+      48.08413827121096
+    ]
+  },
+  "performance_claim": false,
+  "planning_ceiling_not_claim": {
+    "current_short_q6_ms_per_token": 0.6049000714285715,
+    "fraction_of_current_vulkan_wall_gap_pct": 31.55766467500265,
+    "isolated_modeled_saving_ms_per_token": 0.19176855585561925,
+    "modeled_additional_speedup_to_vulkan_pct": 2.6792066358355626,
+    "modeled_h32_ms_per_token_if_event_ratios_transfer_whole": 15.939461845988466,
+    "modeled_h32_speedup_pct": 1.2031055860514117,
+    "modeled_h32_tok_s_if_event_ratios_transfer_whole": 62.73737530553286,
+    "modeled_local32_short_q6_ms_per_token": 0.41313151557295225,
+    "reason_not_claimed": "Applying isolated actual-weight event ratios to immutable family traces does not establish full-model span, category throughput, or default behavior."
+  },
+  "post_q4_residual": {
+    "analyzer_sha256": "5c064aa7d0d967290bf444855fa5762b9ae51357a78df9aa067539cbb00b7cb8",
+    "checks": {
+      "all_50_probe_outputs_bf16_bit_exact": true,
+      "all_processes_q4_candidate_revision": true,
+      "all_segments_50_q6_calls": true,
+      "all_six_probe_event_and_wall_rows_improve": true,
+      "all_stable_segments_723_dispatches": true,
+      "q6_control_resources_exact": true
+    },
+    "contexts": {
+      "1024": {
+        "current_q6_ms_per_token": 0.6115590833333333,
+        "current_roles_ms_per_token": {
+          "attention_output_layer47": 0.05769425,
+          "dense_down": 0.07215766666666666,
+          "shared_down": 0.45161333333333337,
+          "shared_gate_layer47": 0.015173583333333334,
+          "shared_up_layer47": 0.01492025
+        },
+        "kernel_sum_ms_per_token": 24.699050333333343,
+        "modeled_local32_q6_ms_per_token": 0.41825065452765886,
+        "modeled_q6_family_improvement_pct": 31.609117430165078,
+        "modeled_q6_saving_ms_per_token": 0.19330842880567445,
+        "stable_samples": 12
+      },
+      "3968": {
+        "current_q6_ms_per_token": 0.6093295833333333,
+        "current_roles_ms_per_token": {
+          "attention_output_layer47": 0.05736416666666667,
+          "dense_down": 0.07212458333333334,
+          "shared_down": 0.44966375000000003,
+          "shared_gate_layer47": 0.015280166666666668,
+          "shared_up_layer47": 0.014896916666666666
+        },
+        "kernel_sum_ms_per_token": 37.81661575,
+        "modeled_local32_q6_ms_per_token": 0.4167020928536055,
+        "modeled_q6_family_improvement_pct": 31.613021220135163,
+        "modeled_q6_saving_ms_per_token": 0.19262749047972783,
+        "stable_samples": 12
+      },
+      "512": {
+        "current_q6_ms_per_token": 0.5918921666666667,
+        "current_roles_ms_per_token": {
+          "attention_output_layer47": 0.05780383333333333,
+          "dense_down": 0.07221416666666666,
+          "shared_down": 0.43207391666666667,
+          "shared_gate_layer47": 0.014923416666666666,
+          "shared_up_layer47": 0.014876833333333334
+        },
+        "kernel_sum_ms_per_token": 22.374972250000006,
+        "modeled_local32_q6_ms_per_token": 0.4038477870739028,
+        "modeled_q6_family_improvement_pct": 31.770040251041877,
+        "modeled_q6_saving_ms_per_token": 0.18804437959276388,
+        "stable_samples": 12
+      },
+      "short": {
+        "current_q6_ms_per_token": 0.6049000714285715,
+        "current_roles_ms_per_token": {
+          "attention_output_layer47": 0.0571875,
+          "dense_down": 0.07385903571428572,
+          "shared_down": 0.4429562142857143,
+          "shared_gate_layer47": 0.015564357142857144,
+          "shared_up_layer47": 0.015332964285714287
+        },
+        "kernel_sum_ms_per_token": 12.921204178571427,
+        "modeled_local32_q6_ms_per_token": 0.41313151557295225,
+        "modeled_q6_family_improvement_pct": 31.702518302357962,
+        "modeled_q6_saving_ms_per_token": 0.19176855585561925,
+        "stable_samples": 28
+      }
+    },
+    "interpretation": "The 50 generic local128 raw-Q6 BF16 projections remain context-flat at 0.592-0.612 ms/token after the retained Q4 LM-head promotion. They comprise one dense down, 46 shared downs, one layer-47 attention output, and layer-47 shared gate/up.",
+    "sha256": "b272311d23410b28ab66f67284acf64b35621c406caa5cf8d2b8b0a75188c181",
+    "source": "/tmp/laguna-post-q4-residual.json",
+    "source_revision": "2191db96b276a448c44274e967fde1bab85606cf"
+  },
+  "provenance": {
+    "builder_sha256": "46c8a3bd17498db741dc656a4c69c594e826102e0e04f9673e3aee8febf056cb",
+    "dirty_files_at_build": [
+      " M docs/KERNELS.md",
+      " M hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+      " M hipengine/kernels/hip_gfx1151/__init__.py",
+      " M tests/test_gguf_q6_k_local32_standalone.py"
+    ],
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "parent_revision": "02511ec8a49e33ef1ffea3ee5f3f4a2476e66a3f",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
+        "sha256": "9abc7ef022b739dcac260b2acc8357bbadba2601ad073a355c897e137036205b"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+        "sha256": "bfab50f09e92f19a4bc0fee9110027654d84b7f3884ea36fef222b10aaec7a03"
+      },
+      {
+        "path": "hipengine/runtime/gguf_linear.py",
+        "sha256": "8def65616be56ddd7394d8069383326bb8f7b6bb60535ea3de1fc12a00138b9a"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "path": "docs/KERNELS.md",
+        "sha256": "f90f486878ec12023c7ce6f59c553e7131ed9baed39e3864658f69a8f9199df8"
+      },
+      {
+        "path": "docs/LAGUNA-decode.md",
+        "sha256": "52fb2d06b8ee89dfc670fc87062f3b13e6182f477ee49cbc5e08cbfdaccd700f"
+      },
+      {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-q4-lmhead-local32-fixed-metadata-retained.json",
+        "sha256": "ffa17e82542ac9bfb1ed03ca1c9d217641b22720f02e128019bb843e93075813"
+      },
+      {
+        "path": "benchmarks/results/2026-07-25-gfx1100-laguna-q2-xl-q6-fixed-metadata-pair-rejected.json",
+        "sha256": "354b7028af9932f465955b239ae9ee483f844f3377f4325cca59f9845b568ecd"
+      },
+      {
+        "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-mixed-local32-projection-retained.json",
+        "sha256": "e67aae92f2aa7d9c798d526a037926af507a13326fad82986d7cbf39b48cccc8"
+      }
+    ]
+  },
+  "rerank_and_exclusion_audit": {
+    "closed_or_deferred": [
+      {
+        "reason": "Current add+RMSNorm normalizes the unrounded F32 sum; writing only BF16 post-attention before standalone RMSNorm is not exact, while an F32 side buffer increases traffic.",
+        "surface": "simple Q5 output plus residual epilogue"
+      },
+      {
+        "reason": "Needs a global last-block counter and F32 completion scratch; prior D11/router compositions show isolated launch contraction is not an admission premise.",
+        "surface": "persistent Q5 output+add+RMSNorm"
+      },
+      {
+        "reason": "Exact and quality-gated alternatives are already retained/rejected under P0/P1/P4; no new source or counter evidence reopens them.",
+        "surface": "IQ2/IQ3/Q5 ownership and arithmetic"
+      },
+      {
+        "reason": "Recent dim2, GQA3, no-max-sync, sign-bit, and wave-top10 screens already close the surviving exact variants.",
+        "surface": "SWA/global attention reducers and router composition"
+      },
+      {
+        "reason": "Direct AQL, graph replay, and C-side packetization are mechanically closed and cannot replace device-work reduction.",
+        "surface": "submission/graph/packet cleanup"
+      }
+    ],
+    "selected_surface": "50 standalone raw-Q6 BF16 linears"
+  },
+  "schema": 1,
+  "selection": {
+    "arithmetic_contract": "One local32 wave owns two adjacent outputs. Each lane carries four independent accumulators per output corresponding to retained local128 thread ids lane+{0,32,64,96}, replays every k/k+128 BF16-input/raw-Q6 FMA, uses the same five-stage wave trees, and adds partition totals in original 0,1,2,3 order before the same RNE BF16 store.",
+    "candidate": "exact standalone Q6_K local32 fixed-metadata output-pair GEMV for c=1 BF16-to-BF16 linears",
+    "dispatches_per_token_delta": 0,
+    "four_axis_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q6_k",
+      "standalone_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
+    ],
+    "geometry": {
+      "candidate": "N/2 local32 workgroups, one wave32/workgroup",
+      "control": "N/8 local128 workgroups, four wave32s/workgroup",
+      "n1024": {
+        "candidate_workgroups": 512,
+        "control_workgroups": 128,
+        "total_threads": 16384,
+        "total_waves": 512
+      },
+      "n3072": {
+        "candidate_workgroups": 1536,
+        "control_workgroups": 384,
+        "total_threads": 49152,
+        "total_waves": 1536
+      },
+      "unchanged": "16*N total threads and N/2 physical waves per rows=1 projection, one dispatch, raw weights, output bytes, and persistent workspace"
+    },
+    "persistent_weight_copy_delta_bytes": 0,
+    "runtime_plan": "Pass one backend-capability-resolved Q6-unique same-ABI variant request through every c=1 raw BF16 single-linear call. Exact four-axis lookup selects only the registered Q6 key; Q4/Q5/Q8 misses retain their current routes without quant/backend branches in runner or model code.",
+    "scope": {
+      "excluded": [
+        "F32 attention Q/K/V mixed projections",
+        "Q4 LM head",
+        "rows greater than one and prefill",
+        "gfx1151 and unsupported backends",
+        "registry key miss"
+      ],
+      "roles": {
+        "dense_down": 1,
+        "layer47_attention_output": 1,
+        "layer47_shared_gate_up": 2,
+        "shared_down": 46
+      },
+      "rows": 1,
+      "runtime_calls_per_token": 50,
+      "shapes": [
+        [
+          3072,
+          12288
+        ],
+        [
+          3072,
+          1024
+        ],
+        [
+          3072,
+          9216
+        ],
+        [
+          1024,
+          3072
+        ]
+      ]
+    },
+    "variant_collision_guard": "The standalone_ prefix is required because the unprefixed fixed-metadata variant is already the retained Q5 output request; reusing it would select layer-47 Q6 before the default-off owner is admitted.",
+    "workspace_delta_bytes": 0
+  },
+  "status": "candidate_selected"
+}

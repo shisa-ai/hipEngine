@@ -1,0 +1,297 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 63.27021934907704,
+    "canonical_model_kernels_per_token": 678,
+    "design_artifact": "benchmarks/results/2026-07-27-gfx1100-laguna-q2-xl-pinned-async-argmax-readback-design.json",
+    "design_artifact_sha256": "60eaf245c9d1ce623b1934d70ce559f1ab607f8a8bb2816fd91205b238e04d9d",
+    "direct_screen_saving_us_per_token": 30.775283,
+    "direct_screen_us_per_token": {
+      "candidate": 51.353381,
+      "control": 82.128664
+    },
+    "immutable_control_trace": "/tmp/laguna-q2-xl-router-projection-wave0-tree-clean-8c709ba81-short-control-a/trace_kernel_trace.csv",
+    "immutable_control_trace_sha256": "0b934f80b208c4f5e844ac268a4a5dbff1329402474df126f86204bcc727af4f",
+    "matched_vulkan_h32_decode_tok_s": 64.41823922786776,
+    "modeled_ceiling_tok_s_not_performance_claim": 63.394
+  },
+  "date": "2026-07-27",
+  "decision": {
+    "benchmark_changelog_updated": false,
+    "benchmark_readme_updated": false,
+    "canonical_h32_tok_s_unchanged": 63.27021934907704,
+    "categories_run": false,
+    "clean_contexts_run": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "runtime_correctness_and_topology_admitted": true,
+    "runtime_default_changed": false,
+    "runtime_promoted": false
+  },
+  "full_state": {
+    "active_kv_and_live_spans_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "candidate_async_d2h_copies_per_token_observed": 2,
+    "candidate_final_fences_per_token_observed": 1,
+    "candidate_h2d_copies_per_token_observed": 3,
+    "candidate_scratch_allocation_count": 24,
+    "control_scratch_allocation_count": 24,
+    "counted_decode_event_sequences": 15,
+    "decode_steps": 16,
+    "device_resident_nbytes": {
+      "candidate": 40069953588,
+      "control": 40069953588
+    },
+    "device_resident_nbytes_delta": 0,
+    "final_hidden_exact": true,
+    "full_logits_exact": true,
+    "generated_ids": [
+      682,
+      12978,
+      2778,
+      9464,
+      5747,
+      2914,
+      853,
+      79023,
+      395,
+      5599,
+      83,
+      268,
+      82,
+      20620,
+      79023
+    ],
+    "kl_divergence": 0.0,
+    "live_span_fields_checked": [
+      "base_offsets",
+      "live_counts",
+      "token_positions",
+      "evict_mask"
+    ],
+    "pinned_host_nbytes_delta": 4096,
+    "pinned_host_unregistered_after_teardown": true,
+    "pinned_mapping_released_after_teardown": true,
+    "pinned_owner_closed_after_teardown": true,
+    "pinned_sentinel_replacement_count": 18,
+    "post_layer_hidden_exact": true,
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "reset_prefill_exact": true,
+    "result": {
+      "path": "/tmp/laguna-pinned-async-runtime-correctness.json",
+      "sha256": "e21ccaadc683f04099625c60f8db6c0338fcc4c227a3ee732614f37104d44ab4"
+    },
+    "scratch_allocation_delta": 0,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "future_clean_gate": {
+    "categories_blocked_until_all_clean_orders_pass": true,
+    "contexts": [
+      "short",
+      "512",
+      "1024",
+      "3968"
+    ],
+    "each_order_cycle_span_regression_max_pct": 0.5,
+    "each_order_model_kernel_sum": "candidate <= control",
+    "each_order_profiled_child_throughput_regression_min_pct": -0.5,
+    "mechanical": "exact IDs/finite logits; 683 = 3 H2D + 2 D2H + corresponding 678 kernels; two async D2H then one final fence; unchanged device owners/bytes; +4096 pinned host bytes; resources/lifecycle/no compiler",
+    "process_orders_per_context": 2,
+    "stop_on_first_failed_context": true,
+    "third_order_rerun_or_pooled_waiver_allowed": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+    },
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+  },
+  "implementation_revision": "02e04930f74fb9cfdbaf7c72fcdb99396588aad5",
+  "kind": "hipengine_laguna_q2_xl_pinned_async_argmax_readback_runtime_correctness",
+  "model": {
+    "context_length": 4096,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "shared-weight mixed_ja_en_review bulk prefill, 16 c=1 transitions, reset/re-prefill; code_merge_intervals two-transition cache-only trace"
+  },
+  "performance_claim": false,
+  "profile": {
+    "candidate_d2h_copies_per_token": 2,
+    "candidate_dispatches_per_token": 683,
+    "candidate_final_fences_per_token": 1,
+    "candidate_h2d_copies_per_token": 3,
+    "candidate_kv_allocation_count": 245,
+    "candidate_resident_nbytes": 40069953588,
+    "candidate_runtime_copies_per_token": 5,
+    "candidate_scratch_allocation_count": 24,
+    "child": {
+      "path": "/tmp/laguna-pinned-async-runtime-trace-child.json",
+      "sha256": "77352dd52baf82fa196b4b151ea135f9d8a68d5a1cc9b5c678c6f13bfdef2700"
+    },
+    "contract": {
+      "path": "/tmp/laguna-pinned-async-runtime-validation-frozen-contract.json",
+      "sha256": "56737213c9fc5ae3b4b1adbfdb9e08ec4ea999bcc82f35ab807189e82dbe932a"
+    },
+    "control_dispatches_per_token": 683,
+    "finite_final_logits": true,
+    "generated_token_ids": [
+      605,
+      2825,
+      268
+    ],
+    "iq3_wave10_calls_per_token": 45,
+    "iq3_wave10_resources": {
+      "allocated_lds_bytes": 512,
+      "allocated_vgpr": 88,
+      "grid_x": 983040,
+      "scratch_bytes": 0,
+      "workgroup_x": 320
+    },
+    "model_kernel_name_resource_multiset_exact": true,
+    "model_kernel_signature_sha256": "2f053ea1f558d881a47b374bb9579b5fa0f36930163371253a0936c40529c053",
+    "model_kernels_per_token": 678,
+    "no_compiler_under_profiler": true,
+    "pinned_host_is_not_device_mapped": true,
+    "pinned_host_unregistered_after_teardown": true,
+    "pinned_owner_closed_after_teardown": true,
+    "preflight": {
+      "path": "/tmp/laguna-pinned-async-runtime-preflight.stdout",
+      "sha256": "73a37c809323e1df6e07dd717eeeb491d2543683bc5bdf7081abdc870dddb830"
+    },
+    "profile_process_count": 1,
+    "profile_rerun": false,
+    "profile_stderr": {
+      "path": "/tmp/laguna-pinned-async-runtime-profile.stderr",
+      "sha256": "114e9f2f94451450faeb80adb3fa727a56285bb2919277eec67738cc85b37e03"
+    },
+    "router_projection_calls_per_token": 47,
+    "router_projection_resources": {
+      "allocated_sgpr": 128,
+      "allocated_vgpr": 24,
+      "grid_x": 65536,
+      "grid_y": 1,
+      "profiler_static_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "source_dynamic_lds_bytes": 1024,
+      "workgroup_x": 256
+    },
+    "runtime_event_order_exact": true,
+    "summary": {
+      "path": "/tmp/laguna-pinned-async-runtime-trace-summary.json",
+      "sha256": "15de9850530c773a8a20c096bd155bbad7264d5368c262355a21e9b2e18cabee"
+    },
+    "trace": {
+      "path": "/tmp/laguna-pinned-async-runtime-trace/trace_kernel_trace.csv",
+      "sha256": "44f60e8b13c4e6dbd58d85362597d5edf7b21a307e11c8e7137e604933c14c0e"
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "provenance": {
+    "builder_sha256": "a70d08d2ec6b8740c302fe222bcfb6deb1c7839b9b5249ff596aaa928725de70",
+    "sources": [
+      {
+        "path": "hipengine/core/hip.py",
+        "sha256": "c508f62847a053c4dd1c3462426d3b141318e9602ab02c71ae94b23834652b59"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "sha256": "0900676a3fd829de44901992b325c800380cd7599845985ea0bfce939b5fab56"
+      },
+      {
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "sha256": "4686c6cd39e19d5d87cd463620e565296edaf3f731154d438d3c498d2166ffdb"
+      },
+      {
+        "path": "scripts/laguna_target_ar_bench.py",
+        "sha256": "44c627d3c41b2e6ce9464fb616df21e145ab2499674a6deeb6210f1bb6b607a4"
+      },
+      {
+        "path": "tests/test_laguna_pinned_async_argmax_readback_runtime.py",
+        "sha256": "004be17d98be2e3831881532a7e49fdf2010957b016e1f5e594c63eb3e10da8a"
+      },
+      {
+        "path": "tests/test_laguna_mapped_argmax_output_runtime.py",
+        "sha256": "73fdaf84319cfeb247da3002be93776b79c042e330843850f748599978ff4c79"
+      },
+      {
+        "path": "tests/test_laguna_argmax_pair_readback_runtime.py",
+        "sha256": "f351b2219cda2e48e0aa40ef7c60c4a143652a9591f12d4a294f7bf65a4ea315"
+      },
+      {
+        "path": "docs/REFACTOR.md",
+        "sha256": "0bdfeb8c81969cd1c6d4c74544dd80ee7a7ce1d36c0299aac83b43fa74d869e7"
+      }
+    ]
+  },
+  "red_green": {
+    "coverage": [
+      "gfx1100 explicit default-off and unsupported-backend fail-closed resolution",
+      "4 KiB flags-0 registration without a device mapping; exact +0/+8 parsing",
+      "two async D2H copies then one final fence on default and nonblocking streams",
+      "unchanged 24 device owners/654804 scratch bytes; allocation/register failure and idempotent teardown",
+      "both scalar sites, exact blocking fallback, session constructor, benchmark CLI and telemetry",
+      "paired-device and mapped-output runtime owners remain absent"
+    ],
+    "focused_final_result": "14 passed across pinned owner plus mapped/pair/control rejection contracts",
+    "focused_final_sha256": "fe9dca0451129aaabdd76ea13e310b61a52091a146a1f9fe5b72b851eb33547f",
+    "production_default_and_nonblocking_stream_smoke": {
+      "path": "/tmp/laguna-pinned-async-production-smoke.json",
+      "sha256": "795c5710ac073bc88d311f313bb97acb07cf8b8cd8e4dfde11de976925f08859"
+    },
+    "red_result": "5 failed only on absent capability/resolver, pinned owner/order, unchanged scratch ownership, common parser/fallback, and session/CLI telemetry",
+    "red_sha256": "36cbfa11cc87df02d4f27ab1835a5dacecd959c9f76af9a2413f3c00178d8996"
+  },
+  "revision": "938b5512674b88e5416f3ebbe7a26997e1f1ff76",
+  "runtime_implementation": {
+    "argmax_kernel_source_registry_pointer_abi_and_arithmetic_unchanged": true,
+    "benchmark_option": "--enable-pinned-async-argmax-readback",
+    "blocking_fallback_retained": true,
+    "candidate": "unchanged separate device outputs copied asynchronously to +0/+8 in one 4096-byte non-mapped pinned page, then one final fence and host parse",
+    "candidate_copy_directions_per_token": {
+      "device_to_host": 2,
+      "host_to_device": 3
+    },
+    "candidate_final_fences_per_token": 1,
+    "capability": "LAGUNA_PINNED_ASYNC_ARGMAX_READBACK=False",
+    "control": "pre-fence followed by separate blocking int64-ID and FP32-value D2H reads",
+    "device_resident_nbytes_delta": 0,
+    "host_get_device_pointer_called": false,
+    "host_registration_flags": 0,
+    "kv_allocation_delta": 0,
+    "model_kernel_contract": {
+      "candidate": 678,
+      "control": 678
+    },
+    "pinned_host_nbytes_delta": 4096,
+    "profiled_dispatch_contract": {
+      "candidate": 683,
+      "control": 683
+    },
+    "runtime_copy_contract": {
+      "candidate": 5,
+      "control": 5
+    },
+    "scratch_allocation_delta": 0,
+    "separate_device_argmax_outputs_preserved": true,
+    "session_option": "use_pinned_async_argmax_readback=True"
+  },
+  "schema": 1,
+  "status": "runtime_correctness_and_topology_admitted_default_off",
+  "validation": {
+    "adjacent_result": "114 passed with one unrelated Starlette warning",
+    "adjacent_sha256": "5069a42df156f3dce71fc23d7d92cc44b16ed84161475b3cc81b0b367f724d66",
+    "cpu_reference_registry_build_result": "25 passed",
+    "cpu_reference_registry_build_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "fixture_result": "7 passed",
+    "fixture_sha256": "fec7a60788a7feec6ada8becc5e66bc4dc32cc4a6b9fb299a7305a8713e7766b",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_and_compile_passed": true,
+    "ruff_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

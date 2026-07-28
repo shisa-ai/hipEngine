@@ -1,0 +1,857 @@
+{
+  "checks": {
+    "acceptance_pass": false,
+    "all_18_prompts_both_horizons_present": true,
+    "all_72_vulkan_native_timing_rows_valid": true,
+    "all_plan_artifacts_present_and_json_valid": true,
+    "current_default_selectors_resolve_retained_paths": true,
+    "hipengine_complete_correctness_and_lifecycle": true,
+    "rollups_current_before_matched_result": true,
+    "vulkan_beaten_h16": false,
+    "vulkan_beaten_h32": false
+  },
+  "comparison": {
+    "16": {
+      "additional_hipengine_speedup_required_pct": 23.87043330564802,
+      "hipengine_tok_s": 51.83916456500798,
+      "hipengine_vs_vulkan_pct": -19.27048502910147,
+      "vulkan_beaten": false,
+      "vulkan_tok_s": 64.21339776870333
+    },
+    "32": {
+      "additional_hipengine_speedup_required_pct": 25.089115741826685,
+      "hipengine_tok_s": 51.43176574137347,
+      "hipengine_vs_vulkan_pct": -20.056993442665703,
+      "vulkan_beaten": false,
+      "vulkan_tok_s": 64.33554097629182
+    }
+  },
+  "date": "2026-07-24",
+  "decision": {
+    "action": "do not declare Vulkan-beating completion",
+    "next": "screen an exact P2 split reducer+softplus-gate fused body on actual global/SWA layers; only an independently winning body can precede a genuinely new dynamic-command/AQL submission owner. Do not rerun rejected P1-P3, D8, or D16 mechanisms.",
+    "reason": "Under the matched 18-prompt natural-greedy transition boundary, retained hipEngine is 19.27% slower at h16 and 20.06% slower at h32; it needs 23.87-25.09% additional throughput. The earlier 94.513 tok/s llama-bench row remains diagnostic, while the matched Vulkan target is 64.21-64.34 transition tok/s.",
+    "retained_hipengine_default_unchanged": true
+  },
+  "default_selector_audit": {
+    "focused_test_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_moe_gpu.py::test_laguna_iq3_c1_down_schedule_resolves_exact_producer_routes tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "focused_test_result": "2 passed",
+    "gfx1100_global_split_min_live": 127,
+    "gfx1100_iq3_c1_down_schedule": "wave4_reduce",
+    "gfx1100_q5_wave32x2_output": true,
+    "gfx1100_q5_wave32x2_query_gate": true,
+    "gfx1100_swa_split_min_live": 65,
+    "gfx1100_swa_split_tile16_min_live": 257,
+    "rollback_paths_present": true
+  },
+  "git_audit": {
+    "head": "8a1d411f062a33e39aa4c542ad998406ff8de0dc",
+    "origin_status_before_push": "ahead 3",
+    "tracked_clean_before_audit_artifact": true,
+    "tracked_status_before_audit_artifact": []
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "hip_backend": "hip_gfx1100",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1; device 0",
+    "vulkan_driver": "RADV NAVI31"
+  },
+  "hipengine": {
+    "categories": {
+      "code": {
+        "16": {
+          "decode_seconds": 6.858881615567952,
+          "runs": 24,
+          "timed_decode_transitions": 360,
+          "transition_tok_s": 52.486691005555436
+        },
+        "32": {
+          "decode_seconds": 14.286339754471555,
+          "runs": 24,
+          "timed_decode_transitions": 744,
+          "transition_tok_s": 52.07771989092809
+        }
+      },
+      "general_en": {
+        "16": {
+          "decode_seconds": 4.551630460191518,
+          "runs": 16,
+          "timed_decode_transitions": 240,
+          "transition_tok_s": 52.72835791460574
+        },
+        "32": {
+          "decode_seconds": 9.47350287111476,
+          "runs": 16,
+          "timed_decode_transitions": 496,
+          "transition_tok_s": 52.356557732444635
+        }
+      },
+      "general_ja": {
+        "16": {
+          "decode_seconds": 4.684062597807497,
+          "runs": 16,
+          "timed_decode_transitions": 240,
+          "transition_tok_s": 51.23757315120822
+        },
+        "32": {
+          "decode_seconds": 9.770320345647633,
+          "runs": 16,
+          "timed_decode_transitions": 496,
+          "transition_tok_s": 50.76599153895217
+        }
+      },
+      "mixed_ja_en": {
+        "16": {
+          "decode_seconds": 4.739094407763332,
+          "runs": 16,
+          "timed_decode_transitions": 240,
+          "transition_tok_s": 50.64258682140723
+        },
+        "32": {
+          "decode_seconds": 9.867141551105306,
+          "runs": 16,
+          "timed_decode_transitions": 496,
+          "transition_tok_s": 50.26785086958022
+        }
+      }
+    },
+    "correctness": {
+      "all_47_routed_outputs_exact": true,
+      "all_48_hidden_boundaries_exact": true,
+      "full_logits_and_ids_exact": true,
+      "kv_and_all_span_fields_exact": true,
+      "max_kl": 0.0,
+      "reset_and_lifecycle": true,
+      "top1_agreement": 1.0
+    },
+    "current_default_verified_at_revision": "8a1d411f062a33e39aa4c542ad998406ff8de0dc",
+    "horizons": {
+      "16": {
+        "decode_seconds": 20.8336690813303,
+        "runs": 72,
+        "timed_decode_transitions": 1080,
+        "transition_tok_s": 51.83916456500798
+      },
+      "32": {
+        "decode_seconds": 43.397304522339255,
+        "runs": 72,
+        "timed_decode_transitions": 2232,
+        "transition_tok_s": 51.43176574137347
+      }
+    },
+    "implementation_revision": "071331863de23ab537d658615d7282f0cea9da38",
+    "raw_process_order_artifacts": [
+      {
+        "path": "/tmp/laguna-p2-tile16-category-candidate.json",
+        "sha256": "7ccc281234e4e959d757dd974337c0fe10e8fa760343dc31e392d55c7883d305"
+      },
+      {
+        "path": "/tmp/laguna-p2-tile16-category-candidate-reverse.json",
+        "sha256": "a8caa5fad4236839535fd9216882d2f5382c70022a674e1b1a58286b3c02efc1"
+      }
+    ],
+    "retained_artifact": {
+      "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json",
+      "sha256": "8eed5be6ecd530a7fdc81f35783c4d39a62f18c81d0cbc144a77b78f093b1490"
+    },
+    "retention_revision": "cb4d11d5d"
+  },
+  "kind": "hipengine_laguna_q2_xl_matched_vulkan_completion_audit",
+  "llamacpp_vulkan": {
+    "categories": {
+      "code": {
+        "16": {
+          "decode_seconds": 2.798651,
+          "runs": 12,
+          "timed_decode_transitions": 180,
+          "transition_tok_s": 64.31670115352003
+        },
+        "32": {
+          "decode_seconds": 5.760462,
+          "runs": 12,
+          "timed_decode_transitions": 372,
+          "transition_tok_s": 64.57815362726114
+        }
+      },
+      "general_en": {
+        "16": {
+          "decode_seconds": 1.8651600000000002,
+          "runs": 8,
+          "timed_decode_transitions": 120,
+          "transition_tok_s": 64.33764395547834
+        },
+        "32": {
+          "decode_seconds": 3.838401,
+          "runs": 8,
+          "timed_decode_transitions": 248,
+          "transition_tok_s": 64.61023744001734
+        }
+      },
+      "general_ja": {
+        "16": {
+          "decode_seconds": 1.869778,
+          "runs": 8,
+          "timed_decode_transitions": 120,
+          "transition_tok_s": 64.1787420752624
+        },
+        "32": {
+          "decode_seconds": 3.849617,
+          "runs": 8,
+          "timed_decode_transitions": 248,
+          "transition_tok_s": 64.42199314892885
+        }
+      },
+      "mixed_ja_en": {
+        "16": {
+          "decode_seconds": 1.8758709999999998,
+          "runs": 8,
+          "timed_decode_transitions": 120,
+          "transition_tok_s": 63.97028367089209
+        },
+        "32": {
+          "decode_seconds": 3.8980749999999995,
+          "runs": 8,
+          "timed_decode_transitions": 248,
+          "transition_tok_s": 63.62114633505
+        }
+      }
+    },
+    "command": [
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server",
+      "-m",
+      "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18083",
+      "-c",
+      "4096",
+      "-ngl",
+      "999",
+      "-fa",
+      "on",
+      "--parallel",
+      "1",
+      "--no-warmup",
+      "--no-mmap",
+      "--metrics",
+      "--skip-chat-parsing"
+    ],
+    "exact_hipengine_id_runs": 11,
+    "harness_sha256": "d2ce470fa47e71ac4508c153786d67941b3fb9f1644d6c2e1b70e9d8e4abd712",
+    "horizons": {
+      "16": {
+        "decode_seconds": 8.409460000000001,
+        "native_output_tok_s": 68.49429095328355,
+        "runs": 36,
+        "timed_decode_transitions": 540,
+        "transition_tok_s": 64.21339776870333
+      },
+      "32": {
+        "decode_seconds": 17.346555000000002,
+        "native_output_tok_s": 66.41088100778511,
+        "runs": 36,
+        "timed_decode_transitions": 1116,
+        "transition_tok_s": 64.33554097629182
+      }
+    },
+    "raw_timing_artifact": {
+      "path": "/tmp/laguna-vulkan-matched-18.json",
+      "raw_status": "rejected",
+      "sha256": "b74f51f12b79524f106127906a7e3243bf4db4bcde1d14e89efef5720c5b0190",
+      "strict_status_reason": "raw harness requires every SSE returned token array length to equal predicted_n; 18/72 arrays omit one or more token entries even though all 72 server-native prompt_n, predicted_n, and predicted_ms rows are valid"
+    },
+    "returned_token_arrays_complete": 54,
+    "server_binary": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server",
+    "server_binary_sha256": "e83a9d8d26d9de3e7b8d0b836614dccf21de3e85ec331f4e2dd53482d5a5a1e3",
+    "server_log_sha256": "b8ad65f3fb9613681e4bdd7dd1bb45a340c66c8a7d18c95cc8f516e818de59a0",
+    "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "source_tracked_clean": true,
+    "timing_rows": 72,
+    "timing_rows_valid": true
+  },
+  "matched_protocol": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "context_length": 4096,
+    "flash_attention": {
+      "hipengine": "exact registered split readers above crossovers",
+      "vulkan": true
+    },
+    "horizons": [
+      16,
+      32
+    ],
+    "http_wall_primary": false,
+    "output_readback": "both naturally sample each output; llama SSE return_tokens arrays can omit tokens with empty/content-parser pieces, so native predicted_n rather than returned array length gates timing rows",
+    "primary_timing_boundary": "sum of synchronized post-TTFT model transitions; hipEngine decode_forward_calls/decode_seconds versus llama.cpp sum(predicted_n-1)/sum(predicted_ms)",
+    "prompt_suite": "/tmp/laguna-p2-18-prompts.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "repetitions_per_process_order_or_engine": 2,
+    "sampling": "natural greedy, temperature=0, neutral penalties, seed=4242",
+    "unavoidable_kv_difference": {
+      "hipengine": "BF16 KVLiveSpans",
+      "vulkan": "F16 KV; Vulkan device reports BF16 unsupported"
+    },
+    "weight_repack": {
+      "hipengine": "resident native layouts",
+      "vulkan": "default enabled"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "plan_gate_checklist": {
+    "P0": "exact IQ3 wave4 correctness and complete category promotion retained",
+    "P1": "IQ3 Q8, IQ3 row4 F32, Q5 row4, and IQ2 row4 independently rejected and removed",
+    "P2": "exact global/SWA split and SWA tile16 retained; online partials rejected and removed",
+    "P3": "bit-lossless Q5 T16 replacement rejected and removed",
+    "P4": "reopened by matched completion evidence only for an independently winning P2 exact split-reducer+softplus-gate fused body before any genuinely new submission owner; unchanged D8/D16 mechanisms remain rejected",
+    "artifacts": {
+      "p0_correctness": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-correctness.json",
+        "sha256": "b48d4a2b595b4a812895674a044d4bc0e870eaaa03df06a28f457f5845e3b279"
+      },
+      "p0_retained": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p0-iq3-wave4-retained.json",
+        "sha256": "3414624a209f8d8765813165994b525e843a91105f6cffe556192bc7f6d1191b"
+      },
+      "p1_iq2_row4_rejected": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq2-row4-rejected.json",
+        "sha256": "8680cad60527cd4b474b1d1637f1dab31350fd2af84c96b4394bc57750c38c01"
+      },
+      "p1_iq3_q8_rejected": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq3-q8-rejected.json",
+        "sha256": "42e1aef9f20b33bcae04ff9bc5ad95e9c1340dc0ebc6fc2cf51ffa7c3c493443"
+      },
+      "p1_iq3_row4_rejected": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-iq3-row4-f32-rejected.json",
+        "sha256": "182b3e3c55e44733a1c759b9cc18275c6427576b89315c8bcd0a7b82ede2469a"
+      },
+      "p1_q5_row4_rejected": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p1-q5-row4-rejected.json",
+        "sha256": "8437e2f6b0006ff63fbef64915519a8623303490a01eeba60239f2bce8842f98"
+      },
+      "p2_online_rejected": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-online-rejected.json",
+        "sha256": "9fa7fbcf2bdba6675d9483b2634a1063e1aee7ff569849724de56989065d4470"
+      },
+      "p2_split_correctness": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-correctness.json",
+        "sha256": "dc2f643530618c3ad35f3ad475b9efcf1ceb4fde4a846786640828f3e99106bf"
+      },
+      "p2_split_retained": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-split-exact-retained.json",
+        "sha256": "2d5b3b0278ef2af1ebb284b7ee79f1467dc231c8cc9a2745d7a7f64347c9bee2"
+      },
+      "p2_tile16_correctness": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-correctness.json",
+        "sha256": "fc5fc421ffd78ac02c280f258ada5f7e5b685bede53371932eb7df161556528f"
+      },
+      "p2_tile16_retained": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p2-swa-tile16-retained.json",
+        "sha256": "8eed5be6ecd530a7fdc81f35783c4d39a62f18c81d0cbc144a77b78f093b1490"
+      },
+      "p3_q5_t16_rejected": {
+        "path": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-p3-q5-t16-repack-rejected.json",
+        "sha256": "1fbbb12f1d200e02e969ad2dfbdebac4e0c12b9441f0066e9d70ddea856ae61f"
+      }
+    }
+  },
+  "prompt_to_artifact_checklist": [
+    {
+      "category": "code",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "538847bc52dc839454728c8c4273915447c86430978ebdcd84038a483c05ad94",
+          "vulkan_exact_hipengine_id_runs": 1,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "538847bc52dc839454728c8c4273915447c86430978ebdcd84038a483c05ad94",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "code_lru_cache"
+    },
+    {
+      "category": "code",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "861ef412430472ecccfc8f0705286b5177f7a5874206497c081f7cca5ac765be",
+          "vulkan_exact_hipengine_id_runs": 2,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "861ef412430472ecccfc8f0705286b5177f7a5874206497c081f7cca5ac765be",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "code_markdown_table"
+    },
+    {
+      "category": "code",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "fc37944bf6bc6193b490fd765b8466f1ebf40889f0f86a61dfc4b6b90350c815",
+          "vulkan_exact_hipengine_id_runs": 2,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "fc37944bf6bc6193b490fd765b8466f1ebf40889f0f86a61dfc4b6b90350c815",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "code_merge_intervals"
+    },
+    {
+      "category": "code",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "2945de3e6db2b5bfa7421e1670200e9d7e711305370ee3a7de19dffd26d84d89",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "2945de3e6db2b5bfa7421e1670200e9d7e711305370ee3a7de19dffd26d84d89",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "code_topological_sort"
+    },
+    {
+      "category": "general_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "6f2a45847af8a42b3cfabcc6435e35afd1600f95d0b66cea1227d11468b57406",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "6f2a45847af8a42b3cfabcc6435e35afd1600f95d0b66cea1227d11468b57406",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "general_en_explain"
+    },
+    {
+      "category": "general_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "41dc65427a062537f073f70a0a93534b2b80a9907ce4d5aff1792f356ac06c27",
+          "vulkan_exact_hipengine_id_runs": 2,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "41dc65427a062537f073f70a0a93534b2b80a9907ce4d5aff1792f356ac06c27",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "general_en_plan"
+    },
+    {
+      "category": "general_ja",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "e94ede4868ffda0428b5de99c3ce90c4bffab9b3e84337d20d85e572d7639d37",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "e94ede4868ffda0428b5de99c3ce90c4bffab9b3e84337d20d85e572d7639d37",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "general_ja_explain"
+    },
+    {
+      "category": "general_ja",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "8854808764e68b83d55b2377804f23d9fd0f8a70ea2dd66216ad2f3b5e671e49",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "8854808764e68b83d55b2377804f23d9fd0f8a70ea2dd66216ad2f3b5e671e49",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "general_ja_plan"
+    },
+    {
+      "category": "code",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "3d390b3fe934fc4582177ed0e894ae07f0bb355b317bbd9a90cb4cf454108e54",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "3d390b3fe934fc4582177ed0e894ae07f0bb355b317bbd9a90cb4cf454108e54",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_code_interval_schedule"
+    },
+    {
+      "category": "code",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "47d757f560979ed5e94afaf4bee6cd4e6233d825f6609b7b28ea3971d7b72473",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "47d757f560979ed5e94afaf4bee6cd4e6233d825f6609b7b28ea3971d7b72473",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_code_rate_limiter"
+    },
+    {
+      "category": "general_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "708f2302ef7081f40948f9880ed9bb98980c694e6d9f50293a96e68632de82d4",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "708f2302ef7081f40948f9880ed9bb98980c694e6d9f50293a96e68632de82d4",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_general_en_incident"
+    },
+    {
+      "category": "general_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "e412b802c972f2f8c20108e8b46780b689a7499f773101e09a2d287c3a44c468",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "e412b802c972f2f8c20108e8b46780b689a7499f773101e09a2d287c3a44c468",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_general_en_quant"
+    },
+    {
+      "category": "general_ja",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "04e4e784e17cfcaeca28f466117dc0ce972b37b8743502ad96f66236a2fabcf0",
+          "vulkan_exact_hipengine_id_runs": 2,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "04e4e784e17cfcaeca28f466117dc0ce972b37b8743502ad96f66236a2fabcf0",
+          "vulkan_exact_hipengine_id_runs": 2,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_general_ja_migration"
+    },
+    {
+      "category": "general_ja",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "8a6b566fd302388213ba859b0e03617d25128d3cd4716dacb7fa5061d0b310b9",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "8a6b566fd302388213ba859b0e03617d25128d3cd4716dacb7fa5061d0b310b9",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_general_ja_speculative"
+    },
+    {
+      "category": "mixed_ja_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "59593287c9df216d1acca2f35316f84e4cb181ae937d282d85b666cffc1b6bd7",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "59593287c9df216d1acca2f35316f84e4cb181ae937d282d85b666cffc1b6bd7",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_mixed_review"
+    },
+    {
+      "category": "mixed_ja_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "a550e8ec6bfa006d675957907e1549c08b30455589024eaa851a0b999e8e8c6a",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "a550e8ec6bfa006d675957907e1549c08b30455589024eaa851a0b999e8e8c6a",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 0,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "heldout_mixed_summary"
+    },
+    {
+      "category": "mixed_ja_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "0c16e1b8638b29335240144c2783ca8b1d49c70b3489ad15e457cf98118c1b1c",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "0c16e1b8638b29335240144c2783ca8b1d49c70b3489ad15e457cf98118c1b1c",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "mixed_ja_en_review"
+    },
+    {
+      "category": "mixed_ja_en",
+      "horizons": {
+        "16": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "e9788ba424064a6bc4ee75c5cd384bfb007cca48d7c00f5a4131125d7873dfef",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        },
+        "32": {
+          "hipengine_ids_exact_across_process_orders": true,
+          "hipengine_rows": 4,
+          "prompt_token_ids_sha256": "e9788ba424064a6bc4ee75c5cd384bfb007cca48d7c00f5a4131125d7873dfef",
+          "vulkan_exact_hipengine_id_runs": 0,
+          "vulkan_predicted_counts_valid": true,
+          "vulkan_prompt_counts_valid": true,
+          "vulkan_returned_token_arrays_complete": 2,
+          "vulkan_rows": 2
+        }
+      },
+      "prompt_id": "mixed_ja_en_translate"
+    }
+  ],
+  "provenance": {
+    "hipengine_raw_sha256": [
+      "7ccc281234e4e959d757dd974337c0fe10e8fa760343dc31e392d55c7883d305",
+      "a8caa5fad4236839535fd9216882d2f5382c70022a674e1b1a58286b3c02efc1"
+    ],
+    "vulkan_harness_sha256": "d2ce470fa47e71ac4508c153786d67941b3fb9f1644d6c2e1b70e9d8e4abd712",
+    "vulkan_raw_stderr_sha256": "7ec3b253c2924d528f7e286dd29169a7c510d9be8cf3d5e56deb56e4f7d730d5",
+    "vulkan_raw_stdout_sha256": "b74f51f12b79524f106127906a7e3243bf4db4bcde1d14e89efef5720c5b0190",
+    "vulkan_server_log_sha256": "b8ad65f3fb9613681e4bdd7dd1bb45a340c66c8a7d18c95cc8f516e818de59a0"
+  },
+  "rollup_audit": {
+    "benchmarks_changelog_has_p0_p2_retention_and_p1_p3_rejections": true,
+    "benchmarks_readme_has_p0_p2_current_row": true,
+    "benchmarks_readme_last_reviewed": "2026-07-24",
+    "laguna_decode_plan_closes_p1_p3_and_requires_new_p4_premise": true
+  },
+  "source_revision": "8a1d411f062a33e39aa4c542ad998406ff8de0dc",
+  "status": "acceptance_failed_vulkan_faster"
+}

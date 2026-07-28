@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_p4_swa_split_wave_local_correctness",
+  "status": "correctness_admitted_default_off",
+  "date": "2026-07-25",
+  "based_on_revision": "273eecbeea92079372c6393fbe55149bcec5b271",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "context_length": 4096,
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "Each logical wave leader independently replays the retained scalar maximum and denominator order, broadcasts each four-weight batch with width-32 shuffles, and lets its 32 dimensions retain the original slot-order FMA chain. This removes all block barriers and reducer LDS while preserving every arithmetic boundary.",
+    "registry_variants": [
+      "swa_context_split_exact_gated_wave_local_spans",
+      "swa_context_split_tile16_exact_gated_wave_local_spans"
+    ],
+    "explicit_selector": "LagunaGGUFResidentSession(..., use_swa_split_wave_local=True)",
+    "default_enabled": false,
+    "rollback": "The retained shared-statistics gated split variants remain registered and selected by default.",
+    "score_producers_unchanged": true,
+    "maximum_order_unchanged_per_wave": true,
+    "denominator_order_unchanged_per_wave": true,
+    "value_accumulation_order_unchanged": true,
+    "kv_live_spans_abi_unchanged": true,
+    "workspace_change_bytes": 0,
+    "dispatch_change": 0,
+    "candidate_code_patch_sha256": "cf1dc1be94846c7ba8e81d642952e8073867145c0ff5aa86bdcf077d6e52ff14"
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "Only already catalogued unrelated nano-vllm monolithic references drift; pinned GGML quant parents remain clean.",
+    "source_origin": "Net-new synchronization and data-sharing audit of the in-tree retained P2/P4.1 SWA reducer after the narrower max-scan-only contraction failed its clean span guard."
+  },
+  "red_green": {
+    "red_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_split_reduce_wave_local.py",
+    "red_reason": "candidate wrappers were intentionally absent",
+    "red_output_sha256": "1f140cb6c5a1a0680e1d22193c1386df54a0342bc96dc20de8481413c02a4d31",
+    "green_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_split_reduce_wave_local.py",
+    "green_result": "2 passed",
+    "regression_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_split_gate_fusion.py tests/test_laguna_split_reduce_wave_local.py tests/test_laguna_gguf_runner.py",
+    "regression_result": "27 passed",
+    "fixture_sha256": "444ac7ffb014950bf3a0c5e257bb44649393e4a2b434e8daa4e68cb9704b1044"
+  },
+  "leaf_exactness": {
+    "live_counts": [65, 257],
+    "score_producers": ["wave32", "tile16"],
+    "context_f32_bit_exact": true,
+    "gated_bf16_bit_exact": true,
+    "extreme_gate_classes_covered": true
+  },
+  "actual_weight_screen": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/bench_laguna_swa_wave_local_actual.py",
+    "harness_sha256": "c711a4909f9c6ee34a88e88bf1711b3177fcf7add9c9f6f16b285cb0da24d9c7",
+    "raw_sha256": "b764767238ea55207b0c74a53774eca88c5cca14a1c5ebd55fa1f5db689918a4",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "warmups_per_mode": 1000,
+    "counterbalanced_repetitions": 15,
+    "launches_per_sample": 200,
+    "all_context_and_gated_outputs_bit_exact": true,
+    "all_event_and_wall_rows_improve": true,
+    "rows": [
+      {"layer": 1, "live_count": 70, "event_delta_pct": -4.874686892101277, "wall_delta_pct": -4.881118911584803},
+      {"layer": 47, "live_count": 70, "event_delta_pct": -4.892388586782914, "wall_delta_pct": -4.839910313514184},
+      {"layer": 1, "live_count": 128, "event_delta_pct": -5.804783346427667, "wall_delta_pct": -5.8952453600586985},
+      {"layer": 47, "live_count": 128, "event_delta_pct": -5.86804937027151, "wall_delta_pct": -5.809993197791064},
+      {"layer": 1, "live_count": 257, "event_delta_pct": -18.900877637463033, "wall_delta_pct": -18.95925366905772},
+      {"layer": 47, "live_count": 257, "event_delta_pct": -18.907972879903756, "wall_delta_pct": -18.937128610066832},
+      {"layer": 1, "live_count": 512, "event_delta_pct": -5.6352428022252266, "wall_delta_pct": -5.594489655161272},
+      {"layer": 47, "live_count": 512, "event_delta_pct": -5.586390662649121, "wall_delta_pct": -5.574070455640879}
+    ]
+  },
+  "full_state_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run python -u /tmp/laguna_swa_wave_local_correctness.py",
+    "harness_sha256": "882a4723469ac428384aa8719e983368c72aadb4d1b91083d2cb333c7a426961",
+    "raw_sha256": "a8449081e0207da580c09502aae6ccfb6d2122ecfc6586d2a7f4095ae7a8f0a2",
+    "prompt_id": "mixed_ja_en_review",
+    "prompt_tokens": 122,
+    "decode_steps": 16,
+    "full_logits_exact": true,
+    "top1_agreement": 1.0,
+    "kl_divergence": 0.0,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "all_layer_hidden_checks": 48,
+    "all_sparse_routed_output_checks": 47,
+    "active_kv_and_all_live_span_fields_exact": true,
+    "reset_exact": true,
+    "tracked_peak_bytes": 40459057576,
+    "tracked_peak_allocations": 1500,
+    "tracked_returned_to_baseline": true
+  },
+  "rocprof_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-wave-local-trace --output-file trace -- .venv/bin/python -u /tmp/laguna_swa_wave_local_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --enable-head-kv --enable-swa-wave-local --output /tmp/laguna-swa-wave-local-trace/bench.json",
+    "harness_sha256": "357cbd3701e126259cafbf2621be9014fbc1e971acc7f7d1b6540275c50bae4c",
+    "csv_sha256": "b10da5d256b02cb016b5db9e3f3d6865951f6f0e79a587f5cadd81bc5d8d55cb",
+    "bench_sha256": "f0c780fefbe7e59484201b9763109015445df48356c0db15bd01a1d345c274f5",
+    "candidate_calls": 72,
+    "retained_shared_calls": 0,
+    "kernel": "laguna_swa_attention_split_exact_gated_wave_local_reduce_kernel",
+    "grid_x": 9216,
+    "workgroup": 128,
+    "vgpr": 24,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "sample_duration_ns_range": [35240, 40480],
+    "finite_logits": true,
+    "tracked_returned_to_baseline": true,
+    "library_sha256": "389e2eb80f09b83c324eacabae46a273a42a978bb69ad003b15c94a9638a1277"
+  },
+  "correctness_gate": {
+    "required_kl_max": 0.05,
+    "required_top1_min": 0.9,
+    "observed_kl": 0.0,
+    "observed_top1": 1.0,
+    "passed": true
+  },
+  "next_action": "Commit default-off correctness admission, then run clean short/512/1K/near-4K control/candidate profiles and the complete two-order 18-prompt promotion gate before deciding the gfx1100 default."
+}

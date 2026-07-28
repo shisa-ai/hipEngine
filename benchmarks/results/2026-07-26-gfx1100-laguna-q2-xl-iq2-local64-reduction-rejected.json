@@ -1,0 +1,603 @@
+{
+  "date": "2026-07-26",
+  "decision": {
+    "action": "remove runtime integration and retain exact primitive diagnostic only",
+    "additional_speedup_required_pct": 3.9145459065845767,
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "category_orders_run": 0,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Re-rank immutable retained traces with fixed-local64 runtime selection mechanically closed; do not retry the unchanged reduction schedule."
+  },
+  "frozen_clean_gate": {
+    "candidate_pooled": {
+      "iq2_family_ms": 1.8995095000000002,
+      "kernel_sum_ms": 12.944737071428575,
+      "profiled_child_tok_s": 57.28364063928736,
+      "span_median_ms": 16.864296000000003,
+      "stable_samples": 28
+    },
+    "category_orders_run": 0,
+    "checks": {
+      "all_ids_finite_lifecycle_exact": true,
+      "all_order_child_inside_0_5pct": false,
+      "all_order_iq2_family_improve": false,
+      "all_order_kernel_sum_improve": false,
+      "all_order_span_inside_0_5pct": false,
+      "all_resources_calls_dispatches_and_no_compiler_pass": true,
+      "mechanical_gate_pass": false
+    },
+    "compiler_grep_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compiler_spawned_under_profiler": false,
+    "contract": {
+      "acceptance": {
+        "candidate_calls_per_token": 46,
+        "candidate_resources": {
+          "allocated_sgpr": 128,
+          "allocated_vgpr": 112,
+          "grid_x": 32768,
+          "grid_y": 10,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup": 64
+        },
+        "categories_allowed_only_after_all_contexts_pass": true,
+        "compiler_spawned_under_profiler": false,
+        "ids_finite_lifecycle_exact": true,
+        "iq2_family_improves_each_order": true,
+        "kernel_sum_improves_each_order": true,
+        "model_kernels_per_token": 723,
+        "profiled_child_throughput_regression_min_pct_exclusive": -0.5,
+        "span_regression_max_pct_exclusive": 0.5,
+        "stop_on_first_failed_context": true,
+        "third_order_or_pooled_waiver_allowed": false
+      },
+      "command": "bash /tmp/run_laguna_iq2_local64_reduction_clean_profiles.sh",
+      "contexts": [
+        {
+          "decode_tokens": 16,
+          "label": "short",
+          "prompt_length": null,
+          "stable_steps": 14
+        },
+        {
+          "decode_tokens": 8,
+          "label": "512",
+          "prompt_length": 512,
+          "stable_steps": 6
+        },
+        {
+          "decode_tokens": 8,
+          "label": "1024",
+          "prompt_length": 1024,
+          "stable_steps": 6
+        },
+        {
+          "decode_tokens": 8,
+          "label": "3968",
+          "prompt_length": 3968,
+          "stable_steps": 6
+        }
+      ],
+      "date": "2026-07-26",
+      "hardware": {
+        "backend": "hip_gfx1100",
+        "device": "AMD Radeon Pro W7900",
+        "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1"
+      },
+      "harness_sha256": {
+        "analyzer": "8f94600af3a700af526b406a03eff25e1a58bcaa0d1a6e96d97d5e7fb3ee191f",
+        "child": "9554ebf212a7df91c91073181588479f9993f6cb253dbf5a92d407abf980d968",
+        "runner": "ac451ce9c6486d51dbd640bee70b817335cc26d8deee90590247c96092ea4a95"
+      },
+      "process_orders": {
+        "1024": {
+          "a": [
+            "control",
+            "candidate"
+          ],
+          "b": [
+            "candidate",
+            "control"
+          ]
+        },
+        "3968": {
+          "a": [
+            "candidate",
+            "control"
+          ],
+          "b": [
+            "control",
+            "candidate"
+          ]
+        },
+        "512": {
+          "a": [
+            "candidate",
+            "control"
+          ],
+          "b": [
+            "control",
+            "candidate"
+          ]
+        },
+        "short": {
+          "a": [
+            "control",
+            "candidate"
+          ],
+          "b": [
+            "candidate",
+            "control"
+          ]
+        }
+      },
+      "revision": "109208676fd2dc8884b55ecd2023994f916cc250",
+      "runtime_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json",
+      "runtime_artifact_sha256": "6f6f8ea9d7451eac0202ff6cee7bb701892ae0c207d0c3d865810ed07c12fb02",
+      "schema": 1,
+      "symbols": {
+        "candidate": "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel",
+        "control": "gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel"
+      }
+    },
+    "contract_sha256": "9df0b908fb75a675fcee30cf35d63bcf2b0882d42a4c0860c0b56b8ae66c0f3e",
+    "control_pooled": {
+      "iq2_family_ms": 1.8705798928571429,
+      "kernel_sum_ms": 12.896732535714285,
+      "profiled_child_tok_s": 57.49183432038998,
+      "span_median_ms": 15.7856255,
+      "stable_samples": 28
+    },
+    "idle_vram_bytes_after": 27959296,
+    "orders": [
+      {
+        "candidate": {
+          "allocated_lds_bytes": 512,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq2_calls_per_token": 46,
+          "iq2_family_mean_ms": 1.8892994285714286,
+          "kernel_sum_mean_ms": 12.890478714285717,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.552848788212195,
+          "raw_sha256": {
+            "bench.json": "3602a6e295c9b85015193ef26fbe4d3943b74d626c3f42bb5bec10fb85ffaaa7",
+            "stderr.log": "c63f6c9e41d9cf698ffca22764132ce906cebea280242ab33966b9db729367fe",
+            "stdout.log": "3602a6e295c9b85015193ef26fbe4d3943b74d626c3f42bb5bec10fb85ffaaa7",
+            "trace_kernel_trace.csv": "7f3418aaf7ae5d3387e5ca3d3b19cd566d5322e632429f89bd1948a7ca11d487"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              32768,
+              10,
+              64,
+              112,
+              128,
+              512,
+              0
+            ]
+          ],
+          "selectors": {
+            "use_head_kv_fusion": true,
+            "use_iq2_grid64": true,
+            "use_mixed_local32_fixed_meta_attention": true,
+            "use_mixed_q5_q6_attention": true,
+            "use_mixed_q6_fixed_meta_attention": true,
+            "use_moe_tail_next_rmsnorm": true,
+            "use_q4_lm_head_local32_fixed_meta": true,
+            "use_q5_fixed_meta_output": true,
+            "use_q5_fixed_meta_query_gate": true,
+            "use_q5_shared_fixed_meta": true,
+            "use_q5_wave32x2_output": true,
+            "use_q5_wave32x2_query_gate": true,
+            "use_swa_split_wave_local": true
+          },
+          "span_median_ms": 15.876683499999999,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "iq2_family_pct": 0.36614213563941345,
+          "kernel_sum_pct": -0.42908471971826456,
+          "profiled_child_tok_s_pct": -0.6341266724531169,
+          "span_pct": -2.6861952770941278
+        },
+        "control": {
+          "allocated_lds_bytes": 512,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq2_calls_per_token": 46,
+          "iq2_family_mean_ms": 1.8824071428571427,
+          "kernel_sum_mean_ms": 12.946028142857143,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "a",
+          "profiled_child_tok_s": 57.9201358181562,
+          "raw_sha256": {
+            "bench.json": "6206ecdd68474279248123d891f92e22290126c87f6987d4ef6c8fd12233e07f",
+            "stderr.log": "e9885107017ca5e7cb3f104d64fde3036fbd80d121d93eeb7caf112d50f58d38",
+            "stdout.log": "6206ecdd68474279248123d891f92e22290126c87f6987d4ef6c8fd12233e07f",
+            "trace_kernel_trace.csv": "58650c90d8be20cf263523fd2f1d0118de0291e8ad4d0910306bcbabc521e362"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              32768,
+              10,
+              64,
+              112,
+              128,
+              512,
+              0
+            ]
+          ],
+          "selectors": {
+            "use_head_kv_fusion": true,
+            "use_iq2_grid64": true,
+            "use_mixed_local32_fixed_meta_attention": true,
+            "use_mixed_q5_q6_attention": true,
+            "use_mixed_q6_fixed_meta_attention": true,
+            "use_moe_tail_next_rmsnorm": true,
+            "use_q4_lm_head_local32_fixed_meta": true,
+            "use_q5_fixed_meta_output": true,
+            "use_q5_fixed_meta_query_gate": true,
+            "use_q5_shared_fixed_meta": true,
+            "use_q5_wave32x2_output": true,
+            "use_q5_wave32x2_query_gate": true,
+            "use_swa_split_wave_local": true
+          },
+          "span_median_ms": 16.3149345,
+          "stable_steps": 14
+        },
+        "order": "a",
+        "pass": false
+      },
+      {
+        "candidate": {
+          "allocated_lds_bytes": 512,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq2_calls_per_token": 46,
+          "iq2_family_mean_ms": 1.9097195714285715,
+          "kernel_sum_mean_ms": 12.998995428571433,
+          "lifecycle": true,
+          "mode": "candidate",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.21242423542073,
+          "raw_sha256": {
+            "bench.json": "efeb83c3dcd1bf9330452fcafa13ad0cfb7a5d012d63f635302600d9decb158f",
+            "stderr.log": "14a418a4f82ae19ba0db6c5e9a51a2b5d8ec6ccb74e5ae212c26f65a44e4a728",
+            "stdout.log": "efeb83c3dcd1bf9330452fcafa13ad0cfb7a5d012d63f635302600d9decb158f",
+            "trace_kernel_trace.csv": "d29275895fe5302029e3faaabb246bfd645f97c143f0db5b36b7c8b912f770ac"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_local64_reduce_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              32768,
+              10,
+              64,
+              112,
+              128,
+              512,
+              0
+            ]
+          ],
+          "selectors": {
+            "use_head_kv_fusion": true,
+            "use_iq2_grid64": true,
+            "use_mixed_local32_fixed_meta_attention": true,
+            "use_mixed_q5_q6_attention": true,
+            "use_mixed_q6_fixed_meta_attention": true,
+            "use_moe_tail_next_rmsnorm": true,
+            "use_q4_lm_head_local32_fixed_meta": true,
+            "use_q5_fixed_meta_output": true,
+            "use_q5_fixed_meta_query_gate": true,
+            "use_q5_shared_fixed_meta": true,
+            "use_q5_wave32x2_output": true,
+            "use_q5_wave32x2_query_gate": true,
+            "use_swa_split_wave_local": true
+          },
+          "span_median_ms": 17.187459,
+          "stable_steps": 14
+        },
+        "candidate_vs_control_pct": {
+          "iq2_family_pct": 2.741996293443627,
+          "kernel_sum_pct": 1.1796788794732782,
+          "profiled_child_tok_s_pct": 0.013412719118099936,
+          "span_pct": 9.706622568169387
+        },
+        "control": {
+          "allocated_lds_bytes": 512,
+          "compiler_spawned_under_profiler": false,
+          "finite": true,
+          "generated_ids": [
+            605,
+            2825,
+            268,
+            1172,
+            7024,
+            69452,
+            56703,
+            1117,
+            268,
+            341,
+            558,
+            572,
+            9489,
+            95,
+            268,
+            370,
+            658
+          ],
+          "iq2_calls_per_token": 46,
+          "iq2_family_mean_ms": 1.858752642857143,
+          "kernel_sum_mean_ms": 12.847436928571426,
+          "lifecycle": true,
+          "mode": "control",
+          "model_kernels_per_token": 723,
+          "order": "b",
+          "profiled_child_tok_s": 57.204751522776775,
+          "raw_sha256": {
+            "bench.json": "584dac94871a142db3e71b5bf24828b33b863c7e5768aa49ad0c7234e07398c8",
+            "stderr.log": "322bc617bc91b4d4cf4185b23d505b4ae3abbec27533702db01a90b9dd38d41f",
+            "stdout.log": "584dac94871a142db3e71b5bf24828b33b863c7e5768aa49ad0c7234e07398c8",
+            "trace_kernel_trace.csv": "ded079e67fe03035704fbb7d7003515e38e64204c89595ac68b4c00d0a618820"
+          },
+          "resources": [
+            [
+              "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_grid64_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+              32768,
+              10,
+              64,
+              112,
+              128,
+              512,
+              0
+            ]
+          ],
+          "selectors": {
+            "use_head_kv_fusion": true,
+            "use_iq2_grid64": true,
+            "use_mixed_local32_fixed_meta_attention": true,
+            "use_mixed_q5_q6_attention": true,
+            "use_mixed_q6_fixed_meta_attention": true,
+            "use_moe_tail_next_rmsnorm": true,
+            "use_q4_lm_head_local32_fixed_meta": true,
+            "use_q5_fixed_meta_output": true,
+            "use_q5_fixed_meta_query_gate": true,
+            "use_q5_shared_fixed_meta": true,
+            "use_q5_wave32x2_output": true,
+            "use_q5_wave32x2_query_gate": true,
+            "use_swa_split_wave_local": true
+          },
+          "span_median_ms": 15.666747,
+          "stable_steps": 14
+        },
+        "order": "b",
+        "pass": false
+      }
+    ],
+    "pooled_delta_pct": {
+      "iq2_family_ms": 1.5465582225771657,
+      "kernel_sum_ms": 0.3722224647316974,
+      "profiled_child_tok_s": -0.3621273935049518,
+      "span_median_ms": 6.8332452204697525
+    },
+    "preflight_sha256": "9748c5330514154c2151ea330e6c9ba1cfa60a00de26887ed3904983713d2e0f",
+    "report_sha256": "2077cd3d19f45ecf3a06ad4c68ffb17af164e2194bb27672e0883954365d2cb6",
+    "runner_stdout_sha256": "2077cd3d19f45ecf3a06ad4c68ffb17af164e2194bb27672e0883954365d2cb6",
+    "stopped_before": [
+      "512",
+      "1024",
+      "3968",
+      "complete_18_prompt_categories"
+    ],
+    "summary_sha256": "9571a4e8d471f967518bdf290577d0cae5e6b08cf42cb6da8e8c77fb15e74958",
+    "third_order_or_guard_waiver": false,
+    "through": "short"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "interpretation": {
+    "decisive_failures": [
+      "order A IQ2 family regresses 0.366%",
+      "order A profiled-child throughput regresses 0.634%, below the -0.5% guard",
+      "order B IQ2 family regresses 2.742%",
+      "order B complete kernel sum regresses 1.180%",
+      "order B dispatch span regresses 9.707%, above the 0.5% guard"
+    ],
+    "ids_resources_calls_dispatches_and_lifecycle_exact": true,
+    "isolated_primitive_event_improvement_range_pct": [
+      1.266,
+      1.641
+    ],
+    "isolated_primitive_wall_improvement_range_pct": [
+      1.155,
+      1.452
+    ],
+    "no_benchmark_gaming_or_prompt_conditioning": true,
+    "pooled_child_throughput_pct": -0.3621273935049518,
+    "pooled_iq2_family_regression_pct": 1.5465582225771657,
+    "pooled_kernel_sum_regression_pct": 0.3722224647316974,
+    "pooled_span_regression_pct": 6.8332452204697525,
+    "pooled_values_do_not_waive_every_order_contract": true,
+    "target_iq2_family_improves_either_order": false
+  },
+  "kind": "hipengine_laguna_q2_xl_iq2_local64_reduction_rejection",
+  "model": {
+    "context_length": 4096,
+    "iq2_sparse_layers": 46,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-design.json",
+      "sha256": "96140492094aeb71cdb4069059e794070ce8115e7de8657ea02102416847cea3"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-correctness.json",
+      "sha256": "624262576e82bee0df6e5a05b89d8b341a6cb54aaea4c969c0c0b22611d1417c"
+    },
+    {
+      "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-runtime-correctness.json",
+      "sha256": "6f6f8ea9d7451eac0202ff6cee7bb701892ae0c207d0c3d865810ed07c12fb02"
+    }
+  ],
+  "provenance": {
+    "builder_sha256": "4a80e4ece24aa65219f90384e4459b89f7113adb5fd9a8e20b32612548d8e1fd",
+    "harness_sha256": {
+      "analyzer": "8f94600af3a700af526b406a03eff25e1a58bcaa0d1a6e96d97d5e7fb3ee191f",
+      "child": "9554ebf212a7df91c91073181588479f9993f6cb253dbf5a92d407abf980d968",
+      "runner": "ac451ce9c6486d51dbd640bee70b817335cc26d8deee90590247c96092ea4a95"
+    },
+    "primitive_commit": "2c1946c47f9ed953ac23cd4d2e82c496a9eb8d81",
+    "runtime_commit": "109208676fd2dc8884b55ecd2023994f916cc250",
+    "source_sha256": {
+      "docs/KERNELS.md": "f85be7b66148456bdfbe68843412b520f9da780c183ae2fdfafa5355641aa168",
+      "docs/LAGUNA-decode.md": "ac1db520afb0bc170442a7b5797be837def3b1179c1b4059c414a5e88db9daa7",
+      "docs/REFACTOR.md": "1f25d2be4cdab6cbaa6e5fb706f22d172ab26557815048fcca8ef5b47780690b",
+      "tests/test_laguna_iq2_local64_reduction_runtime.py": "054e0b5be34c78c8178497271b7ede925c1a16a7146f09f17ac0385609ab9a07"
+    }
+  },
+  "regression_validation": {
+    "adjacent_exclusion": "unchanged stale gfx1151 test_gguf_fused_linear_matching_uses_resident_backend call missing three current resolver arguments",
+    "adjacent_passed": 141,
+    "adjacent_sha256": "afc9b2d4fba2653be6794cdfea1771ae2db8af40e3f8a40785bed1c411dc5213",
+    "adjacent_warning": "one unrelated Starlette httpx deprecation warning",
+    "cpu_bundle_passed": 25,
+    "cpu_bundle_sha256": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "focused_passed": 10,
+    "focused_sha256": "7040371af15613c02e821ec0eecc1d1330f691ace4cef93a41bfa358822c4103",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "ruff_compile_passed": true,
+    "ruff_compile_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "removal": {
+    "backend_capability_removed": true,
+    "benchmark_cli_and_telemetry_removed": true,
+    "category_work_skipped": true,
+    "permanent_rejection_test": {
+      "path": "tests/test_laguna_iq2_local64_reduction_runtime.py",
+      "sha256": "054e0b5be34c78c8178497271b7ede925c1a16a7146f09f17ac0385609ab9a07"
+    },
+    "production_byte_identical_to_primitive_commit": true,
+    "production_files": [
+      {
+        "current_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7",
+        "matches_primitive_commit": true,
+        "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+        "primitive_commit_sha256": "bc8dee55c50b1b0d60fb82507b0b38aa739c6eb6e2fe0a7cdc11dc616139b4d7"
+      },
+      {
+        "current_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_gguf_runner.py",
+        "primitive_commit_sha256": "ea40ed89fab033c9cf485cc127feabc1af2e53adc54c5f4d0df3d7af1a141616"
+      },
+      {
+        "current_sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca",
+        "matches_primitive_commit": true,
+        "path": "hipengine/runtime/laguna_moe.py",
+        "primitive_commit_sha256": "aab5d30d36a42cc0b95a442a5873ddac7518d3ba8b6930af4d37e75d324c57ca"
+      },
+      {
+        "current_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7",
+        "matches_primitive_commit": true,
+        "path": "scripts/laguna_target_ar_bench.py",
+        "primitive_commit_sha256": "6c9bffae15beb2adc772c60b03c08a22641fe12f1a1d5988eb72ab5975ca37a7"
+      }
+    ],
+    "refactor_debt_removed": true,
+    "resolver_plan_and_session_selection_removed": true,
+    "retained_primitive": {
+      "gfx1151_excluded": true,
+      "key": [
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_iq2_xs",
+        "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out"
+      ],
+      "runtime_selected": false
+    },
+    "retained_runtime_owner": {
+      "capability": "LAGUNA_IQ2_GRID64=True",
+      "variant": "selected_dual_silu_gemv_decode_tile2_grid64_bf16_bf16_out"
+    }
+  },
+  "schema": 1,
+  "source_revision": "109208676fd2dc8884b55ecd2023994f916cc250",
+  "status": "clean_rejected_runtime_removed_primitive_retained"
+}

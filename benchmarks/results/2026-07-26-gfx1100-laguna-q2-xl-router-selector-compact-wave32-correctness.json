@@ -1,0 +1,224 @@
+{
+  "actual_weight_precondition": {
+    "actual_layers": 47,
+    "all_actual_fields_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_router_selector_compact_wave32_repository_actual.py",
+    "event_candidate_vs_control_pct": -25.782539461895915,
+    "event_median_ms_per_47_layers": {
+      "compact_wave32": 0.2951225280761719,
+      "control": 0.3976456832885742
+    },
+    "event_us_per_layer": {
+      "compact_wave32": 6.279202725024933,
+      "control": 8.460546452948387
+    },
+    "fields_bit_exact": [
+      "routing_scores",
+      "selection_scores",
+      "selected",
+      "routing",
+      "scaled"
+    ],
+    "harness_sha256": "84e52a16128978157160027ba8d6671425b3cda6063f8aca54b3a08e7583017b",
+    "output_sha256": "7b8b68446da3c2815b3119be9a6b8e925d5809abbacc7d36c4a34f1a5dca559f",
+    "projected_logits_frozen_outside_timing": true,
+    "protocol": {
+      "counterbalanced": true,
+      "iterations": 100,
+      "layers_per_iteration": 47,
+      "repetitions": 15,
+      "warmups": 10
+    },
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wall_candidate_vs_control_pct": -25.769722602962585,
+    "wall_median_ms_per_47_layers": {
+      "compact_wave32": 0.29541871044784784,
+      "control": 0.39797602919861674
+    },
+    "wall_us_per_layer": {
+      "compact_wave32": 6.285504477613784,
+      "control": 8.467575089332271
+    }
+  },
+  "adjacent_validation": {
+    "broad_attempt": {
+      "result": "68 passed, 1 unrelated pre-existing failure",
+      "unrelated_failure": "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend calls _resolve_gguf_linear_pair_kind without the required activation_dtype, output_dtype, and registered_decode_variant keyword arguments",
+      "unchanged_from_parent": [
+        "hipengine/runtime/gguf_linear.py",
+        "tests/test_gfx1151_backend.py"
+      ]
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest tests/test_laguna_router_compact_wave32_gpu.py tests/test_laguna_router_gpu.py tests/test_laguna_router_persistent_gpu.py tests/test_laguna_cpu_reference.py tests/test_laguna_moe_gpu.py tests/test_gfx1151_backend.py tests/test_kernel_registry.py -q -k 'not test_gguf_fused_linear_matching_uses_resident_backend'",
+    "result": "68 passed",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "9ee20c71942e691226904f5b10ee3ec2cbef509fceddb28ac17de8dc7e2e5b55"
+  },
+  "codegen": {
+    "allocated": {
+      "lds_bytes": 0,
+      "sgpr": 128,
+      "scratch_bytes": 0,
+      "vgpr": 72
+    },
+    "command": "hipcc --genco -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1100 hipengine/kernels/hip_gfx1100/moe/laguna_router.hip -o /tmp/laguna-router-compact-wave32-repository.hsaco",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device_hsaco_sha256": "4bc13ba8e61b37c8359bf513853afb2b85a70773784e88b51b8238969f82c8f0",
+    "ds_bpermute_b32": 109,
+    "logical": {
+      "private_bytes": 0,
+      "sgpr": 18,
+      "sgpr_spills": 0,
+      "vgpr": 70,
+      "vgpr_spills": 0
+    },
+    "objdump_sha256": "0bf9255cdf1c199321e2203d2bc4d42f7380736e620aeaa7eafe091572a89adc",
+    "readobj_sha256": "f69302a2419491088e3df47041606442f024bd2d340ccc44529ec28fdeab80d7",
+    "s_barrier": 0,
+    "s_delay_alu": 264,
+    "source_sha256": "1b57305f6381013c64c602f197b2656eb00a864992b49ab196d6af7e95a61153",
+    "static_instructions": 2128,
+    "symbol_size_bytes": 13892,
+    "symbol_size_ceiling_bytes": 14080,
+    "wavefront": 32,
+    "within_frozen_ceilings": true,
+    "workgroup": 32
+  },
+  "correctness": {
+    "cases": [
+      "random",
+      "all_ties",
+      "cross_lane_cross_item_ties",
+      "finite_extremes",
+      "signed_zero"
+    ],
+    "cpu_gate": {
+      "all_selected_exact": true,
+      "artifact_sha256": "a9bf1ddb1ff16b0754fd1e8b414fc9c35d60d2ed03a5c7310da9a7d2b78f4b50",
+      "max_kl": 5.96704336441381e-16,
+      "required_max_kl": 0.05,
+      "required_min_top1_agreement": 0.9,
+      "top1_agreement": 1.0
+    },
+    "exact_sibling": {
+      "all_fields_bit_exact": true,
+      "control_key": [
+        "hip_gfx1100",
+        "laguna_sigmoid_router_topk",
+        "f32",
+        "correction_bias"
+      ],
+      "fields": [
+        "routing_scores",
+        "selection_scores",
+        "selected",
+        "routing",
+        "scaled_routing"
+      ]
+    },
+    "focused_command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest tests/test_laguna_router_compact_wave32_gpu.py -q",
+    "focused_result": "7 passed",
+    "focused_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "focused_stdout_sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a",
+    "gfx1151_alias_excluded": true,
+    "unsupported_backend_aliases_excluded": [
+      "hip_gfx1151",
+      "cuda_sm86",
+      "cpu_reference"
+    ]
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "admit exact standalone primitive and proceed to explicit default-off runtime gating",
+    "canonical_h32_decode_tok_s_unchanged": 61.99155148671624,
+    "completion_claim": false,
+    "default_changed": false,
+    "reason": "The repository primitive passes RED/GREEN, exact sibling and CPU gates, all 47 actual-layer field checks, frozen resource ceilings, cache-only tracing, and both actual-layer timing requirements.",
+    "repository_primitive_present": true,
+    "runtime_selection_present": false
+  },
+  "design_artifact": {
+    "path": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-selector-compact-wave32-design.json",
+    "sha256": "737399979a3717dbcc784d221851f679d343c1186b17538c7285e3c0a8aebd0b"
+  },
+  "implementation": {
+    "candidate_key": [
+      "hip_gfx1100",
+      "laguna_sigmoid_router_topk",
+      "f32",
+      "correction_bias_compact_wave32"
+    ],
+    "candidate_library_sha256": "1383609c2adb690e57c1200ea6504bb8bf82a7587c46257df1d91f585ea49ac2",
+    "files": {
+      "gfx1151_exclusion_sha256": "418471477da97e7145d0d2081ada7d0832a80278f85d2aa05e07b57dc2a01d2d",
+      "source_sha256": "1b57305f6381013c64c602f197b2656eb00a864992b49ab196d6af7e95a61153",
+      "test_sha256": "e344dafdbad74acde17e87d8ca484224533c0dd5512c797e1a3cb51b707df26b",
+      "wrapper_sha256": "1487850c613f34b251c639d7cbf9fb8de360e26a07e4420efb07d4f07b722064"
+    },
+    "launch": {
+      "grid_x": 32,
+      "persistent_state": false,
+      "threads": 32,
+      "workspace_bytes": 0
+    },
+    "restrictions": {
+      "num_experts": 256,
+      "rows_or_prefill": false,
+      "tokens": 1,
+      "top_k": 10
+    },
+    "wrapper": "laguna_sigmoid_correction_topk_compact_wave32_f32"
+  },
+  "kind": "hipengine_laguna_q2_xl_router_selector_compact_wave32_correctness",
+  "model": {
+    "experts": 256,
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47,
+    "top_k": 10
+  },
+  "parent_revision": "f9c4bc09bd68475abdeb8d6ee990ecaa32fb6c10",
+  "performance_claim": false,
+  "red": {
+    "command": "python3 -m pytest tests/test_laguna_router_compact_wave32_gpu.py -k 'registry_and_validation_contract or excluded_from_gfx1151_aliasing' -q",
+    "observed": [
+      "compact-wave32 wrapper/key absent",
+      "gfx1151 aliases the unexcluded source key"
+    ],
+    "result": "2 failed as expected before implementation"
+  },
+  "runtime_integration": {
+    "allocation_change": false,
+    "backend_capability_change": false,
+    "cli_change": false,
+    "default_change": false,
+    "dispatch_change": false,
+    "library_ownership_change": false,
+    "moe_plan_change": false,
+    "session_change": false
+  },
+  "schema": 1,
+  "status": "admitted_exact_primitive_runtime_absent",
+  "trace": {
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 72,
+    "calls": 2,
+    "child_outputs_finite": true,
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-router-selector-compact-wave32-repository-trace --output-file trace -- uv run python -u /tmp/trace_laguna_router_selector_compact_wave32_repository.py",
+    "compiler_executed_under_profiler": false,
+    "duration_ns": [
+      18760,
+      7720
+    ],
+    "grid_x": 32,
+    "harness_sha256": "27f4ca673e16e8d2037367b77a1d1a332efaba45980ab8024a473c1f7bae1456",
+    "kernel_named": true,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "trace_sha256": "1459146148e3d52006c021d631e494847f7892ec09d6423d198c71c1f2105106",
+    "workgroup_x": 32
+  }
+}

@@ -1,0 +1,276 @@
+{
+  "baseline": {
+    "canonical_h32_tok_s": 61.99155148671624,
+    "design_artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-design.json",
+    "design_artifact_sha256": "8f51bf53ecaa110e78019cca28475df7b7899247b10ca19affc2766309b5a877",
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "selection_commit": "91f9b1d39"
+  },
+  "cache_only_trace": {
+    "candidate_calls": 2,
+    "child_sha256": "5ba9d5dd7b887257ba3f84236cd162103173337b553a060dbf18017f3817ae2f",
+    "compiler_under_profiler": false,
+    "dynamic_lds_note": "rocprofv3 reports fixed LDS metadata only; the validated launch supplies (hidden_size+256)*4 = 13,312 dynamic bytes.",
+    "finite": true,
+    "harness_sha256": "f93161f929d153b9137eb84795e79a9e120ab51ef45b65b4c6b2b043c5313cda",
+    "outputs_exact": {
+      "norm": true,
+      "residual": true
+    },
+    "preflight_sha256": "7cf9992cd5e48339088ae9a55ca465de6bef1597d3dab883ef0190aec0a192b0",
+    "rows": [
+      {
+        "DurationNs": 3880,
+        "Grid_Size_X": 256,
+        "Kernel_Name": "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "LDS_Block_Size": 0,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "VGPR_Count": 16,
+        "Workgroup_Size_X": 256
+      },
+      {
+        "DurationNs": 4800,
+        "Grid_Size_X": 256,
+        "Kernel_Name": "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "LDS_Block_Size": 0,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "VGPR_Count": 16,
+        "Workgroup_Size_X": 256
+      }
+    ],
+    "stderr_sha256": "1f21ddf9624d8757e4601873fac4ef4345a9a302c2d648eb7556a0e7ce295cf5",
+    "stdout_sha256": "7cf9992cd5e48339088ae9a55ca465de6bef1597d3dab883ef0190aec0a192b0",
+    "trace_sha256": "753789093a6937ef12e3533ff991ed052b1597df0cd27e64780ec18e11f8a28e"
+  },
+  "codegen": {
+    "allocated_sgpr": 128,
+    "allocated_vgpr": 16,
+    "barrier_audit": "Nine static barrier opcodes are the selected unrolled form of the same nine dynamic synchronizations executed by the registered control reduction loop.",
+    "ceilings_passed": true,
+    "dynamic_lds_bytes_at_hidden3072": 13312,
+    "group_segment_fixed_size": 0,
+    "hsaco_sha256": "3548c86631ec0e688533deaaef9e7d6306f40766b1df2b8d2c81761dea74e447",
+    "logical_sgpr": 18,
+    "logical_vgpr": 15,
+    "nm_sha256": "a4e79fbc090307e00f21a2acfbce77c9dfd7b51e6d7a040c1c643b00396cc5cf",
+    "objdump_sha256": "e5899ff5003f49056bced66bafb0702465c0b88d227a8ad61942c3e43e42f4e9",
+    "private_segment_bytes": 0,
+    "readobj_sha256": "15488ae1ec3c0a275b2ca31ede945a7d17a5f53fa1426df923a87e8db9b373e3",
+    "scratch_bytes": 0,
+    "sgpr_spills": 0,
+    "static_barrier_instruction_count": 9,
+    "static_instruction_count": 296,
+    "text_bytes": 1384,
+    "vgpr_spills": 0,
+    "wavefront_size": 32,
+    "workgroup_size": 256
+  },
+  "cpu_reference_gate": {
+    "all_candidate_vs_registered_control_exact": true,
+    "harness_sha256": "364adc3edf164d18808640728e0088782414969b8c297bfa1b38f5435e4eb5ae",
+    "hidden_size": 1024,
+    "kl_max": 1.3987572722891329e-05,
+    "kl_mean": 7.325394949147596e-06,
+    "oracle": "hipengine.kernels.cpu_reference.ops.rmsnorm over the unrounded BF16+BF16 F32 sum",
+    "path": "/tmp/laguna-add-rms-staged-repo-cpu-gate.json",
+    "rows": 10,
+    "sha256": "55cf017abf36d401b24c22750027fa72347528f2e8c54f42dcdf971856e1166a",
+    "stdout_sha256": "12bbfb99dd5714d172cdbe9a87001064ad410d1feb40eb94ec5e9d3c53738b03",
+    "thresholds": {
+      "kl_max": 0.05,
+      "top1_agreement": 0.9
+    },
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "admit separately registered exact gfx1100 primitive",
+    "canonical_h32_tok_s_unchanged": 61.99155148671624,
+    "default_changed": false,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit this primitive unit, then add a separate explicit/default-off c=1 runtime owner and require full-state plus 48-call/723-kernel tracing before clean measurement.",
+    "performance_claim": false,
+    "runtime_selected": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "hip": "7.2.53211-3d9ef42",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "default_changed": false,
+    "dispatch_delta_per_token": 0,
+    "fallback_key": [
+      "hip_gfx1100",
+      "add_rmsnorm",
+      "gguf_f32_weight",
+      "bf16_out"
+    ],
+    "kernel": "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel",
+    "persistent_allocation_delta_bytes": 0,
+    "registry_key": [
+      "hip_gfx1100",
+      "add_rmsnorm",
+      "gguf_f32_weight",
+      "bf16_out_staged_f32_local256"
+    ],
+    "scope": "separately registered gfx1100 primitive only; no runtime capability, plan, session, CLI, selector, allocation, workspace, or default change",
+    "source_files": {
+      "hipengine/kernels/hip_gfx1100/fused/__init__.py": "8dd6c5caace63756c93589862bcc0cfd03a0de5fdd27d41f11c3485d3eaac556",
+      "hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip": "b74cb13d5949e8c5a0e51b6a7d03503bc58aa65f4049935f4cc6e497a2281aac",
+      "hipengine/kernels/hip_gfx1100/fused/gguf_ops.py": "dda40f51ab5695a387148481bbd297f1c44e916d90f6f4c0c952ef09a6d5ba1a",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "14163706c556058bf2489ac89430c57cd9d30ec829aa28be631a7371f6e92fbe",
+      "tests/test_laguna_add_rmsnorm_staged_f32.py": "1f4d95b28fabe3a9bc10258737af60b2e4243bb768999417e2c8df2fa554f213"
+    },
+    "unvalidated_backend_exclusion": [
+      "hip_gfx1151",
+      "cuda_sm86",
+      "cpu_reference"
+    ],
+    "validation": {
+      "all_five_pointers_non_null": true,
+      "before_library_load": true,
+      "hidden_size_divisor": 256,
+      "hidden_size_max": 4096,
+      "hidden_size_min": 256,
+      "rows": 1,
+      "threads": 256
+    },
+    "workspace_delta_bytes": 0,
+    "wrapper": "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256"
+  },
+  "kind": "hipengine_laguna_q2_xl_add_rmsnorm_staged_f32_correctness",
+  "model": {
+    "hidden_size": 3072,
+    "id": "Poolside Laguna S 2.1",
+    "layers": 48,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "builder_sha256": "ebc826891adbb0ef0bc6b7ee3070c1f26a6ebafd8b71b5b0ee85b4ae87f86c24",
+    "kernel_catalog_sha256": "de07cb58813dbe8480df420ac6b823203d0dafae5d8521b9d6b549b70fbb4a10"
+  },
+  "red_green": {
+    "green": {
+      "cases": [
+        "bf16 finite/signed-zero/subnormal edges",
+        "signed zero",
+        "random production shape"
+      ],
+      "log_sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a",
+      "result": "7 passed on first implementation attempt",
+      "shapes": [
+        256,
+        1024,
+        3072,
+        4096
+      ],
+      "test_source_sha256": "1f4d95b28fabe3a9bc10258737af60b2e4243bb768999417e2c8df2fa554f213"
+    },
+    "red": {
+      "log_sha256": "0707bfc3617ea7ff8412877378694fbe06c793a30da722cac0a5e6f87e516e1b",
+      "result": "7 failed only on absent wrapper/key/package export and missing gfx1151 exclusion",
+      "test_source_sha256": "1f4d95b28fabe3a9bc10258737af60b2e4243bb768999417e2c8df2fa554f213"
+    }
+  },
+  "repository_all_actual_transfer": {
+    "cache_warmup_note": "The first attempt stopped before allocation/capture because the exact target-arch session cache key was absent. A non-profiled prebuild produced gguf_ops-07dc45f35c8b495f; the unchanged cache-only harness then ran once.",
+    "candidate_vs_control_exact_fields": 96,
+    "captured_boundaries": 48,
+    "control_replay_vs_capture_exact_fields": 96,
+    "event_delta_pct": -3.533614185809697,
+    "event_us_per_48_call_window": {
+      "candidate_staged": 311.1433219909668,
+      "control_local256": 322.54066467285156
+    },
+    "generated_id": 2825,
+    "harness_sha256": "3eba39110542d38ba533dfd2dcf2669cfd2476ae74fa301598e57209040fc36c",
+    "path": "/tmp/laguna-add-rms-staged-repo-actual.json",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "protocol": {
+      "calls_per_window": 48,
+      "complete_windows_per_sample": 100,
+      "order": "counterbalanced",
+      "repetitions": 15,
+      "warmups": 50
+    },
+    "session_library_sha256": "bae41135a8839eb63767ea84528cbc59f044a239bf8d36139703c74effd512f2",
+    "session_prebuild_stdout_sha256": "de86fbfb8f7ccd1799afb9731c589c792e0f031bd63ea72a317a705c33632647",
+    "sha256": "3dc6faa16654c5235fc7b0a877cd6f7ac5fe8e578a3979923d4d5a712d640c79",
+    "stdout_sha256": "ea181aa8185f0363b03afcf9a068d32ded388d629f53ab566daf5066b603b3a6",
+    "tracked_returned_to_baseline": true,
+    "wall_delta_pct": -3.6991117771633664,
+    "wall_us_per_48_call_window": {
+      "candidate_staged": 311.8203207850456,
+      "control_local256": 323.79796961322427
+    }
+  },
+  "repository_synthetic_transfer": {
+    "event_delta_pct": -2.743252875531732,
+    "event_us": {
+      "candidate_staged": 8.324055671691895,
+      "control_local256": 8.558846473693848
+    },
+    "harness_sha256": "fc1606129adff61ab3cb294bd2c89252f8d0732d8fae0b2acdd9c4a3f872f95a",
+    "outputs": {
+      "norm": {
+        "exact": true,
+        "mismatches": 0
+      },
+      "residual": {
+        "exact": true,
+        "mismatches": 0
+      }
+    },
+    "path": "/tmp/laguna-add-rms-staged-repo-synthetic.json",
+    "protocol": {
+      "launches_per_sample": 1000,
+      "order": "counterbalanced",
+      "repetitions": 15,
+      "warmups": 50
+    },
+    "sha256": "5dce040865c11141d1dfacb112d6d80231b1ed5a7a5cd6438780359f7c748434",
+    "shape": {
+      "eps": 1e-06,
+      "hidden_size": 3072,
+      "rows": 1
+    },
+    "stdout_sha256": "15360dc4f3c782f70ed76395e278301b502ddb61a16710ed4e5453ccf1386855",
+    "wall_delta_pct": -2.6861065491875613,
+    "wall_us": {
+      "candidate_staged": 8.336311904713511,
+      "control_local256": 8.566414937376976
+    }
+  },
+  "schema": 1,
+  "validation": {
+    "adjacent_filtered": {
+      "log_sha256": "55c823246eb78aa7433a1726dc60eafc4b2d57bcf5526ee5a7307de2bfb3651b",
+      "result": "65 passed excluding exactly the unchanged stale resolver call"
+    },
+    "adjacent_unfiltered": {
+      "log_sha256": "0e5626d71a96f7e04460b4a20e11f0fd3e39e06ddf1ac7e9ee18399258189353",
+      "result": "one known unchanged stale gfx1151 resolver test failed because its call omits three current keyword arguments",
+      "unchanged_runtime_sha256": "8def65616be56ddd7394d8069383326bb8f7b6bb60535ea3de1fc12a00138b9a",
+      "unchanged_test_sha256": "4456614c9b21d6b06d33090abec387389444bdd2fe2ce5b1d9ce7b98e05229a0"
+    },
+    "lineage": {
+      "result": "only already-catalogued unrelated drift",
+      "sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+    },
+    "ruff_and_compile": {
+      "passed": true,
+      "ruff_log_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    }
+  }
+}

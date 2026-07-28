@@ -1,0 +1,247 @@
+{
+  "actual_all_layer_gate": {
+    "all_frozen_rows_passed": true,
+    "candidate_vs_old_d11_event_pct": -4.827989815547418,
+    "candidate_vs_old_d11_wall_pct": -4.844294218476531,
+    "candidate_vs_split_event_pct": -23.257323849219624,
+    "candidate_vs_split_wall_pct": -23.225038884681716,
+    "command": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -u /tmp/bench_laguna_router_persistent_wave_top10_repo_actual.py",
+    "counter_self_rearmed": true,
+    "event_median_ms_per_47_layers": {
+      "control": 0.8208070373535157,
+      "persistent_old": 0.661864013671875,
+      "persistent_wave_top10": 0.6299092864990234
+    },
+    "fields_bit_exact": [
+      "logits",
+      "routing_scores",
+      "selection_scores",
+      "selected",
+      "routing",
+      "scaled"
+    ],
+    "layers_exact": 47,
+    "protocol": {
+      "counterbalanced": true,
+      "iterations": 100,
+      "layers_per_iteration": 47,
+      "repetitions": 15,
+      "warmups": 10
+    },
+    "wall_median_ms_per_47_layers": {
+      "control": 0.8210169081576169,
+      "persistent_old": 0.6624252395704389,
+      "persistent_wave_top10": 0.6303354119881988
+    }
+  },
+  "cached_profiler_smoke": {
+    "allocated_sgpr": [
+      128
+    ],
+    "allocated_vgpr": [
+      64
+    ],
+    "calls": 2,
+    "compiler_executed_under_profiler": false,
+    "counter_after_two_calls": 0,
+    "duration_ns": [
+      29320,
+      5720
+    ],
+    "dynamic_lds_bytes": [
+      1024
+    ],
+    "grid_size_x": [
+      65536
+    ],
+    "kernel_name": "(anonymous namespace)::laguna_router_topk_bf16_f32w_persistent_wave_top10_kernel(unsigned short const*, float const*, float const*, float*, float*, float*, long*, float*, float*, int*, long, long, long, float)",
+    "logits_finite": true,
+    "scratch_bytes": [
+      0
+    ],
+    "workgroup_size_x": [
+      256
+    ]
+  },
+  "candidate": {
+    "contract": "c=1, E256, top-10, BF16 hidden, F32 weight/correction, self-resetting i32 counter",
+    "default_changed": false,
+    "four_axis_key": [
+      "hip_gfx1100",
+      "laguna_router_topk",
+      "f32",
+      "bf16_hidden_correction_bias_persistent_wave_top10"
+    ],
+    "gfx1151_aliased": false,
+    "kernel": "laguna_router_topk_bf16_f32w_persistent_wave_top10_kernel",
+    "runtime_selected": false,
+    "split_fallback_changed": false,
+    "wrapper": "laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10"
+  },
+  "codegen": {
+    "isa": {
+      "ds_bpermute_b32": 218,
+      "instructions": 2776,
+      "s_barrier": 4,
+      "s_delay_alu": 335
+    },
+    "launch_dynamic_lds_bytes": 1024,
+    "limits_passed": true,
+    "metadata": {
+      "logical_sgpr": 42,
+      "logical_vgpr": 64,
+      "private_bytes": 0,
+      "sgpr_spills": 0,
+      "static_lds_bytes": 680,
+      "vgpr_spills": 0,
+      "wavefront": 32
+    }
+  },
+  "correctness_gate": {
+    "byte_exact": true,
+    "kl": 0.0,
+    "kl_max": 0.05,
+    "passed": true,
+    "top1_agreement": 1.0,
+    "top1_min": 0.9
+  },
+  "date": "2026-07-26",
+  "decision": {
+    "action": "admit separately registered primitive only",
+    "canonical_h32_tok_s_unchanged": 61.73234556191569,
+    "matched_vulkan_h32_tok_s": 64.41823922786776,
+    "next_action": "Commit this primitive, then add a separate default-off runtime selector/counter and run full-state plus 47-call/676-kernel cached trace gates.",
+    "runtime_integration_allowed_next": true,
+    "throughput_claim": false
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "compiler": "HIP 7.2 / AMD Clang 22 decode profile",
+    "device": "AMD Radeon Pro W7900",
+    "queue_policy": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_persistent_router_wave_top10_correctness",
+  "model": {
+    "experts": 256,
+    "hidden_size": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "sparse_layers": 47,
+    "top_k": 10
+  },
+  "performance_claim": false,
+  "provenance": {
+    "actual_harness_sha256": "2a3c8a04a6344bd1e944badca44ed363afc93d9455866eaddd8cb9f0ba2d4822",
+    "actual_raw_sha256": "8016e1b23ee336eaf479ad8c51dbd4706d0d31a8a5024f49d81eb1eae10371d6",
+    "actual_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "actual_stdout_sha256": "8016e1b23ee336eaf479ad8c51dbd4706d0d31a8a5024f49d81eb1eae10371d6",
+    "builder_sha256": "7fd8983ea05b4d8f1d845e5a74715b409d49b5b50879c0429829a64e411aceee",
+    "code_object_sha256": "0dfa0aad9a8be42ba7663253df19aee62e7399ea2d14084f800beed59bd0ffed",
+    "d11_source_commit": "c7466339703a711515f5e508321e2d3ac1a8d8b4",
+    "design_commit": "33f45560e",
+    "dirty_files_at_build": [
+      "WORKLOG.md",
+      "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-router-wave-top10-correctness.json",
+      "docs/KERNELS.md",
+      "docs/LAGUNA-decode.md",
+      "hipengine/kernels/hip_gfx1100/moe/__init__.py",
+      "hipengine/kernels/hip_gfx1100/moe/laguna_router.hip",
+      "hipengine/kernels/hip_gfx1100/moe/laguna_router.py",
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py",
+      "tests/test_laguna_router_persistent_gpu.py"
+    ],
+    "library_sha256": "fd35dbd5f64010229964750e9259641880f901e2fdfd9748c0d53ca37ef9b4f6",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "only already-catalogued unrelated drift",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "objdump_sha256": "2af69f42d7c84688b2d802abb0dd06a43d1093465a297ec4afa737566755f77c",
+    "profiler_harness_sha256": "8d5ec18c3a713087eff504da25297f504116746d3b5bdaaca7ad4484752916cb",
+    "profiler_stderr_sha256": "132074fd197b15545a56bc8a56d71942ccc21693de47322f9327667502820a1b",
+    "profiler_stdout_sha256": "1703409fde170dfd77d700dc4a1cc30d47f69f392aa63dbb53b238878196edcb",
+    "profiler_trace_sha256": "16d037c31570f95ad66a0cb7c13eab82cd73d4a3a5ce02a094c770f03c274426",
+    "readobj_sha256": "3989d85f7062542c060dc4bedca7ae7a1d36a085969961852926d586f654e60b",
+    "sources": [
+      {
+        "path": "hipengine/kernels/hip_gfx1100/moe/laguna_router.hip",
+        "sha256": "6e920c0328b61c92ac2b1c86027f542f7adb2e42feb784f052f6b9f3f94e9bd6"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/moe/laguna_router.py",
+        "sha256": "c3d88b5841c61e680aed7fa6f5d9e47daa9fa1e41d3479f662c7a2c1b6173ba0"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1100/moe/__init__.py",
+        "sha256": "007bd89fa9a3f5319fb62aeae0fc535f2141674674419d9001f9d9aecbd3c04f"
+      },
+      {
+        "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+        "sha256": "0da7bfdb0117f3a2da5df256e01fe2b2b828406d4216af3e80798ae9472f8411"
+      },
+      {
+        "path": "tests/test_laguna_router_persistent_gpu.py",
+        "sha256": "82d67c3f9df2364211ee78b60dd0badacec5f1f44bd52fb9a25d40e15f9a46fe"
+      },
+      {
+        "path": "tests/test_gfx1151_backend.py",
+        "sha256": "4456614c9b21d6b06d33090abec387389444bdd2fe2ce5b1d9ce7b98e05229a0"
+      }
+    ]
+  },
+  "red": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_laguna_router_persistent_gpu.py tests/test_gfx1151_backend.py -k 'persistent_wave_top10 or does_not_alias_unvalidated_native_spec_provider'",
+    "exit_code": 2,
+    "failure": "ImportError: frozen candidate wrapper absent",
+    "stdout_stderr_sha256": "fa350ad0aaaf6057256a495a2587f28dd492bcde803e9b88c6db4972c09d584d"
+  },
+  "schema": 1,
+  "source_revision": "33f45560e813a891a12a1f2abab1ff9bbc0980fe",
+  "status": "primitive_admitted_runtime_not_integrated",
+  "synthetic_correctness": {
+    "cases": [
+      {
+        "hidden_size": 17,
+        "name": "random"
+      },
+      {
+        "hidden_size": 3072,
+        "name": "production_projection"
+      },
+      {
+        "hidden_size": 17,
+        "name": "all_ties"
+      },
+      {
+        "hidden_size": 17,
+        "name": "finite_extremes"
+      },
+      {
+        "hidden_size": 17,
+        "name": "cross_wave_ties"
+      }
+    ],
+    "command": "HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_laguna_router_persistent_gpu.py tests/test_gfx1151_backend.py -k 'persistent_wave_top10 or does_not_alias_unvalidated_native_spec_provider'",
+    "consecutive_self_reset_calls_exact": true,
+    "fields_bit_exact_to_registered_split": [
+      "logits",
+      "routing_scores",
+      "selection_scores",
+      "selected_ids",
+      "routing_weights",
+      "scaled_routing_weights"
+    ],
+    "passed": 7,
+    "stdout_sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a"
+  },
+  "validation": {
+    "adjacent_command": "HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_laguna_router_gpu.py tests/test_laguna_router_persistent_gpu.py tests/test_laguna_moe_gpu.py tests/test_gfx1151_backend.py -k 'not gguf_fused_linear_matching_uses_resident_backend'",
+    "adjacent_passed": 42,
+    "adjacent_stdout_sha256": "45e00f2cc162072e381af0198bc09a54daa73544fa9cd47b4ed25760a061c4aa",
+    "known_unrelated_stale_failure": "tests/test_gfx1151_backend.py::test_gguf_fused_linear_matching_uses_resident_backend lacks three current _resolve_gguf_linear_pair_kind keyword arguments",
+    "known_unrelated_stale_stdout_sha256": "54ae365f0f350218646425fec0c5e691b94587d4aecf6ade76f67dfdc115a8a1",
+    "scoped_compileall_passed": true,
+    "scoped_ruff_passed": true
+  }
+}
