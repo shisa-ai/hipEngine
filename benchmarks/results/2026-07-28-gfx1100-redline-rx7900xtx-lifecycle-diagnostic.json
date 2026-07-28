@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_redline_cross_device_lifecycle_diagnostic",
+  "date": "2026-07-28",
+  "status": "gpu_context_loss_reproduced_variant",
+  "performance_claim": false,
+  "decision": {
+    "same_fault_class_as_w7900": true,
+    "same_exact_signature_or_row": false,
+    "enable_redline_by_default": false,
+    "reason": "The RX 7900 XTX also loses the GPU context in the one-process matrix, but later and with an HSA completion timeout rather than the W7900 address-zero message. The incomplete 172-row prefix cannot support a performance claim."
+  },
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "gfx_arch": "gfx1100",
+    "physical_device_index": 1,
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "card_model": "0x744c",
+    "device_revision": "0xc8",
+    "node_id": 2,
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "vulkan": "Mesa RADV 26.1.4-arch3.1"
+  },
+  "source": {
+    "hipengine_commit": "caa896b079c91934b15b88f89ed30c223adfc231",
+    "hipengine_dirty": false,
+    "redline_commit": "33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e",
+    "redline_dirty": false,
+    "hipfire_commit": "455ffb9dfd6a5712889b504737f88fbbe87d3efe",
+    "binary_sha256": "655141e2e5eef7a1a31f08a9da7b6fb19cdc114b61a79152331ac1ee0a72a291"
+  },
+  "protocol": {
+    "rocm_root": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "matrix": "hipengine_f2c",
+    "backends": [
+      "redline",
+      "hip",
+      "vulkan"
+    ],
+    "wave_policy": "radiowave_tuned",
+    "scheduler_profile": "default",
+    "redline_rmw": "radiowave-vmem",
+    "redline_queues": "auto",
+    "warmups": 3,
+    "samples": 7,
+    "timeout_seconds": 600,
+    "device_visibility": "ROCR_VISIBLE_DEVICES=1 remaps the physical RX 7900 XTX to HIP ordinal 0, so HIP_VISIBLE_DEVICES=0 is required after the ROCr filter.",
+    "command": "PATH=$ROCM_ROOT/bin:$ROCM_ROOT/lib/llvm/bin:$PATH LD_LIBRARY_PATH=$ROCM_ROOT/lib:$ROCM_ROOT/lib/llvm/lib:$LD_LIBRARY_PATH ROCR_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=0 HIPFIRE_BENCH_ARCH=gfx1100 /home/lhl/redline/target/hipengine-w7900-gfx1100/release/hipfire-6409-bench --matrix hipengine --backends redline,hip,vulkan --wave-policy radiowave --redline-queues auto --scheduler-profile default --redline-rmw radiowave-vmem --warmups 3 --samples 7 --out /tmp/hipengine-redline-rx7900xtx-20260728/hipfire-same-hsaco-therock/results.json"
+  },
+  "result": {
+    "process_exit_code": 0,
+    "elapsed_seconds": 33,
+    "attempted_rows": 240,
+    "fully_matched_rows_before_context_loss": 172,
+    "rejected_rows_after_context_loss": 68,
+    "first_172_rows_all_backends_correctness_pass": true,
+    "last_fully_matched_row": "independent_throughput/packed-dot/variant=q4_unsigned,groups=16,n=32768,body=64,wg=256;hip-wave=32",
+    "first_failure_row_index": 173,
+    "first_failure_row": "independent_throughput/packed-dot/variant=q6_zero,groups=16,n=32768,body=64,wg=64;hip-wave=32",
+    "first_failure_backend_order": [
+      "hip",
+      "vulkan",
+      "redline"
+    ],
+    "hip_passed_first_failure_row": true,
+    "vulkan_passed_first_failure_row": true,
+    "redline_first_error": "HSA signal 0x7f3de55f8b00 did not complete within 5s",
+    "next_row_errors": {
+      "vulkan": "logical device lost",
+      "redline": "HipError(719): hipMalloc: unspecified launch failure",
+      "hip": "HipError(719): hipMalloc: unspecified launch failure"
+    },
+    "stderr": "radv/amdgpu: The CS has been cancelled because the context is lost. This context is innocent.",
+    "explicit_address_zero_message_observed": false,
+    "kernel_log_available": false,
+    "kernel_log_reason": "dmesg read denied: Operation not permitted",
+    "fresh_process_post_fault_hip_smoke": {
+      "hip_init": "pass",
+      "device_count": 1,
+      "hip_malloc_4096": "pass",
+      "hip_device_synchronize": "pass",
+      "hip_free": "pass"
+    },
+    "interpretation": "GPU1 is not clean: it exhibits the same broad lifecycle/context-loss class as GPU0, but not the same exact manifestation. W7900 fails at row 49 serial q8 with an address-zero VM fault and abort; RX 7900 XTX reaches row 173 independent q6, times out on a Redline completion signal, then reports process-local HIP/Vulkan context loss while the harness continues."
+  },
+  "setup_failures_not_gpu_faults": [
+    {
+      "environment": "ROCR_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=1",
+      "result": "hipInit reports no ROCm-capable device",
+      "cause": "ROCr first remaps physical GPU1 to ordinal 0; applying HIP ordinal 1 filters out the sole visible device."
+    },
+    {
+      "environment": "correct visibility without pinned TheRock LD_LIBRARY_PATH",
+      "result": "system libhsa-runtime64 lacks hsa_amd_counted_queue_acquire",
+      "cause": "mixed ROCr stack; no GPU work launched"
+    }
+  ],
+  "comparison_to_w7900": {
+    "common": [
+      "same pinned binary and Redline/Hipfire source",
+      "same gfx1100 architecture and TheRock ROCm stack",
+      "one-process mixed HIP/Redline/Vulkan matrix eventually loses useful GPU context",
+      "failure appears after many passing correctness-gated rows in packed-dot"
+    ],
+    "different": [
+      "W7900 first fails at row 49 serial q8; RX 7900 XTX first fails at row 173 independent q6",
+      "W7900 reports address nil/page-not-present and aborts; RX 7900 XTX reports an HSA completion timeout then context loss and returns an incomplete artifact",
+      "exact root cause equivalence is not yet proven"
+    ]
+  },
+  "raw_evidence": {
+    "root": "/tmp/hipengine-redline-rx7900xtx-20260728/hipfire-same-hsaco-therock",
+    "results_sha256": "e2216c2f7e3f760b8999f2794010ac42755780da4a8e586de34b30ef447f05f1",
+    "stdout_sha256": "3b55f6c88a5aec494ccd49c2230e4a3b049be73faa9eab4ed5c5c841b6ffa133",
+    "stderr_sha256": "1e69d73660157f39723ff3ce50ca07397259bd5e081eb6cd63f3448ecc447577",
+    "status_sha256": "aad493c7373c62231c2b9fef028cc5b1505d345a711c14d1a904f1445653d2bd",
+    "rocm_smi_before_sha256": "f14bb97a8e6d2c0ffa9a7dabc55ea9ac8e14b1c5eef670a11fcdedfcd069daa3",
+    "rocm_smi_after_sha256": "beda52501a20694e1c8e6bba749be5d445764ef20771b6dc531911ea7eb47d99"
+  },
+  "related": {
+    "w7900_transport_artifact": "benchmarks/results/2026-07-28-gfx1100-redline-transport-spike.json",
+    "fault_dossier": "docs/REDLINE.md"
+  }
+}

@@ -243,7 +243,10 @@ stable 512-launch persistent soak, but it does not reproduce direct-ROCr
 create/drop churn. Redline remains default-off and unvendored until the
 lifecycle fault is minimized and fixed upstream and the broader model/server
 gates pass. See [`docs/REDLINE.md`](../../docs/REDLINE.md) for the complete
-fault/test ledger, lifetime audit, raw hashes, and next diagnostic matrix.
+fault/test ledger, lifetime audit, raw hashes, and next diagnostic matrix. The
+same binary also loses context on RX 7900 XTX after 172 passing rows (later and
+with an HSA timeout rather than W7900's address-zero message); that incomplete
+cross-device prefix is diagnostic only.
 
 ## Paired Runner Inventory
 

@@ -17,8 +17,10 @@ permitted to recover benchmark rows, but it is not an acceptable runtime fix.
   accepted: strict retained PM4 is bit-identical and improves decode
   92.812 -> 100.357 tok/s (+8.129%). A one-graph persistent soak passes 512 PM4
   launches with 0.095% range/median.
-- Package-default integration is blocked by a reproducible address-zero GPU
-  page fault in a long-lived direct-ROCr retained-IB process.
+- Package-default integration is blocked by cross-device lifecycle failure. The
+  W7900 reports an address-zero VM fault at row 49; the RX 7900 XTX reaches row
+  173, times out on a Redline HSA completion signal, and then loses its
+  HIP/Vulkan process context.
 - Ownership is not yet isolated between Redline's queue/IB lifetime,
   Hipfire's adapter lifetime, and ROCr. The available evidence points more
   strongly to create/drop churn than replay count or packed-dot math.
@@ -27,6 +29,7 @@ Machine-readable evidence:
 
 - [`benchmarks/results/2026-07-28-gfx1100-redline-transport-spike.json`](../benchmarks/results/2026-07-28-gfx1100-redline-transport-spike.json)
 - [`benchmarks/results/2026-07-28-gfx1100-redline-gguf-graph-spike.json`](../benchmarks/results/2026-07-28-gfx1100-redline-gguf-graph-spike.json)
+- [`benchmarks/results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`](../benchmarks/results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json)
 
 ## Pinned environment
 
@@ -39,6 +42,11 @@ Machine-readable evidence:
 | Hipfire bridge | `455ffb9dfd6a5712889b504737f88fbbe87d3efe` |
 | Same-HSACO binary | SHA-256 `655141e2e5eef7a1a31f08a9da7b6fb19cdc114b61a79152331ac1ee0a72a291` |
 | Common controls | `HIP_VISIBLE_DEVICES=0`, `ROCR_VISIBLE_DEVICES=0`, gfx1100, Radiowave-tuned wave policy, default scheduler, certified-VMEM RMW, auto Redline queues, 3 warmups, 7 samples |
+
+The primary table above describes GPU0. GPU1 is an AMD Radeon RX 7900 XTX,
+gfx1100, physical PCI `0000:10:00.0`, unique ID `0xcc4d02090dc9c3ff`, card
+model `0x744c`, revision `0xc8`. Its cross-device run uses the same binary and
+TheRock stack.
 
 The raw micro root is
 `/tmp/hipengine-redline-w7900-20260728`; the raw graph root is
@@ -124,6 +132,53 @@ mold) and the immediately repaired TheRock `ld.lld` truncation incident were
 host-toolchain failures. The native HIP graph smoke passed after exact package
 restoration and before Redline graph measurement; neither is evidence for this
 GPU VM fault.
+
+## RX 7900 XTX cross-device result
+
+GPU1 had no prior retained Redline lifecycle result. Run the same 240-row binary
+on the RX 7900 XTX with the pinned TheRock libraries. Because ROCr visibility
+remaps physical GPU1 to visible ordinal 0, the correct filter pair is
+`ROCR_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=0`; here `ROCM_ROOT` is
+`/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel`:
+
+```bash
+PATH="$ROCM_ROOT/bin:$ROCM_ROOT/lib/llvm/bin:$PATH" \
+LD_LIBRARY_PATH="$ROCM_ROOT/lib:$ROCM_ROOT/lib/llvm/lib:$LD_LIBRARY_PATH" \
+ROCR_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=0 HIPFIRE_BENCH_ARCH=gfx1100 \
+  /home/lhl/redline/target/hipengine-w7900-gfx1100/release/hipfire-6409-bench \
+  --matrix hipengine --backends redline,hip,vulkan \
+  --wave-policy radiowave --redline-queues auto \
+  --scheduler-profile default --redline-rmw radiowave-vmem \
+  --warmups 3 --samples 7 \
+  --out /tmp/hipengine-redline-rx7900xtx-20260728/hipfire-same-hsaco-therock/results.json
+```
+
+The answer is **yes, GPU1 also fails**, but not identically:
+
+- rows 1-172 pass correctness for all three backends;
+- row 173 is independent packed-dot q6-zero, wg64, backend order
+  `hip -> vulkan -> redline`; HIP and Vulkan pass before Redline times out on
+  HSA signal `0x7f3de55f8b00` after 5 seconds;
+- row 174 reports Vulkan device loss and HIP/Redline `HipError(719)`; the
+  remaining 68 rows are rejected;
+- stderr says RADV's command stream was cancelled because the context was lost
+  and labels its context innocent;
+- there is no userspace address-zero message. Kernel-log correlation is absent
+  because this user cannot read `dmesg`;
+- the harness returns 0 after recording errors, so its exit code is not a pass;
+- a fresh post-fault process successfully performs HIP init, 4-KiB allocation,
+  synchronization, and free on the RX 7900 XTX.
+
+The incomplete 172-row prefix has **no performance-claim status**. It confirms
+that broad lifecycle/context stability is not W7900-specific, while the
+different row and signature mean a shared exact root cause is not yet proven.
+Raw result/stdout/stderr hashes are `e2216c2f...05f1`, `3b55f6c8...a133`, and
+`1e69d736...577`.
+
+Two setup attempts launched no GPU work and are not faults: applying both
+visibility filters as ordinal 1 hides the ROCr-remapped sole device, and omitting
+the pinned `LD_LIBRARY_PATH` loads a system ROCr missing
+`hsa_amd_counted_queue_acquire`.
 
 ## Lifetime audit of the failing path
 
@@ -238,9 +293,10 @@ upstreamable stress reproducer and run the following reductions in order:
    PASID / VMID and the userspace resource-address ledger. Avoid privileged
    collection commands in the benchmark itself; record the host command and
    permissions separately.
-10. **Stress the fix.** Require at least 1,000 create/replay/drop cycles, the
-    original one-process 240-row matrix, the strict graph tests, and the Qwen
-    persistent soak before calling the lifecycle issue fixed.
+10. **Stress the fix on both discrete cards.** Require at least 1,000
+    create/replay/drop cycles, the original one-process 240-row matrix on W7900
+    and RX 7900 XTX, the strict graph tests, and the Qwen persistent soak before
+    calling the lifecycle issue fixed.
 
 The reproducer should use pinned Redline public APIs and live in hipEngine or an
 upstream PR branch; do not edit the external `/home/lhl/redline` checkout as
