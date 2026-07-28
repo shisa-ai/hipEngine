@@ -3420,6 +3420,16 @@ and retained at VGPR16/LDS512/scratch0; halving the physical waves is the
 failure. Exact one-output F16 owners below eight physical waves/output are now
 closed on gfx1151.
 
+An exact local256 two-output block is closed as well. Unlike wave8, it keeps
+all 256 logical K chains and all eight ordered wave sums for each output while
+sharing the activation load and one barrier across adjacent columns. Odd-width
+single/triple fixtures are byte-exact, including pairs that cross projection
+boundaries. The reduced output grid still loses on every natural role:
+QKV **4.42-4.73%**, gate **28.85-33.12%**, and output **6.14-10.43%**.
+Weighted family time moves **31.571 -> 33.466 ms/token (+6.00%)**. Remove the
+candidate. LD-2 now treats both eight waves/output and one workgroup/output as
+required; further exact screens must preserve the full grid.
+
 LD-3 was screened with measured production inputs, not a format assumption. A
 raw block32 Q8_0 side representation cuts resident source-F16
 bytes **46.875%**. At actual layer-0 full-attention and layer-47 SWA inputs,
@@ -3464,6 +3474,7 @@ Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
+[`rejected F16 exact block2 owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-block2-exact-rejected.json) ·
 [`candidate F16 Q8 real-input screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json) ·
 [`rejected F16 Q8 full-model screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json) ·
 [`rejected Q4 pack8 geometry screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-q4-pack8-decode-geometry-rejected.json) ·
@@ -3555,9 +3566,12 @@ closed unless a future design preserves the retained 288-wave concurrency.
    beats every control, trajectories match, and cached tracing records all
    **18,288** intended calls with zero fallback GEMVs. The exact local128
    follow-up is also closed at **+25.79%** weighted family time despite
-   unchanged VGPR/LDS/scratch. Continue toward the F16 family floor without
-   reducing below eight physical waves/output; do not repeat launch-only
-   local-size substitution.
+   unchanged VGPR/LDS/scratch. The exact local256 two-output block is closed at
+   **+6.00%** weighted family time: retaining eight waves/output is
+   insufficient if the output grid is halved. Continue toward the F16 family
+   floor while preserving both eight physical waves/output and one
+   workgroup/output; do not repeat launch-only local-size or multi-output
+   substitution.
 3. **LD-3 — decode-only compressed source-F16 representation.** Closed for
    plain block32 Q8_0/Q8_1, structural layer subsets, and one-sided residual
    weight/activation repair. The best fast all-layer row reaches
