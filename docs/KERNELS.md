@@ -1162,6 +1162,18 @@ natural capacity/shape through live 4000; GQA1 remains exact rollback above
 that LDS bound, and non-natural/peer paths are unchanged. Evidence:
 [`retained global GQA2 V-stage64`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-retained.json).
 
+The gfx1151 global copy-width successor pads the dynamic score/physical prefix
+to a 16-byte boundary and moves eight BF16 V values per transaction. The
+live4000 dynamic-LDS bound still fits below 64 KiB. QK, softmax, PV, gate, and
+store order are unchanged. Nine-sample live513/576/639 leaves improve
+**22.29%/25.82%/25.99%** byte-exactly. Seven p512/d128 pairs improve
+**18.794424 -> 19.066920 tok/s (+1.450%, -0.760 ms/token)** with exact
+trajectories/state. Tracing records 24 local256 blocks,
+VGPR32/SGPR128/static-LDS512/scratch32 and **141.09 -> 103.29 us (-26.79%)**.
+gfx1151 selects it through live4000; scalar GQA2 is rollback and GQA1 remains
+the fallback above that bound. Evidence:
+[`retained global vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

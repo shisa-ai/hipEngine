@@ -26,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
+    laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
 )
@@ -47,7 +48,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--burst", type=int, default=50)
     parser.add_argument(
         "--candidate",
-        choices=("fixedshape", "fused-gqa1", "fused-gqa2-vstage64"),
+        choices=(
+            "fixedshape",
+            "fused-gqa1",
+            "fused-gqa2-vstage64",
+            "fused-gqa2-vstage64-vec16",
+        ),
         default="fixedshape",
     )
     parser.add_argument("--compiler-version-file", type=Path)
@@ -202,7 +208,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 HEAD_DIM**-0.5,
             )
             control_kernel = (
-                laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans
+                laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans
+                if args.candidate == "fused-gqa2-vstage64-vec16"
+                else laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans
                 if args.candidate == "fused-gqa2-vstage64"
                 else laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans
                 if args.candidate.startswith("fused-")
@@ -212,6 +220,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fixedshape": laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
                 "fused-gqa1": laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
+                "fused-gqa2-vstage64-vec16": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
             }[args.candidate]
 
             def control() -> None:
