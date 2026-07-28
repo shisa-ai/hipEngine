@@ -1890,22 +1890,17 @@ should be boring.
 
 ## Laguna gfx1151 SWA exponential decode selector
 
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_gqa3_vstage64_vec16_direct_bounded_exp_fixed512` field,
-  `LagunaGGUFResidentSession.set_decode_swa_bounded_exp(...)`, and
-  `--compare-swa-bounded-exp`/`swa_decode_bounded_exp` benchmark lanes. It
-  changes only generic versus softmax-domain accurate range handling in
-  saturated 72Q/8KV/D128/SWA512 decode; the retained generic `expf`
-  direct-store body remains the rollback.
-- Promote only if counterbalanced p512/d128 wall is positive and the complete
-  exact trajectory/state gate passes. On promotion, make the gfx1151
-  capability select bounded-domain exponential and keep the false setter
-  through the current decode campaign. On rejection, remove the runtime
-  field/setter and both comparison lanes; keep the registered candidate
-  primitive only if it remains useful for numerical bisection.
+- Added 2026-07-29 as a default-off resident and category measurement seam for
+  raw-native and bounded range-reduction SWA exponentials. Both candidates
+  changed only the exponential in saturated 72Q/8KV/D128/SWA512 decode; the
+  retained compiler `expf` direct-store body was always the production path.
 - Raw native exponential is rejected: seven production pairs improve
   **19.130955 -> 19.309790 tok/s (+0.935%)**, but the complete category gate
   reaches max KL **1.452698** despite **566/576** top-1. Its runtime field,
-  setter, and comparison names are removed. The bounded-domain successor now
-  owns that temporary measurement seam; raw native exponential survives only
-  as a separately registered primitive/leaf bisection control.
+  setter, and comparison names were removed.
+- Bounded accurate-style range reduction is also rejected: seven production
+  pairs improve only **19.164777 -> 19.229973 tok/s (+0.340%)**, while the
+  complete category gate reaches max KL **1.888082** despite **558/576**
+  top-1. This satisfies the cleanup trigger: remove the runtime field, setter,
+  both comparison lanes, and the two dead registered primitive/leaf controls.
+  Production remains on compiler `expf`; no exponential rollback debt remains.
