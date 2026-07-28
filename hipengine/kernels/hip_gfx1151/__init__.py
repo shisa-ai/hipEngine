@@ -468,6 +468,18 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             for row_batch in (4, 8)
             for output_dtype in ("bf16", "f32")
         ),
+        # WPF-1B producer quantization and raw-Q5/Q6 MMQ32 are likewise
+        # gfx1100-only until an independent gfx1151 gate.
+        ("activation_quant", "q8_1_d4s4_f32", "bf16"),
+        *(
+            (
+                "linear",
+                quant,
+                f"mmq32_q8_1_d4s4_f32_bf16_{output_dtype}_out",
+            )
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+            for output_dtype in ("bf16", "f32")
+        ),
         # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
         (
             "linear",
