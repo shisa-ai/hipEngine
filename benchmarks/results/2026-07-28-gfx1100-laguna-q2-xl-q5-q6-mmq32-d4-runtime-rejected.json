@@ -1,0 +1,342 @@
+{
+  "created_at": "2026-07-28T10:48:15.121334+00:00",
+  "decision": {
+    "failed_checks": [
+      "complete_18_prompt_teacher_forced_max_kl_above_0.05"
+    ],
+    "next": "Screen finer producer scale grouping or bounded correction against the same complete quality lane.",
+    "pass": false,
+    "reason": "Performance-positive D4 producer quantization exceeds the mandatory KL bound; keep exact rowbatch8 production default.",
+    "runtime_default_changed": false
+  },
+  "four_k_or_longer_run_performed": false,
+  "full_state_m128": {
+    "candidate_repeat": {
+      "checks": {
+        "all_48_hidden_boundaries_exact": true,
+        "final_hidden_exact": true,
+        "kv_and_live_spans_exact": true,
+        "logits_exact": true,
+        "next_token_exact": true,
+        "next_token_logit_exact": true,
+        "position_exact": true,
+        "post_hidden_exact": true
+      },
+      "pass": true,
+      "seconds": 0.7929726939182729
+    },
+    "candidate_seconds": 0.7942759909201413,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf1b_mmq_full_state.py --output /tmp/laguna-wpf1b-mmq-full-state.json",
+    "control_seconds": 1.4271668940782547,
+    "finite_full_state": true,
+    "harness_sha256": "4147d0aa5bd2bdb69bd264ee1c2a6b4c5dbc63eb6fee4ea453766e77f0108887",
+    "hidden_depth_max_abs_max": 5.5625,
+    "kl_divergence": 0.03478922247690598,
+    "pass": true,
+    "raw_json_sha256": "33084c30c01b3d114d5771af848fdcae98925a67f41210619301fe0cb04bb546",
+    "rows": 128,
+    "speedup": 1.7968148482304382,
+    "top1_agreement": true,
+    "tracked_returned_to_baseline": true
+  },
+  "implementation": {
+    "fallback": "retained exact rowbatch8",
+    "producer_layout": "K128 with four K32 FP32 scales/sums plus 128 int8 values (D4S4)",
+    "runner_sha256": "8d9d805a6290a68d69985ea30916c7e7b2181fed1c72b14514330d9b1c9498e0",
+    "runtime_sha256": "42ca1334522398a141ff7e725a0d7f4678e530024486914aefc075aac79cf7aa",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.hip",
+    "source_sha256": "fb9c22d4efc82c64556875c13ecc6974ed1fe2a20ba6d30d7889f0d88427cd62",
+    "wrapper_sha256": "22df01ddb72a895ed18d8d3d103e13e735be19060e0655fe00ca506d9ed41667"
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_q5_q6_mmq32_d4_runtime_rejection",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "objective": "WPF-1B producer-row D4 Q8_1 raw-Q5_K/Q6_K MMQ32 runtime admission",
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "target_arch": "gfx1100",
+    "visible_device": 0
+  },
+  "quality_gate": {
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.07581876326699316,
+        "steps": 192,
+        "top1_agreement": 0.9947916666666666,
+        "top1_matches": 191
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 0.2043020373315874,
+        "steps": 128,
+        "top1_agreement": 0.9609375,
+        "top1_matches": 123
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.6243038772400622,
+        "steps": 128,
+        "top1_agreement": 1.0,
+        "top1_matches": 128
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 0.21742553219423952,
+        "steps": 128,
+        "top1_agreement": 0.9453125,
+        "top1_matches": 121
+      }
+    },
+    "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 /tmp/run_laguna_wpf1b_mmq_teacher_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpf1b_raw_k_mmq --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf1b-mmq-teacher-quality.json",
+    "free_running_exact_pairs": 30,
+    "free_running_pairs": 54,
+    "harness_sha256": "49699b5f6997f01c29ce167058902a513253b39edbc51ad23de576a843e3e77f",
+    "max_kl_divergence": 0.6243038772400622,
+    "natural_prompt_aggregate": {
+      "raw_k_mmq": {
+        "prefill_tok_s": 154.72363067294452,
+        "ttft_median_seconds": 0.5381723380414769
+      },
+      "rowbatch8": {
+        "prefill_tok_s": 87.6763301204209,
+        "ttft_median_seconds": 0.9542289045639336
+      }
+    },
+    "pass": false,
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 0.0001341192856756998,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "prompts": [
+      {
+        "category": "code",
+        "max_kl_divergence": 0.03896459797247909,
+        "prompt_id": "code_merge_intervals",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.027618546753834867,
+        "prompt_id": "code_topological_sort",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.02984715173091039,
+        "prompt_id": "code_lru_cache",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.0165372324466883,
+        "prompt_id": "code_markdown_table",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.03950134951953961,
+        "prompt_id": "general_en_plan",
+        "steps": 32,
+        "top1_matches": 31
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.05755289107204556,
+        "prompt_id": "general_en_explain",
+        "steps": 32,
+        "top1_matches": 31
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.05747560564955697,
+        "prompt_id": "general_ja_plan",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.40050501451179166,
+        "prompt_id": "general_ja_explain",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.13726442766661212,
+        "prompt_id": "mixed_ja_en_translate",
+        "steps": 32,
+        "top1_matches": 31
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.10914932513443137,
+        "prompt_id": "mixed_ja_en_review",
+        "steps": 32,
+        "top1_matches": 31
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.07581876326699316,
+        "prompt_id": "heldout_code_rate_limiter",
+        "steps": 32,
+        "top1_matches": 31
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.045260633096332326,
+        "prompt_id": "heldout_code_interval_schedule",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.05532190246458021,
+        "prompt_id": "heldout_general_en_incident",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.2043020373315874,
+        "prompt_id": "heldout_general_en_quant",
+        "steps": 32,
+        "top1_matches": 29
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.6243038772400622,
+        "prompt_id": "heldout_general_ja_migration",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.3142863184082779,
+        "prompt_id": "heldout_general_ja_speculative",
+        "steps": 32,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.21742553219423952,
+        "prompt_id": "heldout_mixed_summary",
+        "steps": 32,
+        "top1_matches": 30
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.15192046254722397,
+        "prompt_id": "heldout_mixed_review",
+        "steps": 32,
+        "top1_matches": 29
+      }
+    ],
+    "raw_json_sha256": "93bced2717af62a5c6f2556686611a9c6b82e854184dd6175064856b1425c66a",
+    "same_mode_repeat_deterministic": true,
+    "stderr_sha256": "d2383d82c344fd29334a73748d82e57c5f69631eebe90361cfbc8176aaae6068",
+    "steps": 576,
+    "top1_agreement": 0.9774305555555556,
+    "top1_matches": 563,
+    "tracked_returned_to_baseline": true
+  },
+  "revision": "66ffb8b71317072a670d6e224f71b1b2fd1ec409",
+  "schema": 1,
+  "short_shape_ab": {
+    "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 128 --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --compare-raw-k-prefill-mmq --output /tmp/laguna-wpf1b-mmq-clean-512-1k.json",
+    "correctness": {
+      "boundary_fixture_evidence": [
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
+        "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+        "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+        "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+      ],
+      "control_candidate_generated_ids_match": true,
+      "control_candidate_next_tokens_match": true,
+      "final_positions_exact": true,
+      "pass": true,
+      "repeat_generated_ids_deterministic": true,
+      "repeat_next_token_deterministic": true,
+      "tracked_returned_to_baseline": true
+    },
+    "lengths": {
+      "1024": {
+        "candidate_median_seconds": 8.818778790999204,
+        "candidate_median_tok_s": 116.11585053535248,
+        "candidate_samples_seconds": [
+          8.697792204096913,
+          8.818778790999204,
+          8.854791334131733
+        ],
+        "control_median_seconds": 13.878921962808818,
+        "control_median_tok_s": 73.78094658533283,
+        "control_samples_seconds": [
+          13.750925618922338,
+          13.878921962808818,
+          13.911512496182695
+        ],
+        "next_token_ids": [
+          95,
+          95,
+          95
+        ],
+        "speedup": 1.5737918244387983,
+        "throughput_delta_percent": 57.37918244387983
+      },
+      "512": {
+        "candidate_median_seconds": 3.9514702858868986,
+        "candidate_median_tok_s": 129.57202331209805,
+        "candidate_samples_seconds": [
+          3.8639416960068047,
+          3.9602813199162483,
+          3.9514702858868986
+        ],
+        "control_median_seconds": 6.471277717966586,
+        "control_median_tok_s": 79.11884210725565,
+        "control_samples_seconds": [
+          6.303481803974137,
+          6.471277717966586,
+          6.477941632037982
+        ],
+        "next_token_ids": [
+          2930,
+          2930,
+          2930
+        ],
+        "speedup": 1.6376885690066938,
+        "throughput_delta_percent": 63.76885690066938
+      }
+    },
+    "pass": true,
+    "raw_json_sha256": "389a959ea4c1197f02abafe3086f9a3b1026af2cbece81ca712bb04ee9fd5e60",
+    "stderr_sha256": "d27a35dcfe8c0bc2ada1a1f36b837087ca13c4ba63ba2a378d774ae24d033fa8",
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 39921518244,
+      "peak_allocations": 1168,
+      "total_allocated_bytes": 39921518244,
+      "total_freed_bytes": 39921518244
+    }
+  },
+  "status": "rejected_quality_default_unchanged"
+}
