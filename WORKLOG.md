@@ -188289,3 +188289,21 @@ Vulkan local sizes verbatim will close the measured gap.
   workgroup limit. GQA1 remains registered rollback above that bound;
   non-natural capacities/shapes and peer backends are unchanged. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-retained.json`.
+
+## 2026-07-29 03:00 JST — Publish global GQA2 V-stage64 production
+
+- On tracked-clean `ce6d178c4`, three selector-unset p512/d128 runs reach
+  **18.219717/18.230064/18.235007 tok/s**, median **18.230064 tok/s /
+  54.854 ms/token**. This is **+1.129% / -0.619 ms/token** versus prior clean
+  V-stage64 SWA production at 18.026501 tok/s and **+58.983%** versus the
+  11.466687 tok/s sprint start.
+- Generated hash `94f803...bda32`, next token 2930, final token 74107,
+  position 638, deterministic repeats, and allocation lifecycle all pass.
+  Exact command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-gqa2-vstage64-production-clean.json`.
+  Raw SHA-256 is `fa4d1712...52680`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-production.json`.
+- Re-profile the clean default before selecting the next exact attention
+  screen. The immediate bounded candidate remains vectorized SWA V staging;
+  compare family and wall deltas rather than assuming scalar copy is still
+  the dominant residual.

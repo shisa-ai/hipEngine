@@ -3571,7 +3571,8 @@ Exact fused-GQA3/local384 SWA reaches **17.140 tok/s**. Reusing each staged
 64-slot V tile across its three owned query heads reaches **18.032 tok/s** in
 seven exact pairs and **18.027 tok/s** in clean production. Exact global GQA2
 with the same staged-V reuse then reaches **18.237 tok/s** in seven exact
-pairs. The next bounded milestone is **20 tok/s**; same-GGUF Vulkan at
+pairs and **18.230 tok/s** in clean production. The next bounded milestone is
+**20 tok/s**; same-GGUF Vulkan at
 **23.348 tok/s** remains the directional comparator target.
 
 The pre-global-GQA2 clean post-V-stage census records **816
@@ -3595,8 +3596,10 @@ about **61.8%** of the remaining wall gap. Reaching the existing **3.0-ms**
 attention checkpoint models about **20.10 tok/s**. Next screen the exact
 global GQA2 body with the V reuse it previously lacked. That screen is now
 retained: the leaf wins **9.16-12.39%** and all seven p512/d128 pairs improve
-**18.034298 -> 18.237090 tok/s (+1.124%)**. Re-profile clean production, then
-vectorize the SWA staging loads.
+**18.034298 -> 18.237090 tok/s (+1.124%)**. The tracked-clean selector then
+reaches **18.230064 tok/s**, **+1.129%** over the prior clean 18.026501 and
+**+58.983%** over the 11.466687 sprint start. Re-profile the retained global
+production, then vectorize the SWA staging loads.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
@@ -3840,7 +3843,10 @@ wins and the full 128-token trajectory/state is exact. Tracing names
 `<2,64>` at local256/VGPR32/SGPR128/static-LDS512/scratch0, with 22,540-24,052
 bytes of launch-time dynamic LDS over the measured live range. gfx1151
 promotes GQA2 V-stage64 only at natural capacity/shape through live 4000;
-GQA1 remains rollback above that LDS bound.
+GQA1 remains rollback above that LDS bound. Three clean selector-unset
+p512/d128 runs measure **18.219717/18.230064/18.235007 tok/s**, median
+**18.230064**, with identical generated IDs, final state, and allocation
+lifecycle.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
