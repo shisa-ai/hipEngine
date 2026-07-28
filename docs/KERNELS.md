@@ -477,10 +477,16 @@ The weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms**;
 It compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills; RB32 is
 VGPR73/SGPR107/LDS1024/private0 with 14 Q5 / 5 Q6 SGPR spills. Cached tracing
 names all eight quant/dtype/geometry instantiations at plausible 13.52-23.64 us
-on the tail fixture and spawns no compiler. The primitive is admitted for
-registry-driven runtime integration; RB32 remains the production/default owner
-until complete-state and rotating 512/1K gates pass. Evidence:
-[`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json).
+on the tail fixture and spawns no compiler. gfx1100 now exports `(4,8)` as the
+package variant for divisible-by-four full RB32 slabs; explicit `rowbatch`,
+smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks. A
+no-override natural M512 gate is KL0/bit-exact through all 48 hidden boundaries
+and full K/V/`KVLiveSpans`. Same-weight rotating 512/1K promotion improves
+**131.491/124.949 -> 169.046/157.420 tok/s (+28.561%/+25.987%)**, with every
+pair/repeat exact and lifecycle recovery. The canonical topline still requires
+clean selector-unset publication and cached all-family tracing. Evidence:
+[`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) ·
+[`WPF-1T default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json).
 
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its

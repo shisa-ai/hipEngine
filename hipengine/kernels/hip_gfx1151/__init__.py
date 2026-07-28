@@ -295,10 +295,13 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 # Same-commit production-protocol 128K A/B rejects predecessor two-wave
 # (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
-# WPF-1 is a W7900 raw-Q5/Q6 candidate. gfx1151 retains its independently
-# admitted Q4_K_M/T16 matrix schedules and must not inherit this selector.
+# WPF-1/WPF-1T are W7900 raw-Q5/Q6 candidates. gfx1151 retains its
+# independently admitted Q4_K_M/T16 matrix schedules and must not inherit their
+# rowbatch or output-column selectors.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
 GGUF_RAW_K_PREFILL_ROWBATCH = 0
+GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
+GGUF_RAW_K_PREFILL_VARIANT = "rowbatch"
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -466,6 +469,16 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
             for quant in ("gguf_q5_k", "gguf_q6_k")
             for row_batch in (4, 8, 16, 32)
+            for output_dtype in ("bf16", "f32")
+        ),
+        *(
+            (
+                "linear",
+                quant,
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
+            )
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+            for col_tile, row_batch in ((2, 16), (4, 8))
             for output_dtype in ("bf16", "f32")
         ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
@@ -662,8 +675,10 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+    "GGUF_RAW_K_PREFILL_VARIANT",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",

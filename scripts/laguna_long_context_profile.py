@@ -475,6 +475,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         )
         active_matrix_rows = owner.prefill_chunk_size
+        active_raw_k_prefill_variant = owner.raw_k_prefill_variant
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
         active_q6_qmicro_planar = owner.q6_qmicro_planar
@@ -574,6 +575,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "repetition": repetition,
                         "output_tokens": output_tokens,
                         "raw_k_prefill_rowbatch": owner.raw_k_prefill_rowbatch,
+                        "raw_k_prefill_variant": owner.raw_k_prefill_variant,
                         "selected_gate_up_mode": owner.selected_gate_up_mode,
                         "selected_down_mode": owner.selected_down_mode,
                     }
@@ -758,6 +760,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_raw_k_prefill_rowbatch
             ),
             "raw_k_prefill_rowbatch_requested": args.raw_k_prefill_rowbatch,
+            "raw_k_prefill_variant_resolved": active_raw_k_prefill_variant,
             "raw_k_prefill_rowbatch_control": raw_k_control,
             "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
             "compare_grouped_exact_iq": args.compare_grouped_exact_iq,

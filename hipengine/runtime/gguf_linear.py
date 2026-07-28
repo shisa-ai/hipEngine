@@ -133,9 +133,14 @@ _RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset({"gguf_q5_k", "gguf_q6_k"})
 _RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
 )
+_RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile4_rowbatch8"})
 _raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
     "raw_k_prefill_rowbatch",
     default=0,
+)
+_raw_k_prefill_variant: ContextVar[str] = ContextVar(
+    "raw_k_prefill_variant",
+    default="rowbatch",
 )
 
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
@@ -643,6 +648,28 @@ def raw_k_prefill_rowbatch_session(row_batch: int) -> Iterator[None]:
         _raw_k_prefill_rowbatch.reset(token)
 
 
+def raw_k_prefill_variant() -> str:
+    """Return the execution owner's exact raw-Q5/Q6 prefill geometry."""
+
+    return str(_raw_k_prefill_variant.get())
+
+
+@contextlib.contextmanager
+def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
+    """Temporarily select output tiling or the explicit rowbatch rollback."""
+
+    selected = str(variant).strip().lower()
+    if selected not in _RAW_K_PREFILL_VARIANTS:
+        raise ValueError(
+            "raw-K prefill variant must be 'rowbatch' or 'coltile4_rowbatch8'"
+        )
+    token = _raw_k_prefill_variant.set(selected)
+    try:
+        yield
+    finally:
+        _raw_k_prefill_variant.reset(token)
+
+
 def _rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -687,12 +714,19 @@ def _raw_k_prefill_rowbatch_dispatch(
     *,
     rows: int,
     in_features: int,
+    out_features: int,
     row_batch: int,
+    variant: str,
 ) -> GGUFLinearDispatch:
-    """Select exact fixed-grid-Y Q5/Q6 row reuse for rows above small-B."""
+    """Select exact fixed-grid-Y Q5/Q6 row/output reuse above small-B."""
 
     selected = int(row_batch)
-    if selected not in (_RAW_K_PREFILL_ROWBATCHES - {0}) or rows <= _ROWTILE_MAX_ROWS:
+    geometry = str(variant)
+    if (
+        selected not in (_RAW_K_PREFILL_ROWBATCHES - {0})
+        or geometry not in _RAW_K_PREFILL_VARIANTS
+        or rows <= _ROWTILE_MAX_ROWS
+    ):
         return dispatch
     if (
         not backend_package_capability(
@@ -707,12 +741,24 @@ def _raw_k_prefill_rowbatch_dispatch(
     ):
         return dispatch
     output_variant = dispatch.key.variant[len("prefill_") :]
+    selected_variant = f"rowbatch{selected}_{output_variant}"
+    if (
+        geometry == "coltile4_rowbatch8"
+        and selected == 32
+        and out_features % 4 == 0
+        and backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+            False,
+        )
+    ):
+        selected_variant = f"coltile4_rowbatch8_{output_variant}"
     return GGUFLinearDispatch(
         KernelKey(
             dispatch.key.backend,
             dispatch.key.layer,
             dispatch.key.quant,
-            f"rowbatch{selected}_{output_variant}",
+            selected_variant,
         ),
         "raw",
     )
@@ -808,6 +854,7 @@ def launch_gguf_linear(
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     raw_k_rowbatch = raw_k_prefill_rowbatch()
+    raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
     cache_key = (
         generation(),
@@ -823,6 +870,7 @@ def launch_gguf_linear(
         use_wmma,
         f_rowtile,
         raw_k_rowbatch,
+        raw_k_variant,
         bool(use_q4_pack8_wmma),
         registered_variant,
         bool(_native_batch_decode_session_enabled),
@@ -875,7 +923,9 @@ def launch_gguf_linear(
             dispatch,
             rows=rows,
             in_features=in_features,
+            out_features=out_features,
             row_batch=raw_k_rowbatch,
+            variant=raw_k_variant,
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
@@ -2121,6 +2171,8 @@ __all__ = [
     "q8_mmq_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",
+    "raw_k_prefill_variant",
+    "raw_k_prefill_variant_session",
     "resolve_gguf_linear_dispatch",
     "resolve_q8_mmq_prefill_policy",
     "set_wmma_prefill_enabled",
