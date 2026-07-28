@@ -1990,10 +1990,12 @@ should be boring.
   **78.814 -> 77.265 us (-1.97%)**, and all seven resident p512/d128 pairs
   **19.506557 -> 19.523370 tok/s (+0.0862%, -0.0441 ms/token)** with complete
   sample separation and identical trajectories/state/lifecycle.
-- Keep the explicit false rollback through clean production publication and
-  the next attention checkpoint. Then collapse the positive selector into the
-  qualified gfx1151 mixed32 dispatch while retaining registered exp8 for
-  compiler/codegen bisection.
+- Clean selector-unset production is published at **19.530105 tok/s**
+  (**+0.0738% / -0.0378 ms/token** over clean exp8), with exact repeated
+  state. Keep the explicit false rollback through the next attention
+  checkpoint. Then collapse the positive selector into the qualified gfx1151
+  mixed32 dispatch while retaining registered exp8 for compiler/codegen
+  bisection.
 
 ## Laguna gfx1151 exact global exp-domain selector
 

@@ -4139,6 +4139,13 @@ beats every control with exact trajectory/state/lifecycle. gfx1151 selects
 exp16 only inside the qualified exp8 route. Evidence:
 [`retained mixed32 exp16`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-retained.json).
 
+Three tracked-clean selector-unset runs confirm
+**19.514684/19.538643/19.530105 tok/s**, median **19.530105**. That is
+**+0.0738% / -0.0378 ms/token** versus clean exp8 and **+70.320%** over the
+11.466687 sprint start. The exp16 capability is active without a comparison
+selector; IDs, state, and lifecycle remain exact. Evidence:
+[`clean mixed32 exp16 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-production.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
