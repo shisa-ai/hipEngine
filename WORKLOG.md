@@ -188868,3 +188868,30 @@ Vulkan local sizes verbatim will close the measured gap.
   revision `04b2b72c`; use it for the source-level comparator audit.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-mixed32-wall-reprofile.json`.
+
+## 2026-07-29 07:12 JST — Reject exact mixed32 four-way P-cache
+
+- Review clean llama.cpp Vulkan `c0bc8591e` against the current mixed32 body.
+  Vulkan's cooperative FlashAttention writes one probability tile to LDS
+  `Psh`, then reuses it in tensorized PV. hipEngine instead replays the same
+  exact softmax in four dimension waves per query.
+- Test the exact scalar transfer: compute maximum once, distribute independent
+  `expf` evaluations across four waves, overwrite the dead LDS score plane
+  with probabilities, replay the denominator once in original slot order, and
+  reuse those weights across all four original PV chains. RED is the missing
+  wrapper; GREEN passes positions 512-519 plus explicit eviction with F32/BF16
+  byte identity.
+- Nine unprofiled event pairs reject the candidate
+  **0.091439 -> 0.097556 ms/layer (+6.690%)**. Cached tracing confirms the
+  same 32 local384 blocks, VGPR104/SGPR128/scratch0; LDS rounds
+  **24,576 -> 25,088 B**. Profiler perturbation reverses timing direction, so
+  use the trace only as resource/name evidence and the unprofiled event gate
+  as the decision metric.
+- The result bounds the Vulkan lesson: `Psh` pays only when tensorized PV
+  amortizes it. On the scalar exact body, three new block barriers and LDS
+  producer/consumer traffic cost more than redundant wave-local softmax,
+  which already overlaps across SIMD dimension waves. Remove every candidate
+  kernel/wrapper/registry/test/harness seam before a resident-model run;
+  production remains **19.368763 tok/s**. The restored cached oracle passes.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pcache4-rejected.json`.

@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T07:11:56+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed32_pcache4_screen",
+  "status": "rejected_removed",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "5c2ac795962dfbec73291ee9ccc35162b4210f93",
+    "candidate_uncommitted": true,
+    "candidate_code_removed": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "llamacpp_reference_clean": true,
+    "llamacpp_reference_paths": [
+      "ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_split_k_reduce.comp",
+      "ggml/src/ggml-vulkan/ggml-vulkan.cpp"
+    ]
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_shape": {
+    "attention": "72Q/8KV/D128/SWA512",
+    "control": "exact mixed32 32-block 2+2+2+3 owner",
+    "candidate": "same mixed32 owner with four-way shared probability caching"
+  },
+  "comparator_review": {
+    "vulkan_geometry": "subgroup64 KHR cooperative-matrix Br16/Bc64/local256 with eight K64 splits per KV head and a bounded-state merge",
+    "vulkan_probability_reuse": "flash_attn_cm1.comp stores one probability tile in LDS Psh and reuses it in cooperative PV",
+    "hipengine_control": "four dimension waves per query independently replay the same exact maximum, compiler expf, and ordered denominator before scalar PV",
+    "candidate_premise": "compute maximum once; divide independent expf evaluations across four waves; overwrite the dead LDS score plane with probabilities; replay the denominator once in original slot order; reuse probabilities across all four exact PV waves"
+  },
+  "correctness": {
+    "red": "the wrapped/evicted test failed to import the absent P-cache4 wrapper",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "positions": "512-519 with explicit eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0,
+    "arithmetic": "QK bits, maximum order, each compiler-expf input, denominator slot order, per-dimension PV FMA order, divide, gate, and stores match control"
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-pcache4-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-mixed32-pcache4-leaf.json",
+    "raw_sha256": "ef0ebb736c25d8f081d45e4628c2ab3bb8c68dc7836eb9bba44019e17505bc76",
+    "control_median_ms": 0.09143912315368652,
+    "candidate_median_ms": 0.09755614280700683,
+    "latency_change_percent": 6.689718188831617,
+    "decision_metric": true
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-mixed32-pcache4-trace.Ym3ZzG --output-file pcache4 -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-pcache4-vstage64-vec16-direct-assume-exp --samples 3 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-mixed32-pcache4-trace.Ym3ZzG/leaf.json",
+    "raw_sha256": "04ffc9b0d51a8ae2f3daf5d81c48bc1e719761e955824ccecbfea6dd53b64c2f",
+    "timing_is_resource_diagnostic_only": true,
+    "timing_reason": "profiler perturbation reversed the unprofiled event direction",
+    "control": {
+      "grid_blocks": 32,
+      "local_size": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid_blocks": 32,
+      "local_size": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "compiler_invocations_under_profiler": 0
+  },
+  "decision": {
+    "retained": false,
+    "resident_model_gate_run": false,
+    "production_unchanged_tok_s": 19.368763204227175,
+    "reason": "The exact local probability cache adds three full-workgroup barriers and LDS producer/consumer traffic; duplicate wave-local softmax already overlaps across the four SIMD dimension waves, so removing redundant arithmetic does not reduce the unprofiled critical path.",
+    "do_not_retry": "Do not materialize an exact scalar probability tile in LDS without also changing PV to a tensorized consumer that amortizes the synchronization.",
+    "next_distinct_surface": "A useful Vulkan transfer must couple the probability tile to cooperative/tensorized PV or find a no-block-barrier scalar ownership change."
+  },
+  "post_removal_validation": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "result": "1 passed",
+    "tracked_production_code_unchanged": true
+  }
+}
