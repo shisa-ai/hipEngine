@@ -188552,3 +188552,21 @@ Vulkan local sizes verbatim will close the measured gap.
   prompt expansion. GREEN is **56 passed** across the focused owner, setter,
   long-context harness, and complete category-harness test files. Production
   remains exact/default-off pending counterbalanced wall and category evidence.
+
+## 2026-07-29 05:00 JST — Reject raw native exponential on category KL
+
+- Seven tracked-clean p512/d128 pairs expose a repeatable wall opportunity:
+  exact/native-exp medians are **19.130955/19.309790 tok/s (+0.935%)**, all
+  seven candidate samples beat all seven controls, and each mode repeats
+  deterministically. Generated trajectories differ, so the generic exact A/B
+  harness correctly refuses to call this a production pass.
+- The intended saturated-512 category gate runs all 18 canonical/held-out
+  prompts, 108 counterbalanced free-running lanes, and **576** teacher-forced
+  steps. Native exponential retains **566/576 top-1 (98.26%)** and finite
+  logits, but max KL is **1.452698**; every category exceeds the 0.05 budget.
+- Reject raw native exponential and leave production on accurate `expf`.
+  The retained performance signal justifies one bounded-domain successor:
+  reproduce accurate range reduction but remove generic positive-overflow,
+  deep-underflow, and NaN handling that shifted softmax scores cannot reach.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-rejected.json`.

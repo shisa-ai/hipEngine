@@ -1902,3 +1902,9 @@ should be boring.
   the false setter through the current decode campaign. On rejection, remove
   the runtime field/setter and both comparison lanes; keep the registered
   candidate primitive only if it remains useful for numerical bisection.
+- Raw native exponential is rejected: seven production pairs improve
+  **19.130955 -> 19.309790 tok/s (+0.935%)**, but the complete category gate
+  reaches max KL **1.452698** despite **566/576** top-1. Keep the selector and
+  saturated category lane only through the immediate bounded-domain
+  exponential successor screen, then satisfy the rejection cleanup trigger;
+  they are now measurement infrastructure, not promotable semantics.
