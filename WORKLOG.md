@@ -189004,3 +189004,16 @@ Vulkan local sizes verbatim will close the measured gap.
   Ruff is not installed in the current environment; py_compile passes.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-retained.json`.
+
+## 2026-07-29 08:15 JST — Publish clean mixed32 exp16 production
+
+- Three tracked-clean, require-cached, selector-unset p512/d128 runs on
+  `970bab37d` measure **19.514684/19.538643/19.530105 tok/s**, median
+  **19.530105**. The exp16 capability is active without a comparison selector
+  and improves **0.0738% / 0.0378 ms/token** over clean exp8.
+- All runs preserve next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is now **+70.320%** over the
+  11.466687 sprint start. Raw artifact SHA-256 is
+  `e1f6584c...069cb5b`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-production.json`.

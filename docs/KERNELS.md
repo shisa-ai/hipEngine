@@ -1427,6 +1427,13 @@ sample separation and exact trajectories/state/lifecycle. gfx1151 selects
 exp16 only inside the qualified exp8 route; exp8 remains rollback. Evidence:
 [`retained mixed32 exp16`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-retained.json).
 
+Tracked-clean selector-unset production measures
+**19.514684/19.538643/19.530105 tok/s**, median **19.530105**. This is
+**+0.0738% / -0.0378 ms/token** over clean exp8 and **+70.320%** over the
+11.466687 sprint start. The exp16 capability is active without a comparison
+selector and all three trajectories/state/lifecycle are exact. Evidence:
+[`clean mixed32 exp16 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-production.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.
