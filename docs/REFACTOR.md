@@ -48,29 +48,26 @@ should be removed or collapsed.
 
 ## Laguna exact grouped-IQ prefill selector
 
-- Added 2026-07-29. gfx1100 now exports paired
-  `LAGUNA_SELECTED_{GATE_UP,DOWN}_MODE="grouped_exact"`. The route preserves
-  retained route-major pair16/local64 gate/up arithmetic, compacts exact
-  post-SiLU rows once, runs registered expert-major IQ3/IQ4 down, and restores
-  token-major rows with the registered exact weighted reducer. Explicit paired
-  `direct` selection is the rollback; unsupported quant/key misses fail closed
-  to that registered exact chain. gfx1151 keeps its independently measured MMQ
+- Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving
+  route-major pair16/local64 gate/up before registered expert-major IQ3/IQ4
+  down and exact weighted restore. WPF-2b now exports
+  `LAGUNA_SELECTED_GATE_UP_MODE="grouped_pair16"` with
+  `LAGUNA_SELECTED_DOWN_MODE="grouped_exact"`. Explicit `grouped_exact` and
+  paired `direct` remain rollbacks; unsupported keys fail closed to the exact
+  route-major/grouped chain. gfx1151 keeps its independently measured MMQ
   modes.
-- Clean publication and the all-family reprofile now pass. Keep paired `direct`
-  as the required exact fail-closed rollback. P6 and WPF-1R are closed. The
-  grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU primitives are not runtime
-  owners because local256/group8 changed 11/30,720 actual tiny intermediate
-  values versus pair16/local64 production.
-- WPF-2b's distinct local64/pair16 rowbatch8 primitive is now exact on all 46
-  actual M512 IQ2 gate/up layers and improves the inclusive leaf **2.788x**;
-  rowbatch4 is exact but weaker at **2.226x**. Defer grouped gate/up cleanup
-  through registry-driven rowbatch8 full-state and clean 512/1K admission. The
-  current local256/group8 bodies remain explicit controls, not candidates for
-  promotion. After that decision, remove obsolete local256/group8 and losing
-  rowbatch4 wrappers, keys, HIP instantiations, and focused tests while
-  preserving production grouped IQ3 single/down rowbatch8, IQ4 auto, shared
-  compaction metadata, direct exact fallback, and rowbatch8 only if it wins the
-  complete runtime gate.
+- WPF-2b promotes the distinct local64/pair16 rowbatch8 primitive after exact
+  all-46-layer, complete-state KL0, clean 512/1K, and cached-trace gates. Clean
+  publication improves **99.230/91.559 -> 118.705/107.804 tok/s** and tracing
+  cuts gate/up **62.549%/62.850%** at unchanged dispatch count. Bulk gfx1100
+  now defaults gate/up to `grouped_pair16` plus `grouped_exact` down; c=1,
+  unsupported keys, explicit `grouped_exact`, and paired `direct` remain exact
+  fallbacks.
+- The cleanup trigger is active. Remove the obsolete local256/group8 grouped
+  gate/up and losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and
+  focused tests. Preserve pair16 rowbatch8, grouped IQ3 single/down rowbatch8,
+  IQ4 auto, shared compaction metadata, c=1 route-major arithmetic, and direct
+  exact fallback. P6 and WPF-1R remain closed.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
