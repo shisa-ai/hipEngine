@@ -1325,12 +1325,14 @@ exact WPF-2b expert-major IQ2 gate/up owner. Its local64/pair16 rowbatch8 body
 is BF16-bit exact on all 46 actual M512 layers; clean package-resolved 512/1K
 moves **99.230/91.559 -> 118.705/107.804 tok/s (+19.626%/+17.743%)**, and
 cached tracing cuts gate/up **62.549%/62.850%** without changing dispatch
-count. Next comes cleanup of rejected raw-Q5/Q6 MMQ and obsolete
-local256/group8/rowbatch4 surfaces; WPF-3 targeted at the SWA family that still
-owns **0.795/2.363 seconds** versus global attention's **0.074/0.308 seconds**
-at 512/1K; then an exact dense/shared Q5/Q6 output-column-tiling product
-screen. P6 and WPF-1R remain closed. The detailed gates and 150-tok/s
-short-only stop rule are owned by `LAGUNA-prefill.md`.
+count. Cleanup has removed the rejected raw-Q5/Q6 MMQ owner plus the unowned
+Laguna rowbatch8/fused-SiLU and losing pair16-rowbatch4 diagnostics. The
+base/rowbatch4/adaptive/auto grouped-dual keys remain because they independently
+own Qwen3.5 GGUF's exact default-on grouped-prefill route. WPF-3 now targets the
+SWA family that still owns **0.795/2.363 seconds** versus global attention's
+**0.074/0.308 seconds** at 512/1K; then an exact dense/shared Q5/Q6
+output-column-tiling product screen. P6 and WPF-1R remain closed. The detailed
+gates and 150-tok/s short-only stop rule are owned by `LAGUNA-prefill.md`.
 
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16
