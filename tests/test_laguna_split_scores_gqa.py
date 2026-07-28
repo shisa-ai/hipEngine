@@ -41,6 +41,7 @@ def test_laguna_swa_split_gqa3_score_variants_are_registered_on_gfx1151() -> Non
     variants = (
         "swa_context_split_exact_gated_gqa3_scores_spans",
         "swa_context_split_tile16_exact_gated_gqa3_scores_spans",
+        "swa_context_split_tile16_exact_gated_gqa3_scores_fixed512_spans",
     )
     assert all(
         resolve(
@@ -70,6 +71,7 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
         laguna_swa_attention_decode_split_exact_gated_gqa3_scores_bf16_spans,
         laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
+        laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans,
     )
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
@@ -108,8 +110,10 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
         gate_device = malloc(heads * 4, runtime=runtime)
         retained_context_device = malloc(width * 4, runtime=runtime)
         candidate_context_device = malloc(width * 4, runtime=runtime)
+        fixed512_context_device = malloc(width * 4, runtime=runtime)
         retained_gated_device = malloc(width * 2, runtime=runtime)
         candidate_gated_device = malloc(width * 2, runtime=runtime)
+        fixed512_gated_device = malloc(width * 2, runtime=runtime)
         score_scratch_device = malloc(heads * capacity * 4, runtime=runtime)
         physical_scratch_device = malloc(heads * capacity * 4, runtime=runtime)
         allocations.extend(
@@ -120,8 +124,10 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                 gate_device,
                 retained_context_device,
                 candidate_context_device,
+                fixed512_context_device,
                 retained_gated_device,
                 candidate_gated_device,
+                fixed512_gated_device,
                 score_scratch_device,
                 physical_scratch_device,
             )
@@ -199,12 +205,25 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                 library=library,
                 runtime=runtime,
             )
+            if position >= 511:
+                laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans(
+                    *common,
+                    fixed512_context_device.ptr,
+                    gate_device.ptr,
+                    fixed512_gated_device.ptr,
+                    *tail,
+                    sliding_window=capacity,
+                    library=library,
+                    runtime=runtime,
+                )
             runtime.device_synchronize()
 
             retained_context = np.empty(width, dtype=np.float32)
             candidate_context = np.empty_like(retained_context)
+            fixed512_context = np.empty_like(retained_context)
             retained_gated = np.empty(width, dtype=np.uint16)
             candidate_gated = np.empty_like(retained_gated)
+            fixed512_gated = np.empty_like(retained_gated)
             copy_device_to_host(
                 host_array_ptr(retained_context),
                 retained_context_device,
@@ -229,6 +248,19 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                 nbytes=candidate_gated.nbytes,
                 runtime=runtime,
             )
+            if position >= 511:
+                copy_device_to_host(
+                    host_array_ptr(fixed512_context),
+                    fixed512_context_device,
+                    nbytes=fixed512_context.nbytes,
+                    runtime=runtime,
+                )
+                copy_device_to_host(
+                    host_array_ptr(fixed512_gated),
+                    fixed512_gated_device,
+                    nbytes=fixed512_gated.nbytes,
+                    runtime=runtime,
+                )
             np.testing.assert_array_equal(
                 candidate_context,
                 retained_context,
@@ -239,6 +271,17 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                 retained_gated,
                 err_msg=f"gated mismatch at {position=}",
             )
+            if position >= 511:
+                np.testing.assert_array_equal(
+                    fixed512_context,
+                    retained_context,
+                    err_msg=f"fixed512 context mismatch at {position=}",
+                )
+                np.testing.assert_array_equal(
+                    fixed512_gated,
+                    retained_gated,
+                    err_msg=f"fixed512 gated mismatch at {position=}",
+                )
     finally:
         cache.free()
         for allocation in reversed(allocations):

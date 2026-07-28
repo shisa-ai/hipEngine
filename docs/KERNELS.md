@@ -1029,6 +1029,19 @@ default; gfx1100 and ungated/fallback paths remain on the established score
 owner. Evidence:
 `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json`.
 
+The retained saturated-512 successor specializes only the hot value reducer.
+It keeps one local128 workgroup/query head and all **72 workgroups / 288
+wave32s** per SWA layer, plus the exact slot-order maximum, exponent,
+denominator, per-dimension FMA, divide, gate, and stores. Natural
+72Q/8KV/D128 fixed bounds cut the complete score+reducer leaf
+**0.108265 -> 0.081059 ms/layer (-25.13%)**. Seven exact p512/d128 pairs move
+**16.386231 -> 16.833740 tok/s (+2.731%, -1.622 ms/token)**. Cache-only
+tracing records all **4,572 = 36 x 127** fixed reducers and zero generic
+fallback at local128/VGPR16/LDS0/scratch0. gfx1151 selects it only at saturated
+512; shorter live counts, non-natural shapes, and peer backends retain the
+generic exact route. Evidence:
+[`retained fixed512 reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

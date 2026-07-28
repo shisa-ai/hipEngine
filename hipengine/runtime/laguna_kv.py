@@ -128,6 +128,7 @@ class LagunaKVCache:
         split_gate_fusion: bool,
         swa_split_wave_local: bool,
         swa_split_gqa3_scores: bool,
+        swa_split_fixed512_reduce: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -147,6 +148,7 @@ class LagunaKVCache:
         self.split_gate_fusion = bool(split_gate_fusion)
         self.swa_split_wave_local = bool(swa_split_wave_local)
         self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
+        self.swa_split_fixed512_reduce = bool(swa_split_fixed512_reduce)
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -394,7 +396,17 @@ class LagunaKVCache:
                     (
                         (
                             (
-                                "swa_context_split_tile16_exact_gated_gqa3_scores_spans"
+                                (
+                                    "swa_context_split_tile16_exact_gated_"
+                                    "gqa3_scores_fixed512_spans"
+                                )
+                                if (
+                                    self.swa_split_fixed512_reduce
+                                    and self.swa_split_gqa3_scores
+                                    and live_count == 512
+                                    and state.capacity == 512
+                                )
+                                else "swa_context_split_tile16_exact_gated_gqa3_scores_spans"
                                 if self.swa_split_gqa3_scores
                                 else "swa_context_split_tile16_exact_gated_wave_local_spans"
                             )
@@ -1163,6 +1175,14 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_swa_split_fixed512_reduce = bool(
+        selected_swa_split_gqa3_scores
+        and backend_package_capability(
+            backend,
+            "LAGUNA_SWA_SPLIT_FIXED512_REDUCE",
+            False,
+        )
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
@@ -1171,6 +1191,7 @@ def allocate_laguna_kv_cache(
         split_gate_fusion=selected_split_gate_fusion,
         swa_split_wave_local=selected_swa_split_wave_local,
         swa_split_gqa3_scores=selected_swa_split_gqa3_scores,
+        swa_split_fixed512_reduce=selected_swa_split_fixed512_reduce,
     )
     buffers: list[DeviceBuffer] = []
 
@@ -1351,6 +1372,9 @@ def allocate_laguna_kv_cache(
             swa_split_gqa3_scores=(
                 selected_swa_split_gqa3_scores and split_enabled
             ),
+            swa_split_fixed512_reduce=(
+                selected_swa_split_fixed512_reduce and split_enabled
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -1368,6 +1392,7 @@ def _validate_split_backend(
     split_gate_fusion: bool,
     swa_split_wave_local: bool,
     swa_split_gqa3_scores: bool,
+    swa_split_fixed512_reduce: bool,
 ) -> None:
     if all(
         threshold is None
@@ -1420,6 +1445,13 @@ def _validate_split_backend(
                     swa_tile16_threshold,
                     "swa_context_split_tile16_exact_gated_gqa3_scores_spans",
                 ),
+            )
+        )
+    if swa_split_fixed512_reduce:
+        requested.append(
+            (
+                swa_tile16_threshold,
+                "swa_context_split_tile16_exact_gated_gqa3_scores_fixed512_spans",
             )
         )
     for threshold, variant in requested:
