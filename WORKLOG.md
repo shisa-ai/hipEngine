@@ -187195,3 +187195,11 @@ Vulkan local sizes verbatim will close the measured gap.
   **127/65/257**, split-gate fusion, and wave-local SWA reduction together;
   explicit `use_split_attention=False` remains the serial fallback. Run clean
   selector-unset production before publishing the retained benchmark.
+
+- The first selector-unset production run reproduces **14.530221 tok/s** but
+  exposes a reporting-only seam: the profiler reads the session constructor's
+  pre-resolution tile16 field (`null`) instead of the live KV owner's resolved
+  **257**. The KV owner and measured dispatch are correct. Repair telemetry to
+  read all three live thresholds from `owner.kv_cache`, then rerun the
+  under-five-minute clean publication rather than publishing inconsistent
+  metadata.
