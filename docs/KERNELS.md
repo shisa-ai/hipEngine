@@ -1139,6 +1139,22 @@ regresses stage64 **0.107446 -> 0.109075 ms (+1.516%)**. Evidence:
 [`clean direct-store production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json) ·
 [`rejected stage128`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage128-vec16-rejected.json).
 
+The first post-ISA numerical candidate changes only the softmax exponential in
+that retained direct-store body. Native `__expf` leaves QK, maximum,
+slot-ordered denominator, PV FMA, gate, and store association unchanged.
+Across the wrapped positions 512-519 plus explicit eviction, it remains inside
+the CPU attention tolerance; one of 73,728 gated BF16 values differs from the
+exact control by one rounding boundary (at most one of 9,216 per position). A
+separate leaf state preserves all 9,216 gated BF16 values byte-for-byte. The
+nine-sample leaf improves **0.106888 -> 0.096000 ms (-10.19%)** with maximum
+F32 context error **1.86e-9**. Extracted gfx1151 ISA removes 195 static delay
+slots and 64 FMA instructions while keeping logical VGPR138/SGPR33/LDS24576/
+scratch0. Native tracing names both templates at local384/24 blocks and
+improves **137.158 -> 112.772 us (-17.78%)**. This admits a candidate
+primitive, not production: the next gate is positive resident-model wall plus
+the complete saturated-512 18-prompt/576-step KL/top-1 suite. Evidence:
+[`fast-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json).
+
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is
 **+0.1015% / -0.0532 ms/token** versus the preceding clean 19.065940 packet

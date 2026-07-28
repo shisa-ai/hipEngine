@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T04:35:13+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_fast_exp_candidate",
+  "status": "candidate_primitive_admitted",
+  "pass": true,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "75994bdd580be919302ca6a522028d483541f274",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": "72Q/8KV/D128/SWA512; 24 local384 GQA3 workgroups; 64-slot direct vec16 V staging",
+  "optimization": {
+    "changed": "Replace only softmax expf with native __expf.",
+    "unchanged": [
+      "QK products and wave32 reduction tree",
+      "slot-order maximum and denominator additions",
+      "slot-order PV FMA sequence",
+      "context divide, softplus gate, BF16 rounding, and stores",
+      "KVLiveSpans visibility and ring addressing"
+    ]
+  },
+  "correctness": {
+    "red": "focused GPU test failed on the absent candidate wrapper",
+    "green": "wrapped positions 512-519 with explicit position-200 eviction pass the CPU attention tolerance gate",
+    "focused_result": "1 passed",
+    "leaf_context_f32_byte_exact": false,
+    "leaf_context_max_abs_error": 1.862645149230957e-09,
+    "leaf_gated_bf16_byte_exact": true,
+    "leaf_gated_bf16_mismatches": 0,
+    "leaf_gated_bf16_elements": 9216,
+    "wrap_positions": "512-519 with explicit position-200 eviction",
+    "wrap_gated_bf16_mismatches": 1,
+    "wrap_gated_bf16_elements": 73728,
+    "wrap_max_mismatches_per_position": 1
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct-fast-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-gqa3-fast-exp-leaf.json",
+    "raw_sha256": "bcbec519995d87eb6bae156fa8818f171ad9a02ae347f0a8408a553909317643",
+    "control_median_ms": 0.10688801765441895,
+    "candidate_median_ms": 0.09600044250488281,
+    "latency_change_percent": -10.185964141216374
+  },
+  "isa": {
+    "code_object_sha256": "0f811f42b4a1ebb061170db923143005d9817fd167b661b01d72acc135a9faf2",
+    "control_template": "<64,true,true,false>",
+    "candidate_template": "<64,true,true,true>",
+    "accurate_exp_static_expansions": 65,
+    "native_exp_static_instructions": 65,
+    "control_static_delay_slots": 381,
+    "candidate_static_delay_slots": 186,
+    "control_static_fma_instructions": 135,
+    "candidate_static_fma_instructions": 71,
+    "logical_resources_unchanged": {
+      "vgpr": 138,
+      "sgpr": 33,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-fast-exp-trace.yo6EgX -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct-fast-exp --samples 1 --warmups 0 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "raw_path": "/tmp/laguna-swa-fast-exp-trace.yo6EgX/gfx1151/15137_kernel_trace.csv",
+    "raw_sha256": "e582958c8632fccc7e6748278da9261e33fab84b7b5244a7bd1162d49d0d391b",
+    "control_observations": 4,
+    "candidate_observations": 4,
+    "control_median_us": 137.1575,
+    "candidate_median_us": 112.772,
+    "latency_change_percent": -17.779195450485762,
+    "workgroup_threads": 384,
+    "grid_blocks": 24,
+    "profiler_resources_unchanged": {
+      "vgpr": 144,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "retained": false,
+    "production_default_unchanged": true,
+    "next": "Integrate an explicit full-model comparison lane, require positive p512/d128 wall, then run the complete saturated-512 18-prompt/576-step KL and top-1 gate."
+  }
+}
