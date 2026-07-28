@@ -2100,6 +2100,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        use_selected_natural_decode: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2243,6 +2244,15 @@ class LagunaGGUFResidentSession:
         self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
             self.backend,
             use_iq2_grid64,
+        )
+        self.use_selected_natural_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_SELECTED_NATURAL_DECODE",
+                False,
+            )
+            if use_selected_natural_decode is None
+            else use_selected_natural_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3010,6 +3020,11 @@ class LagunaGGUFResidentSession:
             self.backend,
             mode,
         )
+
+    def set_selected_natural_decode(self, enabled: bool) -> None:
+        """Select the exact natural-shape c=1 selected-MoE siblings."""
+
+        self.use_selected_natural_decode = bool(enabled)
 
     @property
     def resident_nbytes(self) -> int:
@@ -4868,6 +4883,7 @@ class LagunaGGUFResidentSession:
             runtime=self.runtime,
             libraries=self.libraries.moe,
             shared_pair_decode_variant=self._q5_shared_pair_variant,
+            use_selected_natural_decode=self.use_selected_natural_decode,
         )
         config = self.weights.config
         if layer_id + 1 < config.block_count:

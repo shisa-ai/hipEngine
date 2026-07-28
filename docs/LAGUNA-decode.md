@@ -3517,6 +3517,7 @@ geometry only with a reduction-order-preserving design.
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
+[`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
 [`retained F16 fixed-K owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
@@ -3534,7 +3535,8 @@ The next pause target is **at least 18 tok/s** at p512/d128 under the existing
 state and quality contract. Fixed-K LD-2 production now reaches
 **16.391 tok/s**. The first post-reprofile LD-1 reducer win raises that to
 **16.834 tok/s**, and the natural-shape global reducer reaches
-**16.847 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
+**16.847 tok/s**. The retained natural-shape selected-MoE owner now reaches
+**16.976 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
 comparator target.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
@@ -3620,6 +3622,26 @@ Tracing records **1,524 = 12 x 127** fixed reducers, zero generic fallback,
 and local256/VGPR24/LDS512/scratch0. Non-natural shapes/capacities and peer
 backends retain the generic reducer.
 
+LD-4's first exact seam is now retained. The gate/up sibling fixes
+`x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
+distinct intermediate rows at `K1024, N3072`. They retain the full local128
+grid, every thread's K ownership, FMA/reduction order, resident T16 bytes, and
+BF16 boundary. The corrected actual-weight leaf improves gate/up
+**0.144513 -> 0.142154 ms (-1.63%)**, Q4 down
+**0.074293 -> 0.058550 ms (-21.19%)**, and Q6 down
+**0.082136 -> 0.073648 ms (-10.33%)**, all byte-exact. An earlier diagnostic
+down row that broadcast one activation was discarded before integration; the
+retained wrapper requires all ten production rows.
+
+Seven counterbalanced p512/d128 pairs improve current production
+**16.850003 -> 16.976046 tok/s (+0.748%, -0.441 ms/token)**. Every candidate
+beats every control, trajectories and lifecycle match, and cached tracing
+records exactly **5,969 Q4 gate/up + 3,048 Q4 down + 2,921 Q6 down** natural
+calls with zero generic selected-T16 decode fallback. All bodies are
+local128/SGPR128/LDS512/scratch0; VGPR is **200/104/80** respectively.
+gfx1151 now selects the natural siblings automatically, while peer backends
+and non-natural shapes retain the generic routes.
+
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
@@ -3655,11 +3677,13 @@ backends retain the generic reducer.
    **33.33%** larger than raw; raw local128 loses **63.6-85.4%** at actual
    shapes and raw wave32 has no family-wide win. The shape-tuned pack8 owner
    is a repeatable **+1.225%** full-cycle win but fails quality at max KL
-   **1.002942** despite **99.31%** top-1. Reopen only the exact seam proven by
-   LD-2: compile-time-specialize the existing selected gate/up and down
-   consumers for natural K while preserving their full grid, reduction order,
-   resident T16 bytes, and BF16 boundary. Selected Q4 is **13.711 ms/token**,
-   co-equal with attention; it is the next bounded implementation screen.
+   **1.002942** despite **99.31%** top-1. The exact LD-2-style natural-shape
+   specialization is retained at **+0.748%** complete decode and lowers the
+   profiled selected family from about **13.711 to 13.307 ms/token**. Continue
+   only with exact changes that preserve the full grid and arithmetic:
+   compile-time expert/tile strides, paired Q4 gate/up metadata decode, and
+   bounded address/loop contraction. Any new ownership or reduction geometry
+   must re-enter the full quality gate.
 5. **LD-5 — replay and residual fusion.** Launch/submission work is bounded to
    roughly 2.18 ms/token. It follows attention and F16; launch-count reduction
    alone is not a promotion gate.

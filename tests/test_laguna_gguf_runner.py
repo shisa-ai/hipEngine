@@ -286,6 +286,18 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     assert wide_plan.matrix_rows == 2_048
     assert wide_plan.attention_rows == 128
 
+
+def test_laguna_selected_natural_decode_switch_is_session_scoped() -> None:
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session.use_selected_natural_decode = False
+
+    session.set_selected_natural_decode(True)
+    assert session.use_selected_natural_decode is True
+
+    session.set_selected_natural_decode(False)
+    assert session.use_selected_natural_decode is False
+
+
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
     runtime = _FakeRuntime()
     rows = 3

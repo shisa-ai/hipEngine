@@ -51,9 +51,9 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
-Three exact gfx1100 structural transfers plus five gfx1151-native owners now
+Three exact gfx1100 structural transfers plus six gfx1151-native owners now
 improve paired p512/d128 gfx1151 eager c=1 decode
-**11.466687 -> 16.846689 tok/s (+46.919%)**. Native
+**11.466687 -> 16.976046 tok/s (+48.047%)**. Native
 head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
 **127/65/257** threshold bundle reaches **14.528110 tok/s (+26.487%
@@ -82,6 +82,13 @@ dynamic live/span arithmetic while specializing 48Q/8KV/D128/capacity-4096.
 It moves same-session production **16.832097 -> 16.846689 tok/s (+0.087%)**,
 saves **0.051 ms/token**, and improves complete attention **0.7-2.0%** at
 production live 513/576/639.
+The exact selected-MoE successor retains the local128 grid, resident T16
+bytes, and every arithmetic operation while specializing Laguna's natural
+c=1/top-10 gate/up and Q4/planar-Q6 down shapes. Actual-weight leaves improve
+**1.63%/21.19%/10.33%**, and seven complete pairs move
+**16.850003 -> 16.976046 tok/s (+0.748%)**, saving **0.441 ms/token**. Cached
+tracing records **5,969/3,048/2,921** intended role calls with zero generic
+selected-T16 fallback.
 CPU-oracle, F32/BF16/`KVLiveSpans` byte,
 reducer-bit-exact,
 complete 128-token trajectory, ID/position, native trace, and lifecycle gates
@@ -92,6 +99,7 @@ retained **654.249 tok/s** short headline. The eager global-attention ABI still
 caps decode cache capacity at 4,096, so the long-context publication below
 remains prefill-only.
 [`retained GQA3 score artifact`](results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`retained selected natural-shape artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
 [`retained global fixed-shape reducer artifact`](results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained fixed512 reducer artifact`](results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json) ·
 [`retained F16 fixed-K artifact`](results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json) ·

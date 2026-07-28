@@ -187857,3 +187857,32 @@ Vulkan local sizes verbatim will close the measured gap.
   p512/d128 is now **16.846689 tok/s / 59.359 ms/token**, cumulative
   **+46.919%** from 11.466687. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json`.
+
+## 2026-07-28 21:04 JST — Retain exact natural-shape selected-MoE decode
+
+- Add registered resident-T16 siblings for Laguna's natural c=1/top-10 roles:
+  Q4 dual gate/up at x_rows1/K3072/N1024 and Q4 plus planar-Q6 down at ten
+  distinct intermediate rows/K1024/N3072. The full local128 grid, thread K
+  ownership, FMA/reduction order, resident bytes, and BF16 boundary are
+  unchanged.
+- RED failed on the absent wrappers. The first diagnostic down leaf then
+  exposed a test-shape error: it broadcast one activation row, while production
+  down consumes ten. Discard that result, require x_rows10, index `x[row]`, and
+  rerun GREEN against ten distinct rows.
+- Corrected 21-sample actual-weight leaves are byte-exact and improve Q4
+  gate/up **0.144513 -> 0.142154 ms (-1.632%)**, Q4 down
+  **0.074293 -> 0.058550 ms (-21.191%)**, and Q6 down
+  **0.082136 -> 0.073648 ms (-10.334%)**.
+- Seven counterbalanced p512/d128 pairs improve
+  **16.850003 -> 16.976046 tok/s (+0.748%, -0.441 ms/token)**. Every
+  candidate beats every control; IDs/hashes/final position/lifecycle match.
+- Cache-only full-model tracing records exactly **5,969 = 47 x 127** natural
+  gate/up, **3,048 = 24 x 127** Q4 down, and
+  **2,921 = 23 x 127** Q6 down calls, with zero generic selected-T16 decode
+  fallback. All are local128/SGPR128/LDS512/scratch0; VGPR is
+  **200/104/80**.
+- Promote the gfx1151 capability only. The generic exact routes remain the
+  explicit session rollback and all peer backends/non-natural shapes remain
+  unchanged. Canonical p512/d128 is now **16.976046 tok/s / 58.907 ms**,
+  cumulative **+48.047%** from 11.466687. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json`.
