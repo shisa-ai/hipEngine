@@ -1151,9 +1151,15 @@ F32 context error **1.86e-9**. Extracted gfx1151 ISA removes 195 static delay
 slots and 64 FMA instructions while keeping logical VGPR138/SGPR33/LDS24576/
 scratch0. Native tracing names both templates at local384/24 blocks and
 improves **137.158 -> 112.772 us (-17.78%)**. This admits a candidate
-primitive, not production: the next gate is positive resident-model wall plus
-the complete saturated-512 18-prompt/576-step KL/top-1 suite. Evidence:
-[`fast-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json).
+primitive, not production. Seven resident-model pairs do confirm the wall
+opportunity, **19.130955 -> 19.309790 tok/s (+0.935%)**, with 7/7 candidate
+wins. The complete saturated-512 category gate rejects raw native
+exponential: top-1 passes at **566/576 (98.26%)**, but max KL is **1.452698**
+against 0.05. Production remains on accurate `expf`; the next numerical screen
+retains accurate range reduction while deleting only generic-domain checks
+that softmax inputs cannot exercise. Evidence:
+[`fast-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json) ·
+[`fast-exp rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-rejected.json).
 
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is

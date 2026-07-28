@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T05:00:19+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_fast_exp_rejection",
+  "status": "rejected_quality",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "revision": "dee817798c9dc4377efaeead179a9975a6668cb1",
+    "candidate_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "production_screen": {
+    "workload": "p512/d128, matrix chunk 2048, 127 synchronized decode calls, seven counterbalanced pairs",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-fast-exp --output /tmp/laguna-p512-d128-swa-fast-exp-ab.json",
+    "raw_sha256": "b1740f30325dac703a8d62ce4366570a6887be4868b491e2809902dbce59ae96",
+    "control_median_tok_s": 19.13095514103605,
+    "candidate_median_tok_s": 19.309790105341495,
+    "speedup_percent": 0.9347937046898513,
+    "control_median_seconds": 6.63845579396002,
+    "candidate_median_seconds": 6.5769746489822865,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "repeat_deterministic_per_mode": true,
+    "cross_mode_generated_ids_exact": false
+  },
+  "category_gate": {
+    "workload": "18 canonical/held-out prompts expanded to 512 input tokens; three counterbalanced free-running repetitions; 32 teacher-forced steps per prompt",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison swa_decode_fast_exp --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-swa-fast-exp-category.raw.json",
+    "raw_sha256": "87cfc72f081a144ef305bf4f597e1eb0869fd559088fca7745f485a5e796a188",
+    "teacher_forced_steps": 576,
+    "teacher_forced_top1_matches": 566,
+    "teacher_forced_top1_agreement": 0.9826388888888888,
+    "teacher_forced_max_kl": 1.452697828127973,
+    "teacher_forced_finite": true,
+    "oracle_pass": true,
+    "oracle_kl": 0.000017512451201671218,
+    "h16_decode_speedup": 1.0096613126166063,
+    "h32_decode_speedup": 1.009647257467652,
+    "category_max_kl": {
+      "code": 0.6200837298890465,
+      "general_en": 0.3700748603946276,
+      "general_ja": 1.452697828127973,
+      "mixed_ja_en": 0.43550409551847624
+    },
+    "thresholds": {
+      "max_kl": 0.05,
+      "minimum_top1_suite_and_category": 0.9
+    },
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "production_default_unchanged": true,
+    "reason": "Native exponential buys about one percent decode, but repeated SWA attention perturbations exceed the quality budget by 29.05x.",
+    "next": "Screen a softmax-domain bounded exponential that retains accurate range reduction while deleting generic overflow, underflow, and NaN handling."
+  }
+}
