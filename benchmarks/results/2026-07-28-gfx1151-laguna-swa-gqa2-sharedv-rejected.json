@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_laguna_swa_gqa2_shared_value_rejection",
+  "created_at": "2026-07-28T23:31:00+09:00",
+  "status": "rejected_removed",
+  "decision": "Reject before runtime integration. Reusing one BF16 V load across each retained GQA2 query pair is byte-exact, but halving the active PV waves regresses the complete saturated-SWA leaf by 49.070%.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "system": "Strix Halo UMA",
+    "wave_size": 32
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "weights": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "shape": {
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "workgroups": 40,
+    "local_size": 256
+  },
+  "change": {
+    "control": "Retained fused exact GQA2 fixed512 kernel: eight score waves, then four PV waves per query head.",
+    "candidate": "Keep the identical 40-workgroup/eight-wave QK phase; after the barrier use four dimension waves, two query-head softmax/FMA states per lane, and one V load for the pair.",
+    "modeled_kv_row_reads_per_kv_head": {
+      "control": {
+        "key": 5,
+        "value": 9,
+        "total": 14
+      },
+      "candidate": {
+        "key": 5,
+        "value": 5,
+        "total": 10
+      }
+    },
+    "failure": "The candidate reduces active PV concurrency from eight waves to four per workgroup and carries two softmax/output states. The extra serial work dominates the avoided V traffic."
+  },
+  "correctness": {
+    "red": "The focused registry test failed on the absent shared-V variant before implementation.",
+    "green": "The complete focused test file passed 2/2, including saturated ring wrap and explicit eviction.",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_sha256": "906aee22d3c70352118088c127c77fe7f992b4f8c1d58142e7468e9e0745cd47",
+    "gated_sha256": "5f10efcec703b21e770a2b2c35a8d6100f81018317349d396a9b16f3bd7a136a"
+  },
+  "leaf": {
+    "protocol": {
+      "warmups": 5,
+      "samples": 9,
+      "burst": 50,
+      "counterbalanced_order": true
+    },
+    "control_median_ms": 0.08302937507629395,
+    "candidate_median_ms": 0.12377216339111329,
+    "candidate_change_percent": 49.070329961392154,
+    "control_samples_ms": [
+      0.08302937507629395,
+      0.07963543891906738,
+      0.08481714248657227,
+      0.08554840087890625,
+      0.08716724395751953,
+      0.0810664176940918,
+      0.0862040615081787,
+      0.08141745567321777,
+      0.08001644134521485
+    ],
+    "candidate_samples_ms": [
+      0.12377216339111329,
+      0.12277135848999024,
+      0.12461662292480469,
+      0.12563573837280273,
+      0.12231978416442871,
+      0.12410712242126465,
+      0.12314931869506836,
+      0.12472025871276855,
+      0.12376567840576172
+    ]
+  },
+  "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2-sharedv --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa2-sharedv-leaf.json",
+  "raw": {
+    "path": "/tmp/laguna-swa-gqa2-sharedv-leaf.json",
+    "sha256": "2aaae0cff86ac736fd7406ab1b7cda935371eeaf502ceee0f70d67a1150b9983"
+  },
+  "llamacpp_vulkan_review": {
+    "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "device_subgroup_size": 64,
+    "path": "GQA-folded cooperative-matrix FlashAttention",
+    "derived_swa512_geometry": {
+      "query_rows_per_kv_head": 9,
+      "block_rows": 16,
+      "block_cols": 64,
+      "local_size": 256,
+      "kv_splits": 8,
+      "main_workgroups": 64
+    },
+    "why_fast": "llama.cpp folds all nine SWA query heads into one tile per KV head, uses K64 split-K to recover CU breadth, computes QK and PV with cooperative matrices, and carries online softmax/output state without a full score-plane round trip.",
+    "sources": [
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.cpp:3574",
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.cpp:10476",
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+      "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_base.glsl"
+    ],
+    "next": "Screen an SWA GQA9 x K64 split-K body with 64 main workgroups and bounded online-state merge. Preserve the full KVLiveSpans visibility contract; changed association must enter the full KL/top-1 and category gates."
+  },
+  "production": {
+    "changed": false,
+    "canonical_decode_tok_s": 17.0970437598,
+    "canonical_wall_ms_per_token": 58.4896408543
+  }
+}
