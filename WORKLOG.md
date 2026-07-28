@@ -188947,3 +188947,25 @@ Vulkan local sizes verbatim will close the measured gap.
   **8.652-ms/token** wall gap. Continue with structural exact attention work.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-exp4-wall-reprofile.json`.
+
+## 2026-07-29 08:00 JST — Retain exact mixed32 eight-lane exp issue
+
+- Extend the barrier-free exact issue schedule from four to eight independent
+  weights. Lanes 0..7 compute one compiler `expf` each, while lane 0 retains
+  original denominator order and every dimension retains original PV FMA
+  order.
+- RED is the absent wrapper. The first GREEN compile catches a misplaced
+  `#pragma unroll`; moving the constexpr before the pragma repairs compilation.
+  Positions 512-519 plus explicit eviction are then F32/BF16 byte-exact.
+- Nine leaf samples improve **0.089191 -> 0.083755 ms (-6.09%)**. Cached
+  tracing improves the stable window **83.557 -> 78.667 us (-5.85%)** at
+  unchanged 32 local384 blocks and VGPR104/SGPR128/LDS24576/scratch0.
+- Seven queue-matched resident p512/d128 pairs improve
+  **19.427449 -> 19.510986 tok/s (+0.430%, -0.220 ms/token)** with complete
+  sample separation. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, position 638, determinism, and lifecycle remain exact.
+- Promote only inside the existing gfx1151 gated saturated mixed32/exp4 route.
+  Exp4 remains explicit rollback; shorter/non-natural and peer-backend routes
+  are unchanged. Focused owner/runner/profile validation reports
+  **38 passed**. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-retained.json`.

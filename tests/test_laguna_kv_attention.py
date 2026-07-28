@@ -3131,6 +3131,7 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+        laguna_swa_attention_decode_fused_exact_gated_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
@@ -3364,6 +3365,30 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
             laguna_swa_attention_decode_fused_exact_gated_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                sliding_window=512,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            for host, device in (
+                (candidate, candidate_out),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            laguna_swa_attention_decode_fused_exact_gated_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
                 *common,
                 candidate_out.ptr,
                 gate_device.ptr,
@@ -3738,6 +3763,9 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert (
             gfx1151_cache.swa_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512
         )
+        assert (
+            gfx1151_cache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512
+        )
         assert gfx1151_cache.allocation_count == 245
         resolved_variants = []
 
@@ -3775,6 +3803,13 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         )
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.swa_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512 = (
+            True
+        )
+        gfx1151_cache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512 = (
+            False
+        )
+        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512 = (
             True
         )
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
@@ -3826,6 +3861,13 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 "laguna_attention_decode",
                 (
                     "swa_context_fused_exact_gated_mixed32_exp4_vstage64_"
+                    "vec16_direct_assume_exp_fixed512_spans"
+                ),
+            ),
+            (
+                "laguna_attention_decode",
+                (
+                    "swa_context_fused_exact_gated_mixed32_exp8_vstage64_"
                     "vec16_direct_assume_exp_fixed512_spans"
                 ),
             ),

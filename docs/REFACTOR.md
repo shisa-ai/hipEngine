@@ -1960,6 +1960,23 @@ should be boring.
   qualified gfx1151 mixed32 dispatch while permanently retaining the
   registered serial-exp mixed32 sibling for compiler/codegen bisection.
 
+## Laguna gfx1151 mixed32 exact exp8 selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512`
+  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp8(...)`, and
+  `--compare-swa-mixed32-exp8`. False restores retained exp4; it changes no
+  geometry, arithmetic order, or non-natural route.
+- Promotion gate satisfied: the exact eight-lane issue schedule improves the
+  leaf **0.089191 -> 0.083755 ms (-6.09%)**, stable cached trace
+  **83.557 -> 78.667 us (-5.85%)**, and all seven resident p512/d128 pairs
+  **19.427449 -> 19.510986 tok/s (+0.430%, -0.220 ms/token)** with complete
+  sample separation and identical trajectories/state/lifecycle.
+- Keep the explicit false rollback through clean production publication and
+  the next attention checkpoint. Then collapse the positive selector into the
+  qualified gfx1151 mixed32 dispatch while retaining registered exp4 for
+  compiler/codegen bisection.
+
 ## Laguna gfx1151 exact global exp-domain selector
 
 - Added 2026-07-29 as the default-off
