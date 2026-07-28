@@ -358,6 +358,20 @@ Evidence: [`rowbatch4/8 primitive`](../benchmarks/results/2026-07-28-gfx1100-lag
 [`rowbatch16/32 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch16-32-primitive.json) ·
 [`rowbatch32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json).
 
+WPF-C1 now selects matrix256/attention128 as the gfx1100 package default while
+keeping explicit M128 fallback and M512 as a WPF-2 capacity comparator. One
+clean rotating screen measures M128 **85.028/78.672**, M256
+**85.855/79.526 (+0.973%/+1.086%)**, and M512 **85.826/79.507
+(+0.939%/+1.062%)** at 512/1K. M256 has the lowest aggregate wall and planned
+row/MoE scratch **219,514,912 bytes**, half M512's **439,021,600**. Complete
+logits, all 48 hidden boundaries, K/V/live spans, shared-prefix routing,
+repeats, and lifecycle are exact. The cached M256 trace records RB32 at observed
+grid Y4/Y8 with unchanged local128/VGPR80/LDS1024/scratch0 and selected-IQ
+grids 1,280/2,560. Clean package-resolved publication is **86.239/80.452
+tok/s (+0.887%/+1.128% over matrix128/RB32)**. Explicit `prefill_chunk_size`
+continues to override the package capacity.
+Evidence: [`matrix256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

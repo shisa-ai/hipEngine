@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-29
+
+- [retained exact gfx1100 Laguna Q2 XL matrix256 prefill] Radeon Pro W7900 / isolated matrix capacity with global/SWA attention fixed at 128 moves M128 **85.028/78.672 -> 85.855/79.526 tok/s (+0.973%/+1.086%)** at 512/1K; M512 is positive but loses aggregate wall by 0.027% and doubles planned scratch, so M256 is promoted and clean package-resolved publication reaches **86.239/80.452 (+0.887%/+1.128% over matrix128/RB32)** with all 48 boundaries/KV/spans/routing/repeats/lifecycle exact; `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json`.
+
 ## 2026-07-28
 
 - [retained exact gfx1100 Laguna Q2 XL raw-Q5/Q6 rowbatch32 prefill] Radeon Pro W7900 / fixed 32-row shared-weight reconstruction preserves every row's arithmetic and moves clean paired 512/1K **79.023/73.610 -> 85.174/78.946 tok/s (+7.783%/+7.249%)** versus RB8 with every candidate sample faster; selector-unset production reaches **85.481/79.555 tok/s (+7.408%/+6.768% over the prior headline)** with exact full state/IDs/positions/repeats/lifecycle and local128/VGPR80/LDS1024B/scratch0/grid-Y4/theoretical-32-wave occupancy; 4K remains unopened below the revised 150-tok/s short gate; `benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json`.
