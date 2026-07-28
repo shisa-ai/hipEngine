@@ -188381,3 +188381,24 @@ Vulkan local sizes verbatim will close the measured gap.
   natural capacity4096/live<=4000 gfx1151 global attention. Scalar GQA2 is
   rollback and GQA1 remains fallback above live4000. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-retained.json`.
+
+## 2026-07-29 03:34 JST — Publish and re-profile both vec16 owners
+
+- On tracked-clean `97e5c80c6`, three selector-unset p512/d128 runs reach
+  **19.053726/19.065940/19.068436 tok/s**, median **19.065940 tok/s /
+  52.450 ms/token**. This is **+1.338% / -0.702 ms/token** versus prior clean
+  SWA-vec16 production and **+66.272%** versus the 11.466687 sprint start.
+  Generated IDs, final state, and lifecycle are exact.
+- The clean 127-token trace retains **816 dispatches/token**. Kernel sum is
+  **50.238 ms** and span **52.814 ms**. Attention falls
+  **8.064658 -> 5.651564 ms/token (-29.92%)**: SWA
+  **5.827741 -> 4.179921 (-28.28%)**, global
+  **2.236917 -> 1.471643 (-34.21%)**. Source-F16 is **24.114851 ms**,
+  selected gate/up **8.411147**, selected down **4.825096**, and dense/shared
+  **3.721582**.
+- Against Vulkan attention at **0.909423 ms/token**, the residual is
+  **4.742141 ms/token** and about **49.3%** of the remaining clean wall gap.
+  Keep attention priority, but move from copy width to stage geometry:
+  re-screen vec16 SWA stage128 versus retained stage64. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-production.json`;
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-vec16-wall-reprofile.json`.

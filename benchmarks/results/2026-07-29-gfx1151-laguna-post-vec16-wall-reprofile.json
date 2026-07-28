@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T03:33:38+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_vec16_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "97e5c80c6eaa895f581120c57dc0571b886ee1a8",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-post-vec16-wall.voNCtC",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-vec16-wall.voNCtC --output-file postvec16 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-vec16-wall.voNCtC/bench.json",
+    "trace_sha256": "07395335115ffc259606c0b9acb65be4613b5e8fff6d6d094c6ff92b7b96cc50",
+    "bench_sha256": "0f26fd705f59b7ae5614ec3cb3c1f8aaa89036de0550c08dcc17a821c28e6d82",
+    "segmentation": "Discard warmup128 and timed prefill512, then report medians over 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 18.46436461034436,
+    "publication_wall_tok_s": 19.065939518147662,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 50.238391,
+    "median_kernel_span_ms_per_token": 52.814021,
+    "families": {
+      "source_f16_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 24.114851
+      },
+      "attention": {
+        "calls_per_token": 48,
+        "median_ms_per_token": 5.651564
+      },
+      "selected_q4_gate_up": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 8.411147
+      },
+      "selected_q4_q6_down": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 4.825096
+      },
+      "dense_shared_quant_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 3.721582
+      },
+      "lm_head_argmax": {
+        "calls_per_token": 3,
+        "median_ms_per_token": 1.120462
+      },
+      "router": {
+        "calls_per_token": 94,
+        "median_ms_per_token": 1.066077
+      },
+      "norm_rope_gate": {
+        "calls_per_token": 145,
+        "median_ms_per_token": 1.069283
+      }
+    },
+    "attention_breakdown": {
+      "swa_vec16_calls_per_token": 36,
+      "swa_vec16_median_ms_per_token": 4.179921,
+      "global_vec16_calls_per_token": 12,
+      "global_vec16_median_ms_per_token": 1.471643
+    }
+  },
+  "comparison": {
+    "prior_post_global_gqa2_profile": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-post-global-gqa2-wall-reprofile.json",
+      "dispatches_per_token": 816,
+      "kernel_sum_ms_per_token": 52.576602,
+      "kernel_span_ms_per_token": 55.153652,
+      "attention_ms_per_token": 8.064658,
+      "swa_attention_ms_per_token": 5.827741,
+      "global_attention_ms_per_token": 2.236917
+    },
+    "changes_percent": {
+      "dispatches": 0.0,
+      "kernel_sum": -4.4472463245152305,
+      "kernel_span": -4.242023719480992,
+      "attention": -29.92183921500452,
+      "swa_attention": -28.275450127244838,
+      "global_attention": -34.21110394350796
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "logged_attention_ms_per_token": 0.909423,
+      "source_f16_ms_per_token": 24.758568,
+      "hipengine_attention_gap_ms_per_token": 4.742141,
+      "hipengine_source_f16_delta_ms_per_token": -0.643717,
+      "attention_share_of_remaining_wall_gap": 0.49294448055966217
+    }
+  },
+  "finding": {
+    "next_surface": "attention_stage_geometry",
+    "reason": "Attention remains the largest comparator gap at +4.742 ms/token even though selected gate/up is now the larger absolute hipEngine family.",
+    "target": "Re-screen vec16 V-stage widths, starting with SWA stage128 versus retained stage64, to reduce staging barriers without changing arithmetic."
+  }
+}
