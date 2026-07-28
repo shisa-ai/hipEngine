@@ -128,7 +128,9 @@ def _kernel_family(name: str) -> str:
         marker in lowered
         for marker in (
             "gguf_iq3_xxs_selected_gemv",
+            "gguf_iq3_xxs_selected_grouped_prefill",
             "gguf_iq4_xs_selected_gemv",
+            "gguf_iq4_xs_selected_grouped_prefill",
         )
     ):
         return "selected_iq_down"

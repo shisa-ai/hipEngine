@@ -547,7 +547,15 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
             "selected_iq_gate_up",
         ),
         ("gguf_iq3_xxs_selected_gemv_kernel", "selected_iq_down"),
+        (
+            "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<8>",
+            "selected_iq_down",
+        ),
         ("gguf_iq4_xs_selected_gemv_kernel", "selected_iq_down"),
+        (
+            "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+            "selected_iq_down",
+        ),
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
         ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
