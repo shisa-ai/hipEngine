@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_laguna_swa_decode_hipblaslt_category",
+  "status": "rejected_quality",
+  "date": "2026-07-28",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "hip_total_bytes": 128849018880
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 77133835284
+  },
+  "repo": {
+    "revision": "a7d94e4786178fa29ec691bc8de6665525605299",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "comparison": "swa_decode_exact versus swa_decode_hipblaslt",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompt_expansion": "preserve the leading token once and repeat each complete post-leading token sequence to exactly 512 tokens",
+    "repetitions": 3,
+    "output_horizons": [
+      16,
+      32
+    ],
+    "teacher_forced_steps": 576,
+    "timing": "same resident owner; isolated sessions; counterbalanced mode order; model load excluded"
+  },
+  "performance": {
+    "clean_p512_d128": {
+      "exact_tok_s": 14.754991,
+      "candidate_tok_s": 16.526335,
+      "throughput_delta_percent": 12.005055,
+      "wall_delta_percent": -10.718316
+    },
+    "category_h16": {
+      "exact_decode_tok_s": 14.817166775505648,
+      "candidate_decode_tok_s": 16.574819128778692,
+      "speedup": 1.118622701620571,
+      "e2e_speedup": 1.0438656215167685
+    },
+    "category_h32": {
+      "exact_decode_tok_s": 14.804541445011873,
+      "candidate_decode_tok_s": 16.573026027905634,
+      "speedup": 1.119455546087827,
+      "e2e_speedup": 1.0655149327014486
+    },
+    "prefill_speedup": 0.9998051747272922
+  },
+  "quality": {
+    "pass": false,
+    "finite": true,
+    "teacher_forced_top1_matches": 565,
+    "teacher_forced_steps": 576,
+    "teacher_forced_top1_agreement": 0.9809027777777778,
+    "teacher_forced_max_kl": 1.2182289866661948,
+    "max_kl_threshold": 0.05,
+    "category_top1_agreement": {
+      "code": 0.984375,
+      "general_en": 0.984375,
+      "general_ja": 0.9609375,
+      "mixed_ja_en": 0.9921875
+    },
+    "category_max_kl": {
+      "code": 0.5838037769913722,
+      "general_en": 0.25421427260213286,
+      "general_ja": 1.2182289866661948,
+      "mixed_ja_en": 0.38528787402265746
+    },
+    "free_running_exact_pairs": 36,
+    "free_running_pairs": 54,
+    "same_mode_repeat_deterministic": true,
+    "tracked_allocations_recovered": true,
+    "poolside_oracle_pass": true,
+    "poolside_oracle_kl": 0.000017512451201671218
+  },
+  "decision": {
+    "retained": false,
+    "production_default": "exact split SWA GQA3 scores plus wave-local gated reducer",
+    "production_topline_tok_s": 14.740486,
+    "reason": "The throughput win is real, but changed full-F32 QK/PV association exceeds the complete category KL contract.",
+    "next": "Preserve the exact GQA3 QK reduction tree and screen tensorized PV independently before another complete category run."
+  },
+  "raw_artifact": {
+    "path": "/tmp/laguna-swa-decode-hipblaslt-category.raw.json",
+    "sha256": "41eb13e71c20145a7f89b90bb088784157ec3c3fb58ff53d935fd302dba83ab4"
+  },
+  "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_grouped_down_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --comparison swa_decode_hipblaslt --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-swa-decode-hipblaslt-category.raw.json"
+}

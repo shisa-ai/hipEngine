@@ -1850,11 +1850,13 @@ should be boring.
   explicit false on the exact split path.
 - The complete wrap-plus-eviction leaf improves
   **0.251302 -> 0.073779 ms (3.406x)** within the numerical gate, but runtime
-  promotion is still pending the clean p512/d128 trajectory, lifecycle,
-  trace, and matched rollback gates.
-- If the complete gate passes, keep explicit false through one p128/p512/p1K/
-  p4K crossover and complete category refresh, then remove the positive
-  constructor/setter experiment semantics while preserving the exact
-  short-context and unsupported-backend fallback. If it fails, remove the
-  capability, runtime route, session selector, and leaf implementation rather
-  than carrying a dead library path.
+  promotion failed the complete category gate. The clean p512/d128 screen
+  improved **14.754991 -> 16.526335 tok/s (+12.005%)**, and the 18-prompt
+  category lane improved decode **11.86-11.95%**, but teacher-forced max KL
+  reached **1.218229** versus the **0.05** limit. Production therefore defaults
+  false and remains on exact split attention.
+- Keep the selector only while the bounded exact-score/tensorized-PV repair is
+  active. Remove the capability, runtime route, session selector, and leaf if
+  that repair cannot pass the complete category gate; if it passes, retain
+  explicit false only through the p128/p512/p1K/p4K crossover and production
+  trace before collapsing the experiment surface.
