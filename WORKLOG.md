@@ -188307,3 +188307,20 @@ Vulkan local sizes verbatim will close the measured gap.
   screen. The immediate bounded candidate remains vectorized SWA V staging;
   compare family and wall deltas rather than assuming scalar copy is still
   the dominant residual.
+
+## 2026-07-29 03:06 JST — Re-profile post-global-GQA2 production
+
+- Prebuild outside `rocprofv3`, then trace tracked-clean `babe5d2c8` for one
+  complete p512/d128 run. All 127 decode segments contain exactly **816
+  dispatches**. Median kernel sum is **52.577 ms/token** and span is
+  **55.154 ms/token**.
+- Global attention falls **2.877923 -> 2.236917 ms/token (-22.27%)**. Total
+  attention falls **8.722417 -> 8.064658 ms (-7.54%)**, kernel sum falls
+  **1.29%**, and span falls **1.26%**. SWA is unchanged within run variance at
+  **5.827741 ms/token**, versus source-F16 **24.053944**, selected gate/up
+  **8.420326**, selected down **4.827298**, and dense/shared **3.721021**.
+- Against the matched Vulkan logger's **0.909423 ms/token** attention, the
+  residual is **7.155235 ms/token** and about **59.5%** of the remaining
+  production wall gap. SWA alone is more than twice global, so keep attention
+  priority and screen vectorized 64-slot SWA V staging next. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-gqa2-wall-reprofile.json`.
