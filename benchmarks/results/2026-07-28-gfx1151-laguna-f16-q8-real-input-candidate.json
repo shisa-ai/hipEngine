@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T09:41:44.339413+00:00",
+  "kind": "hipengine_laguna_f16_decode_q8_real_input_screen",
+  "status": "candidate",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "revision": "7bdf723a3eb9725108702438327ceba43b7053d5",
+    "model": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_screen.py --layers 0,47 --samples 5 --warmups 3 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-decode-q8-real-input-directional.json",
+    "layers": [
+      0,
+      47
+    ],
+    "samples": 5,
+    "warmups": 3,
+    "burst": 10,
+    "capture": "one production decode transition after exact p512",
+    "candidate": "raw block32 Q8_0 weights plus one Q8_1 activation pack per QKV+gate and output family"
+  },
+  "trajectory": {
+    "prefill_next_token": 2930,
+    "decoded_next_token": 22746,
+    "decoded_position": 512
+  },
+  "results": [
+    {
+      "layer_id": 0,
+      "attention_type": "full_attention",
+      "source_f16_bytes": 88375296,
+      "q8_0_bytes": 46949376,
+      "resident_byte_change_percent": -46.875,
+      "activation_abs_max": {
+        "normalized_input": 0.66796875,
+        "output_input": 0.0576171875
+      },
+      "median_ms": {
+        "qkv_gate_exact": 0.2882169008255005,
+        "qkv_gate_q8": 0.04356969892978668,
+        "qkv_gate_change_percent": -84.88301733694453,
+        "output_exact": 0.22559540271759032,
+        "output_q8": 0.032532998919487,
+        "output_change_percent": -85.57905058011615
+      },
+      "quality": {
+        "maximum_normalized_rmse": 0.009664265642178742,
+        "minimum_cosine": 0.9999534487724304,
+        "maximum_absolute_error": 0.003100365400314331
+      }
+    },
+    {
+      "layer_id": 47,
+      "attention_type": "sliding_attention",
+      "source_f16_bytes": 126271488,
+      "q8_0_bytes": 67081728,
+      "resident_byte_change_percent": -46.875,
+      "activation_abs_max": {
+        "normalized_input": 2.5625,
+        "output_input": 5.15625
+      },
+      "median_ms": {
+        "qkv_gate_exact": 0.38945889472961426,
+        "qkv_gate_q8": 0.1159896969795227,
+        "qkv_gate_change_percent": -70.21773066447751,
+        "output_exact": 0.3069479942321777,
+        "output_q8": 0.04405069947242737,
+        "output_change_percent": -85.64880686625139
+      },
+      "quality": {
+        "maximum_normalized_rmse": 0.00974334284695029,
+        "minimum_cosine": 0.9999524354934692,
+        "maximum_absolute_error": 0.125
+      }
+    }
+  ],
+  "modeled_family": {
+    "full_attention_layers": 12,
+    "sliding_attention_layers": 36,
+    "exact_ms_per_token": 31.236395645141602,
+    "q8_ms_per_token": 6.6746866464614865,
+    "latency_change_percent": -78.6317002694911,
+    "modeled_saving_ms_per_token": 24.561708998680118,
+    "active_source_f16_weight_gib_per_token": 5.625,
+    "active_q8_0_weight_gib_per_token": 2.98828125
+  },
+  "gate": {
+    "projection_direction_pass": true,
+    "full_model_quality_run": false,
+    "kl_limit": 0.05,
+    "top1_agreement_minimum": 0.9,
+    "retain": false,
+    "next": "Build a diagnostic all-layer sidecar and measure teacher-forced full-model KL/top-1 before any runtime promotion."
+  }
+}

@@ -187663,3 +187663,24 @@ Vulkan local sizes verbatim will close the measured gap.
   owners below eight physical waves/output are closed. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json`;
   trace SHA-256 `35208d94...1f7`.
+
+## 2026-07-28 18:43 JST — Admit real-input source-F16 Q8 direction
+
+- Add a diagnostic that intercepts actual production source-F16 projection
+  inputs after exact p512, quantizes the corresponding model weights to raw
+  block32 Q8_0, and compares the existing Q8_1/dp4a path with exact output.
+  RED/GREEN covers raw layout, reconstruction error, determinism, and GGUF
+  source-name layer parsing. The first real-model attempt captured nothing
+  because it matched the internal slot path; repair it to use
+  `weight.spec.source.name` and do not claim a result from the failed run.
+- On actual layer-0 full-attention and layer-47 SWA inputs, Q8 cuts source-F16
+  bytes **46.875%**. QKV+gate improves **84.88%/70.22%** and output improves
+  **85.58%/85.65%**. The 12-full/36-SWA model is
+  **31.236 -> 6.675 ms/token (-78.63%)**, saving a modeled
+  **24.562 ms/token**.
+- Projection-level maximum normalized RMSE is **0.00974** and minimum cosine
+  is **0.999952**, but this does not satisfy the model gate. Retain nothing
+  yet. Next build a diagnostic all-layer sidecar and measure teacher-forced
+  full-model KL/top-1, with QKV+gate-only/output-only ablations if the combined
+  path fails. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-real-input-candidate.json`.
