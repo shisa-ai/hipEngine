@@ -1105,6 +1105,19 @@ Evidence:
 [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-production.json) ·
 [`wall re-profile`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vstage64-wall-reprofile.json).
 
+The gfx1151 copy-width successor keeps that exact local384 compute unchanged
+but maps each V-stage transaction to eight adjacent BF16 values. Aligned
+16-byte global loads and LDS stores replace the scalar copy loop; QK, maximum,
+denominator, PV FMA, gate, and store association are identical. The
+nine-sample leaf improves **0.133491 -> 0.106533 ms (-20.19%)**. Seven
+p512/d128 resident-model pairs improve **18.244607 -> 18.806305 tok/s
+(+3.079%, -1.637 ms/token)** with exact trajectories/state. Cached tracing
+records 24 local384 blocks, VGPR144/SGPR128/LDS30720/scratch0 and a
+four-observation median **161.50 -> 112.97 us (-30.05%)**. gfx1151 selects it
+only for saturated natural SWA; scalar V-stage64 is registered rollback.
+Evidence:
+[`retained vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-retained.json).
+
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production
 48Q/8KV/D128/capacity-4096 geometry and scratch strides. F32 context and gated

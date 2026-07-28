@@ -135,6 +135,7 @@ class LagunaKVCache:
         swa_fused_fixed512: bool,
         swa_gqa3_local384_fixed512: bool,
         swa_gqa3_vstage64_fixed512: bool,
+        swa_gqa3_vstage64_vec16_fixed512: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -168,6 +169,9 @@ class LagunaKVCache:
         )
         self.swa_gqa3_vstage64_fixed512 = bool(
             swa_gqa3_vstage64_fixed512
+        )
+        self.swa_gqa3_vstage64_vec16_fixed512 = bool(
+            swa_gqa3_vstage64_vec16_fixed512
         )
         self.runtime = runtime
         self.position = -1
@@ -442,8 +446,19 @@ class LagunaKVCache:
                         (
                             (
                                 (
-                                    "swa_context_fused_exact_gated_"
-                                    "gqa3_vstage64_fixed512_spans"
+                                    (
+                                        "swa_context_fused_exact_gated_"
+                                        "gqa3_vstage64_vec16_fixed512_spans"
+                                    )
+                                    if (
+                                        self.swa_gqa3_vstage64_vec16_fixed512
+                                        and live_count == 512
+                                        and state.capacity == 512
+                                    )
+                                    else (
+                                        "swa_context_fused_exact_gated_"
+                                        "gqa3_vstage64_fixed512_spans"
+                                    )
                                 )
                                 if (
                                     self.swa_gqa3_vstage64_fixed512
@@ -1276,6 +1291,14 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_swa_gqa3_vstage64_vec16_fixed512 = bool(
+        selected_swa_gqa3_vstage64_fixed512
+        and backend_package_capability(
+            backend,
+            "LAGUNA_SWA_GQA3_VSTAGE64_VEC16_FIXED512",
+            False,
+        )
+    )
     selected_global_split_fixedshape_reduce = bool(
         selected_split_gate_fusion
         and backend_package_capability(
@@ -1322,6 +1345,9 @@ def allocate_laguna_kv_cache(
         ),
         swa_gqa3_vstage64_fixed512=(
             selected_swa_gqa3_vstage64_fixed512
+        ),
+        swa_gqa3_vstage64_vec16_fixed512=(
+            selected_swa_gqa3_vstage64_vec16_fixed512
         ),
     )
     buffers: list[DeviceBuffer] = []
@@ -1524,6 +1550,9 @@ def allocate_laguna_kv_cache(
             swa_gqa3_vstage64_fixed512=(
                 selected_swa_gqa3_vstage64_fixed512 and split_enabled
             ),
+            swa_gqa3_vstage64_vec16_fixed512=(
+                selected_swa_gqa3_vstage64_vec16_fixed512 and split_enabled
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -1548,6 +1577,7 @@ def _validate_split_backend(
     swa_fused_fixed512: bool,
     swa_gqa3_local384_fixed512: bool,
     swa_gqa3_vstage64_fixed512: bool,
+    swa_gqa3_vstage64_vec16_fixed512: bool,
 ) -> None:
     if all(
         threshold is None
@@ -1652,6 +1682,16 @@ def _validate_split_backend(
             (
                 swa_tile16_threshold,
                 "swa_context_fused_exact_gated_gqa3_vstage64_fixed512_spans",
+            )
+        )
+    if swa_gqa3_vstage64_vec16_fixed512:
+        requested.append(
+            (
+                swa_tile16_threshold,
+                (
+                    "swa_context_fused_exact_gated_"
+                    "gqa3_vstage64_vec16_fixed512_spans"
+                ),
             )
         )
     for threshold, variant in requested:
