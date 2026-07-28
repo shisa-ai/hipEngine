@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T06:55:17+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed32_production",
+  "status": "accepted_production",
+  "performance_claim": true,
+  "source": {
+    "revision": "4edeca9896bf8bdef6586b70e15c3ddefb7a06c8",
+    "tracked_clean": true,
+    "untracked_shared_artifacts_excluded": true
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-mixed32-production.json",
+    "raw_sha256": "3f7b1ae451c9bcdd2b04a62e0ff1c45f67a28b9525d4b2ca1dde2966c271ce85",
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "comparison_selector_active": false,
+    "mixed32_capability_active": true,
+    "warmup_rows": 128,
+    "repetitions": 3
+  },
+  "precondition": {
+    "first_attempt_status": "stopped_before_model_load",
+    "first_attempt_reason": "require_cached correctly rejected the source hash after a final comment-only kernel edit",
+    "repair": "prebuilt the exact committed source outside the measured process with the same compiler-version string, then reran the original command unchanged",
+    "timed_samples_discarded": 0
+  },
+  "results": {
+    "decode_samples_tok_s": [
+      19.353807551313302,
+      19.370309892952527,
+      19.368763204227175
+    ],
+    "decode_median_tok_s": 19.368763204227175,
+    "decode_median_seconds": 6.556949386023916,
+    "previous_clean_decode_tok_s": 19.249443240044645,
+    "throughput_change_percent": 0.6198618977940606,
+    "saving_ms_per_token": 0.32003173938269924,
+    "sprint_start_decode_tok_s": 11.466687,
+    "cumulative_change_percent": 68.9133330684545
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_allocations_recovered": true,
+    "tracked_bytes_after_teardown": 0
+  },
+  "decision": {
+    "production_default": "gfx1151 mixed32 2+2+2+3 saturated-SWA owner",
+    "qualified_scope": "gated 72Q/8KV/D128/capacity512/live512",
+    "rollback": "24-block GQA3 V-stage64 vec16 direct-store assumed-domain owner",
+    "peer_and_non_natural_routes_unchanged": true
+  }
+}
