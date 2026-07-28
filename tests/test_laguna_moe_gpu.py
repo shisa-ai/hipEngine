@@ -17,7 +17,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
-from hipengine.kernels.registry import KernelKey
+from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.loading.laguna_gguf import (
     SLIDING_ATTENTION,
     SPARSE_MOE,
@@ -570,6 +570,50 @@ def test_laguna_grouped_pair16_preserves_route_major_c1_gate_up(
         libraries=None,
     )
     assert [name for name, _, _ in calls] == ["compact", "route_major", "gather"]
+
+
+def test_obsolete_laguna_grouped_prefill_keys_are_removed() -> None:
+    obsolete = {
+        "gguf_iq2_xs": (
+            "selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out",
+        ),
+        "gguf_iq3_xxs": (
+            "selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+        ),
+    }
+    for quant, variants in obsolete.items():
+        for variant in variants:
+            assert not is_registered(
+                KernelKey("hip_gfx1100", "moe_linear", quant, variant)
+            )
+
+    retained = {
+        "gguf_iq2_xs": (
+            "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out",
+        ),
+        "gguf_iq3_xxs": (
+            "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        ),
+        "gguf_iq4_xs": (
+            "selected_dual_grouped_prefill_compact_bf16_bf16_out",
+            "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+        ),
+    }
+    for quant, variants in retained.items():
+        for variant in variants:
+            assert is_registered(
+                KernelKey("hip_gfx1100", "moe_linear", quant, variant)
+            )
 
 
 def test_laguna_selected_down_default_is_backend_qualified() -> None:

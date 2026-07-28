@@ -63,11 +63,15 @@ should be removed or collapsed.
   now defaults gate/up to `grouped_pair16` plus `grouped_exact` down; c=1,
   unsupported keys, explicit `grouped_exact`, and paired `direct` remain exact
   fallbacks.
-- The cleanup trigger is active. Remove the obsolete local256/group8 grouped
-  gate/up and losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and
-  focused tests. Preserve pair16 rowbatch8, grouped IQ3 single/down rowbatch8,
-  IQ4 auto, shared compaction metadata, c=1 route-major arithmetic, and direct
-  exact fallback. P6 and WPF-1R remain closed.
+- The cleanup trigger is closed. Cleanup removed the unowned Laguna rowbatch8
+  and fused-SiLU local256/group8 gate/up variants, IQ3 down rowbatch4, and
+  losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and focused tests.
+  It preserves pair16 rowbatch8, grouped IQ3 single/down rowbatch8, IQ4 auto,
+  shared compaction metadata, c=1 route-major arithmetic, and direct exact
+  fallback. The initially broader deletion premise was unsafe: IQ2/IQ3
+  base/rowbatch4/adaptive/auto and IQ4 dual independently own Qwen3.5 GGUF's
+  exact default-on grouped-prefill route and remain covered. P6 and WPF-1R
+  remain closed.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
