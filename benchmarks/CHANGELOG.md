@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-29
 
+- [rejected exact gfx1151 Laguna GQA2 LDS-V staging] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / saturated 72Q/8KV/D128/SWA512 keeps the retained 40 local256 blocks/eight query-dimension waves and exact softmax/FMA order while staging V for adjacent-head reuse, but 64/128-slot batches regress the complete leaf **0.083659 -> 0.099588 ms (+19.04%)** and **0.082706 -> 0.096915 ms (+17.18%)** despite F32/BF16 byte identity; all candidate surfaces are removed and production stays **17.097044 tok/s**; `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json`.
 - [rejected gfx1151 Laguna GQA9 K64 split-K SWA decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / saturated 72Q/8KV/D128/SWA512 online split-K improves the leaf **0.083713 -> 0.035521 ms (-57.57%)** and seven-pair p512/d128 production **17.089951 -> 19.292150 tok/s (+12.886%, -6.679 ms/token)**, but fails the quality contract at max KL **0.314247** despite **97.66%** top-1; an exact three-dispatch repair wins the leaf **26.49%** but regresses production **3.687%**, while exact cooperative fusion regresses the leaf **77.25%**, so all candidate code is removed and production stays **17.097044 tok/s**; `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json`.
 
 ## 2026-07-28
