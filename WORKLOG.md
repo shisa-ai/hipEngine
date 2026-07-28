@@ -187587,3 +187587,25 @@ Vulkan local sizes verbatim will close the measured gap.
   only one block barrier. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-wave8-rejected.json`;
   trace SHA-256 `52a0567c...0614`.
+
+## 2026-07-28 18:04 JST — Admit exact source-F16 one-barrier primitive
+
+- RED required separately registered single BF16/F32, single BF16/BF16, and
+  triple BF16/F32 variants. The new sibling keeps one local256 workgroup and
+  eight waves per output, preserves every dot/reduction/store operation, and
+  removes only the generic reducer's second barrier: thread 0 consumes the
+  eight published wave sums directly instead of rebroadcasting the total.
+- GREEN passes the complete **29-test** source-F16 file, including K256/K512
+  F32/BF16 byte identity, tail outputs, and a triple tile that crosses Q/K/V
+  matrix boundaries. All six natural full/SWA leaf roles are byte-exact.
+- Stabilized 15-sample, 100-launch counterbalanced medians improve full/SWA
+  QKV **0.720%/0.804%**, gates **1.708%/1.624%**, and outputs
+  **0.594%/0.573%**. The 12-full/36-SWA weighted family improves
+  **31.316 -> 31.097 ms/token (-0.698%)**, saving **0.219 ms/token**.
+- Cache-only tracing names both retained and one-barrier owners at identical
+  local256/VGPR16/SGPR128/LDS512/scratch0; SHA-256
+  `cdcf99bd...ee3f`. Commit the separately registered primitive and leaf
+  harness default-off. Next add gfx1151 rows==1 ownership, then require exact
+  full state, cached production dispatch, and a positive clean p512/d128 gate.
+  Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-candidate.json`.

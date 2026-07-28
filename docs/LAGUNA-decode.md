@@ -3397,7 +3397,15 @@ effective weight bandwidth falls from **177.8-202.3 GB/s** to
 **85.0-99.2 GB/s** even though LDS falls **512 -> 0 B** and scratch remains
 zero; tracing shows VGPR **16 -> 32**. The multi-output block is removed.
 LD-2 continues only with a bounded local128 exact owner that keeps four
-physical waves/output and removes one of the two retained block barriers.
+physical waves/output and removes one of the two retained block barriers. A
+narrower same-grid seam lands first: the existing generic reducer performs a
+second barrier only to return the final sum to every thread, while GEMV stores
+from thread 0 alone. The separately registered local256 one-barrier sibling
+keeps all eight waves/output and is byte-exact across all natural shapes.
+Stabilized leaf medians improve every role by **0.57-1.71%** and the weighted
+family **31.316 -> 31.097 ms/token (-0.698%, -0.219 ms/token)** with identical
+VGPR16/LDS512/scratch0 resources. It is primitive-admitted; gfx1151 runtime
+ownership and full-state/clean gates remain next.
 
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
@@ -3483,10 +3491,12 @@ closed unless a future design preserves the retained 288-wave concurrency.
 2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
    **25.368-ms** unchanged-byte family floor. The eight-wave/eight-output block
    is exact but performance-rejected because it cuts physical-wave concurrency
-   eightfold. Next screen one local128 owner/output: preserve four physical
-   waves, reconstruct the eight retained logical partials, publish both sums
-   per physical wave once, and use one barrier plus a single exact ordered
-   reducer. Do not repeat launch-only local-size substitution.
+   eightfold. The exact same-grid one-barrier sibling is now
+   primitive-admitted at **-0.698%** weighted family time. Integrate it for
+   gfx1151 rows==1 and require exact full state, cached production tracing, and
+   a positive clean p512/d128 result. If it transfers, retain it before
+   screening one local128 owner/output. Do not repeat launch-only local-size
+   substitution.
 3. **LD-3 — decode-only compressed source-F16 representation.** If LD-2 cannot
    close enough of the 6.22-ms comparator gap, capture real projection inputs
    and screen a persistent Q8-class side representation. This is a new quality

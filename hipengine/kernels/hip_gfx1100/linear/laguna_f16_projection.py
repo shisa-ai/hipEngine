@@ -191,6 +191,64 @@ def laguna_f16w_gemv_bf16_bf16_out(
     )
 
 
+def laguna_f16w_onebarrier_gemv_bf16_f32_out(
+    x_ptr,
+    weight_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate_decode(rows, in_features, (out_features,), threads)
+    _single(
+        "hipengine_laguna_f16w_onebarrier_gemv_bf16_f32_out",
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_f16w_onebarrier_gemv_bf16_bf16_out(
+    x_ptr,
+    weight_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate_decode(rows, in_features, (out_features,), threads)
+    _single(
+        "hipengine_laguna_f16w_onebarrier_gemv_bf16_bf16_out",
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def laguna_f16w_gemv_f32_f32_out(
     x_ptr,
     weight_ptr,
@@ -531,6 +589,59 @@ def laguna_f16w_triple_gemv_bf16_f32_out(
         runtime.check(int(err))
 
 
+def laguna_f16w_triple_onebarrier_gemv_bf16_f32_out(
+    x_ptr,
+    weight_a_ptr,
+    weight_b_ptr,
+    weight_c_ptr,
+    out_a_ptr,
+    out_b_ptr,
+    out_c_ptr,
+    rows,
+    in_features,
+    out_a_features,
+    out_b_features,
+    out_c_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate_decode(
+        rows,
+        in_features,
+        (out_a_features, out_b_features, out_c_features),
+        threads,
+    )
+    library = library or build_laguna_f16_projection(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_laguna_f16w_triple_onebarrier_gemv_bf16_f32_out",
+        _TRIPLE_ARGS,
+        ctypes.c_int,
+    )
+    err = fn(
+        x_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        weight_c_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_a_features,
+        out_b_features,
+        out_c_features,
+        threads,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def laguna_f16w_triple_tiled_bf16_f32_out(
     x_ptr,
     weight_a_ptr,
@@ -712,6 +823,16 @@ def _validate(rows: int, in_features: int, outputs: tuple[int, ...], threads: in
         raise ValueError("threads must be one of 32, 64, 128, 256")
 
 
+def _validate_decode(
+    rows: int, in_features: int, outputs: tuple[int, ...], threads: int
+) -> None:
+    _validate(rows, in_features, outputs, threads)
+    if rows != 1:
+        raise ValueError("decode GEMV requires exactly one row")
+    if threads != 256:
+        raise ValueError("decode GEMV compatibility threads must be 256")
+
+
 def _validate_wmma(
     rows: int, in_features: int, outputs: tuple[int, ...], threads: int
 ) -> None:
@@ -731,6 +852,26 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
     )
     for variant, fn in variants:
         register(KernelKey("hip_gfx1100", "linear", "fp16_weight", variant), fn, replace=replace)
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "fp16_weight",
+            "onebarrier_bf16_f32_out",
+        ),
+        laguna_f16w_onebarrier_gemv_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "fp16_weight",
+            "onebarrier_bf16_bf16_out",
+        ),
+        laguna_f16w_onebarrier_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "linear", "fp16_weight", "tiled_bf16_f32_out"),
         laguna_f16w_tiled_bf16_f32_out,
@@ -791,6 +932,16 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_triple",
+            "fp16_weight",
+            "onebarrier_bf16_f32_out",
+        ),
+        laguna_f16w_triple_onebarrier_gemv_bf16_f32_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_triple", "fp16_weight", "tiled_bf16_f32_out"),
         laguna_f16w_triple_tiled_bf16_f32_out,
         replace=replace,
@@ -807,9 +958,12 @@ __all__ = [
     "laguna_f16w_gemv_bf16_f32_out",
     "laguna_f16w_gemv_f32_bf16_out",
     "laguna_f16w_gemv_f32_f32_out",
+    "laguna_f16w_onebarrier_gemv_bf16_bf16_out",
+    "laguna_f16w_onebarrier_gemv_bf16_f32_out",
     "laguna_f16w_tiled_bf16_bf16_out",
     "laguna_f16w_tiled_bf16_f32_out",
     "laguna_f16w_triple_gemv_bf16_f32_out",
+    "laguna_f16w_triple_onebarrier_gemv_bf16_f32_out",
     "laguna_f16w_triple_tiled_bf16_f32_out",
     "laguna_f16w_triple_wmma_bf16_f32_out",
     "laguna_f16w_triple_wmma_comp_bf16_f32_out",

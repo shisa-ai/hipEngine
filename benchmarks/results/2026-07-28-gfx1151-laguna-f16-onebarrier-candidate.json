@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T18:04:00+09:00",
+  "kind": "hipengine_laguna_f16_decode_onebarrier_candidate",
+  "status": "primitive_admitted",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "scope": "source-F16 decode projections"
+  },
+  "candidate": {
+    "geometry": "unchanged one local256 workgroup per output column",
+    "arithmetic": "unchanged per-thread K sequences, eight wave32 shuffle trees, logical-wave sum order, and output conversion",
+    "change": "publish eight wave sums once and let thread 0 reduce/store after one block barrier; remove the generic helper's second barrier that only broadcast the total to non-storing threads"
+  },
+  "correctness": {
+    "synthetic_in_features": [
+      256,
+      512
+    ],
+    "production_shapes_checked": 6,
+    "f32_and_bf16_byte_exact": true,
+    "tail_and_triple_matrix_boundary_checked": true,
+    "focused_test": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/pytest -q tests/test_laguna_f16_projection.py",
+    "focused_test_result": "29 passed"
+  },
+  "protocol": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python -u scripts/laguna_f16_decode_onebarrier_leaf.py --samples 15 --warmups 8 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-onebarrier-final.json",
+    "data": "deterministic nonzero BF16 activations and FP16 weights",
+    "timing": "counterbalanced HIP-event medians",
+    "samples": 15,
+    "warmups_per_mode": 8,
+    "launches_per_sample": 100
+  },
+  "results": [
+    {
+      "shape": "full QKV K3072 N6144+1024+1024 F32",
+      "calls_per_token": 12,
+      "retained_ms": 0.2832171821594238,
+      "candidate_ms": 0.2811769676208496,
+      "latency_change_percent": -0.7203710322298829
+    },
+    {
+      "shape": "SWA QKV K3072 N9216+1024+1024 F32",
+      "calls_per_token": 36,
+      "retained_ms": 0.38436069488525393,
+      "candidate_ms": 0.38127166748046876,
+      "latency_change_percent": -0.8036793163014089
+    },
+    {
+      "shape": "full gate K3072 N48 F32",
+      "calls_per_token": 12,
+      "retained_ms": 0.003403190076351166,
+      "candidate_ms": 0.003345080018043518,
+      "latency_change_percent": -1.707517270676584
+    },
+    {
+      "shape": "SWA gate K3072 N72 F32",
+      "calls_per_token": 36,
+      "retained_ms": 0.003429639935493469,
+      "candidate_ms": 0.0033739298582077027,
+      "latency_change_percent": -1.624371022427773
+    },
+    {
+      "shape": "full output K6144 N3072 BF16",
+      "calls_per_token": 12,
+      "retained_ms": 0.22864843368530274,
+      "candidate_ms": 0.22728948593139647,
+      "latency_change_percent": -0.594339410947653
+    },
+    {
+      "shape": "SWA output K9216 N3072 BF16",
+      "calls_per_token": 36,
+      "retained_ms": 0.3103373908996582,
+      "candidate_ms": 0.30855884552001955,
+      "latency_change_percent": -0.573100577562613
+    }
+  ],
+  "modeled_family": {
+    "retained_ms_per_token": 31.315823796987537,
+    "candidate_ms_per_token": 31.097098345756528,
+    "latency_change_percent": -0.6984502552094707,
+    "modeled_saving_ms_per_token": 0.21872545123100906
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-onebarrier-profile.ZICQWI --output-file onebarrier -- .venv/bin/python -u scripts/laguna_f16_decode_onebarrier_leaf.py --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-onebarrier-profile.ZICQWI/bench.json",
+    "sha256": "cdcf99bd430d11400d889dd913bd00024ea1cc9de52cf0c2b64f6354ea1eee3f",
+    "retained_and_candidate": {
+      "local_size": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "primitive_admitted": true,
+    "production_default_changed": false,
+    "reason": "All natural roles are exact and improve under the stabilized counterbalanced leaf; commit the separately registered primitive before gfx1151 runtime integration.",
+    "next": "Select the one-barrier variants only for gfx1151 rows==1, prove exact full state and cached production dispatch, then run a clean p512/d128 gate."
+  }
+}

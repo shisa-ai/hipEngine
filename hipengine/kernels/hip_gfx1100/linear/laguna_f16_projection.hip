@@ -60,6 +60,21 @@ __device__ inline float block_sum(float value) {
   return partial[0];
 }
 
+__device__ inline float block_sum_thread0(float value) {
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value += __shfl_down(value, offset);
+  }
+  __shared__ float partial[8];
+  if (lane == 0) partial[wave] = value;
+  __syncthreads();
+  if (threadIdx.x != 0) return 0.0f;
+  float total = 0.0f;
+  for (int i = 0; i < 8; ++i) total += partial[i];
+  return total;
+}
+
 template <typename x_t, typename out_t>
 __global__ void laguna_f16w_gemv_kernel(
     const x_t* __restrict__ x,
@@ -77,6 +92,28 @@ __global__ void laguna_f16w_gemv_kernel(
   }
   const float total = block_sum(acc);
   if (threadIdx.x == 0) store_scalar(out, row * out_features + col, total);
+}
+
+template <typename x_t, typename out_t>
+__global__ void laguna_f16w_onebarrier_gemv_kernel(
+    const x_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    out_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (row >= rows || col >= out_features) return;
+  float acc = 0.0f;
+  for (int64_t k = threadIdx.x; k < in_features; k += blockDim.x) {
+    acc += load_scalar(x[row * in_features + k]) *
+           static_cast<float>(weight[col * in_features + k]);
+  }
+  const float total = block_sum_thread0(acc);
+  if (threadIdx.x == 0) {
+    store_scalar(out, row * out_features + col, total);
+  }
 }
 
 template <typename x_t>
@@ -141,6 +178,55 @@ __global__ void laguna_f16w_triple_gemv_kernel(
     acc += load_scalar(x[row * in_features + k]) * static_cast<float>(weight[local_col * in_features + k]);
   }
   const float total = block_sum(acc);
+  if (threadIdx.x == 0) out[row * width + local_col] = total;
+}
+
+template <typename x_t>
+__global__ void laguna_f16w_triple_onebarrier_gemv_kernel(
+    const x_t* __restrict__ x,
+    const half_t* __restrict__ weight_a,
+    const half_t* __restrict__ weight_b,
+    const half_t* __restrict__ weight_c,
+    float* __restrict__ out_a,
+    float* __restrict__ out_b,
+    float* __restrict__ out_c,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a_features,
+    int64_t out_b_features,
+    int64_t out_c_features) {
+  const int64_t col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (row >= rows ||
+      col >= out_a_features + out_b_features + out_c_features) {
+    return;
+  }
+  const half_t* weight;
+  float* out;
+  int64_t local_col;
+  int64_t width;
+  if (col < out_a_features) {
+    weight = weight_a;
+    out = out_a;
+    local_col = col;
+    width = out_a_features;
+  } else if (col < out_a_features + out_b_features) {
+    weight = weight_b;
+    out = out_b;
+    local_col = col - out_a_features;
+    width = out_b_features;
+  } else {
+    weight = weight_c;
+    out = out_c;
+    local_col = col - out_a_features - out_b_features;
+    width = out_c_features;
+  }
+  float acc = 0.0f;
+  for (int64_t k = threadIdx.x; k < in_features; k += blockDim.x) {
+    acc += load_scalar(x[row * in_features + k]) *
+           static_cast<float>(weight[local_col * in_features + k]);
+  }
+  const float total = block_sum_thread0(acc);
   if (threadIdx.x == 0) out[row * width + local_col] = total;
 }
 
@@ -607,6 +693,25 @@ int launch_single(const x_t* x, const half_t* weight, out_t* out, int64_t rows,
   return hipGetLastError();
 }
 
+template <typename x_t, typename out_t>
+int launch_onebarrier_single(
+    const x_t* x,
+    const half_t* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows != 1 || in_features <= 0 || out_features <= 0 || threads != 256) {
+    return hipErrorInvalidValue;
+  }
+  laguna_f16w_onebarrier_gemv_kernel<<<
+      dim3(out_features, rows), dim3(threads), 0, stream>>>(
+      x, weight, out, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
 template <typename x_t>
 int launch_dual(const x_t* x, const half_t* wa, const half_t* wb, float* oa, float* ob,
                 int64_t rows, int64_t in_features, int64_t out_a, int64_t out_b,
@@ -625,14 +730,43 @@ int launch_triple(const x_t* x, const half_t* wa, const half_t* wb, const half_t
   return hipGetLastError();
 }
 
+template <typename x_t>
+int launch_triple_onebarrier(
+    const x_t* x,
+    const half_t* wa,
+    const half_t* wb,
+    const half_t* wc,
+    float* oa,
+    float* ob,
+    float* oc,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a,
+    int64_t out_b,
+    int64_t out_c,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows != 1 || in_features <= 0 || out_a <= 0 || out_b <= 0 ||
+      out_c <= 0 || threads != 256) {
+    return hipErrorInvalidValue;
+  }
+  laguna_f16w_triple_onebarrier_gemv_kernel<<<
+      dim3(out_a + out_b + out_c, rows), dim3(threads), 0, stream>>>(
+      x, wa, wb, wc, oa, ob, oc, rows, in_features, out_a, out_b, out_c);
+  return hipGetLastError();
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_f16w_gemv_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_gemv_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_onebarrier_gemv_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_onebarrier_single(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_onebarrier_gemv_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_onebarrier_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_gemv_f32_f32_out(const float* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_gemv_f32_bf16_out(const float* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_dual_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, float* oa, float* ob, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t t, hipStream_t s) { return launch_dual(x,wa,wb,oa,ob,r,k,na,nb,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
+extern "C" int hipengine_laguna_f16w_triple_onebarrier_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_onebarrier(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
 extern "C" int hipengine_laguna_f16w_tiled_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_tiled_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_tiled_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_tiled_exact(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
