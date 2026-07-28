@@ -1097,8 +1097,13 @@ Cached tracing records the expected template at 24 local384 blocks,
 VGPR144/SGPR128/LDS24576/scratch0 and cuts the four-observation median
 **184.085 -> 137.197 us (-25.47%)**. gfx1151 selects it only at the natural
 saturated shape; the unstaged local384 body is the exact rollback and all
-shorter/non-natural/peer paths are unchanged. Evidence:
-[`retained GQA3 V-stage64 SWA`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json).
+shorter/non-natural/peer paths are unchanged. Tracked-clean default production
+confirms **18.026501 tok/s**; the full census cuts SWA **8.891 -> 5.844
+ms/token (-34.27%)** and kernel span **58.846 -> 55.855 ms/token (-5.08%)**.
+Evidence:
+[`retained GQA3 V-stage64 SWA`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json) ·
+[`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-production.json) ·
+[`wall re-profile`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vstage64-wall-reprofile.json).
 
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production

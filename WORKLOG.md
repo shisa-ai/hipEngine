@@ -188238,3 +188238,25 @@ Vulkan local sizes verbatim will close the measured gap.
   Re-profile clean production before choosing the next attention screen.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json`.
+
+## 2026-07-29 02:43 JST — Publish and re-profile V-stage64 production
+
+- On tracked-clean `e420f8f32`, three selector-unset p512/d128 runs reach
+  **18.011776/18.026501/18.027178 tok/s**, median **18.026501 tok/s**. This is
+  **+5.172%** over the prior clean GQA3/local384 **17.139971 tok/s**.
+  Generated hash `94f803...bda32`, next token 2930, final token 74107,
+  position 638, deterministic repeats, and allocation lifecycle all pass.
+- Prebuild outside `rocprofv3`, then trace one tracked-clean complete run. All
+  127 decode segments contain exactly **816 dispatches**. Median kernel sum is
+  **53.265 ms/token** and span is **55.855 ms/token**. SWA falls
+  **8.891 -> 5.844 ms/token (-34.27%)**, attention total
+  **11.764 -> 8.722 ms/token (-25.86%)**, kernel sum falls **5.31%**, and span
+  falls **5.08%**. Global attention remains **2.878 ms/token**.
+- Against same-GGUF Vulkan's logged **0.909 ms/token** attention and
+  **23.348 tok/s** wall, exact attention still contributes **7.813 ms/token**
+  and about **61.8%** of the remaining wall deficit. Source-F16 remains at
+  comparator parity (**24.072 vs 24.759 ms/token**). Keep attention priority
+  #1: next test exact global GQA2 with staged V reuse, then vectorize the
+  retained SWA V copy if 24-workgroup occupancy still loses. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-production.json`;
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-vstage64-wall-reprofile.json`.
