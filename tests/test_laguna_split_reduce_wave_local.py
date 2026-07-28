@@ -76,7 +76,7 @@ def test_laguna_swa_split_wave_local_variants_are_registered() -> None:
     )
 
 
-def test_laguna_split_attention_bundle_is_screenable_on_gfx1151() -> None:
+def test_laguna_split_attention_bundle_is_registered_on_gfx1151() -> None:
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.registry import resolve
 

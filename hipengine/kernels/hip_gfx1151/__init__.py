@@ -231,6 +231,14 @@ LAGUNA_F16_BOUNDARY_FUSION = True
 # architecture-local bit-exact and p512/d128 gates admit automatic selection;
 # explicit False retains the registered fallback chain for rollback.
 LAGUNA_HEAD_KV_FUSION = True
+# The complete gfx11 exact split-attention bundle wins the clean gfx1151
+# p512/d128 gate. Keep the thresholds and reducer capabilities inseparable:
+# explicit use_split_attention=False retains serial global/SWA attention.
+LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
+LAGUNA_SWA_SPLIT_MIN_LIVE = 65
+LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
+LAGUNA_SPLIT_GATE_FUSION = True
+LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -590,6 +598,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
+    "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
@@ -614,6 +623,10 @@ __all__ = [
     "LAGUNA_ROUTER_LOGITS_MODE",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",
+    "LAGUNA_SPLIT_GATE_FUSION",
+    "LAGUNA_SWA_SPLIT_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",

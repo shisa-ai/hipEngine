@@ -187180,3 +187180,18 @@ Vulkan local sizes verbatim will close the measured gap.
   local32 or local256 and reducers local64/128/256. Trace SHA-256 is
   `2e54f0ff...2b65c`. Commit this default-off screen before the clean
   p512/d128 candidate.
+
+## 2026-07-28 — Promote gfx1151 split decode attention
+
+- At clean candidate commit `e7bb9bfac`, the complete split bundle improves
+  retained-head/KV p512/d128 decode **11.485885 -> 14.533955 tok/s
+  (+26.537533%)** and wall **11.057050 -> 8.738158 s (-20.972065%)**.
+  Candidate samples are **14.533955/14.534676/14.531750 tok/s** and save
+  **2.318892 seconds** over 127 calls, or **18.258989 ms/call**.
+- The candidate adds only two bounded split scratch owners totaling
+  **1,572,864 bytes**. IDs **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, position 638, repeat determinism, and full allocation
+  recovery are unchanged. Promote global/SWA/tile16 thresholds
+  **127/65/257**, split-gate fusion, and wave-local SWA reduction together;
+  explicit `use_split_attention=False` remains the serial fallback. Run clean
+  selector-unset production before publishing the retained benchmark.
