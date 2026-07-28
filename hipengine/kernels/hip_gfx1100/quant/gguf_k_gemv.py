@@ -1,4 +1,4 @@
-"""Raw GGUF Q8_0/Q5_K/Q6_K GEMV and exact Q8 prefill wrappers."""
+"""Raw GGUF Q8_0/Q5_K/Q6_K GEMV and exact tiled-prefill wrappers."""
 
 from __future__ import annotations
 
@@ -459,6 +459,40 @@ gguf_q6_k_gemv_rowbatch32_bf16_bf16_out = _make_wrapper(
 )
 gguf_q6_k_gemv_rowbatch32_bf16_f32_out = _make_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowbatch32_bf16_f32_out")
+)
+
+# WPF-1T constant-32-accumulator Q5/Q6 output-column candidates.
+gguf_q5_k_gemv_coltile2_rowbatch16_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k",
+    _symbol("gguf_q5_k", "gemv_coltile2_rowbatch16_bf16_bf16_out"),
+)
+gguf_q5_k_gemv_coltile2_rowbatch16_bf16_f32_out = _make_wrapper(
+    "gguf_q5_k",
+    _symbol("gguf_q5_k", "gemv_coltile2_rowbatch16_bf16_f32_out"),
+)
+gguf_q5_k_gemv_coltile4_rowbatch8_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k",
+    _symbol("gguf_q5_k", "gemv_coltile4_rowbatch8_bf16_bf16_out"),
+)
+gguf_q5_k_gemv_coltile4_rowbatch8_bf16_f32_out = _make_wrapper(
+    "gguf_q5_k",
+    _symbol("gguf_q5_k", "gemv_coltile4_rowbatch8_bf16_f32_out"),
+)
+gguf_q6_k_gemv_coltile2_rowbatch16_bf16_bf16_out = _make_wrapper(
+    "gguf_q6_k",
+    _symbol("gguf_q6_k", "gemv_coltile2_rowbatch16_bf16_bf16_out"),
+)
+gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out = _make_wrapper(
+    "gguf_q6_k",
+    _symbol("gguf_q6_k", "gemv_coltile2_rowbatch16_bf16_f32_out"),
+)
+gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out = _make_wrapper(
+    "gguf_q6_k",
+    _symbol("gguf_q6_k", "gemv_coltile4_rowbatch8_bf16_bf16_out"),
+)
+gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out = _make_wrapper(
+    "gguf_q6_k",
+    _symbol("gguf_q6_k", "gemv_coltile4_rowbatch8_bf16_f32_out"),
 )
 
 
@@ -1093,6 +1127,10 @@ _WRAPPERS = {
         "rowbatch16_bf16_f32_out": gguf_q5_k_gemv_rowbatch16_bf16_f32_out,
         "rowbatch32_bf16_bf16_out": gguf_q5_k_gemv_rowbatch32_bf16_bf16_out,
         "rowbatch32_bf16_f32_out": gguf_q5_k_gemv_rowbatch32_bf16_f32_out,
+        "coltile2_rowbatch16_bf16_bf16_out": gguf_q5_k_gemv_coltile2_rowbatch16_bf16_bf16_out,
+        "coltile2_rowbatch16_bf16_f32_out": gguf_q5_k_gemv_coltile2_rowbatch16_bf16_f32_out,
+        "coltile4_rowbatch8_bf16_bf16_out": gguf_q5_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
+        "coltile4_rowbatch8_bf16_f32_out": gguf_q5_k_gemv_coltile4_rowbatch8_bf16_f32_out,
     },
     "gguf_q6_k": {
         "gemv_f32_f32_out": gguf_q6_k_gemv_f32_f32_out,
@@ -1127,6 +1165,10 @@ _WRAPPERS = {
         "rowbatch16_bf16_f32_out": gguf_q6_k_gemv_rowbatch16_bf16_f32_out,
         "rowbatch32_bf16_bf16_out": gguf_q6_k_gemv_rowbatch32_bf16_bf16_out,
         "rowbatch32_bf16_f32_out": gguf_q6_k_gemv_rowbatch32_bf16_f32_out,
+        "coltile2_rowbatch16_bf16_bf16_out": gguf_q6_k_gemv_coltile2_rowbatch16_bf16_bf16_out,
+        "coltile2_rowbatch16_bf16_f32_out": gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out,
+        "coltile4_rowbatch8_bf16_bf16_out": gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
+        "coltile4_rowbatch8_bf16_f32_out": gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out,
     },
 }
 
@@ -1157,6 +1199,10 @@ __all__ = [
     "gguf_q5_k_gemv_rowbatch16_bf16_f32_out",
     "gguf_q5_k_gemv_rowbatch32_bf16_bf16_out",
     "gguf_q5_k_gemv_rowbatch32_bf16_f32_out",
+    "gguf_q5_k_gemv_coltile2_rowbatch16_bf16_bf16_out",
+    "gguf_q5_k_gemv_coltile2_rowbatch16_bf16_f32_out",
+    "gguf_q5_k_gemv_coltile4_rowbatch8_bf16_bf16_out",
+    "gguf_q5_k_gemv_coltile4_rowbatch8_bf16_f32_out",
     "gguf_q5_k_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
@@ -1197,6 +1243,10 @@ __all__ = [
     "gguf_q6_k_gemv_rowbatch16_bf16_f32_out",
     "gguf_q6_k_gemv_rowbatch32_bf16_bf16_out",
     "gguf_q6_k_gemv_rowbatch32_bf16_f32_out",
+    "gguf_q6_k_gemv_coltile2_rowbatch16_bf16_bf16_out",
+    "gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out",
+    "gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out",
+    "gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out",
     "gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out",
     "gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",

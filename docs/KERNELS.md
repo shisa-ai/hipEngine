@@ -464,6 +464,24 @@ as gfx1100 default; do not delete online qrow2/qrow4 registrations because
 gfx1151 owns them independently. Evidence:
 [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json).
 
+WPF-1T adds separately registered exact Q5_K/Q6_K output-column candidates in
+`quant/gguf_k_gemv.{hip,py}`. `(2,16)` and `(4,8)` hold the RB32 product at 32
+FP32 accumulators/thread while sharing each BF16 activation load/conversion
+across two or four adjacent output columns. Every output independently retains
+local128 K ownership, ordered FMAs, wave32 shuffles, and serial wave-0..3
+accumulation. Synthetic BF16/F32 outputs are byte-exact through 17- and 33-row
+tails. Across all 15 unique actual M512 `(quant, dtype, K, N)` configurations,
+representing 381 production invocations, both candidates are exact and faster.
+The weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms**;
+`(4,8)` improves **1.476x (-32.249%)**, with individual wins **1.124-3.472x**.
+It compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills; RB32 is
+VGPR73/SGPR107/LDS1024/private0 with 14 Q5 / 5 Q6 SGPR spills. Cached tracing
+names all eight quant/dtype/geometry instantiations at plausible 13.52-23.64 us
+on the tail fixture and spawns no compiler. The primitive is admitted for
+registry-driven runtime integration; RB32 remains the production/default owner
+until complete-state and rotating 512/1K gates pass. Evidence:
+[`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json).
+
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its
 quantizer-inclusive leaf sum improves exact **1297.436 -> 388.901 ms (3.336x)**

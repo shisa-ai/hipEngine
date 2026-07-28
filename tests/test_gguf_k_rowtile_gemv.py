@@ -29,6 +29,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_gemv_rowbatch16_bf16_f32_out,
     gguf_q5_k_gemv_rowbatch32_bf16_bf16_out,
     gguf_q5_k_gemv_rowbatch32_bf16_f32_out,
+    gguf_q5_k_gemv_coltile2_rowbatch16_bf16_bf16_out,
+    gguf_q5_k_gemv_coltile2_rowbatch16_bf16_f32_out,
+    gguf_q5_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
+    gguf_q5_k_gemv_coltile4_rowbatch8_bf16_f32_out,
     gguf_q5_k_gemv_rowtile_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_f32_out,
@@ -40,6 +44,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q6_k_gemv_rowbatch16_bf16_f32_out,
     gguf_q6_k_gemv_rowbatch32_bf16_bf16_out,
     gguf_q6_k_gemv_rowbatch32_bf16_f32_out,
+    gguf_q6_k_gemv_coltile2_rowbatch16_bf16_bf16_out,
+    gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out,
+    gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
+    gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out,
     gguf_q6_k_gemv_rowtile_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
@@ -152,6 +160,24 @@ def test_gguf_k_large_prefill_rowbatch_registry_binds(quant: str) -> None:
                     variant=f"rowbatch{row_batch}_bf16_{output_dtype}_out",
                 )
             )
+
+
+def test_q5k_q6k_output_coltile_registry_binds() -> None:
+    register_gguf_k_gemv_kernels()
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        for col_tile, row_batch in ((2, 16), (4, 8)):
+            for output_dtype in ("bf16", "f32"):
+                assert callable(
+                    resolve(
+                        backend="hip_gfx1100",
+                        layer="linear",
+                        quant=quant,
+                        variant=(
+                            f"coltile{col_tile}_rowbatch{row_batch}_"
+                            f"bf16_{output_dtype}_out"
+                        ),
+                    )
+                )
 
 
 def test_raw_k_prefill_rowbatch16_32_are_not_aliased_to_gfx1151() -> None:
@@ -419,6 +445,50 @@ def test_q5k_q6k_large_prefill_rowbatch_tails_are_bit_exact(rows: int) -> None:
             scalar_f32, xb, weight, np.zeros((rows, out_f), np.float32)
         ).copy()
         for index, wrapper in enumerate(rowbatch):
+            dtype = np.uint16 if index % 2 == 0 else np.float32
+            expected = expected_bf16 if index % 2 == 0 else expected_f32
+            actual = _run(wrapper, xb, weight, np.zeros((rows, out_f), dtype)).copy()
+            np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [17, 33])
+def test_q5k_q6k_output_coltiles_are_bit_exact(rows: int) -> None:
+    """Constant-accumulator column tiles preserve RB32 bytes and tails."""
+
+    from tests.test_gguf_k_gemv import make_q5_k_weight, make_q6_k_weight
+
+    in_f, out_f = 512, 48
+    rng = np.random.default_rng(20260729 + rows)
+    xb = _bf16_bits(rng.standard_normal((rows, in_f)).astype(np.float32) * 0.1)
+    cases = (
+        (
+            make_q5_k_weight(out_f, in_f),
+            gguf_q5_k_gemv_rowbatch32_bf16_bf16_out,
+            gguf_q5_k_gemv_rowbatch32_bf16_f32_out,
+            gguf_q5_k_gemv_coltile2_rowbatch16_bf16_bf16_out,
+            gguf_q5_k_gemv_coltile2_rowbatch16_bf16_f32_out,
+            gguf_q5_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
+            gguf_q5_k_gemv_coltile4_rowbatch8_bf16_f32_out,
+        ),
+        (
+            make_q6_k_weight(out_f, in_f),
+            gguf_q6_k_gemv_rowbatch32_bf16_bf16_out,
+            gguf_q6_k_gemv_rowbatch32_bf16_f32_out,
+            gguf_q6_k_gemv_coltile2_rowbatch16_bf16_bf16_out,
+            gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out,
+            gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
+            gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out,
+        ),
+    )
+    for weight, control_bf16, control_f32, *candidates in cases:
+        expected_bf16 = _run(
+            control_bf16, xb, weight, np.zeros((rows, out_f), np.uint16)
+        ).copy()
+        expected_f32 = _run(
+            control_f32, xb, weight, np.zeros((rows, out_f), np.float32)
+        ).copy()
+        for index, wrapper in enumerate(candidates):
             dtype = np.uint16 if index % 2 == 0 else np.float32
             expected = expected_bf16 if index % 2 == 0 else expected_f32
             actual = _run(wrapper, xb, weight, np.zeros((rows, out_f), dtype)).copy()
