@@ -227,10 +227,10 @@ LAGUNA_F16_PREFILL_MODE = "hipblaslt_range_direct"
 # input bits; the runtime setter remains the explicit rollback.
 LAGUNA_F16_BOUNDARY_FUSION = True
 # The gfx1100 current-P4 body is shape-identical for Laguna S 2.1 and compiles
-# from the shared gfx11 source as a native gfx1151 code object. Keep automatic
-# selection off until the architecture-local bit-exact and p512/d128 gates;
-# explicit True screens the candidate against the registered fallback chain.
-LAGUNA_HEAD_KV_FUSION = False
+# from the shared gfx11 source as a native gfx1151 code object. The
+# architecture-local bit-exact and p512/d128 gates admit automatic selection;
+# explicit False retains the registered fallback chain for rollback.
+LAGUNA_HEAD_KV_FUSION = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128

@@ -187131,3 +187131,18 @@ Vulkan local sizes verbatim will close the measured gap.
   read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Direct
   in-tree lineage, catalog, capability, registry, and prior retained/rejected
   evidence inspection is complete; no external reference tree is modified.
+
+## 2026-07-28 — Promote gfx1151 current-P4 head/KV fusion
+
+- At clean candidate commit `77935e534`, explicit head/KV fusion improves the
+  three-run p512/d128 median **11.466687 -> 11.483587 tok/s (+0.147385%)**
+  and decode wall **11.075562 -> 11.059262 s (-0.147168%)**. Every candidate
+  sample (**11.482738/11.485685/11.483587**) exceeds every control sample
+  (**11.467301/11.466687/11.464328**), saving **16.300 ms** over 127 calls or
+  **0.128344 ms/token**.
+- Candidate and control retain identical first/final IDs **2930/74107**,
+  complete trajectory SHA-256 `94f803f7...ebda32`, position 638,
+  deterministic repeats, and zero tracked allocations after teardown. Promote
+  `LAGUNA_HEAD_KV_FUSION=True` for gfx1151; explicit False remains the
+  registered two-launch rollback. Run a clean selector-unset production
+  publication before updating the canonical benchmark row.

@@ -1118,10 +1118,10 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
 
 
-def test_laguna_p4_head_kv_is_gfx1151_screenable_and_rollbackable() -> None:
+def test_laguna_p4_head_kv_is_gfx11_default_and_rollbackable() -> None:
     assert resolve_laguna_head_kv_fusion("hip_gfx1100")
     assert not resolve_laguna_head_kv_fusion("hip_gfx1100", False)
-    assert not resolve_laguna_head_kv_fusion("hip_gfx1151")
+    assert resolve_laguna_head_kv_fusion("hip_gfx1151")
     assert resolve_laguna_head_kv_fusion("hip_gfx1151", True)
     assert not resolve_laguna_head_kv_fusion("hip_gfx1151", False)
 
