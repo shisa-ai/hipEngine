@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_global_gqa2_exp32_retained",
+  "date": "2026-07-29",
+  "status": "retained",
+  "source_revision": "3d1cc757f090a4ef2162f11993ca6b06d5c3df77",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "control": "exact global GQA2 direct-store assume-exp with lane-0 serial expf issue",
+    "candidate": "same 24-block kernel with wave32 expf issue and lane-0 ordered sums",
+    "arithmetic_changed": false,
+    "dispatches_changed": false,
+    "resident_bytes_changed": 0
+  },
+  "correctness": {
+    "cpu_oracle_live_counts": [
+      513,
+      576,
+      639
+    ],
+    "explicit_eviction": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "generated_ids_match": true,
+    "next_tokens_match": true,
+    "final_positions_exact": true,
+    "repeat_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "leaf": {
+    "protocol": "9 samples, 5 warmups, 50 launches/sample",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.0830780029296875,
+        "candidate_median_ms": 0.0812047004699707,
+        "latency_change_percent": -2.2548717995812373
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.09470069885253907,
+        "candidate_median_ms": 0.09164695739746094,
+        "latency_change_percent": -3.2246239912476105
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.10431480407714844,
+        "candidate_median_ms": 0.1003633975982666,
+        "latency_change_percent": -3.7879632846354983
+      }
+    ],
+    "raw_sha256": "d512f9767307ec545275504843359acd63b1e9aa49f9e6fa6c767284c7e76ee8"
+  },
+  "trace": {
+    "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, true, true, true, true>",
+    "control_median_us": 88.486,
+    "candidate_median_us": 85.601,
+    "latency_change_percent": -3.260402775580329,
+    "candidate_vgpr": 56,
+    "candidate_sgpr": 128,
+    "candidate_lds_block_size": 512,
+    "candidate_scratch_bytes": 0,
+    "raw_sha256": "4dbf82b86a4610ee5d232ae6a2eb0cf8da9575fc0f64dd61f0db71c6f9018ba3"
+  },
+  "resident_ab": {
+    "workload": "p512/d128 eager c=1, 127 synchronized decode transitions",
+    "pairs": 7,
+    "control_median_tok_s": 19.547208667790386,
+    "candidate_median_tok_s": 19.556569067738682,
+    "throughput_change_percent": 0.047886120762186124,
+    "wall_change_ms_per_token": -0.024485951802861974,
+    "candidate_wins": 7,
+    "raw_sha256": "b37c9ae48dc0befff6ed3a0e000fbe20698fd170302da0ba6ea768ecb95a610f"
+  },
+  "validation": {
+    "focused_tests": "36 passed",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback tests/test_laguna_gguf_runner.py::test_laguna_global_exp32_switch_is_session_scoped tests/test_laguna_long_context_profile.py",
+    "resident_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-exp32 --allow-dirty --output /tmp/laguna-p512-d128-global-exp32-ab.json"
+  },
+  "decision": {
+    "production_default": true,
+    "scope": "gfx1151 gated natural 48Q/8KV/D128 capacity4096 global decode through live4000",
+    "rollback": "serial-issue direct-store assume-exp sibling"
+  }
+}

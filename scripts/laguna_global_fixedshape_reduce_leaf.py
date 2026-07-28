@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+    laguna_global_attention_decode_fused_exact_gated_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
@@ -57,6 +58,7 @@ def _parse_args() -> argparse.Namespace:
             "fused-gqa2-vstage64-vec16",
             "fused-gqa2-vstage64-vec16-direct",
             "fused-gqa2-vstage64-vec16-direct-assume-exp",
+            "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp",
         ),
         default="fixedshape",
     )
@@ -211,8 +213,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 HEAD_DIM,
                 HEAD_DIM**-0.5,
             )
-            if args.candidate == "fused-gqa2-vstage64-vec16-direct-assume-exp":
+            if args.candidate in (
+                "fused-gqa2-vstage64-vec16-direct-assume-exp",
+                "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp",
+            ):
                 control_kernel = laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans
+                if (
+                    args.candidate
+                    == "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp"
+                ):
+                    control_kernel = laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
             else:
                 control_kernel = (
                     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans
@@ -232,6 +242,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-gqa2-vstage64-vec16": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64-vec16-direct": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+                "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
             }[args.candidate]
 
             def control() -> None:

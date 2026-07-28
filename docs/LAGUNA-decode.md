@@ -4191,13 +4191,24 @@ does not move the occupancy/reuse seam; the implementation is removed and
 ordinary-grid SWA owners below 32 workgroups are closed. Evidence:
 [`rejected 24-block GQA3 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-exp32-rejected.json).
 
-Before the higher-risk tensorized repair, transfer the proven exact issue
-technique to the still-material global family. Its retained 24-block GQA2
-kernel assigns one strided token chain to each of eight waves, but only lane
-0 issues every `expf`. A wave32 issue sibling can compute 32 independent
-weights concurrently, shuffle them to lane 0, and preserve each wave's
-original token-order sum exactly. This keeps 24 workgroups, QK/PV arithmetic,
-dynamic LDS, launches, and resident state unchanged.
+The exact global wave32 issue sibling is retained. Each of the eight waves
+still owns the same strided token chain, while its 32 lanes issue independent
+compiler `expf` calls and shuffle weights back to lane 0 for the original
+token-order sum. F32 context and gated BF16 remain byte-exact at evicted
+live513/576/639. Leaves improve **2.25%/3.22%/3.79%**; cached tracing improves
+**88.486 -> 85.601 us (-3.26%)** at VGPR56/SGPR128/LDS512/scratch0. All seven
+resident p512/d128 pairs improve
+**19.547209 -> 19.556569 tok/s (+0.0479%, -0.0245 ms/token)** with exact
+trajectory, positions, determinism, and lifecycle. gfx1151 selects exp32
+only inside the qualified natural global direct-store/assume-exp route; the
+serial-issue sibling remains rollback. Evidence:
+[`retained global GQA2 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-retained.json).
+
+Exact scalar issue/ownership work is now closed for both attention families.
+The next material SWA gate must start from llama.cpp's actual advantage:
+tensorized QK and PV inside one GQA tile, with a separately budgeted
+high-precision correction strategy. Reusing scalar ownership, global score
+planes, or approximate online merges is closed by the measured failures.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
@@ -4305,10 +4316,10 @@ and shape/backend fallbacks.
    **5.44%** because 16 ordinary-grid blocks underfill gfx1151, so it is
    removed. The 24-block GQA3 exp32 screen is likewise exact but **3.34%**
    slower, closing scalar ordinary-grid SWA ownership below 32 blocks. Apply
-   exact wave32 exp issue to the retained global GQA2 family next; after that,
-   the next material SWA step requires an independently gated tensorized
-   high-precision repair. Do not resume full-score repairs or approximate
-   split softmax/PV.
+   exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
+   and **+0.0479%** complete decode. The next material SWA step requires an
+   independently gated tensorized high-precision repair. Do not resume
+   scalar ownership, full-score repairs, or approximate split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

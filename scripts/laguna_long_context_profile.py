@@ -292,6 +292,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance exact global generic-domain and softmax-domain expf",
     )
     parser.add_argument(
+        "--compare-global-exp32",
+        action="store_true",
+        help="counterbalance serial and exact wave-wide global expf issue",
+    )
+    parser.add_argument(
         "--compare-selected-natural-decode",
         action="store_true",
         help="counterbalance selected-MoE decode against natural-shape siblings",
@@ -416,6 +421,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_global_gqa2_vstage64_vec16,
             args.compare_global_gqa2_vstage64_vec16_direct,
             args.compare_global_assume_exp,
+            args.compare_global_exp32,
             args.compare_selected_natural_decode,
             args.compare_selected_natural_tile8_decode,
         )
@@ -468,6 +474,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_global_gqa2_vstage64_vec16
         or args.compare_global_gqa2_vstage64_vec16_direct
         or args.compare_global_assume_exp
+        or args.compare_global_exp32
         or args.compare_selected_natural_decode
         or args.compare_selected_natural_tile8_decode
     )
@@ -683,6 +690,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape = (
             owner.kv_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
         )
+        active_global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape = (
+            owner.kv_cache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape
+        )
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -794,6 +804,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_global_assume_exp:
                         owner.set_decode_global_assume_exp(mode == "candidate")
+                    if args.compare_global_exp32:
+                        owner.set_decode_global_exp32(mode == "candidate")
                     if args.compare_selected_natural_decode:
                         owner.set_selected_natural_decode(
                             mode == "candidate"
@@ -1046,6 +1058,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_global_gqa2_vstage64_vec16_direct
             ),
             "compare_global_assume_exp": args.compare_global_assume_exp,
+            "compare_global_exp32": args.compare_global_exp32,
             "compare_selected_natural_decode": (
                 args.compare_selected_natural_decode
             ),
@@ -1106,6 +1119,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape": (
                 active_global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
+            ),
+            "global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape": (
+                active_global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape
             ),
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
