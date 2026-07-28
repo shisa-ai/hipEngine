@@ -1340,9 +1340,14 @@ lane improves complete-suite natural-prompt prefill **117.170 -> 118.335 tok/s
 (+0.995%)** but is rejected at maximum KL **0.394600 > 0.05** despite
 **564/576** top-1, deterministic repeats, and positive h16/h32 E2E. Exact
 qrow4-C256 remains the gfx1100 default; the independently owned gfx1151 online
-registrations remain. WPF-1T exact dense/shared Q5/Q6 output-column tiling is
-next. P6 and WPF-1R remain closed. The detailed gates and 150-tok/s short-only
-stop rule are owned by `LAGUNA-prefill.md`.
+registrations remain. WPF-1T has now candidate-admitted exact Q5/Q6
+`coltile4_rowbatch8`: all 15 actual M512 configurations are byte-exact and
+faster, and the 381-invocation-weighted kernel sum falls **2699.147 -> 1828.710
+ms (1.476x, -32.249%)** versus RB32. It traces at local128, VGPR72, SGPR50,
+LDS512, and private0 with zero spills. Runtime/default/topline remain unchanged until
+complete-state and rotating 512/1K gates pass. P6 and WPF-1R remain closed. The
+detailed gates and 150-tok/s short-only stop rule are owned by
+`LAGUNA-prefill.md`.
 
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16

@@ -624,6 +624,112 @@ __global__ void gguf_k_prefill_out_rowbatch_kernel(
   }
 }
 
+// WPF-1T exact output-column screen. Keep the RB32 accumulator product fixed
+// at 32 while sharing each converted activation across adjacent output columns.
+// Every output retains local128 K ownership, ordered FMAs, wave32 shuffles, and
+// serial wave-0..3 accumulation from the retained rowbatch kernel.
+template <
+    typename scalar_t,
+    typename out_t,
+    int qtype,
+    int COL_TILE,
+    int ROW_BATCH>
+__launch_bounds__(128, 2)
+__global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  static_assert(
+      COL_TILE * ROW_BATCH == 32,
+      "WPF-1T screens only constant-32-accumulator output tiles");
+  const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
+  const int tid = threadIdx.x;
+  if (out_col_base >= out_features || row_base >= rows) return;
+
+  int row_bytes = 0;
+  if constexpr (qtype == 5) {
+    row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
+  } else {
+    row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
+  }
+  const uint8_t* weight_rows[COL_TILE];
+#pragma unroll
+  for (int col = 0; col < COL_TILE; ++col) {
+    weight_rows[col] =
+        qweight + static_cast<int64_t>(out_col_base + col) * row_bytes;
+  }
+
+  float acc[ROW_BATCH][COL_TILE] = {};
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[COL_TILE];
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      if constexpr (qtype == 5) {
+        weights[col] = q5_k_weight(weight_rows[col], k);
+      } else {
+        weights[col] = q6_k_weight(weight_rows[col], k);
+      }
+    }
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+      const int row = row_base + row_idx;
+      if (row < rows) {
+        const scalar_t* __restrict__ x_row =
+            x + static_cast<int64_t>(row) * in_features;
+        const float xv = scalar_to_float<scalar_t>(x_row[k]);
+#pragma unroll
+        for (int col = 0; col < COL_TILE; ++col) {
+          acc[row_idx][col] = fmaf(xv, weights[col], acc[row_idx][col]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        acc[row_idx][col] += __shfl_down(acc[row_idx][col], offset);
+      }
+    }
+  }
+  __shared__ float wave_sums[4][ROW_BATCH][COL_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        wave_sums[wave][row_idx][col] = acc[row_idx][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_BATCH * COL_TILE) {
+    const int row_idx = tid / COL_TILE;
+    const int col = tid - row_idx * COL_TILE;
+    const int row = row_base + row_idx;
+    if (row < rows) {
+      float total = 0.0f;
+#pragma unroll
+      for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+        total += wave_sums[wave_idx][row_idx][col];
+      }
+      store_output<out_t>(
+          out,
+          static_cast<int64_t>(row) * out_features + out_col_base + col,
+          total);
+    }
+  }
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_prefill_out_kernel(
@@ -3727,6 +3833,45 @@ int launch_gguf_k_gemv_rowbatch_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <
+    typename scalar_t,
+    typename out_t,
+    int qtype,
+    int COL_TILE,
+    int ROW_BATCH>
+int launch_gguf_k_gemv_coltile_rowbatch_out(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % COL_TILE) != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / COL_TILE),
+      static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH));
+  gguf_k_prefill_out_coltile_rowbatch_kernel<
+      scalar_t,
+      out_t,
+      qtype,
+      COL_TILE,
+      ROW_BATCH><<<grid, block, 0, stream>>>(
+      x,
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 int launch_gguf_k_selected_gemv_out(
     const scalar_t* x,
@@ -3940,6 +4085,30 @@ HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 16)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 32)
 
 #undef HIPENGINE_GGUF_K_ROWBATCH_EXPORTS
+
+#define HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS( \
+    NAME, QTYPE, COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_##NAME##_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_bf16_out( \
+    const uint16_t* x, const uint8_t* qweight, uint16_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_coltile_rowbatch_out< \
+      uint16_t, uint16_t, QTYPE, COL_TILE, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
+extern "C" int hipengine_##NAME##_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_f32_out( \
+    const uint16_t* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_coltile_rowbatch_out< \
+      uint16_t, float, QTYPE, COL_TILE, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS(gguf_q5_k, 5, 2, 16)
+HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS(gguf_q5_k, 5, 4, 8)
+HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS(gguf_q6_k, 6, 2, 16)
+HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS(gguf_q6_k, 6, 4, 8)
+
+#undef HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS
 
 extern "C" int hipengine_gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out(
     const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,

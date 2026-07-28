@@ -1,0 +1,459 @@
+{
+  "actual_role_screen": {
+    "aggregate": {
+      "coltile2_rowbatch16": {
+        "production_weighted_speedup": 1.2155439255296037,
+        "production_weighted_sum_ms": 2220.526389539242,
+        "unique_configuration_sum_ms": 150.49290336966513
+      },
+      "coltile4_rowbatch8": {
+        "production_weighted_speedup": 1.4759845760858092,
+        "production_weighted_sum_ms": 1828.7097358703616,
+        "unique_configuration_sum_ms": 120.87139208316802
+      },
+      "rowbatch32": {
+        "production_weighted_sum_ms": 2699.1473642826077,
+        "unique_configuration_sum_ms": 207.35721265077592
+      }
+    },
+    "all_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf1t_coltile_actual.py",
+    "harness_sha256": "c1dae09b46c7d7d5a9f67f350ccd5cc4ecfd98865090b0051486b3a6359accd1",
+    "protocol": {
+      "four_k_or_longer_run_performed": false,
+      "gpu_max_hw_queues": 1,
+      "launches_per_sample": 5,
+      "modes": [
+        "rowbatch32",
+        "coltile2_rowbatch16",
+        "coltile4_rowbatch8"
+      ],
+      "production_invocations": 381,
+      "repetitions": 15,
+      "rows": 512,
+      "unique_configurations": 15,
+      "warmups": 5,
+      "workgroup_count_equal": true
+    },
+    "raw_json_sha256": "78abd31979debc39014358b9d16882d00e81eaa3ae37bb8730591fefaa221c6f",
+    "rows": [
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 1.6439722061157227,
+          "coltile4_rowbatch8": 1.4089384078979492,
+          "rowbatch32": 2.7033315658569337
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 92,
+        "quant": "gguf_q5_k",
+        "shape": [
+          1024,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.644390066815181,
+          "coltile4_rowbatch8": 1.91870102390788
+        },
+        "tensor": "blk.1.ffn_gate_shexp.weight",
+        "workgroups_each_mode": 16384
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 19.621388244628907,
+          "coltile4_rowbatch8": 21.063151550292968,
+          "rowbatch32": 23.684703063964843
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 2,
+        "quant": "gguf_q5_k",
+        "shape": [
+          12288,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.207086000678276,
+          "coltile4_rowbatch8": 1.12446150365544
+        },
+        "tensor": "blk.0.ffn_gate.weight",
+        "workgroups_each_mode": 196608
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 14.570028686523438,
+          "coltile4_rowbatch8": 11.543653106689453,
+          "rowbatch32": 15.813117980957031
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 12,
+        "quant": "gguf_q5_k",
+        "shape": [
+          3072,
+          6144
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.0853182461873525,
+          "coltile4_rowbatch8": 1.3698538785606316
+        },
+        "tensor": "blk.0.attn_output.weight",
+        "workgroups_each_mode": 49152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 24.303077697753906,
+          "coltile4_rowbatch8": 17.164259338378905,
+          "rowbatch32": 24.361289978027344
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 35,
+        "quant": "gguf_q5_k",
+        "shape": [
+          3072,
+          9216
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.0023952637191633,
+          "coltile4_rowbatch8": 1.4193033033214568
+        },
+        "tensor": "blk.1.attn_output.weight",
+        "workgroups_each_mode": 49152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 0.09370480179786682,
+          "coltile4_rowbatch8": 0.078712797164917,
+          "rowbatch32": 0.14168139696121215
+        },
+        "output_dtype": "f32",
+        "production_invocations": 12,
+        "quant": "gguf_q5_k",
+        "shape": [
+          48,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.5119971895019526,
+          "coltile4_rowbatch8": 1.799979190986759
+        },
+        "tensor": "blk.0.attn_gate.weight",
+        "workgroups_each_mode": 768
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 0.16096140146255494,
+          "coltile4_rowbatch8": 0.1293212056159973,
+          "rowbatch32": 0.25786619186401366
+        },
+        "output_dtype": "f32",
+        "production_invocations": 35,
+        "quant": "gguf_q5_k",
+        "shape": [
+          72,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.6020374420261372,
+          "coltile4_rowbatch8": 1.9939977410179284
+        },
+        "tensor": "blk.1.attn_gate.weight",
+        "workgroups_each_mode": 1152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 10.583332824707032,
+          "coltile4_rowbatch8": 10.907672882080078,
+          "rowbatch32": 12.988113403320312
+        },
+        "output_dtype": "f32",
+        "production_invocations": 12,
+        "quant": "gguf_q5_k",
+        "shape": [
+          6144,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.2272233726789037,
+          "coltile4_rowbatch8": 1.1907318402129692
+        },
+        "tensor": "blk.0.attn_q.weight",
+        "workgroups_each_mode": 98304
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 15.240139770507813,
+          "coltile4_rowbatch8": 16.071495056152344,
+          "rowbatch32": 18.53265380859375
+        },
+        "output_dtype": "f32",
+        "production_invocations": 35,
+        "quant": "gguf_q5_k",
+        "shape": [
+          9216,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.2160422468340806,
+          "coltile4_rowbatch8": 1.1531381333125725
+        },
+        "tensor": "blk.1.attn_q.weight",
+        "workgroups_each_mode": 147456
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 1.4613174438476562,
+          "coltile4_rowbatch8": 1.227755355834961,
+          "rowbatch32": 2.012242889404297
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 46,
+        "quant": "gguf_q6_k",
+        "shape": [
+          3072,
+          1024
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.3770060009042604,
+          "coltile4_rowbatch8": 1.6389607912040658
+        },
+        "tensor": "blk.1.ffn_down_shexp.weight",
+        "workgroups_each_mode": 49152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 1.677119827270508,
+          "coltile4_rowbatch8": 1.151386833190918,
+          "rowbatch32": 2.8776588439941406
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 2,
+        "quant": "gguf_q6_k",
+        "shape": [
+          1024,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.715833774786084,
+          "coltile4_rowbatch8": 2.4992980300279144
+        },
+        "tensor": "blk.47.ffn_gate_shexp.weight",
+        "workgroups_each_mode": 16384
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 20.413223266601562,
+          "coltile4_rowbatch8": 11.85910415649414,
+          "rowbatch32": 30.69197998046875
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 1,
+        "quant": "gguf_q6_k",
+        "shape": [
+          3072,
+          9216
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.5035342326698815,
+          "coltile4_rowbatch8": 2.5880521475698126
+        },
+        "tensor": "blk.47.attn_output.weight",
+        "workgroups_each_mode": 49152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 27.534890747070314,
+          "coltile4_rowbatch8": 15.148323059082031,
+          "rowbatch32": 52.600225830078124
+        },
+        "output_dtype": "bf16",
+        "production_invocations": 1,
+        "quant": "gguf_q6_k",
+        "shape": [
+          3072,
+          12288
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.9103117681944948,
+          "coltile4_rowbatch8": 3.4723464521402696
+        },
+        "tensor": "blk.0.ffn_down.weight",
+        "workgroups_each_mode": 49152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 0.13124940395355225,
+          "coltile4_rowbatch8": 0.08130480051040649,
+          "rowbatch32": 0.23378639221191405
+        },
+        "output_dtype": "f32",
+        "production_invocations": 1,
+        "quant": "gguf_q6_k",
+        "shape": [
+          72,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.7812377440940497,
+          "coltile4_rowbatch8": 2.8754315949891653
+        },
+        "tensor": "blk.47.attn_gate.weight",
+        "workgroups_each_mode": 1152
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 2.2119829177856447,
+          "coltile4_rowbatch8": 1.289445400238037,
+          "rowbatch32": 3.6896785736083983
+        },
+        "output_dtype": "f32",
+        "production_invocations": 94,
+        "quant": "gguf_q6_k",
+        "shape": [
+          1024,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.668041169731109,
+          "coltile4_rowbatch8": 2.861446148031757
+        },
+        "tensor": "blk.0.attn_k.weight",
+        "workgroups_each_mode": 16384
+      },
+      {
+        "all_exact": true,
+        "event_ms_median": {
+          "coltile2_rowbatch16": 10.846514129638672,
+          "coltile4_rowbatch8": 11.746868133544922,
+          "rowbatch32": 16.768882751464844
+        },
+        "output_dtype": "f32",
+        "production_invocations": 1,
+        "quant": "gguf_q6_k",
+        "shape": [
+          9216,
+          3072
+        ],
+        "speedup": {
+          "coltile2_rowbatch16": 1.5460158490590987,
+          "coltile4_rowbatch8": 1.4275194512126015
+        },
+        "tensor": "blk.47.attn_q.weight",
+        "workgroups_each_mode": 147456
+      }
+    ],
+    "speedup_ranges": {
+      "coltile2_rowbatch16": {
+        "maximum": 1.9103117681944948,
+        "minimum": 1.0023952637191633,
+        "total_configurations": 15,
+        "winning_configurations": 15
+      },
+      "coltile4_rowbatch8": {
+        "maximum": 3.4723464521402696,
+        "minimum": 1.12446150365544,
+        "total_configurations": 15,
+        "winning_configurations": 15
+      }
+    },
+    "stdout_sha256": "0b55ed6a52c9545ab120bfde2c61667242d36a6c2cbe9901019c845f2b64edee",
+    "tracked_returned_to_baseline": true
+  },
+  "base_revision": "ceca91b2c1df03b50b18b5365e1c9c571d1e8d88",
+  "candidate": {
+    "arithmetic": "Each output preserves RB32 local128 K ownership, ordered FMAs, wave32 shuffle reduction, and serial wave-0..3 accumulation. Each BF16 activation load/conversion is shared across four adjacent output columns.",
+    "constant_accumulators_per_thread": 32,
+    "performance_claim": false,
+    "persistent_weight_sidecar": false,
+    "production_changed": false,
+    "winner": "coltile4_rowbatch8"
+  },
+  "date": "2026-07-29",
+  "decision": "Admit coltile4_rowbatch8 for registry-driven gfx1100 runtime integration, complete-state exactness, and clean 512/1K A/B. Keep rowbatch32 and the explicit coltile2 comparator until promotion cleanup.",
+  "hardware": {
+    "arch": "gfx1100",
+    "device": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpf1t-coltile-primitive-trace -- uv run pytest -q tests/test_gguf_k_rowtile_gemv.py::test_q5k_q6k_output_coltiles_are_bit_exact[33]",
+    "compiler_spawned_under_profiler": false,
+    "duration_ns": {
+      "q5_bf16_coltile2_rowbatch16": 23641,
+      "q5_bf16_coltile4_rowbatch8": 16200,
+      "q5_f32_coltile2_rowbatch16": 23361,
+      "q5_f32_coltile4_rowbatch8": 16040,
+      "q6_bf16_coltile2_rowbatch16": 21561,
+      "q6_bf16_coltile4_rowbatch8": 13520,
+      "q6_f32_coltile2_rowbatch16": 21641,
+      "q6_f32_coltile4_rowbatch8": 13600
+    },
+    "trace_sha256": "3fdc62855a379fe7765685aa8cc99b0f60d29176b0500666a52ebb632f153ec7"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next_gate": "Select coltile4 through a gfx1100 package capability and four-axis key, then require complete M512 state exactness plus rotating 512/1K wins before promotion.",
+  "primitive_gate": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_k_rowtile_gemv.py",
+    "result": "28 passed",
+    "synthetic_contract": "Q5_K/Q6_K, BF16/F32 outputs, 17- and 33-row tails; every candidate output is byte-identical to rowbatch32"
+  },
+  "resources": {
+    "code_object_notes_sha256": "e8c3b62029341b9dd28c0cfdfa1073113bf0f58a81411d3167352ddf9d8de2f4",
+    "coltile2_rowbatch16": {
+      "lds_bytes": 512,
+      "local_size": 128,
+      "private_bytes": 0,
+      "sgpr": 69,
+      "sgpr_spills": 0,
+      "vgpr": 72,
+      "vgpr_spills": 0
+    },
+    "coltile4_rowbatch8": {
+      "lds_bytes": 512,
+      "local_size": 128,
+      "private_bytes": 0,
+      "sgpr": 50,
+      "sgpr_spills": 0,
+      "vgpr": 72,
+      "vgpr_spills": 0
+    },
+    "rowbatch32": {
+      "lds_bytes": 1024,
+      "local_size": 128,
+      "private_bytes": 0,
+      "sgpr": 107,
+      "sgpr_spills": {
+        "gguf_q5_k": 14,
+        "gguf_q6_k": 5
+      },
+      "vgpr": 73,
+      "vgpr_spills": 0
+    }
+  },
+  "schema": "hipengine.laguna.wpf1t_q5_q6_coltile_candidate.v1",
+  "source": {
+    "harness_sha256": "c1dae09b46c7d7d5a9f67f350ccd5cc4ecfd98865090b0051486b3a6359accd1",
+    "tracked_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "41586c64e5cdc9c82d7268bfa3429c4102a166c76870e5bf02ff84d5317b572d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "6ffc245a8be35d4fcc5ba7c9c2649c357f1f5708e885c5a7fe4389acd166f711",
+      "tests/test_gguf_k_rowtile_gemv.py": "4a0abf75893be4a2fd93412d7ec6b1377ba3899bb9d7b7910a00a3bb87cd3407"
+    }
+  },
+  "status": "exact primitive admitted; runtime/default/topline unchanged"
+}
