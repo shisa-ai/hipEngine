@@ -483,10 +483,17 @@ smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks. A
 no-override natural M512 gate is KL0/bit-exact through all 48 hidden boundaries
 and full K/V/`KVLiveSpans`. Same-weight rotating 512/1K promotion improves
 **131.491/124.949 -> 169.046/157.420 tok/s (+28.561%/+25.987%)**, with every
-pair/repeat exact and lifecycle recovery. The canonical topline still requires
-clean selector-unset publication and cached all-family tracing. Evidence:
+pair/repeat exact and lifecycle recovery. Clean selector-unset publication
+reaches **169.253/159.229 tok/s (+28.301%/+26.412%)** versus the preceding exact
+packet. Cached tracing names **1,524** coltile calls including warmup and cuts
+dense/shared **38.546%/38.875%**, kernel sum **21.978%/20.935%**, and kernel
+span **21.893%/20.852%** at 512/1K. The restored clean 4K gate reaches
+**123.084 tok/s** with deterministic ID 7772, positions, lifecycle, and
+allocation recovery. The 150-tok/s short gate passes, but 16K+ remains closed
+below the 800/700 512/4K stretch gate. Evidence:
 [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) ·
-[`WPF-1T default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json).
+[`WPF-1T default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) ·
+[`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json).
 
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its

@@ -69,14 +69,17 @@ numbers below.
   speculative proposal/verify/commit infrastructure are available as retained
   runtime and benchmark paths.
 - The same Laguna family is supported on W7900/gfx1100 with the
-  `UD-Q2_K_XL` GGUF. Its exact matrix512/attention128/rowbatch32 prefill
-  default combines pair16 grouped IQ gate/up/down with adjacent-row qrow4 SWA
-  after a measured C256 crossover. Clean package-resolved throughput is
-  **131.919/125.960 tok/s** at 512/1K, **+11.131%/+16.842%** over the preceding
+  `UD-Q2_K_XL` GGUF. Its exact matrix512/attention128 prefill default combines
+  four-output/eight-row Q5/Q6 tiling, pair16 grouped IQ gate/up/down, and
+  adjacent-row qrow4 SWA after a measured C256 crossover. Clean
+  package-resolved throughput is **169.253/159.229/123.084 tok/s** at
+  512/1K/4K; the short rows improve **+28.301%/+26.412%** over the preceding
   exact packet. Full logits, all 48 hidden boundaries, routing prefixes,
-  active K/V, and every `KVLiveSpans` field are bit-exact at KL 0. Because both
-  short shapes remain below 150 tok/s, 4K and longer prefill stay deferred
-  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json)).
+  active K/V, and every `KVLiveSpans` field are bit-exact at KL 0 on the deep
+  M512 gate; 4K IDs, positions, repeats, and lifecycle are deterministic. The
+  150-tok/s short gate and restored 4K gate pass, while 16K+ stays closed below
+  the 800/700 512/4K stretch target
+  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted
@@ -943,7 +946,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
 | [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna S 2.1 gfx1151 support contract, implementation record, DFlash boundary, and evidence index |
-| [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 WPF-2b exact pair16/grouped-IQ matrix512/RB32 retained, rejected MMQ cleanup then SWA next, plus the gfx1151 campaign record |
+| [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 exact WPF-1T coltile/grouped-IQ/qrow4 production through 4K, plus the gfx1151 campaign record |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |

@@ -2,71 +2,55 @@
 
 Last updated: 2026-07-29
 
-## Active W7900 / gfx1100 UD-Q2_K_XL short-prefill port
+## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
-Status: **short-first optimization active; 16K+ work deferred**. This section
+Status: **WPF-1T production published; 16K+ work deferred**. This section
 is the authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna
 `UD-Q2_K_XL` port. The longer gfx1151/Q4 campaign record begins below and
 remains evidence, not a source of automatic defaults or tile geometry.
 
-WPF-3 compounds exact rowbatch32, matrix512/attention128, pair16 grouped IQ
-projection, and the C256-qualified adjacent-row SWA policy. Clean
-package-resolved publication moves the preceding exact packet
-**118.705/107.804 -> 131.919/125.960 tok/s (+11.131%/+16.842%)** at 512/1K;
-all 48 hidden boundaries, logits, K/V/live spans, routing, repeats, and
-lifecycle are exact at KL 0. Cached tracing cuts SWA **55.411%/59.449%**, all
-attention **50.675%/52.612%**, and kernel span **9.643%/14.228%** without
-changing dispatch count. All changed-arithmetic/repair decisions are now
+WPF-1T compounds exact four-output/eight-row Q5/Q6 tiling,
+matrix512/attention128, pair16 grouped IQ projection, and the C256-qualified
+adjacent-row SWA policy. Clean package-resolved publication moves the preceding
+exact packet **131.919/125.960 -> 169.253/159.229 tok/s
+(+28.301%/+26.412%)** at 512/1K, and the restored 4K gate reaches
+**123.084 tok/s**. All 48 hidden boundaries, logits, K/V/live spans, routing,
+repeats, and lifecycle are exact at KL 0 on the deep M512 gate; 4K IDs,
+positions, repeats, and lifecycle pass. Cached tracing cuts dense/shared
+projection **38.546%/38.875%**, kernel sum **21.978%/20.935%**, and kernel span
+**21.893%/20.852%** at 512/1K. All changed-arithmetic/repair decisions remain
 closed: P6 fails complete quality and its IQ2 repair density, WPF-1R's separate
 raw-Q5/Q6 screen fails touched-row and traffic density before repair
 implementation, and online qrow4 SWA fails complete quality at maximum KL
 **0.394600** despite **564/576** top-1 and positive suite timing. Cleanup has
-removed the rejected raw-Q5/Q6 MMQ runtime owner
-and the unowned Laguna rowbatch8/fused-SiLU plus losing pair16-rowbatch4
-surfaces. The shared base/rowbatch4/adaptive/auto grouped-dual keys remain
-because they independently own Qwen3.5 GGUF's exact default-on grouped-prefill
-route. WPF-3 now promotes the exact qrow4/C256 SWA policy as the gfx1100
-package default: it preserves production's two-pass arithmetic per row while
-one wave reuses each K/V row across four adjacent causal queries. A no-override
-deep M512 gate is KL0/bit-exact across all 48 boundaries and full K/V spans;
-the package-default paired gate improves **117.813/106.486 -> 131.044/124.348
-tok/s (+11.230%/+16.774%)** at 512/1K. Clean selector-unset publication reaches
-**131.919/125.960 tok/s**, **+11.131%/+16.842%** over the preceding exact packet;
-cached tracing cuts SWA **55.411%/59.449%**. The complete changed-association
-online-qrow4 lane is rejected: natural-prompt prefill improves **117.170 ->
-118.335 tok/s (+0.995%)** and h16/h32 E2E improves **0.764%/0.609%**, but
-maximum KL is **0.394600 > 0.05**. The remaining execution order is:
+removed the rejected raw-Q5/Q6 MMQ runtime owner and unowned grouped-gate
+surfaces; shared Qwen3.5 grouped-dual keys remain independently owned. The
+remaining execution order is:
 
-1. publish promoted **WPF-1T** from a clean selector-unset 512/1K packet and
-   cached all-family trace;
-2. if that clean packet confirms both rates above 150 tok/s, reopen the 4K gate;
-3. reduce launches/fusions only after span-minus-sum becomes material.
+1. make the bounded `(2,16)` ownership decision and remove unowned comparison
+   keys/setter surface while retaining RB32 as the generic exact fallback;
+2. keep WPF-4 launch/fusion deferred while span-minus-sum is only
+   **0.499%/0.504%** at 512/1K;
+3. keep 16K+ closed until 512/4K reaches 800/700 tok/s or a fresh measured
+   roofline proves an explicit lower ceiling.
 
 Quality-lane calibration is diagnostic only. It cannot waive the repository
 KL/top-1 contract or promote D4, D8, D8R8, P6, or another approximate variant.
 
-While repeated exact prefill remains below **150 tok/s** at either 512 or 1K,
-all active W7900 iteration is restricted to those two shapes: **do not run 4K
-or longer prefill**. Once both short shapes reach 150 tok/s, a 4K gate may
-resume. The full long-context campaign stays closed until 512/4K reaches
-**800/700 tok/s**, or a fresh measured roofline proves an explicit lower
-ceiling. This prevents multi-minute diagnostics from consuming the iteration
-loop while short prefill remains far below a practical target.
+The **150 tok/s** short gate now passes at both 512 and 1K, and its one required
+restored 4K gate is complete. Do not extend this result to 16K or longer:
+current clean 512/4K is only **169.253/123.084 tok/s**, far below the frozen
+**800/700 tok/s** stretch gate, and no fresh measured roofline has established
+a lower target. This keeps multi-minute long-context diagnostics out of the
+iteration loop without suppressing the retained 4K production measurement.
 
-The 150 gate is still dependency-critical. Its wall budgets are
-**3.413/6.827 seconds** at 512/1K. In the retained post-WPF-2b trace, perfect
-removal of every selected-IQ kernel leaves **3.268/7.496 seconds** of kernel
-span: a fragile **156.664-tok/s** ceiling at 512 and only **136.612 tok/s** at
-1K, still **0.669 seconds** over the 1K target wall. P6 failed complete quality
-and its own repair-density stop rules. WPF-1R's separate raw-Q5/Q6 screen also
-rejects sparse repair: all **333/333** eligible actual tensors fail the
-touched-row stop, and **331/333** already fail the read stop using measured
-BF16 mismatches alone. Exact WPF-3 is complete but both short shapes remain
-below 150 tok/s. Its online ceiling is now rejected at maximum KL **0.394600**.
-WPF-1T's exact `(4,8)` primitive is now the gfx1100 package default after all 15
-actual configurations win, complete M512 state is bit-exact, and dirty 512/1K
-rates reach **169.046/157.420 tok/s**. Production remains on the preceding clean
-headline until selector-unset publication confirms both threshold crossings.
+The 150 gate was dependency-critical because post-WPF-2b perfect selected-IQ
+removal still left a **136.612 tok/s** 1K ceiling. P6, WPF-1R, and online SWA
+could not cross it within the quality/repair contracts. WPF-1T does: all 15
+actual Q5/Q6 configurations win exactly, complete M512 state is bit-exact, the
+same-resident gate reaches **169.046/157.420 tok/s**, and clean production
+reaches **169.253/159.229 tok/s**. Its restored 4K result is **123.084 tok/s**;
+that closes the short dependency while documenting why 16K+ remains deferred.
 
 ### Frozen target and current evidence
 
@@ -76,7 +60,7 @@ headline until selector-unset publication confirms both threshold crossings.
 | SHA-256 | `8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679` |
 | Logical / tensor size | 117.562B parameters / 39,680,849,600 tensor bytes |
 | Backend | `hip_gfx1100`, AMD Radeon Pro W7900, one explicitly selected device |
-| Active iteration shapes | prefill-only 512 and 1,024 tokens until both reach 150 tok/s; BF16 KV; exact positions and deterministic next token |
+| Active iteration shapes | clean prefill-only 512/1K plus restored 4K production; BF16 KV; exact positions and deterministic next token; 16K+ closed below the 800/700 stretch gate |
 | Control | clean `67ab7e5a8`, matrix128 / attention128, direct GGUF, cached-only builds |
 | Control wall | **41.720 tok/s at 512**, **36.407 tok/s at 4K** |
 | Profile repeat | **41.438 / 36.245 tok/s**, raw trace SHA-256 `87f02952...f6f5b3` |
@@ -87,12 +71,13 @@ headline until selector-unset publication confirms both threshold crossings.
 | WPF-2b exact pair16 grouped gate/up | All 46 actual IQ2 roles are exact and faster; inclusive leaf **1343.915 -> 482.040 ms (2.788x)**. Complete state is KL0; clean 512/1K improves **99.230/91.559 -> 118.705/107.804 (+19.626%/+17.743%)**. |
 | WPF-3 exact qrow4 SWA default | One wave retains one head and four causal rows; the C256 policy uses exact wave32 below crossover. Four M128 slices improve **21.059 -> 9.389 ms (2.243x)** with zero F32-bit mismatches. The package-default M512 gate matches all 48 boundaries/KV spans at KL0. Clean 512/1K improves **118.705/107.804 -> 131.919/125.960 tok/s (+11.131%/+16.842%)**; traced SWA falls **55.411%/59.449%**. |
 | Rejected WPF-3 online qrow4 SWA | The complete 18-prompt/576-step M512 lane improves natural-prompt prefill **117.170 -> 118.335 tok/s (+0.995%)** and h16/h32 E2E **+0.764%/+0.609%**, but fails at maximum KL **0.394600** despite **564/576 (97.917%)** top-1. Poolside, repeat determinism, and lifecycle pass; exact qrow4-C256 remains default. |
-| Current clean selector-unset | **131.919/125.960 tok/s** at 512/1K, matrix512/attention128/rowbatch32/pair16-grouped-gate/grouped-down/qrow4-C256-SWA, revision `c435d4cdf`; full state KL0 and **+11.131%/+16.842%** over the preceding exact packet |
+| WPF-1T exact Q5/Q6 coltile default | All 15 actual M512 configurations are exact/faster; the 381-invocation weighted leaf sum is **2699.147 -> 1828.710 ms (1.476x)**. Complete state is KL0. Clean 512/1K improves **131.919/125.960 -> 169.253/159.229 tok/s (+28.301%/+26.412%)**; dense/shared falls **38.546%/38.875%**. |
+| Current clean selector-unset | **169.253/159.229/123.084 tok/s** at 512/1K/4K, matrix512/attention128/coltile4-rowbatch8/pair16-grouped-gate/grouped-down/qrow4-C256-SWA, revision `5a0c2fe37`; M512 full state is KL0, the 150 short gate passes, and 4K IDs/positions/repeats/lifecycle are deterministic |
 | Rejected WPF-1B screens | D4 **129.572/116.116 tok/s**, max KL **0.624304**; D8 **129.083/115.802**, max KL **0.400292**; D8R8 **123.466/111.324**, max KL **0.964321** at 512/1K |
 | Rejected P6 / P6-repair screen | Existing IQ2 MMQ gate/up is **3.336x** faster over 46 actual M512 layers and reaches diagnostic **122.135/110.761 tok/s (+23.082%/+20.972%)**, but complete quality reaches max KL **0.683239** at **565/576** top-1. P6 repair stops at **85.946%** uncertain coordinates and **99.496%** touched active output rows; WPF-1R's separately measured raw-Q5/Q6 screen is also rejected. |
 | Rejected WPF-1R raw-Q5/Q6 repair | All **381/381** projection tensors are captured at M512; 333 are D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch **72.266-100%** of output-weight rows and imply **0.160-1.686x** exact-RB32 family reads; the conservative midpoint envelope reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads. No repair queue/kernel/runtime route is admitted. |
-| Current attribution | M512/RB32 WPF-3: dense/shared **2.352/4.727 s**, selected IQ gate/up + down **0.467+0.531 / 0.932+1.065 s**, attention **0.429/1.265 s**, kernel span **3.851/8.138 s**, and **1,479/2,962** dispatches at 512/1K. SWA is **0.355/0.958 s** versus global **0.074/0.307 s**; exact qrow4 cuts SWA **55.411%/59.449%**. |
-| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-C1 M256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json) · [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) · [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json) · [`WPF-2b pair16 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) · [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json) · [`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) · [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) · [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json) · [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) · [`P6/P6-repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json) · [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json) |
+| Current attribution | M512/coltile4-rowbatch8 WPF-1T: dense/shared **1.445/2.889 s**, selected IQ gate/up + down **0.462+0.559 / 0.923+1.118 s**, attention **0.464/1.354 s**, kernel span **3.008/6.441 s**, and **1,477/2,960** dispatches at 512/1K. The trace names **1,524** coltile calls including warmup; span-minus-sum is only **0.499%/0.504%**. |
+| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-C1 M256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json) · [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) · [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json) · [`WPF-2b pair16 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) · [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json) · [`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) · [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) · [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json) · [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json) · [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) · [`WPF-1T default`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) · [`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) · [`P6/P6-repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json) · [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json) |
 
 WPF-1 established the first retained W7900 prefill default. One shared
 resident-weight process preserves logits bit-for-bit, all 48 hidden boundaries,
@@ -106,9 +91,11 @@ The exact capacity gate selects M512 and its **439,021,600-byte** planned row/Mo
 scratch. WPF-2b then moves IQ2 gate/up to the exact local64/pair16 expert-major
 rowbatch8 owner while preserving c=1 and unsupported-key route-major fallbacks.
 WPF-3 then reuses each K/V row across four adjacent causal SWA queries while
-preserving every row's production arithmetic. Complete state is KL0 and clean
-package throughput reaches **131.919/125.960 tok/s**. Both short shapes remain
-below 150 tok/s, so 4K stays closed.
+preserving every row's production arithmetic. WPF-1T subsequently reuses each
+activation across four Q5/Q6 output columns while retaining RB32 arithmetic.
+Complete state is KL0; clean package throughput reaches
+**169.253/159.229/123.084 tok/s** at 512/1K/4K. The short and restored 4K gates
+pass, while 16K+ remains closed below the 800/700 stretch target.
 
 The bounded post-WPF-2 P6 repricing changes no production code. Across all 46
 actual IQ2 gate/up layers, compact D4-Q8_1 pack plus the existing signed-byte
@@ -132,8 +119,10 @@ default at local32, VGPR72, LDS0, and scratch0. Its no-override deep-state,
 paired throughput, selector-unset, and cached-trace gates pass. The
 changed-association online body is faster but rejected at maximum KL
 **0.394600** on the complete lane; its gfx1151-owned registry surface remains,
-but gfx1100 production stays exact. WPF-1T promotes exact `(4,8)` dense output
-tiling as the package default; clean short publication and tracing are next.
+but gfx1100 production stays exact. WPF-1T's exact `(4,8)` dense output tiling
+is now cleanly published and traced as the package default. The 150 short gate
+and restored 4K run pass; the bounded `(2,16)` ownership/cleanup decision is
+next, not 16K+ or launch/fusion work.
 
 The rejected broad shared-source candidate combined M2048 matrix/global
 transactions with packed/block F32 attention, dense initial cache, and rolling
@@ -154,7 +143,7 @@ explicit direct-route rollback; every copied broad capability remains removed.
 | Qwen chunk geometry | gfx1151's 256-row linear/MoE policy regressed W7900 **6.4-8.8%** | Never copy chunk/tile width by architecture name. Screen natural 128/256/512 rows. |
 | Wave widening | gfx1151 keeps four-wave Q8 through 64K; W7900 keeps two-wave only through 4K | Wave count and crossover are backend capabilities, not shared constants. |
 | Compiler resources | A selected-MoE body became VGPR256/private176B/75 spills on W7900 until the outer loop rolled | Every candidate records VGPR/SGPR/LDS/private/spills and rejects a spill-based “win”. |
-| Launch seams | Router logits 512->256 threads, selector 512->128, and stream-ordered metadata transferred after independent gates | Transfer small launch hypotheses only with exact 512/1K A/B evidence, and only after the current **0.31%/0.30%** span-minus-sum gaps become material. |
+| Launch seams | Router logits 512->256 threads, selector 512->128, and stream-ordered metadata transferred after independent gates | Transfer small launch hypotheses only with exact 512/1K A/B evidence, and only after the current **0.499%/0.504%** span-minus-sum gaps become material. |
 | Queue overlap | gfx1151's first AOTriton on/off order gave a false negative; reverse order and 15 samples found the small win | Counterbalance process order. No favorable rerun or pooled waiver. |
 | Quant arithmetic | gfx1151 Q4_K_M uses selected Q4/Q6 T16 D8/D4 MMQ; Q2 XL uses raw IQ2/IQ3/IQ4 experts and mostly raw Q5/Q6 dense/shared weights | Do not alias `LAGUNA_DENSE_Q4_PREFILL_MODE`, selected-MMQ, F16, concurrency, or queue policies. Add separate registered gfx1100 keys. |
 | Hotspot migration | Tiled Conv mattered on gfx1151 but fell to 0.87-1.09% on W7900 after transfer | Reprofile immediately after every promotion and discard the source architecture's remaining checklist. |
@@ -429,10 +418,10 @@ The relevant lesson is dataflow, not API or literal constants:
 | WPF-1B approximate dense/shared Q8_1 MMQ | **D4/D8/D8R8 rejected** | Fastest clean candidates reach **129.572/116.116**, **129.083/115.802**, and **123.466/111.324 tok/s**, but all fail max-KL quality. D8R8 is the final blind-precision screen: max KL **0.964321**, **562/576** top-1. Keep exact production. |
 | **WPF-1R guarded exact repair** | **Rejected before implementation** | All 381 raw-Q5/Q6 tensors are captured at M512; all 333 eligible tensors fail conservative density/touched-row/read stops. Measured mismatches alone touch **72.266-100%** of rows and imply up to **1.686x** exact-family reads. No queue, repair kernel, overflow route, runtime mode, full-state/category lane, or timing gate is added. |
 | **WPF-3 short SWA attention** | **Complete; exact qrow4 retained and online qrow4 rejected** | One wave keeps one head and production's per-row two-pass arithmetic while reusing K/V across four causal rows; this is distinct from rejected cross-head/tiled sharing. The C256 policy keeps exact wave32 below crossover. Four M128 slices improve **21.059 -> 9.389 ms (2.243x)** bit-exactly; qrow4 traces at local32/VGPR72/LDS0/scratch0. The no-override M512 gate is KL0 across all 48 boundaries/KV spans. Clean 512/1K improves **+11.131%/+16.842%**, while cached SWA and complete span fall **55.411%/59.449%** and **9.643%/14.228%**. Changed-association online qrow4 improves complete-suite prefill **0.995%** but is rejected at max KL **0.394600** despite **564/576** top-1. |
-| **WPF-1T exact dense output tiling** | **Promoted gfx1100 default; clean publication pending** | `(2,16)` and `(4,8)` preserve RB32's 32 accumulators/thread, K ownership, FMA order, wave tree, and serial wave sum. Both are byte-exact/faster on all 15 unique actual Q5/Q6 M512 configurations. Production-weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms** over 381 invocations; `(4,8)` is **1.476x (-32.249%)** and compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills. The package default is now `(4,8)` for divisible-by-four full RB32 slabs; explicit RB32, smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks. No-override M512 is KL0 across all 48 boundaries/KV spans. Same-weight 512/1K improves **131.491/124.949 -> 169.046/157.420 tok/s (+28.561%/+25.987%)**, exact on all pairs/repeats. Clean selector-unset publication and tracing remain required before the topline or 4K gate changes. |
+| **WPF-1T exact dense output tiling** | **Complete; retained gfx1100 production through 4K** | `(2,16)` and `(4,8)` preserve RB32's 32 accumulators/thread, K ownership, FMA order, wave tree, and serial wave sum. Both are byte-exact/faster on all 15 unique actual Q5/Q6 M512 configurations. Production-weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms** over 381 invocations; `(4,8)` is **1.476x (-32.249%)** and compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills. The package default is `(4,8)` for divisible-by-four full RB32 slabs; explicit RB32, smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks. No-override M512 is KL0 across all 48 boundaries/KV spans. Clean 512/1K publishes **169.253/159.229 tok/s (+28.301%/+26.412%)** and tracing cuts dense/shared **38.546%/38.875%**. Restored 4K reaches **123.084 tok/s** with deterministic ID/position/lifecycle and allocation recovery. |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
-| WPF-4 launch/fusion | Deferred | Post-WPF-3 span-minus-sum is only **0.39%/0.40%** at 512/1K. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
-| WPF-5 long context | Hard deferred | Resume 4K only after exact 512/1K both reach 150 tok/s; full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |
+| WPF-4 launch/fusion | Deferred | Post-WPF-1T span-minus-sum is only **0.499%/0.504%** at 512/1K. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
+| WPF-5 long context | 4K complete; 16K+ hard deferred | The short 150 gate passes and clean 4K reaches **123.084 tok/s**. Full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |
 
 ### Admission and stop rules
 
