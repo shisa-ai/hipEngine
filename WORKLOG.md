@@ -188756,3 +188756,26 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked bytes after teardown. Production is now **+67.873%** over the
   11.466687 sprint start. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-production.json`.
+
+## 2026-07-29 06:24 JST — Reject exact SWA GQA2 direct-vec16 staging
+
+- Re-audited llama.cpp Vulkan's decode topology against the prior in-tree
+  GQA9/K64 screens. Its 64-way split and grouped K/V reuse remain the source of
+  the attention ceiling, but changed bounded-state association is not
+  admissible and the exact cooperative/global-score boundary previously cost
+  2.2-2.4 ms/token.
+- Closed the cheaper untested prerequisite: combine the 40-local256 exact GQA2
+  body with 64-slot direct 16-byte V staging and the exact compiler-`expf`
+  domain specialization. RED was the absent wrapper; GREEN is byte-exact for
+  F32 context and BF16 gated output across positions 512-519 plus explicit
+  eviction.
+- Nine cache-hot samples improve **0.098081 -> 0.097236 ms (-0.861%)**.
+  Cached tracing names 40 local256 blocks at **VGPR176/SGPR128/LDS22528/
+  scratch0**, versus retained GQA3's 24 local384 blocks at
+  **VGPR144/SGPR128/LDS24576/scratch0**.
+- Seven resident-model pairs reject the candidate
+  **19.249050 -> 19.182158 tok/s (-0.3475%, +0.1812 ms/token)**; every
+  candidate sample is slower, while IDs/state/lifecycle remain exact. Remove
+  the kernel, registry, runtime, test, and comparison seams. Production stays
+  **19.249443 tok/s**. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vec16-rejected.json`.

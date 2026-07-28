@@ -3972,6 +3972,20 @@ ordered denominator/PV association or use an explicit high-precision repair
 that clears the complete category gate. Do not reopen approximate exponential
 or static layer-selection screens.
 
+One prerequisite exact screen closes the ordinary-workgroup alternative.
+The earlier scalar GQA2 V-stage64 body was never combined with the later
+direct vec16 transport and exact exponential-domain specialization. That
+40-local256 candidate is F32/BF16 byte-exact and improves the cache-hot leaf
+**0.098081 -> 0.097236 ms (-0.861%)**, but allocates **176 VGPR** versus
+retained GQA3's 144. All seven resident-model pairs lose
+**19.249050 -> 19.182158 tok/s (-0.3475%, +0.1812 ms/token)**. Five K owners
+per KV head and the register footprint outweigh broader block coverage once
+the 78.8-GB model is resident. Remove the complete candidate; do not retry
+ordinary GQA2 staging. The remaining exact source-shaped seam is a
+normal-launch persistent K64 producer plus ordered reducer that avoids the
+already-rejected cooperative-launch barrier. Evidence:
+[`rejected GQA2 direct-vec16 staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vec16-rejected.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
