@@ -244,10 +244,10 @@ LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
 # The 24 x token/tile grid preserves gfx1151 breadth; peer backends keep the
 # one-query score owners until independently measured.
 LAGUNA_SWA_SPLIT_GQA3_SCORES = True
-# A full SWA ring is tensorized only for C1 decode after the 512-token window
-# fills. The session-owned route uses complete KVLiveSpans and keeps the exact
-# split path for short contexts and explicit rollback.
-LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT = True
+# The full-ring tensorized C1 SWA route remains available for bounded
+# exact-vs-candidate diagnosis, but changed F32 association failed the complete
+# category KL gate. Keep production on exact split attention.
+LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT = False
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128

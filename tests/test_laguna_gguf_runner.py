@@ -955,9 +955,10 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.prefill_cached_meta is True
     assert session.prefill_global_qrow6 is True
     assert session.prefill_dense_initial is True
+    assert session.decode_swa_attention_hipblaslt is False
+    session.set_decode_swa_attention_hipblaslt(True)
     assert session.decode_swa_attention_hipblaslt is True
     session.set_decode_swa_attention_hipblaslt(False)
-    assert session.decode_swa_attention_hipblaslt is False
     assert session.q6_compact_activation is True
     assert session.q6_half_row_activation is True
     assert session.q6_skip_padded_activation is True

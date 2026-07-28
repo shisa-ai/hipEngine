@@ -3425,16 +3425,24 @@ uses the existing BF16 gate. At position 512 with ring wrap and explicit
 eviction, context max error is **3.17e-8** and the standard numerical gate
 passes. A 20-warmup/201-sample leaf improves complete gated SWA attention
 **0.251302 -> 0.073779 ms/layer (3.406x)**. This is now the bounded runtime
-candidate; it is not a production result until the full trajectory,
-allocation, trace, and matched rollback gates pass.
+candidate. Its clean p512/d128 screen improves
+**14.754991 -> 16.526335 tok/s (+12.005%)**, and the complete 18-prompt lane
+improves aggregate h16/h32 decode **11.862%/11.946%** with stable lifecycle.
+It nevertheless fails quality: teacher-forced top-1 remains
+**565/576 (98.09%)**, but max KL reaches **1.218229**, versus the **0.05**
+contract, and only **36/54** free-running pairs remain exact. Production
+therefore reverts to the exact split route and **14.740486 tok/s** retained
+topline. The next bounded repair preserves the exact GQA3 QK reduction tree
+and tests tensorized PV independently; no full-F32 QK default is admissible.
 
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
    score/softmax/PV, and merge plus gate through bounded state. First require
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
-   The retained GQA3 score owner is LD-1a. The 3.406x tensorized full-ring leaf
-   is LD-1b and moves next into the complete runtime gate.
+   The retained GQA3 score owner is LD-1a. LD-1b's full-F32 QK/PV runtime
+   ownership is quality-rejected; its next screen is exact GQA3 QK plus
+   tensorized PV, followed by the same complete category gate.
 2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
    **25.368-ms** unchanged-byte family floor with the eight-wave/eight-output
    block. Do not repeat local-size-only screens.

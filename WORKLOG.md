@@ -187455,3 +187455,27 @@ Vulkan local sizes verbatim will close the measured gap.
 - RED failed on the absent comparison/helper. GREEN:
   `python3 -m pytest tests/test_laguna_grouped_down_category_bench.py -q`
   passes all **21** tests. Commit the harness before the tracked-clean GPU gate.
+
+## 2026-07-28 16:50 JST — Reject full-F32 tensorized SWA on category KL
+
+- The first attempted command named the older ten-prompt mtpbench suite and
+  stopped before model load because the current Laguna loader requires its
+  canonical 18-prompt train+heldout suite. Re-run with the committed default
+  `laguna-target-ar-code-general-ja-heldout.jsonl`; no benchmark result was
+  attributed to the stopped invocation.
+- The clean 18-prompt/54-pair run confirms the speed result. Exact versus
+  tensorized h16 decode is **14.817167 -> 16.574819 tok/s (1.118623x)** and
+  h32 is **14.804541 -> 16.573026 tok/s (1.119456x)**. Prefill is
+  **0.999805x**, same-mode repeats are deterministic, the Poolside oracle
+  passes at KL **1.751e-5**, and tracked allocations recover exactly.
+- Reject production ownership on the authoritative teacher-forced lane:
+  **565/576 = 98.09%** top-1 passes every category threshold, but max KL is
+  **1.218229**, above **0.05**; only **36/54** free-running pairs are exact.
+  Set the gfx1151 capability default false, returning production to the
+  retained exact split route and **14.740486 tok/s**.
+- Preserve the leaf and explicit selector only for the bounded numerical
+  repair: reuse the retained exact GQA3 QK reduction tree, tensorize PV
+  independently, and re-run the complete category gate only if the corrected
+  leaf remains faster. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-category-rejected.json`;
+  raw SHA-256 `41eb13e7...ab4`.
