@@ -411,6 +411,32 @@ gguf_q6_k_gemv_rowtile_bf16_bf16_out = _make_wrapper("gguf_q6_k", _symbol("gguf_
 gguf_q6_k_gemv_rowtile_bf16_f32_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowtile_bf16_f32_out"))
 gguf_q6_k_gemv_rowtile_f32_f32_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowtile_f32_f32_out"))
 
+# WPF-1 fixed-grid-Y weight-amortized variants for arbitrary prefill rows.
+gguf_q5_k_gemv_rowbatch4_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "gemv_rowbatch4_bf16_bf16_out")
+)
+gguf_q5_k_gemv_rowbatch4_bf16_f32_out = _make_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "gemv_rowbatch4_bf16_f32_out")
+)
+gguf_q5_k_gemv_rowbatch8_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "gemv_rowbatch8_bf16_bf16_out")
+)
+gguf_q5_k_gemv_rowbatch8_bf16_f32_out = _make_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "gemv_rowbatch8_bf16_f32_out")
+)
+gguf_q6_k_gemv_rowbatch4_bf16_bf16_out = _make_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowbatch4_bf16_bf16_out")
+)
+gguf_q6_k_gemv_rowbatch4_bf16_f32_out = _make_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowbatch4_bf16_f32_out")
+)
+gguf_q6_k_gemv_rowbatch8_bf16_bf16_out = _make_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowbatch8_bf16_bf16_out")
+)
+gguf_q6_k_gemv_rowbatch8_bf16_f32_out = _make_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowbatch8_bf16_f32_out")
+)
+
 
 def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
@@ -1035,6 +1061,10 @@ _WRAPPERS = {
         "rowtile_bf16_bf16_out": gguf_q5_k_gemv_rowtile_bf16_bf16_out,
         "rowtile_bf16_f32_out": gguf_q5_k_gemv_rowtile_bf16_f32_out,
         "rowtile_f32_f32_out": gguf_q5_k_gemv_rowtile_f32_f32_out,
+        "rowbatch4_bf16_bf16_out": gguf_q5_k_gemv_rowbatch4_bf16_bf16_out,
+        "rowbatch4_bf16_f32_out": gguf_q5_k_gemv_rowbatch4_bf16_f32_out,
+        "rowbatch8_bf16_bf16_out": gguf_q5_k_gemv_rowbatch8_bf16_bf16_out,
+        "rowbatch8_bf16_f32_out": gguf_q5_k_gemv_rowbatch8_bf16_f32_out,
     },
     "gguf_q6_k": {
         "gemv_f32_f32_out": gguf_q6_k_gemv_f32_f32_out,
@@ -1061,6 +1091,10 @@ _WRAPPERS = {
         "rowtile_bf16_bf16_out": gguf_q6_k_gemv_rowtile_bf16_bf16_out,
         "rowtile_bf16_f32_out": gguf_q6_k_gemv_rowtile_bf16_f32_out,
         "rowtile_f32_f32_out": gguf_q6_k_gemv_rowtile_f32_f32_out,
+        "rowbatch4_bf16_bf16_out": gguf_q6_k_gemv_rowbatch4_bf16_bf16_out,
+        "rowbatch4_bf16_f32_out": gguf_q6_k_gemv_rowbatch4_bf16_f32_out,
+        "rowbatch8_bf16_bf16_out": gguf_q6_k_gemv_rowbatch8_bf16_bf16_out,
+        "rowbatch8_bf16_f32_out": gguf_q6_k_gemv_rowbatch8_bf16_f32_out,
     },
 }
 
@@ -1083,6 +1117,10 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_bf16_fp16_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
+    "gguf_q5_k_gemv_rowbatch4_bf16_bf16_out",
+    "gguf_q5_k_gemv_rowbatch4_bf16_f32_out",
+    "gguf_q5_k_gemv_rowbatch8_bf16_bf16_out",
+    "gguf_q5_k_gemv_rowbatch8_bf16_f32_out",
     "gguf_q5_k_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
@@ -1115,6 +1153,10 @@ __all__ = [
     "gguf_q6_k_gemv_bf16_f32_out",
     "gguf_q6_k_gemv_bf16_fp16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
+    "gguf_q6_k_gemv_rowbatch4_bf16_bf16_out",
+    "gguf_q6_k_gemv_rowbatch4_bf16_f32_out",
+    "gguf_q6_k_gemv_rowbatch8_bf16_bf16_out",
+    "gguf_q6_k_gemv_rowbatch8_bf16_f32_out",
     "gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out",
     "gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",

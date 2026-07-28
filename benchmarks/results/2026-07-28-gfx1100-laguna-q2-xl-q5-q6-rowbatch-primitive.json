@@ -1,0 +1,434 @@
+{
+  "base_revision": "aa59da0fefc491af9895f6b6e095ec6208775d1f",
+  "claim_scope": "Actual-weight M128 leaf measurements only; no runtime owner, package default, end-to-end prefill, or benchmark-topline claim",
+  "correctness": {
+    "actual_role_count": 10,
+    "adjacent_command": "uv run pytest -q tests/test_gguf_k_gemv.py tests/test_gguf_k_rowtile_gemv.py tests/test_gguf_linear_dispatch.py",
+    "adjacent_result": "87 passed",
+    "all_actual_roles_bit_exact": true,
+    "contract": "rowbatch4 and rowbatch8 are bit-exact to scalar Q5_K/Q6_K for BF16/F32 outputs, arbitrary positive rows, and partial tails; scalar kernels retain independent CPU-reference coverage",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_k_rowtile_gemv.py",
+    "green_result": "20 passed",
+    "red": "ImportError on absent gguf_q5_k_gemv_rowbatch4_bf16_bf16_out",
+    "tracked_allocation_recovery": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 36470784,
+      "peak_allocations": 5,
+      "total_allocated_bytes": 157568512,
+      "total_freed_bytes": 157568512
+    }
+  },
+  "created_at": "2026-07-28T17:29:14+09:00",
+  "implementation": {
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "fallback": "registered scalar prefill_bf16_{bf16,f32}_out; runtime selection intentionally absent",
+    "library_sha256": "1ee19d9df7e95b13874244996b283bcf8f33e7971d707e51278712d4949d0143",
+    "registered_variants": [
+      "hip_gfx1100/linear/gguf_q5_k/rowbatch4_bf16_bf16_out",
+      "hip_gfx1100/linear/gguf_q5_k/rowbatch4_bf16_f32_out",
+      "hip_gfx1100/linear/gguf_q5_k/rowbatch8_bf16_bf16_out",
+      "hip_gfx1100/linear/gguf_q5_k/rowbatch8_bf16_f32_out",
+      "hip_gfx1100/linear/gguf_q6_k/rowbatch4_bf16_bf16_out",
+      "hip_gfx1100/linear/gguf_q6_k/rowbatch4_bf16_f32_out",
+      "hip_gfx1100/linear/gguf_q6_k/rowbatch8_bf16_bf16_out",
+      "hip_gfx1100/linear/gguf_q6_k/rowbatch8_bf16_f32_out"
+    ],
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
+    "source_sha256": "78add1eb18182d1435592a3a672d68c41992bb3faa9acc4e15c5b7215314af0f",
+    "wrapper": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+    "wrapper_sha256": "88b2dde1e37aaaca8d1b79d5d1d30dc340baaaadf848d03bf2b7d06104a33e61"
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_q5_q6_prefill_rowbatch_primitive",
+  "leaf_screen": {
+    "activation": "deterministic synthetic BF16 M128 rows; actual model weight bytes",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_q5_q6_prefill_rowbatch_actual.py",
+    "counterbalanced_order": true,
+    "harness_sha256": "fc0b301f18bc406a599cc713264de276787c5d76759373f2aee6d78b6b0747fe",
+    "launches_per_sample": 3,
+    "raw_json_sha256": "096edd4c6da18bed538f02a923a7a38a45005a0c6605d842ceaf72ae969cd54e",
+    "repetitions": 9,
+    "rows": [
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 1.4501363032184884,
+          "rowbatch8": 1.6514885489711262
+        },
+        "median_event_ms": {
+          "rowbatch4": 0.06605333089828491,
+          "rowbatch8": 0.057999998331069946,
+          "scalar": 0.09578633308410645
+        },
+        "median_wall_ms": {
+          "rowbatch4": 0.07200101390480995,
+          "rowbatch8": 0.06221095100045204,
+          "scalar": 0.09927464028199513
+        },
+        "output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "q5_gate48",
+        "rows": 128,
+        "shape": [
+          48,
+          3072
+        ],
+        "tensor": "blk.0.attn_gate.weight",
+        "weight_bytes": 101376
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 2.0377151192356076,
+          "rowbatch8": 1.9437432099059608
+        },
+        "median_event_ms": {
+          "rowbatch4": 0.0890803337097168,
+          "rowbatch8": 0.0933869977792104,
+          "scalar": 0.18152034282684326
+        },
+        "median_wall_ms": {
+          "rowbatch4": 0.09390463431676228,
+          "rowbatch8": 0.09843466492990653,
+          "scalar": 0.187569297850132
+        },
+        "output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "q5_gate72",
+        "rows": 128,
+        "shape": [
+          72,
+          3072
+        ],
+        "tensor": "blk.1.attn_gate.weight",
+        "weight_bytes": 152064
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 1.9382374940727456,
+          "rowbatch8": 2.1698482844487557
+        },
+        "median_event_ms": {
+          "rowbatch4": 0.8063259919484457,
+          "rowbatch8": 0.7202583154042562,
+          "scalar": 1.5628512700398762
+        },
+        "median_wall_ms": {
+          "rowbatch4": 0.8016643890490135,
+          "rowbatch8": 0.7195933721959591,
+          "scalar": 1.57521137346824
+        },
+        "output_dtype": "f32",
+        "quant": "gguf_q6_k",
+        "role": "q6_k1024",
+        "rows": 128,
+        "shape": [
+          1024,
+          3072
+        ],
+        "tensor": "blk.0.attn_k.weight",
+        "weight_bytes": 2580480
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 1.9533340181028418,
+          "rowbatch8": 2.3397364348539718
+        },
+        "median_event_ms": {
+          "rowbatch4": 0.924594004948934,
+          "rowbatch8": 0.7718993028004965,
+          "scalar": 1.8060409228007
+        },
+        "median_wall_ms": {
+          "rowbatch4": 0.9207426725576321,
+          "rowbatch8": 0.7725106552243233,
+          "scalar": 1.8539320056637127
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "q5_shared1024",
+        "rows": 128,
+        "shape": [
+          1024,
+          3072
+        ],
+        "tensor": "blk.1.ffn_gate_shexp.weight",
+        "weight_bytes": 2162688
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 2.273276115460174,
+          "rowbatch8": 2.835123954029235
+        },
+        "median_event_ms": {
+          "rowbatch4": 0.6835123697916666,
+          "rowbatch8": 0.5480579932530721,
+          "scalar": 1.5538123448689778
+        },
+        "median_wall_ms": {
+          "rowbatch4": 0.6920526890705029,
+          "rowbatch8": 0.5493677066018184,
+          "scalar": 1.5664879853526752
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "q6_shared_down3072",
+        "rows": 128,
+        "shape": [
+          3072,
+          1024
+        ],
+        "tensor": "blk.1.ffn_down_shexp.weight",
+        "weight_bytes": 2580480
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 2.1688218597051114,
+          "rowbatch8": 2.896737054262772
+        },
+        "median_event_ms": {
+          "rowbatch4": 6.79862912495931,
+          "rowbatch8": 5.09021536509196,
+          "scalar": 14.745015462239584
+        },
+        "median_wall_ms": {
+          "rowbatch4": 6.685595338543256,
+          "rowbatch8": 5.098083289340138,
+          "scalar": 14.963045017793775
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "q5_global_output",
+        "rows": 128,
+        "shape": [
+          3072,
+          6144
+        ],
+        "tensor": "blk.0.attn_output.weight",
+        "weight_bytes": 12976128
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 2.2064919253997326,
+          "rowbatch8": 2.8771575948384935
+        },
+        "median_event_ms": {
+          "rowbatch4": 10.059685389200846,
+          "rowbatch8": 7.714771906534831,
+          "scalar": 22.196614583333332
+        },
+        "median_wall_ms": {
+          "rowbatch4": 9.896052302792668,
+          "rowbatch8": 7.720119009415309,
+          "scalar": 22.437101307635505
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "q5_swa_output",
+        "rows": 128,
+        "shape": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.1.attn_output.weight",
+        "weight_bytes": 19464192
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 2.4117918434761747,
+          "rowbatch8": 3.3469682983618756
+        },
+        "median_event_ms": {
+          "rowbatch4": 12.551961263020834,
+          "rowbatch8": 9.044817606608072,
+          "scalar": 30.27271779378255
+        },
+        "median_wall_ms": {
+          "rowbatch4": 12.449901007736722,
+          "rowbatch8": 9.040187345817685,
+          "scalar": 30.382756609469652
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "q5_dense12288",
+        "rows": 128,
+        "shape": [
+          12288,
+          3072
+        ],
+        "tensor": "blk.0.ffn_gate.weight",
+        "weight_bytes": 25952256
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 1.2680988289119526,
+          "rowbatch8": 1.340209177224382
+        },
+        "median_event_ms": {
+          "rowbatch4": 14.342205047607422,
+          "rowbatch8": 13.570518493652344,
+          "scalar": 18.187333424886067
+        },
+        "median_wall_ms": {
+          "rowbatch4": 14.200474678849181,
+          "rowbatch8": 13.583666256939372,
+          "scalar": 18.263883655890822
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "q6_dense_down3072",
+        "rows": 128,
+        "shape": [
+          3072,
+          12288
+        ],
+        "tensor": "blk.0.ffn_down.weight",
+        "weight_bytes": 30965760
+      },
+      {
+        "bit_exact": {
+          "rowbatch4": true,
+          "rowbatch8": true
+        },
+        "event_speedup_vs_scalar": {
+          "rowbatch4": 1.7115024295914478,
+          "rowbatch8": 1.73410167112019
+        },
+        "median_event_ms": {
+          "rowbatch4": 7.998603820800781,
+          "rowbatch8": 7.89436403910319,
+          "scalar": 13.689629872639975
+        },
+        "median_wall_ms": {
+          "rowbatch4": 7.85039799908797,
+          "rowbatch8": 7.811627350747585,
+          "scalar": 13.8987572863698
+        },
+        "output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "q6_final_output",
+        "rows": 128,
+        "shape": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.47.attn_output.weight",
+        "weight_bytes": 23224320
+      }
+    ],
+    "summary": {
+      "rowbatch4_exception": "Q5_K K3072/N72 attention gate; both candidates still beat scalar",
+      "rowbatch4_speedup_range": [
+        1.2680988289119526,
+        2.4117918434761747
+      ],
+      "rowbatch8_speedup_range": [
+        1.340209177224382,
+        3.3469682983618756
+      ],
+      "rowbatch8_wins_vs_rowbatch4": 9
+    },
+    "warmups": 10
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL with actual raw Q5_K/Q6_K role tensors",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "next": "Admit a backend-qualified M128 runtime selector (rowbatch4 only for K3072/N72; rowbatch8 for the other measured raw-Q5/Q6 roles), then run actual first/last state and full 512/4K gates before any default promotion.",
+  "objective": "WPF-1 exact fixed-grid-Y Q5_K/Q6_K weight reuse across four/eight prompt rows",
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "performance_level": "auto",
+    "target_arch": "gfx1100",
+    "visible_device": 0
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q5-q6-rowbatch-rocprof-20260728 --output-file trace -- uv run python -u /tmp/trace_laguna_q5_q6_rowbatch.py",
+    "compiler_spawned_under_profiler": false,
+    "harness_sha256": "c6c1eadb05c0a88d13596f0ae5b0dea907a44bbb022d303923fa1bb72f8ac96b",
+    "kernels": [
+      {
+        "duration_ns": 5267364,
+        "grid": [
+          393216,
+          16,
+          1
+        ],
+        "lds_bytes": 512,
+        "local": [
+          128,
+          1,
+          1
+        ],
+        "output": "BF16",
+        "quant": "Q5_K",
+        "rowbatch": 8,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 24
+      },
+      {
+        "duration_ns": 922521,
+        "grid": [
+          131072,
+          16,
+          1
+        ],
+        "lds_bytes": 512,
+        "local": [
+          128,
+          1,
+          1
+        ],
+        "output": "F32",
+        "quant": "Q6_K",
+        "rowbatch": 8,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 24
+      }
+    ],
+    "prebuilt_outside_profiler": true,
+    "trace_sha256": "c7b1de29cd069f4b46c269f48d1cffc2a468807d17b307c0b74b969fe1bd1d6a"
+  },
+  "schema": 1,
+  "status": "accepted_primitive_correctness_and_leaf_performance"
+}

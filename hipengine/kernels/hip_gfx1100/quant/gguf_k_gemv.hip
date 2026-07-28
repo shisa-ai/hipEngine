@@ -538,6 +538,91 @@ __global__ void gguf_k_prefill_out_rowtile_kernel(
   }
 }
 
+// Large-prefill sibling of the exact small-B rowtile above. Grid Y owns fixed
+// ROW_BATCH slabs, so every encoded weight value is reconstructed once and
+// reused across four/eight prompt rows. Each valid row keeps the scalar
+// kernel's thread-local K order and wave/cross-wave reduction tree exactly.
+template <typename scalar_t, typename out_t, int qtype, int ROW_BATCH>
+__launch_bounds__(256, 2)
+__global__ void gguf_k_prefill_out_rowbatch_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int row_base = blockIdx.y * ROW_BATCH;
+  if (out_col >= out_features || row_base >= rows) return;
+
+  int row_bytes = 0;
+  if constexpr (qtype == 8) {
+    row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 5) {
+    row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
+  } else {
+    row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
+  }
+  const uint8_t* __restrict__ weight_row =
+      qweight + static_cast<int64_t>(out_col) * row_bytes;
+
+  float acc[ROW_BATCH];
+#pragma unroll
+  for (int r = 0; r < ROW_BATCH; ++r) {
+    acc[r] = 0.0f;
+  }
+
+  for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+    float wv;
+    if constexpr (qtype == 8) {
+      wv = q8_0_weight(weight_row, k);
+    } else if constexpr (qtype == 5) {
+      wv = q5_k_weight(weight_row, k);
+    } else {
+      wv = q6_k_weight(weight_row, k);
+    }
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      const int row = row_base + r;
+      if (row < rows) {
+        const scalar_t* __restrict__ x_row =
+            x + static_cast<int64_t>(row) * in_features;
+        acc[r] = fmaf(scalar_to_float<scalar_t>(x_row[k]), wv, acc[r]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROW_BATCH; ++r) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc[r] += __shfl_down(acc[r], offset);
+    }
+  }
+  __shared__ float red[8][ROW_BATCH];
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  if (lane == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      red[wave][r] = acc[r];
+    }
+  }
+  __syncthreads();
+  if (threadIdx.x < ROW_BATCH) {
+    const int r = threadIdx.x;
+    const int row = row_base + r;
+    if (row < rows) {
+      const int waves = (blockDim.x + 31) >> 5;
+      float total = 0.0f;
+      for (int w = 0; w < waves; ++w) {
+        total += red[w][r];
+      }
+      store_output<out_t>(
+          out, static_cast<int64_t>(row) * out_features + out_col, total);
+    }
+  }
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_prefill_out_kernel(
@@ -3608,6 +3693,39 @@ int launch_gguf_k_gemv_rowtile_out(
   return static_cast<int>(hipGetLastError());
 }
 
+// Dispatch fixed-grid-Y row batching for arbitrary positive prefill lengths.
+template <typename scalar_t, typename out_t, int qtype, int ROW_BATCH>
+int launch_gguf_k_gemv_rowbatch_out(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  const bool valid_shape = (qtype == 8) ? ((in_features % Q8_0_BLOCK) == 0)
+                                       : ((in_features % QK_K) == 0);
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || out_features <= 0 || !valid_shape ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>(out_features),
+      static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH));
+  gguf_k_prefill_out_rowbatch_kernel<scalar_t, out_t, qtype, ROW_BATCH>
+      <<<grid, block, 0, stream>>>(
+          x,
+          qweight,
+          out,
+          static_cast<int>(rows),
+          static_cast<int>(in_features),
+          static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 int launch_gguf_k_selected_gemv_out(
     const scalar_t* x,
@@ -3796,6 +3914,27 @@ extern "C" int hipengine_##NAME##_gemv_rowtile_f32_f32_out( \
 HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
+
+#define HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(NAME, QTYPE, ROW_BATCH) \
+extern "C" int hipengine_##NAME##_gemv_rowbatch##ROW_BATCH##_bf16_bf16_out( \
+    const uint16_t* x, const uint8_t* qweight, uint16_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_rowbatch_out<uint16_t, uint16_t, QTYPE, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
+extern "C" int hipengine_##NAME##_gemv_rowbatch##ROW_BATCH##_bf16_f32_out( \
+    const uint16_t* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_rowbatch_out<uint16_t, float, QTYPE, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 4)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 8)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 4)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 8)
+
+#undef HIPENGINE_GGUF_K_ROWBATCH_EXPORTS
 
 extern "C" int hipengine_gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out(
     const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
