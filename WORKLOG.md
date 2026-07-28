@@ -188830,3 +188830,20 @@ Vulkan local sizes verbatim will close the measured gap.
   unchanged. Focused owner/runner/harness validation is **35 passed**.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-retained.json`.
+
+## 2026-07-29 06:55 JST — Publish clean mixed32 production
+
+- The first selector-unset attempt stops before model load because
+  `require_cached` correctly rejects the final comment-only source hash.
+  Prebuild the exact committed source with the same compiler-version string
+  outside the measured process, then rerun the original command unchanged; no
+  timed sample is discarded.
+- Three tracked-clean p512/d128 runs measure
+  **19.353808/19.370310/19.368763 tok/s**, median **19.368763**. The promoted
+  mixed32 capability is active with no comparison selector and improves
+  **0.620% / 0.320 ms/token** over the preceding clean 19.249443 packet.
+- All runs preserve next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is now **+68.913%** over the
+  11.466687 sprint start. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-production.json`.

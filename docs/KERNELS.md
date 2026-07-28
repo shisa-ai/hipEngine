@@ -1356,6 +1356,13 @@ trajectories/state. The architecture capability selects it only at
 backends are unchanged. Evidence:
 [`retained mixed32 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-retained.json).
 
+Tracked-clean selector-unset production confirms
+**19.353808/19.370310/19.368763 tok/s**, median **19.368763** and **+0.620%**
+over the preceding clean 19.249443 packet. The architecture capability is
+active, all three trajectories/state/lifecycle are exact, and peer/non-natural
+routes remain unchanged. Evidence:
+[`clean mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-production.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
