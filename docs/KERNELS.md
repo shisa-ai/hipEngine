@@ -431,6 +431,22 @@ Evidence:
 [`WPF-2b primitive`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) ·
 [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json).
 
+WPF-3 adds separately registered exact qrow4 SWA prefill and a C256-qualified
+policy. One local32 wave keeps one query head, production's two-pass maximum,
+denominator, value-FMA order, reconstructed 128-thread dot tree, and complete
+`KVLiveSpans` visibility independently for four adjacent causal query rows,
+while reusing each decoded BF16 K/V row. Wave32 remains the fallback unless
+`rows == 128` and absolute start is at least 256. The 508..515 wrapped,
+evicted, ragged-seven fixture and all four M128 positions are F32-bit exact.
+The qualified four-slice sum improves **21.059 -> 9.389 ms (2.243x)**. Cached
+tracing names qrow4 at local32/VGPR72/SGPR128/LDS0/scratch0. Complete M512
+state matches all 48 hidden boundaries, logits, full K/V spans, repeat, and
+lifecycle at KL0. A dirty same-weight 512/1K gate improves
+**118.296/106.751 -> 131.852/124.817 tok/s (+11.459%/+16.923%)**. This is
+candidate admission only; the gfx1100 package default and clean topline remain
+unchanged until the next unit. Evidence:
+[`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json).
+
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its
 quantizer-inclusive leaf sum improves exact **1297.436 -> 388.901 ms (3.336x)**

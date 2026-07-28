@@ -73,6 +73,19 @@ should be removed or collapsed.
   exact default-on grouped-prefill route and remain covered. P6 and WPF-1R
   remain closed.
 
+## Laguna exact qrow4 SWA prefill selector
+
+- Added 2026-07-29. WPF-3 registers the direct exact qrow4 body plus
+  `swa_context_rows_qrow4_m128_c256_exact_spans`, which keeps wave32 below its
+  measured rows/context crossover. The package default is unchanged during
+  candidate admission; explicit local128, wave32, qrow2, qrow4, and online
+  variants remain available for rollback and the separate arithmetic screen.
+- After clean package publication, remove only benchmark comparison plumbing
+  that no longer owns a rollback. Preserve the local128 unfused fallback and
+  the qualified wave32 route. Do not collapse exact qrow4 into the online
+  qrow2/qrow4 variants: those change softmax association and require an
+  independent complete quality decision.
+
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
 - The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte
