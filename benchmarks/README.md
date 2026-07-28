@@ -51,16 +51,18 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
-A tracked-clean three-repeat p512/d128 eager c=1 snapshot now pairs decode
-with the current prefill packet. The 127 timed decode calls measure
-**11.469/11.471/11.471 tok/s**, median **11.471 tok/s**; paired pp512 is
-**618.113/656.706/654.859 tok/s**, median **654.859 tok/s**, or **+0.093%**
-versus the retained **654.249 tok/s** short headline. All three 128-token
-trajectories, first/final IDs, positions, and tracked-allocation teardown are
-exact. This is a snapshot, not a decode speedup claim. The eager global
-attention ABI currently caps cache capacity at 4,096, so the long-context
-publication below remains prefill-only.
-[`p512/d128 artifact`](results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json).
+A native gfx1151 port of the retained gfx1100 current-P4 head-RMSNorm +
+partial-RoPE + BF16 KV-write composites improves tracked-clean p512/d128 eager
+c=1 decode **11.466687 -> 11.485885 tok/s (+0.167%)**. It removes 48 launches
+per token; all three candidate samples beat all controls, while global/SWA
+boundary fixtures, the complete 128-token trajectory, IDs, positions, and
+tracked-allocation teardown remain exact. Selector-unset production resolves
+the composite and reproduces the win; explicit False retains the registered
+unfused chain. Paired pp512 is **652.318 tok/s**, within normal variance of the
+retained **654.249 tok/s** short headline. The eager global-attention ABI still
+caps decode cache capacity at 4,096, so the long-context publication below
+remains prefill-only.
+[`retained head/KV artifact`](results/2026-07-28-gfx1151-laguna-head-kv-fusion-retained.json).
 
 The user-requested 512/1K/4K/32K/64K/128K closure sweep now passes in one
 128K-capacity resident session. Single-sample production throughput is
