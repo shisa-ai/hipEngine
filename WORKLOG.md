@@ -189120,3 +189120,17 @@ Vulkan local sizes verbatim will close the measured gap.
   rollback. Focused owner/runner/profile validation reports **36 passed**.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-retained.json`.
+
+## 2026-07-29 08:57 JST — Publish clean global GQA2 exp32 production
+
+- Three tracked-clean, require-cached, selector-unset p512/d128 runs on
+  `32256874a` measure **19.544652/19.561715/19.565127 tok/s**, median
+  **19.561715**. The global exp32 capability is active without a comparison
+  selector and improves **0.1581% / 0.0808 ms/token** over clean mixed32
+  wave32 production.
+- All runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is **+70.596%** over the
+  11.466687 sprint start. Raw artifact SHA-256 is
+  `b829d198...26f783`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-production.json`.

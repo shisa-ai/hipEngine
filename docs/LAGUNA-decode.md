@@ -4204,6 +4204,14 @@ only inside the qualified natural global direct-store/assume-exp route; the
 serial-issue sibling remains rollback. Evidence:
 [`retained global GQA2 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-retained.json).
 
+Three tracked-clean selector-unset runs confirm
+**19.544652/19.561715/19.565127 tok/s**, median **19.561715**. That is
+**+0.1581% / -0.0808 ms/token** versus clean wave32-SWA production and
+**+70.596%** over the 11.466687 sprint start. The exp32 capability is active
+without a comparison selector; IDs, state, and lifecycle remain exact.
+Evidence:
+[`clean global GQA2 exp32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-production.json).
+
 Exact scalar issue/ownership work is now closed for both attention families.
 The next material SWA gate must start from llama.cpp's actual advantage:
 tensorized QK and PV inside one GQA tile, with a separately budgeted

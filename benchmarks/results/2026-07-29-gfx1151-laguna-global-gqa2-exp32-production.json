@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_global_gqa2_exp32_production",
+  "date": "2026-07-29",
+  "status": "accepted",
+  "source_revision": "32256874a7913a8eadfb8289748735e411837629",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prefill_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_rows": 2048,
+    "attention_rows": 2048,
+    "swa_attention_rows": 128
+  },
+  "production": {
+    "selector_unset": true,
+    "global_gqa2_exp32_capability_active": true,
+    "samples_tok_s": [
+      19.544652156658447,
+      19.56171466320388,
+      19.565127000706987
+    ],
+    "median_tok_s": 19.56171466320388,
+    "prior_clean_tok_s": 19.530839,
+    "change_percent": 0.15808672225436915,
+    "wall_change_ms_per_token": -0.0808143483207735,
+    "sprint_start_tok_s": 11.466687,
+    "sprint_change_percent": 70.59604629657966
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0
+  },
+  "protocol": {
+    "tracked_clean": true,
+    "require_cached_build": true,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-exp32-production.json",
+    "raw_sha256": "b829d1987047ddee3c20b595bb5c3cb995dabb1a168f594608ff34790d26f783"
+  },
+  "links": {
+    "retained_gate": "benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-retained.json",
+    "rollback": "serial-issue global GQA2 direct-store assume-exp"
+  }
+}
