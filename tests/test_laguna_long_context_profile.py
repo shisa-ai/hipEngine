@@ -512,6 +512,10 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
             "dense_shared_quant_projection",
         ),
         (
+            "gguf_k_prefill_out_rowbatch_kernel<unsigned short, float, 5, 8>",
+            "dense_shared_quant_projection",
+        ),
+        (
             "gguf_q6_k_prefill_wmma_kernel<unsigned short, unsigned short, 64, 16>",
             "dense_shared_quant_projection",
         ),
