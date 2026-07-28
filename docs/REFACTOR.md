@@ -1924,3 +1924,17 @@ should be boring.
   exact IDs/state. gfx1151 now defaults the capability true. Keep explicit
   false rollback through this decode campaign; then remove positive selector
   semantics while retaining the generic registered rollback.
+
+## Laguna gfx1151 exact global exp-domain selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape`
+  field, `LagunaGGUFResidentSession.set_decode_global_assume_exp(...)`, and
+  `--compare-global-assume-exp`. It changes no arithmetic and applies only to
+  natural gated capacity-4096 global decode through live4000; the retained
+  direct-store body is the rollback.
+- Promote only if the tracked-clean counterbalanced p512/d128 screen is
+  exact and positive. On promotion, default the gfx1151 capability true and
+  retain explicit false rollback through the decode campaign. On rejection,
+  remove the field, setter, comparison lane, capability, and registered
+  primitive rather than carrying a dead global fork.

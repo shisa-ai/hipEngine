@@ -3670,6 +3670,9 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.global_gqa2_vstage64_fixedshape
         assert gfx1151_cache.global_gqa2_vstage64_vec16_fixedshape
         assert gfx1151_cache.global_gqa2_vstage64_vec16_direct_fixedshape
+        assert not (
+            gfx1151_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
+        )
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
@@ -3689,6 +3692,13 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         gfx1151_cache._resolve = resolve_probe
         gfx1151_cache.position = 256
         gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape = (
+            True
+        )
+        gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape = (
+            False
+        )
         gfx1151_cache.position = 4000
         gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.position = 64
@@ -3704,6 +3714,13 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 (
                     "global_context_fused_exact_gated_"
                     "gqa2_vstage64_vec16_direct_fixedshape_spans"
+                ),
+            ),
+            (
+                "laguna_attention_decode",
+                (
+                    "global_context_fused_exact_gated_gqa2_vstage64_"
+                    "vec16_direct_assume_exp_fixedshape_spans"
                 ),
             ),
             (

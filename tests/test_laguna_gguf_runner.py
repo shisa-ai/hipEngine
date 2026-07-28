@@ -328,6 +328,25 @@ def test_laguna_swa_assume_exp_switch_is_session_scoped() -> None:
     )
 
 
+def test_laguna_global_assume_exp_switch_is_session_scoped() -> None:
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session.kv_cache = SimpleNamespace(
+        global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape=False,
+    )
+
+    session.set_decode_global_assume_exp(True)
+    assert (
+        session.kv_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
+        is True
+    )
+
+    session.set_decode_global_assume_exp(False)
+    assert (
+        session.kv_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
+        is False
+    )
+
+
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
     runtime = _FakeRuntime()
     rows = 3
