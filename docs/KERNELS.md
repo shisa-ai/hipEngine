@@ -399,6 +399,20 @@ VGPR **200/104/80**. gfx1151 selects these siblings only for the admitted c=1
 shape; other shapes/backends retain the generic exact routes. Evidence:
 [`retained natural selected decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json).
 
+The exact gfx1151 gate/up successor splits each resident 16-column T16 tile
+across two local128 8-column workgroups while preserving every output
+column's K ownership, FMA sequence, wave tree, ordered four-wave sum, and BF16
+store. Actual layer-1 leaves improve **5.35-7.13%** and remain byte-exact;
+tile4 and two separate single-projection launches are rejected at
+**+10.51%/+9.15%**. Seven complete p512/d128 pairs improve
+**16.991621 -> 17.007001 tok/s (+0.091%)**, all seven win, and all state is
+exact. Cache-only tracing records **5,969** tile8 calls with zero natural
+tile16/generic fallback at local128/VGPR96/SGPR128/LDS512/scratch0, versus
+VGPR200 for the 16-column owner. gfx1151 defaults only the admitted natural
+gate/up shape; peers/non-natural shapes retain registered exact fallbacks.
+Evidence:
+[`retained selected tile8 decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

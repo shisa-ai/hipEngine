@@ -298,6 +298,17 @@ def test_laguna_selected_natural_decode_switch_is_session_scoped() -> None:
     assert session.use_selected_natural_decode is False
 
 
+def test_laguna_selected_natural_tile8_decode_switch_is_session_scoped() -> None:
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session.use_selected_natural_tile8_decode = False
+
+    session.set_selected_natural_tile8_decode(True)
+    assert session.use_selected_natural_tile8_decode is True
+
+    session.set_selected_natural_tile8_decode(False)
+    assert session.use_selected_natural_tile8_decode is False
+
+
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
     runtime = _FakeRuntime()
     rows = 3

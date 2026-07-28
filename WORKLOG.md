@@ -187886,3 +187886,29 @@ Vulkan local sizes verbatim will close the measured gap.
   unchanged. Canonical p512/d128 is now **16.976046 tok/s / 58.907 ms**,
   cumulative **+48.047%** from 11.466687. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json`.
+
+## 2026-07-28 21:25 JST — Retain exact natural tile8 gate/up decode
+
+- The required lineage audit could not complete because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; this unit ports no
+  external kernel. RED failed on the absent tile8 wrapper. GREEN preserves
+  every output column's K/FMA/reduction/BF16 order and passes the final focused
+  kernel/registry/runtime/harness bundle (**161/161**).
+- Bound the high-VGPR gate/up seam before integration. Two exact singleton
+  projection launches regress **0.136133 -> 0.148591 ms (+9.15%)**. Splitting
+  the resident T16 tile to four columns also regresses
+  **0.136678 -> 0.151041 ms (+10.51%)** and is removed. Tile8 is exact and
+  improves the actual layer-1 leaf **0.139966 -> 0.129981 ms (-7.13%)**; the
+  three-way run independently measures **-5.35%**.
+- Seven counterbalanced p512/d128 pairs move current natural production
+  **16.991621 -> 17.007001 tok/s (+0.091%, -0.053 ms/token)**. Every paired
+  candidate wins; all IDs, generated hashes, final token 74107/position 638,
+  state, and lifecycle match.
+- Cache-only full-model tracing records exactly
+  **5,969 = 47 x 127** tile8 calls, zero natural-tile16/generic gate/up
+  fallback, and local128/VGPR96/SGPR128/LDS512/scratch0. The prior natural
+  owner used VGPR200. Promote only the gfx1151 qualified c=1/top-10 shape;
+  retain the exact tile16/generic fallbacks. Canonical p512/d128 is now
+  **17.007001 tok/s / 58.799 ms**, cumulative **+48.317%** from 11.466687.
+  Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json`.

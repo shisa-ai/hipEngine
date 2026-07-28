@@ -1179,6 +1179,111 @@ void q4_k_t16_selected_dual_natural_gemv_kernel(
   }
 }
 
+// Exact Laguna c=1 tile8 screen: split each resident 16-column T16 tile
+// across two workgroups. Each output column retains the natural kernel's
+// thread K ownership, FMA order, wave tree, wave-0..3 reduction, and BF16
+// store while halving the live gate/up accumulator set per workgroup.
+template <typename scalar_t>
+__global__ __launch_bounds__(128, 4)
+void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,
+    int64_t num_experts) {
+  constexpr int kRows = 10;
+  constexpr int kInFeatures = 3072;
+  constexpr int kOutFeatures = 1024;
+  constexpr int kBlocksPerRow = kInFeatures / QK_K;
+  constexpr int kOutTiles = kOutFeatures / T16_COLS;
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= kRows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+
+  float acc_a[kTileCols];
+  float acc_b[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc_a[local_col] = 0.0f;
+    acc_b[local_col] = 0.0f;
+  }
+
+  for (int64_t blk = 0; blk < kBlocksPerRow; ++blk) {
+    const uint8_t* __restrict__ tile_a =
+        expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+            tiles_a, expert_id, out_tile, blk, kOutTiles, kBlocksPerRow);
+    const uint8_t* __restrict__ tile_b =
+        expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+            tiles_b, expert_id, out_tile, blk, kOutTiles, kBlocksPerRow);
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid;
+         k_in_block < QK_K;
+         k_in_block += blockDim.x) {
+      const float xv =
+          scalar_to_float<scalar_t>(x[k_base + k_in_block]);
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        const int col = col_base + local_col;
+        const float wv_a =
+            t16_q4_weight(tile_a, k_in_block, col);
+        const float wv_b =
+            t16_q4_weight(tile_b, k_in_block, col);
+        acc_a[local_col] += xv * wv_a;
+        acc_b[local_col] += xv * wv_b;
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc_a[local_col]);
+  }
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc_b[local_col]);
+  }
+
+  __shared__ float xchg_a[4 * kTileCols];
+  __shared__ float xchg_b[4 * kTileCols];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      xchg_a[sub_id * kTileCols + local_col] = acc_a[local_col];
+      xchg_b[sub_id * kTileCols + local_col] = acc_b[local_col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row_a =
+        out_a + row * kOutFeatures + out_group * kTileCols;
+    scalar_t* __restrict__ out_row_b =
+        out_b + row * kOutFeatures + out_group * kTileCols;
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      float total_a = 0.0f;
+      float total_b = 0.0f;
+#pragma unroll
+      for (int g = 0; g < 4; ++g) {
+        total_a += xchg_a[g * kTileCols + local_col];
+        total_b += xchg_b[g * kTileCols + local_col];
+      }
+      out_row_a[local_col] = float_to_scalar<scalar_t>(total_a);
+      out_row_b[local_col] = float_to_scalar<scalar_t>(total_b);
+    }
+  }
+}
+
 template <typename scalar_t>
 __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -2505,6 +2610,42 @@ int launch_q4_dual_natural(const void* x,
 }
 
 template <typename scalar_t>
+int launch_q4_dual_natural_tile8(const void* x,
+                                 const void* selected,
+                                 const void* tiles_a,
+                                 const void* tiles_b,
+                                 void* out_a,
+                                 void* out_b,
+                                 int64_t x_rows,
+                                 int64_t rows,
+                                 int64_t in_features,
+                                 int64_t out_features,
+                                 int64_t num_experts,
+                                 hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out_a || !out_b ||
+      x_rows != 1 || rows != 10 || in_features != 3072 ||
+      out_features != 1024 || num_experts <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(1024 / 8, 10);
+  hipLaunchKernelGGL(
+      (q4_k_t16_selected_dual_natural_tile8_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<scalar_t*>(out_a),
+      reinterpret_cast<scalar_t*>(out_b),
+      num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dual_pairreuse_direct(const void* x,
                                     const void* selected,
                                     const void* tiles_a,
@@ -2773,6 +2914,17 @@ hipengine_gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out(
     int64_t rows, int64_t num_experts, int64_t in_features,
     int64_t out_features, hipStream_t stream) {
   return launch_q4_dual_natural<uint16_t>(
+      x, selected, tiles_a, tiles_b, out_a, out_b, x_rows, rows,
+      in_features, out_features, num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a,
+    const void* tiles_b, void* out_a, void* out_b, int64_t x_rows,
+    int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_q4_dual_natural_tile8<uint16_t>(
       x, selected, tiles_a, tiles_b, out_a, out_b, x_rows, rows,
       in_features, out_features, num_experts, stream);
 }

@@ -2101,6 +2101,7 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         use_selected_natural_decode: bool | None = None,
+        use_selected_natural_tile8_decode: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2253,6 +2254,15 @@ class LagunaGGUFResidentSession:
             )
             if use_selected_natural_decode is None
             else use_selected_natural_decode
+        )
+        self.use_selected_natural_tile8_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
+                False,
+            )
+            if use_selected_natural_tile8_decode is None
+            else use_selected_natural_tile8_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3025,6 +3035,11 @@ class LagunaGGUFResidentSession:
         """Select the exact natural-shape c=1 selected-MoE siblings."""
 
         self.use_selected_natural_decode = bool(enabled)
+
+    def set_selected_natural_tile8_decode(self, enabled: bool) -> None:
+        """Select the exact tile8 natural gate/up sibling."""
+
+        self.use_selected_natural_tile8_decode = bool(enabled)
 
     @property
     def resident_nbytes(self) -> int:
@@ -4884,6 +4899,9 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries.moe,
             shared_pair_decode_variant=self._q5_shared_pair_variant,
             use_selected_natural_decode=self.use_selected_natural_decode,
+            use_selected_natural_tile8_decode=(
+                self.use_selected_natural_tile8_decode
+            ),
         )
         config = self.weights.config
         if layer_id + 1 < config.block_count:

@@ -51,9 +51,9 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
-Three exact gfx1100 structural transfers plus six gfx1151-native owners now
+Three exact gfx1100 structural transfers plus seven gfx1151-native owners now
 improve paired p512/d128 gfx1151 eager c=1 decode
-**11.466687 -> 16.976046 tok/s (+48.047%)**. Native
+**11.466687 -> 17.007001 tok/s (+48.317%)**. Native
 head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
 **127/65/257** threshold bundle reaches **14.528110 tok/s (+26.487%
@@ -89,6 +89,13 @@ c=1/top-10 gate/up and Q4/planar-Q6 down shapes. Actual-weight leaves improve
 **16.850003 -> 16.976046 tok/s (+0.748%)**, saving **0.441 ms/token**. Cached
 tracing records **5,969/3,048/2,921** intended role calls with zero generic
 selected-T16 fallback.
+The exact tile8 successor keeps that natural T16 owner and arithmetic but
+splits each 16-column gate/up tile across two 8-column workgroups. It halves
+gate/up VGPR use **200 -> 96** with no weight/scratch growth. The actual-weight
+leaf improves **5.35-7.13%**; seven exact production pairs move
+**16.991621 -> 17.007001 tok/s (+0.091%)**, saving **0.053 ms/token** with
+**7/7** wins. Cached tracing records all **5,969** tile8 calls and zero
+tile16/generic fallback.
 CPU-oracle, F32/BF16/`KVLiveSpans` byte,
 reducer-bit-exact,
 complete 128-token trajectory, ID/position, native trace, and lifecycle gates
@@ -99,6 +106,7 @@ retained **654.249 tok/s** short headline. The eager global-attention ABI still
 caps decode cache capacity at 4,096, so the long-context publication below
 remains prefill-only.
 [`retained GQA3 score artifact`](results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`retained selected tile8 artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json) ·
 [`retained selected natural-shape artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
 [`retained global fixed-shape reducer artifact`](results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained fixed512 reducer artifact`](results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json) ·

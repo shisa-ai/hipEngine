@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T21:25:21+09:00",
+  "kind": "hipengine_laguna_selected_natural_tile8_decode_retained",
+  "status": "retained",
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_layout": "gguf_q4_k_t16_v1"
+  },
+  "change": {
+    "scope": "c=1/top-10 selected Q4 gate/up at x_rows1/K3072/N1024",
+    "description": "Split each resident 16-column T16 tile across two exact 8-column workgroups. Each output retains the natural kernel's thread-local K order, FMA sequence, wave32 tree, ordered four-wave sum, and BF16 store.",
+    "grid": {
+      "control": "64 output tiles x 10 selected rows x local128",
+      "candidate": "128 output subtiles x 10 selected rows x local128"
+    },
+    "resident_weight_delta_bytes": 0,
+    "persistent_scratch_delta_bytes": 0
+  },
+  "leaf": {
+    "protocol": "actual layer-1 gate/up weights, fixed ten expert IDs, GPU_MAX_HW_QUEUES=1, 5 warmups, 21 counter-rotated samples, 20 launches/sample, HIP events",
+    "direct_pair": {
+      "control_ms": 0.13996620178222657,
+      "candidate_ms": 0.1299813985824585,
+      "delta_percent": -7.133724479645043,
+      "bf16_mismatch_gate": 0,
+      "bf16_mismatch_up": 0
+    },
+    "three_way_width_sweep": {
+      "natural_tile16_ms": 0.136678147315979,
+      "tile8_ms": 0.12936644554138182,
+      "tile8_delta_percent": -5.349576298904335,
+      "tile4_ms": 0.15104105472564697,
+      "tile4_delta_percent": 10.50856167699079,
+      "bf16_mismatches": 0
+    },
+    "split_projection_screen": {
+      "dual_ms": 0.13613314628601075,
+      "two_single_launches_ms": 0.14859050512313843,
+      "delta_percent": 9.15086382485808,
+      "bf16_mismatches": 0,
+      "decision": "rejected without production integration"
+    }
+  },
+  "production_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-selected-natural-tile8-decode --allow-dirty --output /tmp/laguna-p512-d128-selected-natural-tile8-ab.json",
+    "artifact_sha256": "504f746cf12de1b1d50182953333aae4c2c2bbe79366cd690ac5f58ed8aff2e2",
+    "workload": "p512/d128 eager c=1; 127 synchronized forward_token calls",
+    "control_tok_s": 16.99162125262788,
+    "candidate_tok_s": 17.0070006259715,
+    "delta_percent": 0.09051151220336173,
+    "control_ms_per_token": 58.85253591356638,
+    "candidate_ms_per_token": 58.799315763703426,
+    "saved_ms_per_token": 0.05322014986295187,
+    "paired_wins": "7/7",
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_token_id": 74107,
+    "final_position": 638,
+    "state_and_lifecycle_exact": true
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --stats --output-format csv -d /tmp/laguna-selected-tile8-full-trace.RT5bfO --output-file production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-tile8-full-trace.RT5bfO/child.json",
+    "path": "/tmp/laguna-selected-tile8-full-trace.RT5bfO/production_kernel_trace.csv",
+    "sha256": "f615a0ac96b7f33de8e020231310c44d01cd9e339c1160e74008f5dba798e896",
+    "tile8_gate_up_calls": 5969,
+    "natural_tile16_gate_up_calls": 0,
+    "generic_gate_up_calls": 0,
+    "median_us": 178.535,
+    "resources": {
+      "workgroup": 128,
+      "grid_x_threads": 16384,
+      "grid_y": 10,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "profiled_child_tok_s_attribution_only": 16.483561485726106
+  },
+  "validation": {
+    "red": "targeted test collection failed because the tile8 wrapper was absent",
+    "green": "161 focused kernel/registry/runtime/harness tests passed after production A/B",
+    "correctness_gate": "zero BF16 mismatches plus exact complete 128-token production trajectory/state; therefore KL=0 and top-1=100% relative to retained production",
+    "lineage_check": "blocked before work because /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external kernel was ported"
+  },
+  "baseline": {
+    "pre_transfer_tok_s": 11.466687,
+    "current_tok_s": 17.0070006259715,
+    "cumulative_delta_percent": 48.31660292089162
+  },
+  "repo": {
+    "base_revision": "0dc64a1e46b03fafb191bf2e2db5080c51ff71b0",
+    "tracked_dirty_for_candidate": true,
+    "untracked_shared_artifacts_excluded": true
+  }
+}

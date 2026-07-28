@@ -3518,6 +3518,7 @@ Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
+[`retained selected tile8 decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
 [`retained F16 fixed-K owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json) ·
 [`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
@@ -3536,8 +3537,9 @@ state and quality contract. Fixed-K LD-2 production now reaches
 **16.391 tok/s**. The first post-reprofile LD-1 reducer win raises that to
 **16.834 tok/s**, and the natural-shape global reducer reaches
 **16.847 tok/s**. The retained natural-shape selected-MoE owner now reaches
-**16.976 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
-comparator target.
+**16.976 tok/s**. Its exact gate/up tile8 successor reaches
+**17.007 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the
+directional comparator target.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
@@ -3642,6 +3644,24 @@ local128/SGPR128/LDS512/scratch0; VGPR is **200/104/80** respectively.
 gfx1151 now selects the natural siblings automatically, while peer backends
 and non-natural shapes retain the generic routes.
 
+LD-4's bounded accumulator-width sweep then retains an exact gate/up tile8
+owner. Each resident 16-column T16 tile is divided across two workgroups, but
+each output column keeps the natural owner's thread K partition, FMA order,
+wave32 tree, ordered wave-0..3 sum, and BF16 store. This lowers allocated VGPR
+**200 -> 96** with unchanged local128/LDS512/scratch0 and no new resident
+bytes. The actual-weight leaf improves **5.35-7.13%** with zero mismatches.
+Tile4 and two separate single-projection launches are exact but regress
+**10.51%/9.15%** and are removed.
+
+Seven counterbalanced production pairs move
+**16.991621 -> 17.007001 tok/s (+0.091%, -0.053 ms/token)** with **7/7**
+wins, identical generated hashes/final state, and exact lifecycle recovery.
+Cache-only tracing records all **5,969 = 47 x 127** tile8 calls and zero
+natural tile16/generic gate/up fallback. The profiled selected family is now
+about **13.224 ms/token**. gfx1151 defaults tile8 only inside the already
+qualified natural shape; the registered tile16/generic paths remain rollback
+and shape/backend fallbacks.
+
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
@@ -3679,11 +3699,13 @@ and non-natural shapes retain the generic routes.
    is a repeatable **+1.225%** full-cycle win but fails quality at max KL
    **1.002942** despite **99.31%** top-1. The exact LD-2-style natural-shape
    specialization is retained at **+0.748%** complete decode and lowers the
-   profiled selected family from about **13.711 to 13.307 ms/token**. Continue
-   only with exact changes that preserve the full grid and arithmetic:
-   compile-time expert/tile strides, paired Q4 gate/up metadata decode, and
-   bounded address/loop contraction. Any new ownership or reduction geometry
-   must re-enter the full quality gate.
+   profiled selected family from about **13.711 to 13.307 ms/token**. The
+   exact tile8 successor then reaches **17.007001 tok/s**, lowers the family
+   to about **13.224 ms/token**, and halves gate/up VGPR **200 -> 96**.
+   Continue with compile-time expert/tile strides, paired Q4 gate/up metadata
+   decode, and bounded address/loop contraction. Tile4 and projection-split
+   ownership are closed. Any new ownership or reduction geometry must re-enter
+   the full quality gate.
 5. **LD-5 — replay and residual fusion.** Launch/submission work is bounded to
    roughly 2.18 ms/token. It follows attention and F16; launch-count reduction
    alone is not a promotion gate.

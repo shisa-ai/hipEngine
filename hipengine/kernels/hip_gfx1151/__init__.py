@@ -58,6 +58,10 @@ LAGUNA_F16_DECODE_FIXEDK = True
 # only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
 # seven exact p512/d128 pairs admit the combined owner.
 LAGUNA_SELECTED_NATURAL_DECODE = True
+# Exact gate/up owner that splits each resident T16 tile across two 8-column
+# workgroups, halving live accumulators. The actual-weight leaf improves
+# 5.35-7.13%; seven exact p512/d128 pairs are all positive.
+LAGUNA_SELECTED_NATURAL_TILE8_DECODE = True
 # Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
 # 2048-row projection/MoE transactions while attention and physical KV writes
 # remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
@@ -620,6 +624,7 @@ __all__ = [
     "LAGUNA_F16_DECODE_FIXEDK",
     "LAGUNA_F16_DECODE_ONEBARRIER",
     "LAGUNA_SELECTED_NATURAL_DECODE",
+    "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",

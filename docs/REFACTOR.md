@@ -1868,3 +1868,22 @@ should be boring.
   release/bisection window; then remove positive `fixedk` selector semantics
   and make it unconditional for qualified gfx1151 K widths. Permanently retain
   the generic registered path for unsupported K/rows/backends.
+
+## Laguna selected natural tile8 decode selector
+
+- Added 2026-07-28 as
+  `LagunaGGUFResidentSession(..., use_selected_natural_tile8_decode=False)`
+  plus `set_selected_natural_tile8_decode(...)` and
+  `--compare-selected-natural-tile8-decode`. False restores the exact
+  16-column natural gate/up owner; non-natural shapes and peer backends retain
+  the registered generic/natural fallbacks.
+- The promotion trigger is satisfied. Actual-weight tile8 improves
+  **5.35-7.13%** with zero BF16 mismatches. Seven p512/d128 pairs improve
+  **16.991621 -> 17.007001 tok/s (+0.091%)** with 7/7 wins and exact state.
+  Cache-only tracing records all **5,969** intended calls, zero fallback, and
+  local128/VGPR96/LDS512/scratch0.
+- Keep the false rollback and comparison flag through one decode campaign
+  checkpoint. Then remove positive selector semantics and make tile8
+  unconditional for the qualified gfx1151 shape. Permanently retain the
+  natural tile16 and generic registered owners for unsupported
+  shapes/backends.
