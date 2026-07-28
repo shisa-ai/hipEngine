@@ -1177,6 +1177,20 @@ scheduling. Evidence:
 [`bounded-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-candidate.json) ·
 [`bounded-exp rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-rejected.json).
 
+The exact successor leaves the compiler `expf` expression untouched and
+exposes only the proven `score - maximum <= 0` invariant with
+`__builtin_assume`. Wrapped positions 512-519 plus eviction and the leaf are
+F32/BF16 byte-exact. Nine leaf samples improve **0.106007 -> 0.097387 ms
+(-8.13%)**. Generated ISA preserves 65 native exponential instructions and
+logical VGPR138/SGPR33/LDS24576/scratch0 while contracting **3,196 -> 2,821
+instructions (-11.73%)** and **17,920 -> 16,884 B (-5.78%)**. Cached tracing
+names both local384/24-block templates with allocated
+VGPR144/LDS24576/scratch0 and improves the three steady observations
+**126.838 -> 91.812 us (-27.61%)**. This admits an exact candidate primitive,
+not production; next require byte-exact resident state and a positive
+seven-pair p512/d128 wall. Evidence:
+[`assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-candidate.json).
+
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is
 **+0.1015% / -0.0532 ms/token** versus the preceding clean 19.065940 packet
