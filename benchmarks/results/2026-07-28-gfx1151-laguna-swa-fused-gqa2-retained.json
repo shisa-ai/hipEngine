@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T22:45:16+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_fused_gqa2_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "ae5f0c463985fd04224231e7776ed878c9299745",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime": "hipengine/runtime/laguna_kv.py"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "saturated 512-slot decode in all 36 SWA layers",
+    "shape": "72 query heads, 8 KV heads, D128, capacity/window/scan 512",
+    "geometry": "40 local256 workgroups and 320 wave32s per layer; five owners per KV head carry query-head pairs, with the fifth owner carrying the ninth head alone",
+    "arithmetic": "unchanged wave32 QK reduction tree, scalar slot-order maximum/exponent/denominator, per-dimension FMA sequence, divide, softplus gate, F32 store, and RNE-BF16 store",
+    "optimization": "fuse exact QK, softmax, PV, and gate into one workgroup-local score/physical plane; reuse each BF16 K vector across two adjacent query heads and eliminate the global score plane plus one launch",
+    "fallback": "live counts below 512, non-natural shapes, peer backends, and explicit capability rollback retain the exact GQA3 score plus fixed512 reducer route"
+  },
+  "red_green": {
+    "red": "focused registration gate failed because the fused GQA2 variant was absent",
+    "green": "live 512 plus ring wrap and explicit eviction are F32/BF16 byte-exact against retained production",
+    "focused_result": "initial broad focused bundle had one isolated compile failure after candidate cleanup; adding the accidentally removed extern C int declaration repaired the only failing node, then the full changed attention test file plus runtime selector passed 3/3 while the original broad run had established all other nodes green",
+    "focused_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_split_scores_gqa.py tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback"
+  },
+  "screened_rejections": [
+    {
+      "name": "parallel three-head shared-V reducer",
+      "result": "exact but complete cache-hot layer regressed 0.077585 -> 0.097203 ms (+25.286%)",
+      "raw_sha256": "0c741ea9a4076783178ded2ab50b9a285931185a0974b09bd582568fc8d27db7",
+      "decision": "removed"
+    },
+    {
+      "name": "one-head fused local128",
+      "result": "exact but complete cache-hot layer regressed 0.080360 -> 0.086942 ms (+8.190%)",
+      "raw_sha256": "90105f6292bc62a3657d97abfbbd8a6b02875a5c8a821099261d4efbeb5eaaad",
+      "decision": "removed"
+    },
+    {
+      "name": "one-head fused local256",
+      "leaf_result": "exact cache-hot layer improved 0.077668 -> 0.071345 ms (-8.142%)",
+      "production_result": "seven resident pairs regressed 17.015877 -> 16.839214 tok/s (-1.038%, +0.617 ms/token); profiler measured fused 272.271 us/layer versus GQA3 score plus reducer 21.119 + 230.192 = 251.311 us/layer because the one-head body reread K nine times",
+      "leaf_raw_sha256": "0c07106d976a386bff65c89bbae43098e2ae2255eec574c63f8addbe5ff54b47",
+      "production_raw_sha256": "b1c3b99246d926cb7f2832890d228a81d107ccefe401c5fa986ece46d40727bb",
+      "decision": "removed"
+    }
+  ],
+  "gqa2_leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-fused-gqa2-fixed512-leaf.json",
+    "raw_sha256": "87c8bc1cee364fc1afb5ea1330db1682d49c6253125579986b7727999f78cd1d",
+    "control_median_ms_per_layer": 0.0795018196105957,
+    "candidate_median_ms_per_layer": 0.0818553638458252,
+    "latency_change_percent": 2.960365242905505,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "interpretation": "cache-hot leaf is intentionally not the promotion gate; the 78.8 GB resident workload changes K-cache behavior"
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-fused-fixed512 --allow-dirty --output /tmp/laguna-p512-d128-swa-fused-gqa2-ab.json",
+    "raw_sha256": "d52560631d944cd9cd1a6486c5dd5961a7048fea6f489adbd77ec460b8d0d3dd",
+    "protocol": "one loaded 78.8 GB resident model; seven counterbalanced retained/fused-GQA2 resets; p512 plus 127 synchronized eager C1 decode calls",
+    "control_decode_tok_s": 17.01318442180215,
+    "candidate_decode_tok_s": 17.065240880653963,
+    "throughput_change_percent": 0.30597716195388536,
+    "control_wall_ms_per_token": 58.777943929092686,
+    "candidate_wall_ms_per_token": 58.5986454567806,
+    "saving_ms_per_token": 0.17929847231208385,
+    "all_candidate_samples_faster_than_all_controls": true,
+    "control_candidate_generated_ids_match": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "kernel_trace": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --stats --output-format csv -d /tmp/laguna-attn-fused-gqa2-leaf.sJsdLs --output-file gqa2 -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2 --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-attn-fused-gqa2-leaf.sJsdLs/bench.json",
+    "trace_sha256": "91b6e98ce473d3a155ba7e9f7723fdb79278c8e486a64aeb0a6d7f7fb918a9f9",
+    "expected_kernel_observed": true,
+    "timed_duration_us": 78.147,
+    "resources": {
+      "workgroup_size": 256,
+      "grid_blocks": 40,
+      "vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 6144,
+      "scratch_bytes": 0
+    },
+    "require_cached_build": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "gfx1100_default_changed": false,
+    "prior_canonical_decode_tok_s": 17.0070006259715,
+    "production_decode_tok_s": 17.065240880653963,
+    "canonical_change_percent": 0.3424487125232689,
+    "production_wall_ms_per_token": 58.5986454567806,
+    "cumulative_from_pre_transfer_tok_s": 11.466687,
+    "cumulative_change_percent": 48.82451121805247,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "next": "Continue LD-1 with a resident-aware exact fused topology for global qgroup6 and with SWA K-reuse groups larger than two only if ordinary workgroup geometry and wave breadth are preserved"
+  }
+}

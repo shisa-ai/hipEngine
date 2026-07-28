@@ -3516,6 +3516,7 @@ geometry only with a reduction-order-preserving design.
 
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`retained fused-GQA2 SWA owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
 [`retained selected tile8 decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json) ·
@@ -3538,7 +3539,8 @@ state and quality contract. Fixed-K LD-2 production now reaches
 **16.834 tok/s**, and the natural-shape global reducer reaches
 **16.847 tok/s**. The retained natural-shape selected-MoE owner now reaches
 **16.976 tok/s**. Its exact gate/up tile8 successor reaches
-**17.007 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the
+**17.007 tok/s**, and exact fused-GQA2 SWA reaches **17.065 tok/s**.
+Same-GGUF Vulkan at **23.348 tok/s** remains the
 directional comparator target.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
@@ -3624,6 +3626,27 @@ Tracing records **1,524 = 12 x 127** fixed reducers, zero generic fallback,
 and local256/VGPR24/LDS512/scratch0. Non-natural shapes/capacities and peer
 backends retain the generic reducer.
 
+LD-1d finally fuses the saturated SWA path without changing arithmetic. Five
+local256 owners per KV head each carry two adjacent query heads, with the fifth
+owner carrying the ninth head alone. The **40 workgroups / 320 wave32s per
+layer** share a 6,144-byte exact score/physical plane, reuse each K vector
+across a query pair, replay the retained slot-order maximum/exponent/
+denominator and per-dimension FMA sequence, apply the same gate/stores, and
+remove the global score round-trip plus one launch. Ring wrap and explicit
+eviction are F32/BF16 byte-exact.
+
+The cache-hot leaf regresses **0.079502 -> 0.081855 ms/layer (+2.96%)**, but
+seven resident-model production pairs improve
+**17.013184 -> 17.065241 tok/s (+0.306%, -0.179 ms/token)**, with every
+candidate faster and every trajectory/state exact. The apparent contradiction
+is the point: the 78.8-GB resident workload rewards five K reads per KV head,
+where the leaf keeps K artificially hot. An exact one-head local256 fusion
+improves that leaf **8.14%** but reads K nine times and regresses full
+production **1.038%**; exact local128 one-head and parallel three-head
+reducers also regress **8.19%/25.29%** in the leaf. Remove all three.
+Cached tracing confirms the retained body at local256/VGPR32/SGPR128/
+LDS6144/scratch0.
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
@@ -3671,12 +3694,14 @@ and shape/backend fallbacks.
    retained at **+2.731%** production and lowers the SWA reducer from about
    **9.959 to 8.322 ms/token**. The natural global specialization is also
    retained at **+0.087%**, putting the global reducer at about
-   **2.628 ms/token**, but total attention remains roughly
-   **12.09 ms/token**. LD-1b's full-F32 and exact-QK/
+   **2.628 ms/token**. The exact fused-GQA2 saturated SWA owner is now retained
+   at **17.065241 tok/s (+0.306%)**, proving that resident-aware K reuse can
+   win even when its cache-hot leaf loses. Total attention still remains far
+   above the **3.0 ms/token** target. LD-1b's full-F32 and exact-QK/
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
-   reducer is performance-rejected. Further attention work requires a
-   materially different exact value-reuse topology that preserves the current
-   wave breadth.
+   reducer and one-head fused owners are performance-rejected. Continue with
+   a resident-aware exact global qgroup6 fused owner, then larger SWA K-reuse
+   groups only if ordinary workgroup geometry and wave breadth are preserved.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

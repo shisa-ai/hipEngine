@@ -24,6 +24,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
+    laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
 )
@@ -42,6 +43,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--burst", type=int, default=50)
+    parser.add_argument(
+        "--candidate",
+        choices=("fixed512", "fused-gqa2"),
+        default="fixed512",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -188,8 +194,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             HEAD_DIM**-0.5,
         )
 
+        control_kernel = (
+            laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans
+            if args.candidate == "fused-gqa2"
+            else laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans
+        )
+        candidate_kernel = {
+            "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
+            "fused-gqa2": laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
+        }[args.candidate]
+
         def control() -> None:
-            laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans(
+            control_kernel(
                 *common,
                 control_context.ptr,
                 gate_device.ptr,
@@ -201,7 +217,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             )
 
         def candidate() -> None:
-            laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans(
+            candidate_kernel(
                 *common,
                 candidate_context.ptr,
                 gate_device.ptr,
@@ -246,6 +262,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         result = {
             "schema": 1,
             "kind": "hipengine_laguna_swa_fixed512_reduce_leaf",
+            "candidate_kind": args.candidate,
             "status": "directional_candidate",
             "performance_claim": False,
             "source_revision": subprocess.run(

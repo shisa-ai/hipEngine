@@ -1069,6 +1069,22 @@ fallback at local128/VGPR16/LDS0/scratch0. gfx1151 selects it only at saturated
 generic exact route. Evidence:
 [`retained fixed512 reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json).
 
+The next saturated-512 successor fuses exact QK, slot-ordered softmax, PV,
+gate, and stores for two adjacent query heads. Five local256 owners per KV
+head retain **40 workgroups / 320 wave32s per SWA layer**, reuse each K vector
+across a query pair, and remove the global score plane plus one launch without
+changing a scalar, FMA, F32 context byte, or BF16 gate byte. Seven
+resident-model p512/d128 pairs improve **17.013184 -> 17.065241 tok/s
+(+0.306%, -0.179 ms/token)**, with every candidate faster and every
+trajectory/state exact. Cached tracing records VGPR32/SGPR128/LDS6144/
+scratch0. The cache-hot leaf alone regresses **2.96%**; it is not the
+promotion gate because the resident model changes K-cache behavior. An exact
+one-head local256 fusion makes that leaf **8.14%** faster but rereads K nine
+times and regresses full production **1.038%**, so it and two other exact
+losers are removed. Shorter live counts, non-natural shapes, peer backends,
+and rollback retain GQA3 score plus fixed512 reduction. Evidence:
+[`retained fused-GQA2 SWA`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json).
+
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production
 48Q/8KV/D128/capacity-4096 geometry and scratch strides. F32 context and gated
