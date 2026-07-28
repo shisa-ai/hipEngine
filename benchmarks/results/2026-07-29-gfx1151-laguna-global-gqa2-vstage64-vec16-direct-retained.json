@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T04:09:25+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_gqa2_vstage64_vec16_direct_retained",
+  "status": "retained",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "25416331565d6b8a2e2ac6a19f5f907c45f98bbd",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "optimization": {
+    "description": "write valid aligned uint4 V loads directly into the real dynamic-LDS tile instead of assigning through a compiler-materialized private aggregate",
+    "arithmetic_changes": false,
+    "scope": "natural 48Q/8KV/D128/capacity4096 global GQA2 through live4000 only",
+    "fallback": "registered stage64 vec16 owner with aggregate temporary"
+  },
+  "correctness": {
+    "cpu_reference_allclose": true,
+    "evicted_context_f32_byte_exact": true,
+    "evicted_gated_bf16_byte_exact": true,
+    "complete_generated_ids_match": true,
+    "complete_next_tokens_match": true,
+    "complete_final_positions_exact": true,
+    "allocation_lifecycle_exact": true
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16-direct --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-gqa2-vstage64-vec16-direct-leaf.json",
+    "raw_sha256": "d8275e8ad7ff8285e579c5a0546fe6ccc689f9a836efdda2de43b04525141038",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.0960572624206543,
+        "candidate_median_ms": 0.08480890274047852,
+        "latency_change_percent": -11.710056477475817
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.10940846443176269,
+        "candidate_median_ms": 0.0964638614654541,
+        "latency_change_percent": -11.83144561395617
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.12050986289978027,
+        "candidate_median_ms": 0.10626638412475586,
+        "latency_change_percent": -11.819346925047725
+      }
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "production": {
+    "workload": "p512/d128 eager c=1, 127 synchronized forward_token calls",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-gqa2-vstage64-vec16-direct --allow-dirty --output /tmp/laguna-p512-d128-global-gqa2-vstage64-vec16-direct-ab.json",
+    "raw_sha256": "002970b6723273e12c27024f79b4ba9691a21c21a80122fc6cdd2b83d50cb38c",
+    "control_decode_tok_s": 19.077501765851913,
+    "candidate_decode_tok_s": 19.13453683833422,
+    "throughput_change_percent": 0.29896510131319776,
+    "saving_ms_per_token": 0.15624370939266896,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "pair_changes_percent": [
+      0.39259789374397336,
+      0.31329243976259136,
+      0.3073067328591472,
+      0.29299677966645454,
+      0.2570023551858647,
+      0.3259731515461217,
+      0.29193484639309375
+    ],
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <temp> --output-file global-direct -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16-direct --samples 1 --warmups 0 --burst 10 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <temp>/leaf.json",
+    "raw_sha256": "db11e25a614ba532f7ec4ddf95e9839da4e2eae4176ee3ca4b67ea7a69800154",
+    "control_symbol": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, true, false>",
+    "candidate_symbol": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, true, true>",
+    "observations_each": 33,
+    "control_median_us": 103.354,
+    "candidate_median_us": 90.53,
+    "latency_change_percent": -12.407073555734679,
+    "workgroup_size": 256,
+    "grid_blocks": 24,
+    "profiler_lds_bytes": 512,
+    "control_scratch_bytes": 32,
+    "candidate_scratch_bytes": 0,
+    "profiler_vgpr": 32,
+    "profiler_sgpr": 128,
+    "code_object_sha256": "ce347a734750ef9fe767eb22948bff00f554ddcfc275df95debc55fb3cbd8a85",
+    "code_object_logical_resources": {
+      "control_private_segment_bytes": 32,
+      "candidate_private_segment_bytes": 0,
+      "control_vgpr": 28,
+      "candidate_vgpr": 28,
+      "control_sgpr": 34,
+      "candidate_sgpr": 34,
+      "fixed_lds_bytes": 64
+    }
+  },
+  "decision": {
+    "retained": true,
+    "default_backend": "hip_gfx1151",
+    "reason": "The exact leaves, native kernel median, scratch footprint, and all seven complete resident-model pairs improve; the old vec16 owner remains registered rollback."
+  }
+}

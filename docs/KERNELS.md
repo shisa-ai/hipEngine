@@ -1203,6 +1203,22 @@ ms/token (-29.92%)** and span **55.154 -> 52.814 ms (-4.24%)**. Evidence:
 [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-production.json) ·
 [`wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vec16-wall-reprofile.json).
 
+The generated global vec16 code object reveals the same aggregate-copy defect
+as SWA in a different address space: one `uint4` temporary causes
+`scratch_load_b128` plus two `scratch_store_b128` operations and **32 B** of
+private segment per thread. The separately registered direct-store sibling
+branches before assignment, sends valid global vectors directly to the real
+dynamic-LDS V tile, and zeroes invalid vectors with four scalar stores.
+F32/BF16 output remains byte-exact at live513/576/639 with eviction. The
+nine-sample leaves improve **11.71%/11.83%/11.82%**. Cached tracing records
+33 observations each at local256/24 workgroups and improves
+**103.354 -> 90.530 us (-12.41%)** while scratch falls **32 -> 0 B**; logical
+VGPR/SGPR stay 28/34. All seven resident-model pairs improve
+**19.077502 -> 19.134537 tok/s (+0.2990%, -0.1562 ms/token)** with exact
+trajectories/state. gfx1151 selects the direct form through live4000; aggregate
+vec16 remains rollback and GQA1 remains fallback above the LDS bound. Evidence:
+[`retained global direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

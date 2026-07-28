@@ -188457,3 +188457,27 @@ Vulkan local sizes verbatim will close the measured gap.
   position 638, deterministic state, and allocation lifecycle are exact.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json`.
+
+## 2026-07-29 04:09 JST — Retain global vec16 direct LDS stores
+
+- Generated metadata/ISA identifies the retained global vec16 owner's
+  **32-byte private segment** and `scratch_load_b128` plus two
+  `scratch_store_b128` operations around its `uint4` aggregate. A separately
+  registered direct sibling branches before assignment, writes valid vectors
+  directly into the dynamic-LDS V tile, and scalar-zeroes invalid vectors.
+  There is no attention arithmetic or association change.
+- RED fails only on the absent wrapper/owner field. GREEN passes the
+  live513/576/639 eviction CPU gate and runtime selector gate **2/2**; F32
+  context and gated BF16 are byte-identical. Nine-sample leaves improve
+  **11.71%/11.83%/11.82%**.
+- Cached native tracing names `<2,64,true,false>` and
+  `<2,64,true,true>` 33 times each at local256/24 workgroups. Median kernel
+  time improves **103.354 -> 90.530 us (-12.41%)** and scratch falls
+  **32 -> 0 B**; profiler VGPR/SGPR/LDS stay 32/128/512 and code-object logical
+  VGPR/SGPR stay 28/34.
+- All seven counterbalanced p512/d128 pairs improve
+  **19.077502 -> 19.134537 tok/s (+0.2990%, -0.1562 ms/token)**. Every
+  generated hash/token/position and allocation lifecycle matches. Promote
+  only natural capacity4096/live<=4000 gfx1151 global attention; retain the
+  aggregate vec16 owner as exact rollback. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json`.
