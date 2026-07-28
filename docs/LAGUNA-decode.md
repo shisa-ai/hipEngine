@@ -3361,6 +3361,20 @@ Vulkan source review also prevents a second wrong transfer:
 - FlashAttention fuses score, softmax and PV. It does not materialize
   hipEngine's score plane and then run the current scalar-order value reducer.
 
+The decode dispatch can be derived more precisely from `c0bc8591e`. Before
+tuning, `N=1` and the query/KV ratio is nine, so the host folds all nine SWA
+query heads into the row dimension and reduces the Y grid from 72 query heads
+to eight KV heads. On this subgroup64/KHR-cooperative-matrix device, the
+resulting `N=9`, D128 F16-KV path selects cooperative-matrix FlashAttention
+with **Br=16, Bc=64, local256**. The split-K heuristic targets twice the 40-CU
+count: at live 512, alignment rounds the key slice to 64 and produces
+**8 KV heads x 8 K64 splits = 64 main workgroups**, followed by bounded-state
+merge. Each tile carries all nine query rows, reuses its K/V tile across them,
+and maintains online max/denominator/output state. This explains the key
+difference from hipEngine's retained exact fused GQA2 body: the comparator
+gets both full-GQA reuse and enough grid breadth by partitioning keys, rather
+than choosing between reuse and occupancy.
+
 #### Qwen3.5 gfx1100-to-gfx1151 lessons for Laguna decode
 
 The Qwen adaptation history is useful chiefly because it shows where
@@ -3517,6 +3531,7 @@ geometry only with a reduction-order-preserving design.
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained fused-GQA2 SWA owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
+[`rejected fused-GQA2 shared-V owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json) ·
 [`retained fused one-head global owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
@@ -3649,6 +3664,17 @@ reducers also regress **8.19%/25.29%** in the leaf. Remove all three.
 Cached tracing confirms the retained body at local256/VGPR32/SGPR128/
 LDS6144/scratch0.
 
+An exact paired shared-V follow-up is closed before runtime integration. It
+kept the same 40-workgroup/eight-wave score phase and each query's scalar/FMA
+order, but let four dimension waves carry both query-head states and fetch
+each BF16 V element once. Modeled K+V row reads per KV head fell
+**14 -> 10**, and ring-wrap/explicit-eviction F32/BF16 outputs remained
+byte-exact. Halving the active PV waves and carrying two softmax/output states
+instead regressed the complete saturated leaf
+**0.083029 -> 0.123772 ms (+49.070%)**. The candidate is removed. This closes
+same-workgroup paired-V serialization; it strengthens the llama.cpp-shaped
+requirement to regain breadth with independent K64 splits.
+
 LD-1e applies the same fusion to global attention while preserving breadth.
 One local256 workgroup remains assigned to each of 48 query heads, so the
 layer keeps **48 workgroups / 384 wave32s**. It fuses QK, the existing
@@ -3723,10 +3749,14 @@ and shape/backend fallbacks.
    undersubscribe the 40 CUs. Total attention still remains far
    above the **3.0 ms/token** target. LD-1b's full-F32 and exact-QK/
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
-   reducer and SWA one-head fused owners are performance-rejected. Continue
-   with larger SWA K-reuse groups only if at least 40 ordinary workgroups and
-   enough wave breadth are preserved, then re-profile attention launch and
-   persistent-fusion opportunities.
+   reducer, SWA one-head fusion, and paired shared-V GQA2 owner are
+   performance-rejected; shared-V alone is **49.070%** slower. The next screen
+   is therefore an SWA **GQA9 x K64 split-K** body with 64 main workgroups,
+   bounded online-state merge, and full `KVLiveSpans` visibility. It follows
+   llama.cpp's reuse/breadth topology while retaining hipEngine's independent
+   correctness contract. Changed association must enter the full KL/top-1 and
+   category gates. Re-profile attention launch and persistent-fusion
+   opportunities only after this algorithmic screen.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

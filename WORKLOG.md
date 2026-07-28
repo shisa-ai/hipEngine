@@ -187975,3 +187975,31 @@ Vulkan local sizes verbatim will close the measured gap.
   p512/d128 is now **17.097044 tok/s / 58.490 ms/token**, cumulative
   **+49.102%** from 11.466687. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json`.
+
+## 2026-07-28 23:31 JST — Reject exact GQA2 shared-V and audit Vulkan decode FA
+
+- RED failed on the absent
+  `swa_context_fused_exact_gated_gqa2_sharedv_fixed512_spans` key. The
+  temporary local256 candidate kept the retained 40-workgroup/eight-wave QK
+  phase and every query's scalar/FMA order, then used four dimension waves to
+  carry both query-head states and load each BF16 V element once. The complete
+  focused file passed **2/2**, including saturated ring wrap and explicit
+  eviction; F32 context and BF16 gated output were byte-exact.
+- Reject before runtime integration. The counterbalanced saturated leaf moves
+  retained fused GQA2 **0.083029 -> 0.123772 ms (+49.070%)** over nine
+  samples, warmup five, burst 50. Modeled K+V row reads per KV head fall
+  **14 -> 10**, but active PV waves fall eight -> four and each lane carries
+  two softmax/output states. The candidate wrapper, key, test, and device body
+  are all removed; production remains **17.097044 tok/s / 58.490 ms/token**.
+- Exact command:
+  `PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2-sharedv --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa2-sharedv-leaf.json`;
+  raw SHA-256 is `2aaae0cf...b9983`.
+- Source review of clean llama.cpp Vulkan `c0bc8591e` explains the missing
+  topology. Decode folds the nine SWA query heads into the FlashAttention row
+  tile, selects subgroup64 KHR cooperative-matrix **Br16 x Bc64/local256**,
+  and at live512 split-K produces **8 KV heads x 8 K64 slices = 64 main
+  workgroups** plus bounded-state merge. K/V are reused across all nine query
+  rows while key splitting recovers 40-CU breadth. The next LD-1 screen is
+  therefore GQA9 x K64 split-K with full `KVLiveSpans`; changed association
+  enters the full KL/top-1/category gate. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json`.
