@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T20:06:31+09:00",
+  "kind": "hipengine_laguna_gfx1151_fixedk_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "01bae09bd",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-fixedk-trace.dLHL3q --output-file fixedk -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-f16-fixedk-trace.dLHL3q/bench.json",
+    "trace_sha256": "6e8df5da29c671d52e435e6817822c5bf0560c96cf2b9dc9b88b50f9d2320dc5",
+    "segmentation": "Each decode transition starts at its one-row embedding and ends at argmax stage 2; report the median over all 127 complete transition segments.",
+    "profiler_wall_tok_s": 15.823321463151931,
+    "publication_wall_tok_s": 16.391201255803313,
+    "profiler_wall_is_attribution_only": true
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 864,
+    "median_kernel_sum_ms_per_token": 58.890281,
+    "median_kernel_span_ms_per_token": 61.569035,
+    "families": {
+      "source_f16_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 24.16403,
+        "share_of_kernel_sum": 0.4103
+      },
+      "attention": {
+        "calls_per_token": 96,
+        "median_ms_per_token": 13.777897,
+        "share_of_kernel_sum": 0.234
+      },
+      "selected_q4_gate_up": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 8.558217,
+        "share_of_kernel_sum": 0.1453
+      },
+      "selected_q4_q6_down": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 5.152751,
+        "share_of_kernel_sum": 0.0875
+      },
+      "dense_shared_quant_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 3.710893,
+        "share_of_kernel_sum": 0.063
+      },
+      "lm_head_argmax": {
+        "calls_per_token": 3,
+        "median_ms_per_token": 1.122265,
+        "share_of_kernel_sum": 0.0191
+      },
+      "router": {
+        "calls_per_token": 94,
+        "median_ms_per_token": 1.068042,
+        "share_of_kernel_sum": 0.0181
+      },
+      "norm_rope_gate": {
+        "calls_per_token": 145,
+        "median_ms_per_token": 1.066649,
+        "share_of_kernel_sum": 0.0181
+      },
+      "activation_reduce_residual": {
+        "calls_per_token": 143,
+        "median_ms_per_token": 0.232518,
+        "share_of_kernel_sum": 0.0039
+      },
+      "embedding": {
+        "calls_per_token": 1,
+        "median_ms_per_token": 0.002325
+      }
+    },
+    "attention_breakdown": {
+      "swa_reduce_calls_per_token": 36,
+      "swa_reduce_median_ms_per_token": 9.958974,
+      "swa_scores_calls_per_token": 36,
+      "swa_scores_median_ms_per_token": 0.769885,
+      "global_reduce_calls_per_token": 12,
+      "global_reduce_median_ms_per_token": 2.654461,
+      "global_scores_calls_per_token": 12,
+      "global_scores_median_ms_per_token": 0.37811
+    }
+  },
+  "finding": {
+    "source_f16_proxy_bandwidth_gb_s": 232.0,
+    "source_f16_interpretation": "The exact fixed-K owner is at the practical UMA read ceiling and remains the largest byte family, but no longer has a credible unchanged-byte geometry win.",
+    "next_surface": "attention",
+    "reason": "Attention is 13.778 ms/token and 91.5% of it is the exact global/SWA value reduction. Reaching the declared 3.0 ms attention target would model about 19.9 tok/s before secondary Q4 work.",
+    "next_experiment": "Compile-time specialize the live-512 SWA reducer while preserving its 72-workgroup/288-wave grid and exact slot-order max, exponent, denominator, FMA, divide, gate, and stores."
+  }
+}

@@ -187792,3 +187792,23 @@ Vulkan local sizes verbatim will close the measured gap.
   **16.391201 tok/s / 61.008 ms/token**, cumulative **+42.946%** from the
   11.466687 pre-transfer baseline. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json`.
+
+## 2026-07-28 20:06 JST — Re-rank the fixed-K Laguna decode wall
+
+- Segment the retained cache-only trace into all **127** complete one-row
+  decode transitions (embedding through argmax stage 2). Each transition has
+  **864** dispatches; median device sum/span is
+  **58.890/61.569 ms/token**. The profiled wall is attribution-only because
+  `rocprofv3` reduces the child to **15.823 tok/s** versus the unprofiled
+  **16.391 tok/s** publication.
+- Source-F16 falls to **24.164 ms/token (41.03%)** and reaches about
+  **232 GB/s** against the active-byte proxy. It remains the largest byte
+  family but no longer has a credible unchanged-byte geometry seam.
+- Attention is the largest algorithmic target at
+  **13.778 ms/token (23.40%)**: SWA reduction **9.959 ms**, global reduction
+  **2.654 ms**, and both score producers only **1.148 ms**. Selected Q4
+  gate/up plus down is **13.711 ms**, dense/shared **3.711 ms**.
+- Resume LD-1 with a compile-time live-512 SWA reducer that preserves the
+  retained **72-workgroup/288-wave** grid and every slot-order operation.
+  Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-fixedk-wall-reprofile.json`.

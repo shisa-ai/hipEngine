@@ -3450,6 +3450,30 @@ LD-2's declared family-floor objective is complete. Re-profile the new wall,
 then return priority to attention rather than perturbing the now
 **228-231 GB/s** large F16 stream.
 
+The post-promotion full trace confirms that re-ranking. Across all **127**
+complete decode transitions, fixed-K production has a median **58.890
+ms/token** kernel sum and **61.569 ms/token** traced span at **864
+dispatches/token**. The family wall is now:
+
+| Fixed-K production family | Calls/token | Median ms/token | Kernel-sum share |
+| --- | ---: | ---: | ---: |
+| Source-F16 projections | 144 | **24.164** | **41.03%** |
+| Global + SWA attention | 96 | **13.778** | **23.40%** |
+| Selected Q4 gate/up | 47 | **8.558** | **14.53%** |
+| Selected Q4/Q6 down | 47 | **5.153** | **8.75%** |
+| Dense/shared quant projections | 144 | **3.711** | **6.30%** |
+| LM head + argmax | 3 | **1.122** | **1.91%** |
+| Router | 94 | **1.068** | **1.81%** |
+| Norm/RoPE/gate | 145 | **1.067** | **1.81%** |
+
+The F16 byte proxy now reaches about **232 GB/s**. Attention is the largest
+credible algorithmic gap: the SWA reducer alone is **9.959 ms/token**, global
+reduction **2.654 ms**, and both score producers together only **1.148 ms**.
+This makes the next exact screen a live-512 SWA reducer specialization that
+keeps all **72 workgroups / 288 waves** and the complete scalar/FMA order.
+Reducing attention from **13.778 to 3.0 ms/token** models roughly **19.9
+tok/s** before any secondary Q4 work.
+
 LD-3 was screened with measured production inputs, not a format assumption. A
 raw block32 Q8_0 side representation cuts resident source-F16
 bytes **46.875%**. At actual layer-0 full-attention and layer-47 SWA inputs,
@@ -3500,6 +3524,7 @@ Evidence:
 [`rejected F16 Q8 full-model screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-q8-full-model-rejected.json) ·
 [`rejected Q4 pack8 geometry screen`](../benchmarks/results/2026-07-28-gfx1151-laguna-q4-pack8-decode-geometry-rejected.json) ·
 [`tensorized SWA decode leaf`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json) ·
+[`fixed-K wall re-profile`](../benchmarks/results/2026-07-28-gfx1151-laguna-fixedk-wall-reprofile.json) ·
 [`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
 
 #### Next decode attack
