@@ -29,6 +29,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans,
+    laguna_swa_attention_decode_fused_gated_gqa3_vstage64_vec16_direct_fast_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
 )
@@ -57,6 +58,7 @@ def _parse_args() -> argparse.Namespace:
             "fused-gqa3-vstage64",
             "fused-gqa3-vstage64-vec16",
             "fused-gqa3-vstage64-vec16-direct",
+            "fused-gqa3-vstage64-vec16-direct-fast-exp",
         ),
         default="fixed512",
     )
@@ -222,6 +224,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "fused-gqa3-vstage64": laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
             "fused-gqa3-vstage64-vec16": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
             "fused-gqa3-vstage64-vec16-direct": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_fixed512_bf16_spans,
+            "fused-gqa3-vstage64-vec16-direct-fast-exp": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans,
         }[args.candidate]
         candidate_kernel = {
             "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
@@ -230,6 +233,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "fused-gqa3-vstage64": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
             "fused-gqa3-vstage64-vec16": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_fixed512_bf16_spans,
             "fused-gqa3-vstage64-vec16-direct": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans,
+            "fused-gqa3-vstage64-vec16-direct-fast-exp": laguna_swa_attention_decode_fused_gated_gqa3_vstage64_vec16_direct_fast_exp_fixed512_bf16_spans,
         }[args.candidate]
 
         def control() -> None:
@@ -265,7 +269,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         candidate_gated_host = _download(runtime, candidate_gated, np.uint16)
         context_exact = np.array_equal(control_context_host, candidate_context_host)
         gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
-        if not context_exact or not gated_exact:
+        if (
+            args.candidate != "fused-gqa3-vstage64-vec16-direct-fast-exp"
+            and (not context_exact or not gated_exact)
+        ):
             raise AssertionError(f"{args.candidate} reducer is not byte-exact")
 
         for _ in range(args.warmups):

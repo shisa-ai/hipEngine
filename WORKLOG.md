@@ -188510,3 +188510,29 @@ Vulkan local sizes verbatim will close the measured gap.
   an explicit numerical repair strategy rather than repeating the rejected
   unqualified online GQA9 association. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json`.
+
+## 2026-07-29 04:35 JST — Admit native-exp SWA decode candidate
+
+- Generated ISA identifies the retained direct-store GQA3 body's scalar
+  accurate exponential as the first post-copy bottleneck: 65 static `expf`
+  expansions contribute 195 delay slots and 64 additional FMAs.
+- Add a separately registered candidate that changes only `expf` to native
+  `__expf`. QK, maximum, ordered denominator, PV FMA, divide, gate, stores,
+  ring visibility, and the exact direct-store rollback are unchanged.
+- RED fails on the absent wrapper. GREEN passes wrapped positions 512-519
+  after explicit eviction against the CPU tolerance oracle. The leaf's F32
+  context differs by at most **1.86e-9**, while all **9,216** gated BF16
+  elements are byte-identical. Across the eight wrapped/evicted states, one
+  of **73,728** gated BF16 values crosses one rounding boundary (at most
+  one of 9,216 at any position).
+- Nine cache-hot samples improve **0.106888 -> 0.096000 ms (-10.19%)**.
+  Extracted ISA keeps logical VGPR138/SGPR33/LDS24576/scratch0 and replaces
+  the accurate expansion with one native exponential per weight. Cached native
+  tracing names both templates at local384/24 blocks and improves the
+  four-observation median **137.158 -> 112.772 us (-17.78%)** with unchanged
+  profiler resources.
+- This is a candidate primitive, not a production promotion. Next add an
+  explicit resident-model comparison and saturated-512 category lane; require
+  positive p512/d128 wall and the complete 18-prompt/576-step
+  KL<=0.05/top-1>=90% gate. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-fast-exp-candidate.json`.
