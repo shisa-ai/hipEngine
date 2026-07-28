@@ -100,11 +100,14 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
-# WPF-C1's direct-GGUF short gate selects M256 with both global and SWA
-# attention fixed at 128. M256 is bit-exact across all 48 hidden boundaries,
-# complete K/V/live spans, and shared-prefix routing, and improves M128 at both
-# 512/1K while using half M512's planned row/MoE scratch.
-LAGUNA_PREFILL_MATRIX_ROWS = 256
+# WPF-2's exact expert-major IQ down route selects M512 with both global and
+# SWA attention fixed at 128. All M128/M256/M512 boundaries, K/V/live spans,
+# routing, repeats, and lifecycle are byte-identical; M512 compounds the grouped
+# M256 route by about 1.7% at both 512/1K and improves the old direct route by
+# 14.12%/13.35%. Explicit direct/M128/M256 routes remain exact rollbacks.
+LAGUNA_PREFILL_MATRIX_ROWS = 512
+LAGUNA_SELECTED_GATE_UP_MODE = "grouped_exact"
+LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. Zero/4/8/16/32 remain explicit routes; unsupported shapes fall back.
@@ -154,6 +157,8 @@ __all__ = [
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
+    "LAGUNA_SELECTED_DOWN_MODE",
+    "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",

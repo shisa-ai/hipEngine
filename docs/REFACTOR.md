@@ -24,23 +24,44 @@ should be removed or collapsed.
   bulk-prefill execution owner; zero is scalar rollback. gfx1151 excludes all
   sixteen W7900 keys and remains zero.
 - WPF-C1 confirms RB32 remains the full-model winner at retained M256 and traces
-  its Y8 grid. Keep RB8 as the preceding production control and zero as scalar
-  rollback. Remove rowbatch4/16 and their explicit CLI/registry surface after
-  the WPF-2 baseline no longer needs width bisection; no retained end-to-end
-  policy selects either. Preserve scalar registered fallback for unsupported
-  shapes/backends.
+  its Y8 grid. WPF-2 then selects M512 without changing the RB32 owner. Keep RB8
+  as the preceding production control and zero as scalar rollback. After the
+  clean WPF-2 publication, remove rowbatch4/16 and their explicit CLI/registry
+  surface in a separate cleanup unit; no retained end-to-end policy selects
+  either. Preserve scalar registered fallback for unsupported shapes/backends.
 
 ## Laguna prefill matrix-capacity selector
 
-- Added 2026-07-29. gfx1100 now exports `LAGUNA_PREFILL_MATRIX_ROWS=256`;
-  explicit `LagunaGGUFResidentSession(..., prefill_chunk_size=...)` remains the
-  rollback/comparison route. Both global and SWA attention stay independently
-  capped at 128.
-- M256 improves exact M128 **0.973%/1.086%** at 512/1K and uses **219,514,912
-  bytes** planned row/MoE scratch. M512 improves **0.939%/1.062%**, trails M256
-  aggregate wall by only 0.027%, and doubles grouping/scratch. Keep M128 as the
-  required exact fallback and M512 through the capacity-sensitive WPF-2 gate;
-  remove M512-specific comparison plumbing if WPF-2 does not select it.
+- Added 2026-07-29. WPF-C1 first exported `LAGUNA_PREFILL_MATRIX_ROWS=256`;
+  WPF-2 now selects 512 after exact expert-major IQ down reuse makes the larger
+  grouping materially faster. Explicit `LagunaGGUFResidentSession(...,
+  prefill_chunk_size=...)` remains the rollback/comparison route. Both global
+  and SWA attention stay independently capped at 128.
+- Direct M256 improves exact M128 **0.973%/1.086%** at 512/1K and uses
+  **219,514,912 bytes** planned row/MoE scratch. With grouped exact IQ down,
+  M512 improves direct by **14.118%/13.354%** and beats the separately measured
+  grouped M256 row by **1.703%/1.691%**. Keep M128 and M256 as exact rollback
+  capacities through clean package publication and one post-publication
+  reprofile; afterwards collapse benchmark-only three-way comparison plumbing
+  while preserving explicit `prefill_chunk_size` overrides.
+
+## Laguna exact grouped-IQ prefill selector
+
+- Added 2026-07-29. gfx1100 now exports paired
+  `LAGUNA_SELECTED_{GATE_UP,DOWN}_MODE="grouped_exact"`. The route preserves
+  retained route-major pair16/local64 gate/up arithmetic, compacts exact
+  post-SiLU rows once, runs registered expert-major IQ3/IQ4 down, and restores
+  token-major rows with the registered exact weighted reducer. Explicit paired
+  `direct` selection is the rollback; unsupported quant/key misses fail closed
+  to that registered exact chain. gfx1151 keeps its independently measured MMQ
+  modes.
+- Keep `direct` through clean publication and the next all-family reprofile.
+  The new grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU primitives are not
+  runtime owners because local256/group8 changed 11/30,720 actual tiny
+  intermediate values versus pair16/local64 production. Retain them only while
+  pursuing a pair16-compatible expert-major producer; remove their wrappers,
+  keys, and HIP instantiations if WPF-3 begins without such a producer. The
+  grouped IQ3 single/down rowbatch8 and IQ4 auto keys remain production.
 
 ## Laguna raw-Q5/Q6 prefill MMQ selector
 

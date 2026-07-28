@@ -104,7 +104,6 @@ from hipengine.runtime.laguna_moe import (
     resolve_laguna_router_logits_mode,
     resolve_laguna_selected_down_mode,
     resolve_laguna_selected_gate_up_mode,
-    run_laguna_moe_c1,
     run_laguna_moe_c1_components,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -851,6 +850,7 @@ class LagunaEagerLibraries:
     selected_experts: object
     selected_prefill: object
     iq_selected_experts: object
+    iq_grouped_prefill: object
     moe_group: object
     routed_sum: object
 
@@ -904,6 +904,7 @@ class LagunaEagerLibraries:
             "selected_silu": self.dense_silu,
             "selected_down": self.selected_experts,
             "selected_down_iq": self.iq_selected_experts,
+            "grouped_iq_prefill": self.iq_grouped_prefill,
             "grouped_metadata": self.moe_group,
             "grouped_gather": self.moe_group,
             "grouped_down": self.selected_experts,
@@ -2028,6 +2029,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.moe.laguna_router import build_laguna_router
     from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import build_gguf_iq_gemv
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
+        build_gguf_iq_selected_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
@@ -2085,6 +2089,7 @@ def load_laguna_eager_libraries(
             selected_experts=build_gguf_t16_selected_gemv(**kwargs),
             selected_prefill=build_gguf_q4_k_q8_1_selected_prefill(**kwargs),
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
+            iq_grouped_prefill=build_gguf_iq_selected_prefill(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
         )

@@ -153,6 +153,11 @@ def _parse_args() -> argparse.Namespace:
         help="compare exact rowbatch8 with the Q5/Q6 producer-row MMQ owner",
     )
     parser.add_argument(
+        "--compare-grouped-exact-iq",
+        action="store_true",
+        help="compare retained route-major IQ with exact expert-major IQ down reuse",
+    )
+    parser.add_argument(
         "--raw-k-prefill-mmq",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -310,6 +315,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_long_attention_hipblaslt,
             args.compare_raw_k_prefill_rowbatch,
             args.compare_raw_k_prefill_mmq,
+            args.compare_grouped_exact_iq,
             args.compare_block_attention_hipblaslt,
             args.compare_dense_contiguous_cache,
             args.compare_swa_attention_hipblaslt,
@@ -364,6 +370,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         args.compare_long_attention_hipblaslt
         or args.compare_raw_k_prefill_rowbatch
         or args.compare_raw_k_prefill_mmq
+        or args.compare_grouped_exact_iq
         or args.compare_block_attention_hipblaslt
         or args.compare_dense_contiguous_cache
         or args.compare_swa_attention_hipblaslt
@@ -534,6 +541,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_raw_k_prefill_mmq:
                         owner.set_raw_k_prefill_mmq(mode == "candidate")
+                    if args.compare_grouped_exact_iq:
+                        selected_mode = (
+                            "grouped_exact" if mode == "candidate" else "direct"
+                        )
+                        owner.set_selected_gate_up_mode(selected_mode)
+                        owner.set_selected_down_mode(selected_mode)
                     if args.compare_block_attention_hipblaslt:
                         owner.set_prefill_block_attention_hipblaslt(
                             mode == "candidate"
@@ -573,6 +586,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "output_tokens": output_tokens,
                         "raw_k_prefill_rowbatch": owner.raw_k_prefill_rowbatch,
                         "raw_k_prefill_mmq": owner.raw_k_prefill_mmq,
+                        "selected_gate_up_mode": owner.selected_gate_up_mode,
+                        "selected_down_mode": owner.selected_down_mode,
                     }
                     if output_tokens > 1:
                         row.update(
@@ -758,6 +773,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "raw_k_prefill_rowbatch_control": raw_k_control,
             "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
             "compare_raw_k_prefill_mmq": args.compare_raw_k_prefill_mmq,
+            "compare_grouped_exact_iq": args.compare_grouped_exact_iq,
             "raw_k_prefill_mmq": active_raw_k_prefill_mmq,
             "raw_k_prefill_mmq_requested": args.raw_k_prefill_mmq,
             "compare_block_attention_hipblaslt": (
