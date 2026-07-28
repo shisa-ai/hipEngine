@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -865,6 +866,18 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     )
     np.testing.assert_array_equal(gate_actual[0], gate_ref[0])
     np.testing.assert_array_equal(gate_actual[1], gate_ref[1])
+    gate_tile8 = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_a,
+        gate_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(gate_tile8[0], gate_ref[0])
+    np.testing.assert_array_equal(gate_tile8[1], gate_ref[1])
 
     down_in, down_out = 1024, 3072
     down_x = _f32_to_bf16_u16(

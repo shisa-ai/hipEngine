@@ -41,6 +41,9 @@ _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DUAL_NATURAL_VARIANT = (
     "selected_dual_t16_natural_gemv_decode_bf16_bf16_out"
 )
+_SELECTED_DUAL_NATURAL_TILE8_VARIANT = (
+    "selected_dual_t16_natural_tile8_gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DUAL_MMQ32_D4X3_VARIANT = (
     "selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -372,6 +375,10 @@ class LagunaMoEKernelPlan:
     c1_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     natural_selected_gate_up_keys: Mapping[str, KernelKey]
     natural_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
+    natural_tile8_selected_gate_up_keys: Mapping[str, KernelKey]
+    natural_tile8_selected_gate_up_routes: Mapping[
+        str, LagunaMoESelectedRoute
+    ]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -451,6 +458,7 @@ class LagunaMoEKernelPlan:
             self.fused_selected_silu_pack_key,
             *tuple(self.c1_selected_gate_up_keys.values()),
             *tuple(self.natural_selected_gate_up_keys.values()),
+            *tuple(self.natural_tile8_selected_gate_up_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -961,6 +969,28 @@ def resolve_laguna_moe_plan(
             for quant, key in natural_selected_gate_up_keys.items()
         }
     )
+    natural_tile8_selected_gate_up_keys = MappingProxyType(
+        {
+            "gguf_q4_k_t16_v1": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_q4_k_t16_v1",
+                _SELECTED_DUAL_NATURAL_TILE8_VARIANT,
+            )
+        }
+    )
+    natural_tile8_selected_gate_up_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="t16_dual",
+                allocation_name="tiles",
+                library_key="selected_gate_up",
+            )
+            for quant, key in natural_tile8_selected_gate_up_keys.items()
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1101,6 +1131,12 @@ def resolve_laguna_moe_plan(
         c1_selected_gate_up_routes=c1_selected_gate_up_routes,
         natural_selected_gate_up_keys=natural_selected_gate_up_keys,
         natural_selected_gate_up_routes=natural_selected_gate_up_routes,
+        natural_tile8_selected_gate_up_keys=(
+            natural_tile8_selected_gate_up_keys
+        ),
+        natural_tile8_selected_gate_up_routes=(
+            natural_tile8_selected_gate_up_routes
+        ),
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
         selected_down_key=keys["selected_down"],
@@ -1508,6 +1544,7 @@ def _launch_selected_gate_up(
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
     use_natural: bool = False,
+    use_natural_tile8: bool = False,
 ) -> None:
     plan = scratch.plan
     gate = layer.weight("ffn_gate_exps")
@@ -1515,6 +1552,12 @@ def _launch_selected_gate_up(
     try:
         retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
         route = (
+            plan.natural_tile8_selected_gate_up_routes.get(
+                gate.spec.quant_key,
+                retained_route,
+            )
+            if use_natural and use_natural_tile8 and x_rows == 1
+            else
             plan.natural_selected_gate_up_routes.get(
                 gate.spec.quant_key,
                 retained_route,
@@ -2276,6 +2319,7 @@ def run_laguna_moe_c1_components(
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
     use_selected_natural_decode: bool = False,
+    use_selected_natural_tile8_decode: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -2325,6 +2369,7 @@ def run_laguna_moe_c1_components(
         runtime=runtime,
         libraries=libraries,
         use_natural=use_selected_natural_decode,
+        use_natural_tile8=use_selected_natural_tile8_decode,
     )
     routed_down_weighted = _launch_weighted_selected_down(
         layer,
