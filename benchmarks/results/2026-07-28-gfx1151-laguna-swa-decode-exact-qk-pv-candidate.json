@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_laguna_swa_decode_exact_qk_tensorized_pv",
+  "status": "candidate_primitive_admitted",
+  "date": "2026-07-28",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "shape": {
+    "rows": 1,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "window": 512,
+    "position": 512,
+    "ring_wrap": true,
+    "explicit_eviction": true
+  },
+  "implementation": {
+    "qk": "retained tile16 GQA3 ordered products and reconstructed 128-thread reduction tree",
+    "score_layout": "logical ring slots rotated to chronological oldest-to-newest order",
+    "softmax": "parallel exact exponentials plus retained logical-slot denominator order",
+    "pv": "packed F32 hipBLASLt algorithm index 8",
+    "normalization": "post-PV exact per-head denominator divide",
+    "scratch_nbytes": 4378912,
+    "production_default": false
+  },
+  "correctness": {
+    "chronological_score_f32_bit_identity": true,
+    "gated_bf16_mismatches": 1,
+    "gated_bf16_elements": 9216,
+    "context_gate": "rtol=0.002, atol=0.0002",
+    "tests": "4 passed"
+  },
+  "trace": {
+    "path": "/tmp/laguna-swa-decode-exactqk-pv-trace2-20260728/gfx1151/3697744_kernel_trace.csv",
+    "sha256": "680cfcb25fa10d245cf4476cfa50e94f6e7a8a132c30d0ab534239b6823e2851",
+    "expected_kernels": [
+      {
+        "name": "laguna_swa_decode_tile16_exact_gqa3_chronological_scores_kernel<3>",
+        "workgroup": 256,
+        "vgpr": 32,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "laguna_swa_decode_softmax_exact_weights_f32_kernel",
+        "workgroup": 256,
+        "vgpr": 16,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "hipBLASLt PV contraction",
+        "algorithm_index": 8
+      },
+      {
+        "name": "laguna_swa_decode_normalize_f32_kernel",
+        "workgroup": 256,
+        "vgpr": 24,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    ],
+    "note": "Profiler durations are attribution-only because hipBLASLt is materially perturbed at this sub-millisecond leaf."
+  },
+  "commands": {
+    "correctness": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_swa_decode_hipblaslt_shape_contract tests/test_laguna_kv_attention.py::test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap tests/test_laguna_split_scores_gqa.py -q",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-decode-exactqk-pv-trace2-20260728 -- .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_swa_decode_hipblaslt_matches_exact_gate_after_ring_wrap -q"
+  },
+  "next_gate": "clean p512/d128 candidate versus exact rollback; run the complete 18-prompt category gate only if whole-model wall remains positive"
+}
