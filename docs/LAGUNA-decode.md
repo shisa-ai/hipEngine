@@ -3575,31 +3575,27 @@ pairs and **18.230 tok/s** in clean production. The next bounded milestone is
 **20 tok/s**; same-GGUF Vulkan at
 **23.348 tok/s** remains the directional comparator target.
 
-The pre-global-GQA2 clean post-V-stage census records **816
-dispatches/token**, **53.265 ms** median kernel sum, and **55.855 ms** median
-dispatch span. Exact attention is still the dominant implementation gap:
+The post-global-GQA2 clean census records **816 dispatches/token**,
+**52.577 ms** median kernel sum, and **55.154 ms** median dispatch span.
+Exact attention is still the dominant implementation gap:
 
 | Current family | hipEngine ms/token | Vulkan logger ms/token | Delta |
 | --- | ---: | ---: | ---: |
 | Source-F16 projections | **24.072** | **24.759** | **-0.687** |
-| Attention total | **8.722** | **0.909** | **+7.813** |
-| └ SWA fused GQA3 V-stage64 | **5.844** | **0.683** | **+5.162** |
-| └ Global fused GQA1 | **2.878** | **0.227** | **+2.651** |
-| Selected gate/up | **8.413** | **7.464** | **+0.949** |
-| Selected down | **4.834** | **4.525** | **+0.308** |
+| Attention total | **8.065** | **0.909** | **+7.155** |
+| └ SWA fused GQA3 V-stage64 | **5.828** | **0.683** | **+5.145** |
+| └ Global fused GQA2 V-stage64 | **2.237** | **0.227** | **+2.010** |
+| Selected gate/up | **8.420** | **7.464** | **+0.956** |
+| Selected down | **4.827** | **4.525** | **+0.302** |
 
-Relative to the clean post-GQA3 census, V-stage64 improves attention
-**11.764 -> 8.722 ms/token (-25.86%)**, SWA **8.891 -> 5.844 ms/token
-(-34.27%)**, kernel sum **5.31%**, and kernel span **5.08%** with dispatches
-unchanged. Source-F16 remains at comparator parity; attention now explains
-about **61.8%** of the remaining wall gap. Reaching the existing **3.0-ms**
-attention checkpoint models about **20.10 tok/s**. Next screen the exact
-global GQA2 body with the V reuse it previously lacked. That screen is now
-retained: the leaf wins **9.16-12.39%** and all seven p512/d128 pairs improve
-**18.034298 -> 18.237090 tok/s (+1.124%)**. The tracked-clean selector then
-reaches **18.230064 tok/s**, **+1.129%** over the prior clean 18.026501 and
-**+58.983%** over the 11.466687 sprint start. Re-profile the retained global
-production, then vectorize the SWA staging loads.
+Relative to the post-SWA-V-stage census, global GQA2 V-stage64 improves
+global attention **2.878 -> 2.237 ms/token (-22.27%)**, total attention
+**8.722 -> 8.065 ms (-7.54%)**, kernel sum **1.29%**, and kernel span
+**1.26%** with dispatches unchanged. Source-F16 remains at comparator parity;
+attention explains about **59.5%** of the remaining wall gap. Reaching the
+existing **3.0-ms** attention checkpoint models about **20.1 tok/s**. The
+next bounded screen is vectorized V staging in the retained SWA GQA3/local384
+body; it owns **5.828 ms/token**, more than twice the global family.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
