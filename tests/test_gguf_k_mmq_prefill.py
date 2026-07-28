@@ -170,6 +170,21 @@ def test_q5_q6_mmq_contract_registry_and_backend_scope() -> None:
             gguf_q6_k_mmq32_q8_1_d4s4_f32_bf16_f32_out,
         ),
     ):
+        policy_key = KernelKey(
+            "hip_gfx1100",
+            "linear_prefill_policy",
+            quant,
+            "raw_k_q8_1_mmq32",
+        )
+        assert is_registered(policy_key)
+        assert not is_registered(
+            KernelKey(
+                "hip_gfx1151",
+                policy_key.layer,
+                policy_key.quant,
+                policy_key.variant,
+            )
+        )
         assert (
             resolve(
                 backend="hip_gfx1100",

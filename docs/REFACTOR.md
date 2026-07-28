@@ -27,6 +27,20 @@ should be removed or collapsed.
   rowbatch8 remains universally retained; preserve the scalar registered
   fallback for unsupported shapes/backends.
 
+## Laguna raw-Q5/Q6 prefill MMQ selector
+
+- Added 2026-07-28 as the default-off WPF-1B admission seam.
+  `LagunaGGUFResidentSession(..., raw_k_prefill_mmq=True|False)` lazily owns one
+  bounded producer-row Q8_1 workspace and library only on supported gfx1100.
+  Quant-specific crossover policy stays on registered Q5_K/Q6_K plugin keys;
+  N48/N72 and all key/shape/backend misses retain exact rowbatch8. gfx1151
+  excludes the producer, policy, and MMQ keys and rejects explicit enablement.
+- Promote the gfx1100 package default and remove the public positive selector
+  only after full state, 512/1K end-to-end performance, and both orders of the
+  complete 18-prompt train+heldout quality lane pass. Remove the MMQ owner and
+  policy if any gate fails without a bounded correction; preserve rowbatch8 as
+  the mandatory exact fallback either way.
+
 ## Laguna long-context F32 hipBLASLt rollback routes
 
 - Added 2026-07-27. The first capacity-sized full-score owner improved

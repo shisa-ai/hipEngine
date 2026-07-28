@@ -28,6 +28,8 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
     q8_mmq_prefill_session,
+    raw_k_mmq_prefill_session,
+    raw_k_prefill_rowbatch_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
@@ -582,6 +584,157 @@ def test_q3_mmq_prefill_session_uses_bounded_workspace(monkeypatch) -> None:
             common_kwargs,
         )
     ]
+
+
+def test_raw_k_mmq_prefill_session_quantizes_each_producer_once(monkeypatch) -> None:
+    q5_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+    )
+    q6_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k",
+        "mmq32_q8_1_d4s4_f32_bf16_f32_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (q5_key, q6_key)
+    }
+    quantize_calls = []
+    mmq_calls = []
+
+    def fake_quantize(*args, **kwargs):
+        quantize_calls.append((args, kwargs))
+
+    def fake_mmq(*args, **kwargs):
+        mmq_calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_1_d4s4_f32_quantize_bf16",
+        fake_quantize,
+    )
+    library = object()
+    try:
+        for key in originals:
+            register(key, fake_mmq, replace=True)
+        with (
+            raw_k_prefill_rowbatch_session(8),
+            raw_k_mmq_prefill_session(
+                workspace_ptr=10_000_000,
+                workspace_nbytes=491_520,
+                library=library,  # type: ignore[arg-type]
+            ),
+        ):
+            for quant_key, output_dtype in (
+                ("gguf_q5_k", GGUF_OUTPUT_BF16),
+                ("gguf_q6_k", GGUF_OUTPUT_F32),
+            ):
+                launch_gguf_linear(
+                    _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key=quant_key),
+                    x_ptr=100,
+                    out_ptr=200,
+                    rows=128,
+                    in_features=3_072,
+                    out_features=1_024,
+                    output_dtype=output_dtype,
+                    stream=7,
+                    runtime="runtime-sentinel",
+                )
+            launch_gguf_linear(
+                _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k"),
+                x_ptr=300,
+                out_ptr=400,
+                rows=128,
+                in_features=3_072,
+                out_features=1_024,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    common_kwargs = {
+        "stream": 7,
+        "runtime": "runtime-sentinel",
+        "library": library,
+    }
+    assert quantize_calls == [
+        ((100, 10_000_000, 128, 3_072), common_kwargs),
+        ((300, 10_000_000, 128, 3_072), common_kwargs),
+    ]
+    assert [call[0] for call in mmq_calls] == [
+        (10_000_000, 10, 200, 128, 3_072, 1_024),
+        (10_000_000, 10, 200, 128, 3_072, 1_024),
+        (10_000_000, 10, 400, 128, 3_072, 1_024),
+    ]
+    assert all(call[1] == common_kwargs for call in mmq_calls)
+
+
+def test_raw_k_mmq_prefill_session_keeps_small_outputs_exact() -> None:
+    with (
+        raw_k_prefill_rowbatch_session(8),
+        raw_k_mmq_prefill_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=491_520,
+        ),
+    ):
+        key, _, _ = _capture_launch(
+            rows=128,
+            in_features=3_072,
+            out_features=72,
+            quant_key="gguf_q5_k",
+            output_dtype=GGUF_OUTPUT_F32,
+            extra_keys=(
+                KernelKey(
+                    "hip_gfx1100",
+                    "linear",
+                    "gguf_q5_k",
+                    "rowbatch8_bf16_f32_out",
+                ),
+            ),
+        )
+    assert key == KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "rowbatch8_bf16_f32_out",
+    )
+
+
+def test_raw_k_mmq_prefill_session_rejects_undersized_workspace() -> None:
+    with (
+        raw_k_prefill_rowbatch_session(8),
+        raw_k_mmq_prefill_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=491_519,
+        ),
+    ):
+        with pytest.raises(ValueError, match="workspace is too small"):
+            _capture_launch(
+                rows=128,
+                in_features=3_072,
+                out_features=1_024,
+                quant_key="gguf_q6_k",
+                extra_keys=(
+                    KernelKey(
+                        "hip_gfx1100",
+                        "linear",
+                        "gguf_q6_k",
+                        "mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+                    ),
+                ),
+            )
 
 
 def test_q3_mmq_prefill_session_keeps_exact_below_crossover() -> None:
