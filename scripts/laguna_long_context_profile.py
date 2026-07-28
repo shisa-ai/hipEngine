@@ -445,9 +445,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_moe_shared_low_priority = owner.moe_shared_low_priority
         active_moe_shared_priority_range = owner.moe_shared_priority_range
         active_head_kv_fusion = owner.use_head_kv_fusion
-        active_global_split_min_live = owner.global_split_min_live
-        active_swa_split_min_live = owner.swa_split_min_live
-        active_swa_split_tile16_min_live = owner.swa_split_tile16_min_live
+        active_global_split_min_live = owner.kv_cache.global_split_min_live
+        active_swa_split_min_live = owner.kv_cache.swa_split_min_live
+        active_swa_split_tile16_min_live = (
+            owner.kv_cache.swa_split_tile16_min_live
+        )
         active_split_gate_fusion = owner.use_split_gate_fusion
         active_swa_split_wave_local = owner.use_swa_split_wave_local
         active_long_attention_hipblaslt = (
