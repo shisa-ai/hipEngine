@@ -3306,9 +3306,9 @@ hipEngine uses BF16 KV and the retained deterministic trajectory.
 
 | Backend | Decode | Wall/token | Qualification |
 | --- | ---: | ---: | --- |
-| hipEngine production | **14.555 tok/s** | **68.704 ms** | Three-repeat p512/d128; 127 eager C1 calls |
+| hipEngine production | **14.740 tok/s** | **67.840 ms** | Three-repeat p512/d128; 127 eager C1 calls; retained GQA3 SWA score owner |
 | llama.cpp Vulkan `c0bc8591e` | **23.348 tok/s** | **42.830 ms** | One-run same-GGUF `tg128`, FA on, depth 512 |
-| Gap | **+60.412% Vulkan** | **25.874 ms** | Large implementation gap, not launch-count noise |
+| Gap | **+58.396% Vulkan** | **25.011 ms** | Large implementation gap, not launch-count noise |
 
 The dry resident plan gives an active encoded-weight proxy of
 **9.173128 GB/token**: every dense/router/output tensor once, 10/256 of each
@@ -3322,7 +3322,7 @@ first-order streaming ledger.
 | Practical read anchor | **221 GB/s** |
 | hipEngine resident-byte floor at 221 GB/s | **41.507 ms / 24.092 tok/s** |
 | hipEngine resident-byte floor at theoretical 256 GB/s | **35.833 ms / 27.908 tok/s** |
-| Current hipEngine wall proxy | **133.52 GB/s / 60.42%** of 221 |
+| Current hipEngine wall proxy | **135.22 GB/s / 61.18%** of 221 |
 | Current hipEngine device-sum proxy | **137.88 GB/s / 62.39%** |
 | Vulkan raw-byte wall proxy | **210.87 GB/s / 95.42%** |
 
@@ -3392,6 +3392,7 @@ column, and eight per-lane partial sequences reconstruct the current
 256-thread reduction order without cross-wave LDS/barriers.
 
 Evidence:
+[`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
 
 #### Next decode attack
@@ -3400,11 +3401,21 @@ The next pause target is **at least 18 tok/s** at p512/d128 under the existing
 state and quality contract. Same-GGUF Vulkan at **23.348 tok/s** is the
 directional comparator target.
 
+LD-1 is now underway with one retained exact substep. Grouping only the SWA
+score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
+moves matched production **14.563678 -> 14.740486 tok/s (+1.214%)**, with the
+complete trajectory unchanged. Grouping the value reducer by nine heads, three
+heads/local128, or three heads/local64 was exact but **5-11% slower** and has
+been removed. This confirms the architecture seam: reuse K while preserving
+the 72-head reducer grid; recovering V reuse still requires split-K/fused
+ownership with enough workgroups for 40 CUs.
+
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
    score/softmax/PV, and merge plus gate through bounded state. First require
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
+   The retained GQA3 score owner is LD-1a, not completion of this gate.
 2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
    **25.368-ms** unchanged-byte family floor with the eight-wave/eight-output
    block. Do not repeat local-size-only screens.

@@ -981,8 +981,13 @@ LDS0, scratch0. At live 511/512 its three samples take
 **35.988/35.707/35.787 us**, a **42.1-46.8%** score-producer reduction.
 Earlier exact GQA9 and GQA3 value-reducer owners were removed after losing
 about **5-11%** at live 512: hot V reuse did not compensate for reduced
-parallel ownership. The gfx1151 capability is a clean full-cycle candidate;
-gfx1100 and ungated/fallback paths remain on the established score owner.
+parallel ownership. The clean same-commit full-cycle rollback/candidate gate
+moves p512/d128 **14.563678 -> 14.740486 tok/s (+1.214%)**, saves
+**0.824 ms/token**, and preserves the complete trajectory, positions, and
+lifecycle. The gfx1151 capability is therefore retained as the production
+default; gfx1100 and ungated/fallback paths remain on the established score
+owner. Evidence:
+`benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json`.
 
 ### Laguna post-350 selected-expert screens
 

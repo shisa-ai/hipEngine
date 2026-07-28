@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-28T15:57:12+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa3_scores_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "repo": {
+    "branch": "main",
+    "candidate_revision": "0249d153483621bebd2dcd9ef57c7956adba899f",
+    "tracked_clean_for_candidate_and_rollback": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "timed_decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_rows": 2048,
+    "repetitions_per_arm": 3,
+    "warmup_rows": 128,
+    "candidate_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-tail-next-rmsnorm --output /tmp/laguna-p512-d128-gqa3-scores-candidate.json",
+    "rollback_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u -c 'import runpy,sys; import hipengine.kernels.hip_gfx1151 as backend; backend.LAGUNA_SWA_SPLIT_GQA3_SCORES=False; sys.argv=[\"scripts/laguna_long_context_profile.py\",*sys.argv[1:]]; runpy.run_path(\"scripts/laguna_long_context_profile.py\",run_name=\"__main__\")' --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-tail-next-rmsnorm --output /tmp/laguna-p512-d128-gqa3-scores-rollback.json",
+    "timing_scope": "decode exactly 127 synchronized eager forward_token calls after the prefill-produced first token; model load excluded",
+    "qualification": "The rollback changes only the gfx1151 runtime capability in-process at the same clean candidate revision, preserving every other production default."
+  },
+  "rollback": {
+    "gqa3_score_owner": false,
+    "decode_seconds": [
+      8.726225760998204,
+      8.71999718400184,
+      8.720324817928486
+    ],
+    "decode_tokens_per_second": [
+      14.553829281798492,
+      14.564224886792486,
+      14.563677689952021
+    ],
+    "median_seconds": 8.720324817928486,
+    "median_tokens_per_second": 14.563677689952021,
+    "raw_sha256": "2e67f81054cbcfe761d3b419a2149ba2b7ccc833e960254927bbc8616148f42a"
+  },
+  "candidate": {
+    "gqa3_score_owner": true,
+    "decode_seconds": [
+      8.615990067017265,
+      8.612044390058145,
+      8.615726773976348
+    ],
+    "decode_tokens_per_second": [
+      14.740035563198557,
+      14.74678882828454,
+      14.740486012578913
+    ],
+    "median_seconds": 8.615726773976348,
+    "median_tokens_per_second": 14.740486012578913,
+    "change_percent_vs_matched_rollback": 1.214036223,
+    "wall_change_percent_vs_matched_rollback": -1.199474173,
+    "saved_seconds_per_127_calls": 0.104598043952138,
+    "saved_milliseconds_per_call": 0.823606645,
+    "change_percent_vs_prior_published_production": 1.27253382,
+    "prior_published_tokens_per_second": 14.5552653385,
+    "raw_sha256": "cbda7628fd482b7d4b2f981b2fa7a49ee4c2ad8fdfd88962398071cbd5e9883f"
+  },
+  "implementation": {
+    "source": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime_owner": "gfx1151 gated split-SWA score producer only",
+    "registered_variants": [
+      "swa_context_split_exact_gated_gqa3_scores_spans",
+      "swa_context_split_tile16_exact_gated_gqa3_scores_spans"
+    ],
+    "design": "One local256 workgroup loads each BF16 SWA key once for three adjacent query heads within the same nine-head KV group, then reconstructs each retained ordered 128-thread dot tree independently and writes the unchanged score and physical-slot scratch ABI.",
+    "fallback": "gfx1100, ungated calls, serial attention, and capability false retain the previous score producer and reducer."
+  },
+  "correctness": {
+    "focused_tests": "3 passed",
+    "live_positions": [
+      1,
+      65,
+      127,
+      128,
+      256,
+      257,
+      511,
+      512
+    ],
+    "ring_wrap_and_eviction": true,
+    "tied_and_finite_extreme_scores": true,
+    "f32_context_bit_exact": true,
+    "gated_bf16_output_byte_exact": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_after": 0
+  },
+  "profile": {
+    "kernel": "laguna_swa_attention_split_tile16_exact_gqa3_scores_kernel<3>",
+    "workgroup_size": 256,
+    "vgpr_count": 40,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "live_511_512_retained_microseconds": [
+      35.988,
+      35.707,
+      35.787
+    ],
+    "live_511_512_candidate_microseconds": [
+      20.839,
+      20.559,
+      19.035
+    ],
+    "candidate_reduction_percent_range": [
+      42.1,
+      46.8
+    ],
+    "trace_path": "/tmp/laguna-swa-gqa3-scores-20260728-green/gfx1151/3638740_kernel_trace.csv",
+    "trace_sha256": "d67d721254d9e6f0b6f46b1c6c785315867e2541b750c032482a00e655b443a2"
+  },
+  "rejected_screens": [
+    {
+      "candidate": "GQA9 value reducer",
+      "status": "removed",
+      "retained_live512_microseconds": "199.373-203.420",
+      "candidate_live512_microseconds": "221.694-223.057",
+      "reason": "Exact but roughly 10% slower."
+    },
+    {
+      "candidate": "GQA3 local128 value reducer",
+      "status": "removed",
+      "retained_live512_microseconds": "198.251-202.779",
+      "candidate_live512_microseconds": "212.597-214.921",
+      "reason": "Exact but reduced workgroup ownership loses despite V reuse."
+    },
+    {
+      "candidate": "GQA3 local64 dim-split value reducer",
+      "status": "removed",
+      "retained_live512_microseconds": "208.790-213.961",
+      "candidate_live512_microseconds": "220.333-221.535",
+      "reason": "Exact but slower."
+    }
+  ],
+  "cumulative": {
+    "post_merge_unfused_unsplit_tokens_per_second": 11.466686899093393,
+    "production_tokens_per_second": 14.740486012578913,
+    "change_percent": 28.550523288,
+    "same_gguf_llamacpp_vulkan_tokens_per_second": 23.348381,
+    "vulkan_lead_percent": 58.396276623
+  }
+}
