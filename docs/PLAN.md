@@ -1332,9 +1332,12 @@ own Qwen3.5 GGUF's exact default-on grouped-prefill route. WPF-3 has now
 candidate-admitted an exact local32 qrow4 SWA body and C256-qualified policy,
 then promoted that policy as the gfx1100 package default. It traces at
 VGPR72/LDS0/scratch0; a no-override M512 gate preserves all state at KL0 and a
-paired 512/1K gate improves **117.813/106.486 -> 131.044/124.348 tok/s**. Clean
-selector-unset publication now precedes the exact dense/shared Q5/Q6
-output-column-tiling screen. P6 and
+paired 512/1K gate improves **117.813/106.486 -> 131.044/124.348 tok/s**.
+Clean selector-unset publication reaches **131.919/125.960 tok/s**, improving
+the preceding exact packet **11.131%/16.842%**; cached tracing cuts SWA
+**55.411%/59.449%** and kernel span **9.643%/14.228%**. The separate online-SWA
+quality decision now precedes the exact dense/shared Q5/Q6 output-column-tiling
+screen. P6 and
 WPF-1R remain closed. The detailed gates and 150-tok/s short-only stop rule are
 owned by `LAGUNA-prefill.md`.
 

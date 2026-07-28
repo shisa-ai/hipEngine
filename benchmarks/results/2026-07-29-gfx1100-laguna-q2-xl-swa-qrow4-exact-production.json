@@ -1,0 +1,210 @@
+{
+  "claim_scope": "Exact gfx1100 Laguna UD-Q2_K_XL matrix512/attention128/RB32 prefill with pair16 grouped IQ gate/up/down and the C256-qualified adjacent-row SWA policy at 512 and 1024 tokens; no 4K or long-context claim below 150 tok/s",
+  "commands": {
+    "cached_profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-wpf3-qrow4-production-rocprof/wpf3-qrow4 -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf3-qrow4-production-rocprof-child.json",
+    "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf3_qrow4_default_full_state.py",
+    "selector_unset_publication": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf3-qrow4-selector-unset-clean-512-1k.json"
+  },
+  "correctness": {
+    "clean_publication": {
+      "final_positions_exact": true,
+      "finite": true,
+      "next_token_ids": {
+        "1024": 95,
+        "512": 2930
+      },
+      "repo_tracked_clean": true,
+      "repeat_next_token_deterministic": true,
+      "revision_matches": true,
+      "tracked_returned_to_baseline": true
+    },
+    "complete_state": {
+      "all_48_hidden_boundaries": true,
+      "final_and_post_hidden_exact": true,
+      "kv_and_kv_live_spans_exact": true,
+      "lifecycle_exact": true,
+      "logits_exact": true,
+      "max_kl_divergence": 0.0,
+      "next_token_and_value_exact": true,
+      "same_mode_repeat_deterministic": true,
+      "top1_agreement": 1.0
+    },
+    "pass": true,
+    "ring_oracle": {
+      "explicit_eviction": true,
+      "f32_bit_exact": true,
+      "physical_wrap_positions": "508..515",
+      "ragged_tail_rows": 7
+    }
+  },
+  "created_at": "2026-07-29",
+  "defaults": {
+    "attention_rows": 128,
+    "matrix_rows": 512,
+    "raw_k_prefill_rowbatch": 32,
+    "selected_down_mode": "grouped_exact",
+    "selected_gate_up_mode": "grouped_pair16",
+    "swa_attention_rows": 128,
+    "swa_prefill_variant": "swa_context_rows_qrow4_m128_c256_exact_spans"
+  },
+  "implementation": {
+    "fallback": "exact wave32 unless rows == 128 and absolute start_position >= 256; explicit local128 remains available",
+    "ownership": "one local32 wave owns one query head and four adjacent causal rows",
+    "preserved_arithmetic": "per-row production two-pass max, denominator, value FMA order, reconstructed 128-thread dot tree, BF16 cache widening, and KVLiveSpans visibility"
+  },
+  "kind": "hipengine_laguna_wpf3_swa_qrow4_exact_production",
+  "limitations": [
+    "The retained claim covers deterministic 512/1024-token prefill on the stated model, device, queue, and runtime.",
+    "No 4K or longer run was performed because both short shapes remain below 150 tok/s.",
+    "Changed-association online-softmax qrow2/qrow4 variants are not part of this exact production claim and require a separate complete quality decision."
+  ],
+  "memory": {
+    "active_allocations_after": 0,
+    "peak_allocations": 1167,
+    "resident_and_peak_allocated_bytes": 40248812196,
+    "tracked_after_bytes": 0
+  },
+  "model": {
+    "direct_gguf": true,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance": {
+    "clean_selector_unset": {
+      "1024": {
+        "median_seconds": 8.129546918906271,
+        "median_tok_s": 125.96027923998578,
+        "percent_change_vs_previous_clean": 16.842187452328083,
+        "samples_seconds": [
+          8.083940066862851,
+          8.129546918906271,
+          8.198131412034854
+        ]
+      },
+      "512": {
+        "median_seconds": 3.8811720269732177,
+        "median_tok_s": 131.9189142974654,
+        "percent_change_vs_previous_clean": 11.131456090676672,
+        "samples_seconds": [
+          3.823914865963161,
+          3.8811720269732177,
+          3.8871805081143975
+        ]
+      }
+    },
+    "previous_clean": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json",
+      "tok_s": {
+        "1024": 107.80376676136596,
+        "512": 118.70528735790826
+      }
+    }
+  },
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "gpu_queues": 1,
+    "kv_dtype": "bf16",
+    "rocm_version": "7.2.4 / HIP 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "profile": {
+    "1024": {
+      "attention_seconds": 1.265455563,
+      "change_vs_previous_percent": {
+        "attention": -52.61227275237032,
+        "kernel_span": -14.228079886470635,
+        "kernel_sum": -14.27009975167386,
+        "swa_attention": -59.448537800755574
+      },
+      "dense_shared_seconds": 4.726609343,
+      "dispatches": 2962,
+      "global_attention_seconds": 0.307268306,
+      "kernel_span_seconds": 8.137690349,
+      "kernel_sum_seconds": 8.105131964,
+      "selected_iq_down_seconds": 1.06454898,
+      "selected_iq_gate_up_seconds": 0.932197651,
+      "swa_attention_seconds": 0.958187257
+    },
+    "512": {
+      "attention_seconds": 0.428796154,
+      "change_vs_previous_percent": {
+        "attention": -50.675048612430196,
+        "kernel_span": -9.643011678741564,
+        "kernel_sum": -9.662134597845451,
+        "swa_attention": -55.41085408831318
+      },
+      "dense_shared_seconds": 2.351533465,
+      "dispatches": 1479,
+      "global_attention_seconds": 0.074209283,
+      "kernel_span_seconds": 3.850560802,
+      "kernel_sum_seconds": 3.835542671,
+      "selected_iq_down_seconds": 0.530735839,
+      "selected_iq_gate_up_seconds": 0.466649713,
+      "swa_attention_seconds": 0.354586871
+    },
+    "compiler_spawned_under_profiler": false,
+    "resources": {
+      "qrow4": {
+        "calls_including_target_passes": 288,
+        "grid_size_x": 2304,
+        "grid_size_y": 32,
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 72,
+        "workgroup_size_x": 32
+      },
+      "wave32": {
+        "calls_including_warmup": 180,
+        "grid_size_x": 2304,
+        "grid_size_y": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 32,
+        "workgroup_size_x": 32
+      }
+    }
+  },
+  "revision": "c435d4cdfb0d2e9f4564e13730627e530d293466",
+  "schema_version": 2,
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf3-qrow4-selector-unset-clean-512-1k.json",
+      "sha256": "bb0c3070820a013e7c1223be73ecc9304c2a95c91464b9d46f539d74887de329"
+    },
+    {
+      "path": "/tmp/laguna-wpf3-qrow4-default-m512-full-state.json",
+      "sha256": "26d8e51f6c3e8a397113db53a2c72a52b2cf22f8fd6101a36b70a936a4794612"
+    },
+    {
+      "path": "/tmp/laguna-wpf3-qrow4-production-rocprof-child.json",
+      "sha256": "6524689ba39dafa1b29059aed4cd78a72222d614f180bec772ebd5d0c9fb6ee3"
+    },
+    {
+      "path": "/tmp/laguna-wpf3-qrow4-production-rocprof/wpf3-qrow4_kernel_trace.csv",
+      "sha256": "2402f94ff06405c8eb6acd93ac1625d6b2f7790349ca670d5d13ff55ac2c23b2"
+    },
+    {
+      "path": "/tmp/laguna-wpf3-qrow4-production-trace-summary.json",
+      "sha256": "9a75f7ecde32cf9b0d80459b720128a38f288d4424a3504dd91b6eb4e1493a8c"
+    }
+  ],
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "ff93ee1541a91999e05a704349aafb106e8f4e4222ca1101f4d037f3a2feb209",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "3d20d2a31c4c3542b54be245e9a698ccd903129ff0b0c5bb82d5c79b72fb0f6d",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5fb9375e86d3881db5c8e9f11739335aebf2714b5223096c4b535522b0a29ff",
+    "hipengine/runtime/laguna_kv.py": "80243e29461f8fe511652efe01b09ea395157f9b7d58b6f30a7a1a37e83b9a01"
+  },
+  "status": "accepted",
+  "threshold": {
+    "both_short_shapes_reach_target": false,
+    "four_k_run_performed": false,
+    "long_context_reopened": false,
+    "next_action": "Adjudicate the separate changed-association online SWA ceiling, then screen exact dense output-column tiling.",
+    "target_tok_s": 150
+  }
+}
