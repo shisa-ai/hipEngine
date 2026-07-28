@@ -3534,6 +3534,7 @@ Evidence:
 [`rejected fused-GQA2 shared-V owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa2-sharedv-rejected.json) ·
 [`rejected GQA9 K64 split-K family`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-splitk64-rejected.json) ·
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
+[`rejected rebalanced cooperative GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-cooperative-rebalanced-rejected.json) ·
 [`retained fused one-head global owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
@@ -3710,13 +3711,29 @@ complete leaf **19.04%/17.18%**: reducing modeled K+V row reads **14 -> 10**
 does not repay LDS fill/read traffic and **16/8** additional block barriers.
 Both candidates are removed.
 
-The next exact repair returns to the one-kernel cooperative GQA9 design but
-redistributes its post-grid-sync work. The rejected prototype assigned only
-one PV wave per local256 block, leaving seven waves idle. The corrected screen
-maps all **72 query heads x 4 dimension partitions = 288** exact scalar-
-softmax/PV tasks across the 512 resident waves after the score barrier,
-preserving every slot-order denominator and output FMA while retaining the
-single dispatch and source-shaped 64-block score phase.
+The next exact repair returned to the one-kernel cooperative GQA9 design and
+redistributed its post-grid-sync work. The rejected prototype assigned only
+one PV wave per local256 block; the corrected screen maps all **72 query heads
+x 4 dimension partitions = 288** exact scalar-softmax/PV tasks wave-major
+across the 64 blocks, activating four or five waves per block. It preserves
+every slot-order denominator/output FMA and uses one grid barrier.
+
+That repair removes the old cooperative leaf disaster: retained fused-GQA2
+**0.084802 ms** versus rebalanced GQA9 **0.085175 ms (+0.44%)**, both
+F32/BF16 byte-exact. It still loses all seven resident-model production pairs,
+**17.095757 -> 16.418310 tok/s (-3.963%, +2.414 ms/token)**, with exact
+trajectories. The penalty nearly matches the exact three-dispatch repair's
+**+2.241 ms/token**, identifying the per-layer global score/grid phase boundary
+rather than idle PV waves as the remaining failure. `rocprofv3` crashes in
+`hsa_signal_store_screlease` while tracing this cooperative launch and emits no
+CSV, so no resource claim is made. Remove the candidate.
+
+The next bounded exact screen remains inside the retained ordinary GQA2 block.
+Each owned query head currently recomputes the same 512 exponentials and
+denominator in all four dimension waves. Have one leader per head write the
+exact weights and denominator to LDS, synchronize once, then let the original
+four dimension waves replay the unchanged slot-order PV FMA. This attacks
+redundant scalar work without a global phase boundary or KV reassociation.
 
 LD-1e applies the same fusion to global attention while preserving breadth.
 One local256 workgroup remains assigned to each of 48 query heads, so the
@@ -3800,10 +3817,12 @@ and shape/backend fallbacks.
    **26.49%** but regresses production **3.69%**; exact cooperative fusion
    regresses the leaf **77.25%**. All three are removed. Exact fused-GQA2
    64/128-slot LDS V staging also loses **19.04%/17.18%** despite preserving
-   eight waves and reducing pairwise V traffic. Next repair the cooperative
-   GQA9 phase mapping: after the grid barrier, spread all 288 exact
-   `(query-head, dimension-partition)` PV tasks across resident waves instead
-   of leaving seven waves idle per block.
+   eight waves and reducing pairwise V traffic. Rebalancing cooperative GQA9
+   from one to four/five active PV waves per block restores cache-hot parity
+   (**+0.44%**) but still regresses production **3.963%**; the global
+   score/grid phase boundary is the blocker. Next test one exact LDS weight/
+   denominator preparation per head inside the retained ordinary GQA2 block,
+   followed by the unchanged four PV dimension waves.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

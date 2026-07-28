@@ -188063,3 +188063,31 @@ Vulkan local sizes verbatim will close the measured gap.
   the first cooperative prototype used one wave per local256 block and left
   seven waves idle. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json`.
+
+## 2026-07-29 00:35 JST — Reject rebalanced exact cooperative GQA9
+
+- RED fails on the absent cooperative-rebalanced registry key. GREEN uses the
+  exact full-GQA9/K64 score tree across 64 local256 blocks, one grid barrier,
+  then maps all **288 = 72 heads x 4 dimension partitions** scalar-softmax/PV
+  tasks wave-major across the blocks. This activates four or five PV waves per
+  block instead of the rejected prototype's one while preserving every
+  slot-order denominator, output FMA, divide, gate, and store. Saturated wrap
+  plus explicit eviction is F32/BF16 byte-exact; the focused kernel/runtime/
+  harness bundle passes **36/36**.
+- The cache-hot leaf recovers from the first cooperative body's **+77.25%** to
+  near parity: **0.084802 -> 0.085175 ms (+0.44%)**. Seven counterbalanced
+  resident-model p512/d128 pairs nevertheless all lose:
+  **17.095757 -> 16.418310 tok/s (-3.963%, +2.414 ms/token)**. All generated
+  hashes, final token 74107/position 638, and lifecycle state match.
+- The production penalty nearly equals the exact three-dispatch repair's
+  **+2.241 ms/token**. The remaining blocker is therefore the per-layer global
+  score/grid phase boundary, not idle PV waves. A cached `rocprofv3
+  --kernel-trace` attempt completes the benchmark but then SIGSEGVs in
+  `rocr::HSA::hsa_signal_store_screlease` and emits no CSV; make no resource
+  claim.
+- Remove the kernel, wrapper, registry/runtime selector, tests, and comparison
+  plumbing. Production remains **17.097044 tok/s / 58.490 ms/token**. Next
+  compute one exact 512-weight/denominator sequence per owned head inside the
+  retained ordinary fused-GQA2 workgroup, publish it to LDS, and retain the
+  original four dimension-wave PV FMA sequences. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-cooperative-rebalanced-rejected.json`.
