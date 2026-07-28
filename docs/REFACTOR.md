@@ -57,13 +57,29 @@ should be removed or collapsed.
   to that registered exact chain. gfx1151 keeps its independently measured MMQ
   modes.
 - Clean publication and the all-family reprofile now pass. Keep paired `direct`
-  as the exact fail-closed rollback while P6/WPF-1R work needs bisection. The
-  new grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU primitives are not
-  runtime owners because local256/group8 changed 11/30,720 actual tiny
-  intermediate values versus pair16/local64 production. Retain them only while
-  pursuing a pair16-compatible expert-major producer; remove their wrappers,
-  keys, and HIP instantiations if WPF-3 begins without such a producer. The
-  grouped IQ3 single/down rowbatch8 and IQ4 auto keys remain production.
+  as the required exact fail-closed rollback. P6 is now closed without runtime
+  integration, and WPF-1R's remaining screen concerns raw Q5/Q6 rather than
+  these IQ producers. The grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU
+  primitives are not runtime owners because local256/group8 changed
+  11/30,720 actual tiny intermediate values versus pair16/local64 production.
+  Their removal trigger is now active: remove wrappers, keys, HIP
+  instantiations, and focused tests in a separate cleanup unit before WPF-3
+  kernel work. Preserve the production grouped IQ3 single/down rowbatch8 and
+  IQ4 auto keys.
+
+## Laguna P6 IQ2 MMQ32 diagnostic
+
+- The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte
+  fragments and consumes a caller-owned D4-Q8_1 pack. Actual M512 repricing
+  improves the 46-layer gate/up leaf sum **1297.436 -> 388.901 ms (3.336x)**
+  and a temporary session reaches **122.135/110.761 tok/s** at 512/1K.
+- Runtime admission is closed: complete quality reaches max KL **0.683239** at
+  **565/576** top-1, while P6-specific repair density reaches **85.946%**
+  uncertain coordinates and **99.496%** touched active output rows. No runtime
+  owner, selector, or repair queue was added. Keep the primitive only as an
+  explicit arithmetic ceiling/negative control; do not add another P2/P6
+  changed-arithmetic sibling. This result does not close WPF-1R's separate raw
+  Q5/Q6 density screen.
 
 ## Laguna raw-Q5/Q6 prefill MMQ selector
 
@@ -90,7 +106,9 @@ should be removed or collapsed.
   Diagnostic primitive keys may remain only with explicit evidence value.
   Promote only after exact repaired BF16 output, full
   state, and both orders of the complete 18-prompt lane pass. Preserve the
-  winning exact rowbatch route as mandatory fallback either way.
+  winning exact rowbatch route as mandatory fallback either way. P6's rejected
+  IQ2 gate/up mismatch density is not evidence for or against these raw-Q5/Q6
+  roles; WPF-1R still begins with their own actual-role density/traffic screen.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
