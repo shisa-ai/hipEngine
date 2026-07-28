@@ -2678,7 +2678,8 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_wave32_exact_
   }
 }
 
-__global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrow2_exact_bf16_kernel(
+template <int kQueryRows>
+__global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_bf16_kernel(
     const float* query,
     const float* current_key,
     const float* current_value,
@@ -2697,7 +2698,6 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrow2_exact_b
     int64_t num_kv_heads,
     int64_t head_dim,
     float scale) {
-  constexpr int kQueryRows = 2;
   const int64_t query_row_base =
       static_cast<int64_t>(blockIdx.y) * kQueryRows;
   const int64_t q_head = static_cast<int64_t>(blockIdx.x);
@@ -6094,7 +6094,60 @@ extern "C" int hipengine_laguna_swa_attention_prefill_qrow2_exact_bf16_spans(
   }
   const unsigned int row_groups = static_cast<unsigned int>((rows + 1) / 2);
   hipLaunchKernelGGL(
-      laguna_swa_attention_prefill_qrow2_exact_bf16_kernel,
+      (laguna_swa_attention_prefill_qrows_exact_bf16_kernel<2>),
+      dim3(static_cast<unsigned int>(num_q_heads), row_groups),
+      dim3(32),
+      0,
+      stream,
+      query,
+      current_key,
+      current_value,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      capacity,
+      sliding_window,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_swa_attention_prefill_qrow4_exact_bf16_spans(
+    const float* query,
+    const float* current_key,
+    const float* current_value,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || rows > capacity || capacity <= 0 || sliding_window <= 0 ||
+      sliding_window > capacity || num_q_heads <= 0 || num_kv_heads <= 0 ||
+      num_q_heads % num_kv_heads != 0 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int row_groups = static_cast<unsigned int>((rows + 3) / 4);
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_prefill_qrows_exact_bf16_kernel<4>),
       dim3(static_cast<unsigned int>(num_q_heads), row_groups),
       dim3(32),
       0,
