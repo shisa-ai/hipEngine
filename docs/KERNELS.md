@@ -395,9 +395,11 @@ quantize+MMQ improves every N>=1024 role **3.673-10.989x**; N48/N72 lose and
 remain fallback-only. Cached tracing names the producer at local256/VGPR32,
 LDS0/scratch8 and both Q5/Q6 leaves at local128/VGPR96/LDS5120/scratch0. The
 default-off `raw_k_prefill_mmq` owner now selects this D8R8/S8 policy/ABI and
-allocates **4,325,376 bytes** at M128. D4/D8 remain explicit diagnostic
-primitive paths, and package production remains MMQ-off/rowbatch8 pending
-residual full-state and complete quality gates.
+allocates **4,325,376 bytes** at M128. Shared-weight M128 full state passes at
+KL **0.009152**, same top-1, and byte-exact candidate repeat across all 48
+hidden boundaries/KV/live spans. D4/D8 remain explicit diagnostic primitive
+paths, and package production remains MMQ-off/rowbatch8 pending 512/1K and the
+complete residual quality gate.
 Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
