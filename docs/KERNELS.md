@@ -375,8 +375,10 @@ still lose and remain fallback-only. Cached W7900 tracing names D8 producer at
 local256/VGPR24/LDS0/scratch0 and Q5/Q6 bodies at local128/VGPR48/56,
 LDS3584/scratch0. The default-off `raw_k_prefill_mmq` owner now selects this
 D8/S8 policy/ABI and allocates **2,359,296 bytes** at M128; rejected D4 remains
-available only through its explicit primitive keys. The package default is
-still MMQ-off/rowbatch8 pending D8 full-state and complete quality gates.
+available only through its explicit primitive keys. Shared-weight M128 full
+state passes at KL **0.002081**, same top-1, and byte-exact candidate repeat
+across all 48 hidden boundaries/KV/live spans. The package default is still
+MMQ-off/rowbatch8 pending 512/1K and complete quality gates.
 Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
