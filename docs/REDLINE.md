@@ -349,6 +349,11 @@ two distinct defects may be involved.
 
 ## Upstream issue and commit review
 
+The dedicated AMD functional report is
+[ROCm/ROCm#6529](https://github.com/ROCm/ROCm/issues/6529). The first public
+summary appeared in the retained-PM4 performance discussion at
+[ROCm/ROCm#6409](https://github.com/ROCm/ROCm/issues/6409#issuecomment-5100210675).
+
 A GitHub issue/PR/commit search on 2026-07-28 covered gfx1100/gfx11, retained
 PM4, HSA queue create/destroy, completion-signal reuse, MES `REMOVE_QUEUE`,
 ring 24, and the full fault-status tuple. These are comparative signals, not
