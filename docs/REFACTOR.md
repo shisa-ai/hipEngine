@@ -1904,3 +1904,18 @@ should be boring.
   top-1. This satisfies the cleanup trigger: remove the runtime field, setter,
   both comparison lanes, and the two dead registered primitive/leaf controls.
   Production remains on compiler `expf`; no exponential rollback debt remains.
+
+## Laguna gfx1151 exact SWA exp-domain selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.swa_gqa3_vstage64_vec16_direct_assume_exp_fixed512` field,
+  `LagunaGGUFResidentSession.set_decode_swa_assume_exp(...)`, and
+  `--compare-swa-assume-exp`. It leaves compiler `expf` intact and only asserts
+  the exact score-minus-maximum domain at saturated
+  72Q/8KV/D128/SWA512. The retained direct-store body is the rollback.
+- Promote only if seven tracked-clean p512/d128 pairs improve and every
+  generated ID/state field remains exact. On promotion, make the gfx1151
+  capability select the assumed-domain sibling, retain explicit false rollback
+  through the decode campaign, then collapse the positive selector after one
+  checkpoint. On rejection, remove the field, setter, comparison lane, and
+  registered candidate primitive.

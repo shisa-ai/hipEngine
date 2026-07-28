@@ -188646,3 +188646,16 @@ Vulkan local sizes verbatim will close the measured gap.
   selector and require byte-exact generated state plus a positive seven-pair
   p512/d128 wall before promotion. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-candidate.json`.
+
+## 2026-07-29 05:35 JST — Wire exact SWA exp-domain production screen
+
+- Add a session-scoped, default-off selector ahead of the retained exact
+  direct-store GQA3 route. It is eligible only when that retained capability is
+  active at saturated 72Q/8KV/D128/SWA512; partial rings, other shapes, and
+  peer backends keep their existing registered fallbacks.
+- Add `--compare-swa-assume-exp` to the counterbalanced resident-model harness.
+  RED covers the absent cache field/session setter and dispatch key. GREEN is
+  **38 passed** across the focused owner/runner tests, and the complete
+  long-context harness unit file is **33 passed**.
+- Production remains default-off. Commit the measurement seam before the
+  tracked-clean seven-pair p512/d128 exact wall screen.
