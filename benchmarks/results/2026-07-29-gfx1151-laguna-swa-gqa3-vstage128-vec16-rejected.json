@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_swa_fixed512_reduce_leaf",
+  "status": "rejected",
+  "timestamp": "2026-07-29T03:39:30+09:00",
+  "source_revision": "96795588078b32411ac3e0ef91e463320fc6ae33",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "exact fused GQA3/local384 SWA with aligned vec16 V copies and 128-slot LDS staging",
+    "control": "retained aligned vec16 64-slot LDS staging",
+    "control_median_ms": 0.10744580268859863,
+    "candidate_median_ms": 0.10907485961914062,
+    "latency_change_percent": 1.516166187769441,
+    "control_samples_ms": [
+      0.10700169563293457,
+      0.10673810005187988,
+      0.10829301834106446,
+      0.10690329551696777,
+      0.10831315994262695,
+      0.10744580268859863,
+      0.10842344284057617,
+      0.10690274238586425,
+      0.1085410213470459
+    ],
+    "candidate_samples_ms": [
+      0.10890928268432618,
+      0.11039203643798828,
+      0.1090528392791748,
+      0.11028885841369629,
+      0.11032571792602539,
+      0.10856029510498047,
+      0.10907485961914062,
+      0.10862442016601563,
+      0.10911250114440918
+    ]
+  },
+  "correctness": {
+    "cpu_reference_allclose": true,
+    "context_f32_byte_exact_vs_stage64": true,
+    "gated_bf16_byte_exact_vs_stage64": true,
+    "context_max_abs_error": 0.0,
+    "gated_max_abs_error": 0.0
+  },
+  "protocol": {
+    "warmups": 5,
+    "samples": 9,
+    "burst": 50,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage128-vec16 --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-gqa3-vstage128-vec16-leaf.json"
+  },
+  "decision": "Remove the candidate: doubling the V stage is 1.516% slower than the retained 64-slot vec16 owner, so it fails the positive leaf gate."
+}

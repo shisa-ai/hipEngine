@@ -188402,3 +188402,19 @@ Vulkan local sizes verbatim will close the measured gap.
   re-screen vec16 SWA stage128 versus retained stage64. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-production.json`;
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-vec16-wall-reprofile.json`.
+
+## 2026-07-29 03:39 JST — Reject SWA vec16 V-stage128
+
+- RED failed only on the absent wrapper. GREEN instantiated the existing exact
+  GQA3/local384 vec16 body at 128 staged V slots. The wrapped/evicted CPU gate
+  passed; F32 context and gated BF16 output were byte-identical to retained
+  stage64.
+- The nine-sample cached leaf regresses **0.107446 -> 0.109075 ms
+  (+1.516%)**. Halving the stage loop does not repay the larger LDS footprint,
+  so remove every candidate code/test/registry surface and keep stage64
+  production. Exact command and samples:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage128-vec16-rejected.json`.
+- Next inspect the retained kernel's unexpected **30,720 B** LDS allocation
+  versus the **24,576 B** explicit V-stage arrays. If this is compiler-created
+  vector-copy storage rather than unavoidable alignment, recovering it may
+  raise residency without changing attention arithmetic.
