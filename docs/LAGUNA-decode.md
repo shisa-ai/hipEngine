@@ -3898,6 +3898,20 @@ positions, deterministic state, and allocation lifecycle remain exact.
 Evidence:
 [`clean direct-store production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json).
 
+The global vec16 owner has the same aggregate defect expressed as private
+scratch: generated ISA contains one `scratch_load_b128` and two
+`scratch_store_b128` operations, with a **32-byte** private segment per thread.
+The exact direct-store sibling removes that shuttle without changing QK,
+softmax, PV, gate, or store association. Evicted live513/576/639 F32/BF16
+outputs remain byte-identical; nine-sample leaves improve
+**11.71%/11.83%/11.82%**. Cached tracing improves
+**103.354 -> 90.530 us (-12.41%)**, scratch falls **32 -> 0 B**, and all seven
+p512/d128 pairs improve **19.077502 -> 19.134537 tok/s (+0.2990%,
+-0.1562 ms/token)** with exact trajectories/state. gfx1151 now selects the
+direct global form through live4000; the aggregate vec16 owner remains exact
+rollback. Evidence:
+[`retained global direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

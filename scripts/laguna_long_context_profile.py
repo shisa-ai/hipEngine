@@ -252,6 +252,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance scalar and 16-byte copies in global staged V",
     )
     parser.add_argument(
+        "--compare-global-gqa2-vstage64-vec16-direct",
+        action="store_true",
+        help="counterbalance global vec16 copies against direct LDS stores",
+    )
+    parser.add_argument(
         "--compare-selected-natural-decode",
         action="store_true",
         help="counterbalance selected-MoE decode against natural-shape siblings",
@@ -368,6 +373,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_global_fused_fixedshape,
             args.compare_global_gqa2_vstage64,
             args.compare_global_gqa2_vstage64_vec16,
+            args.compare_global_gqa2_vstage64_vec16_direct,
             args.compare_selected_natural_decode,
             args.compare_selected_natural_tile8_decode,
         )
@@ -412,6 +418,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_global_fused_fixedshape
         or args.compare_global_gqa2_vstage64
         or args.compare_global_gqa2_vstage64_vec16
+        or args.compare_global_gqa2_vstage64_vec16_direct
         or args.compare_selected_natural_decode
         or args.compare_selected_natural_tile8_decode
     )
@@ -603,6 +610,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_global_gqa2_vstage64_vec16_fixedshape = (
             owner.kv_cache.global_gqa2_vstage64_vec16_fixedshape
         )
+        active_global_gqa2_vstage64_vec16_direct_fixedshape = (
+            owner.kv_cache.global_gqa2_vstage64_vec16_direct_fixedshape
+        )
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -694,6 +704,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_global_gqa2_vstage64_vec16:
                         owner.kv_cache.global_gqa2_vstage64_vec16_fixedshape = (
+                            mode == "candidate"
+                        )
+                    if args.compare_global_gqa2_vstage64_vec16_direct:
+                        owner.kv_cache.global_gqa2_vstage64_vec16_direct_fixedshape = (
                             mode == "candidate"
                         )
                     if args.compare_selected_natural_decode:
@@ -938,6 +952,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_global_gqa2_vstage64_vec16": (
                 args.compare_global_gqa2_vstage64_vec16
             ),
+            "compare_global_gqa2_vstage64_vec16_direct": (
+                args.compare_global_gqa2_vstage64_vec16_direct
+            ),
             "compare_selected_natural_decode": (
                 args.compare_selected_natural_decode
             ),
@@ -974,6 +991,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_gqa2_vstage64_vec16_fixedshape": (
                 active_global_gqa2_vstage64_vec16_fixedshape
+            ),
+            "global_gqa2_vstage64_vec16_direct_fixedshape": (
+                active_global_gqa2_vstage64_vec16_direct_fixedshape
             ),
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
