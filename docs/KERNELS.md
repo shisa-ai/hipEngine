@@ -373,6 +373,18 @@ and regress **4.42-33.12%**; weighted family time moves
 therefore part of the gfx1151 performance contract, not just the eight-wave
 reduction. Evidence:
 [`rejected exact block2 owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-block2-exact-rejected.json).
+The successful LD-2 successor preserves that complete geometry and specializes
+only the three production K widths at compile time. K3072/K6144/K9216 keep
+every thread-local accumulation, shuffle, ordered wave sum, and store bit-
+exact while fully unrolling the 12/24/36-iteration K loop. All six natural
+roles improve **15.91-26.93%** and the weighted family moves
+**30.952 -> 24.482 ms/token (-20.90%)**. Seven exact p512/d128 pairs improve
+the retained one-barrier owner **14.786076 -> 16.391201 tok/s (+10.856%)**.
+Cached tracing records all **18,288 = 144 x 127** intended calls with zero
+fallback, local256/VGPR24/LDS512/scratch0. gfx1151 now selects fixed-K
+automatically; `HIPENGINE_LAGUNA_F16_DECODE=onebarrier` is the exact rollback
+and other backends remain unchanged. Evidence:
+[`retained fixed-K decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 

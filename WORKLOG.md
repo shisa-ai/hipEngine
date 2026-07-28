@@ -187762,3 +187762,33 @@ Vulkan local sizes verbatim will close the measured gap.
   **14.800191 tok/s**. LD-2 now treats one-workgroup/output as part of the
   architecture contract alongside eight waves/output. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-block2-exact-rejected.json`.
+
+## 2026-07-28 20:00 JST — Retain exact Laguna F16 fixed-K decode
+
+- Preserve the proven local256/eight-wave/one-workgroup-per-output geometry and
+  specialize only production K3072/K6144/K9216. The compile-time K bodies keep
+  every thread-local K sequence, shuffle, ordered wave sum, and F32/RNE-BF16
+  store while fully unrolling the 12/24/36-iteration loop.
+- RED is three expected missing-wrapper failures. GREEN is **3/3** natural-K
+  single/triple byte-identity cases. The focused projection/backend/profile
+  bundle passes **90/90**.
+- Seven-sample, 50-launch actual-shape leaf command:
+  `PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate fixedk --samples 7 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-fixedk-directional.json`.
+  Every role improves **15.91-26.93%** and the weighted family moves
+  **30.952 -> 24.482 ms/token (-20.90%, -6.469 ms/token)**, reaching the LD-2
+  family-floor target.
+- Full-cycle command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-f16-decode-fixedk --allow-dirty --output /tmp/laguna-p512-d128-f16-fixedk-ab.json`.
+  Retained one-barrier -> fixed-K is
+  **14.786076 -> 16.391201 tok/s (+10.856%, -6.623 ms/token)**; every
+  candidate beats every control and all IDs/hashes/final positions/lifecycle
+  match.
+- Cache-only full-model tracing records exactly
+  **18,288 = 144 x 127** fixed-K calls: 6,096 triple K3072, 6,096 single
+  K3072, 1,524 K6144, and 4,572 K9216, with zero fallback. All bodies are
+  local256/VGPR24/SGPR128/LDS512/scratch0.
+- Promote gfx1151 `auto` to fixed-K; explicit `onebarrier` is the exact
+  generic-K rollback and gfx1100 is unchanged. Canonical decode is now
+  **16.391201 tok/s / 61.008 ms/token**, cumulative **+42.946%** from the
+  11.466687 pre-transfer baseline. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json`.

@@ -19,7 +19,7 @@ F16_WEIGHT = "fp16_weight"
 _ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
 _PREFILL_MODES = frozenset({"auto", "gemv", "tiled", "wmma_comp_swa"})
 _ENV_DECODE_MODE = "HIPENGINE_LAGUNA_F16_DECODE"
-_DECODE_MODES = frozenset({"auto", "gemv", "onebarrier"})
+_DECODE_MODES = frozenset({"auto", "fixedk", "gemv", "onebarrier"})
 
 
 def _variant(activation_dtype: str, output_dtype: str) -> str:
@@ -78,8 +78,14 @@ def _decode_strategy(
         raise ValueError(f"{_ENV_DECODE_MODE} must be one of: {expected}")
     if mode == "gemv":
         return None
+    if mode == "fixedk":
+        return "fixedk_onebarrier"
     if mode == "onebarrier":
         return mode
+    if backend_package_capability(
+        backend, "LAGUNA_F16_DECODE_FIXEDK", False
+    ):
+        return "fixedk_onebarrier"
     return (
         "onebarrier"
         if backend_package_capability(

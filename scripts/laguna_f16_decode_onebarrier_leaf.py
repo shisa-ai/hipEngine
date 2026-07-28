@@ -25,10 +25,13 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
     build_laguna_f16_projection,
+    laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out,
+    laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
     laguna_f16w_gemv_bf16_bf16_out,
     laguna_f16w_gemv_bf16_f32_out,
     laguna_f16w_onebarrier_gemv_bf16_bf16_out,
     laguna_f16w_onebarrier_gemv_bf16_f32_out,
+    laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
     laguna_f16w_triple_gemv_bf16_f32_out,
     laguna_f16w_triple_onebarrier_gemv_bf16_f32_out,
 )
@@ -53,6 +56,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260728)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--candidate",
+        choices=("onebarrier", "fixedk"),
+        default="onebarrier",
+    )
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -152,7 +160,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             allocations.extend((*baseline_outputs, *candidate_outputs))
 
             if kind == "triple_f32":
-                baseline = lambda: laguna_f16w_triple_gemv_bf16_f32_out(
+                baseline_fn = (
+                    laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
+                    if args.candidate == "fixedk"
+                    else laguna_f16w_triple_gemv_bf16_f32_out
+                )
+                baseline = lambda: baseline_fn(
                     dx.ptr,
                     *(weight.ptr for weight in dweights),
                     *(out.ptr for out in baseline_outputs),
@@ -162,8 +175,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     library=library,
                     runtime=runtime,
                 )
+                candidate_fn = (
+                    laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out
+                    if args.candidate == "fixedk"
+                    else laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
+                )
                 candidate = (
-                    lambda: laguna_f16w_triple_onebarrier_gemv_bf16_f32_out(
+                    lambda: candidate_fn(
                         dx.ptr,
                         *(weight.ptr for weight in dweights),
                         *(out.ptr for out in candidate_outputs),
@@ -176,14 +194,30 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
             else:
                 baseline_fn = (
-                    laguna_f16w_gemv_bf16_bf16_out
-                    if kind == "single_bf16"
-                    else laguna_f16w_gemv_bf16_f32_out
+                    (
+                        laguna_f16w_onebarrier_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_onebarrier_gemv_bf16_f32_out
+                    )
+                    if args.candidate == "fixedk"
+                    else (
+                        laguna_f16w_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_gemv_bf16_f32_out
+                    )
                 )
                 candidate_fn = (
-                    laguna_f16w_onebarrier_gemv_bf16_bf16_out
-                    if kind == "single_bf16"
-                    else laguna_f16w_onebarrier_gemv_bf16_f32_out
+                    (
+                        laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out
+                    )
+                    if args.candidate == "fixedk"
+                    else (
+                        laguna_f16w_onebarrier_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_onebarrier_gemv_bf16_f32_out
+                    )
                 )
                 baseline = lambda: baseline_fn(
                     dx.ptr,
@@ -290,6 +324,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             ),
         },
         "protocol": {
+            "candidate": args.candidate,
             "rows": 1,
             "samples": args.samples,
             "warmups_per_mode": args.warmups,

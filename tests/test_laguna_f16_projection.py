@@ -28,8 +28,10 @@ def _hip_available() -> bool:
 
 def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_gemv_bf16_f32_out,
         laguna_f16w_tiled_bf16_f32_out,
+        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
         laguna_f16w_triple_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_triple_tiled_bf16_f32_out,
@@ -91,6 +93,24 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
             variant="onebarrier_bf16_f32_out",
         )
         is laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="fp16_weight",
+            variant="fixedk_onebarrier_bf16_f32_out",
+        )
+        is laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_triple",
+            quant="fp16_weight",
+            variant="fixedk_onebarrier_bf16_f32_out",
+        )
+        is laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out
     )
 
 
@@ -329,7 +349,7 @@ def test_laguna_f16_projection_runtime_auto_uses_measured_gfx1151_threshold(
     ) is None
 
 
-def test_laguna_f16_projection_runtime_uses_gfx1151_onebarrier_decode(
+def test_laguna_f16_projection_runtime_uses_gfx1151_fixedk_decode(
     monkeypatch,
 ) -> None:
     from hipengine.runtime import f16_weight_linear as dispatch
@@ -373,10 +393,34 @@ def test_laguna_f16_projection_runtime_uses_gfx1151_onebarrier_decode(
     )
 
     assert [key.variant for key in calls] == [
-        "onebarrier_bf16_f32_out",
-        "onebarrier_bf16_f32_out",
+        "fixedk_onebarrier_bf16_f32_out",
+        "fixedk_onebarrier_bf16_f32_out",
     ]
     assert [key.layer for key in calls] == ["linear", "linear_triple"]
+
+
+def test_laguna_f16_projection_runtime_can_force_fixedk_decode(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime.f16_weight_linear import _decode_strategy
+
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_DECODE", "fixedk")
+    assert (
+        _decode_strategy(
+            rows=1,
+            activation_dtype="bf16",
+            backend="hip_gfx1151",
+        )
+        == "fixedk_onebarrier"
+    )
+    assert (
+        _decode_strategy(
+            rows=2,
+            activation_dtype="bf16",
+            backend="hip_gfx1151",
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("q_heads", [48, 72])
@@ -609,6 +653,133 @@ def test_laguna_f16_projection_onebarrier_matches_gemv_bytes(
             runtime=runtime,
         )
         laguna_f16w_triple_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            candidate_a.ptr,
+            candidate_b.ptr,
+            candidate_c.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            out_c,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for baseline, candidate, shape, dtype in (
+            (baseline_a, candidate_a, (rows, out_a), np.float32),
+            (baseline_b, candidate_b, (rows, out_b), np.float32),
+            (baseline_c, candidate_c, (rows, out_c), np.float32),
+            (baseline_bf16, candidate_bf16, (rows, out_a), np.uint16),
+        ):
+            np.testing.assert_array_equal(
+                _download(candidate, shape, dtype, runtime),
+                _download(baseline, shape, dtype, runtime),
+            )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.parametrize("in_features", [3072, 6144, 9216])
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
+    in_features: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection,
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out,
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
+        laguna_f16w_gemv_bf16_bf16_out,
+        laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
+        laguna_f16w_triple_gemv_bf16_f32_out,
+    )
+
+    rng = np.random.default_rng(0xF17E + in_features)
+    rows = 1
+    out_a, out_b, out_c = 17, 8, 9
+    x_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    weights = tuple(
+        rng.normal(0.0, 0.1, size=(width, in_features)).astype(np.float16)
+        for width in (out_a, out_b, out_c)
+    )
+    runtime = get_hip_runtime()
+    library = build_laguna_f16_projection(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        device_weights = tuple(
+            _upload(weight, runtime, allocations) for weight in weights
+        )
+        baseline_a = _alloc((rows, out_a), np.float32, runtime, allocations)
+        baseline_b = _alloc((rows, out_b), np.float32, runtime, allocations)
+        baseline_c = _alloc((rows, out_c), np.float32, runtime, allocations)
+        candidate_a = _alloc((rows, out_a), np.float32, runtime, allocations)
+        candidate_b = _alloc((rows, out_b), np.float32, runtime, allocations)
+        candidate_c = _alloc((rows, out_c), np.float32, runtime, allocations)
+        baseline_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
+        candidate_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
+
+        laguna_f16w_gemv_bf16_f32_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            baseline_a.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            candidate_a.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_gemv_bf16_bf16_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            baseline_bf16.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            candidate_bf16.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_triple_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            baseline_a.ptr,
+            baseline_b.ptr,
+            baseline_c.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            out_c,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out(
             dx.ptr,
             *(weight.ptr for weight in device_weights),
             candidate_a.ptr,
