@@ -188202,3 +188202,39 @@ Vulkan local sizes verbatim will close the measured gap.
   GQA tile with bounded split-K state and an explicit high-precision
   partial/merge gate. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-attention-gqa-repair-screens-rejected.json`.
+
+## 2026-07-29 02:30 JST — Retain exact GQA3 V-stage64 and pass 18 tok/s
+
+- Implement the source-reviewed cooperative-matrix lane before deciding
+  numerics. Compensated WMMA GQA9/K64 plus FP64 split merge cuts the saturated
+  leaf **0.18094 -> 0.03421 ms (-81.09%)** and one p512/d128 pair
+  **17.118 -> 19.542 tok/s**, but the required 18-prompt/576-step quality gate
+  rejects max KL **1.754897** at **562/576** top-1. Exact-QK/PV split
+  association still reaches max KL **0.810355** at **559/576**, while an
+  exact-score ordered reducer regresses the leaf **21.58%** and a per-head
+  midpoint repair changes 13 BF16 values while regressing **50.0%**. Remove
+  all four kernels, wrappers, dispatch routes, tests, and the temporary quality
+  harness.
+- Carry forward the exact-safe llama.cpp lesson instead: the retained
+  GQA3/local384 body stages 64 contiguous V slots x D128 in LDS and reuses
+  each BF16 load across its three query heads without changing maximum,
+  exponential, denominator, PV FMA, divide, gate, or store association.
+  The exact 32/64/128-slot leaf sweep improves
+  **26.38%/26.58%/22.85%**; retain 64. The focused CPU-reference test is
+  F32/BF16 byte-exact across positions 512-519 after ring wrap and explicit
+  eviction, and the owner/default rollback bundle passes **2/2**.
+- Seven counterbalanced resident-model pairs improve exact GQA3/local384
+  **17.135411 -> 18.032171 tok/s (+5.233%, -2.902 ms/token)**. Every candidate
+  wins; all 128-token hashes, next/final tokens, positions, allocations, and
+  lifecycle state match. Cached tracing names templates `<0>` and `<64>` at
+  24 local384 blocks; V-stage64 changes VGPR **104 -> 144**, LDS
+  **8192 -> 24576 B**, keeps scratch0, and cuts the four-observation median
+  **184.085 -> 137.197 us (-25.47%)**.
+- Promote only gfx1151 natural 72Q/8KV/D128 capacity/window/live512. Unstaged
+  local384 is registered rollback; shorter live counts, non-natural shapes,
+  and peer backends are unchanged. This completes the declared 18 tok/s pause
+  target. The required lineage helper remains blocked by the absent
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external kernel was copied.
+  Re-profile clean production before choosing the next attention screen.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json`.

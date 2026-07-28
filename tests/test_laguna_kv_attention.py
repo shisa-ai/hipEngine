@@ -3118,6 +3118,180 @@ def _attention_reference(
     return np.einsum("ht,thd->hd", weights, expanded_values, dtype=np.float32)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+        laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
+        laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
+    )
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+    from hipengine.quant.gguf import bf16_to_float32
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    config = SimpleNamespace(
+        block_count=1,
+        layer_types=(SLIDING_ATTENTION,),
+        head_counts=(72,),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    cache = allocate_laguna_kv_cache(
+        config,
+        context_length=520,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    rng = np.random.default_rng(0xB164)
+    keys = rng.normal(0.0, 0.12, size=(520, 8, 128)).astype(np.float32)
+    values = rng.normal(0.0, 0.12, size=(520, 8, 128)).astype(np.float32)
+    query = rng.normal(0.0, 0.12, size=(72, 128)).astype(np.float32)
+    gate = rng.normal(0.0, 0.4, size=72).astype(np.float32)
+    keys_bf16 = bf16_to_float32(float_array_to_bf16_bits(keys))
+    values_bf16 = bf16_to_float32(float_array_to_bf16_bits(values))
+    allocations = []
+    try:
+        key_device = malloc(keys.nbytes, runtime=runtime)
+        value_device = malloc(values.nbytes, runtime=runtime)
+        query_device = malloc(query.nbytes, runtime=runtime)
+        gate_device = malloc(gate.nbytes, runtime=runtime)
+        control_out = malloc(query.nbytes, runtime=runtime)
+        candidate_out = malloc(query.nbytes, runtime=runtime)
+        control_gated = malloc(query.size * 2, runtime=runtime)
+        candidate_gated = malloc(query.size * 2, runtime=runtime)
+        score_scratch = malloc(72 * 512 * 4, runtime=runtime)
+        physical_scratch = malloc(72 * 512 * 4, runtime=runtime)
+        allocations.extend(
+            (
+                key_device,
+                value_device,
+                query_device,
+                gate_device,
+                control_out,
+                candidate_out,
+                control_gated,
+                candidate_gated,
+                score_scratch,
+                physical_scratch,
+            )
+        )
+        for device, host in (
+            (key_device, keys),
+            (value_device, values),
+            (query_device, query),
+            (gate_device, gate),
+        ):
+            copy_host_to_device(
+                device,
+                host_array_ptr(host),
+                host.nbytes,
+                runtime=runtime,
+            )
+        cache.prepare_rows(tuple(range(512)))
+        cache.append_rows(
+            0,
+            key_device.ptr,
+            value_device.ptr,
+            512,
+            library=library,
+        )
+        cache.commit_rows()
+        row_nbytes = 8 * 128 * np.dtype(np.float32).itemsize
+        state = cache.layer(0)
+        common = (
+            query_device.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+        )
+        tail = (
+            score_scratch.ptr,
+            physical_scratch.ptr,
+            state.spans,
+            512,
+            72,
+            8,
+            128,
+            128**-0.5,
+        )
+        for position in range(512, 520):
+            cache.prepare_position(position)
+            cache.append(
+                0,
+                key_device.ptr + position * row_nbytes,
+                value_device.ptr + position * row_nbytes,
+                library=library,
+            )
+            if position == 512:
+                cache.evict_swa_position(0, 200)
+            laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans(
+                *common,
+                control_out.ptr,
+                gate_device.ptr,
+                control_gated.ptr,
+                *tail,
+                sliding_window=512,
+                library=library,
+                runtime=runtime,
+            )
+            laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                sliding_window=512,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            control = np.empty_like(query)
+            candidate = np.empty_like(query)
+            control_gate_bits = np.empty(query.shape, dtype=np.uint16)
+            candidate_gate_bits = np.empty_like(control_gate_bits)
+            for host, device in (
+                (control, control_out),
+                (candidate, candidate_out),
+                (control_gate_bits, control_gated),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            visible = np.arange(max(0, position - 511), position + 1)
+            visible = visible[visible != 200]
+            expected = _attention_reference(
+                query,
+                keys_bf16[visible],
+                values_bf16[visible],
+                num_kv_heads=8,
+            )
+            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        cache.free()
+
+
 def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback() -> None:
     from hipengine.runtime.laguna_kv import (
         allocate_laguna_kv_cache,
@@ -3186,6 +3360,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.swa_split_fixed512_reduce
         assert gfx1151_cache.swa_fused_fixed512
         assert gfx1151_cache.swa_gqa3_local384_fixed512
+        assert gfx1151_cache.swa_gqa3_vstage64_fixed512
         assert gfx1151_cache.allocation_count == 245
         resolved_variants = []
 
@@ -3211,7 +3386,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             ),
             (
                 "laguna_attention_decode",
-                "swa_context_fused_exact_gated_gqa3_local384_fixed512_spans",
+                "swa_context_fused_exact_gated_gqa3_vstage64_fixed512_spans",
             ),
         ]
     finally:

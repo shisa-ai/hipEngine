@@ -1085,6 +1085,21 @@ losers are removed. Shorter live counts, non-natural shapes, peer backends,
 and rollback retain GQA3 score plus fixed512 reduction. Evidence:
 [`retained fused-GQA2 SWA`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json).
 
+The exact local384 successor keeps **24 workgroups / 288 wave32 PV tasks**,
+but stages 64 chronological V slots x D128 in LDS and reuses each BF16 load
+across the three owned query heads. This is the quality-safe part of the
+llama.cpp Vulkan attention lesson: tile V for grouped-query reuse without
+changing softmax or PV association. A 32/64/128-slot leaf sweep is byte-exact
+and improves **26.38%/26.58%/22.85%**; 64 slots wins. Seven resident-model
+p512/d128 pairs improve **17.135411 -> 18.032171 tok/s (+5.233%, -2.902
+ms/token)** with identical 128-token trajectories and lifecycle state.
+Cached tracing records the expected template at 24 local384 blocks,
+VGPR144/SGPR128/LDS24576/scratch0 and cuts the four-observation median
+**184.085 -> 137.197 us (-25.47%)**. gfx1151 selects it only at the natural
+saturated shape; the unstaged local384 body is the exact rollback and all
+shorter/non-natural/peer paths are unchanged. Evidence:
+[`retained GQA3 V-stage64 SWA`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-retained.json).
+
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production
 48Q/8KV/D128/capacity-4096 geometry and scratch strides. F32 context and gated

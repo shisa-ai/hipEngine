@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_swa_gqa3_vstage64_retained",
+  "created_at": "2026-07-29T02:30:16+09:00",
+  "status": "accepted",
+  "performance_claim": true,
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 78780135444
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "base_revision": "7e83e6b144f32cb9f4e14a7902eb4ba256e99636",
+    "tracked_clean": false,
+    "reason": "same-source rollback/candidate screen before the retained logical-unit commit"
+  },
+  "shape": {
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "sliding_window": 512,
+    "capacity": 512,
+    "prompt_tokens": 512,
+    "decode_output_tokens": 128,
+    "decode_forward_calls": 127,
+    "matrix_chunk": 2048,
+    "attention_chunk": 128
+  },
+  "implementation": {
+    "control": "exact fused GQA3/local384 saturated SWA",
+    "candidate": "same exact kernel with 64 contiguous V slots staged in LDS and reused across three query heads",
+    "arithmetic_contract": "unchanged slot-order maximum, exp, denominator, per-dimension FMA, divide, gate, and BF16 store",
+    "production_variant": "swa_context_fused_exact_gated_gqa3_vstage64_fixed512_spans",
+    "rollback_variant": "swa_context_fused_exact_gated_gqa3_local384_fixed512_spans",
+    "admission": "gfx1151, 72Q/8KV/D128, capacity/window/live_count 512 only"
+  },
+  "leaf_stage_sweep": [
+    {
+      "value_stage_slots": 32,
+      "control_median_ms": 0.18049083709716796,
+      "candidate_median_ms": 0.132885103225708,
+      "latency_change_percent": -26.376,
+      "f32_context_byte_exact": true,
+      "gated_bf16_byte_exact": true
+    },
+    {
+      "value_stage_slots": 64,
+      "control_median_ms": 0.18075109481811524,
+      "candidate_median_ms": 0.13270604133605957,
+      "latency_change_percent": -26.581,
+      "f32_context_byte_exact": true,
+      "gated_bf16_byte_exact": true,
+      "retained": true
+    },
+    {
+      "value_stage_slots": 128,
+      "control_median_ms": 0.18036504745483398,
+      "candidate_median_ms": 0.13914469718933106,
+      "latency_change_percent": -22.854,
+      "f32_context_byte_exact": true,
+      "gated_bf16_byte_exact": true
+    }
+  ],
+  "resident_model_ab": {
+    "repetitions": 7,
+    "control_decode_tok_s": 17.135411219539275,
+    "candidate_decode_tok_s": 18.032170712471096,
+    "throughput_change_percent": 5.23337013301004,
+    "saved_ms_per_token": 2.902240787566764,
+    "control_decode_seconds": [
+      7.413896122947335,
+      7.413862198940478,
+      7.415507644065656,
+      7.411552508012392,
+      7.411491281003691,
+      7.4100595159688964,
+      7.4105072730453685
+    ],
+    "candidate_decode_seconds": [
+      7.042967927991413,
+      7.043631100910716,
+      7.0460282729472965,
+      7.042814670014195,
+      7.042728528962471,
+      7.042572361999191,
+      7.043250503018498
+    ],
+    "candidate_wins": 7,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "trajectory_exact": true,
+    "lifecycle_exact": true
+  },
+  "correctness": {
+    "cpu_reference": "positions 512 through 519 after ring wrap plus explicit eviction of absolute position 200",
+    "candidate_vs_rollback_f32_byte_exact": true,
+    "candidate_vs_rollback_gated_bf16_byte_exact": true,
+    "full_128_token_trajectory_exact": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "focused_tests": "2 passed"
+  },
+  "trace": {
+    "directory": "/tmp/laguna-vstage64-final-trace.4tk7Ve",
+    "control_kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<0>",
+    "candidate_kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<64>",
+    "observations_each": 4,
+    "control_median_us": 184.085,
+    "candidate_median_us": 137.197,
+    "candidate_change_percent": -25.471,
+    "control": {
+      "workgroups": 24,
+      "workgroup_size": 384,
+      "vgpr_count": 104,
+      "lds_bytes": 8192,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroups": 24,
+      "workgroup_size": 384,
+      "vgpr_count": 144,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "rejected_predecessors": [
+    {
+      "name": "compensated WMMA GQA9/K64 plus FP64 merge",
+      "leaf_control_ms": 0.18094,
+      "leaf_candidate_ms": 0.03421,
+      "leaf_change_percent": -81.09,
+      "quality_max_kl": 1.7548974976125162,
+      "quality_top1_matches": 562,
+      "quality_steps": 576,
+      "decision": "rejected and removed"
+    },
+    {
+      "name": "exact-QK/PV cooperative GQA9/K64 plus FP64 merge",
+      "leaf_control_ms": 0.18009140014648437,
+      "leaf_candidate_ms": 0.08182705879211426,
+      "leaf_change_percent": -54.56,
+      "quality_max_kl": 0.8103545559784634,
+      "quality_top1_matches": 559,
+      "quality_steps": 576,
+      "decision": "rejected and removed"
+    },
+    {
+      "name": "exact scores plus ordered split reducer",
+      "leaf_control_ms": 0.180251,
+      "leaf_candidate_ms": 0.219148,
+      "leaf_change_percent": 21.58,
+      "decision": "performance-rejected and removed"
+    },
+    {
+      "name": "midpoint-classified per-head exact repair",
+      "leaf_control_ms": 0.180355,
+      "leaf_candidate_ms": 0.270559,
+      "leaf_change_percent": 50.0,
+      "gated_bf16_mismatches": 13,
+      "decision": "correctness/performance-rejected and removed"
+    }
+  ],
+  "commands": {
+    "resident_model_ab": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa3-vstage64 --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa3-vstage64-ab.json",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-vstage64-final-trace.4tk7Ve -- .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64 --samples 1 --warmups 1 --burst 2 --allow-dirty --output /tmp/laguna-vstage64-final-traced-leaf.json",
+    "focused_tests": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback"
+  },
+  "notes": [
+    "The retained optimization is the exact-safe part of the llama.cpp Vulkan lesson: tile V and reuse each staged value across grouped queries.",
+    "The rejected cooperative variants show that changing softmax or split-PV association is not admissible under Laguna's quality contract.",
+    "A clean selector-unset production snapshot follows after the logical-unit commit."
+  ],
+  "pass": true
+}

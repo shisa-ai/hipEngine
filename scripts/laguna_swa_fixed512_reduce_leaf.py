@@ -26,10 +26,12 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
+    laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
 )
 from hipengine.loading.laguna_gguf import SLIDING_ATTENTION
+from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
 
@@ -46,7 +48,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--burst", type=int, default=50)
     parser.add_argument(
         "--candidate",
-        choices=("fixed512", "fused-gqa2", "fused-gqa3-local384"),
+        choices=(
+            "fixed512",
+            "fused-gqa2",
+            "fused-gqa3-local384",
+            "fused-gqa3-vstage64",
+        ),
         default="fixed512",
     )
     parser.add_argument("--compiler-version-file", type=Path)
@@ -119,16 +126,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     )
     cache = allocate_laguna_kv_cache(
         config,
-        context_length=CAPACITY,
+        context_length=CAPACITY + 1,
         backend="hip_gfx1151",
         runtime=runtime,
     )
     rng = np.random.default_rng(20260728)
     keys = rng.normal(
-        0.0, 0.12, size=(CAPACITY, KV_HEADS, HEAD_DIM)
+        0.0, 0.12, size=(CAPACITY + 1, KV_HEADS, HEAD_DIM)
     ).astype(np.float32)
     values = rng.normal(
-        0.0, 0.12, size=(CAPACITY, KV_HEADS, HEAD_DIM)
+        0.0, 0.12, size=(CAPACITY + 1, KV_HEADS, HEAD_DIM)
     ).astype(np.float32)
     query = rng.normal(0.0, 0.12, size=(Q_HEADS, HEAD_DIM)).astype(np.float32)
     gate = rng.normal(0.0, 0.4, size=Q_HEADS).astype(np.float32)
@@ -178,6 +185,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             CAPACITY,
             library=library,
         )
+        cache.commit_rows()
+        cache.prepare_position(CAPACITY)
+        row_nbytes = KV_HEADS * HEAD_DIM * np.dtype(np.float32).itemsize
+        cache.append(
+            0,
+            key_device.ptr + CAPACITY * row_nbytes,
+            value_device.ptr + CAPACITY * row_nbytes,
+            library=library,
+        )
         state = cache.layer(0)
         common = (
             query_device.ptr,
@@ -199,11 +215,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
             "fused-gqa2": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
             "fused-gqa3-local384": laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
+            "fused-gqa3-vstage64": laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
         }[args.candidate]
         candidate_kernel = {
             "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
             "fused-gqa2": laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
             "fused-gqa3-local384": laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans,
+            "fused-gqa3-vstage64": laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_fixed512_bf16_spans,
         }[args.candidate]
 
         def control() -> None:
@@ -294,6 +312,26 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "correctness": {
                 "context_f32_byte_exact": context_exact,
                 "gated_bf16_byte_exact": gated_exact,
+                "gated_bf16_mismatches": int(
+                    np.count_nonzero(
+                        candidate_gated_host != control_gated_host
+                    )
+                ),
+                "context_max_abs_error": float(
+                    np.max(
+                        np.abs(
+                            candidate_context_host - control_context_host
+                        )
+                    )
+                ),
+                "gated_max_abs_error": float(
+                    np.max(
+                        np.abs(
+                            bf16_to_float32(candidate_gated_host)
+                            - bf16_to_float32(control_gated_host)
+                        )
+                    )
+                ),
                 "context_sha256": hashlib.sha256(
                     candidate_context_host.tobytes()
                 ).hexdigest(),
