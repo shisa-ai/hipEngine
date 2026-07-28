@@ -188713,3 +188713,18 @@ Vulkan local sizes verbatim will close the measured gap.
   complete because the read-only `reference/atlas` checkout is absent; this
   is an in-tree specialization, not a port. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json`.
+
+## 2026-07-29 05:56 JST — Wire exact global exp-domain production screen
+
+- Add a false/default-off gfx1151 capability and cache field ahead of the
+  retained direct-store GQA2 route. The candidate remains eligible only for
+  gated 48Q/8KV/D128/capacity-4096 global decode through live4000; partial
+  shape/capacity, high-live fallback, peer backends, and the production default
+  are unchanged.
+- Add session-scoped `set_decode_global_assume_exp(...)` and
+  `--compare-global-assume-exp` counterbalanced harness selection. RED covers
+  the absent field, dispatch key, and setter. GREEN is **36 passed** across the
+  focused owner/runner nodes and complete long-context harness unit file.
+- Record the cleanup trigger in `docs/REFACTOR.md`: promote only after an exact
+  positive tracked-clean p512/d128 wall screen; otherwise remove the complete
+  candidate seam.
