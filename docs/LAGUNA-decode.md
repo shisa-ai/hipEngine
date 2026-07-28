@@ -3572,7 +3572,8 @@ Exact fused-GQA3/local384 SWA reaches **17.140 tok/s**. Reusing each staged
 seven exact pairs and **18.027 tok/s** in clean production. Exact global GQA2
 with the same staged-V reuse then reaches **18.237 tok/s** in seven exact
 pairs and **18.230 tok/s** in clean production. The next bounded milestone is
-**20 tok/s**; same-GGUF Vulkan at
+**20 tok/s**. Vectorizing the saturated SWA V-stage copy then reaches
+**18.806 tok/s** in seven exact pairs; same-GGUF Vulkan at
 **23.348 tok/s** remains the directional comparator target.
 
 The post-global-GQA2 clean census records **816 dispatches/token**,
@@ -3595,7 +3596,9 @@ global attention **2.878 -> 2.237 ms/token (-22.27%)**, total attention
 attention explains about **59.5%** of the remaining wall gap. Reaching the
 existing **3.0-ms** attention checkpoint models about **20.1 tok/s**. The
 next bounded screen is vectorized V staging in the retained SWA GQA3/local384
-body; it owns **5.828 ms/token**, more than twice the global family.
+body; it owns **5.828 ms/token**, more than twice the global family. That
+screen is retained: the leaf improves **20.19%**, and all seven p512/d128
+pairs improve **18.244607 -> 18.806305 tok/s (+3.079%, -1.637 ms/token)**.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
@@ -3843,6 +3846,15 @@ GQA1 remains rollback above that LDS bound. Three clean selector-unset
 p512/d128 runs measure **18.219717/18.230064/18.235007 tok/s**, median
 **18.230064**, with identical generated IDs, final state, and allocation
 lifecycle.
+
+The saturated SWA copy-width successor preserves that complete compute body
+and changes only its LDS staging transport: one aligned 16-byte transaction
+now moves eight adjacent BF16 V values. The wrap/eviction oracle remains
+byte-exact. The nine-sample leaf improves **0.133491 -> 0.106533 ms
+(-20.19%)**, and all seven resident pairs improve **18.244607 -> 18.806305
+tok/s (+3.079%)**. Tracing records `<64,true>` at 24 local384 blocks,
+VGPR144/SGPR128/LDS30720/scratch0 and **161.50 -> 112.97 us (-30.05%)**.
+Scalar V-stage64 remains exact rollback.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten

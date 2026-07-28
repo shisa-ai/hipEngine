@@ -188324,3 +188324,24 @@ Vulkan local sizes verbatim will close the measured gap.
   production wall gap. SWA alone is more than twice global, so keep attention
   priority and screen vectorized 64-slot SWA V staging next. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-gqa2-wall-reprofile.json`.
+
+## 2026-07-29 03:15 JST — Retain vectorized SWA V staging
+
+- RED fails only on the absent vec16 wrapper. GREEN adds a separately
+  registered `<64,true>` GQA3/local384 sibling: each aligned `uint4`
+  transaction moves eight adjacent BF16 V values from global memory to LDS.
+  QK, maximum, denominator, PV FMA, gate, and store association are unchanged.
+- The focused CPU-reference gate covers positions 512-519 after ring wrap and
+  explicit eviction at position 200. F32 context and gated BF16 are byte-exact
+  against scalar V-stage64; the kernel/default rollback bundle passes **2/2**.
+  The nine-sample leaf improves **0.133491 -> 0.106533 ms (-20.19%)**.
+- All seven counterbalanced p512/d128 resident-model pairs improve
+  **18.244607 -> 18.806305 tok/s (+3.079%, -1.637 ms/token)**. Every candidate
+  wins; generated hash `94f803...bda32`, next/final tokens, position, and
+  lifecycle state match exactly.
+- Cached tracing names scalar `<64,false>` and vec16 `<64,true>` at 24
+  local384 blocks, VGPR144/SGPR128/scratch0. Static LDS is **24,576/30,720 B**;
+  the four-observation medians are **161.50 -> 112.97 us (-30.05%)**.
+  Promote only saturated natural-shape gfx1151 SWA. Scalar V-stage64 remains
+  registered rollback; shorter/non-natural/peer paths are unchanged. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-retained.json`.
