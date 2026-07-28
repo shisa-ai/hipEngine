@@ -68,6 +68,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_pair,
     raw_k_prefill_rowbatch_session,
+    raw_k_prefill_variant_session,
 )
 from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear,
@@ -1501,6 +1502,38 @@ def resolve_laguna_raw_k_prefill_rowbatch(
     return row_batch
 
 
+def resolve_laguna_raw_k_prefill_variant(
+    backend: str,
+    requested: str | None = None,
+) -> str:
+    """Resolve exact raw-Q5/Q6 row/output reuse with explicit RB rollback."""
+
+    selected = (
+        backend_package_capability(
+            backend,
+            "GGUF_RAW_K_PREFILL_VARIANT",
+            "rowbatch",
+        )
+        if requested is None
+        else requested
+    )
+    variant = str(selected).strip().lower()
+    if variant not in {"rowbatch", "coltile4_rowbatch8"}:
+        raise ValueError(
+            "Laguna raw-K prefill variant must be 'rowbatch' or "
+            "'coltile4_rowbatch8'"
+        )
+    if variant == "coltile4_rowbatch8" and not backend_package_capability(
+        backend,
+        "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+        False,
+    ):
+        raise ValueError(
+            f"Laguna raw-K prefill coltile is not supported on {backend!r}"
+        )
+    return variant
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -2143,6 +2176,7 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
+        raw_k_prefill_variant: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2290,6 +2324,15 @@ class LagunaGGUFResidentSession:
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
             raw_k_prefill_rowbatch,
+        )
+        raw_k_variant_request = (
+            "rowbatch"
+            if raw_k_prefill_rowbatch is not None and raw_k_prefill_variant is None
+            else raw_k_prefill_variant
+        )
+        self.raw_k_prefill_variant = resolve_laguna_raw_k_prefill_variant(
+            self.backend,
+            raw_k_variant_request,
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2913,6 +2956,15 @@ class LagunaGGUFResidentSession:
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
             row_batch,
+        )
+        self.raw_k_prefill_variant = "rowbatch"
+
+    def set_raw_k_prefill_variant(self, variant: str) -> None:
+        """Select exact Q5/Q6 output tiling or the explicit RB32 rollback."""
+
+        self.raw_k_prefill_variant = resolve_laguna_raw_k_prefill_variant(
+            self.backend,
+            variant,
         )
 
     def set_f16_prefill_mode(self, mode: str) -> None:
@@ -3630,7 +3682,10 @@ class LagunaGGUFResidentSession:
                 libraries=self.libraries.embedding_libraries,
                 runtime=self.runtime,
             )
-            with raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch):
+            with (
+                raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch),
+                raw_k_prefill_variant_session(self.raw_k_prefill_variant),
+            ):
                 for layer_id in range(config.block_count):
                     self._run_layer_rows(
                         layer_id,
@@ -5447,6 +5502,7 @@ __all__ = [
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
     "resolve_laguna_raw_k_prefill_rowbatch",
+    "resolve_laguna_raw_k_prefill_variant",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",

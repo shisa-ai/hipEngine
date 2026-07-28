@@ -1113,6 +1113,7 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     from hipengine.runtime.laguna_gguf_runner import (
         LagunaGGUFResidentSession,
         resolve_laguna_raw_k_prefill_rowbatch,
+        resolve_laguna_raw_k_prefill_variant,
     )
 
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 32
@@ -1127,11 +1128,30 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     with pytest.raises(ValueError, match="row batch"):
         resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 64)
 
+    assert (
+        resolve_laguna_raw_k_prefill_variant("hip_gfx1100")
+        == "coltile4_rowbatch8"
+    )
+    assert resolve_laguna_raw_k_prefill_variant("hip_gfx1100", "rowbatch") == (
+        "rowbatch"
+    )
+    assert resolve_laguna_raw_k_prefill_variant("hip_gfx1151") == "rowbatch"
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_raw_k_prefill_variant(
+            "hip_gfx1151", "coltile4_rowbatch8"
+        )
+    with pytest.raises(ValueError, match="variant"):
+        resolve_laguna_raw_k_prefill_variant("hip_gfx1100", "unknown")
+
     session = object.__new__(LagunaGGUFResidentSession)
     session.backend = "hip_gfx1100"
     session.raw_k_prefill_rowbatch = 0
+    session.raw_k_prefill_variant = "coltile4_rowbatch8"
     session.set_raw_k_prefill_rowbatch(32)
     assert session.raw_k_prefill_rowbatch == 32
+    assert session.raw_k_prefill_variant == "rowbatch"
+    session.set_raw_k_prefill_variant("rowbatch")
+    assert session.raw_k_prefill_variant == "rowbatch"
     session.set_raw_k_prefill_rowbatch(0)
     assert session.raw_k_prefill_rowbatch == 0
 

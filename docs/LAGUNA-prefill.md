@@ -37,9 +37,10 @@ online-qrow4 lane is rejected: natural-prompt prefill improves **117.170 ->
 118.335 tok/s (+0.995%)** and h16/h32 E2E improves **0.764%/0.609%**, but
 maximum KL is **0.394600 > 0.05**. The remaining execution order is:
 
-1. integrate and gate the candidate-admitted **WPF-1T** exact Q5/Q6
-   `coltile4_rowbatch8` winner through complete state and rotating 512/1K A/B;
-2. reduce launches/fusions only after span-minus-sum becomes material.
+1. publish promoted **WPF-1T** from a clean selector-unset 512/1K packet and
+   cached all-family trace;
+2. if that clean packet confirms both rates above 150 tok/s, reopen the 4K gate;
+3. reduce launches/fusions only after span-minus-sum becomes material.
 
 Quality-lane calibration is diagnostic only. It cannot waive the repository
 KL/top-1 contract or promote D4, D8, D8R8, P6, or another approximate variant.
@@ -62,9 +63,10 @@ rejects sparse repair: all **333/333** eligible actual tensors fail the
 touched-row stop, and **331/333** already fail the read stop using measured
 BF16 mismatches alone. Exact WPF-3 is complete but both short shapes remain
 below 150 tok/s. Its online ceiling is now rejected at maximum KL **0.394600**.
-WPF-1T's exact primitive screen admits `(4,8)` for runtime integration after all
-15 actual configurations win; it remains a dense exact route rather than a
-repair path, and production is still RB32 pending complete-state/512/1K gates.
+WPF-1T's exact `(4,8)` primitive is now the gfx1100 package default after all 15
+actual configurations win, complete M512 state is bit-exact, and dirty 512/1K
+rates reach **169.046/157.420 tok/s**. Production remains on the preceding clean
+headline until selector-unset publication confirms both threshold crossings.
 
 ### Frozen target and current evidence
 
@@ -130,8 +132,8 @@ default at local32, VGPR72, LDS0, and scratch0. Its no-override deep-state,
 paired throughput, selector-unset, and cached-trace gates pass. The
 changed-association online body is faster but rejected at maximum KL
 **0.394600** on the complete lane; its gfx1151-owned registry surface remains,
-but gfx1100 production stays exact. WPF-1T has candidate-admitted exact `(4,8)`
-dense output tiling; runtime integration and complete-state timing are next.
+but gfx1100 production stays exact. WPF-1T promotes exact `(4,8)` dense output
+tiling as the package default; clean short publication and tracing are next.
 
 The rejected broad shared-source candidate combined M2048 matrix/global
 transactions with packed/block F32 attention, dense initial cache, and rolling
@@ -427,7 +429,7 @@ The relevant lesson is dataflow, not API or literal constants:
 | WPF-1B approximate dense/shared Q8_1 MMQ | **D4/D8/D8R8 rejected** | Fastest clean candidates reach **129.572/116.116**, **129.083/115.802**, and **123.466/111.324 tok/s**, but all fail max-KL quality. D8R8 is the final blind-precision screen: max KL **0.964321**, **562/576** top-1. Keep exact production. |
 | **WPF-1R guarded exact repair** | **Rejected before implementation** | All 381 raw-Q5/Q6 tensors are captured at M512; all 333 eligible tensors fail conservative density/touched-row/read stops. Measured mismatches alone touch **72.266-100%** of rows and imply up to **1.686x** exact-family reads. No queue, repair kernel, overflow route, runtime mode, full-state/category lane, or timing gate is added. |
 | **WPF-3 short SWA attention** | **Complete; exact qrow4 retained and online qrow4 rejected** | One wave keeps one head and production's per-row two-pass arithmetic while reusing K/V across four causal rows; this is distinct from rejected cross-head/tiled sharing. The C256 policy keeps exact wave32 below crossover. Four M128 slices improve **21.059 -> 9.389 ms (2.243x)** bit-exactly; qrow4 traces at local32/VGPR72/LDS0/scratch0. The no-override M512 gate is KL0 across all 48 boundaries/KV spans. Clean 512/1K improves **+11.131%/+16.842%**, while cached SWA and complete span fall **55.411%/59.449%** and **9.643%/14.228%**. Changed-association online qrow4 improves complete-suite prefill **0.995%** but is rejected at max KL **0.394600** despite **564/576** top-1. |
-| **WPF-1T exact dense output tiling** | **Candidate admitted; runtime/default unchanged** | `(2,16)` and `(4,8)` preserve RB32's 32 accumulators/thread, K ownership, FMA order, wave tree, and serial wave sum. Both are byte-exact and faster on all 15 unique actual Q5/Q6 M512 configurations. Production-weighted RB32/`(2,16)`/`(4,8)` kernel sums are **2699.147/2220.526/1828.710 ms** over 381 invocations; `(4,8)` is **1.476x (-32.249%)**. It compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills versus RB32 VGPR73/SGPR107/LDS1024 and 14/5 Q5/Q6 SGPR spills. Integrate `(4,8)` through a gfx1100 package capability, then require complete-state exactness and rotating 512/1K wins before promotion. |
+| **WPF-1T exact dense output tiling** | **Promoted gfx1100 default; clean publication pending** | `(2,16)` and `(4,8)` preserve RB32's 32 accumulators/thread, K ownership, FMA order, wave tree, and serial wave sum. Both are byte-exact/faster on all 15 unique actual Q5/Q6 M512 configurations. Production-weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms** over 381 invocations; `(4,8)` is **1.476x (-32.249%)** and compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills. The package default is now `(4,8)` for divisible-by-four full RB32 slabs; explicit RB32, smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks. No-override M512 is KL0 across all 48 boundaries/KV spans. Same-weight 512/1K improves **131.491/124.949 -> 169.046/157.420 tok/s (+28.561%/+25.987%)**, exact on all pairs/repeats. Clean selector-unset publication and tracing remain required before the topline or 4K gate changes. |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Post-WPF-3 span-minus-sum is only **0.39%/0.40%** at 512/1K. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | Hard deferred | Resume 4K only after exact 512/1K both reach 150 tok/s; full 16K/64K/128K work remains closed until 800/700 at 512/4K or a documented measured blocker. |

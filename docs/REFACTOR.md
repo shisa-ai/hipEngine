@@ -22,7 +22,7 @@ should be removed or collapsed.
   **85.481/79.555 tok/s**. `LagunaGGUFResidentSession(...,
   raw_k_prefill_rowbatch=0|4|8|16|32)` scopes fixed-grid-Y Q5/Q6 row reuse to one
   bulk-prefill execution owner; zero is scalar rollback. gfx1151 excludes all
-  sixteen W7900 keys and remains zero.
+  sixteen rowbatch plus eight output-column W7900 keys and remains zero.
 - WPF-C1 confirms RB32 remains the full-model winner at retained M256 and traces
   its Y8 grid. WPF-2 then selects M512 without changing the RB32 owner; clean
   publication reaches **99.230/91.559 tok/s**. Keep RB8 as the preceding
@@ -30,6 +30,16 @@ should be removed or collapsed.
   now satisfied: remove rowbatch4/16 and their explicit CLI/registry surface in
   a separate cleanup unit because no retained end-to-end policy selects either.
   Preserve scalar registered fallback for unsupported shapes/backends.
+- WPF-1T adds `raw_k_prefill_variant=rowbatch|coltile4_rowbatch8` and promotes
+  exact `(4,8)` through the gfx1100 package. It applies only to full RB32 slabs
+  with output width divisible by four; explicit `rowbatch`, smaller slabs, and
+  unsupported widths keep RB32. The no-override M512 state gate is KL0 across
+  all 48 boundaries/KV spans, and dirty 512/1K improves
+  **131.491/124.949 -> 169.046/157.420 tok/s**. Keep the variant seam through
+  clean short publication, the restored 4K gate, and one bounded decision on
+  whether `(2,16)` owns its four faster actual configurations. Then remove any
+  unowned `(2,16)` wrappers/keys and collapse benchmark-only setter surface;
+  retain RB32 as the required generic exact fallback.
 
 ## Laguna prefill matrix-capacity selector
 

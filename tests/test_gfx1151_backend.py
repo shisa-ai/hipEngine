@@ -863,6 +863,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert (
         backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_VARIANT",
+        )
+        == "coltile4_rowbatch8"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
         )
@@ -874,6 +888,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_RAW_K_PREFILL_ROWBATCH",
         )
         == 0
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_VARIANT",
+        )
+        == "rowbatch"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+        )
+        is False
     )
     for quant in ("gguf_q5_k", "gguf_q6_k"):
         for row_batch in (4, 8):
