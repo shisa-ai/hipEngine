@@ -1823,3 +1823,15 @@ should be boring.
   beat all three controls with identical trajectory/state. Keep explicit
   False through the next split-attention transfer screen, then collapse the
   positive CLI selector if it is no longer needed for attribution.
+
+## Laguna gfx1151 split-attention transfer selector
+
+- Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100
+  exact global/SWA split-attention bundle. `--decode-split-attention` requests
+  global/SWA/tile16 thresholds **127/65/257**, gated reducers, and the
+  wave-local SWA reducer together; package defaults remain unsplit.
+- If the clean p512/d128 candidate is exact and faster, promote the complete
+  threshold/capability bundle and retain `--no-decode-split-attention` through
+  one follow-up context crossover check. If the full-model gate is neutral or
+  negative, restore all ten gfx1151 alias exclusions and remove the profiler
+  selector/test rather than carrying partial split registrations.

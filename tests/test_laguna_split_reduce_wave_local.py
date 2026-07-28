@@ -76,6 +76,36 @@ def test_laguna_swa_split_wave_local_variants_are_registered() -> None:
     )
 
 
+def test_laguna_split_attention_bundle_is_screenable_on_gfx1151() -> None:
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.kernels.registry import resolve
+
+    load_backend_kernel_package("hip_gfx1151")
+    variants = (
+        "global_context_split_exact_spans",
+        "global_context_split_exact_gated_spans",
+        "swa_context_split_exact_spans",
+        "swa_context_split_exact_gated_spans",
+        "swa_context_split_exact_gated_wave_local_spans",
+        "swa_context_split_exact_gated_wave_local_dim2_spans",
+        "swa_context_split_tile16_exact_spans",
+        "swa_context_split_tile16_exact_gated_spans",
+        "swa_context_split_tile16_exact_gated_wave_local_spans",
+        "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
+    )
+    assert all(
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_decode",
+            quant="bf16",
+            variant=variant,
+            missing="none",
+        )
+        is not None
+        for variant in variants
+    )
+
+
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_swa_split_wave_local_matches_retained_reducer() -> None:
     from hipengine.core.hip import get_hip_runtime

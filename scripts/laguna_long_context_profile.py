@@ -178,6 +178,12 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="select the exact decode-only head-RMSNorm+RoPE+KV-write composite",
     )
+    parser.add_argument(
+        "--decode-split-attention",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="screen the exact gfx11 global/SWA split-attention bundle",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -360,6 +366,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_moe_shared_low_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
     active_head_kv_fusion = False
+    active_global_split_min_live: int | None = None
+    active_swa_split_min_live: int | None = None
+    active_swa_split_tile16_min_live: int | None = None
+    active_split_gate_fusion = False
+    active_swa_split_wave_local = False
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
@@ -387,6 +398,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
             use_head_kv_fusion=args.head_kv_fusion,
+            global_split_min_live=(
+                127 if args.decode_split_attention is True else None
+            ),
+            swa_split_min_live=(
+                65 if args.decode_split_attention is True else None
+            ),
+            swa_split_tile16_min_live=(
+                257 if args.decode_split_attention is True else None
+            ),
+            use_swa_split_tile16=(
+                True if args.decode_split_attention is True else None
+            ),
+            use_split_attention=args.decode_split_attention,
+            use_split_gate_fusion=(
+                True if args.decode_split_attention is True else None
+            ),
+            use_swa_split_wave_local=(
+                True if args.decode_split_attention is True else None
+            ),
             prefill_long_attention_hipblaslt=(
                 False
                 if args.compare_long_attention_hipblaslt
@@ -415,6 +445,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_moe_shared_low_priority = owner.moe_shared_low_priority
         active_moe_shared_priority_range = owner.moe_shared_priority_range
         active_head_kv_fusion = owner.use_head_kv_fusion
+        active_global_split_min_live = owner.global_split_min_live
+        active_swa_split_min_live = owner.swa_split_min_live
+        active_swa_split_tile16_min_live = owner.swa_split_tile16_min_live
+        active_split_gate_fusion = owner.use_split_gate_fusion
+        active_swa_split_wave_local = owner.use_swa_split_wave_local
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -653,6 +688,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "moe_shared_priority_range": active_moe_shared_priority_range,
             "head_kv_fusion": active_head_kv_fusion,
             "head_kv_fusion_requested": args.head_kv_fusion,
+            "decode_split_attention_requested": args.decode_split_attention,
+            "global_split_min_live": active_global_split_min_live,
+            "swa_split_min_live": active_swa_split_min_live,
+            "swa_split_tile16_min_live": active_swa_split_tile16_min_live,
+            "split_gate_fusion": active_split_gate_fusion,
+            "swa_split_wave_local": active_swa_split_wave_local,
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
                 args.long_attention_hipblaslt

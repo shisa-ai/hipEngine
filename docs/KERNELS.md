@@ -44,6 +44,17 @@ specializations at local256, VGPR16, SGPR128, LDS0, and scratch0. The separately
 registered global wave-0 reduction remains excluded on gfx1151 because its
 gfx1100 full-model gate was rejected.
 
+The next default-off transfer registers the complete exact gfx1100 split
+global/SWA attention bundle under gfx1151. This includes the score producers,
+ordinary and softplus-gated reducers, SWA tile16 crossover, and wave-local
+reducers; the profiler selector requests the measured gfx1100 thresholds
+global 127, SWA 65, and tile16 257 as one inseparable candidate. Automatic
+gfx1151 thresholds remain absent until the full-model p512/d128 gate passes.
+Native gfx1151 tests match serial attention against the CPU oracle across
+global/SWA wraps and prove the gated/wave-local reducers bit-exact to their
+registered unfused/retained chains. Cached tracing observes all required
+producer/reducer families with zero kernel scratch.
+
 ### Laguna gfx1151 exact cached-only qrow4 prefill
 
 The global/SWA `laguna_attention_prefill` family now registers cached-only
