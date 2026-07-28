@@ -1856,7 +1856,8 @@ should be boring.
   reached **1.218229** versus the **0.05** limit. Production therefore defaults
   false and remains on exact split attention.
 - Keep the selector only while the bounded exact-score/tensorized-PV repair is
-  active. Remove the capability, runtime route, session selector, and leaf if
-  that repair cannot pass the complete category gate; if it passes, retain
-  explicit false only through the p128/p512/p1K/p4K crossover and production
-  trace before collapsing the experiment surface.
+  active. That repair preserves exact scores and denominator order and improves
+  **14.751829 -> 16.547822 tok/s (+12.175%)**, but still fails max KL at
+  **2.678710**. Remove the capability, runtime route, session selector, leaf,
+  and decode-specific benchmark mode after the exact local32 GQA3 reducer
+  screen no longer needs them as a diagnostic comparator.

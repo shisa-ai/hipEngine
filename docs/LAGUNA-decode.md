@@ -3440,16 +3440,27 @@ and it computes exponentials in parallel while replaying the exact logical-slot
 denominator order before tensorized PV. Only **1/9,216** deterministic gated
 BF16 values differs from exact, versus three for exact-QK/wave-softmax and two
 for the original full-F32 leaf. A clean whole-model speed and category screen
-decides whether the remaining PV association is admissible.
+decides whether the remaining PV association is admissible. The answer is no:
+clean p512/d128 improves **14.751829 -> 16.547822 tok/s (+12.175%)**, but the
+complete lane reaches max KL **2.678710** at **566/576 (98.26%)** top-1.
+PV accumulation association alone is enough to violate the contract. Close
+tensorized all-layer attention and keep production exact.
+
+The next exact LD-1 body uses a new grid rather than a new arithmetic tree:
+one local32 workgroup owns 32 output dimensions for three adjacent query heads,
+reuses each BF16 V load across those heads, and replays each head's retained
+logical-slot softmax, FMA, divide, and gate order. Four dimension partitions
+per query triple produce **8 KV heads x 3 triples x 4 = 96 workgroups/layer**,
+avoiding the 24/48-workgroup underfill that rejected grouped local128/local64.
 
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
    score/softmax/PV, and merge plus gate through bounded state. First require
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
-   The retained GQA3 score owner is LD-1a. LD-1b's full-F32 QK/PV runtime
-   ownership is quality-rejected; its next screen is exact GQA3 QK plus
-   tensorized PV, followed by the same complete category gate.
+   The retained GQA3 score owner is LD-1a. LD-1b's full-F32 and exact-QK/
+   tensorized-PV owners are both quality-rejected. LD-1c is the exact
+   96-workgroup local32 GQA3 reducer described above.
 2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
    **25.368-ms** unchanged-byte family floor with the eight-wave/eight-output
    block. Do not repeat local-size-only screens.
