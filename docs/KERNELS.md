@@ -377,8 +377,9 @@ LDS3584/scratch0. The default-off `raw_k_prefill_mmq` owner now selects this
 D8/S8 policy/ABI and allocates **2,359,296 bytes** at M128; rejected D4 remains
 available only through its explicit primitive keys. Shared-weight M128 full
 state passes at KL **0.002081**, same top-1, and byte-exact candidate repeat
-across all 48 hidden boundaries/KV/live spans. The package default is still
-MMQ-off/rowbatch8 pending 512/1K and complete quality gates.
+across all 48 hidden boundaries/KV/live spans. Clean default-off A/B moves
+**79.179/73.808 -> 129.083/115.802 tok/s** at 512/1K. The package default is
+still MMQ-off/rowbatch8 pending the complete quality gate.
 Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
