@@ -140,6 +140,10 @@ _SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FI
     "hipengine_laguna_swa_attention_decode_fused_exact_gated_gqa3_"
     "vstage64_vec16_direct_assume_exp_fixed512_bf16_spans"
 )
+_SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
+    "hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_"
+    "vstage64_vec16_direct_assume_exp_fixed512_bf16_spans"
+)
 _SYMBOL_SWA_ATTENTION_SPLIT_TILE16_EXACT_GATED_WAVE_LOCAL_DIM2 = (
     "hipengine_laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans"
 )
@@ -3041,6 +3045,67 @@ def laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_ass
     )
 
 
+def laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact 32-block mixed GQA2/GQA3 fixed512 SWA."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if (
+        capacity != 512
+        or window != 512
+        or int(scan_slots) != 512
+        or int(num_q_heads) != 72
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+    ):
+        raise ValueError(
+            "mixed32 V-stage64 vec16-direct assume-exp fixed512 SWA "
+            "requires capacity/window/scan 512, 72 query heads, "
+            "8 KV heads, and D128"
+        )
+    _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+        _SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        sliding_window=window,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -4583,6 +4648,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "swa_context_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_spans",
+            laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
             laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_dim2_bf16_spans,
         ),
@@ -4837,6 +4907,7 @@ __all__ = [
     "laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_gqa3_vstage64_vec16_direct_fixed512_bf16_spans",
+    "laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_token4_exact_bf16_spans",
     "laguna_swa_attention_decode_split_exact_bf16_spans",
     "laguna_swa_attention_decode_split_exact_gated_bf16_spans",
