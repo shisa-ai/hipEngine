@@ -365,6 +365,17 @@ must pass the same complete lane before promotion.
 Evidence: [`WPF-1B primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) ·
 [`D4 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json).
 
+The separately registered D8/S8 accuracy sibling stores eight FP32 scales/sums
+per K128 block (**192 bytes**) and applies independent per-K16 activation scales
+to each Q6 weight scale and each half of a Q5 subblock. D4 source/keys remain
+unchanged as rejection evidence. D8 passes **9/9** focused GPU cases and all ten
+actual M128 roles at maximum KL **5.9453e-5** / minimum top-1 **96.875%**.
+Inclusive quantize+MMQ improves every N>=1024 role **5.009-15.848x**; N48/N72
+still lose and remain fallback-only. Cached W7900 tracing names D8 producer at
+local256/VGPR24/LDS0/scratch0 and Q5/Q6 bodies at local128/VGPR48/56,
+LDS3584/scratch0. It has no runtime owner or default yet.
+Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json).
+
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
 | `embedding` variant `lookup_bf16_out` | `gguf_q4_k`, `gguf_q5_k` | `hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip` | `gguf_q4_k_embedding_bf16_out(...)`, `gguf_q5_k_embedding_bf16_out(...)`, registry-driven `launch_gguf_embedding(...)` | Net-new gfx11 raw-Q4_K/Q5_K row dequant for Laguna target/DFlash roots. Synthetic Q4_K lookup is BF16-exact vs CPU, invalid token IDs preserve caller output rows, and the real S 2.1 root chain (Q4 embedding -> F32-weight RMSNorm -> Q6T16 full logits -> GPU argmax) gives embedding/norm max-abs `0`, logits KL `6.87e-13`, top-1 `81364 == 81364`, and finite 100,352-way logits on gfx1151. Cached `rocprofv3 --kernel-trace` shows `gguf_q4_k_embedding_bf16_out_kernel` at `9.818 us`, 16 VGPR, zero scratch/LDS, followed by the expected norm, Q6T16, and argmax kernels. The pinned Q2 XL Q5_K root is BF16-exact against direct GGUF dequant for four repeated/unique rows; cached W7900 tracing names `gguf_q5_k_embedding_bf16_out_kernel` at `12.440 us`. `scripts/laguna_root_probe.py`; `/tmp/laguna-root-rocprof-result.json`. |

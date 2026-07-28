@@ -13,10 +13,14 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_k_mmq_prefill.hip")
 _OUTPUT_NAME = "gguf_k_mmq_prefill.so"
 _QUANT_SYMBOL = "hipengine_gguf_q8_1_d4s4_f32_quantize_bf16"
+_QUANT_D8_SYMBOL = "hipengine_gguf_q8_1_d8s8_f32_quantize_bf16"
 _VARIANT_BF16 = "mmq32_q8_1_d4s4_f32_bf16_bf16_out"
 _VARIANT_F32 = "mmq32_q8_1_d4s4_f32_bf16_f32_out"
+_VARIANT_D8_BF16 = "mmq32_q8_1_d8s8_f32_bf16_bf16_out"
+_VARIANT_D8_F32 = "mmq32_q8_1_d8s8_f32_bf16_f32_out"
 _Q8_BLOCK = 128
 _Q8_BLOCK_BYTES = 160
+_Q8_D8_BLOCK_BYTES = 192
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,16 @@ def q8_1_d4s4_f32_nbytes(rows: int, hidden: int) -> int:
     return rows * (hidden // _Q8_BLOCK) * _Q8_BLOCK_BYTES
 
 
+def q8_1_d8s8_f32_nbytes(rows: int, hidden: int) -> int:
+    """Return bytes for row-major K128 Q8_1 blocks with eight FP32 groups."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % _Q8_BLOCK != 0:
+        raise ValueError("hidden must be a positive multiple of 128")
+    return rows * (hidden // _Q8_BLOCK) * _Q8_D8_BLOCK_BYTES
+
+
 def gguf_q8_1_d4s4_f32_quantize_bf16(
     x_ptr: int,
     out_ptr: int,
@@ -132,6 +146,41 @@ def gguf_q8_1_d4s4_f32_quantize_bf16(
         runtime.check(int(error))
 
 
+def gguf_q8_1_d8s8_f32_quantize_bf16(
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Quantize each BF16 producer row to per-K16 Q8_1 groups."""
+
+    q8_1_d8s8_f32_nbytes(rows, hidden)
+    library = library or build_gguf_k_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _QUANT_D8_SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    error = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def _launch_mmq(
     quant: str,
     output_dtype: str,
@@ -142,6 +191,7 @@ def _launch_mmq(
     hidden: int,
     out_features: int,
     *,
+    producer_layout: str = "d4s4",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -154,7 +204,10 @@ def _launch_mmq(
         raise ValueError("out_features must be positive")
     library = library or build_gguf_k_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    symbol = f"hipengine_{quant}_mmq32_q8_1_d4s4_f32_bf16_{output_dtype}_out"
+    symbol = (
+        f"hipengine_{quant}_mmq32_q8_1_{producer_layout}_f32_"
+        f"bf16_{output_dtype}_out"
+    )
     fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
@@ -195,10 +248,31 @@ def gguf_q6_k_mmq32_q8_1_d4s4_f32_bf16_f32_out(*args, **kwargs) -> None:
     _launch_mmq("gguf_q6_k", "f32", *args, **kwargs)
 
 
+def gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out(*args, **kwargs) -> None:
+    _launch_mmq("gguf_q5_k", "bf16", *args, producer_layout="d8s8", **kwargs)
+
+
+def gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_f32_out(*args, **kwargs) -> None:
+    _launch_mmq("gguf_q5_k", "f32", *args, producer_layout="d8s8", **kwargs)
+
+
+def gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out(*args, **kwargs) -> None:
+    _launch_mmq("gguf_q6_k", "bf16", *args, producer_layout="d8s8", **kwargs)
+
+
+def gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_f32_out(*args, **kwargs) -> None:
+    _launch_mmq("gguf_q6_k", "f32", *args, producer_layout="d8s8", **kwargs)
+
+
 def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "activation_quant", "q8_1_d4s4_f32", "bf16"),
         gguf_q8_1_d4s4_f32_quantize_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "activation_quant", "q8_1_d8s8_f32", "bf16"),
+        gguf_q8_1_d8s8_f32_quantize_bf16,
         replace=replace,
     )
     for quant, bf16_fn, f32_fn in (
@@ -233,6 +307,28 @@ def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
             f32_fn,
             replace=replace,
         )
+    for quant, bf16_fn, f32_fn in (
+        (
+            "gguf_q5_k",
+            gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out,
+            gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_f32_out,
+        ),
+        (
+            "gguf_q6_k",
+            gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out,
+            gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_f32_out,
+        ),
+    ):
+        register(
+            KernelKey("hip_gfx1100", "linear", quant, _VARIANT_D8_BF16),
+            bf16_fn,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "linear", quant, _VARIANT_D8_F32),
+            f32_fn,
+            replace=replace,
+        )
 
 
 register_gguf_k_mmq_prefill_kernels()
@@ -243,10 +339,16 @@ __all__ = [
     "build_gguf_k_mmq_prefill",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out",
+    "gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out",
+    "gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_f32_out",
     "gguf_q6_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
     "gguf_q6_k_mmq32_q8_1_d4s4_f32_bf16_f32_out",
+    "gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out",
+    "gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_f32_out",
     "gguf_q8_1_d4s4_f32_quantize_bf16",
+    "gguf_q8_1_d8s8_f32_quantize_bf16",
     "plan_gguf_k_mmq_prefill_build",
     "q8_1_d4s4_f32_nbytes",
+    "q8_1_d8s8_f32_nbytes",
     "register_gguf_k_mmq_prefill_kernels",
 ]
