@@ -53,7 +53,7 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 
 Three exact gfx1100 structural transfers plus eleven gfx1151-native owners now
 improve paired p512/d128 gfx1151 eager c=1 decode
-**11.466687 -> 19.065940 tok/s (+66.272%)** in clean production.
+**11.466687 -> 19.085294 tok/s (+66.441%)** in clean production.
 Native
 head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
@@ -85,6 +85,10 @@ transaction without changing attention arithmetic. Seven exact pairs move
 The padded global sibling does the same through live4000 and moves seven exact
 pairs **18.794424 -> 19.066920 tok/s (+1.450%)**, saving another
 **0.760 ms/token**.
+The saturated SWA direct-store successor removes a compiler-generated
+per-thread LDS aggregate shuttle. Tracked-clean production reaches
+**19.085294 tok/s**, **+0.102%** over the preceding clean packet and
+**+66.441%** over the sprint start, with exact trajectories and lifecycle.
 The exact saturated-512 SWA successor retains the full
 **72-workgroup/288-wave** reducer grid and scalar/FMA order while specializing
 the natural 72Q/8KV/D128 ring. It moves the same-session GQA3 control
@@ -138,6 +142,8 @@ retained **654.249 tok/s** short headline. The eager global-attention ABI still
 caps decode cache capacity at 4,096, so the long-context publication below
 remains prefill-only.
 [`retained GQA3 score artifact`](results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`clean SWA direct-store production artifact`](results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json) ·
+[`retained SWA direct-store artifact`](results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-retained.json) ·
 [`retained fused-GQA2 SWA artifact`](results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
 [`retained fused one-head global artifact`](results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained selected tile8 artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json) ·

@@ -3890,6 +3890,13 @@ improves the leaf **0.107000 -> 0.105197 ms (-1.686%)**, traced kernel
 Seven resident-model pairs improve **19.070545 -> 19.083269 tok/s (+0.0667%,
 -0.0350 ms/token)** with exact trajectories/state, so gfx1151 promotes it at
 the saturated natural SWA shape. The old vec16 owner remains exact rollback.
+Three tracked-clean selector-unset runs then measure
+**19.072126/19.085294/19.089552 tok/s**, median **19.085294**. That is
+**+0.1015% / -0.0532 ms/token** versus the prior clean 19.065940 packet and
+**+66.441%** over the 11.466687 sprint start. Generated IDs, tokens,
+positions, deterministic state, and allocation lifecycle remain exact.
+Evidence:
+[`clean direct-store production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-production.json).
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
