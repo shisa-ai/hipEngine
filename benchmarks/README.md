@@ -51,18 +51,24 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
-Two exact gfx1100 structural transfers now improve tracked-clean p512/d128
-gfx1151 eager c=1 decode **11.466687 -> 14.528110 tok/s (+26.698%)**. Native
+Three exact gfx1100 structural transfers now improve tracked-clean p512/d128
+gfx1151 eager c=1 decode **11.466687 -> 14.555265 tok/s (+26.935%)**. Native
 head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
 **127/65/257** threshold bundle reaches **14.528110 tok/s (+26.487%
-incremental)**. CPU-oracle, F32/BF16/`KVLiveSpans` byte, reducer-bit-exact,
+incremental)**. The D9 MoE-tail composite then replaces 47 exact
+add/add/RMSNorm triples, removes **94 launches/token**, and reaches
+**14.555265 tok/s (+0.177%)** between rollback medians
+**14.529573/14.525706**. CPU-oracle, F32/BF16/`KVLiveSpans` byte,
+reducer-bit-exact,
 complete 128-token trajectory, ID/position, native trace, and lifecycle gates
 all pass. Split scratch adds only **1.573 MB**; explicit disables retain both
-unfused and serial chains. Paired pp512 is **653.992 tok/s**, effectively the
+unfused and serial chains. D9's paired pp512 is **651.504 tok/s**, within
+normal variance of
 retained **654.249 tok/s** short headline. The eager global-attention ABI still
 caps decode cache capacity at 4,096, so the long-context publication below
 remains prefill-only.
+[`retained D9 artifact`](results/2026-07-28-gfx1151-laguna-d9-moe-tail-retained.json) ·
 [`retained split-attention artifact`](results/2026-07-28-gfx1151-laguna-split-attention-retained.json) ·
 [`retained head/KV artifact`](results/2026-07-28-gfx1151-laguna-head-kv-fusion-retained.json).
 

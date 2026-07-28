@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-28",
+  "kind": "hipengine_laguna_gfx1151_d9_moe_tail_retained",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "timed_decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_rows": 2048,
+    "repetitions_per_process": 3,
+    "process_order": "rollback, fused, rollback",
+    "warmup_rows": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --moe-tail-next-rmsnorm --output /tmp/laguna-p512-d128-d9-candidate.json",
+    "rollback_argument": "--no-moe-tail-next-rmsnorm",
+    "timing_scope": "decode exactly 127 synchronized eager forward_token calls after the prefill-produced first token; model load excluded"
+  },
+  "baseline_order_a": {
+    "revision": "6f2c73d43cb6e88efa9aeb563833a404aaa13169",
+    "moe_tail_next_rmsnorm": false,
+    "decode_seconds": [
+      8.744773435988463,
+      8.74079371499829,
+      8.739517978043295
+    ],
+    "decode_tokens_per_second": [
+      14.52296059236263,
+      14.529572958812796,
+      14.531693889647931
+    ],
+    "median_seconds": 8.74079371499829,
+    "median_tokens_per_second": 14.529572958812796,
+    "raw_sha256": "205e777ee81085ccb4fd94aa4ae001a6688fcb9f8bd13a68619a694f5e895065"
+  },
+  "candidate": {
+    "revision": "6f2c73d43cb6e88efa9aeb563833a404aaa13169",
+    "moe_tail_next_rmsnorm": true,
+    "decode_seconds": [
+      8.729641132056713,
+      8.725364811019972,
+      8.724852043087594
+    ],
+    "decode_tokens_per_second": [
+      14.548135264533911,
+      14.555265338545087,
+      14.556120765465337
+    ],
+    "median_seconds": 8.725364811019972,
+    "median_tokens_per_second": 14.555265338545087,
+    "change_percent_vs_order_a": 0.17682818211604,
+    "wall_change_percent_vs_order_a": -0.17651605199014986,
+    "saved_seconds_per_127_calls_vs_order_a": 0.015428903978317976,
+    "saved_milliseconds_per_call_vs_order_a": 0.12148743290014154,
+    "paired_prefill_median_tokens_per_second": 651.5038908501538,
+    "raw_sha256": "e9b3c2b77f3be330a1f10b86de3b9b79c9826069e03c2534b68f6abb019dff3f"
+  },
+  "baseline_order_b": {
+    "revision": "6f2c73d43cb6e88efa9aeb563833a404aaa13169",
+    "moe_tail_next_rmsnorm": false,
+    "decode_seconds": [
+      8.743120481958613,
+      8.738897425937466,
+      8.745831609936431
+    ],
+    "decode_tokens_per_second": [
+      14.525706269525154,
+      14.532725790219017,
+      14.521203433154493
+    ],
+    "median_seconds": 8.743120481958613,
+    "median_tokens_per_second": 14.525706269525154,
+    "candidate_change_percent": 0.20349488328803567,
+    "candidate_wall_change_percent": -0.20308162257719475,
+    "raw_sha256": "ef6e760e8fa5d9de76831ef3ea7e39a07034fad1878a06559ba3fa83a1643169"
+  },
+  "implementation": {
+    "source": "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip",
+    "registration": "retained scalar D9 variant aliased under gfx1151",
+    "candidate_calls_per_token": 47,
+    "launches_removed_per_token": 94,
+    "fallback": "explicit use_moe_tail_next_rmsnorm=False retains registered BF16 add/add/F32-weight RMSNorm",
+    "excluded_siblings": [
+      "laguna_aggregate_wave0_tree_gguf_f32_weight_out",
+      "laguna_top10_routed_hidden_out"
+    ]
+  },
+  "correctness": {
+    "hidden_sizes": [
+      17,
+      3072
+    ],
+    "fused_vs_three_kernel_bf16_bit_exact": true,
+    "cpu_reference_kl": 0.0,
+    "cpu_reference_top1_agreement": 1.0,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_after": 0
+  },
+  "profile": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -f csv --output-directory /tmp/laguna-gfx1151-d9-trace-20260728 -- .venv/bin/python3 -m pytest tests/test_laguna_moe_tail_next_rmsnorm.py::test_laguna_aggregate_moe_tail_gpu_is_byte_exact_to_three_kernel_fallback[3072] -q",
+    "kernel": "laguna_aggregate_moe_tail_next_rmsnorm_out_kernel",
+    "workgroup_size": 256,
+    "vgpr_count": 16,
+    "sgpr_count": 128,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "trace_sha256": "2a7b47f7dcb66fec83bb5a244610129fff3103e73a8db32dd68d4d01d74b00d4"
+  },
+  "cumulative": {
+    "post_merge_unfused_unsplit_tokens_per_second": 11.466686899093393,
+    "production_tokens_per_second": 14.555265338545087,
+    "change_percent": 26.935229562218986
+  }
+}

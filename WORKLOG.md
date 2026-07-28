@@ -187239,3 +187239,18 @@ Vulkan local sizes verbatim will close the measured gap.
   `2a7b47f7...00d4`. The profiler now exposes
   `--no-moe-tail-next-rmsnorm` as the matched full-model rollback. Performance
   admission remains pending.
+
+## 2026-07-28 — Retain gfx1151 D9 MoE-tail/RMSNorm fusion
+
+- Clean cached p512/d128 process order rollback/fused/rollback measures medians
+  **14.529573 / 14.555265 / 14.525706 tok/s**. The candidate improves the
+  first control **+0.176828%** and the reverse-order control **+0.203495%**;
+  every candidate sample exceeds every control sample. It saves
+  **15.429–17.756 ms** per 127 calls while replacing 47 exact three-kernel
+  chains and removing **94 launches/token**.
+- All nine runs retain first/final tokens **2930/74107**, complete trajectory
+  SHA-256 `94f803f7...ebda32`, position 638, deterministic repeats, and zero
+  tracked allocations after teardown. D9 is now the third retained exact
+  gfx1100 structural transfer and moves cumulative post-merge gfx1151 decode
+  **11.466687 -> 14.555265 tok/s (+26.935230%)**. Publish the compact artifact,
+  benchmark rollup, pause-point table, kernel catalog, and rollback ledger.
