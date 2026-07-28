@@ -491,7 +491,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1100", "LAGUNA_SELECTED_GATE_UP_MODE", None
         )
-        == "grouped_exact"
+        == "grouped_pair16"
     )
     assert (
         backend_package_capability(

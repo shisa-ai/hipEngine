@@ -158,6 +158,11 @@ def _parse_args() -> argparse.Namespace:
         help="compare retained route-major IQ with exact expert-major IQ down reuse",
     )
     parser.add_argument(
+        "--compare-pair16-grouped-gate-up",
+        action="store_true",
+        help="compare retained grouped-down with exact pair16 grouped IQ2 gate/up",
+    )
+    parser.add_argument(
         "--raw-k-prefill-mmq",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -316,6 +321,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_raw_k_prefill_rowbatch,
             args.compare_raw_k_prefill_mmq,
             args.compare_grouped_exact_iq,
+            args.compare_pair16_grouped_gate_up,
             args.compare_block_attention_hipblaslt,
             args.compare_dense_contiguous_cache,
             args.compare_swa_attention_hipblaslt,
@@ -371,6 +377,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_raw_k_prefill_rowbatch
         or args.compare_raw_k_prefill_mmq
         or args.compare_grouped_exact_iq
+        or args.compare_pair16_grouped_gate_up
         or args.compare_block_attention_hipblaslt
         or args.compare_dense_contiguous_cache
         or args.compare_swa_attention_hipblaslt
@@ -547,6 +554,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                         owner.set_selected_gate_up_mode(selected_mode)
                         owner.set_selected_down_mode(selected_mode)
+                    if args.compare_pair16_grouped_gate_up:
+                        gate_up_mode = (
+                            "grouped_pair16"
+                            if mode == "candidate"
+                            else "grouped_exact"
+                        )
+                        owner.set_selected_gate_up_mode(gate_up_mode)
+                        owner.set_selected_down_mode("grouped_exact")
                     if args.compare_block_attention_hipblaslt:
                         owner.set_prefill_block_attention_hipblaslt(
                             mode == "candidate"
@@ -774,6 +789,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
             "compare_raw_k_prefill_mmq": args.compare_raw_k_prefill_mmq,
             "compare_grouped_exact_iq": args.compare_grouped_exact_iq,
+            "compare_pair16_grouped_gate_up": (
+                args.compare_pair16_grouped_gate_up
+            ),
             "raw_k_prefill_mmq": active_raw_k_prefill_mmq,
             "raw_k_prefill_mmq_requested": args.raw_k_prefill_mmq,
             "compare_block_attention_hipblaslt": (

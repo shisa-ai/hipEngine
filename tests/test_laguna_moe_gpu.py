@@ -443,6 +443,135 @@ def test_laguna_grouped_exact_quant_miss_fails_closed_to_direct() -> None:
     )
 
 
+def test_laguna_grouped_pair16_gate_up_uses_source_gather_and_registered_route() -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        return lambda *args, **kwargs: calls.append((name, args, kwargs))
+
+    route = SimpleNamespace(
+        function=record("pair16"),
+        allocation_name="raw",
+        library_key="grouped_iq_prefill",
+    )
+    plan = SimpleNamespace(
+        grouped_exact_down_routes={"gguf_iq3_xxs": object()},
+        grouped_pair16_gate_up_routes={"gguf_iq2_xs": route},
+        grouped_compact_source_rows=record("compact"),
+        grouped_compact_source_rows_parallel=record("compact_parallel"),
+        grouped_gather=record("gather"),
+        expert_count=256,
+        top_k=10,
+        hidden_size=3072,
+        expert_ffn_size=1024,
+    )
+    def buffer(ptr: int) -> SimpleNamespace:
+        return SimpleNamespace(ptr=ptr)
+
+    scratch = SimpleNamespace(
+        plan=plan,
+        selected_experts=buffer(1),
+        scaled_routing_weights=buffer(2),
+        grouped_expert_start=buffer(3),
+        grouped_active_experts=buffer(4),
+        grouped_active_count=buffer(5),
+        grouped_sorted_lanes=buffer(6),
+        grouped_lane_to_row=buffer(7),
+        grouped_sorted_weights=buffer(8),
+        expert_down=buffer(9),
+        expert_gate=buffer(10),
+    )
+
+    def weight(slot: str):
+        quant = "gguf_iq3_xxs" if slot == "ffn_down_exps" else "gguf_iq2_xs"
+        ptr = 11 if slot == "ffn_gate_exps" else 12
+        return SimpleNamespace(
+            spec=SimpleNamespace(quant_key=quant),
+            allocation=lambda _name: SimpleNamespace(tensor=buffer(ptr)),
+        )
+
+    assert laguna_moe_module._launch_selected_gate_up_grouped_exact(
+        13,
+        SimpleNamespace(weight=weight),
+        scratch,
+        tokens=512,
+        lanes=5120,
+        group_compact_mode="serial",
+        pair16=True,
+        stream=14,
+        runtime=SimpleNamespace(),
+        libraries=None,
+    )
+    assert [name for name, _, _ in calls] == ["compact", "gather", "pair16"]
+    _, gather_args, _ = calls[1]
+    assert gather_args[:3] == (13, 6, 9)
+    _, pair16_args, pair16_kwargs = calls[2]
+    assert pair16_args[:5] == (9, 3, 11, 12, 10)
+    assert pair16_kwargs["compact_rows"] == 5120
+    assert pair16_kwargs["in_features"] == 3072
+    assert pair16_kwargs["out_features"] == 1024
+
+
+def test_laguna_grouped_pair16_preserves_route_major_c1_gate_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        return lambda *args, **kwargs: calls.append((name, args, kwargs))
+
+    plan = SimpleNamespace(
+        grouped_exact_down_routes={"gguf_iq3_xxs": object()},
+        grouped_pair16_gate_up_routes={"gguf_iq2_xs": object()},
+        grouped_compact_source_rows=record("compact"),
+        grouped_compact_source_rows_parallel=record("compact_parallel"),
+        grouped_gather=record("gather"),
+        expert_count=256,
+        top_k=10,
+        expert_ffn_size=1024,
+    )
+
+    def buffer(ptr: int) -> SimpleNamespace:
+        return SimpleNamespace(ptr=ptr)
+
+    scratch = SimpleNamespace(
+        plan=plan,
+        selected_experts=buffer(1),
+        scaled_routing_weights=buffer(2),
+        grouped_expert_start=buffer(3),
+        grouped_active_experts=buffer(4),
+        grouped_active_count=buffer(5),
+        grouped_sorted_lanes=buffer(6),
+        grouped_lane_to_row=buffer(7),
+        grouped_sorted_weights=buffer(8),
+        expert_intermediate=buffer(9),
+        expert_gate=buffer(10),
+    )
+    quant = {"ffn_down_exps": "gguf_iq3_xxs", "ffn_gate_exps": "gguf_iq2_xs"}
+    layer = SimpleNamespace(
+        weight=lambda slot: SimpleNamespace(spec=SimpleNamespace(quant_key=quant[slot]))
+    )
+    monkeypatch.setattr(
+        laguna_moe_module,
+        "_launch_selected_gate_up",
+        record("route_major"),
+    )
+
+    assert laguna_moe_module._launch_selected_gate_up_grouped_exact(
+        11,
+        layer,
+        scratch,
+        tokens=1,
+        lanes=10,
+        group_compact_mode="serial",
+        pair16=True,
+        stream=12,
+        runtime=SimpleNamespace(),
+        libraries=None,
+    )
+    assert [name for name, _, _ in calls] == ["compact", "route_major", "gather"]
+
+
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "grouped_exact"
     assert resolve_laguna_selected_down_mode("hip_gfx1100", "direct") == "direct"
@@ -499,7 +628,7 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
 
 
 def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
-    assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "grouped_exact"
+    assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "grouped_pair16"
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1100", "direct")
         == "direct"
@@ -515,6 +644,10 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1100", "grouped_exact")
         == "grouped_exact"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1100", "grouped_pair16")
+        == "grouped_pair16"
     )
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "mmq32_d4x3")
@@ -1500,6 +1633,12 @@ def test_laguna_iq2_grid64_route_is_c1_only_and_default_off() -> None:
     )
     assert retained.selected_gate_up_routes["gguf_iq2_xs"].library_key == (
         "selected_gate_up_iq"
+    )
+    assert retained.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
+        "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out"
+    )
+    assert retained.grouped_pair16_gate_up_routes["gguf_iq2_xs"].library_key == (
+        "grouped_iq_prefill"
     )
     assert not retained.c1_selected_gate_up_keys
     assert candidate.selected_gate_up_keys["gguf_iq2_xs"].variant == (
