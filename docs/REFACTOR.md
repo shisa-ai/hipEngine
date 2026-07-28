@@ -1925,6 +1925,24 @@ should be boring.
   false rollback through this decode campaign; then remove positive selector
   semantics while retaining the generic registered rollback.
 
+## Laguna gfx1151 mixed32 SWA decode selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.swa_mixed32_vstage64_vec16_direct_assume_exp_fixed512`
+  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32(...)`, and
+  `--compare-swa-mixed32`. False restores the exact 24-block GQA3
+  assumed-domain owner; shorter/non-natural shapes and peer backends retain
+  their existing registered routes.
+- Promotion gate satisfied: the exact 32-block 2+2+2+3 owner improves the
+  leaf **5.41%** and all seven resident p512/d128 pairs
+  **19.268862 -> 19.371717 tok/s (+0.534%)** with identical trajectories and
+  allocation lifecycle.
+- Keep the explicit false rollback through clean production publication and
+  the next attention campaign checkpoint. Then remove positive selector
+  semantics and make mixed32 unconditional for the qualified gfx1151 shape,
+  while permanently retaining the registered 24-block GQA3 and generic
+  fallbacks.
+
 ## Laguna gfx1151 exact global exp-domain selector
 
 - Added 2026-07-29 as the default-off

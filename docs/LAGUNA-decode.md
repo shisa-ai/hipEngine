@@ -4011,6 +4011,32 @@ full score plane, cooperative/global phase boundary, or approximate online
 merge. Evidence:
 [`rejected persistent exact GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json).
 
+The first one-phase compromise between the measured 24- and 40-block
+endpoints is retained. Each KV head partitions its nine queries as
+**2+2+2+3** across four local384 owners, producing **32 workgroups** per SWA
+layer. Pair owners keep their four unused waves barrier-active during each
+64-slot vec16 V stage but arithmetic-idle; all active heads preserve the
+retained exact QK tree, compiler `expf`, ordered denominator/PV FMA, divide,
+gate, and stores. There is no split state or global repair plane.
+
+The wrapped/evicted oracle initially caught idle waves exiting before the
+block-uniform V-stage barriers. Keeping them in the copy/barrier phase repairs
+the implementation; positions 512-519 plus explicit eviction are then
+F32/BF16 byte-exact. Nine cache-hot samples improve
+**0.096586 -> 0.091360 ms (-5.41%)**. Cached tracing names the 32-block
+`<64,true,true,true,true>` owner and improves **112.931 -> 105.717 us
+(-6.39%)** at **VGPR104/SGPR128/LDS24576/scratch0**.
+
+Seven resident p512/d128 pairs improve **19.268862 -> 19.371717 tok/s
+(+0.534%, -0.276 ms/token)**; every candidate beats every control, with
+identical 128-token trajectories, positions, and lifecycle state. gfx1151
+promotes mixed32 only for the saturated natural SWA shape. The 24-block GQA3
+owner remains exact rollback; shorter/non-natural and peer-backend routes are
+unchanged. This is the useful exact form of the Vulkan lesson: increase
+grouped reuse and grid breadth together while staying inside one fused phase.
+Evidence:
+[`retained mixed32 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-retained.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
@@ -4110,10 +4136,12 @@ and shape/backend fallbacks.
    split-K is therefore closed under the current exactness contract. A final
    normal-launch persistent GQA9/K64 score-plane repair is byte-exact but
    regresses the leaf **301.99%** at VGPR40/scratch0, proving that changing the
-   launch API does not remove the global phase tax. Re-profile the retained
-   V-stage64 wall, then screen broader grouped reuse inside one ordinary fused
-   phase or an independently gated tensorized high-precision repair; do not
-   resume full-score repairs or approximate split softmax/PV.
+   launch API does not remove the global phase tax. The one-phase
+   **2+2+2+3 mixed32** owner is retained instead: leaf **-5.41%**, all seven
+   resident pairs **19.268862 -> 19.371717 tok/s (+0.534%)**, exact state. The
+   next material step is an independently gated tensorized high-precision
+   repair or another fused ordinary-grid reuse point with a distinct premise;
+   do not resume full-score repairs or approximate split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

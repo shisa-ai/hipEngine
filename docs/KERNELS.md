@@ -1341,6 +1341,21 @@ it stays fused with QK/softmax/PV, and do not reconstruct its split topology
 with an exact global score repair. Evidence:
 [`rejected persistent exact GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json).
 
+The exact one-phase mixed32 successor is retained for gfx1151 saturated SWA.
+Four local384 owners per KV head divide nine queries as **2+2+2+3**, raising
+the grid from 24 to 32 blocks while keeping QK, compiler `expf`, ordered
+softmax/PV, gate, and stores inside one fused phase. Pair-owner idle waves
+still participate in each staged-V barrier. Wrapped/evicted F32/BF16 output is
+byte-exact. The leaf improves **0.096586 -> 0.091360 ms (-5.41%)**; cached
+tracing records the intended 32-block template at
+VGPR104/SGPR128/LDS24576/scratch0 and improves
+**112.931 -> 105.717 us (-6.39%)**. All seven resident p512/d128 pairs improve
+**19.268862 -> 19.371717 tok/s (+0.534%, -0.276 ms/token)** with exact
+trajectories/state. The architecture capability selects it only at
+72Q/8KV/D128/SWA512; retained 24-block GQA3 is rollback and other shapes/
+backends are unchanged. Evidence:
+[`retained mixed32 SWA owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-retained.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

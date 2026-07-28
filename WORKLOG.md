@@ -188802,3 +188802,31 @@ Vulkan local sizes verbatim will close the measured gap.
   when QK, online state, and PV remain fused/tensorized; split breadth alone
   does not. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json`.
+
+## 2026-07-29 06:50 JST — Retain exact mixed32 saturated-SWA owner
+
+- Screen the one-phase point between the retained 24-block GQA3 and rejected
+  40-block GQA2 endpoints. Four local384 owners per KV head partition its nine
+  queries as **2+2+2+3**, raising the SWA grid to 32 workgroups while retaining
+  the direct vec16 V stage, compiler `expf` domain fact, and every active
+  head's exact QK/softmax/PV/gate/store order.
+- RED is the absent wrapper. The first GREEN run catches a real barrier bug:
+  pair-owner idle waves returned before block-uniform V-stage barriers and
+  consumed incomplete LDS. Keep those waves copy/barrier-active but
+  arithmetic-idle; the repaired positions 512-519 plus explicit eviction are
+  F32/BF16 byte-exact.
+- Nine leaf samples improve **0.096586 -> 0.091360 ms (-5.41%)**. Cached
+  tracing names the 32-block `<64,true,true,true,true>` template and improves
+  **112.931 -> 105.717 us (-6.39%)** at
+  **VGPR104/SGPR128/LDS24576/scratch0**.
+- Seven queue-matched resident p512/d128 pairs improve
+  **19.268862 -> 19.371717 tok/s (+0.534%, -0.276 ms/token)**; every candidate
+  beats every control. Next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, and lifecycle remain
+  exact.
+- Promote the gfx1151 capability only for gated saturated
+  72Q/8KV/D128/SWA512 decode. The 24-block GQA3 assumed-domain owner remains
+  explicit rollback; shorter/non-natural and peer-backend routes are
+  unchanged. Focused owner/runner/harness validation is **35 passed**.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-retained.json`.
