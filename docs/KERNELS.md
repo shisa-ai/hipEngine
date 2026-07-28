@@ -451,12 +451,12 @@ finite at maximum KL **5.6163e-5** and minimum top-1 **96.094%** versus the
 then-retained rowbatch8. Inclusive quantize+MMQ improves every N>=1024 role by
 **4.798-16.452x**; the N48/N72 gates lose and remain fallback-only. Cached
 W7900 tracing records the producer at local256/VGPR24/LDS0/scratch0 and Q5/Q6
-MMQ at local128/VGPR48/56/SGPR128/LDS3072/scratch0. A default-off
-`raw_k_prefill_mmq` execution owner now lazily allocates one bounded Q8_1
-workspace, caches one `(pointer, rows, K, stream)` producer pack, and consults
-registered Q5/Q6 crossover policies. It selects only N>=1024; N48/N72 and all
-key/shape/backend misses retain the active exact rowbatch owner. gfx1151
-excludes all seven producer/policy/MMQ keys. The D4 runtime screen improved the
+MMQ at local128/VGPR48/56/SGPR128/LDS3072/scratch0. A temporary default-off
+`raw_k_prefill_mmq` execution owner lazily allocated one bounded Q8_1
+workspace, cached one `(pointer, rows, K, stream)` producer pack, and consulted
+registered Q5/Q6 crossover policies. It selected only N>=1024; N48/N72 and all
+key/shape/backend misses retained the active exact rowbatch owner. The D4
+runtime screen improved the
 then-retained rowbatch8
 **79.119/73.781 -> 129.572/116.116 tok/s** at 512/1K, and its M128 full-state
 sample passes at KL **0.034789**, but the mandatory 18-prompt/576-step lane
@@ -475,8 +475,8 @@ actual M128 roles at maximum KL **5.9453e-5** / minimum top-1 **96.875%**.
 Inclusive quantize+MMQ improves every N>=1024 role **5.009-15.848x**; N48/N72
 still lose and remain fallback-only. Cached W7900 tracing names D8 producer at
 local256/VGPR24/LDS0/scratch0 and Q5/Q6 bodies at local128/VGPR48/56,
-LDS3584/scratch0. The default-off `raw_k_prefill_mmq` owner now selects this
-D8/S8 policy/ABI and allocates **2,359,296 bytes** at M128; rejected D4 remains
+LDS3584/scratch0. The temporary default-off owner selected this D8/S8
+policy/ABI and allocated **2,359,296 bytes** at M128; rejected D4 remains
 available only through its explicit primitive keys. Shared-weight M128 full
 state passes at KL **0.002081**, same top-1, and byte-exact candidate repeat
 across all 48 hidden boundaries/KV/live spans. Clean default-off A/B moves
@@ -498,8 +498,8 @@ M128 roles pass at maximum KL **8.241e-7** and **100%** top-1. Inclusive
 quantize+MMQ improves every N>=1024 role **3.673-10.989x**; N48/N72 lose and
 remain fallback-only. Cached tracing names the producer at local256/VGPR32,
 LDS0/scratch8 and both Q5/Q6 leaves at local128/VGPR96/LDS5120/scratch0. The
-default-off `raw_k_prefill_mmq` owner now selects this D8R8/S8 policy/ABI and
-allocates **4,325,376 bytes** at M128. Shared-weight M128 full state passes at
+temporary default-off owner selected this D8R8/S8 policy/ABI and allocated
+**4,325,376 bytes** at M128. Shared-weight M128 full state passes at
 KL **0.009152**, same top-1, and byte-exact candidate repeat across all 48
 hidden boundaries/KV/live spans. Clean default-off A/B moves
 **79.022/73.686 -> 123.466/111.324 tok/s** at 512/1K. The complete 18-prompt,
@@ -507,9 +507,9 @@ hidden boundaries/KV/live spans. Clean default-off A/B moves
 **562/576 (97.569%)** top-1; category top-1 remains above 90%. Reducing maximum
 actual-role KL roughly 68x versus D8 while worsening the autoregressive maximum
 closes D16 and further blind residual precision screens. D4/D8/D8R8 remain
-explicit primitive diagnostics and package production remains
-MMQ-off/rowbatch32. WPF-1R below now closes this runtime owner rather than
-adding bounded repair.
+explicit primitive diagnostics and package production remains exact
+rowbatch32. WPF-1R below closes the runtime premise rather than adding bounded
+repair.
 Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) ·
 [`D8R8 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json).
 
@@ -525,10 +525,10 @@ BF16-midpoint envelope reaches **9.142-93.418%** uncertain coordinates,
 fail all three conservative limits. Finite output, BF16/F32 RNE agreement,
 complete inventory, token 2930, position 511, and allocation recovery pass.
 No queue, repair kernel, overflow route, runtime mode, or timing/quality lane is
-added. Retain exact matrix512/RB32 production and remove the rejected
-`raw_k_prefill_mmq` owner/public selector in a separate cleanup unit while
-keeping primitive keys only where their ceiling/rejection evidence remains
-useful.
+added. The rejected public selector, lazy workspace/library owner,
+policy/context dispatch, and owner-focused tests are now removed. Exact RB32
+remains production; direct D4/D8/D8R8 wrappers and primitive keys remain only
+as published ceiling/rejection evidence and have no runtime policy owner.
 Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

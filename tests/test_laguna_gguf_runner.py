@@ -37,7 +37,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_q5_wave32x2_variants,
 )
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.kernels.registry import KernelKey
+from hipengine.kernels.registry import KernelKey, is_registered
 from tests._laguna_synthetic import make_laguna_info
 
 
@@ -1136,57 +1136,26 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     assert session.raw_k_prefill_rowbatch == 0
 
 
-def test_laguna_raw_k_prefill_mmq_is_default_off_and_gfx1100_only() -> None:
-    from hipengine.runtime.laguna_gguf_runner import (
-        resolve_laguna_raw_k_prefill_mmq,
-    )
-
-    assert not resolve_laguna_raw_k_prefill_mmq("hip_gfx1100")
-    assert resolve_laguna_raw_k_prefill_mmq("hip_gfx1100", True)
-    assert not resolve_laguna_raw_k_prefill_mmq("hip_gfx1100", False)
-    assert not resolve_laguna_raw_k_prefill_mmq("hip_gfx1151")
-    with pytest.raises(ValueError, match="not supported"):
-        resolve_laguna_raw_k_prefill_mmq("hip_gfx1151", True)
-
-
-def test_laguna_raw_k_prefill_mmq_resources_are_lazy_and_bounded(monkeypatch) -> None:
-    from hipengine.kernels.hip_gfx1100.quant import gguf_k_mmq_prefill
-
-    library = object()
-    monkeypatch.setattr(
-        gguf_k_mmq_prefill,
-        "build_gguf_k_mmq_prefill",
-        lambda **kwargs: library,
-    )
-    runtime = _FakeRuntime()
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.backend = "hip_gfx1100"
-    session.runtime = runtime
-    session.weights = SimpleNamespace(config=_config())
-    session.prefill_chunk_size = 128
-    session._closed = False
-    session._compiler_version = "test"
-    session._require_cached_build = True
-    session._raw_k_prefill_mmq_library = None
-    session._raw_k_prefill_mmq_workspace = None
-    session._raw_k_prefill_mmq_workspace_nbytes = 0
-    session.raw_k_prefill_mmq = False
-
-    session.set_raw_k_prefill_mmq(True)
-
-    assert session.raw_k_prefill_mmq
-    assert session._raw_k_prefill_mmq_library is library
-    assert session._raw_k_prefill_mmq_workspace is not None
-    assert session._raw_k_prefill_mmq_workspace.nbytes == 4_325_376
-    assert tuple(runtime.allocations.values()) == (4_325_376,)
-    session.set_raw_k_prefill_mmq(False)
-    assert not session.raw_k_prefill_mmq
-
-    workspace = session._raw_k_prefill_mmq_workspace
-    assert workspace is not None
-    runner_module.free(workspace, runtime=runtime)
-    session._raw_k_prefill_mmq_workspace = None
-    assert runtime.allocations == {}
+def test_rejected_laguna_raw_k_prefill_mmq_runtime_surface_is_removed() -> None:
+    assert "raw_k_prefill_mmq" not in signature(
+        runner_module.LagunaGGUFResidentSession.__init__
+    ).parameters
+    assert not hasattr(runner_module, "resolve_laguna_raw_k_prefill_mmq")
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED", None
+    ) is None
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED", None
+    ) is None
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        assert not is_registered(
+            KernelKey(
+                "hip_gfx1100",
+                "linear_prefill_policy",
+                quant,
+                "raw_k_q8_1_mmq32",
+            )
+        )
 
 
 def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:

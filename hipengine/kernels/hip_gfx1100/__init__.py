@@ -113,10 +113,6 @@ LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
 # shapes. Zero/4/8/16/32 remain explicit routes; unsupported shapes fall back.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = True
 GGUF_RAW_K_PREFILL_ROWBATCH = 32
-# WPF-1B's changed-arithmetic raw-K MMQ path remains default-off until the
-# complete full-state, 512/1K, and 18-prompt quality gates pass.
-GGUF_RAW_K_PREFILL_MMQ_SUPPORTED = True
-GGUF_RAW_K_PREFILL_MMQ = False
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -184,8 +180,6 @@ __all__ = [
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
-    "GGUF_RAW_K_PREFILL_MMQ",
-    "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED",
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",

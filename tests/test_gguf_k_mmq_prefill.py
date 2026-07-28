@@ -338,26 +338,7 @@ def test_q5_q6_mmq_contract_registry_and_backend_scope() -> None:
             quant,
             "raw_k_q8_1_mmq32",
         )
-        assert is_registered(policy_key)
-        policy = resolve(
-            backend=policy_key.backend,
-            layer=policy_key.layer,
-            quant=policy_key.quant,
-            variant=policy_key.variant,
-        )
-        assert policy.variant("prefill_bf16_bf16_out", 128, 3_072, 1_024) == (
-            "mmq32_q8_1_d8r8s8_f32_bf16_bf16_out"
-        )
-        assert policy.abi == "raw_k_mmq_d8r8s8"
-        assert policy.workspace_nbytes(128, 3_072) == 1_081_344
-        assert not is_registered(
-            KernelKey(
-                "hip_gfx1151",
-                policy_key.layer,
-                policy_key.quant,
-                policy_key.variant,
-            )
-        )
+        assert not is_registered(policy_key)
         assert (
             resolve(
                 backend="hip_gfx1100",

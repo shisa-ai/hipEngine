@@ -37,9 +37,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
-    gguf_q8_1_d4s4_f32_quantize_bf16,
-    gguf_q8_1_d8r8s8_f32_quantize_bf16,
-    gguf_q8_1_d8s8_f32_quantize_bf16,
     register_gguf_k_mmq_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
@@ -198,47 +195,6 @@ _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
     "q8_mmq_prefill_session",
     default=None,
 )
-
-
-@dataclass
-class _RawKMMQPrefillSession:
-    workspace_ptr: int
-    workspace_nbytes: int
-    library: object | None
-    producer_signature: tuple[int, int, int, int] | None = None
-
-
-_raw_k_mmq_prefill_session: ContextVar[_RawKMMQPrefillSession | None] = ContextVar(
-    "raw_k_mmq_prefill_session",
-    default=None,
-)
-
-
-@contextlib.contextmanager
-def raw_k_mmq_prefill_session(
-    *,
-    workspace_ptr: int = 0,
-    workspace_nbytes: int = 0,
-    library: object | None = None,
-    enabled: bool = True,
-) -> Iterator[None]:
-    """Expose one bounded producer-row Q8_1 workspace to bulk raw-K leaves."""
-
-    if not enabled:
-        selected = None
-    else:
-        if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= 0:
-            raise ValueError("raw-K MMQ prefill requires a non-empty device workspace")
-        selected = _RawKMMQPrefillSession(
-            workspace_ptr=int(workspace_ptr),
-            workspace_nbytes=int(workspace_nbytes),
-            library=library,
-        )
-    token = _raw_k_mmq_prefill_session.set(selected)
-    try:
-        yield
-    finally:
-        _raw_k_mmq_prefill_session.reset(token)
 
 
 @contextlib.contextmanager
@@ -762,52 +718,6 @@ def _raw_k_prefill_rowbatch_dispatch(
     )
 
 
-def _raw_k_mmq_prefill_dispatch(
-    dispatch: GGUFLinearDispatch,
-    *,
-    rows: int,
-    in_features: int,
-    out_features: int,
-) -> GGUFLinearDispatch:
-    """Select a quant-plugin MMQ32 leaf only inside its workspace owner."""
-
-    session = _raw_k_mmq_prefill_session.get()
-    if session is None or dispatch.abi != "raw":
-        return dispatch
-    policy = resolve(
-        backend=dispatch.key.backend,
-        layer="linear_prefill_policy",
-        quant=dispatch.key.quant,
-        variant="raw_k_q8_1_mmq32",
-        missing="none",
-    )
-    if policy is None:
-        return dispatch
-    variant = policy.variant(
-        dispatch.key.variant,
-        rows,
-        in_features,
-        out_features,
-    )
-    if variant is None:
-        return dispatch
-    required = policy.workspace_nbytes(rows, in_features)
-    if required > session.workspace_nbytes:
-        raise ValueError(
-            "raw-K MMQ workspace is too small: "
-            f"required={required}, available={session.workspace_nbytes}"
-        )
-    return GGUFLinearDispatch(
-        KernelKey(
-            dispatch.key.backend,
-            dispatch.key.layer,
-            dispatch.key.quant,
-            variant,
-        ),
-        policy.abi,
-    )
-
-
 def resolve_gguf_linear_dispatch(
     weight: GGUFDeviceWeight,
     *,
@@ -899,7 +809,6 @@ def launch_gguf_linear(
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     raw_k_rowbatch = raw_k_prefill_rowbatch()
     mmq_session = _q8_mmq_prefill_session.get()
-    raw_k_mmq_session = _raw_k_mmq_prefill_session.get()
     cache_key = (
         generation(),
         weight.spec.layout,
@@ -918,7 +827,6 @@ def launch_gguf_linear(
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
-        None if raw_k_mmq_session is None else id(raw_k_mmq_session),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -955,12 +863,6 @@ def launch_gguf_linear(
         dispatch = _exact_q8_prefill_dispatch(
             dispatch,
             rows=rows,
-            out_features=out_features,
-        )
-        dispatch = _raw_k_mmq_prefill_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
             out_features=out_features,
         )
         dispatch = _rowtile_dispatch(
@@ -1659,170 +1561,6 @@ def launch_gguf_linear_pair_concat(
     return False
 
 
-def _launch_raw_k_mmq_d4s4(
-    fn,
-    weight,
-    x_ptr,
-    out_ptr,
-    rows,
-    in_features,
-    out_features,
-    kwargs,
-) -> None:
-    session = _raw_k_mmq_prefill_session.get()
-    if session is None:
-        raise RuntimeError("raw-K MMQ launch escaped its prefill workspace session")
-
-    regions = {
-        "workspace": (session.workspace_ptr, session.workspace_nbytes),
-        "BF16 activation input": (int(x_ptr), int(rows) * int(in_features) * 2),
-        "output": (int(out_ptr), int(rows) * int(out_features) * 4),
-    }
-    workspace_ptr, workspace_nbytes = regions["workspace"]
-    for name in ("BF16 activation input", "output"):
-        ptr, nbytes = regions[name]
-        if max(workspace_ptr, ptr) < min(
-            workspace_ptr + workspace_nbytes,
-            ptr + nbytes,
-        ):
-            raise ValueError(f"raw-K MMQ workspace overlaps {name}")
-
-    stream = int(kwargs.get("stream", 0))
-    runtime = kwargs.get("runtime") or get_hip_runtime()
-    mmq_kwargs = {
-        "stream": stream,
-        "runtime": runtime,
-        "library": session.library,
-    }
-    producer_signature = (int(x_ptr), int(rows), int(in_features), stream)
-    if producer_signature != session.producer_signature:
-        gguf_q8_1_d4s4_f32_quantize_bf16(
-            x_ptr,
-            session.workspace_ptr,
-            rows,
-            in_features,
-            **mmq_kwargs,
-        )
-        session.producer_signature = producer_signature
-    fn(
-        session.workspace_ptr,
-        weight.allocation("raw").tensor.ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        **mmq_kwargs,
-    )
-
-
-def _launch_raw_k_mmq_d8s8(
-    fn,
-    weight,
-    x_ptr,
-    out_ptr,
-    rows,
-    in_features,
-    out_features,
-    kwargs,
-) -> None:
-    session = _raw_k_mmq_prefill_session.get()
-    if session is None:
-        raise RuntimeError("raw-K MMQ launch escaped its prefill workspace session")
-
-    workspace_ptr = session.workspace_ptr
-    workspace_nbytes = session.workspace_nbytes
-    for name, ptr, nbytes in (
-        ("BF16 activation input", int(x_ptr), int(rows) * int(in_features) * 2),
-        ("output", int(out_ptr), int(rows) * int(out_features) * 4),
-    ):
-        if max(workspace_ptr, ptr) < min(
-            workspace_ptr + workspace_nbytes,
-            ptr + nbytes,
-        ):
-            raise ValueError(f"raw-K MMQ workspace overlaps {name}")
-
-    stream = int(kwargs.get("stream", 0))
-    runtime = kwargs.get("runtime") or get_hip_runtime()
-    mmq_kwargs = {
-        "stream": stream,
-        "runtime": runtime,
-        "library": session.library,
-    }
-    producer_signature = (int(x_ptr), int(rows), int(in_features), stream)
-    if producer_signature != session.producer_signature:
-        gguf_q8_1_d8s8_f32_quantize_bf16(
-            x_ptr,
-            session.workspace_ptr,
-            rows,
-            in_features,
-            **mmq_kwargs,
-        )
-        session.producer_signature = producer_signature
-    fn(
-        session.workspace_ptr,
-        weight.allocation("raw").tensor.ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        **mmq_kwargs,
-    )
-
-
-def _launch_raw_k_mmq_d8r8s8(
-    fn,
-    weight,
-    x_ptr,
-    out_ptr,
-    rows,
-    in_features,
-    out_features,
-    kwargs,
-) -> None:
-    session = _raw_k_mmq_prefill_session.get()
-    if session is None:
-        raise RuntimeError("raw-K MMQ launch escaped its prefill workspace session")
-
-    workspace_ptr = session.workspace_ptr
-    workspace_nbytes = session.workspace_nbytes
-    for name, ptr, nbytes in (
-        ("BF16 activation input", int(x_ptr), int(rows) * int(in_features) * 2),
-        ("output", int(out_ptr), int(rows) * int(out_features) * 4),
-    ):
-        if max(workspace_ptr, ptr) < min(
-            workspace_ptr + workspace_nbytes,
-            ptr + nbytes,
-        ):
-            raise ValueError(f"raw-K MMQ workspace overlaps {name}")
-
-    stream = int(kwargs.get("stream", 0))
-    runtime = kwargs.get("runtime") or get_hip_runtime()
-    mmq_kwargs = {
-        "stream": stream,
-        "runtime": runtime,
-        "library": session.library,
-    }
-    producer_signature = (int(x_ptr), int(rows), int(in_features), stream)
-    if producer_signature != session.producer_signature:
-        gguf_q8_1_d8r8s8_f32_quantize_bf16(
-            x_ptr,
-            session.workspace_ptr,
-            rows,
-            in_features,
-            **mmq_kwargs,
-        )
-        session.producer_signature = producer_signature
-    fn(
-        session.workspace_ptr,
-        weight.allocation("raw").tensor.ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        **mmq_kwargs,
-    )
-
-
 def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
@@ -2360,9 +2098,6 @@ _LAUNCH_ABI = {
     "dense_bf16": _launch_dense_bf16,
     "pack8": _launch_pack8,
     "raw": _launch_raw,
-    "raw_k_mmq_d4s4": _launch_raw_k_mmq_d4s4,
-    "raw_k_mmq_d8r8s8": _launch_raw_k_mmq_d8r8s8,
-    "raw_k_mmq_d8s8": _launch_raw_k_mmq_d8s8,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
@@ -2384,7 +2119,6 @@ __all__ = [
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
     "q8_mmq_prefill_session",
-    "raw_k_mmq_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",
     "resolve_gguf_linear_dispatch",

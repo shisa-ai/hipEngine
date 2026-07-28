@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -25,40 +24,6 @@ _Q8_BLOCK = 128
 _Q8_BLOCK_BYTES = 160
 _Q8_D8_BLOCK_BYTES = 192
 _Q8_D8R8_BLOCK_BYTES = 352
-
-
-@dataclass(frozen=True)
-class RawKMMQPrefillPolicy:
-    """Quant-plugin crossover and variant selection for raw-K MMQ32."""
-
-    min_rows: int = 9
-    min_out_features: int = 1_024
-    abi: str = "raw_k_mmq_d8r8s8"
-
-    def workspace_nbytes(self, rows: int, hidden: int) -> int:
-        return q8_1_d8r8s8_f32_nbytes(rows, hidden)
-
-    def variant(
-        self,
-        source_variant: str,
-        rows: int,
-        hidden: int,
-        out_features: int,
-    ) -> str | None:
-        if (
-            int(rows) < self.min_rows
-            or int(hidden) <= 0
-            or int(hidden) % 256 != 0
-            or int(out_features) < self.min_out_features
-        ):
-            return None
-        return {
-            "prefill_bf16_bf16_out": _VARIANT_D8R8_BF16,
-            "prefill_bf16_f32_out": _VARIANT_D8R8_F32,
-        }.get(str(source_variant))
-
-
-_RAW_K_MMQ_PREFILL_POLICY = RawKMMQPrefillPolicy()
 
 
 def plan_gguf_k_mmq_prefill_build(
@@ -362,16 +327,6 @@ def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
         ),
     ):
         register(
-            KernelKey(
-                "hip_gfx1100",
-                "linear_prefill_policy",
-                quant,
-                "raw_k_q8_1_mmq32",
-            ),
-            _RAW_K_MMQ_PREFILL_POLICY,
-            replace=replace,
-        )
-        register(
             KernelKey("hip_gfx1100", "linear", quant, _VARIANT_BF16),
             bf16_fn,
             replace=replace,
@@ -431,7 +386,6 @@ register_gguf_k_mmq_prefill_kernels()
 
 
 __all__ = [
-    "RawKMMQPrefillPolicy",
     "build_gguf_k_mmq_prefill",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out",

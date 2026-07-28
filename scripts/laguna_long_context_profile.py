@@ -148,11 +148,6 @@ def _parse_args() -> argparse.Namespace:
         help="control row slab for a rowbatch comparison; defaults to scalar 0",
     )
     parser.add_argument(
-        "--compare-raw-k-prefill-mmq",
-        action="store_true",
-        help="compare exact rowbatch8 with the Q5/Q6 producer-row MMQ owner",
-    )
-    parser.add_argument(
         "--compare-grouped-exact-iq",
         action="store_true",
         help="compare retained route-major IQ with exact expert-major IQ down reuse",
@@ -161,12 +156,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-pair16-grouped-gate-up",
         action="store_true",
         help="compare retained grouped-down with exact pair16 grouped IQ2 gate/up",
-    )
-    parser.add_argument(
-        "--raw-k-prefill-mmq",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="explicitly enable/disable the default-off Q5/Q6 MMQ owner",
     )
     parser.add_argument(
         "--compare-block-attention-hipblaslt",
@@ -319,7 +308,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for value in (
             args.compare_long_attention_hipblaslt,
             args.compare_raw_k_prefill_rowbatch,
-            args.compare_raw_k_prefill_mmq,
             args.compare_grouped_exact_iq,
             args.compare_pair16_grouped_gate_up,
             args.compare_block_attention_hipblaslt,
@@ -332,10 +320,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.compare_raw_k_prefill_rowbatch and args.raw_k_prefill_rowbatch == 0:
         raise ValueError(
             "--compare-raw-k-prefill-rowbatch requires candidate rowbatch4/8/16/32"
-        )
-    if args.compare_raw_k_prefill_mmq and args.raw_k_prefill_mmq is not None:
-        raise ValueError(
-            "--compare-raw-k-prefill-mmq and --raw-k-prefill-mmq are mutually exclusive"
         )
     raw_k_candidate = (
         8
@@ -375,7 +359,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     comparison = bool(
         args.compare_long_attention_hipblaslt
         or args.compare_raw_k_prefill_rowbatch
-        or args.compare_raw_k_prefill_mmq
         or args.compare_grouped_exact_iq
         or args.compare_pair16_grouped_gate_up
         or args.compare_block_attention_hipblaslt
@@ -442,7 +425,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
     active_dense_contiguous_cache = False
-    active_raw_k_prefill_mmq = False
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
@@ -491,11 +473,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_raw_k_prefill_rowbatch
                 else args.raw_k_prefill_rowbatch
             ),
-            raw_k_prefill_mmq=(
-                False
-                if args.compare_raw_k_prefill_mmq
-                else args.raw_k_prefill_mmq
-            ),
         )
         active_matrix_rows = owner.prefill_chunk_size
         active_moe_branch_concurrency = owner.moe_branch_concurrency
@@ -516,7 +493,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_dense_contiguous_cache = (
             owner.prefill_dense_contiguous_cache
         )
-        active_raw_k_prefill_mmq = owner.raw_k_prefill_mmq
         active_attention_rows = owner.prefill_attention_chunk_size
         active_global_attention_rows = (
             owner.prefill_global_attention_chunk_size
@@ -546,8 +522,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             if mode == "candidate"
                             else raw_k_control
                         )
-                    if args.compare_raw_k_prefill_mmq:
-                        owner.set_raw_k_prefill_mmq(mode == "candidate")
                     if args.compare_grouped_exact_iq:
                         selected_mode = (
                             "grouped_exact" if mode == "candidate" else "direct"
@@ -600,7 +574,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "repetition": repetition,
                         "output_tokens": output_tokens,
                         "raw_k_prefill_rowbatch": owner.raw_k_prefill_rowbatch,
-                        "raw_k_prefill_mmq": owner.raw_k_prefill_mmq,
                         "selected_gate_up_mode": owner.selected_gate_up_mode,
                         "selected_down_mode": owner.selected_down_mode,
                     }
@@ -787,13 +760,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "raw_k_prefill_rowbatch_requested": args.raw_k_prefill_rowbatch,
             "raw_k_prefill_rowbatch_control": raw_k_control,
             "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
-            "compare_raw_k_prefill_mmq": args.compare_raw_k_prefill_mmq,
             "compare_grouped_exact_iq": args.compare_grouped_exact_iq,
             "compare_pair16_grouped_gate_up": (
                 args.compare_pair16_grouped_gate_up
             ),
-            "raw_k_prefill_mmq": active_raw_k_prefill_mmq,
-            "raw_k_prefill_mmq_requested": args.raw_k_prefill_mmq,
             "compare_block_attention_hipblaslt": (
                 args.compare_block_attention_hipblaslt
             ),
