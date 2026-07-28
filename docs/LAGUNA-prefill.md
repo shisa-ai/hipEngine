@@ -3721,22 +3721,26 @@ two-queue policy, but their timing scopes are not interchangeable.
 | --- | ---: | --- |
 | Repeated short prefill, 512/1K/4K | **654.249 / 579.699 / 468.608 tok/s** | Retained selector-unset production headline |
 | One-pass capacity sweep, 512/1K/4K/32K/64K/128K | **614.031 / 666.901 / 609.879 / 365.481 / 247.408 / 149.308 tok/s** | Clean anti-overtuning closure; exact positions and lifecycle |
-| Simple p512/d128 eager c=1 decode | **14.528 tok/s** | Native head/KV plus exact split attention; **+26.698%** from post-merge 11.467; exactly 127 timed `forward_token` calls |
-| Prefill paired with the decode snapshot | **653.992 tok/s** | Median of three; effectively the canonical 654.249 pp512 headline |
+| Simple p512/d128 eager c=1 decode | **14.555 tok/s** | Native head/KV, exact split attention, and D9 MoE-tail/RMS fusion; **+26.935%** from post-merge 11.467; exactly 127 timed `forward_token` calls |
+| Prefill paired with the decode snapshot | **651.504 tok/s** | Median of three; within normal variance of the canonical 654.249 pp512 headline |
 | Absolute quality | **0.049542582 max KL; 316/320 top-1** | Complete ten-prompt all-exact gate passes |
 | Next short-prefill target | **700 tok/s / 731.429 ms** | Current canonical wall **782.577 ms**; **51.148 ms** remains |
 
 All three p512/d128 production runs produce token **2930** first, token
 **74107** last, position **638**, and the same complete 128-token hash.
-Tracked allocations return to zero. Exact native head/KV fusion and the
-global/SWA/tile16 split-attention bundle are retained gfx1100-to-gfx1151
-transfers and improve the refreshed post-merge control
-**11.466687 -> 14.528110 tok/s (+26.698%)**. The current eager
+Tracked allocations return to zero. Exact native head/KV fusion, the
+global/SWA/tile16 split-attention bundle, and D9 MoE-tail/RMSNorm fusion are
+retained gfx1100-to-gfx1151 transfers and improve the refreshed post-merge
+control **11.466687 -> 14.555265 tok/s (+26.935%)**. D9 alone moves the
+matched rollback **14.529573 -> 14.555265 tok/s (+0.177%)**, with a
+reverse-order rollback of **14.525706 tok/s**, and removes 94 launches/token.
+The current eager
 global-attention ABI admits cache capacity only
 through 4,096, so the 1K–128K publication remains prefill-only; no
 long-context decode number is inferred.
 
 Evidence:
+[`retained D9 MoE-tail/RMS fusion`](../benchmarks/results/2026-07-28-gfx1151-laguna-d9-moe-tail-retained.json) ·
 [`retained split attention`](../benchmarks/results/2026-07-28-gfx1151-laguna-split-attention-retained.json) ·
 [`retained head/KV fusion`](../benchmarks/results/2026-07-28-gfx1151-laguna-head-kv-fusion-retained.json) ·
 [`pre-transfer p512/d128 snapshot`](../benchmarks/results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json) ·
