@@ -179,6 +179,12 @@ def _parse_args() -> argparse.Namespace:
         help="select the exact decode-only head-RMSNorm+RoPE+KV-write composite",
     )
     parser.add_argument(
+        "--moe-tail-next-rmsnorm",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="select the exact c=1 MoE-tail+next-RMSNorm composite",
+    )
+    parser.add_argument(
         "--decode-split-attention",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -365,6 +371,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_moe_shared_after_router = False
     active_moe_shared_low_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
+    active_moe_tail_next_rmsnorm = False
     active_head_kv_fusion = False
     active_global_split_min_live: int | None = None
     active_swa_split_min_live: int | None = None
@@ -397,6 +404,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
+            use_moe_tail_next_rmsnorm=args.moe_tail_next_rmsnorm,
             use_head_kv_fusion=args.head_kv_fusion,
             global_split_min_live=(
                 127 if args.decode_split_attention is True else None
@@ -444,6 +452,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_moe_shared_after_router = owner.moe_shared_after_router
         active_moe_shared_low_priority = owner.moe_shared_low_priority
         active_moe_shared_priority_range = owner.moe_shared_priority_range
+        active_moe_tail_next_rmsnorm = (
+            owner.kernel_plan.moe_tail_next_rmsnorm is not None
+        )
         active_head_kv_fusion = owner.use_head_kv_fusion
         active_global_split_min_live = owner.kv_cache.global_split_min_live
         active_swa_split_min_live = owner.kv_cache.swa_split_min_live
@@ -688,6 +699,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "moe_shared_after_router": active_moe_shared_after_router,
             "moe_shared_low_priority": active_moe_shared_low_priority,
             "moe_shared_priority_range": active_moe_shared_priority_range,
+            "moe_tail_next_rmsnorm": active_moe_tail_next_rmsnorm,
+            "moe_tail_next_rmsnorm_requested": args.moe_tail_next_rmsnorm,
             "head_kv_fusion": active_head_kv_fusion,
             "head_kv_fusion_requested": args.head_kv_fusion,
             "decode_split_attention_requested": args.decode_split_attention,
