@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T03:51:27+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa3_vstage64_vec16_direct_retained",
+  "status": "retained",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "fdcda050437bd89da9d8dcfb95d2c9ec8b80c392",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "optimization": {
+    "description": "write valid aligned uint4 V loads directly into the real LDS tile instead of assigning through a compiler-materialized aggregate",
+    "arithmetic_changes": false,
+    "scope": "saturated natural 72Q/8KV/D128/SWA512 GQA3 local384 only",
+    "fallback": "registered stage64 vec16 owner with aggregate temporary"
+  },
+  "correctness": {
+    "cpu_reference_allclose": true,
+    "wrapped_evicted_context_f32_byte_exact": true,
+    "wrapped_evicted_gated_bf16_byte_exact": true,
+    "complete_generated_ids_match": true,
+    "complete_next_tokens_match": true,
+    "complete_final_positions_exact": true,
+    "allocation_lifecycle_exact": true
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-gqa3-vstage64-vec16-direct-leaf.json",
+    "control_median_ms": 0.10700037956237793,
+    "candidate_median_ms": 0.1051968765258789,
+    "latency_change_percent": -1.6855108775082783,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "production": {
+    "workload": "p512/d128 eager c=1, 127 synchronized forward_token calls",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa3-vstage64-vec16-direct --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa3-vstage64-vec16-direct-ab.json",
+    "raw_sha256": "e6c35bbe0b5c3d22b9fbd2159e6098d303158c799e76491a5636634cd278fb75",
+    "control_decode_tok_s": 19.070545321244822,
+    "candidate_decode_tok_s": 19.08326921032963,
+    "throughput_change_percent": 0.06672011140989031,
+    "saving_ms_per_token": 0.03496262127548194,
+    "candidate_pair_wins": 6,
+    "pairs": 7,
+    "seventh_pair_change_percent": -0.0006971684637373517,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_token_id": 74107,
+    "final_position": 638
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <temp> --output-file direct -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct --samples 1 --warmups 0 --burst 10 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <temp>/leaf.json",
+    "raw_sha256": "93f1034f36c0aa4228bc5e712d7979a7cacaaddc7d331eda18bdd5c4f040e312",
+    "control_symbol": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<64, true, false>",
+    "candidate_symbol": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<64, true, true>",
+    "observations_each": 11,
+    "control_median_us": 101.59,
+    "candidate_median_us": 99.227,
+    "latency_change_percent": -2.3260163401909617,
+    "workgroup_size": 384,
+    "grid_blocks": 24,
+    "control_lds_bytes": 30720,
+    "candidate_lds_bytes": 24576,
+    "scratch_bytes": 0,
+    "profiler_vgpr": 144,
+    "profiler_sgpr": 128,
+    "code_object_logical_resources": {
+      "control_vgpr": 143,
+      "candidate_vgpr": 138,
+      "control_sgpr": 36,
+      "candidate_sgpr": 33
+    }
+  },
+  "decision": {
+    "retained": true,
+    "default_backend": "hip_gfx1151",
+    "reason": "The exact leaf, native kernel median, resource footprint, and complete resident-model median all improve; the old vec16 owner remains registered rollback."
+  }
+}

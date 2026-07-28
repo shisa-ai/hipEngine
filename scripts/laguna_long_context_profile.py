@@ -227,6 +227,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance scalar and 16-byte copies in exact staged-V GQA3",
     )
     parser.add_argument(
+        "--compare-swa-gqa3-vstage64-vec16-direct",
+        action="store_true",
+        help="counterbalance retained vec16 copies against direct LDS stores",
+    )
+    parser.add_argument(
         "--compare-global-fixedshape-reduce",
         action="store_true",
         help="counterbalance exact global reduction against its natural shape",
@@ -358,6 +363,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_swa_gqa3_local384,
             args.compare_swa_gqa3_vstage64,
             args.compare_swa_gqa3_vstage64_vec16,
+            args.compare_swa_gqa3_vstage64_vec16_direct,
             args.compare_global_fixedshape_reduce,
             args.compare_global_fused_fixedshape,
             args.compare_global_gqa2_vstage64,
@@ -401,6 +407,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_swa_gqa3_local384
         or args.compare_swa_gqa3_vstage64
         or args.compare_swa_gqa3_vstage64_vec16
+        or args.compare_swa_gqa3_vstage64_vec16_direct
         or args.compare_global_fixedshape_reduce
         or args.compare_global_fused_fixedshape
         or args.compare_global_gqa2_vstage64
@@ -583,6 +590,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_gqa3_vstage64_vec16_fixed512 = (
             owner.kv_cache.swa_gqa3_vstage64_vec16_fixed512
         )
+        active_swa_gqa3_vstage64_vec16_direct_fixed512 = (
+            owner.kv_cache.swa_gqa3_vstage64_vec16_direct_fixed512
+        )
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
@@ -664,6 +674,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_swa_gqa3_vstage64_vec16:
                         owner.kv_cache.swa_gqa3_vstage64_vec16_fixed512 = (
+                            mode == "candidate"
+                        )
+                    if args.compare_swa_gqa3_vstage64_vec16_direct:
+                        owner.kv_cache.swa_gqa3_vstage64_vec16_direct_fixed512 = (
                             mode == "candidate"
                         )
                     if args.compare_global_fixedshape_reduce:
@@ -909,6 +923,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_gqa3_vstage64_vec16": (
                 args.compare_swa_gqa3_vstage64_vec16
             ),
+            "compare_swa_gqa3_vstage64_vec16_direct": (
+                args.compare_swa_gqa3_vstage64_vec16_direct
+            ),
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -944,6 +961,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "swa_gqa3_vstage64_vec16_fixed512": (
                 active_swa_gqa3_vstage64_vec16_fixed512
+            ),
+            "swa_gqa3_vstage64_vec16_direct_fixed512": (
+                active_swa_gqa3_vstage64_vec16_direct_fixed512
             ),
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce

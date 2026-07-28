@@ -3879,6 +3879,18 @@ kernel sum, and **52.814 ms** span. Attention is now **5.652 ms/token**:
 **4.742 ms** and about **49.3%** of the remaining wall gap. Re-screen vec16
 stage geometry next, beginning with SWA stage128 versus stage64.
 
+That wider stage is exact but rejected: **0.107446 -> 0.109075 ms (+1.516%)**.
+The useful residue was in generated code instead. ISA shows the vec16
+aggregate temporary occupying **384 x 16 = 6,144 B** of hidden LDS and
+shuttling each load through that plane. Branching before assignment lets the
+valid path store directly into the real V tile. The exact direct-store sibling
+improves the leaf **0.107000 -> 0.105197 ms (-1.686%)**, traced kernel
+**101.590 -> 99.227 us (-2.326%)**, and fixed LDS
+**30,720 -> 24,576 B**; logical VGPR/SGPR also fall **143/36 -> 138/33**.
+Seven resident-model pairs improve **19.070545 -> 19.083269 tok/s (+0.0667%,
+-0.0350 ms/token)** with exact trajectories/state, so gfx1151 promotes it at
+the saturated natural SWA shape. The old vec16 owner remains exact rollback.
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
