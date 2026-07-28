@@ -184,7 +184,33 @@
       "failure": "Memory access fault by GPU node-1 on address (nil): page not present or supervisor privilege",
       "process_exit": "SIGABRT / 134",
       "stdout_sha256": "bb6d1c0d45ece5a856f49237fac61c6f493e05ba6ce9cd249bedd83daf0ecf13",
-      "stderr_sha256": "8859d2d1883cc930568c1f2f5c7de449441cca0721dd12278f790f435039e73e"
+      "stderr_sha256": "8859d2d1883cc930568c1f2f5c7de449441cca0721dd12278f790f435039e73e",
+      "kernel_fault": {
+        "timestamp_local": "2026-07-28T03:32:11+09:00",
+        "pci": "0000:0d:00.0",
+        "process": "hipfire-6409-be",
+        "pid": 733356,
+        "gfxhub_fault_records": 10,
+        "address": "0x0000000000000000",
+        "source_id": 0,
+        "ring": 24,
+        "vmid": 8,
+        "pasid": 33067,
+        "client": 10
+      },
+      "kernel_recovery": {
+        "first_remove_queue_failure_seconds_after_fault": 2,
+        "remove_queue_and_evict_failures": true,
+        "successful_mode1_gpu_resets": 2,
+        "reset_indices": [
+          3,
+          4
+        ],
+        "vram_lost_each_reset": true,
+        "amdgpu_device_coredump_created_each_reset": true,
+        "causality_warning": "Queue-removal failures are logged after the VM fault and therefore do not by themselves identify the original invalid-address cause."
+      },
+      "kernel_journal_sha256": "380dfeed322d1f0143a34dff08ee2a1ed4b48892cbbfcaaf4fa8c3cecc4999df"
     },
     "controls": {
       "fresh_packed_dot": {
@@ -206,6 +232,8 @@
         "status": "fault",
         "failure_family": "serial packed-dot q8_signed",
         "log_sha256": "fef5b84342dca982562a63c3e006bee076462e76523e04e8c6c75558b637be74",
+        "kernel_journal_sha256": "f226735906e76e0583aacbb91657d0b181c9c4c65d9dadb86203bed660664872",
+        "kernel_fault": "ten address-zero gfxhub faults from hip_dot_path PID 717551 at ring 24, vmid 8, pasid 32883, client 10, followed by queue-removal failure and two successful mode-1 resets with VRAM loss",
         "interpretation": "The same address-zero signature occurs in a second orchestration, but its fresh-family-child and code-object lifecycle differ from the canonical same-process run. It is supporting evidence, not the same-HSACO performance denominator or proof of the same trigger."
       },
       "strict_hipgraph_foundational": "pass: two kernels, four fresh-input BF16-bit-exact PM4 replays",
@@ -258,7 +286,9 @@
       "HIP allocation/reset interoperation with direct public-ROCr submission",
       "Vulkan coexistence or backend order",
       "a predecessor-family poison rather than a pure churn threshold",
-      "ROCr or amdgpu driver ownership rather than Redline core"
+      "ROCr or amdgpu driver ownership rather than Redline core",
+      "one common invalid-address producer versus distinct single- and multi-queue paths that both submit address zero",
+      "runtime-version sensitivity versus nondeterministic or longer-lived driver state"
     ],
     "next_diagnostics": [
       "128+ recreate-per-cycle tiny-IB stress with queue/destroy/address ledger",
@@ -269,12 +299,13 @@
       "Redline-only then HIP then Vulkan backend subtraction",
       "predecessor-family and count-threshold bisection",
       "fail-loud teardown status and queue-index instrumentation",
-      "kernel VM-fault PID/PASID/VMID correlation",
+      "capture the AMDGPU device coredump together with the userspace resource-address ledger on the next fault",
       "1000-cycle plus original-matrix post-fix stress"
     ],
-    "assessment": "The strongest current hypothesis is direct-ROCr queue/IB/signal or GPU-visible allocation create/drop churn, because fresh packed-dot passes and a one-graph Qwen soak survives more dispatches while avoiding repeated graph construction. The fault signature has appeared in two orchestrations, but exact-command repeatability and a fixed threshold are not yet established. Root ownership is not yet proven between Redline core, Hipfire adapters, ROCr, and amdgpu.",
+    "assessment": "The strongest current hypothesis is direct-ROCr queue/IB/signal or GPU-visible allocation create/drop churn, because fresh packed-dot passes and a one-graph Qwen soak survives more dispatches while avoiding repeated graph construction. Kernel journals confirm address-zero gfxhub faults on ring 24/client 10 followed by MES queue-removal failure and full-device resets with VRAM loss on both cards. The queue-removal messages follow the first VM fault, so they confirm teardown/recovery damage but not the original cause. Exact-command repeatability and a fixed threshold are not established; root ownership remains open between Redline core, Hipfire adapters, ROCr, and amdgpu.",
     "policy": "Process isolation is a benchmark workaround only. Do not silently monkeypatch, retry after a page fault, accept native-shadow fallback, or default-enable Redline; minimize and seek an upstream lifecycle fix.",
-    "dossier": "docs/REDLINE.md"
+    "dossier": "docs/REDLINE.md",
+    "runtime_version_diagnostic": "benchmarks/results/2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json"
   },
   "external_sanity_check": {
     "source": "https://github.com/ROCm/ROCm/issues/6409#issuecomment-5061942739",

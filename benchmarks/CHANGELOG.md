@@ -19,7 +19,9 @@ Examples:
 
 ## 2026-07-28
 
-- [blocked cross-device Redline lifecycle diagnostic; no performance claim] Radeon RX 7900 XTX / same gfx1100 Redline-HIP-Vulkan binary / one-process 240-row matrix: **172/240 rows pass all backends**, then Redline independent q6 packed-dot times out on HSA completion and the process loses HIP/Vulkan context; this confirms the broad failure class on GPU1 but differs from W7900's row-49 address-zero abort; `benchmarks/results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`.
+- [blocked Redline ROCm-version lifecycle diagnostic; no performance claim] Same gfx1100 Redline-HIP-Vulkan binary / W7900 + RX 7900 XTX / production ROCm 7.14 versus original 7.15 nightly: production 7.14 passes **4/4 full processes and 960/960 rows per card**, but the return to 7.15 also passes **4/4 and 960/960 per card** with no new kernel fault, so 7.14 did not reproduce yet is not a proven fix and version causality remains unresolved; `benchmarks/results/2026-07-28-gfx1100-redline-rocm714-715-lifecycle-diagnostic.json`.
+
+- [blocked cross-device Redline lifecycle diagnostic; no performance claim] Radeon RX 7900 XTX / same gfx1100 Redline-HIP-Vulkan binary / one-process 240-row matrix: **172/240 rows pass all backends**, then Redline independent q6 packed-dot times out and loses HIP/Vulkan context; kernel correlation proves ten address-zero gfxhub faults followed by MES queue-removal failures, three full-device resets, and VRAM loss, matching W7900's kernel fault/reset class despite a different row/userspace manifestation; `benchmarks/results/2026-07-28-gfx1100-redline-rx7900xtx-lifecycle-diagnostic.json`.
 
 - [retained experimental graph transport; package default blocked] Radeon Pro W7900 / Qwen3.6-35B-A3B UD-Q4_K_M / repeated-token p512/d128 c=1 graph: native hipGraph **92.812 -> 100.357 tok/s (+8.129%)** with strict retained PM4, bit-identical logits/IDs, **1.0273x** capture-inclusive post-load wall, and a four-run/512-launch persistent soak at **0.095%** range/median; the separate long-process address-zero fault still blocks default integration; `benchmarks/results/2026-07-28-gfx1100-redline-gguf-graph-spike.json`.
 
