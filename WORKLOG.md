@@ -187812,3 +187812,28 @@ Vulkan local sizes verbatim will close the measured gap.
   retained **72-workgroup/288-wave** grid and every slot-order operation.
   Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-fixedk-wall-reprofile.json`.
+
+## 2026-07-28 20:21 JST — Retain exact saturated-512 SWA reduction
+
+- RED is two expected missing registry/wrapper failures. GREEN adds a
+  saturated 72Q/8KV/D128 reducer that keeps one local128 block/query head,
+  all **72 workgroups / 288 waves**, and every scalar max/exp/denominator,
+  per-dimension FMA, divide, gate, and store operation. Live 512, wrap, and
+  explicit eviction are F32/BF16 byte-exact; the focused bundle passes
+  **59/59**.
+- Nine-sample leaf command:
+  `PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-fixed512-leaf.json`.
+  Complete score+reduce improves
+  **0.108265 -> 0.081059 ms/layer (-25.13%)**.
+- Seven-pair production command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-fixed512-reduce --allow-dirty --output /tmp/laguna-p512-d128-swa-fixed512-ab.json`.
+  Current exact GQA3 -> fixed512 is
+  **16.386231 -> 16.833740 tok/s (+2.731%, -1.622 ms/token)**. Every
+  candidate beats every control; all IDs/hashes/positions/lifecycle match.
+- Cache-only tracing records all **4,572 = 36 x 127** intended fixed reducers,
+  zero generic wave-local reducers, and local128/VGPR16/SGPR128/LDS0/scratch0.
+  Promote only saturated 512 on gfx1151; shorter live counts and peer backends
+  retain the generic exact route. Canonical decode is now
+  **16.833740 tok/s / 59.405 ms/token**, cumulative **+46.806%** from the
+  11.466687 pre-transfer baseline. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json`.

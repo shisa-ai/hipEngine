@@ -3531,7 +3531,8 @@ Evidence:
 
 The next pause target is **at least 18 tok/s** at p512/d128 under the existing
 state and quality contract. Fixed-K LD-2 production now reaches
-**16.391 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
+**16.391 tok/s**. The first post-reprofile LD-1 reducer win raises that to
+**16.834 tok/s**; same-GGUF Vulkan at **23.348 tok/s** remains the directional
 comparator target.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
@@ -3595,12 +3596,26 @@ LDS0/scratch0, yet loses at every live length: live 1 is
 **237.661 -> 391.161 us (+64.6%)**. Remove it. Exact grouped-value reuse is
 closed unless a future design preserves the retained 288-wave concurrency.
 
+That preservation is now a retained exact win. The saturated-512 specialization
+keeps all **72 local128 workgroups / 288 waves** and changes no scalar or FMA
+operation; it only makes the natural 72Q/8KV/D128 ring and 512-slot bounds
+compile-time constants. The complete score+reducer leaf falls
+**0.108265 -> 0.081059 ms/layer (-25.13%)**. Seven counterbalanced p512/d128
+pairs move current GQA3 **16.386231 -> 16.833740 tok/s (+2.731%, -1.622
+ms/token)** with every candidate faster and every trajectory identical.
+Cached tracing records **4,572 = 36 x 127** fixed reducers, no generic
+fallback, and local128/VGPR16/LDS0/scratch0. Live below 512 retains the
+generic exact owner.
+
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
    and qgroup9 SWA bodies, split K by 64/128 to retain grid breadth, fuse
    score/softmax/PV, and merge plus gate through bounded state. First require
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
-   The retained GQA3 score owner is LD-1a. LD-1b's full-F32 and exact-QK/
+   The retained GQA3 score owner is LD-1a. The exact saturated-512 reducer is
+   retained at **+2.731%** production and lowers the SWA reducer from about
+   **9.959 to 8.322 ms/token**, but attention remains roughly
+   **12.14 ms/token**. LD-1b's full-F32 and exact-QK/
    tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
    reducer is performance-rejected. Pause SWA value ownership and move to
    LD-2; the retained GQA3 score owner remains the exact production default.

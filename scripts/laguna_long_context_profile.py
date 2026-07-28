@@ -201,6 +201,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance one-barrier source-F16 decode against fixed-K",
     )
+    parser.add_argument(
+        "--compare-swa-fixed512-reduce",
+        action="store_true",
+        help="counterbalance exact SWA GQA3 against its saturated-512 reducer",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -298,6 +303,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_swa_attention_hipblaslt,
             args.compare_f16_decode_onebarrier,
             args.compare_f16_decode_fixedk,
+            args.compare_swa_fixed512_reduce,
         )
     )
     if active_comparisons > 1:
@@ -330,6 +336,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_swa_attention_hipblaslt
         or args.compare_f16_decode_onebarrier
         or args.compare_f16_decode_fixedk
+        or args.compare_swa_fixed512_reduce
     )
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
@@ -393,6 +400,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_swa_split_tile16_min_live: int | None = None
     active_split_gate_fusion = False
     active_swa_split_wave_local = False
+    active_swa_split_fixed512_reduce = False
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
@@ -483,6 +491,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_split_gate_fusion = owner.use_split_gate_fusion
         active_swa_split_wave_local = owner.use_swa_split_wave_local
+        active_swa_split_fixed512_reduce = (
+            owner.kv_cache.swa_split_fixed512_reduce
+        )
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
         )
@@ -537,6 +548,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     if args.compare_f16_decode_fixedk:
                         os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
                             "fixedk" if mode == "candidate" else "onebarrier"
+                        )
+                    if args.compare_swa_fixed512_reduce:
+                        owner.kv_cache.swa_split_fixed512_reduce = (
+                            mode == "candidate"
                         )
                     owner.reset_state()
                     started = time.perf_counter()
@@ -746,11 +761,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_f16_decode_onebarrier
             ),
             "compare_f16_decode_fixedk": args.compare_f16_decode_fixedk,
+            "compare_swa_fixed512_reduce": (
+                args.compare_swa_fixed512_reduce
+            ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,
             "swa_split_tile16_min_live": active_swa_split_tile16_min_live,
             "split_gate_fusion": active_split_gate_fusion,
             "swa_split_wave_local": active_swa_split_wave_local,
+            "swa_split_fixed512_reduce": (
+                active_swa_split_fixed512_reduce
+            ),
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
                 args.long_attention_hipblaslt
