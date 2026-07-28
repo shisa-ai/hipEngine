@@ -1336,10 +1336,13 @@ paired 512/1K gate improves **117.813/106.486 -> 131.044/124.348 tok/s**.
 Clean selector-unset publication reaches **131.919/125.960 tok/s**, improving
 the preceding exact packet **11.131%/16.842%**; cached tracing cuts SWA
 **55.411%/59.449%** and kernel span **9.643%/14.228%**. The separate online-SWA
-quality decision now precedes the exact dense/shared Q5/Q6 output-column-tiling
-screen. P6 and
-WPF-1R remain closed. The detailed gates and 150-tok/s short-only stop rule are
-owned by `LAGUNA-prefill.md`.
+lane improves complete-suite natural-prompt prefill **117.170 -> 118.335 tok/s
+(+0.995%)** but is rejected at maximum KL **0.394600 > 0.05** despite
+**564/576** top-1, deterministic repeats, and positive h16/h32 E2E. Exact
+qrow4-C256 remains the gfx1100 default; the independently owned gfx1151 online
+registrations remain. WPF-1T exact dense/shared Q5/Q6 output-column tiling is
+next. P6 and WPF-1R remain closed. The detailed gates and 150-tok/s short-only
+stop rule are owned by `LAGUNA-prefill.md`.
 
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16

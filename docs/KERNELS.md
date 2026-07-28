@@ -454,6 +454,16 @@ attention **50.675%/52.612%**, and kernel span **9.643%/14.228%** at unchanged
 [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) ·
 [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json).
 
+The separately registered online qrow4 body remains a changed-association
+arithmetic ceiling, not a gfx1100 production owner. Its complete
+18-prompt/576-step M512 lane improves natural-prompt prefill **117.170 ->
+118.335 tok/s (+0.995%)** and h16/h32 E2E **0.764%/0.609%**, but fails the
+mandatory quality gate at maximum KL **0.394600** despite **564/576** top-1.
+Poolside, same-mode determinism, and lifecycle pass. Keep the exact C256 policy
+as gfx1100 default; do not delete online qrow2/qrow4 registrations because
+gfx1151 owns them independently. Evidence:
+[`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json).
+
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its
 quantizer-inclusive leaf sum improves exact **1297.436 -> 388.901 ms (3.336x)**

@@ -83,10 +83,13 @@ should be removed or collapsed.
   variants remain available for rollback and the separate arithmetic screen.
 - Clean publication is complete at **131.919/125.960 tok/s** with cached SWA
   reductions of **55.411%/59.449%**. No benchmark-only comparison plumbing is
-  committed. Preserve the local128 unfused fallback and qualified wave32 route
-  through the separate online-arithmetic decision. Do not collapse exact qrow4
-  into online qrow2/qrow4: those change softmax association and require an
-  independent complete quality decision.
+  committed. The separate complete online-qrow4 decision improves suite prefill
+  **0.995%** but is rejected at maximum KL **0.394600** despite **564/576**
+  top-1, deterministic repeats, and passing Poolside/lifecycle checks. Preserve
+  local128, qualified wave32, and exact qrow4-C256 as gfx1100 fallback/default;
+  do not remove online qrow2/qrow4 registrations because gfx1151 independently
+  owns them. Do not reopen changed-association gfx1100 SWA without a materially
+  different arithmetic premise and a new complete quality gate.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
