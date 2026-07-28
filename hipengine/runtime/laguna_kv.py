@@ -127,6 +127,7 @@ class LagunaKVCache:
         swa_split_tile16_min_live: int | None,
         split_gate_fusion: bool,
         swa_split_wave_local: bool,
+        swa_split_gqa3_scores: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -145,6 +146,7 @@ class LagunaKVCache:
         self.swa_split_tile16_min_live = swa_split_tile16_min_live
         self.split_gate_fusion = bool(split_gate_fusion)
         self.swa_split_wave_local = bool(swa_split_wave_local)
+        self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -391,7 +393,11 @@ class LagunaKVCache:
                 else (
                     (
                         (
-                            "swa_context_split_tile16_exact_gated_wave_local_spans"
+                            (
+                                "swa_context_split_tile16_exact_gated_gqa3_scores_spans"
+                                if self.swa_split_gqa3_scores
+                                else "swa_context_split_tile16_exact_gated_wave_local_spans"
+                            )
                             if self.swa_split_wave_local and use_gated
                             else "swa_context_split_tile16_exact_gated_spans"
                         )
@@ -401,7 +407,11 @@ class LagunaKVCache:
                     if use_tile16
                     else (
                         (
-                            "swa_context_split_exact_gated_wave_local_spans"
+                            (
+                                "swa_context_split_exact_gated_gqa3_scores_spans"
+                                if self.swa_split_gqa3_scores
+                                else "swa_context_split_exact_gated_wave_local_spans"
+                            )
                             if self.swa_split_wave_local and use_gated
                             else "swa_context_split_exact_gated_spans"
                         )
@@ -1145,6 +1155,14 @@ def allocate_laguna_kv_cache(
             "SWA wave-local reduction requires exact split attention and "
             "split-gate fusion"
         )
+    selected_swa_split_gqa3_scores = bool(
+        selected_swa_split_wave_local
+        and backend_package_capability(
+            backend,
+            "LAGUNA_SWA_SPLIT_GQA3_SCORES",
+            False,
+        )
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
@@ -1152,6 +1170,7 @@ def allocate_laguna_kv_cache(
         parsed_swa_tile16,
         split_gate_fusion=selected_split_gate_fusion,
         swa_split_wave_local=selected_swa_split_wave_local,
+        swa_split_gqa3_scores=selected_swa_split_gqa3_scores,
     )
     buffers: list[DeviceBuffer] = []
 
@@ -1329,6 +1348,9 @@ def allocate_laguna_kv_cache(
             swa_split_tile16_min_live=parsed_swa_tile16,
             split_gate_fusion=(selected_split_gate_fusion and split_enabled),
             swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
+            swa_split_gqa3_scores=(
+                selected_swa_split_gqa3_scores and split_enabled
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -1345,6 +1367,7 @@ def _validate_split_backend(
     *,
     split_gate_fusion: bool,
     swa_split_wave_local: bool,
+    swa_split_gqa3_scores: bool,
 ) -> None:
     if all(
         threshold is None
@@ -1383,6 +1406,19 @@ def _validate_split_backend(
                 (
                     swa_tile16_threshold,
                     "swa_context_split_tile16_exact_gated_wave_local_spans",
+                ),
+            )
+        )
+    if swa_split_gqa3_scores:
+        requested.extend(
+            (
+                (
+                    swa_threshold,
+                    "swa_context_split_exact_gated_gqa3_scores_spans",
+                ),
+                (
+                    swa_tile16_threshold,
+                    "swa_context_split_tile16_exact_gated_gqa3_scores_spans",
                 ),
             )
         )

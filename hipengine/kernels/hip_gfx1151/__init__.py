@@ -239,6 +239,11 @@ LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 LAGUNA_SPLIT_GATE_FUSION = True
 LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
+# Exact GQA3 score ownership reuses each streamed SWA K row across three query
+# heads while retaining the 72-head score plane and wave-local value reducer.
+# The 24 x token/tile grid preserves gfx1151 breadth; peer backends keep the
+# one-query score owners until independently measured.
+LAGUNA_SWA_SPLIT_GQA3_SCORES = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -620,6 +625,7 @@ __all__ = [
     "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
+    "LAGUNA_SWA_SPLIT_GQA3_SCORES",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "LAGUNA_SWA_PREFILL_VARIANT",
