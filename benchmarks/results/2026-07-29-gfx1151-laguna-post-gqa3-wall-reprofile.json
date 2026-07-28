@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T01:03:13+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_gqa3_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "e9341511062a2b513387bde4a3289231c4dd7622",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-gqa3-wall.FY1VGQ --output-file postgqa3 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-gqa3-wall.FY1VGQ/bench.json",
+    "trace_sha256": "08d7ad82c228afbcec9c038622b2937afdd8471752db4fef820c4c0c72c5ade3",
+    "bench_sha256": "b5ebf840c555e2bdbf031c6d0deebb12f080c80a49a9c25863695260d10bce64",
+    "segmentation": "Discard two complete bulk-prefill segments, then report medians over the 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 16.620474039744668,
+    "publication_wall_tok_s": 17.139971152695292,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 56.254692,
+    "median_kernel_span_ms_per_token": 58.846115,
+    "families": {
+      "source_f16_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 24.046824,
+        "share_of_kernel_sum": 0.4275
+      },
+      "attention": {
+        "calls_per_token": 48,
+        "median_ms_per_token": 11.764084,
+        "share_of_kernel_sum": 0.2091
+      },
+      "selected_q4_gate_up": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 8.394518,
+        "share_of_kernel_sum": 0.1492
+      },
+      "selected_q4_q6_down": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 4.826584,
+        "share_of_kernel_sum": 0.0858
+      },
+      "dense_shared_quant_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 3.71153,
+        "share_of_kernel_sum": 0.066
+      },
+      "lm_head_argmax": {
+        "calls_per_token": 3,
+        "median_ms_per_token": 1.122068,
+        "share_of_kernel_sum": 0.0199
+      },
+      "router": {
+        "calls_per_token": 94,
+        "median_ms_per_token": 1.055656,
+        "share_of_kernel_sum": 0.0188
+      }
+    },
+    "attention_breakdown": {
+      "swa_fused_gqa3_calls_per_token": 36,
+      "swa_fused_gqa3_median_ms_per_token": 8.891333,
+      "global_fused_gqa1_calls_per_token": 12,
+      "global_fused_gqa1_median_ms_per_token": 2.872751
+    }
+  },
+  "comparison": {
+    "prior_fixedk_profile": {
+      "artifact": "benchmarks/results/2026-07-28-gfx1151-laguna-fixedk-wall-reprofile.json",
+      "dispatches_per_token": 864,
+      "kernel_sum_ms_per_token": 58.890281,
+      "kernel_span_ms_per_token": 61.569035,
+      "attention_ms_per_token": 13.777897
+    },
+    "changes_percent": {
+      "dispatches": -5.555555555555558,
+      "kernel_sum": -4.475422693262409,
+      "kernel_span": -4.42254779533251,
+      "attention": -14.6162581996367,
+      "swa_attention": -17.126947050007836,
+      "global_attention": -5.270115687316135
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "logged_attention_ms_per_token": 0.909423,
+      "source_f16_ms_per_token": 24.758568,
+      "hipengine_attention_gap_ms_per_token": 10.854661,
+      "hipengine_source_f16_delta_ms_per_token": -0.711744,
+      "attention_share_of_remaining_wall_gap": 0.6996852903433134
+    }
+  },
+  "finding": {
+    "next_surface": "attention",
+    "reason": "Exact attention remains 11.764 ms/token versus Vulkan's logged 0.909 ms/token and explains about 70% of the remaining wall gap; source-F16 has reached comparator parity.",
+    "target": "Repair the numerics of the 19.292 tok/s online GQA9/K64 topology rather than resuming projection geometry. A 3.0 ms attention family models about 20.17 tok/s before secondary work."
+  }
+}

@@ -188143,3 +188143,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was ported.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-local384-retained.json`.
+
+## 2026-07-29 01:03 JST — Re-profile the post-GQA3 production wall
+
+- On tracked-clean `e93415110`, prebuild outside the profiler and trace one
+  complete p512/d128 run with the same 127-transition segmentation as the
+  fixed-K census. All **127** decode segments contain exactly **816**
+  dispatches. Median kernel sum is **56.255 ms/token**, span is
+  **58.846 ms/token**, and the profiler-perturbed child reaches
+  **16.620 tok/s** with token 74107/position 638 and lifecycle exact.
+- Current family medians are source-F16 **24.047 ms**, attention
+  **11.764 ms** (SWA GQA3 **8.891**, global GQA1 **2.873**), selected gate/up
+  **8.395 ms**, selected down **4.827 ms**, and dense/shared quant
+  **3.712 ms**. Relative to the fixed-K profile, attention improves
+  **14.62%**, kernel sum **4.48%**, span **4.42%**, and dispatches
+  **864 -> 816**.
+- The Vulkan logger at `c0bc8591e` reports source-F16 **24.759 ms** and
+  attention **0.909 ms/token**. Source-F16 has therefore reached comparator
+  parity while attention remains **+10.855 ms/token** and explains about
+  **70.0%** of the current 17.140-versus-23.348 wall gap. A 3.0-ms attention
+  family models roughly **20.17 tok/s** before secondary selected/dense work.
+  Keep attention priority #1.
+- Next bounded lane: recover the removed online GQA9/K64 source-shaped
+  topology from its cache artifact for numerical ablation, then reimplement
+  only if a principled higher-precision partial/merge or layer-bounded policy
+  clears the complete KL/top-1/category gate. Do not reopen source-F16
+  geometry. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-gqa3-wall-reprofile.json`.

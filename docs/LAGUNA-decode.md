@@ -3537,6 +3537,7 @@ Evidence:
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
 [`rejected rebalanced cooperative GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-cooperative-rebalanced-rejected.json) ·
 [`rejected GQA2 LDS weight cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-weightcache-rejected.json) ·
+[`post-GQA3 production wall re-profile`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-gqa3-wall-reprofile.json) ·
 [`retained fused one-head global owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
 [`retained selected natural-shape decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
@@ -3565,6 +3566,28 @@ Exact fused one-head global attention now reaches **17.097 tok/s**.
 Exact fused-GQA3/local384 SWA now reaches **17.140 tok/s**.
 Same-GGUF Vulkan at **23.348 tok/s** remains the
 directional comparator target.
+
+The clean post-GQA3 census records **816 dispatches/token**, **56.255 ms**
+median kernel sum, and **58.846 ms** median dispatch span. Exact attention is
+still the dominant implementation gap:
+
+| Current family | hipEngine ms/token | Vulkan logger ms/token | Delta |
+| --- | ---: | ---: | ---: |
+| Source-F16 projections | **24.047** | **24.759** | **-0.712** |
+| Attention total | **11.764** | **0.909** | **+10.855** |
+| └ SWA fused GQA3 | **8.891** | **0.683** | **+8.209** |
+| └ Global fused GQA1 | **2.873** | **0.227** | **+2.646** |
+| Selected gate/up | **8.395** | **7.464** | **+0.930** |
+| Selected down | **4.827** | **4.525** | **+0.301** |
+
+Relative to the pre-fusion fixed-K census, attention improves **13.778 ->
+11.764 ms/token (-14.62%)**, kernel sum improves **4.48%**, kernel span
+improves **4.42%**, and dispatches fall **864 -> 816**. Source-F16 has reached
+comparator parity; attention alone now explains about **70.0%** of the
+remaining wall gap. Reaching the existing **3.0-ms** attention checkpoint
+models about **20.17 tok/s**, so the next large move must repair the numerical
+contract of the fast online GQA9/K64 topology rather than resume projection
+geometry.
 
 LD-1 is now underway with one retained exact substep. Grouping only the SWA
 score owner by three query heads cuts its live-512 leaf **42.1-46.8%** and
@@ -3844,9 +3867,13 @@ and shape/backend fallbacks.
    (**+0.44%**) but still regresses production **3.963%**; the global
    score/grid phase boundary is the blocker. Exact per-head LDS weight/
    denominator caching is then neutral at **-0.097%** in the leaf. The retained
-   GQA3/local384 result closes ordinary GQA ownership at saturated SWA; the next
-   attention step must re-profile the production wall before selecting another
-   exact seam.
+   GQA3/local384 result closes ordinary GQA ownership at saturated SWA. The
+   clean re-profile now measures attention at **11.764 ms/token**, versus
+   Vulkan's logged **0.909 ms/token** and about **70%** of the remaining wall
+   gap. The next bounded lane therefore revives the proven **19.292 tok/s**
+   online GQA9/K64 topology only to test principled numerical repairs
+   (higher-precision partial state/merge or layer-bounded deployment) against
+   the complete category KL gate; exact GQA3 remains rollback.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches
