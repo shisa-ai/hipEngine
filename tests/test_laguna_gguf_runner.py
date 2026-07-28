@@ -1124,7 +1124,7 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
         resolve_laguna_raw_k_prefill_rowbatch,
     )
 
-    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 8
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 32
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151") == 0
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 4) == 4
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 8) == 8

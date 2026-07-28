@@ -839,7 +839,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_RAW_K_PREFILL_ROWBATCH",
         )
-        == 8
+        == 32
     )
     assert (
         backend_package_capability(

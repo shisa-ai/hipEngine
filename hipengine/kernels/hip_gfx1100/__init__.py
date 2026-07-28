@@ -100,12 +100,11 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
-# WPF-1 exact Q5/Q6 rowbatch8 is the retained W7900 bulk-prefill default after
-# bit-exact full-state and repeated 512/1K admission. WPF-1W admits explicit
-# rowbatch16/32 candidates but does not promote either before clean 512/1K A/B.
-# Zero/4/8/16/32 remain explicit routes; unsupported shapes fall back.
+# WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
+# admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
+# shapes. Zero/4/8/16/32 remain explicit routes; unsupported shapes fall back.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = True
-GGUF_RAW_K_PREFILL_ROWBATCH = 8
+GGUF_RAW_K_PREFILL_ROWBATCH = 32
 # WPF-1B's changed-arithmetic raw-K MMQ path remains default-off until the
 # complete full-state, 512/1K, and 18-prompt quality gates pass.
 GGUF_RAW_K_PREFILL_MMQ_SUPPORTED = True
