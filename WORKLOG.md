@@ -187160,3 +187160,23 @@ Vulkan local sizes verbatim will close the measured gap.
   rollup plus the `docs/LAGUNA-prefill.md` pause-point table. Next transfer
   screen is split global/SWA decode attention; IQ-specific gfx1100 schedules
   remain inapplicable to this Q4_K_M model.
+
+## 2026-07-28 — Open gfx1151 split-attention transfer screen
+
+- Register the complete exact global/SWA split-attention bundle under the
+  gfx1151 peer key while leaving all automatic thresholds absent. The bounded
+  `--decode-split-attention` screen requests the gfx1100-proven global/SWA/
+  tile16 thresholds **127/65/257**, gated reducers, and wave-local SWA
+  reduction as one candidate; `--no-decode-split-attention` is the explicit
+  serial rollback.
+- RED fails on the ten absent gfx1151 variants; the combined registration,
+  harness, and native gfx1151 GPU bundle passes **38/38**. Global/SWA serial
+  versus split attention matches the CPU oracle
+  across wraps, gated split reducers are bit-exact to the unfused chain, and
+  wave-local/tile16 output is bit-exact to the retained reducer.
+- Cached `rocprofv3 --kernel-trace` observes nine split producer/reducer
+  specializations, including global score+gated reduce and SWA scalar/tile16/
+  wave-local paths. Every kernel reports zero scratch; score producers use
+  local32 or local256 and reducers local64/128/256. Trace SHA-256 is
+  `2e54f0ff...2b65c`. Commit this default-off screen before the clean
+  p512/d128 candidate.

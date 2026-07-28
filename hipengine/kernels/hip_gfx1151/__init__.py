@@ -335,56 +335,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "global_single_page_softplus_bf16_spans",
         ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "global_context_split_exact_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "global_context_split_exact_gated_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_exact_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_exact_gated_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_exact_gated_wave_local_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_exact_gated_wave_local_dim2_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_tile16_exact_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_tile16_exact_gated_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_tile16_exact_gated_wave_local_spans",
-        ),
-        (
-            "laguna_attention_decode",
-            "bf16",
-            "swa_context_split_tile16_exact_gated_wave_local_dim2_spans",
-        ),
+        # The exact split-attention producer/reducer bundle is registered for
+        # an independent gfx1151 threshold and full-model screen. Automatic
+        # selection remains off until that architecture-local gate passes.
         # The global-only wave-0 tree remains W7900-only. The retained scalar
         # current-P4 global/SWA bodies are independently gated on gfx1151.
         (
