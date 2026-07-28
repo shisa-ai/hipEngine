@@ -1363,6 +1363,21 @@ active, all three trajectories/state/lifecycle are exact, and peer/non-natural
 routes remain unchanged. Evidence:
 [`clean mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-production.json).
 
+The exact mixed32 exp4 sibling is retained next. Within each four-slot
+softmax batch, lanes 0..3 issue one independent compiler `expf` concurrently
+and shuffle the four weights back to every lane. Lane 0 retains the original
+ordered denominator accumulation, every dimension retains its original PV
+FMA order, and geometry/resources remain 32 local384 blocks at
+VGPR104/SGPR128/LDS24576/scratch0. Wrapped/evicted output is F32/BF16
+byte-exact. Nine-sample leaf timing improves
+**0.091487 -> 0.089135 ms (-2.57%)** and the stable cached kernel window
+improves **85.414 -> 83.584 us (-2.14%)**. All seven resident p512/d128 pairs
+improve **19.368030 -> 19.432503 tok/s (+0.333%, -0.171 ms/token)** with
+complete sample separation and exact trajectories/state/lifecycle. gfx1151
+selects exp4 only inside the already-qualified saturated mixed32 route; the
+serial-exp mixed32 sibling remains rollback. Evidence:
+[`retained mixed32 exp4`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-retained.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.
