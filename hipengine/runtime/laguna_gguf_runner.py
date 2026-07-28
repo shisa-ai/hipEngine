@@ -1473,7 +1473,7 @@ def resolve_laguna_raw_k_prefill_rowbatch(
     selected = (
         backend_package_capability(
             backend,
-            "LAGUNA_RAW_K_PREFILL_ROWBATCH",
+            "GGUF_RAW_K_PREFILL_ROWBATCH",
             0,
         )
         if requested is None
