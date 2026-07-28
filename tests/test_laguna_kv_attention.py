@@ -3331,6 +3331,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
         build_laguna_kv_attention,
         laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
+        laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -3476,6 +3477,29 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
             np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            for host, device in (
+                (candidate, candidate_out),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -3546,6 +3570,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.global_split_fixedshape_reduce
         assert gfx1151_cache.global_fused_fixedshape
         assert gfx1151_cache.global_gqa2_vstage64_fixedshape
+        assert gfx1151_cache.global_gqa2_vstage64_vec16_fixedshape
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
@@ -3574,7 +3599,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 "laguna_attention_decode",
                 (
                     "global_context_fused_exact_gated_"
-                    "gqa2_vstage64_fixedshape_spans"
+                    "gqa2_vstage64_vec16_fixedshape_spans"
                 ),
             ),
             (

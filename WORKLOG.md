@@ -188360,3 +188360,24 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next screen the same aligned vec16 copy in global GQA2 V-stage64. Keep the
   scalar global path as rollback and require positive natural-live leaves
   before a resident-model gate.
+
+## 2026-07-29 03:28 JST — Retain vectorized global V staging
+
+- RED fails only on the absent global vec16 wrapper. GREEN adds a separately
+  registered `<2,64,true>` GQA2 sibling. It pads the dynamic score/physical
+  LDS prefix to 16-byte alignment, then moves eight adjacent BF16 V values per
+  transaction. The live4000 bound remains below 64 KiB.
+- The focused CPU-reference gate covers live513/576/639 plus explicit eviction
+  at position 200. F32 context and gated BF16 are byte-exact against scalar
+  GQA2; the kernel/default rollback bundle passes **2/2**. Nine-sample leaves
+  improve **22.29%/25.82%/25.99%**.
+- All seven counterbalanced p512/d128 resident-model pairs improve
+  **18.794424 -> 19.066920 tok/s (+1.450%, -0.760 ms/token)**. Every candidate
+  wins; generated hash `94f803...bda32`, next/final tokens, position, and
+  lifecycle state match exactly.
+- Cached tracing names scalar `<2,64,false>` and vec16 `<2,64,true>` at 24
+  local256 blocks, VGPR32/SGPR128/static-LDS512. Scratch is **0/32 B**; the
+  12-observation median is **141.09 -> 103.29 us (-26.79%)**. Promote only
+  natural capacity4096/live<=4000 gfx1151 global attention. Scalar GQA2 is
+  rollback and GQA1 remains fallback above live4000. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-retained.json`.

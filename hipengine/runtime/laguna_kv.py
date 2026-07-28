@@ -129,6 +129,7 @@ class LagunaKVCache:
         global_split_fixedshape_reduce: bool,
         global_fused_fixedshape: bool,
         global_gqa2_vstage64_fixedshape: bool,
+        global_gqa2_vstage64_vec16_fixedshape: bool,
         swa_split_wave_local: bool,
         swa_split_gqa3_scores: bool,
         swa_split_fixed512_reduce: bool,
@@ -159,6 +160,9 @@ class LagunaKVCache:
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
+        )
+        self.global_gqa2_vstage64_vec16_fixedshape = bool(
+            global_gqa2_vstage64_vec16_fixedshape
         )
         self.swa_split_wave_local = bool(swa_split_wave_local)
         self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
@@ -412,6 +416,17 @@ class LagunaKVCache:
             variant = (
                 (
                     (
+                        "global_context_fused_exact_gated_"
+                        "gqa2_vstage64_vec16_fixedshape_spans"
+                    )
+                    if (
+                        use_gated
+                        and self.global_gqa2_vstage64_vec16_fixedshape
+                        and live_count <= 4000
+                        and state.capacity == 4096
+                        and state.q_heads == 48
+                    )
+                    else (
                         "global_context_fused_exact_gated_"
                         "gqa2_vstage64_fixedshape_spans"
                     )
@@ -1323,6 +1338,14 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_global_gqa2_vstage64_vec16_fixedshape = bool(
+        selected_global_gqa2_vstage64_fixedshape
+        and backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_FIXEDSHAPE",
+            False,
+        )
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
@@ -1335,6 +1358,9 @@ def allocate_laguna_kv_cache(
         global_fused_fixedshape=selected_global_fused_fixedshape,
         global_gqa2_vstage64_fixedshape=(
             selected_global_gqa2_vstage64_fixedshape
+        ),
+        global_gqa2_vstage64_vec16_fixedshape=(
+            selected_global_gqa2_vstage64_vec16_fixedshape
         ),
         swa_split_wave_local=selected_swa_split_wave_local,
         swa_split_gqa3_scores=selected_swa_split_gqa3_scores,
@@ -1534,6 +1560,10 @@ def allocate_laguna_kv_cache(
             global_gqa2_vstage64_fixedshape=(
                 selected_global_gqa2_vstage64_fixedshape and split_enabled
             ),
+            global_gqa2_vstage64_vec16_fixedshape=(
+                selected_global_gqa2_vstage64_vec16_fixedshape
+                and split_enabled
+            ),
             swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
             swa_split_gqa3_scores=(
                 selected_swa_split_gqa3_scores and split_enabled
@@ -1571,6 +1601,7 @@ def _validate_split_backend(
     global_split_fixedshape_reduce: bool,
     global_fused_fixedshape: bool,
     global_gqa2_vstage64_fixedshape: bool,
+    global_gqa2_vstage64_vec16_fixedshape: bool,
     swa_split_wave_local: bool,
     swa_split_gqa3_scores: bool,
     swa_split_fixed512_reduce: bool,
@@ -1627,6 +1658,16 @@ def _validate_split_backend(
                 (
                     "global_context_fused_exact_gated_"
                     "gqa2_vstage64_fixedshape_spans"
+                ),
+            )
+        )
+    if global_gqa2_vstage64_vec16_fixedshape:
+        requested.append(
+            (
+                global_threshold,
+                (
+                    "global_context_fused_exact_gated_"
+                    "gqa2_vstage64_vec16_fixedshape_spans"
                 ),
             )
         )

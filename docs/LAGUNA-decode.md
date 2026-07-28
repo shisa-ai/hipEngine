@@ -3573,7 +3573,8 @@ seven exact pairs and **18.027 tok/s** in clean production. Exact global GQA2
 with the same staged-V reuse then reaches **18.237 tok/s** in seven exact
 pairs and **18.230 tok/s** in clean production. The next bounded milestone is
 **20 tok/s**. Vectorizing the saturated SWA V-stage copy then reaches
-**18.806 tok/s** in seven exact pairs; same-GGUF Vulkan at
+**18.806 tok/s** in seven exact pairs. Vectorizing the padded global V-stage
+copy reaches **19.067 tok/s** in seven exact pairs; same-GGUF Vulkan at
 **23.348 tok/s** remains the directional comparator target.
 
 The post-global-GQA2 clean census records **816 dispatches/token**,
@@ -3859,6 +3860,15 @@ Three tracked-clean selector-unset runs measure
 **18.801765/18.814192/18.815353 tok/s**, median **18.814192**. That is
 **+3.204%** over prior clean 18.230064 and **+64.077%** over the 11.466687
 sprint start, with identical IDs, final state, and allocation lifecycle.
+
+The global copy-width successor preserves GQA2 compute and pads only the
+dynamic score/physical prefix so each V-stage transaction is 16-byte aligned.
+The live4000 LDS bound remains valid. Live513/576/639 leaves improve
+**22.29%/25.82%/25.99%** byte-exactly; seven resident pairs improve
+**18.794424 -> 19.066920 tok/s (+1.450%, -0.760 ms/token)**. Tracing records
+`<2,64,true>` at local256/VGPR32/static-LDS512/scratch32 and
+**141.09 -> 103.29 us (-26.79%)**. Scalar GQA2 remains rollback and GQA1
+remains fallback above live4000.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten

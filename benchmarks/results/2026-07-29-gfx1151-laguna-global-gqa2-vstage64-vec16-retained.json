@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T03:28:00+09:00",
+  "kind": "hipengine_laguna_global_gqa2_vstage64_vec16_retained",
+  "status": "accepted",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "6a1f79501e09798e155b26b7ee24006ebea70c12",
+    "tracked_clean": false,
+    "reason": "same-source rollback/candidate gate before retained logical-unit commit"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "implementation": {
+    "control": "exact global GQA2 V-stage64 with scalar BF16 copies",
+    "candidate": "same exact body with padded aligned 16-byte copies",
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 4096,
+    "max_live_count": 4000,
+    "workgroups": 24,
+    "workgroup_size": 256,
+    "value_stage_slots": 64,
+    "values_per_vector": 8,
+    "production_variant": "global_context_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_spans",
+    "rollback_variant": "global_context_fused_exact_gated_gqa2_vstage64_fixedshape_spans"
+  },
+  "leaf": {
+    "repetitions": 9,
+    "warmups": 5,
+    "burst": 50,
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.12370739936828613,
+        "candidate_median_ms": 0.09613743782043457,
+        "latency_change_percent": -22.28642885440808
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.14729846000671387,
+        "candidate_median_ms": 0.10926794052124024,
+        "latency_change_percent": -25.818680985354636
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.16279399871826172,
+        "candidate_median_ms": 0.1204899024963379,
+        "latency_change_percent": -25.986275019349524
+      }
+    ],
+    "f32_context_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "14e5c5d84198ef04dcaaf93d416a5983e6ff0b521709b44f5e105cff3e5ec076"
+  },
+  "resident_model_ab": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "repetitions": 7,
+    "control_decode_tok_s": 18.794423931428344,
+    "candidate_decode_tok_s": 19.06691990924288,
+    "throughput_change_percent": 1.4498767230575416,
+    "saved_ms_per_token": 0.7604147549571962,
+    "candidate_ms_per_token": 52.44685585086241,
+    "candidate_wins": 7,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "trajectory_exact": true,
+    "lifecycle_exact": true,
+    "raw_sha256": "a11a8deda6b6fc7c792da64bd9c4d8a4ef32147f73eb88147d3cc0a336e3cf7f"
+  },
+  "correctness": {
+    "cpu_reference_live_counts": [
+      513,
+      576,
+      639
+    ],
+    "explicit_eviction_position": 200,
+    "candidate_vs_rollback_f32_byte_exact": true,
+    "candidate_vs_rollback_gated_bf16_byte_exact": true,
+    "full_128_token_trajectory_exact": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "focused_tests": "2 passed"
+  },
+  "trace": {
+    "directory": "/tmp/laguna-global-vstage64-vec16-trace.jFmHqa",
+    "trace_sha256": "f10b7fd485dafe4524a15af916b886ca78cda01b2d24e2ecbe0343d86254daa2",
+    "control_kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, false>",
+    "candidate_kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, true>",
+    "observations_each": 12,
+    "control_median_us": 141.085,
+    "candidate_median_us": 103.2935,
+    "candidate_change_percent": -26.786,
+    "control": {
+      "workgroups": 24,
+      "workgroup_size": 256,
+      "vgpr_count": 32,
+      "static_lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroups": 24,
+      "workgroup_size": 256,
+      "vgpr_count": 32,
+      "static_lds_bytes": 512,
+      "scratch_bytes": 32
+    }
+  },
+  "commands": {
+    "leaf": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16 --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-gqa2-vstage64-vec16-leaf.json",
+    "resident_model_ab": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-gqa2-vstage64-vec16 --allow-dirty --output /tmp/laguna-p512-d128-global-gqa2-vstage64-vec16-ab.json",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-vstage64-vec16-trace.jFmHqa --output-file globalvec16 -- .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16 --samples 1 --warmups 1 --burst 2 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-vstage64-vec16-trace.jFmHqa/leaf.json",
+    "focused_tests": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback"
+  },
+  "notes": [
+    "Dynamic LDS metadata is padded to a 16-byte boundary only in the vec16 candidate; the live4000 bound remains below the 64-KiB workgroup limit.",
+    "The vec16 path changes only V staging transport; QK, softmax, PV, gate, and store order are unchanged.",
+    "Scalar global GQA2 V-stage64 remains rollback and GQA1 remains fallback above live4000."
+  ]
+}
