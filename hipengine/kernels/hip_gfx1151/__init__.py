@@ -270,8 +270,8 @@ LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_FIXEDSHAPE = True
 # Avoid the compiler-generated 32-byte private scratch aggregate used by the
 # retained vec16 copy and write each valid vector directly into the V tile.
 LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_FIXEDSHAPE = True
-# Exact diagnostic sibling; keep default-off until resident-model wall passes.
-LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = False
+# Exact score-domain sibling passes the seven-pair resident-model wall gate.
+LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
 LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 LAGUNA_SPLIT_GATE_FUSION = True

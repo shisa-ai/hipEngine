@@ -188728,3 +188728,19 @@ Vulkan local sizes verbatim will close the measured gap.
 - Record the cleanup trigger in `docs/REFACTOR.md`: promote only after an exact
   positive tracked-clean p512/d128 wall screen; otherwise remove the complete
   candidate seam.
+
+## 2026-07-29 06:03 JST — Retain exact global exp-domain specialization
+
+- Seven tracked-clean p512/d128 pairs improve generic-domain versus
+  assumed-domain compiler `expf` **19.235596 -> 19.243968 tok/s
+  (+0.0435%)** and **6.602343 -> 6.599471 s (-0.0435%)**, saving
+  **0.0226 ms/token**. Every candidate pair wins.
+- All 14 runs produce next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, deterministic state, and zero
+  tracked bytes after teardown. Combined with the byte-exact CPU/eviction
+  primitive and cached trace, the small wall gain is retainable.
+- Set the gfx1151 capability true only for gated
+  48Q/8KV/D128/capacity-4096 global decode through live4000. Explicit false
+  remains exact rollback; higher-live, non-natural, and peer routes are
+  unchanged. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-retained.json`.

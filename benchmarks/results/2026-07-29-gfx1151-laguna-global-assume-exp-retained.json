@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "date": "2026-07-29",
+  "status": "retained",
+  "performance_claim": true,
+  "source_revision": "e79a2f380c436d865b553bd022446386f79ab0f1",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_forward_calls_per_run": 127,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-assume-exp --output /tmp/laguna-p512-d128-global-assume-exp-ab.json",
+    "raw_sha256": "58aff04dc5af6696496e2f36fa8b1e3101013513b96ce1dd9504225d7642b589"
+  },
+  "control": {
+    "variant": "global_context_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_spans",
+    "decode_median_seconds": 6.602342772996053,
+    "decode_median_tok_s": 19.235596267348768,
+    "decode_samples_seconds": [
+      6.610365072032437,
+      6.602750424994156,
+      6.602342772996053,
+      6.601042477996089,
+      6.600794141064398,
+      6.60262227000203,
+      6.6016072309575975
+    ]
+  },
+  "candidate": {
+    "variant": "global_context_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "decode_median_seconds": 6.599470657994971,
+    "decode_median_tok_s": 19.243967672792824,
+    "decode_samples_seconds": [
+      6.600896866992116,
+      6.597096904064529,
+      6.599470657994971,
+      6.597255814005621,
+      6.598632112029009,
+      6.600477561005391,
+      6.599513887078501
+    ],
+    "throughput_change_percent": 0.04352038443573569,
+    "wall_change_percent": -0.0435014524363897,
+    "saved_ms_per_token": 0.022615078748680476,
+    "pair_wins": 7,
+    "pair_count": 7
+  },
+  "correctness": {
+    "pass": true,
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "tracked_returned_to_baseline": true,
+    "leaf_context_f32_byte_exact": true,
+    "leaf_gated_bf16_byte_exact": true,
+    "leaf_cpu_reference_pass": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0
+  },
+  "scope": {
+    "backend": "hip_gfx1151",
+    "attention_type": "global",
+    "capacity": 4096,
+    "maximum_live_count": 4000,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "peer_backends_changed": false,
+    "unsupported_shapes_changed": false
+  },
+  "evidence": {
+    "primitive": "benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json",
+    "code_object_native_exp_instructions": 3,
+    "trace_control_median_us": 90.49,
+    "trace_candidate_median_us": 88.526,
+    "trace_latency_change_percent": -2.170405569676205
+  },
+  "decision": "Promote on gfx1151 for the qualified global-attention shape. Keep explicit false rollback through the decode campaign."
+}

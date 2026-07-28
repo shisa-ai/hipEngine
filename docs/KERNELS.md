@@ -1290,9 +1290,14 @@ private/spill storage; the candidate changes scheduling around the softmax
 loop and contracts **830 -> 829** static instructions. Cached tracing names
 both local256/24-block templates at allocated VGPR32/scratch0 and improves
 aggregate median **90.490 -> 88.526 us (-2.17%)**. This is an admitted
-primitive only; production remains on the generic-domain direct-store body
-until a counterbalanced resident-model A/B is positive. Evidence:
-[`global assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json).
+primitive. Seven tracked-clean p512/d128 pairs then improve
+**19.235596 -> 19.243968 tok/s (+0.0435%, -0.0226 ms/token)** with 7/7 wins
+and exact generated IDs/state/lifecycle. gfx1151 now selects the assumed-domain
+body at the qualified natural global shape through live4000; explicit false
+restores the generic-domain direct-store body and peer/non-natural paths are
+unchanged. Evidence:
+[`global assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json) ·
+[`global assume-exp retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-retained.json).
 
 Tracked-clean selector-unset production measures
 **19.136600/19.146417/19.153280 tok/s**, median **19.146417**. This is
