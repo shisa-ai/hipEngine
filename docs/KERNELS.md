@@ -966,6 +966,24 @@ cached tracing cuts SWA **185.603 -> 173.749 ms (-6.39%)** and measures
 uses it; qrow2 remains residual
 (`benchmarks/results/2026-07-25-gfx1151-laguna-swa-sourcequal-production.json`).
 
+### Laguna gfx1151 decode GQA3 score extension
+
+LD-1 begins with a bit-exact, scratch-ABI-preserving score-owner screen before
+the larger split-K fused-attention rewrite. The separately registered
+`swa_context_split_{,tile16_}exact_gated_gqa3_scores_spans` variants load each
+BF16 SWA key once for three query heads, emit the unchanged 72-head score and
+physical-slot planes, and delegate to the retained wave-local value reducer.
+The live 1/65/127/128/256/257/511/512 ring, wrap, eviction, finite-extreme, and
+tied-score gate is byte-exact for both F32 context and gated BF16 output.
+Cached gfx1151 tracing records the tile16 GQA3 producer at local256, VGPR40,
+LDS0, scratch0. At live 511/512 its three samples take
+**20.839/20.559/19.035 us** versus retained
+**35.988/35.707/35.787 us**, a **42.1-46.8%** score-producer reduction.
+Earlier exact GQA9 and GQA3 value-reducer owners were removed after losing
+about **5-11%** at live 512: hot V reuse did not compensate for reduced
+parallel ownership. The gfx1151 capability is a clean full-cycle candidate;
+gfx1100 and ungated/fallback paths remain on the established score owner.
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

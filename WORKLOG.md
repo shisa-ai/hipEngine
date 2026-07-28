@@ -187342,3 +187342,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json`
   and updated `docs/LAGUNA-prefill.md`. No production code/default changed;
   retained decode remains **14.555265 tok/s**.
+
+## 2026-07-28 — Open exact gfx1151 SWA GQA3 score-owner screen
+
+- Started LD-1 at its arithmetic-preserving seam. The RED registry gate failed
+  on the absent gfx1151 GQA3 score variants. New raw-token and tile16 score
+  producers load one shared BF16 key for three of Laguna's nine SWA query heads,
+  reconstruct each existing 128-thread dot tree independently, write the
+  unchanged 72-head score/physical planes, and call the retained wave-local
+  value reducer and gate.
+- Closed two tempting value-owner widths first. Exact GQA9 at live 512 changes
+  the reducer from **199.373-203.420 us** to **221.694-223.057 us**
+  (about +10%). GQA3/local128 reaches **212.597-214.921 us** versus
+  **198.251-202.779 us**, and a local64/dim-split sibling reaches
+  **220.333-221.535 us** versus **208.790-213.961 us**. All are bit-exact,
+  VGPR24-40, and scratch-free, but reduced ownership loses to the hot-cache
+  retained scan. Remove all grouped-reducer code rather than keeping a dead
+  route.
+- The score owner passes the focused registry plus native GPU gate at live
+  **1/65/127/128/256/257/511/512**, including ring wrap, explicit eviction,
+  tied scores, finite extremes, and both F32 context and gated BF16 byte
+  identity. Cached `rocprofv3 --kernel-trace` names
+  `laguna_swa_attention_split_tile16_exact_gqa3_scores_kernel<3>` at
+  local256/VGPR40/LDS0/scratch0. The three live-511/512 candidate samples are
+  **20.839/20.559/19.035 us** versus retained
+  **35.988/35.707/35.787 us**, a **42.1-46.8%** leaf reduction.
+- Wire only the gfx1151 gated split-SWA capability; gfx1100, ungated calls,
+  serial attention, and the registered retained variants are unchanged. The
+  tracked-tree cleanliness guard requires a candidate commit before the
+  complete p512/d128 gate. Full-cycle performance is not yet claimed.
+- Correct the review's document ownership in `12767b350`: the measured decode
+  roofline, Vulkan comparator, Qwen transfer lessons, and LD plan now live in
+  `docs/LAGUNA-decode.md`; `docs/LAGUNA-prefill.md` keeps only a cross-link.

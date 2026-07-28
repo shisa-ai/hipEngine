@@ -3159,6 +3159,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert cache.swa_split_tile16_min_live == 257
         assert cache.split_gate_fusion
         assert cache.swa_split_wave_local
+        assert not cache.swa_split_gqa3_scores
         assert cache.allocation_count == 245
         assert cache.resident_nbytes == sum(runtime.allocations.values())
         assert sorted(runtime.allocations.values()).count(split_elements * 4) == 2
@@ -3179,7 +3180,29 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert gfx1151_cache.swa_split_tile16_min_live == 257
         assert gfx1151_cache.split_gate_fusion
         assert gfx1151_cache.swa_split_wave_local
+        assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.allocation_count == 245
+        resolved_variants = []
+
+        def resolve_probe(layer, variant):
+            resolved_variants.append((layer, variant))
+            return lambda *args, **kwargs: None
+
+        gfx1151_cache._resolve = resolve_probe
+        gfx1151_cache.position = 64
+        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.position = 511
+        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        assert resolved_variants == [
+            (
+                "laguna_attention_decode",
+                "swa_context_split_exact_gated_gqa3_scores_spans",
+            ),
+            (
+                "laguna_attention_decode",
+                "swa_context_split_tile16_exact_gated_gqa3_scores_spans",
+            ),
+        ]
     finally:
         gfx1151_cache.free()
     assert gfx1151_runtime.allocations == {}
@@ -3194,6 +3217,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
     )
     try:
         assert not shared_reducer.swa_split_wave_local
+        assert not shared_reducer.swa_split_gqa3_scores
         assert shared_reducer.split_gate_fusion
         assert shared_reducer.allocation_count == 245
     finally:
@@ -3249,6 +3273,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         assert rollback.swa_split_tile16_min_live is None
         assert not rollback.split_gate_fusion
         assert not rollback.swa_split_wave_local
+        assert not rollback.swa_split_gqa3_scores
         assert rollback.allocation_count == 243
         assert sorted(rollback_runtime.allocations.values()).count(split_elements * 4) == 0
     finally:
