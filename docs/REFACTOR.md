@@ -1858,6 +1858,8 @@ should be boring.
 - Keep the selector only while the bounded exact-score/tensorized-PV repair is
   active. That repair preserves exact scores and denominator order and improves
   **14.751829 -> 16.547822 tok/s (+12.175%)**, but still fails max KL at
-  **2.678710**. Remove the capability, runtime route, session selector, leaf,
-  and decode-specific benchmark mode after the exact local32 GQA3 reducer
-  screen no longer needs them as a diagnostic comparator.
+  **2.678710**. The final exact local32 GQA3 reducer comparator is also closed:
+  despite byte identity and local32/VGPR24/LDS0/scratch0, live-512 regresses
+  **237.661 -> 391.161 us (+64.6%)**. Remove the capability, runtime route,
+  session selector, leaf, and decode-specific benchmark mode before LD-2
+  integration.

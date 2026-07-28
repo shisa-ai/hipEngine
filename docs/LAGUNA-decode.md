@@ -3446,12 +3446,18 @@ complete lane reaches max KL **2.678710** at **566/576 (98.26%)** top-1.
 PV accumulation association alone is enough to violate the contract. Close
 tensorized all-layer attention and keep production exact.
 
-The next exact LD-1 body uses a new grid rather than a new arithmetic tree:
-one local32 workgroup owns 32 output dimensions for three adjacent query heads,
-reuses each BF16 V load across those heads, and replays each head's retained
+LD-1c then tested a new grid without changing an arithmetic operation: one
+local32 workgroup owned 32 output dimensions for three adjacent query heads,
+reused each BF16 V load across those heads, and replayed each head's retained
 logical-slot softmax, FMA, divide, and gate order. Four dimension partitions
-per query triple produce **8 KV heads x 3 triples x 4 = 96 workgroups/layer**,
-avoiding the 24/48-workgroup underfill that rejected grouped local128/local64.
+per query triple produced **8 KV heads x 3 triples x 4 = 96 workgroups/layer**,
+but that still reduced the active waves carrying independent exp/FMA chains.
+The candidate is F32/BF16 byte-exact and resource-clean at local32/VGPR24/
+LDS0/scratch0, yet loses at every live length: live 1 is
+**7.066 -> 8.290 us (+17.3%)**, live 128 is
+**59.588 -> 108.323 us (+81.8%)**, and live 512 is
+**237.661 -> 391.161 us (+64.6%)**. Remove it. Exact grouped-value reuse is
+closed unless a future design preserves the retained 288-wave concurrency.
 
 1. **LD-1 — D128 grouped-GQA split-K attention.** Adapt the proven Qwen
    topology, not its D256/qgroup8 constants. Register separate qgroup6 global
@@ -3459,8 +3465,9 @@ avoiding the 24/48-workgroup underfill that rejected grouped local128/local64.
    score/softmax/PV, and merge plus gate through bounded state. First require
    attention at or below **3.0 ms/token** at p512; stretch is **1.5 ms**.
    The retained GQA3 score owner is LD-1a. LD-1b's full-F32 and exact-QK/
-   tensorized-PV owners are both quality-rejected. LD-1c is the exact
-   96-workgroup local32 GQA3 reducer described above.
+   tensorized-PV owners are both quality-rejected. LD-1c's exact local32 GQA3
+   reducer is performance-rejected. Pause SWA value ownership and move to
+   LD-2; the retained GQA3 score owner remains the exact production default.
 2. **LD-2 — exact wave-owned multi-output F16 GEMV.** Target the
    **25.368-ms** unchanged-byte family floor with the eight-wave/eight-output
    block. Do not repeat local-size-only screens.

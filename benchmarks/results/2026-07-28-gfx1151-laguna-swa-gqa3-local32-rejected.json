@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-28T17:32:21+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa3_local32_rejected",
+  "status": "rejected_performance_removed",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "baseline_revision": "2cb3675feb9def5d1c4874e6eda0e3361127c5c2",
+    "candidate_was_uncommitted": true,
+    "candidate_source_retained": false
+  },
+  "system": {
+    "hardware": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "workload": {
+    "shape": "Laguna SWA decode, 72 query heads / 8 KV heads / D128 / BF16 KV",
+    "capacity": 512,
+    "baseline": "retained exact GQA3 score producer plus local128 wave-local reducer",
+    "candidate": "same exact score plane plus 96-workgroup local32 reducer; each workgroup owns 32 dimensions for three adjacent query heads",
+    "warmup_launches": 5,
+    "samples": 15,
+    "launches_per_sample": 200,
+    "timing": "HIP events around the complete two-kernel score plus gated-value route",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 .venv/bin/python3 - <<'PY' # inline allocation/append harness derived from tests/test_laguna_split_scores_gqa.py; 5 warmups + 15 alternating 200-launch HIP-event bursts at every listed live length"
+  },
+  "correctness": {
+    "test": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/pytest -q tests/test_laguna_split_scores_gqa.py::test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries",
+    "positions": [
+      0,
+      64,
+      126,
+      127,
+      255,
+      256,
+      510,
+      511,
+      512
+    ],
+    "ring_wrap_and_explicit_eviction": true,
+    "f32_context_bit_exact": true,
+    "gated_bf16_output_byte_exact": true
+  },
+  "performance": [
+    {
+      "live": 1,
+      "retained_us": 7.066100239753723,
+      "candidate_us": 8.290219902992249,
+      "candidate_delta_percent": 17.323836652523774
+    },
+    {
+      "live": 65,
+      "retained_us": 32.15230464935303,
+      "candidate_us": 62.02104091644287,
+      "candidate_delta_percent": 92.89765257213331
+    },
+    {
+      "live": 127,
+      "retained_us": 60.949063301086426,
+      "candidate_us": 107.58909225463867,
+      "candidate_delta_percent": 76.52296266335053
+    },
+    {
+      "live": 128,
+      "retained_us": 59.587531089782715,
+      "candidate_us": 108.32287788391113,
+      "candidate_delta_percent": 81.78782692086553
+    },
+    {
+      "live": 256,
+      "retained_us": 116.75252914428711,
+      "candidate_us": 206.3163948059082,
+      "candidate_delta_percent": 76.71257001288147
+    },
+    {
+      "live": 257,
+      "retained_us": 114.83854293823242,
+      "candidate_us": 203.74958038330078,
+      "candidate_delta_percent": 77.42264501987843
+    },
+    {
+      "live": 511,
+      "retained_us": 237.04513549804688,
+      "candidate_us": 390.47645568847656,
+      "candidate_delta_percent": 64.72662679538254
+    },
+    {
+      "live": 512,
+      "position": 511,
+      "retained_us": 237.66069412231445,
+      "candidate_us": 391.16058349609375,
+      "candidate_delta_percent": 64.58783179972497
+    },
+    {
+      "live": 512,
+      "position": 512,
+      "wrapped": true,
+      "retained_us": 237.0533561706543,
+      "candidate_us": 390.75489044189453,
+      "candidate_delta_percent": 64.83837088583162
+    }
+  ],
+  "profile": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-gqa3-local32-rejected-20260728 --output-file trace -- .venv/bin/pytest -q tests/test_laguna_split_scores_gqa.py::test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries",
+    "kernel": "laguna_swa_attention_split_exact_gated_gqa3_local32_reduce_kernel",
+    "grid_threads_x": 768,
+    "grid_blocks": "24 x 4 = 96",
+    "workgroup_size": 32,
+    "vgpr_count": 24,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "trace_path": "/tmp/laguna-gqa3-local32-rejected-20260728/trace_kernel_trace.csv",
+    "trace_sha256": "92e85fc6beedc8a17fd683a6af77c5a36521759e356bda7b884e9dedd1577d39"
+  },
+  "decision": {
+    "retained": false,
+    "production_changed": false,
+    "reason": "The regression is present at every live length despite low VGPR and zero LDS/scratch. Serial three-head exp/FMA chains reduce active wave concurrency; V reuse cannot amortize that latency.",
+    "next": "Close exact grouped-value ownership and move to LD-2 exact wave-owned multi-output source-F16 GEMV."
+  }
+}

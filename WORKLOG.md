@@ -187521,3 +187521,26 @@ Vulkan local sizes verbatim will close the measured gap.
   for three adjacent query heads, reuses V within the block, and uses four
   dimension partitions per triple for **96 workgroups/layer**. This is distinct
   from the rejected underfilled local128/local64 grouped reducers.
+
+## 2026-07-28 17:32 JST — Reject exact local32 GQA3 value ownership
+
+- RED required two new registered scalar-slot/tile16 variants; GREEN compared
+  the candidate with retained exact GQA3 scores plus the wave-local reducer at
+  positions **0/64/126/127/255/256/510/511/512**, including ring wrap and
+  explicit eviction. F32 context and gated BF16 output are byte-identical.
+- A 5-warmup, 15-sample, 200-launch HIP-event screen rejects the body at every
+  live length. Live 1 is **7.066 -> 8.290 us (+17.3%)**, live 128 is
+  **59.588 -> 108.323 us (+81.8%)**, and live 512 is
+  **237.661 -> 391.161 us (+64.6%)**; wrapped live 512 is similarly
+  **237.053 -> 390.755 us (+64.8%)**.
+- Cached tracing rules out resource spills: the 96-workgroup candidate is
+  local32/VGPR24/SGPR128/LDS0/scratch0. The regression is structural: each
+  wave carries three serial per-head exp/FMA chains, so V reuse gives up the
+  retained reducer's 288 active waves. Remove the kernel, exports, wrappers,
+  registry keys, and RED extensions; production remains exact at
+  **14.740486 tok/s**.
+- Close exact grouped-value ownership unless a design retains equivalent wave
+  concurrency. Proceed to LD-2's exact wave-owned multi-output source-F16
+  GEMV. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-local32-rejected.json`;
+  trace SHA-256 `92e85fc6...57d39`.
