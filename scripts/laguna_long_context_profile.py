@@ -136,6 +136,13 @@ def _parse_args() -> argparse.Namespace:
         help="explicit raw Q5/Q6 row slab; comparison defaults candidate to 8",
     )
     parser.add_argument(
+        "--raw-k-prefill-rowbatch-control",
+        type=int,
+        choices=(0, 4, 8, 16, 32),
+        default=0,
+        help="control row slab for a rowbatch comparison; defaults to scalar 0",
+    )
+    parser.add_argument(
         "--compare-raw-k-prefill-mmq",
         action="store_true",
         help="compare exact rowbatch8 with the Q5/Q6 producer-row MMQ owner",
@@ -318,6 +325,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and args.raw_k_prefill_rowbatch is None
         else args.raw_k_prefill_rowbatch
     )
+    raw_k_control = int(args.raw_k_prefill_rowbatch_control)
+    if not args.compare_raw_k_prefill_rowbatch and raw_k_control != 0:
+        raise ValueError(
+            "--raw-k-prefill-rowbatch-control requires "
+            "--compare-raw-k-prefill-rowbatch"
+        )
+    if args.compare_raw_k_prefill_rowbatch and raw_k_candidate == raw_k_control:
+        raise ValueError("raw-K rowbatch control and candidate must differ")
     if (
         args.compare_block_attention_hipblaslt
         and args.block_attention_hipblaslt
@@ -451,7 +466,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else args.swa_attention_hipblaslt
             ),
             raw_k_prefill_rowbatch=(
-                0
+                raw_k_control
                 if args.compare_raw_k_prefill_rowbatch
                 else args.raw_k_prefill_rowbatch
             ),
@@ -505,7 +520,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_raw_k_prefill_rowbatch:
                         owner.set_raw_k_prefill_rowbatch(
-                            int(raw_k_candidate) if mode == "candidate" else 0
+                            int(raw_k_candidate)
+                            if mode == "candidate"
+                            else raw_k_control
                         )
                     if args.compare_raw_k_prefill_mmq:
                         owner.set_raw_k_prefill_mmq(mode == "candidate")
@@ -728,6 +745,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_raw_k_prefill_rowbatch
             ),
             "raw_k_prefill_rowbatch_requested": args.raw_k_prefill_rowbatch,
+            "raw_k_prefill_rowbatch_control": raw_k_control,
             "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
             "compare_raw_k_prefill_mmq": args.compare_raw_k_prefill_mmq,
             "raw_k_prefill_mmq": active_raw_k_prefill_mmq,
