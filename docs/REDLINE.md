@@ -23,8 +23,11 @@ permitted to recover benchmark rows, but it is not an acceptable runtime fix.
   address-zero gfxhub fault followed by repeated full-device resets and VRAM
   loss.
 - Ownership is not yet isolated between Redline's queue/IB lifetime,
-  Hipfire's adapter lifetime, ROCr, and amdgpu. The available evidence points
-  more strongly to create/drop churn than replay count or packed-dot math.
+  Hipfire's adapter lifetime, ROCr/CLR, and amdgpu. Both cards report the exact
+  `0x00801431` / SQC-data / address-zero fault. An upstream search found a
+  near-identical unrelated gfx11 fault chain and several real ROCm
+  signal/queue-retirement bugs, which strengthens the resource-generation
+  lifetime hypothesis without identifying the originating component.
 - Production ROCm 7.14 and a return to the original 7.15 nightly each pass four
   fresh full matrices per card. That non-reproduction keeps runtime-version
   causality and exact-command repeatability unresolved; it does not clear the
@@ -45,6 +48,8 @@ Machine-readable evidence:
 | Fault-time ROCm | TheRock `7.15.0a20260711`; HIP 7.15.0-0000000 |
 | LLVM | AMD clang 23.0.0git `aa451e1f...e96` + TheRock patch |
 | Host kernel | CachyOS `7.1.3-2-cachyos`, amdgpu srcversion `8FC7CD0E...27AE` |
+| Scheduler controls | `cwsr_enable=1`, `mcbp=-1` (auto), kernel cmdline `amdgpu.runpm=0` |
+| MES firmware | both cards: MES `0x00000088`, MES_KIQ `0x00000108`; `linux-firmware-amdgpu 1:20260622-1`; uncompressed `gc_11_0_0_mes_2.bin` SHA-256 `d29eaf0b...6c957` |
 | Redline | clean `33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e` |
 | Hipfire bridge | `455ffb9dfd6a5712889b504737f88fbbe87d3efe` |
 | Same-HSACO binary | SHA-256 `655141e2e5eef7a1a31f08a9da7b6fb19cdc114b61a79152331ac1ee0a72a291` |
@@ -142,12 +147,15 @@ Raw hashes:
 - 25-second kernel journal: `380dfeed322d1f0143a34dff08ee2a1ed4b48892cbbfcaaf4fa8c3cecc4999df`
 
 The kernel journal attributes ten address-zero gfxhub faults to the exact
-`hipfire-6409-be` PID on ring 24 / vmid 8 / pasid 33067 / client 10. MES queue
-removal and eviction then fail, and amdgpu performs two successful full-device
-resets with VRAM loss. This is a real GPU VM fault, not a correctness mismatch,
-timeout, comparator rejection, or Python exception. The same signature was
-observed in the separate source-matched orchestration below, but exact-command
-repeatability and a fixed failure threshold have not yet been established.
+`hipfire-6409-be` PID on ring 24 / vmid 8 / pasid 33067 / client 10. The first
+fault is `GCVM_L2_PROTECTION_FAULT_STATUS=0x00801431`, `SQC (data) (0xa)`,
+`MORE_FAULTS=1`, `PERMISSION_FAULTS=3`, `MAPPING_ERROR=0`, and read access.
+MES queue removal and eviction then fail, and amdgpu performs two successful
+full-device resets with VRAM loss. This is a real GPU VM fault, not a
+correctness mismatch, timeout, comparator rejection, or Python exception. The
+same signature was observed in the separate source-matched orchestration below,
+but exact-command repeatability and a fixed failure threshold have not yet been
+established.
 
 ## Controls already run
 
@@ -220,7 +228,8 @@ The answer is **yes, GPU1 also fails**, but not identically:
 - there is no **userspace** address-zero message, but an unprivileged
   `journalctl -k` correlation subsequently recovered the missing kernel record:
   ten gfxhub faults from the exact `hipfire-6409-be` PID at address zero,
-  `ring:24`, `vmid:8`, `pasid:33335`, client 10;
+  `ring:24`, `vmid:8`, `pasid:33335`, client 10, with the same
+  `0x00801431` / `SQC (data)` / permission-3 / read tuple as GPU0;
 - two seconds later amdgpu reports `MES failed to respond to msg=REMOVE_QUEUE`,
   queue eviction/destruction failures, and initiates three successful mode-1 GPU
   resets. Each reset reports VRAM lost and creates an AMDGPU device coredump;
@@ -338,6 +347,74 @@ packed-dot math, or one profiled queue topology. It does not prove that Redline
 core owns the bug; ROCr queue destruction, HIP/ROCr interoperation, amdgpu, or
 two distinct defects may be involved.
 
+## Upstream issue and commit review
+
+A GitHub issue/PR/commit search on 2026-07-28 covered gfx1100/gfx11, retained
+PM4, HSA queue create/destroy, completion-signal reuse, MES `REMOVE_QUEUE`,
+ring 24, and the full fault-status tuple. These are comparative signals, not
+proof that unrelated reports share one root cause. In particular, ring 24 and
+client 10 are broad gfx11 KFD/gfxhub attribution fields.
+
+### Closest public fault signatures
+
+| Reference | Match to this fault | Important distinction / conclusion |
+| --- | --- | --- |
+| [ROCm/ROCm#6273, follow-up log](https://github.com/ROCm/ROCm/issues/6273#issuecomment-4582576191) | Strongest match: unrelated gfx1103 processes repeatedly produce address zero, ring 24, client 10, `SQC (data)`, permission `3`, mapping `0`, read faults, then failed `REMOVE_QUEUE`, MODE2 reset, and VRAM loss. Its status payload is `...1430`; ours is `...1431`, the same payload plus `MORE_FAULTS=1`. | APU and ordinary Ollama/VS Code workloads, not Redline or retained PM4. It proves this complete symptom chain is not Redline-exclusive, but a null shader-data access can have many producers. The issue remains open; `cwsr_enable=0` did not prevent its later faults. |
+| [ROCm/TheRock#6016, cancellation fault](https://github.com/ROCm/TheRock/issues/6016#issuecomment-5084608332) | Address-zero gfx11 shader fault followed two seconds later by failed `REMOVE_QUEUE`, failed KFD quiesce, coredump, and MODE2 reset while stopping an ongoing model workload. | gfx1103, ring 88, `SQC (inst)`, and cancellation after an already-hung workload. Relevant to teardown/cancellation ordering, not an exact client match. |
+| [ROCm/ROCm#5616](https://github.com/ROCm/ROCm/issues/5616) | Address-zero gfx11 fault followed by failed `REMOVE_QUEUE` and reset. | gfx1103/ring 88/`SQC (inst)` under OpenCL, memory pressure, firmware, and sleep/resume discussion. The known gfx1150 MES `0x83` firmware problem discussed there is not our Navi31 MES `0x88`. |
+| [ROCm/amdgpu#204](https://github.com/ROCm/amdgpu/issues/204) | Navi31 RX 7900 GRE and an RX 7900 XTX commenter report ring-24/client-10 faults; disabling pinned memory avoided one reproducer. | Fault addresses are nonzero and the decoded client is SDMA0, not SQC data. This is evidence that ring/client alone are insufficient, not an exact match. |
+| [ROCm/ROCm#2205](https://github.com/ROCm/ROCm/issues/2205) | Repeated multi-card gfx11 bandwidth loops fault on ring 24/client 10 and then damage MES restore/reset. | 2023 report, nonzero address and SDMA0/1 clients. Structurally similar stress, different producer. |
+| [ROCm/TheRock#1271](https://github.com/ROCm/TheRock/issues/1271), [#2655](https://github.com/ROCm/TheRock/issues/2655), and [#5993](https://github.com/ROCm/TheRock/issues/5993) | gfx11 VM faults can precede `REMOVE_QUEUE` failure, repeated reset, and device loss across HIP and Vulkan. | Mostly gfx115x/gfx1102, nonzero/memory-pressure or graphics faults, and known firmware/long-compute cases. Useful recovery-path precedents, not matches for our short address-zero SQC-data dispatch. |
+
+No public GitHub result contained the exact complete `0x00801431` status at the
+time of the search. Both hipEngine cards do.
+
+### Concrete lifetime bugs and fixes
+
+| Reference | Established upstream bug | Applicability here |
+| --- | --- | --- |
+| [ROCm/rocm-systems#8113](https://github.com/ROCm/rocm-systems/pull/8113) / superseded [#8107](https://github.com/ROCm/rocm-systems/pull/8107) (`ROCM-27035`) | HIP CLR cached a raw completion-signal handle after it could be recycled/destroyed, then used it to decide queue idleness. The fix requires queue-owned proof before hardware-queue release. | Highly relevant mechanism for the HIP rows sharing this process, but it is CLR rather than Redline's direct public-HSA queue. Inclusion in the opaque July 11 wheel was not proven from wheel metadata. |
+| [ROCm/rocm-systems#6750](https://github.com/ROCm/rocm-systems/pull/6750) | rocprofiler destroyed and recycled an HSA barrier signal while a queued packet still referenced it; the replacement signal could deadlock unrelated work. | Direct proof that HSA handle reuse before packet retirement is a real ROCm failure mode. The affected profiler serializer is not intentionally loaded by this benchmark. |
+| [ROCm/rocm-systems#8818](https://github.com/ROCm/rocm-systems/issues/8818) / [#8672](https://github.com/ROCm/rocm-systems/pull/8672) | rocJITsu recycled a destroyed queue's stale doorbell slot, intermittently losing or falsely completing the replacement queue's first dispatch. Retaining one queue passed; recreate failed. | The defect is in the simulator and its physical gfx942 HSA control passed 100 generations, so it is not evidence of a hardware/ROCr bug. Its public queue-generation reproducer and doorbell ledger are an unusually close diagnostic template. |
+| [ROCm/rocm-systems#8854](https://github.com/ROCm/rocm-systems/pull/8854) | A timed-out dispatch left a queue alive while packet operands were freed; upstream changed test ownership to destroy the queue before signal/kernarg/device allocations/executable/reader on every exit. | Supports queue-first teardown. Redline already declares/drops the queue before packet pointees, so missing this basic ordering is disfavored; success semantics and delayed hardware access remain testable. |
+| [tinygrad/tinygrad#3435](https://github.com/tinygrad/tinygrad/pull/3435) | tinygrad fixed an HSA GPU page fault by retaining code-object reader/storage through execution and synchronizing before destruction. | Redline already retains reader, executable, code bytes, and resolved kernels through every graph/IB, and Hipfire loads executables once for the process. This specific lifetime bug is disfavored. |
+| [`a1fc9f584c4a`](https://github.com/ROCm/amdgpu/commit/a1fc9f584c4aaf8bc1ebfa459fc57a3f26a290d8), [`101025e94b53`](https://github.com/ROCm/amdgpu/commit/101025e94b537e8b5426c73a985b26fc95c199cb), [`7919b4cad554`](https://github.com/ROCm/amdgpu/commit/7919b4cad5545ed93778f11881ceee72e4dbed66) | amdkfd fixes for a queue-destroy buffer-access race, a missed queue reset during destroy, and destroy-vs-GPU-reset cleanup. | All are ancestors of upstream Linux v7.1, and there is no evidence the running 7.1.3 CachyOS kernel reverted them. They establish that this boundary has had real races, not a presently identifiable missing-upstream patch. |
+| [`1fb710793ce2`](https://github.com/torvalds/linux/commit/1fb710793ce2619223adffaf981b1ff13cd48f17) | Enables the gfx11 MES long-running-compute workaround by default. | Also an ancestor of Linux v7.1. Our short-row faults and clean 321k-dispatch persistent graph do not resemble the long-compute trigger it addresses. |
+| [`ade41558d610`](https://github.com/ROCm/amdgpu/commit/ade41558d610e2859df18ea01df5436f0c7711e4) | Flushes the MES queue during reset-time queue removal to align post-reset cleanup. | Newer than the running v7.1 kernel and absent from torvalds v7.1. It may improve recovery after a fault; its one-line reset path cannot explain or fix the first address-zero access. |
+| [`f462df879c20`](https://github.com/ROCm/rocm-systems/commit/f462df879c20b63753d86ac07e0904c0b9c7cf6e) | Fixes a use-after-free in the new counted-queue release/query path. | Examined but not currently applicable: pinned Redline resolves the counted-queue symbols as an ABI requirement but creates/destroys its queues with `hsa_queue_create`/`hsa_queue_destroy`; no counted-queue call exists in its crates. |
+
+### Theory update from the review
+
+1. **The immediate event is a null scalar-data read by a live shader.** The
+   exact SQC-data/read/permission tuple on both cards says the GPU executed a
+   shader memory operation against VA zero. MES `REMOVE_QUEUE` begins two
+   seconds later, so it remains recovery damage rather than the initial event.
+2. **Resource retirement/reuse is now the leading concrete mechanism.** A late
+   packet or prematurely released queue referring to a destroyed/recycled
+   completion signal, kernarg, indirect IB, timestamp, or HIP buffer explains
+   address zero and fits recreate failures plus persistent-reuse success.
+   `#8113` and `#6750` show that this class of signal proof/reuse bug is real in
+   adjacent ROCm components; they do not prove Redline or ROCr owns this case.
+3. **Doorbell/queue-generation reuse moves up as a diagnostic, not as an
+   attribution.** rocJITsu `#8818` reproduces the retained-queue-pass / queue-
+   recreate-fail shape exactly, but only in its simulator. Log queue IDs, ring
+   bases, doorbell handles/values, and generation numbers before testing that
+   hypothesis on hardware.
+4. **Code-object-reader lifetime and basic drop order move down.** tinygrad's
+   known page-fault fix and ROCm's queue-first teardown rule are already present
+   in Redline. The remaining question is whether successful queue destruction
+   really retires every GPU reference before immediately freed addresses are
+   reused.
+5. **A mixed HIP/CLR predecessor remains plausible.** `#8113` gives a specific
+   way a HIP queue can be released without queue-owned completion proof. A
+   Redline-only lifecycle stress followed by HIP-added and Vulkan-added arms is
+   required; row order alone cannot clear a backend.
+6. **There is no upstream fix to claim yet.** The closest fault report is open,
+   the old kernel race fixes and long-compute workaround are already present,
+   and the newer MES flush patch affects recovery only. Disabling CWSR is not a
+   defensible workaround because the closest report later reproduced the same
+   address-zero SQC-data chain with CWSR disabled.
+
 ## What is ruled out, and what is not
 
 ### Ruled out or strongly disfavored
@@ -392,9 +469,11 @@ Do not rerun the full 240-row benchmark to diagnose this. Build a minimal
 upstreamable stress reproducer and run the following reductions in order:
 
 1. **Repeat one known-good tiny retained IB with recreate-per-cycle.** Run at
-   least 128 create/replay/wait/drop cycles and report queue IDs, destroy status,
-   completion handles, indirect/timestamp/kernarg addresses, and the exact
-   failing cycle. This tests churn without family changes.
+   least 128 create/replay/wait/drop cycles and report queue IDs, ring bases,
+   doorbell handles/last values, read/write indices, destroy status, completion
+   handles, indirect/timestamp/kernarg addresses, resource generation numbers,
+   and the exact failing cycle. This tests churn without family changes and
+   mirrors the useful rocJITsu `#8818` ledger without assuming its simulator bug.
 2. **Reuse versus recreate.** Hold one queue/IB for the same number of replays,
    then recreate every cycle. A recreate-only fault sharply isolates lifetime
    handling.
@@ -410,12 +489,16 @@ upstreamable stress reproducer and run the following reductions in order:
 7. **Prefix/order bisection.** Run `packed-dot` after each predecessor family and
    after repeated copies of one family. Distinguish poison-family from count
    threshold.
-8. **Teardown instrumentation.** Fail loudly on every non-success
-   `hsa_queue_inactivate`, `hsa_queue_destroy`, signal destroy, and memory free;
-   sample queue read/write indices before destruction; never silently continue
-   after an unproven teardown in the reproducer.
-9. **Fault/coredump correlation.** PID/PASID/VMID/ring/client and address-zero
-   journal correlation is now confirmed on both cards. On the next fault,
+8. **Teardown instrumentation and quarantine.** Fail loudly on every
+   non-success `hsa_queue_inactivate`, `hsa_queue_destroy`, signal destroy, and
+   memory free; sample queue read/write indices before destruction; never
+   silently continue after an unproven teardown. As a diagnostic arm, destroy
+   the queue first but quarantine its packet-referenced signals/kernargs/IBs/
+   timestamps for several later generations. Recreate-only failure disappearing
+   under quarantine would directly support delayed-reference/address-reuse.
+9. **Fault/coredump/firmware correlation.** PID/PASID/VMID/ring/client and the
+   exact `0x00801431` tuple are now confirmed on both cards. Before each stress,
+   record MES/MES_KIQ firmware and scheduler parameters. On the next fault,
    capture the transient AMDGPU device coredump before it disappears and pair it
    with the userspace queue/resource-address ledger. Keep privileged collection
    outside the benchmark and record the exact host command and permissions.
