@@ -1386,6 +1386,14 @@ without a comparison selector and all three trajectories/state/lifecycle are
 exact. Evidence:
 [`clean mixed32 exp4 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-production.json).
 
+The clean post-exp4 census keeps **816 compute dispatches/token** and measures
+**49.296 ms/token** kernel sum / **51.850 ms/token** span. SWA attention falls
+**3.583 -> 3.448 ms/token (-3.78%)** and total attention falls
+**4.873 -> 4.745 ms (-2.64%)**. The remaining attention path is
+**3.835 ms/token** slower than same-GGUF llama.cpp Vulkan and explains
+**44.3%** of the clean wall gap. Evidence:
+[`post-exp4 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp4-wall-reprofile.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.

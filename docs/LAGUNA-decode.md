@@ -4097,6 +4097,15 @@ without a comparison selector; IDs, state, and lifecycle remain exact.
 Evidence:
 [`clean mixed32 exp4 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-production.json).
 
+The clean post-exp4 trace keeps **816 compute dispatches/token** and measures
+**49.296 ms/token** kernel sum / **51.850 ms/token** span. Attention is now
+**4.745 ms/token = 3.448 SWA + 1.297 global**. Relative to serial-exp mixed32,
+SWA falls **3.78%**, total attention **2.64%**, and span **0.25%**. Same-GGUF
+llama.cpp Vulkan remains at **0.909 ms**, so attention still leaves
+**3.835 ms/token** and **44.3%** of the complete clean wall gap on the table.
+Evidence:
+[`post-exp4 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp4-wall-reprofile.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

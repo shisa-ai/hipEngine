@@ -188931,3 +188931,19 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked bytes after teardown. Production is now **+69.399%** over the
   11.466687 sprint start. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp4-production.json`.
+
+## 2026-07-29 07:50 JST — Re-profile the mixed32 exp4 production wall
+
+- A tracked-clean, require-cached `rocprofv3 --kernel-trace` run on
+  `3c48a0014` segments all 127 p512/d128 decode transitions by global
+  dispatch ID and keeps **816 compute dispatches/token**. No compiler runs
+  under profiling.
+- Median kernel sum is **49.296 ms/token** and span is **51.850 ms/token**.
+  Attention is **4.745 ms = 3.448 SWA + 1.297 global**. Against serial-exp
+  mixed32, SWA falls **3.78%**, total attention **2.64%**, kernel sum
+  **0.27%**, and span **0.25%**.
+- llama.cpp Vulkan remains at **0.909 ms/token** attention. The residual
+  attention gap is **3.835 ms**, or **44.3%** of the complete clean
+  **8.652-ms/token** wall gap. Continue with structural exact attention work.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-exp4-wall-reprofile.json`.
