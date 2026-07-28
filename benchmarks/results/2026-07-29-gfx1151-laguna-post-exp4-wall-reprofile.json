@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T07:50:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_exp4_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "3c48a0014aa8e78eba742b8feac0c213769932ce",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-post-exp4-wall.QPSdM1",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-exp4-wall.QPSdM1 --output-file postexp4 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-exp4-wall.QPSdM1/bench.json",
+    "trace_sha256": "6dd6a99697d9ddc195546e0c612a07954b9e22a2bb26ae041851e01df0cbf25e",
+    "bench_sha256": "e6d5e92dd6856e7bb87ed03bc6b5a0de558dc00686fe63d7053024ced80c949c",
+    "segmentation": "Sort the two-queue trace by globally unique Dispatch_Id, close each request at argmax stage 2, discard warmup128 and timed prefill512, and report medians over 127 one-row segments. Exclude five runtime copyBuffer dispatches per token from compute dispatch count/sum/span.",
+    "profiler_wall_tok_s": 18.641646334220003,
+    "publication_wall_tok_s": 19.42448713488897,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true,
+    "compiler_invocations_under_profiler": 0
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 49.29609,
+    "median_kernel_span_ms_per_token": 51.849619,
+    "attention": {
+      "calls_per_token": 48,
+      "median_ms_per_token": 4.744546
+    },
+    "attention_breakdown": {
+      "swa_mixed32_exp4_calls_per_token": 36,
+      "swa_mixed32_exp4_median_ms_per_token": 3.447712,
+      "global_direct_calls_per_token": 12,
+      "global_direct_median_ms_per_token": 1.296834
+    },
+    "mixed32_exp4_resources": {
+      "workgroups_per_layer": 32,
+      "local_size": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "comparison": {
+    "prior_post_mixed32_profile": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-post-mixed32-wall-reprofile.json",
+      "dispatches_per_token": 816,
+      "kernel_sum_ms_per_token": 49.431942,
+      "kernel_span_ms_per_token": 51.981727,
+      "attention_ms_per_token": 4.873386,
+      "swa_attention_ms_per_token": 3.583205,
+      "global_attention_ms_per_token": 1.280043
+    },
+    "changes_percent": {
+      "dispatches": 0.0,
+      "kernel_sum": -0.2748263460901401,
+      "kernel_span": -0.2541431530353022,
+      "attention": -2.6437470785199535,
+      "swa_attention": -3.7813354245710196,
+      "global_attention": 1.3117528083040897
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "wall_ms_per_token": 42.829522098341634,
+      "logged_attention_ms_per_token": 0.909423,
+      "hipengine_attention_gap_ms_per_token": 3.835123,
+      "hipengine_total_wall_gap_ms_per_token": 8.65188861050877,
+      "attention_share_of_remaining_wall_gap": 0.4432700387915047
+    }
+  },
+  "finding": {
+    "priority": "attention remains the largest comparator gap",
+    "reason": "Exact lane-parallel exponential issue removes 0.129 ms/token from attention and 0.132 ms/token from kernel span, but the exact path still spends 4.745 ms/token versus Vulkan's 0.909 ms/token.",
+    "next_gate": "Continue with a structurally distinct exact fused candidate that increases useful work per staged-V barrier or tensorizes QK/PV without introducing a global score repair."
+  }
+}
