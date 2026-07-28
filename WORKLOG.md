@@ -188418,3 +188418,30 @@ Vulkan local sizes verbatim will close the measured gap.
   versus the **24,576 B** explicit V-stage arrays. If this is compiler-created
   vector-copy storage rather than unavoidable alignment, recovering it may
   raise residency without changing attention arithmetic.
+
+## 2026-07-29 03:51 JST — Retain direct SWA vec16 LDS stores
+
+- Generated ISA proves the unexplained **6,144 B** is one 16-byte aggregate
+  slot per each of 384 threads. The old `uint4 value` lowers to
+  global -> per-thread LDS temporary -> real LDS. A separately registered
+  `<64,true,true>` sibling branches before assignment and writes valid
+  vectors directly into the real V tile; invalid vectors receive four scalar
+  zero stores. No attention arithmetic or association changes.
+- RED failed only on the absent wrapper. GREEN passes the wrapped/evicted CPU
+  gate and is F32/BF16 byte-identical to retained vec16. The nine-sample leaf
+  improves **0.107000 -> 0.105197 ms (-1.686%)**.
+- Cached native tracing records the intended old/new symbols 11 times each.
+  Median kernel time improves **101.590 -> 99.227 us (-2.326%)**, fixed LDS
+  falls **30,720 -> 24,576 B**, logical VGPR falls **143 -> 138**, logical
+  SGPR falls **36 -> 33**, and scratch remains zero.
+- Seven counterbalanced resident-model pairs move **19.070545 -> 19.083269
+  tok/s (+0.0667%, -0.0350 ms/token)**. Six pairs win and the seventh is
+  effectively tied at -0.0007%; every generated hash/token/position and
+  allocation lifecycle matches. Promote only saturated natural-shape gfx1151
+  SWA; retain the old vec16 path as exact rollback. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-retained.json`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot complete
+  because the existing lineage manifest points at absent read-only checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. This is an in-tree codegen repair,
+  not a port; Python/JSON, focused CPU/runtime, resident-model, lifecycle, and
+  cached native-trace gates complete independently.

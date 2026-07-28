@@ -1121,6 +1121,23 @@ Evidence:
 [`retained vec16 V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-retained.json) ·
 [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-production.json).
 
+Generated ISA reveals that the first vec16 form materializes its `uint4`
+aggregate as one hidden 16-byte LDS slot per thread, adding **6,144 B** and an
+LDS round trip. The exact direct-store sibling branches before assignment:
+valid vectors write from global memory to the real V tile, while invalid
+vectors receive scalar zero stores. Wrapped/evicted F32/BF16 output is
+byte-identical. The leaf improves **0.107000 -> 0.105197 ms (-1.686%)**;
+seven resident-model pairs improve **19.070545 -> 19.083269 tok/s (+0.0667%,
+-0.0350 ms/token)** with exact trajectories/state. Cached tracing improves
+**101.590 -> 99.227 us (-2.326%)**, fixed LDS falls
+**30,720 -> 24,576 B**, logical VGPR/SGPR fall **143/36 -> 138/33**, and
+scratch remains zero. gfx1151 now selects the direct form only for saturated
+natural SWA; the aggregate vec16 owner remains registered rollback. A
+128-slot direct stage is not retained: the earlier exact stage-width screen
+regresses stage64 **0.107446 -> 0.109075 ms (+1.516%)**. Evidence:
+[`retained direct vec16 store`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-retained.json) ·
+[`rejected stage128`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage128-vec16-rejected.json).
+
 The global-attention sibling keeps the retained dynamic-live score ABI and all
 48 local256 reducer workgroups, but specializes the production
 48Q/8KV/D128/capacity-4096 geometry and scratch strides. F32 context and gated
