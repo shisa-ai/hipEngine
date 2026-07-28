@@ -2723,11 +2723,11 @@ class LagunaGGUFResidentSession:
             )
             if self.raw_k_prefill_mmq:
                 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
-                    q8_1_d8s8_f32_nbytes,
+                    q8_1_d8r8s8_f32_nbytes,
                 )
 
                 self._raw_k_prefill_mmq_workspace_nbytes = (
-                    q8_1_d8s8_f32_nbytes(
+                    q8_1_d8r8s8_f32_nbytes(
                         self.prefill_chunk_size,
                         max(config.hidden_size, config.feed_forward_length),
                     )
@@ -2960,13 +2960,13 @@ class LagunaGGUFResidentSession:
             return
         from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
             build_gguf_k_mmq_prefill,
-            q8_1_d8s8_f32_nbytes,
+            q8_1_d8r8s8_f32_nbytes,
         )
 
         nbytes = int(self._raw_k_prefill_mmq_workspace_nbytes)
         if nbytes <= 0:
             config = self.config
-            nbytes = q8_1_d8s8_f32_nbytes(
+            nbytes = q8_1_d8r8s8_f32_nbytes(
                 self.prefill_chunk_size,
                 max(config.hidden_size, config.feed_forward_length),
             )
