@@ -187439,3 +187439,19 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused runtime construction/rollback and wrap-plus-eviction tests pass.
   Commit the bounded candidate so the benchmark cleanliness guard can run the
   complete p512/d128 candidate and matched rollback gate.
+
+## 2026-07-28 16:36 JST — Add full-ring SWA decode category gate
+
+- Extend the existing complete ten-prompt, four-category AR harness with an
+  explicit `swa_decode_exact` versus `swa_decode_hipblaslt` comparison. Both
+  modes preserve the canonical prompt's leading token once and repeat its
+  complete post-leading token sequence to exactly 512 tokens, forcing the
+  production full-ring seam without prompt-specific inputs or branches.
+- The benchmark disables/enables only the session's tensorized SWA selector,
+  applies the same 512-token input to free-running and teacher-forced lanes,
+  and keeps KL <=0.05 plus suite/category top-1 >=90% authoritative. The clean
+  p512/d128 matched A/B owns performance admission, so this mode reports
+  category timing without imposing the prefill-oriented performance policy.
+- RED failed on the absent comparison/helper. GREEN:
+  `python3 -m pytest tests/test_laguna_grouped_down_category_bench.py -q`
+  passes all **21** tests. Commit the harness before the tracked-clean GPU gate.
