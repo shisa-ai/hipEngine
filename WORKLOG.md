@@ -187374,3 +187374,29 @@ Vulkan local sizes verbatim will close the measured gap.
 - Correct the review's document ownership in `12767b350`: the measured decode
   roofline, Vulkan comparator, Qwen transfer lessons, and LD plan now live in
   `docs/LAGUNA-decode.md`; `docs/LAGUNA-prefill.md` keeps only a cross-link.
+
+## 2026-07-28 — Retain exact gfx1151 SWA GQA3 score ownership
+
+- Committed the exact gfx1151-only score-owner candidate at `0249d1534`, then
+  ran the complete cached p512/d128 gate on a tracked-clean tree. Three
+  candidate samples are **14.740036/14.746789/14.740486 tok/s**, median
+  **14.740486**, over exactly 127 synchronized eager calls.
+- Disable only `LAGUNA_SWA_SPLIT_GQA3_SCORES` in-process at the same clean
+  revision for a matched rollback. Its samples are
+  **14.553829/14.564225/14.563678 tok/s**, median **14.563678**. The retained
+  owner therefore improves throughput **1.214036%**, cuts wall
+  **8.720325 -> 8.615727 s (-1.199474%)**, and saves
+  **0.823607 ms/generated token**. All three candidate samples exceed all
+  three controls.
+- Candidate and rollback both produce first token **2930**, final token
+  **74107**, final position **638**, and generated-ID SHA-256
+  `94f803f7...ebda32` in every repetition. Tracked allocations return to zero.
+  Candidate/rollback raw SHA-256 values are
+  `cbda7628...e9883f` / `2e67f810...8f42a`.
+- Promote the gfx1151 score capability. Cumulative post-merge decode is now
+  **11.466687 -> 14.740486 tok/s (+28.550523%)**; same-GGUF Vulkan remains
+  **23.348381 tok/s**, **58.396%** ahead. Publish
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json`
+  and update the benchmark rollup, kernel catalog, decode plan, and prefill
+  summary cross-reference. LD-1 remains open: the retained score seam does not
+  satisfy the <=3.0-ms full-attention gate.
