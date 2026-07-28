@@ -188744,3 +188744,15 @@ Vulkan local sizes verbatim will close the measured gap.
   remains exact rollback; higher-live, non-natural, and peer routes are
   unchanged. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-retained.json`.
+
+## 2026-07-29 06:08 JST — Publish clean global exp-domain production
+
+- Three tracked-clean selector-unset p512/d128 runs measure
+  **19.236922/19.250313/19.249443 tok/s**, median **19.249443**. The promoted
+  capability is active and improves **0.0371% / 0.0193 ms/token** over the
+  preceding clean 19.242300 packet.
+- All runs preserve next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, lifecycle, and zero
+  tracked bytes after teardown. Production is now **+67.873%** over the
+  11.466687 sprint start. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-production.json`.

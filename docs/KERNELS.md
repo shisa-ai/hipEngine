@@ -1298,6 +1298,11 @@ restores the generic-domain direct-store body and peer/non-natural paths are
 unchanged. Evidence:
 [`global assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-candidate.json) ·
 [`global assume-exp retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-retained.json).
+Three tracked-clean selector-unset runs measure
+**19.236922/19.250313/19.249443 tok/s**, median **19.249443** and **+0.0371%**
+over the preceding clean 19.242300 packet. IDs, state, and lifecycle remain
+exact. Evidence:
+[`global assume-exp production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-assume-exp-production.json).
 
 Tracked-clean selector-unset production measures
 **19.136600/19.146417/19.153280 tok/s**, median **19.146417**. This is
