@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T04:20:57+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_direct_store_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "771324c2472964e711c0fee90bdb7e5540c6878b",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-post-global-direct-wall.Ldu1VI",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-global-direct-wall.Ldu1VI --output-file postdirect -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-global-direct-wall.Ldu1VI/bench.json",
+    "trace_sha256": "5c90aa0f440c5368f2722275096d9972969d8bb684c20739aab923b1790b1a46",
+    "bench_sha256": "739578132a2abf75b0a9ec0cb35197a5ac5c2f56a369de8407a9130566dd6f1a",
+    "segmentation": "Discard warmup128 and timed prefill512, then report medians over 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 18.48738946158081,
+    "publication_wall_tok_s": 19.146417141683663,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 50.016464,
+    "median_kernel_span_ms_per_token": 52.567299,
+    "families": {
+      "source_f16_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 24.084149
+      },
+      "attention": {
+        "calls_per_token": 48,
+        "median_ms_per_token": 5.466026
+      },
+      "selected_q4_gate_up": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 8.406342
+      },
+      "selected_q4_q6_down": {
+        "calls_per_token": 47,
+        "median_ms_per_token": 4.825185
+      },
+      "dense_shared_quant_projection": {
+        "calls_per_token": 144,
+        "median_ms_per_token": 3.718141
+      },
+      "lm_head_argmax": {
+        "calls_per_token": 3,
+        "median_ms_per_token": 1.119943
+      },
+      "router": {
+        "calls_per_token": 94,
+        "median_ms_per_token": 1.067045
+      },
+      "norm_rope_gate": {
+        "calls_per_token": 145,
+        "median_ms_per_token": 1.070408
+      }
+    },
+    "attention_breakdown": {
+      "swa_direct_calls_per_token": 36,
+      "swa_direct_median_ms_per_token": 4.151949,
+      "global_direct_calls_per_token": 12,
+      "global_direct_median_ms_per_token": 1.314189
+    }
+  },
+  "comparison": {
+    "prior_post_vec16_profile": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-post-vec16-wall-reprofile.json",
+      "dispatches_per_token": 816,
+      "kernel_sum_ms_per_token": 50.238391,
+      "kernel_span_ms_per_token": 52.814021,
+      "attention_ms_per_token": 5.651564,
+      "swa_attention_ms_per_token": 4.179921,
+      "global_attention_ms_per_token": 1.471643
+    },
+    "changes_percent": {
+      "dispatches": 0.0,
+      "kernel_sum": -0.44174782588081163,
+      "kernel_span": -0.4671524631688184,
+      "attention": -3.2829496401350022,
+      "swa_attention": -0.6691992504164523,
+      "global_attention": -10.699198107149622
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "wall_ms_per_token": 42.829522098341634,
+      "logged_attention_ms_per_token": 0.909423,
+      "hipengine_attention_gap_ms_per_token": 4.556603,
+      "attention_share_of_remaining_wall_gap": 0.4847671330850198
+    }
+  },
+  "finding": {
+    "next_surface": "cooperative_tiled_attention",
+    "reason": "Copy-codegen cleanup is exhausted while attention remains the largest comparator gap at +4.557 ms/token and 48.5% of the remaining clean wall gap.",
+    "target": "Build a bounded Vulkan-informed Br16/Bc64 cooperative candidate with a predeclared numerical repair strategy; do not repeat the rejected unqualified online GQA9 association."
+  }
+}

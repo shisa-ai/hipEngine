@@ -151,6 +151,7 @@ remains prefill-only.
 [`retained SWA direct-store artifact`](results/2026-07-29-gfx1151-laguna-swa-gqa3-vstage64-vec16-direct-retained.json) ·
 [`retained global direct-store artifact`](results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-retained.json) ·
 [`clean global direct-store production artifact`](results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json) ·
+[`post-direct-store wall census`](results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json) ·
 [`retained fused-GQA2 SWA artifact`](results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
 [`retained fused one-head global artifact`](results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained selected tile8 artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json) ·
