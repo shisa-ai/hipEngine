@@ -1329,11 +1329,12 @@ count. Cleanup has removed the rejected raw-Q5/Q6 MMQ owner plus the unowned
 Laguna rowbatch8/fused-SiLU and losing pair16-rowbatch4 diagnostics. The
 base/rowbatch4/adaptive/auto grouped-dual keys remain because they independently
 own Qwen3.5 GGUF's exact default-on grouped-prefill route. WPF-3 has now
-candidate-admitted an exact local32 qrow4 SWA body and C256-qualified policy.
-It preserves all M512 state at KL0, traces at VGPR72/LDS0/scratch0, and improves
-dirty paired 512/1K **118.296/106.751 -> 131.852/124.817 tok/s**; the package
-default remains unchanged until the separate promotion unit. Clean publication
-then precedes an exact dense/shared Q5/Q6 output-column-tiling screen. P6 and
+candidate-admitted an exact local32 qrow4 SWA body and C256-qualified policy,
+then promoted that policy as the gfx1100 package default. It traces at
+VGPR72/LDS0/scratch0; a no-override M512 gate preserves all state at KL0 and a
+paired 512/1K gate improves **117.813/106.486 -> 131.044/124.348 tok/s**. Clean
+selector-unset publication now precedes the exact dense/shared Q5/Q6
+output-column-tiling screen. P6 and
 WPF-1R remain closed. The detailed gates and 150-tok/s short-only stop rule are
 owned by `LAGUNA-prefill.md`.
 

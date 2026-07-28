@@ -922,7 +922,14 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         resolve_laguna_swa_decode_variant("hip_gfx1100", "swa_context_spans")
         == "swa_context_spans"
     )
-    assert resolve_laguna_swa_prefill_variant("hip_gfx1100") == "swa_context_rows_spans"
+    assert (
+        resolve_laguna_swa_prefill_variant("hip_gfx1100")
+        == "swa_context_rows_qrow4_m128_c256_exact_spans"
+    )
+    assert (
+        resolve_laguna_swa_prefill_variant("hip_gfx1100", "swa_context_rows_spans")
+        == "swa_context_rows_spans"
+    )
     assert (
         resolve_laguna_swa_prefill_variant("hip_gfx1151", "swa_context_rows_spans")
         == "swa_context_rows_spans"

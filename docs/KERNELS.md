@@ -442,10 +442,15 @@ The qualified four-slice sum improves **21.059 -> 9.389 ms (2.243x)**. Cached
 tracing names qrow4 at local32/VGPR72/SGPR128/LDS0/scratch0. Complete M512
 state matches all 48 hidden boundaries, logits, full K/V spans, repeat, and
 lifecycle at KL0. A dirty same-weight 512/1K gate improves
-**118.296/106.751 -> 131.852/124.817 tok/s (+11.459%/+16.923%)**. This is
-candidate admission only; the gfx1100 package default and clean topline remain
-unchanged until the next unit. Evidence:
-[`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json).
+**118.296/106.751 -> 131.852/124.817 tok/s (+11.459%/+16.923%)** during
+candidate admission. The gfx1100 package now exports the qualified policy as
+its default. A second no-override M512 gate is KL0/bit-exact through all 48
+boundaries and full K/V spans; paired 512/1K improves
+**117.813/106.486 -> 131.044/124.348 tok/s (+11.230%/+16.774%)**. Explicit
+local128 remains rollback. The clean topline is unchanged until publication.
+Evidence:
+[`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) ·
+[`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json).
 
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its

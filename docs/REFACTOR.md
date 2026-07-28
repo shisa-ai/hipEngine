@@ -77,8 +77,9 @@ should be removed or collapsed.
 
 - Added 2026-07-29. WPF-3 registers the direct exact qrow4 body plus
   `swa_context_rows_qrow4_m128_c256_exact_spans`, which keeps wave32 below its
-  measured rows/context crossover. The package default is unchanged during
-  candidate admission; explicit local128, wave32, qrow2, qrow4, and online
+  measured rows/context crossover. The gfx1100 package now exports the
+  qualified policy after no-override deep-state KL0 and paired 512/1K gains of
+  **11.230%/16.774%**. Explicit local128, wave32, qrow2, qrow4, and online
   variants remain available for rollback and the separate arithmetic screen.
 - After clean package publication, remove only benchmark comparison plumbing
   that no longer owns a rollback. Preserve the local128 unfused fallback and

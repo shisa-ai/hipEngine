@@ -53,6 +53,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q8_T16_PREFILL_TWO_WAVE as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS as GFX1100_GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
+    LAGUNA_SWA_PREFILL_VARIANT as GFX1100_LAGUNA_SWA_PREFILL_VARIANT,
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
@@ -541,9 +542,13 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == "swa_context_rows_qrow4_m128_online_spans"
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None
+        )
+        == "swa_context_rows_qrow4_m128_c256_exact_spans"
+        == GFX1100_LAGUNA_SWA_PREFILL_VARIANT
+    )
     assert GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GFX1100_GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GGUF_PREFILL_ROUTER_SELECT_THREADS == 128
