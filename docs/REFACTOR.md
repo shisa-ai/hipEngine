@@ -1840,3 +1840,21 @@ should be boring.
   127 calls, and preserves the complete trajectory/lifecycle. Keep the
   explicit serial rollback until a short context-crossover check confirms the
   inherited **127/65/257** thresholds on gfx1151.
+
+## Laguna gfx1151 tensorized SWA decode rollback
+
+- Added 2026-07-28 as a gfx1151 full-ring C1 candidate behind
+  `LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT`, the
+  `decode_swa_attention_hipblaslt` constructor argument, and the matching
+  session setter. It leaves short contexts, global attention, gfx1100, and
+  explicit false on the exact split path.
+- The complete wrap-plus-eviction leaf improves
+  **0.251302 -> 0.073779 ms (3.406x)** within the numerical gate, but runtime
+  promotion is still pending the clean p512/d128 trajectory, lifecycle,
+  trace, and matched rollback gates.
+- If the complete gate passes, keep explicit false through one p128/p512/p1K/
+  p4K crossover and complete category refresh, then remove the positive
+  constructor/setter experiment semantics while preserving the exact
+  short-context and unsupported-backend fallback. If it fails, remove the
+  capability, runtime route, session selector, and leaf implementation rather
+  than carrying a dead library path.

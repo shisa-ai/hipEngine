@@ -187428,3 +187428,14 @@ Vulkan local sizes verbatim will close the measured gap.
   Production selection remains unchanged pending a clean p512/d128 matched
   rollback and trajectory/lifecycle gate. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json`.
+
+## 2026-07-28 16:30 JST — Open tensorized SWA production gate
+
+- Wire the leaf behind gfx1151 capability
+  `LAGUNA_DECODE_SWA_ATTENTION_HIPBLASLT`, with a session setter for matched
+  rollback. Only C1 SWA with a full 512-token ring is admitted; short
+  contexts, global attention, gfx1100, and explicit false remain on the
+  existing exact path.
+- Focused runtime construction/rollback and wrap-plus-eviction tests pass.
+  Commit the bounded candidate so the benchmark cleanliness guard can run the
+  complete p512/d128 candidate and matched rollback gate.
