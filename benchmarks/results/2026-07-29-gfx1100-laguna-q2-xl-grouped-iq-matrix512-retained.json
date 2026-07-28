@@ -1,0 +1,218 @@
+{
+  "schema_version": 2,
+  "kind": "hipengine_laguna_wpf2_grouped_iq_matrix512_retained",
+  "status": "accepted",
+  "performance_claim": true,
+  "claim_scope": "Exact gfx1100 Laguna UD-Q2_K_XL matrix512/attention128/RB32 prefill with expert-major IQ3/IQ4 down reuse at 512 and 1024 tokens; no 4K or long-context claim below 150 tok/s",
+  "created_at": "2026-07-29",
+  "revision": "f25ac13b8ddc79709b0444a49e9dd3e1c42b6799",
+  "platform": {
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "rocm_version": "7.2.4 / HIP 7.2.53211-3d9ef42",
+    "gpu_queues": 1,
+    "kv_dtype": "bf16"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "direct_gguf": true
+  },
+  "defaults": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "swa_attention_rows": 128,
+    "raw_k_prefill_rowbatch": 32,
+    "selected_gate_up_mode": "grouped_exact",
+    "selected_down_mode": "grouped_exact",
+    "raw_k_prefill_mmq": false
+  },
+  "implementation": {
+    "gate_up": "retained exact route-major pair16/local64 arithmetic",
+    "metadata": "one stable expert compaction and one exact post-SiLU gather per sparse layer",
+    "down": {
+      "gguf_iq3_xxs": "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+      "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out"
+    },
+    "restore": "registered exact sorted-lane weighted reducer",
+    "fallbacks": [
+      "paired selected_gate_up_mode=direct and selected_down_mode=direct",
+      "prefill_chunk_size=128",
+      "prefill_chunk_size=256",
+      "unsupported quant/key misses use the registered exact route-major chain"
+    ]
+  },
+  "commands": {
+    "selector_unset_publication": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf2-m512-grouped-exact-selector-unset-512-1k.json",
+    "cached_profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpf2-m512-grouped-exact-clean-runtime-trace --output-file trace -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf2-m512-grouped-exact-clean-runtime-profile-child.json",
+    "full_state": "See benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json for the exact M128/M256/M512 state/routing command and primitive gates."
+  },
+  "correctness": {
+    "pass": true,
+    "clean_publication": {
+      "repo_tracked_clean": true,
+      "revision_matches": true,
+      "next_token_ids": {"512": 2930, "1024": 95},
+      "final_positions_exact": true,
+      "repeat_next_token_deterministic": true,
+      "tracked_returned_to_baseline": true,
+      "finite": true
+    },
+    "all_capacity_gate": {
+      "matrix_rows": [128, 256, 512],
+      "all_48_hidden_boundaries": true,
+      "logits_exact": true,
+      "final_and_post_hidden_exact": true,
+      "kv_and_kv_live_spans_exact": true,
+      "shared_prefix_routing_exact": true,
+      "same_mode_repeat_deterministic": true,
+      "lifecycle_exact": true,
+      "max_kl_divergence": 0.0,
+      "top1_agreement": 1.0
+    },
+    "actual_quant_transitions": {
+      "layer_1_iq2_to_iq3": "bit exact at post-SiLU rows, every down row, and final MoE output",
+      "layer_47_iq3_to_iq4": "bit exact at post-SiLU rows, every down row, and final MoE output"
+    },
+    "evidence": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json"
+  },
+  "performance": {
+    "previous_clean_matrix256_rowbatch32": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json",
+      "tok_s": {"512": 86.23926438789273, "1024": 80.45186905460976}
+    },
+    "clean_selector_unset": {
+      "512": {
+        "samples_seconds": [5.05939388112165, 5.159712163032964, 5.168680104892701],
+        "median_seconds": 5.159712163032964,
+        "median_tok_s": 99.23034150397993,
+        "percent_change_vs_previous_clean": 15.063993423755395
+      },
+      "1024": {
+        "samples_seconds": [11.093806813005358, 11.184073501965031, 11.312600915785879],
+        "median_seconds": 11.184073501965031,
+        "median_tok_s": 91.55876879922903,
+        "percent_change_vs_previous_clean": 13.805645381687825
+      }
+    },
+    "dirty_counterbalanced_admission": {
+      "matrix256": {
+        "direct_tok_s": {"512": 86.17481233520934, "1024": 79.9244568155525},
+        "grouped_tok_s": {"512": 96.64286412970195, "1024": 89.04909028120788},
+        "improvement_percent": {"512": 12.147461086161915, "1024": 11.41657238498719}
+      },
+      "matrix512": {
+        "direct_tok_s": {"512": 86.12894397071169, "1024": 79.88683762341127},
+        "grouped_tok_s": {"512": 98.28859317723995, "1024": 90.55512855720463},
+        "improvement_percent": {"512": 14.117959243367917, "1024": 13.354253655757375},
+        "improvement_vs_grouped_matrix256_percent": {"512": 1.7028976348727687, "1024": 1.691244987726237}
+      }
+    }
+  },
+  "profile": {
+    "compiler_spawned_under_profiler": false,
+    "clean_provenance": true,
+    "512": {
+      "dispatches": 1479,
+      "kernel_sum_seconds": 5.076125734,
+      "kernel_span_seconds": 5.091956034,
+      "dense_shared_seconds": 2.349245821,
+      "selected_iq_gate_up_seconds": 1.242116673,
+      "selected_iq_down_seconds": 0.56465987,
+      "selected_iq_total_seconds": 1.806776543,
+      "attention_seconds": 0.865892756,
+      "change_vs_matrix256_percent": {
+        "kernel_sum": -12.136965098778784,
+        "kernel_span": -12.26856207648086,
+        "selected_iq": -27.160492323076813,
+        "dense_shared": -0.9650855652728163,
+        "attention": -3.002320068593789
+      }
+    },
+    "1024": {
+      "dispatches": 2962,
+      "kernel_sum_seconds": 11.14610627,
+      "kernel_span_seconds": 11.179360023,
+      "dense_shared_seconds": 4.728201609,
+      "selected_iq_gate_up_seconds": 2.512102089,
+      "selected_iq_down_seconds": 1.132325951,
+      "selected_iq_total_seconds": 3.64442804,
+      "attention_seconds": 2.664366085,
+      "change_vs_matrix256_percent": {
+        "kernel_sum": -11.446192172400572,
+        "kernel_span": -11.559671147470807,
+        "selected_iq": -27.121885330322403,
+        "dense_shared": -0.7049489671293263,
+        "attention": -3.4668084215910944
+      }
+    },
+    "target_resources": [
+      {
+        "kernel": "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<8>",
+        "calls_total": 180,
+        "workgroup_size_x": 128,
+        "grid_size_x": 393216,
+        "grid_size_y": 256,
+        "vgpr": 48,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+        "calls_total": 8,
+        "workgroup_size_x": 128,
+        "grid_size_x": 393216,
+        "grid_size_y": 256,
+        "vgpr": 64,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    ]
+  },
+  "memory": {
+    "resident_and_peak_allocated_bytes": 40248812196,
+    "peak_allocations": 1167,
+    "planned_row_moe_scratch_bytes": 439021600,
+    "tracked_after_bytes": 0,
+    "active_allocations_after": 0
+  },
+  "threshold": {
+    "target_tok_s": 150,
+    "both_short_shapes_reach_target": false,
+    "four_k_run_performed": false,
+    "long_context_reopened": false,
+    "selected_iq_perfect_removal": {
+      "512": {"floor_seconds": 3.285179491, "ceiling_tok_s": 155.85145390157922},
+      "1024": {"floor_seconds": 7.534931983, "ceiling_tok_s": 135.9003641055163}
+    },
+    "attention_fraction_of_target_wall": {"512": 0.253679518359375, "1024": 0.39028800073242187},
+    "next_action": "Reprice the existing P6 signed-byte IQ2 MMQ comparator at M512, then prioritize bounded exact repair and/or short attention under the frozen gates."
+  },
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf2-m512-grouped-exact-selector-unset-512-1k.json",
+      "sha256": "02bff2769d2a3f294bd5d1953bdec3b7914f7aeaeb4df4af0f94dd3491d87157"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-m512-grouped-exact-clean-runtime-profile-child.json",
+      "sha256": "49c1e2d8e5d49985bbd2567eab19ceeecf604abe3679324b32f78fdd090a3800"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-m512-grouped-exact-clean-runtime-trace/trace_kernel_trace.csv",
+      "sha256": "e92b252766293dc1f4b74b4d1adab4807c51290f26144c2faa83f7e43b35265b"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-m512-grouped-exact-clean-runtime-profile-summary.json",
+      "sha256": "ecd1123f7c9ec026abb21c30311ce144fc48644ab349be1183405c6c2a2f8e04"
+    }
+  ],
+  "limitations": [
+    "The clean retained claim covers only deterministic 512/1024-token prefill on the stated model, device, queue, and runtime.",
+    "No 4K or longer run was performed because both short shapes remain below 150 tok/s.",
+    "The existing P6 changed-arithmetic IQ2 MMQ path remains explicit and unpromoted pending M512 repricing and the complete quality/repair gates."
+  ]
+}

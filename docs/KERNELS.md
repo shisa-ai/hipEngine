@@ -392,13 +392,16 @@ M256 **86.175/79.924 -> 96.643/89.049 tok/s (+12.147%/+11.417%)** and M512
 the independently measured grouped M256 rows by **1.703%/1.691%**, so gfx1100
 now defaults to matrix512/attention128 plus `grouped_exact`; explicit
 M128/M256 and `direct` remain exact rollbacks, while unsupported quant/key
-misses fail closed to the registered exact route-major chain. Cache-only package tracing names
-90 IQ3 rowbatch8 calls at local128/VGPR48/SGPR128/LDS512/scratch0 and four IQ4
-calls at local128/VGPR64/SGPR128/LDS512/scratch0, with no compiler under the
-profiler. The clean package-resolved topline publication follows the code
-commit; the committed artifact below is correctness/admission evidence, not
-that clean topline.
-Evidence: [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json).
+misses fail closed to the registered exact route-major chain. Clean
+package-resolved publication reaches **99.230/91.559 tok/s** at 512/1K,
+**+15.064%/+13.806%** over the preceding M256/RB32 packet. The complete cached
+trace names 180 IQ3 rowbatch8 calls at local128/VGPR48/SGPR128/LDS512/scratch0
+and eight IQ4 calls at local128/VGPR64/SGPR128/LDS512/scratch0 across both
+shapes, with no compiler under the profiler. Versus the clean M256 trace,
+selected IQ falls **27.160%/27.122%**, kernel sum **12.137%/11.446%**, and span
+**12.269%/11.560%**.
+Evidence: [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) ·
+[`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
