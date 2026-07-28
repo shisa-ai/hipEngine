@@ -540,8 +540,9 @@ __global__ void gguf_k_prefill_out_rowtile_kernel(
 
 // Large-prefill sibling of the exact small-B rowtile above. Grid Y owns fixed
 // ROW_BATCH slabs, so every encoded weight value is reconstructed once and
-// reused across four/eight prompt rows. Each valid row keeps the scalar
-// kernel's thread-local K order and wave/cross-wave reduction tree exactly.
+// reused across four/eight/sixteen/thirty-two prompt rows. Each valid row
+// keeps the scalar kernel's thread-local K order and wave/cross-wave reduction
+// tree exactly.
 template <typename scalar_t, typename out_t, int qtype, int ROW_BATCH>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_prefill_out_rowbatch_kernel(
@@ -3931,8 +3932,12 @@ extern "C" int hipengine_##NAME##_gemv_rowbatch##ROW_BATCH##_bf16_f32_out( \
 
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 4)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 8)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 16)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 32)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 4)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 8)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 16)
+HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 32)
 
 #undef HIPENGINE_GGUF_K_ROWBATCH_EXPORTS
 

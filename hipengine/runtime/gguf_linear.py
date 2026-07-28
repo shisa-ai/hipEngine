@@ -128,10 +128,10 @@ _ROWTILE_QUANT_BLOCKS: Mapping[str, int] = {
 }
 
 # Large-prefill exact row reuse for raw Q5_K/Q6_K. Execution owners select a
-# fixed four- or eight-row slab through the context-local policy below; zero is
+# fixed 4/8/16/32-row slab through the context-local policy below; zero is
 # the scalar fallback. Keeping the policy context-local avoids backend/quant
 # branches in model code and remains safe for concurrent request owners.
-_RAW_K_PREFILL_ROWBATCHES = frozenset({0, 4, 8})
+_RAW_K_PREFILL_ROWBATCHES = frozenset({0, 4, 8, 16, 32})
 _RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset({"gguf_q5_k", "gguf_q6_k"})
 _RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
@@ -677,7 +677,9 @@ def raw_k_prefill_rowbatch_session(row_batch: int) -> Iterator[None]:
 
     selected = int(row_batch)
     if selected not in _RAW_K_PREFILL_ROWBATCHES:
-        raise ValueError("raw-K prefill row batch must be one of 0, 4, or 8")
+        raise ValueError(
+            "raw-K prefill row batch must be one of 0, 4, 8, 16, or 32"
+        )
     token = _raw_k_prefill_rowbatch.set(selected)
     try:
         yield
@@ -734,7 +736,7 @@ def _raw_k_prefill_rowbatch_dispatch(
     """Select exact fixed-grid-Y Q5/Q6 row reuse for rows above small-B."""
 
     selected = int(row_batch)
-    if selected not in {4, 8} or rows <= _ROWTILE_MAX_ROWS:
+    if selected not in (_RAW_K_PREFILL_ROWBATCHES - {0}) or rows <= _ROWTILE_MAX_ROWS:
         return dispatch
     if (
         not backend_package_capability(

@@ -1118,7 +1118,7 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
 
 
-def test_laguna_raw_k_prefill_rowbatch8_is_gfx1100_default_and_rollbackable() -> None:
+def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     from hipengine.runtime.laguna_gguf_runner import (
         LagunaGGUFResidentSession,
         resolve_laguna_raw_k_prefill_rowbatch,
@@ -1128,17 +1128,19 @@ def test_laguna_raw_k_prefill_rowbatch8_is_gfx1100_default_and_rollbackable() ->
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151") == 0
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 4) == 4
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 8) == 8
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 16) == 16
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 32) == 32
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 0) == 0
     with pytest.raises(ValueError, match="not supported"):
-        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151", 8)
+        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151", 32)
     with pytest.raises(ValueError, match="row batch"):
-        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 16)
+        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 64)
 
     session = object.__new__(LagunaGGUFResidentSession)
     session.backend = "hip_gfx1100"
     session.raw_k_prefill_rowbatch = 0
-    session.set_raw_k_prefill_rowbatch(8)
-    assert session.raw_k_prefill_rowbatch == 8
+    session.set_raw_k_prefill_rowbatch(32)
+    assert session.raw_k_prefill_rowbatch == 32
     session.set_raw_k_prefill_rowbatch(0)
     assert session.raw_k_prefill_rowbatch == 0
 

@@ -93,7 +93,7 @@ def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.Monkey
             "UD-Q2_K_XL",
             "--compare-raw-k-prefill-rowbatch",
             "--raw-k-prefill-rowbatch",
-            "8",
+            "32",
         ],
     )
 
@@ -104,7 +104,7 @@ def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.Monkey
     assert args.safety_reserve_gib == 0.0
     assert args.quant_label == "UD-Q2_K_XL"
     assert args.compare_raw_k_prefill_rowbatch is True
-    assert args.raw_k_prefill_rowbatch == 8
+    assert args.raw_k_prefill_rowbatch == 32
 
 
 def test_lpf5_cli_supports_raw_k_mmq_comparison(monkeypatch: pytest.MonkeyPatch) -> None:

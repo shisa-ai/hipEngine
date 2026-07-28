@@ -467,7 +467,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         *(
             ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
             for quant in ("gguf_q5_k", "gguf_q6_k")
-            for row_batch in (4, 8)
+            for row_batch in (4, 8, 16, 32)
             for output_dtype in ("bf16", "f32")
         ),
         # WPF-1B producer quantization and raw-Q5/Q6 MMQ32 are likewise
