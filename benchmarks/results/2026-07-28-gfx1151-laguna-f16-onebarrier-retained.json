@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T18:20:00+09:00",
+  "kind": "hipengine_laguna_f16_decode_onebarrier_retained",
+  "status": "retained_default",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "all 48 rows==1 source-F16 QKV, gate, and attention-output projections",
+    "geometry": "unchanged local256, eight wave32s/output, one workgroup/output",
+    "arithmetic": "unchanged dot order, wave reductions, ordered cross-wave sum, and F32/RNE-BF16 stores",
+    "optimization": "remove the generic reducer's second block barrier; only thread 0 consumes the final sum",
+    "fallback": "HIPENGINE_LAGUNA_F16_DECODE=gemv"
+  },
+  "primitive_gate": {
+    "artifact": "benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-candidate.json",
+    "all_six_natural_shapes_byte_exact": true,
+    "all_six_natural_shapes_faster": true,
+    "weighted_family_ms": {
+      "control": 31.315823796987537,
+      "candidate": 31.097098345756528,
+      "latency_change_percent": -0.6984502552094707,
+      "saving_ms_per_token": 0.21872545123100906
+    },
+    "focused_tests": "29 passed"
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-f16-decode-onebarrier --output /tmp/laguna-p512-d128-f16-onebarrier-ab.json",
+    "protocol": "one loaded model; seven counterbalanced control/candidate resets; p512 plus 127 synchronized eager C1 decode calls",
+    "control_decode_tok_s": 14.758912010680373,
+    "candidate_decode_tok_s": 14.800190834758007,
+    "throughput_change_percent": 0.27968744611908125,
+    "control_decode_seconds": 8.604970333050005,
+    "candidate_decode_seconds": 8.580970435985364,
+    "saving_ms_per_token": 0.18897556743811902,
+    "all_candidate_samples_faster_than_all_controls": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "production_trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=onebarrier PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-onebarrier-production-trace.RiKYxI --output-file production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-onebarrier-production-trace.RiKYxI/bench.json",
+    "sha256": "2ab7d4afe4c47238587ea401dbb6b96a4882512f3d123733ec34527a822e775d",
+    "candidate_calls": 18288,
+    "expected_candidate_calls": "144 projection calls/token x 127 decode transitions",
+    "triple_calls": 6096,
+    "single_calls": 12192,
+    "retained_decode_gemv_calls": 0,
+    "resources": {
+      "local_size": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "require_cached_build": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "gfx1100_default_changed": false,
+    "production_decode_tok_s": 14.800190834758007,
+    "production_wall_ms_per_token": 67.56669634634144,
+    "previous_canonical_tok_s": 14.740486,
+    "cumulative_change_from_previous_canonical_percent": 0.4050397982672038,
+    "next": "Continue LD-2 toward the 25.368-ms unchanged-byte F16 family floor; keep exact GEMV rollback through this campaign."
+  }
+}

@@ -1844,9 +1844,9 @@ should be boring.
 ## Laguna source-F16 decode one-barrier selector
 
 - Added 2026-07-28 as `HIPENGINE_LAGUNA_F16_DECODE=auto|gemv|onebarrier`.
-  gfx1151 `auto` remains GEMV while explicit `onebarrier` selects the exact
-  same-grid single/triple siblings for rows==1. The explicit modes support the
-  immediate same-session production and trace gates.
+  gfx1151 `auto` now selects the exact same-grid single/triple siblings for
+  rows==1. Explicit `gemv` remains the campaign rollback; peer backends retain
+  GEMV.
 - The primitive preserves every output byte and improves all six natural
   roles **0.57-1.71%**, with weighted leaf family
   **31.316 -> 31.097 ms/token (-0.698%)**. If full-state, cached trace, and
@@ -1854,3 +1854,9 @@ should be boring.
   active decode campaign and then collapse the gfx1151 positive selection
   into the default dispatch. Remove the candidate and selector if any
   production gate regresses.
+- The promotion trigger is satisfied: seven same-session p512/d128 pairs move
+  **14.758912 -> 14.800191 tok/s (+0.280%)**, every candidate beats every
+  control, all generated hashes match, and cached tracing records exactly
+  **18,288 = 144 x 127** candidate calls with zero retained decode GEMVs.
+  Keep explicit `gemv` through LD-2, then collapse the positive selector as
+  described above.
