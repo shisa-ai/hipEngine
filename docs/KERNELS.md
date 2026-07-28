@@ -373,7 +373,10 @@ actual M128 roles at maximum KL **5.9453e-5** / minimum top-1 **96.875%**.
 Inclusive quantize+MMQ improves every N>=1024 role **5.009-15.848x**; N48/N72
 still lose and remain fallback-only. Cached W7900 tracing names D8 producer at
 local256/VGPR24/LDS0/scratch0 and Q5/Q6 bodies at local128/VGPR48/56,
-LDS3584/scratch0. It has no runtime owner or default yet.
+LDS3584/scratch0. The default-off `raw_k_prefill_mmq` owner now selects this
+D8/S8 policy/ABI and allocates **2,359,296 bytes** at M128; rejected D4 remains
+available only through its explicit primitive keys. The package default is
+still MMQ-off/rowbatch8 pending D8 full-state and complete quality gates.
 Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

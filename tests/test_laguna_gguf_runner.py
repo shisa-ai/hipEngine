@@ -1184,8 +1184,8 @@ def test_laguna_raw_k_prefill_mmq_resources_are_lazy_and_bounded(monkeypatch) ->
     assert session.raw_k_prefill_mmq
     assert session._raw_k_prefill_mmq_library is library
     assert session._raw_k_prefill_mmq_workspace is not None
-    assert session._raw_k_prefill_mmq_workspace.nbytes == 1_966_080
-    assert tuple(runtime.allocations.values()) == (1_966_080,)
+    assert session._raw_k_prefill_mmq_workspace.nbytes == 2_359_296
+    assert tuple(runtime.allocations.values()) == (2_359_296,)
     session.set_raw_k_prefill_mmq(False)
     assert not session.raw_k_prefill_mmq
 
