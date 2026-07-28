@@ -382,8 +382,8 @@ across all 48 hidden boundaries/KV/live spans. Clean default-off A/B moves
 576-step lane rejects D8 at maximum KL **0.400292** despite **98.264%** top-1.
 The package default therefore remains MMQ-off/rowbatch8. D4->D8 improves only
 275/576 teacher steps while worsening 301/576 and leaves 28 steps above the KL
-limit in both variants; next screen a two-stage per-K16 Q8 residual correction,
-not another runtime promotion attempt.
+limit in both variants. The completed two-stage residual screen below is the
+last blind precision variant; future changed arithmetic requires exact repair.
 Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) ·
 [`D8 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json).
 
@@ -398,10 +398,16 @@ default-off `raw_k_prefill_mmq` owner now selects this D8R8/S8 policy/ABI and
 allocates **4,325,376 bytes** at M128. Shared-weight M128 full state passes at
 KL **0.009152**, same top-1, and byte-exact candidate repeat across all 48
 hidden boundaries/KV/live spans. Clean default-off A/B moves
-**79.022/73.686 -> 123.466/111.324 tok/s** at 512/1K. D4/D8 remain explicit
-diagnostic primitive paths, and package production remains MMQ-off/rowbatch8
-pending the complete residual quality gate.
-Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json).
+**79.022/73.686 -> 123.466/111.324 tok/s** at 512/1K. The complete 18-prompt,
+576-step lane nevertheless rejects D8R8 at maximum KL **0.964321** despite
+**562/576 (97.569%)** top-1; category top-1 remains above 90%. Reducing maximum
+actual-role KL roughly 68x versus D8 while worsening the autoregressive maximum
+closes D16 and further blind residual precision screens. D4/D8/D8R8 remain
+explicit diagnostics, package production remains MMQ-off/rowbatch8, and any
+future MMQ owner must use bounded fail-closed exact repair against the newly
+widened exact baseline.
+Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) ·
+[`D8R8 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
