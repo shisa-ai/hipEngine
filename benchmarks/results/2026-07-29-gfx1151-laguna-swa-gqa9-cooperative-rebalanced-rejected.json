@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T00:35:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa9_cooperative_rebalanced_rejected",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "dfb9c9d07e71af1bcfd18bd8a06f3592f5804039",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "runtime": "hipengine/runtime/laguna_kv.py"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512; 64 local256 cooperative blocks",
+    "score_phase": "8 KV heads x 8 K64 splits, exact wave32 QK tree, one global score/physical plane",
+    "pv_phase": "after one grid barrier, map all 288 query-head/dimension-partition tasks wave-major across the 64 blocks, activating four or five waves per block instead of one",
+    "arithmetic": "unchanged scalar slot-order maximum, exponent, denominator, per-output PV FMA, divide, gate, and stores"
+  },
+  "correctness": {
+    "red": "candidate registry key was absent",
+    "green": "saturated ring wrap and explicit eviction are F32 context and BF16 gated byte-exact",
+    "focused_result": "36 passed",
+    "production_generated_ids_match": true,
+    "production_final_token_id": 74107,
+    "production_final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-exact-cooperative-rebalanced --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa9-exact-cooperative-rebalanced-leaf.json",
+    "raw_sha256": "cdb6cfcf039c52260e1dbb05d58d0b24d4e67e8d5aa3cf4e3a8c5d81227a7201",
+    "control_median_ms": 0.08480172157287598,
+    "candidate_median_ms": 0.08517468452453614,
+    "latency_change_percent": 0.43980587273766414,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "production": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa9-exact-cooperative-rebalanced --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa9-exact-cooperative-rebalanced-ab.json",
+    "raw_sha256": "5e29e21ec61bd2b3c18aff184b9cc00aa156522b47409eff6020f9e9ad2732a0",
+    "control_decode_tok_s": 17.09575727851548,
+    "candidate_decode_tok_s": 16.418309796557,
+    "throughput_change_percent": -3.9626643670815365,
+    "regression_ms_per_token": 2.4135641343011613,
+    "all_candidate_samples_slower_than_all_controls": true
+  },
+  "trace_attempt": {
+    "status": "profiler_crash_after_successful_benchmark",
+    "tool": "rocprofv3 --kernel-trace",
+    "symptom": "SIGSEGV in rocr::HSA::hsa_signal_store_screlease during cooperative-kernel tracing; no trace CSV was emitted",
+    "stderr_sha256": "08de28dcecdec075ed714e829f26e30b58ee7f57f1a607fb284f72229c9d72e1",
+    "stdout_sha256": "d66da58fb4135d84d6d7cca64aedeb254bcec627ffb8a667a6b224cf2aa57468",
+    "resource_claim_made": false
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 17.097043759837383,
+    "finding": "Rebalancing removes the old cooperative leaf disaster, but the per-layer cooperative/global-score phase boundary costs about the same 2.2-2.4 ms/token as the exact multi-dispatch repair.",
+    "next": "Stay inside the retained ordinary fused-GQA2 workgroup: compute each owned head's exact 512 softmax weights and denominator once into LDS, then let its four original dimension waves replay the unchanged PV FMA order."
+  }
+}
