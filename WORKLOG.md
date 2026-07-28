@@ -188624,3 +188624,25 @@ Vulkan local sizes verbatim will close the measured gap.
   expression, then moves to cooperative QK/PV ownership and scheduling.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-bounded-exp-rejected.json`.
+
+## 2026-07-29 05:32 JST — Admit exact SWA exponential-domain assumption
+
+- Keep the compiler's exact `expf` expression and math mode. The new registered
+  candidate only exposes the already-proven `score - wave_max <= 0` invariant
+  through `__builtin_assume`; QK, ordered softmax/PV arithmetic, gate, stores,
+  and `KVLiveSpans` are unchanged.
+- RED fails on the absent wrapper. GREEN passes wrapped positions 512-519 with
+  explicit position-200 eviction and is F32/BF16 byte-exact to the retained
+  route. The nine-sample leaf is also byte-exact and improves **0.106007 ->
+  0.097387 ms (-8.13%)**.
+- ISA confirms that the compiler removes generic-domain work without replacing
+  the arithmetic: both bodies retain 65 native exponential instructions and
+  logical VGPR138/SGPR33/LDS24576/scratch0, while static instructions contract
+  **3,196 -> 2,821 (-11.73%)** and text **17,920 -> 16,884 B (-5.78%)**.
+  Cached tracing names both local384/24-block templates at allocated
+  VGPR144/LDS24576/scratch0; three steady observations improve **126.838 ->
+  91.812 us (-27.61%)**.
+- Admit the primitive only. Next add a default-off saturated-SWA resident
+  selector and require byte-exact generated state plus a positive seven-pair
+  p512/d128 wall before promotion. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-candidate.json`.

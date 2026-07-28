@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T05:32:15+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_assume_exp_candidate",
+  "status": "candidate_primitive_admitted",
+  "pass": true,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "9577a28f5ee36a84bd9170de780e1091bf1bd96e",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": "72Q/8KV/D128/SWA512; 24 local384 GQA3 workgroups; 64-slot direct vec16 V staging",
+  "optimization": {
+    "changed": "Expose the exact score-minus-maximum <= 0 invariant with __builtin_assume before the unchanged compiler expf call.",
+    "unchanged": [
+      "the expf expression and compiler math mode",
+      "QK products and wave32 reduction tree",
+      "slot-order maximum and denominator additions",
+      "slot-order PV FMA sequence",
+      "context divide, softplus gate, BF16 rounding, and stores",
+      "KVLiveSpans visibility and ring addressing"
+    ]
+  },
+  "correctness": {
+    "red": "focused wrapped/evicted GPU test failed on the absent assume-exp wrapper",
+    "green": "wrapped positions 512-519 with explicit position-200 eviction are F32/BF16 byte-exact against the compiler-expf control and pass the CPU attention tolerance",
+    "focused_result": "1 passed",
+    "leaf_context_f32_byte_exact": true,
+    "leaf_context_max_abs_error": 0.0,
+    "leaf_gated_bf16_byte_exact": true,
+    "leaf_gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-gqa3-assume-exp-leaf.json",
+    "raw_sha256": "50b7a9d0fbe09aa8775cede587b64fecf766d6ece06ca9554dd61a59547f09da",
+    "control_median_ms": 0.10600729942321778,
+    "candidate_median_ms": 0.09738718032836914,
+    "latency_change_percent": -8.13162786124203
+  },
+  "isa": {
+    "library_sha256": "9766655464c7db8a018de0fd004f7824884cf584599d090b7f0e1607017c60b4",
+    "code_object_sha256": "17509f3fb45e8c67fda1a8b6ebee4320d5c422fa269c97541eda99c0550a73d5",
+    "disassembly_sha256": "5f13faefd1e11279586c71de908c1a72d6b634ac3381c0ed377e504451984509",
+    "control_template": "<64,true,true,false>",
+    "candidate_template": "<64,true,true,true>",
+    "control_text_bytes": 17920,
+    "candidate_text_bytes": 16884,
+    "text_change_percent": -5.78125,
+    "control_static_instructions": 3196,
+    "candidate_static_instructions": 2821,
+    "instruction_change_percent": -11.7334167709637,
+    "native_exp_instructions_each": 65,
+    "logical_resources_unchanged": {
+      "vgpr": 138,
+      "sgpr": 33,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-assume-exp-trace.YFmosA --output-file assume-exp -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa3-vstage64-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-assume-exp-trace.YFmosA/leaf.json",
+    "raw_sha256": "1be8592f5780fca95d83744af5f29910c093c8063e1997a5eebc27ffdd2185a3",
+    "steady_observations_each": 3,
+    "control_median_us": 126.838,
+    "candidate_median_us": 91.812,
+    "latency_change_percent": -27.614752676642638,
+    "workgroup_threads": 384,
+    "grid_blocks": 24,
+    "profiler_resources_unchanged": {
+      "vgpr": 144,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "retained": false,
+    "production_default_unchanged": true,
+    "next": "Wire a default-off saturated-SWA resident selector and require byte-exact state plus a positive seven-pair p512/d128 wall before promotion."
+  }
+}
