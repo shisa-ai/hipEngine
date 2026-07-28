@@ -195,9 +195,70 @@ assumes a future expert-major owner that actually reuses each weight scan; an
 isolated matrix-capacity change alone does not guarantee it. The model excludes
 activation and metadata traffic, quantization, nonlinear kernels, the final
 one-row lm-head, and achieved efficiency of each IQ integer-dot body. Even so, **800/700 tok/s**
-is only **14.78%/13.96%** of the simplified 512/4K roof. The current
-**0.652 TFLOP/s** at 512 is only **0.769%** of the measured BF16 reference, so
-the 10-20x short target is conservative rather than aspirational.
+is only **14.78%/13.96%** of the simplified 512/4K roof. The original
+41.720-tok/s control delivered **0.652 TFLOP/s** of active linear math; retained
+rowbatch8 at 79.585 tok/s now delivers **1.247 TFLOP/s**, still only **1.470%**
+of the measured BF16 reference. The 10-20x short target is conservative rather
+than aspirational.
+
+### Cross-campaign calibration and the IQ format boundary
+
+The gfx1151 Q4_K_M and W7900 Q2 XL artifacts have the same network dimensions
+and therefore the same **15.6647424 GFLOP/token** active-linear ledger. This
+makes one directional comparison useful: gfx1151 Q4 began its matrix512 /
+attention128 campaign at **76.226 tok/s**, close to W7900's current **79.585
+tok/s**, then reached **654.249 tok/s (8.583x its own starting row)** after the
+full LAP campaign. Those endpoints are **1.247 versus 10.249 TFLOP/s** of
+active linear math. The similar starting rows despite W7900's larger CU and
+measured read ceilings are strong evidence of remaining software headroom, not
+proof that codebook cost is a fixed percentage of the gap. Quantization,
+devices, memory systems, and retained schedules differ. In particular,
+**157.177 GB / 6.433 s = 24.4 GB/s** for current M128 is only the conservative
+*one-scan-per-chunk source-byte model* divided by wall, not a DRAM counter or
+the current kernels' physical traffic; repeated row-batch reads can exceed
+that source ledger. The Q4 source is also not a deployable alternative on the
+48-GB W7900: its frozen artifact contains **75.169 GB** of tensors, versus
+**39.681 GB** for Q2 XL before runtime allocations.
+
+The real format distinction is affine versus codebook:
+
+- Q5_K/Q6_K codes admit integer-dot and activation-sum factoring because their
+  decoded weights are affine in the packed magnitudes. Exact row batching now
+  amortizes scalar dequant across 8/16/32 rows, but the retained body still
+  performs FP32 per-element accumulation and has not acquired the Q4/Q6
+  activation-sum/integer-MMQ campaign used on gfx1151.
+- IQ2_XS/IQ3_XXS indices must first expand through their grid plus sign parity;
+  a dot over the packed index itself is invalid. The current exact owner stores
+  eight expanded values as FP32 and performs eight BF16-to-FP32 FMAs per
+  segment. Post-expansion magnitudes do fit signed bytes, so integer dot/WMMA
+  remains available *after* lookup and sign application.
+- The proposed scale hoist is format-specific. IQ2's byte supplies two
+  independent nibbles, each shared by **16**, not 32, weights; its exact
+  pair16/shared-scale prefill was already measured and removed after regressions
+  up to 5.25%, although pair16 remains useful for decode. IQ3's `aux >> 28`
+  scale is shared across 32 weights. Any new hoist must preserve the existing
+  `scale * sum` boundary and prove an ISA/load reduction rather than assuming
+  source-level common subexpressions survive compilation.
+- The IQ2 and IQ3 constant grids are each **1 KiB**. Staging the active grid in
+  LDS once per workgroup is a legitimate exact screen, but not an assumed win:
+  initialization/barrier cost, bank behavior, constant-cache behavior, and the
+  final resource envelope must be measured on both routed shapes.
+
+Most importantly, the post-expansion integer path already exists and should
+not be reimplemented from scratch. The explicit P6 IQ2 MMQ32 primitive expands
+raw IQ2 into signed-byte fragments, stages a 32-column x K256 tile in **10,240
+B LDS**, and consumes caller-owned D4-Q8_1 activations with RDNA3 integer WMMA.
+Its quantizer-inclusive synthetic E256/K3072/N1024/top-10 screen improved exact
+auto by **22.49-28.76% at 256 tokens** and **45.03-49.86% at 512**, but smaller
+or heavily padded cases regressed; the conservative synthetic crossover was
+2,560 compact rows. M128 supplies 1,280 compact rows and M512 supplies 5,120,
+so WPF-C1 directly changes whether this premise is plausible. Routing-specific
+expert padding, runtime scratch, the complete model quality lane, and guarded
+exact repair remain mandatory. The separate P2 `dp4a` decode was already
+rejected and removed because two of three quantizer-inclusive controls
+regressed. WPF-2 therefore remains exact-first; if changed arithmetic is later
+needed, reprice P6 at the winning matrix capacity and add fail-closed repair
+rather than repeating P2 or attempting a packed-index dot.
 
 ### llama.cpp dataflow to transfer
 
@@ -212,12 +273,14 @@ The relevant lesson is dataflow, not API or literal constants:
   local128 over two wave64 subgroups, BM64 x BN64 x BK32, with quant and
   activation tiles staged and reused. It is not the small 32x32 shader and is
   not a wave32 geometry prescription.
-- hipEngine already has the right primitives in pieces: exact Q5/Q6 small-B
-  rowtile/rowbatch8, compact MoE metadata, changed-arithmetic Q8_1 MMQ ceilings,
-  and gfx1151 bounded repair precedents. The next missing exact seams are
-  rowbatch16/32 and expert-major routed-IQ reuse; the next changed-arithmetic
-  seam is conservative risk detection plus fail-closed exact repair, not
-  another blind precision variant.
+- hipEngine already has the right primitives in pieces: exact Q5/Q6
+  rowbatch8/16/32, compact MoE metadata, exact adaptive IQ row batching, the
+  explicit signed-byte IQ2 integer-MMQ32 comparator, changed-arithmetic Q8_1
+  Q5/Q6 ceilings, and gfx1151 bounded-repair precedents. The next missing exact
+  seam is expert-major routed-IQ reuse at the winning matrix capacity. Any
+  changed-arithmetic seam starts from the retained comparators plus conservative
+  risk detection and fail-closed exact repair, not another blind precision
+  variant.
 
 ### WPF execution order
 
@@ -231,7 +294,7 @@ The relevant lesson is dataflow, not API or literal constants:
 | WPF-1 retained exact dense/shared row reuse | **Complete; rowbatch8 retained gfx1100 default** | Full state is bit-exact. Scalar **40.636/39.174 -> 79.009/73.654 tok/s** at 512/1K; selector-unset publication is **79.585/74.512**. rowbatch4 and scalar remain rollback/crossover routes; gfx1151 is fail-closed. |
 | **WPF-1W exact rowbatch widening** | **Primitive/full-state admitted; clean 512/1K next** | Rowbatch16/32 are separately registered and exact through partial 33-row tails, ten actual roles, all 48 hidden boundaries, logits/KV/live spans, and repeat/lifecycle. Actual-role one-each sum improves RB8 **45.1883 ms** to **41.2040/39.2782 ms (1.0967x/1.1505x)**. RB32 keeps scratch/private zero and theoretical 32 waves/CU but has measured 14/5 Q5/Q6 SGPR spills; clean 512/1K must justify them before any default change. |
 | **WPF-C1 isolated matrix capacity** | Pending WPF-1W | Screen M256/M512 with every attention/global/SWA tile forced to 128. Require complete state exact versus M128, deterministic repeats, admission/peak memory, and 512/1K non-regression. M512 adds about **314 MiB** planned scratch and raises average selected rows/expert from about 5 to 20. |
-| **WPF-2 exact-first routed IQ reuse** | Pending WPF-C1 | Compact by expert; widen generic IQ2 rowbatch and deliberately template IQ3 beyond its current hard-coded four; reuse gate/up weights before top-10 expansion and pack down only after SiLU. Publish routing counts, full/tail occupancy, resources, and physical traffic. IQ4 follows only if the reprofile justifies it. |
+| **WPF-2 exact-first routed IQ reuse** | Pending WPF-C1 | Compact by expert; widen generic IQ2 rowbatch and deliberately template IQ3 beyond its current hard-coded four; reuse expanded gate/up weights before top-10 expansion and pack down only after SiLU. Preserve IQ lookup/sign semantics and the existing scale/accumulation boundary; screen 1-KiB grid staging only with measured ISA/resource evidence. Publish routing counts, full/tail occupancy, resources, and physical traffic. Do not repeat rejected P2 `dp4a`; if exact reuse is insufficient, reprice the retained P6 signed-byte IQ2+D4 integer-MMQ32 primitive at the winning matrix capacity, then require complete quality plus bounded fail-closed exact repair. IQ4 follows only if the reprofile justifies it. |
 | WPF-1B approximate dense/shared Q8_1 MMQ | **D4/D8/D8R8 rejected** | Fastest clean candidates reach **129.572/116.116**, **129.083/115.802**, and **123.466/111.324 tok/s**, but all fail max-KL quality. D8R8 is the final blind-precision screen: max KL **0.964321**, **562/576** top-1. Keep exact production. |
 | **WPF-1R guarded exact repair** | Pending WPF-2 baseline | Measure mismatch/risk density first. Emit a conservative device-side risk bound, group uncertain work by output weight row, and use a bounded fail-closed queue; overflow recomputes the full exact projection. Price repair against the winning exact rowbatch/matrix baseline. |
 | WPF-3 short attention | Deferred until reprofile | Start only if the fresh post-WPF-2 profile makes attention largest or gives it a >=5% perfect-removal ceiling at both active shapes. Scope against closed gfx1151 single-wave qrow4 two-head, nine-wave qrow4 sharing, and generic M256 attention screens; require a materially different gfx1100 causal primitive. |
