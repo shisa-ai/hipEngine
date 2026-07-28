@@ -189081,3 +189081,20 @@ Vulkan local sizes verbatim will close the measured gap.
   GQA3/local384 with the retained exact wave32 exp issue; a loss closes
   sub-32-block ordinary-grid ownership. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-local512-rejected.json`.
+
+## 2026-07-29 08:41 JST — Close sub-32 ordinary-grid SWA ownership
+
+- Reused the retained local384 template to screen 24-block **3+3+3 GQA3**
+  with exact wave32 exponential issue against production's 32-block
+  **2+2+2+3** owner. No arithmetic, LDS, launch-count, or resident-state
+  premise changed.
+- RED was the absent wrapper. GREEN passes wrapped/evicted CPU-reference
+  coverage with F32 context and gated BF16 byte identity.
+- Nine 50-launch samples regress **0.083732 -> 0.086531 ms (+3.34%)**. Along
+  with GQA4+5/local512's **+5.44%**, this closes scalar ordinary-grid SWA
+  ownership below 32 workgroups on gfx1151.
+- Removed the candidate before tracing/runtime integration. Production remains
+  **19.530839 tok/s**. Next exact gate transfers wave32 `expf` issue to the
+  retained 24-block global GQA2 kernel, where it does not reduce workgroup
+  count. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-exp32-rejected.json`.

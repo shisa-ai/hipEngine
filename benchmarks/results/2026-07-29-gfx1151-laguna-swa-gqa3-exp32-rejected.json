@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_gqa3_exp32_screen",
+  "date": "2026-07-29",
+  "status": "rejected",
+  "source_revision": "667553ca85889cc2d266776f6a44fef114a6677a",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "family": "Laguna",
+    "quant": "Q4_K"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "exact 24-workgroup 3+3+3 GQA3 local384 with wave32 exponential issue",
+    "median_ms": 0.08653136253356934,
+    "samples_ms": [
+      0.08576279640197754,
+      0.08720390319824219,
+      0.08654348373413086,
+      0.08645431518554687,
+      0.08653136253356934,
+      0.08643436431884766,
+      0.08653792381286621,
+      0.08653470039367676,
+      0.0863134765625
+    ]
+  },
+  "control": {
+    "description": "retained exact 32-workgroup 2+2+2+3 mixed32 local384 with wave32 exponential issue",
+    "median_ms": 0.08373162269592285,
+    "samples_ms": [
+      0.08132329940795899,
+      0.08361299514770508,
+      0.08373162269592285,
+      0.08425348281860351,
+      0.08176161766052246,
+      0.0837741756439209,
+      0.08399716377258301,
+      0.08406368255615235,
+      0.08355232238769532
+    ]
+  },
+  "result": {
+    "latency_change_percent": 3.343706651683953,
+    "performance_claim": false,
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_max_abs_error": 0.0
+  },
+  "protocol": {
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50,
+    "correctness_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "benchmark_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa3-exp32-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa3-exp32-leaf.json"
+  },
+  "decision": {
+    "reason": "The shorter exact softmax does not move the scalar ordinary-grid occupancy seam below 32 workgroups.",
+    "runtime_integrated": false,
+    "implementation_removed": true,
+    "ordinary_grid_sub32_ownership_closed": true,
+    "production_unchanged_tok_s": 19.530839
+  }
+}

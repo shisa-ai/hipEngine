@@ -4183,13 +4183,21 @@ reducer launch. The implementation is removed before tracing/runtime
 integration. Evidence:
 [`rejected GQA4+5 local512`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-local512-rejected.json).
 
-The next bounded structural gate returns to the still-saturated local384
-geometry: apply the retained exact wave32 exponential issue to the existing
-24-workgroup **3+3+3 GQA3** owner and compare it directly with production
-32-workgroup **2+2+2+3**. This asks whether the shorter softmax phase moved
-the occupancy/reuse seam from 32 to 24 blocks. It changes no arithmetic or
-resident state. If it is not positive at the leaf, close every ordinary-grid
-owner below 32 workgroups and require a tensorized high-precision premise.
+The final sub-32 ordinary-grid screen is also rejected. Applying the retained
+exact wave32 exponential issue to the existing 24-workgroup **3+3+3 GQA3**
+owner remains byte-exact, but regresses production's 32-workgroup
+**2+2+2+3** leaf **0.083732 -> 0.086531 ms (+3.34%)**. The shorter softmax
+does not move the occupancy/reuse seam; the implementation is removed and
+ordinary-grid SWA owners below 32 workgroups are closed. Evidence:
+[`rejected 24-block GQA3 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-exp32-rejected.json).
+
+Before the higher-risk tensorized repair, transfer the proven exact issue
+technique to the still-material global family. Its retained 24-block GQA2
+kernel assigns one strided token chain to each of eight waves, but only lane
+0 issues every `expf`. A wave32 issue sibling can compute 32 independent
+weights concurrently, shuffle them to lane 0, and preserve each wave's
+original token-order sum exactly. This keeps 24 workgroups, QK/PV arithmetic,
+dynamic LDS, launches, and resident state unchanged.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
@@ -4295,8 +4303,10 @@ and shape/backend fallbacks.
    resident pairs **19.268862 -> 19.371717 tok/s (+0.534%)**, exact state. The
    exact GQA4+5/local512 successor is byte-exact but regresses the leaf
    **5.44%** because 16 ordinary-grid blocks underfill gfx1151, so it is
-   removed. Screen 24-block GQA3 with retained wave32 exp issue once; if it
-   loses, the next material step is an independently gated tensorized
+   removed. The 24-block GQA3 exp32 screen is likewise exact but **3.34%**
+   slower, closing scalar ordinary-grid SWA ownership below 32 blocks. Apply
+   exact wave32 exp issue to the retained global GQA2 family next; after that,
+   the next material SWA step requires an independently gated tensorized
    high-precision repair. Do not resume full-score repairs or approximate
    split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
