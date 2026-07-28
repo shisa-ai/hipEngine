@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T08:20:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed32_exp32_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "ef742aaa5b52865464f84a9730e816385cef7b5d",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "geometry": "unchanged 32 local384 workgroups; four owners per KV head partition nine query heads as 2+2+2+3",
+    "mechanism": "for each thirty-two-slot softmax batch, all wave32 lanes issue one independent compiler expf and shuffle the weights back to every lane",
+    "arithmetic": "lane 0 accumulates the denominator in the original item order and every dimension retains the original PV FMA order",
+    "synchronization": "no new LDS, barrier, launch, or repair phase"
+  },
+  "correctness": {
+    "red": "wrapped/evicted oracle failed because the exp32 wrapper did not exist",
+    "green_result": "positions 512-519 plus explicit eviction pass",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0,
+    "production_generated_ids_match": true,
+    "production_next_token_id": 2930,
+    "production_final_token_id": 74107,
+    "production_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "production_final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-mixed32-exp32-leaf.json",
+    "raw_sha256": "0b198df0ca2dbc9ca47b53e341bb48285e87fdfc04be4a21524da24ad84f08fa",
+    "control_median_ms": 0.0823134994506836,
+    "candidate_median_ms": 0.0815513038635254,
+    "latency_change_percent": -0.9259666910588105,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "trace": {
+    "raw_path": "/tmp/laguna-mixed32-exp32-trace.TN9Hz8/exp32_kernel_trace.csv",
+    "raw_sha256": "7610544fe5338fef7d5840071a2ea9a235107a904a6ebcc8ec6005a543a6ec69",
+    "control_stable_mean_us": 77.18533333333333,
+    "candidate_stable_mean_us": 76.838,
+    "latency_change_percent": -0.44999913627805643,
+    "candidate": {
+      "grid_blocks": 32,
+      "workgroup_size": 384,
+      "allocated_vgpr": 104,
+      "allocated_sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    },
+    "resources_unchanged": true,
+    "expected_kernel_observed": true
+  },
+  "production": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-mixed32-exp32 --allow-dirty --output /tmp/laguna-p512-d128-swa-exp32-ab.json",
+    "raw_sha256": "b305bcb45babe22d06ba78d8994aa65b6570ba733cc372e911fbb8f0e63b660c",
+    "control_decode_tok_s": 19.524103368896874,
+    "candidate_decode_tok_s": 19.538163707882767,
+    "throughput_change_percent": 0.07201528654212641,
+    "saving_ms_per_token": 0.036858779370895434,
+    "all_seven_candidate_samples_faster_than_all_controls": true,
+    "cumulative_change_from_sprint_start_percent": 70.39066042251581
+  },
+  "validation": {
+    "focused_runtime_result": "40 passed",
+    "ruff_status": "unavailable in the current environment; py_compile and focused tests pass"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_capability_default": true,
+    "qualified_scope": "gated saturated natural-shape 72Q/8KV/D128/SWA512 decode",
+    "rollback": "retained mixed32 exp16 sibling",
+    "peer_backends_unchanged": true,
+    "reason": "Wave-wide exact exponential issue improves the leaf, cached kernel, and every resident-model pair without changing resources or arithmetic order; wave32 closes the natural issue-width screen."
+  }
+}

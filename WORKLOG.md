@@ -189017,3 +189017,20 @@ Vulkan local sizes verbatim will close the measured gap.
   11.466687 sprint start. Raw artifact SHA-256 is
   `e1f6584c...069cb5b`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-production.json`.
+
+## 2026-07-29 08:20 JST — Retain exact mixed32 wave32 exp issue
+
+- Complete the bounded issue-width screen with all wave32 lanes issuing one
+  compiler `expf` per thirty-two-slot batch. Ordered denominator and PV
+  arithmetic, geometry, LDS, barriers, and launches remain unchanged.
+- RED is the absent wrapper; wrapped/evicted GREEN is F32/BF16 byte-exact.
+  Nine leaf samples improve **0.082313 -> 0.081551 ms (-0.93%)**. Cached
+  tracing improves the stable window **77.185 -> 76.838 us (-0.45%)** at
+  unchanged VGPR104/SGPR128/LDS24576/scratch0.
+- Seven queue-matched resident pairs improve
+  **19.524103 -> 19.538164 tok/s (+0.0720%, -0.0369 ms/token)** with complete
+  sample separation. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, position 638, determinism, and lifecycle remain exact.
+- Promote only inside qualified gfx1151 exp16/mixed32; exp16 remains rollback.
+  Focused owner/runner/profile validation reports **40 passed**. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-retained.json`.
