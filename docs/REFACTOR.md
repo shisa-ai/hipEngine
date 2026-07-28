@@ -61,14 +61,16 @@ should be removed or collapsed.
   grouped IQ2/IQ3 gate/up rowbatch8 and fused-SiLU primitives are not runtime
   owners because local256/group8 changed 11/30,720 actual tiny intermediate
   values versus pair16/local64 production.
-- Post-profile review identifies one distinct exact WPF-2b premise: preserve
-  production local64/pair16 K ownership and reduction while reusing expert rows
-  at M512. Defer grouped gate/up removal only through that bounded screen; the
+- WPF-2b's distinct local64/pair16 rowbatch8 primitive is now exact on all 46
+  actual M512 IQ2 gate/up layers and improves the inclusive leaf **2.788x**;
+  rowbatch4 is exact but weaker at **2.226x**. Defer grouped gate/up cleanup
+  through registry-driven rowbatch8 full-state and clean 512/1K admission. The
   current local256/group8 bodies remain explicit controls, not candidates for
-  promotion. After WPF-2b, remove obsolete wrappers, keys, HIP instantiations,
-  and focused tests while preserving production grouped IQ3 single/down
-  rowbatch8, IQ4 auto, shared compaction metadata, and any separately gated
-  pair16 body only if it wins exact full-model admission.
+  promotion. After that decision, remove obsolete local256/group8 and losing
+  rowbatch4 wrappers, keys, HIP instantiations, and focused tests while
+  preserving production grouped IQ3 single/down rowbatch8, IQ4 auto, shared
+  compaction metadata, direct exact fallback, and rowbatch8 only if it wins the
+  complete runtime gate.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic
 

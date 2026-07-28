@@ -1,0 +1,125 @@
+{
+  "actual_role_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf2b_actual_leaf.py",
+  "actual_role_screen": {
+    "active_experts_max": 239,
+    "active_experts_min": 197,
+    "all_46_layers_bf16_exact": true,
+    "all_46_layers_faster": true,
+    "candidates": {
+      "rowbatch4": {
+        "all_bf16_exact": true,
+        "all_finite": true,
+        "all_layers_faster": true,
+        "candidate_change_percent": -55.078561566157845,
+        "candidate_sum_ms": 603.706033706665,
+        "speedup": 2.226108590607012
+      },
+      "rowbatch8": {
+        "all_bf16_exact": true,
+        "all_finite": true,
+        "all_layers_faster": true,
+        "candidate_change_percent": -64.13169578425195,
+        "candidate_sum_ms": 482.03958797454834,
+        "speedup": 2.7879767997533267
+      }
+    },
+    "control_sum_ms": 1343.9151878356934,
+    "memory_recovered": true,
+    "rowbatch4_layer_change_percent_range": [
+      -56.330605110669026,
+      -54.260160521363645
+    ],
+    "rowbatch8_layer_change_percent_range": [
+      -65.2288827526211,
+      -63.391778772901255
+    ],
+    "rows_per_expert_max": 424
+  },
+  "admission": {
+    "next_gate": "registry-driven runtime integration, complete-state exactness, then clean 512/1K A/B",
+    "performance_claim": false,
+    "production_changed": false,
+    "winner": "pair16_rowbatch8"
+  },
+  "base_revision": "4d16ac977",
+  "date": "2026-07-29",
+  "hardware": {
+    "arch": "gfx1100",
+    "device": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "primitive_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_iq2_xs_selected_prefill.py",
+    "result": "12 passed",
+    "synthetic_contract": "K3072/N23, empty and uneven expert tails through 31 rows; BF16-bit exact to production local64/pair16 tile2 fused-SiLU"
+  },
+  "protocol": {
+    "attention_rows": 128,
+    "candidates": "source-hidden gather plus local64/pair16 expert-major fused-SiLU rowbatch4/8",
+    "common_group_metadata_excluded": true,
+    "control": "retained route-major local64/pair16 tile2 fused gate/up plus exact post-SiLU gather",
+    "matrix_rows": 512,
+    "performance_claim": false,
+    "rotating_repeats": 3,
+    "rows": 512,
+    "top_k": 10,
+    "warmups_per_arm_per_repeat": 1
+  },
+  "resource_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpf2b-pair16-primitive-trace -- uv run pytest -q tests/test_gguf_iq2_xs_selected_prefill.py::test_iq2_xs_pair16_grouped_fused_silu_matches_production_local64",
+    "occupancy_assessment": "Both candidates use fewer VGPR with identical local size, SGPR, LDS, and zero scratch versus production, so their resource-limited occupancy cannot be lower.",
+    "resources": {
+      "pair16_rowbatch4": {
+        "duration_ns": 47160,
+        "lds_bytes": 512,
+        "local_size": 64,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 112
+      },
+      "pair16_rowbatch8": {
+        "duration_ns": 43880,
+        "lds_bytes": 512,
+        "local_size": 64,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 104
+      },
+      "production_local64_pair16_tile2": {
+        "duration_ns": 18120,
+        "lds_bytes": 512,
+        "local_size": 64,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 136
+      }
+    },
+    "trace_sha256": "8cd2f7985f3fdcd56aa5ad90baa1f75919c60316b41dae678f55f20392129813"
+  },
+  "schema": "hipengine.laguna.wpf2b_pair16_grouped_gate_up_candidate.v1",
+  "scope": {
+    "attention_rows": 128,
+    "iq2_gate_up_layers": 46,
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "rows": 512,
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "source": {
+    "harness_sha256": "695b8886171d5b2ef0607c08f7369b36288a83af4ea8969d778e26d67288ca80",
+    "raw_json_sha256": "9cff062f1e328732902590aacf7bde440c2504d4e8ac38ecce5d44d5402e9eeb",
+    "tracked_files": [
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py",
+      "tests/test_gguf_iq2_xs_selected_prefill.py"
+    ]
+  },
+  "status": "exact primitive admitted; runtime/default unchanged"
+}

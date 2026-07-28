@@ -1320,11 +1320,13 @@ work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
 
-The active W7900 / gfx1100 UD-Q2_K_XL short-prefill sequence is now: one
-bounded WPF-2b screen for expert-major IQ2 gate/up that preserves production's
-local64/pair16 K ownership and reduction tree; cleanup of rejected raw-Q5/Q6
-MMQ and obsolete local256/group8 diagnostic surfaces; WPF-3 targeted at the
-SWA family that owns **0.792/2.358 seconds** versus global attention's
+The active W7900 / gfx1100 UD-Q2_K_XL short-prefill sequence now starts with
+runtime admission for the exact WPF-2b expert-major IQ2 gate/up primitive. Its
+local64/pair16 rowbatch8 body is BF16-bit exact on all 46 actual M512 layers
+and cuts the inclusive diagnostic leaf **1343.915 -> 482.040 ms (2.788x)**;
+full-state and clean 512/1K gates remain. Next comes cleanup of rejected
+raw-Q5/Q6 MMQ and obsolete local256/group8 surfaces; WPF-3 targeted at the SWA
+family that owns **0.792/2.358 seconds** versus global attention's
 **0.074/0.307 seconds** at 512/1K; then an exact dense/shared Q5/Q6
 output-column-tiling product screen. WPF-2b is a distinct exact premise, not a
 retry of P6 changed arithmetic or the rejected local256/group8 body. P6 and
