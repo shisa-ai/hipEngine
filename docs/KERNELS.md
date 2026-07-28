@@ -1452,6 +1452,15 @@ on the fully separated seven-pair A/B and positive leaf/trace. Production is
 **+70.327%** over sprint start and all state remains exact. Evidence:
 [`clean mixed32 exp32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-production.json).
 
+The clean post-wave32 census keeps **816 dispatches/token** and measures
+**48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
+**4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4
+but still **3.568 ms/token** behind same-GGUF llama.cpp Vulkan and **42.6%**
+of the complete wall gap. The next exact structural gate is a fused
+4+5-query local512 owner: 16 workgroups, two output dimensions per lane, no
+global score plane, and roughly 2x staged-V reuse. Evidence:
+[`post-exp32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.
