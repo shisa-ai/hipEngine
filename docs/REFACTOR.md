@@ -37,9 +37,9 @@ should be removed or collapsed.
   excludes the producer, policy, and MMQ keys and rejects explicit enablement.
 - D4 and D8 runtime candidates are performance-positive but rejected by the
   complete quality lane at maximum KL **0.624304/0.400292**. Do not promote
-  either policy. A separately registered two-stage per-K16 Q8 residual
-  primitive now passes its leaf gate; keep the default-off owner only while its
-  separate runtime/full-quality admission is actively compared.
+  either policy. The default-off owner now selects the separately registered
+  two-stage per-K16 Q8 residual primitive; keep it only while residual
+  full-state/full-quality admission is actively compared.
 - Promote the gfx1100 package default and remove the public positive selector
   only after full state, 512/1K end-to-end performance, and both orders of the
   complete 18-prompt train+heldout quality lane pass. If the residual candidate

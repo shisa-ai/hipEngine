@@ -393,9 +393,11 @@ correction. Its K128 block is **352 bytes** with two int8 planes. All ten actual
 M128 roles pass at maximum KL **8.241e-7** and **100%** top-1. Inclusive
 quantize+MMQ improves every N>=1024 role **3.673-10.989x**; N48/N72 lose and
 remain fallback-only. Cached tracing names the producer at local256/VGPR32,
-LDS0/scratch8 and both Q5/Q6 leaves at local128/VGPR96/LDS5120/scratch0. This
-is primitive-only: the default-off runtime owner still selects rejected D8
-until a separate owner/full-state unit is admitted.
+LDS0/scratch8 and both Q5/Q6 leaves at local128/VGPR96/LDS5120/scratch0. The
+default-off `raw_k_prefill_mmq` owner now selects this D8R8/S8 policy/ABI and
+allocates **4,325,376 bytes** at M128. D4/D8 remain explicit diagnostic
+primitive paths, and package production remains MMQ-off/rowbatch8 pending
+residual full-state and complete quality gates.
 Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

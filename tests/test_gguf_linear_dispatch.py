@@ -591,13 +591,13 @@ def test_raw_k_mmq_prefill_session_quantizes_each_producer_once(monkeypatch) -> 
         "hip_gfx1100",
         "linear",
         "gguf_q5_k",
-        "mmq32_q8_1_d8s8_f32_bf16_bf16_out",
+        "mmq32_q8_1_d8r8s8_f32_bf16_bf16_out",
     )
     q6_key = KernelKey(
         "hip_gfx1100",
         "linear",
         "gguf_q6_k",
-        "mmq32_q8_1_d8s8_f32_bf16_f32_out",
+        "mmq32_q8_1_d8r8s8_f32_bf16_f32_out",
     )
     originals = {
         key: resolve(
@@ -619,7 +619,7 @@ def test_raw_k_mmq_prefill_session_quantizes_each_producer_once(monkeypatch) -> 
 
     monkeypatch.setattr(
         gguf_linear_module,
-        "gguf_q8_1_d8s8_f32_quantize_bf16",
+        "gguf_q8_1_d8r8s8_f32_quantize_bf16",
         fake_quantize,
     )
     library = object()
@@ -630,7 +630,7 @@ def test_raw_k_mmq_prefill_session_quantizes_each_producer_once(monkeypatch) -> 
             raw_k_prefill_rowbatch_session(8),
             raw_k_mmq_prefill_session(
                 workspace_ptr=10_000_000,
-                workspace_nbytes=589_824,
+                workspace_nbytes=1_081_344,
                 library=library,  # type: ignore[arg-type]
             ),
         ):
@@ -686,7 +686,7 @@ def test_raw_k_mmq_prefill_session_keeps_small_outputs_exact() -> None:
         raw_k_prefill_rowbatch_session(8),
         raw_k_mmq_prefill_session(
             workspace_ptr=10_000_000,
-            workspace_nbytes=589_824,
+            workspace_nbytes=1_081_344,
         ),
     ):
         key, _, _ = _capture_launch(
@@ -731,7 +731,7 @@ def test_raw_k_mmq_prefill_session_rejects_undersized_workspace() -> None:
                         "hip_gfx1100",
                         "linear",
                         "gguf_q6_k",
-                        "mmq32_q8_1_d8s8_f32_bf16_bf16_out",
+                        "mmq32_q8_1_d8r8s8_f32_bf16_bf16_out",
                     ),
                 ),
             )
