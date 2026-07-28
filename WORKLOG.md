@@ -187273,3 +187273,72 @@ Vulkan local sizes verbatim will close the measured gap.
   models only about **0.023%** wall from its measured leaf gain, and the large
   Q5/IQ2/IQ3/Q4-head schedules do not match this GGUF's weight roles. The next
   material decode task is gfx1151-native source-F16 c=1 projection work.
+
+## 2026-07-28 — Re-rank gfx1151 decode from Qwen transfer, Vulkan, and roofline
+
+- Reviewed the Qwen3.5 gfx1100-to-gfx1151 history rather than treating the
+  retained shared gfx11 source as a fixed geometry. The transferable lessons
+  are target-scoped physical widths, exact row/reduction seams, occupancy-
+  specific partitions, stable state ownership, and mandatory cycle/server
+  gates. Qwen's GDN state-cache work and its C8-only pair reuse do not apply to
+  Laguna C1. The required lineage command
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before report construction by the missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; in-tree catalog,
+  registry, source, retained/rejected evidence, and read-only llama.cpp source
+  inspection completed without modifying an external repo.
+- Ran a same-GGUF llama.cpp Vulkan control from clean
+  `/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e`:
+  `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 0 -n 128 -d 512 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress`.
+  The one-run directional row is **23.348381 tok/s / 42.829522 ms/token**
+  versus retained hipEngine **14.555265 tok/s / 68.703660 ms/token**:
+  Vulkan is **60.4119%** faster and the wall gap is **25.874138 ms/token**.
+  The comparator uses F16 KV/random llama-bench tokens versus hipEngine BF16
+  KV/deterministic natural tokens, so this is not a bit-exact backend race.
+- Repeated the Vulkan run for eight generated tokens with
+  `GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=8`. Logger wall is
+  perturbed to **45.1823 ms/token**, but the **43.6306-ms** family sum is
+  decisive: source-F16 projections consume **24.758568 ms** and all 48
+  FlashAttention layers only **0.909423 ms**. HipEngine consumes
+  **30.9806/14.612710 ms** for those families. Their **19.925319-ms** combined
+  gap explains **77.0086%** of the whole wall difference; attention alone
+  explains **52.9613%**. The logger reports about **1,114 operation
+  invocations/token**, more than hipEngine's 869 kernels/token, so Vulkan's
+  lead is not fewer launches.
+- Dry model mapping/materialization gives **9.031374 GB/token** raw and
+  **9.173128 GB/token** resident active encoded-weight proxies. At the retained
+  **221 GB/s** practical-read anchor, hipEngine's resident weight floor is
+  **41.5074 ms / 24.0921 tok/s**. Current wall/device-sum proxies are
+  **133.52/137.88 GB/s (60.42/62.39%)**; Vulkan's raw-byte wall proxy is
+  **210.87 GB/s (95.42%)**. These are encoded-payload proxies rather than DRAM
+  counters and exclude KV/activations/cache effects.
+- Current F16 streams **5.606326 GB** in **30.9806 ms =
+  180.96 GB/s / 81.88%** of the read anchor, leaving only **5.612 ms** under an
+  unchanged-byte 221-GB/s floor. Selected routed gate/up+down streams
+  **2.739487 GB** in **13.6807 ms = 200.24 GB/s / 90.61%**, so generic selected
+  expert tuning is no longer first. Attention score production is only
+  **2.0343 ms**; global/SWA reducers are **2.6228/9.9556 ms**. At live 512,
+  unique K+V is **100.66 MB/token** but query-head repetition models
+  **830.47 MB/token** across qgroup6/qgroup9.
+- Screened the obvious F16 architecture seam without retaining code. In
+  separate cached full p512/d128 processes, monkeypatch only rows==1
+  single/triple F16 launches from local256 to local64/local128 while prefill
+  stays unchanged. Local64 is **13.854948 tok/s (-4.8114%)**, final token 340,
+  hash `9b5f3672...a087`; local128 is **14.263373 (-2.0054%)**, final token 855,
+  hash `57ac0607...0891`. Raw JSON SHA-256 values are
+  `4e52124d...930d7e` and `97e102c7...a347`. Reject both before quality work
+  and retain local256.
+- Re-rank the decode attack: **LD-1** is a D128 grouped-GQA split-K attention
+  body with separate global qgroup6/SWA qgroup9 shapes and K64/K128 splits
+  that preserve at least 40-80 workgroups/layer on 40 CUs. It must fuse
+  score/softmax/PV, retain full `KVLiveSpans`, first reach <=3.0 ms/token
+  attention, and gate live/page/ring boundaries plus p128/p512/p1K/p4K and
+  p512/d128. **LD-2** is an exact F16 local256 eight-wave/eight-output body
+  where each wave reconstructs the current eight partial sequences without
+  cross-wave barriers. Decode-only F16 compression, dense/shared cleanup, and
+  replay follow in that order. Near-term target is **>=18 tok/s**; same-GGUF
+  Vulkan **23.348 tok/s** is the directional comparator.
+- Published the diagnostic artifact
+  `benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json`
+  and updated `docs/LAGUNA-prefill.md`. No production code/default changed;
+  retained decode remains **14.555265 tok/s**.
