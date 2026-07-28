@@ -1319,6 +1319,18 @@ The current focused Laguna S 2.1 performance campaign is owned by
 work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
+
+The active W7900 / gfx1100 UD-Q2_K_XL short-prefill sequence is now: one
+bounded WPF-2b screen for expert-major IQ2 gate/up that preserves production's
+local64/pair16 K ownership and reduction tree; cleanup of rejected raw-Q5/Q6
+MMQ and obsolete local256/group8 diagnostic surfaces; WPF-3 targeted at the
+SWA family that owns **0.792/2.358 seconds** versus global attention's
+**0.074/0.307 seconds** at 512/1K; then an exact dense/shared Q5/Q6
+output-column-tiling product screen. WPF-2b is a distinct exact premise, not a
+retry of P6 changed arithmetic or the rejected local256/group8 body. P6 and
+WPF-1R remain closed. The detailed gates and 150-tok/s short-only stop rule are
+owned by `LAGUNA-prefill.md`.
+
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16
 consumer pass every leaf gate. Producer-pack-inclusive direct T16 reaches
