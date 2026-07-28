@@ -188659,3 +188659,21 @@ Vulkan local sizes verbatim will close the measured gap.
   long-context harness unit file is **33 passed**.
 - Production remains default-off. Commit the measurement seam before the
   tracked-clean seven-pair p512/d128 exact wall screen.
+
+## 2026-07-29 05:40 JST — Retain exact SWA exp-domain specialization
+
+- Seven tracked-clean p512/d128 pairs improve compiler-generic versus
+  assumed-domain `expf` **19.140826 -> 19.245912 tok/s (+0.549%)** and
+  **6.635032 -> 6.598804 s (-0.546%)**, saving **0.285 ms/token**. Every
+  candidate beats every control; all 14 runs produce next/final tokens
+  **2930/74107**, trajectory SHA `94f803f7...ebda32`, and final position 638.
+- The candidate changes no arithmetic and passes complete generated-ID,
+  determinism, position, lifecycle, and allocation-state equality. Combined
+  with the wrapped/evicted CPU/byte-exact leaf and cached native trace, this
+  satisfies the promotion gate.
+- Set the gfx1151 backend capability true only for saturated natural
+  72Q/8KV/D128/SWA512 decode. Partial rings, non-natural shapes, and peer
+  backends are unchanged; `set_decode_swa_assume_exp(False)` remains the exact
+  campaign rollback. Cumulative p512/d128 decode is now **+67.842%** over the
+  11.466687 sprint start. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json`.

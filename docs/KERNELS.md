@@ -1186,10 +1186,13 @@ logical VGPR138/SGPR33/LDS24576/scratch0 while contracting **3,196 -> 2,821
 instructions (-11.73%)** and **17,920 -> 16,884 B (-5.78%)**. Cached tracing
 names both local384/24-block templates with allocated
 VGPR144/LDS24576/scratch0 and improves the three steady observations
-**126.838 -> 91.812 us (-27.61%)**. This admits an exact candidate primitive,
-not production; next require byte-exact resident state and a positive
-seven-pair p512/d128 wall. Evidence:
-[`assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-candidate.json).
+**126.838 -> 91.812 us (-27.61%)**. Seven tracked-clean p512/d128 pairs then
+improve **19.140826 -> 19.245912 tok/s (+0.549%, -0.285 ms/token)** with 7/7
+wins, complete sample separation, and exact generated IDs/state. gfx1151 now
+selects the assumed-domain sibling at the saturated natural SWA shape; the
+generic-domain direct-store body remains exact rollback. Evidence:
+[`assume-exp candidate`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-candidate.json) ·
+[`assume-exp retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json).
 
 Tracked-clean selector-unset production measures
 **19.072126/19.085294/19.089552 tok/s**, median **19.085294**. This is

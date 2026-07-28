@@ -1919,3 +1919,8 @@ should be boring.
   through the decode campaign, then collapse the positive selector after one
   checkpoint. On rejection, remove the field, setter, comparison lane, and
   registered candidate primitive.
+- Promotion gate satisfied 2026-07-29: **19.140826 -> 19.245912 tok/s
+  (+0.549%, -0.285 ms/token)** with 7/7 wins, complete sample separation, and
+  exact IDs/state. gfx1151 now defaults the capability true. Keep explicit
+  false rollback through this decode campaign; then remove positive selector
+  semantics while retaining the generic registered rollback.

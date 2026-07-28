@@ -3923,10 +3923,29 @@ The clean post-direct-store census keeps **816 dispatches/token** and measures
 cuts global **10.70%**, total attention **3.28%**, kernel sum **0.44%**, and
 span **0.47%** from the last census. Against Vulkan's **0.909 ms** attention,
 the residual is **4.557 ms/token**, or **48.5%** of the remaining clean wall
-gap. Copy-codegen cleanup is now exhausted; the next bounded attack is a
-Vulkan-informed cooperative Br16/Bc64 tile with an explicit numerical repair
-strategy, not another unqualified online-GQA association. Evidence:
+gap. Direct-copy codegen cleanup is exhausted. Evidence:
 [`post-direct-store wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json).
+
+The next exact scalar seam removes generic exponential-domain work without
+changing exponential arithmetic. Raw native and manually reconstructed
+bounded exponentials improve leaf/wall but fail the complete category KL gate
+at **1.452698/1.888082**, so both are removed. The retained successor keeps
+compiler `expf` unchanged and asserts only the proven
+`score - wave_max <= 0` invariant. Wrapped/evicted and leaf outputs are
+F32/BF16 byte-exact. The leaf improves **0.106007 -> 0.097387 ms (-8.13%)**;
+static instructions contract **3,196 -> 2,821 (-11.73%)** and cached tracing
+improves **126.838 -> 91.812 us (-27.61%)** at unchanged
+VGPR144/LDS24576/scratch0. Seven tracked-clean production pairs improve
+**19.140826 -> 19.245912 tok/s (+0.549%, -0.285 ms/token)** with complete
+sample separation and exact IDs/state. gfx1151 promotes this only at saturated
+natural SWA; the generic-domain direct-store route remains rollback. Evidence:
+[`retained exact exp-domain specialization`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-assume-exp-retained.json).
+
+The next bounded attack is still the Vulkan-informed cooperative Br16/Bc64
+QK/PV tile, but it must preserve compiler-`expf` results and each head's
+ordered denominator/PV association or use an explicit high-precision repair
+that clears the complete category gate. Do not reopen approximate exponential
+or static layer-selection screens.
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
