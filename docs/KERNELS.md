@@ -1319,6 +1319,16 @@ clean wall gap. Further attention work must change the cooperative algorithm,
 not copy lowering. Evidence:
 [`post-direct-store wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json).
 
+The final ordinary-workgroup GQA2 combination is rejected and fully removed.
+Adding the later direct vec16 V transport and exact exp-domain specialization
+to 40 local256 GQA2 owners is byte-exact and improves the cache-hot leaf
+**0.861%**, but allocates **176 VGPR** and loses all seven resident-model
+pairs: **19.249050 -> 19.182158 tok/s (-0.3475%, +0.1812 ms/token)**.
+Ordinary GQA2 V staging is closed; the next exact cooperative attack must
+remove the cooperative-launch/global-score boundary rather than repeat this
+geometry. Evidence:
+[`rejected GQA2 direct-vec16 staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vec16-rejected.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector

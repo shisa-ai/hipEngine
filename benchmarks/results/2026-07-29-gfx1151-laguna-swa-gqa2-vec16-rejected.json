@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T06:20:33+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa2_vec16_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "fb88607fb93237cfd70793ab01f42001c504aa41",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "geometry": "40 local256 workgroups; five GQA2 owners per KV head",
+    "candidate": "64-slot direct 16-byte V staging plus unchanged compiler expf with the proven non-positive input domain",
+    "arithmetic": "exact retained QK tree, maximum, denominator, PV FMA, divide, gate, and stores",
+    "reason_for_screen": "the earlier scalar GQA2 V-stage64 body lost 19.04%, while later direct vec16 staging improved retained GQA3 by about 20%; this combination had not been measured"
+  },
+  "correctness": {
+    "red": "wrapped/evicted oracle failed because the candidate wrapper did not exist",
+    "green": "positions 512-519 with explicit position-200 eviction are byte-exact for F32 context and BF16 gated output",
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "production_generated_ids_match": true,
+    "production_next_token_id": 2930,
+    "production_final_token_id": 74107,
+    "production_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "production_final_position": 638,
+    "tracked_allocations_recovered": true
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa2-vstage64-vec16-direct-assume-exp-leaf.json",
+    "raw_sha256": "3586fdf8c025da860e93782bd1e980a62aa0106fc7020b6faacb51610efcef82",
+    "control_median_ms": 0.09808055877685547,
+    "candidate_median_ms": 0.09723577499389649,
+    "latency_change_percent": -0.8613162419689679,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-gqa2-vec16-trace.QE5nFf -o gqa2vec16 -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate fused-gqa2-vstage64-vec16-direct-assume-exp --samples 3 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-gqa2-vstage64-vec16-direct-assume-exp-profile.json",
+    "raw_sha256": "b52d71ea15a75fb17e519d3b18219f43a9b1df655a38b23021f1a89d30304bdf",
+    "candidate": {
+      "grid_blocks": 40,
+      "workgroup_size": 256,
+      "vgpr": 176,
+      "sgpr": 128,
+      "lds_bytes": 22528,
+      "scratch_bytes": 0
+    },
+    "control": {
+      "grid_blocks": 24,
+      "workgroup_size": 384,
+      "vgpr": 144,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    }
+  },
+  "production": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gqa2-vec16 --allow-dirty --output /tmp/laguna-p512-d128-swa-gqa2-vstage64-vec16-direct-assume-exp-ab.json",
+    "raw_sha256": "e9cb2417095cde90682ad7b8e512cb6055c6b84a8f915eb07f4c4844578011ab",
+    "control_decode_tok_s": 19.249050436148195,
+    "candidate_decode_tok_s": 19.18215771903808,
+    "throughput_change_percent": -0.3475117763964919,
+    "regression_ms_per_token": 0.18116407001053725,
+    "all_seven_candidate_samples_slower_than_all_controls": true
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 19.249443240044645,
+    "reason": "the 40-block grid does not repay five K owners per KV head and the candidate's 176-VGPR footprint once the 78.8-GB resident model displaces the cache-hot leaf",
+    "next": "Do not retry ordinary GQA2 V staging. The remaining source-shaped exact seam is a normal-launch persistent K64 producer plus ordered reducer that avoids the rejected cooperative-launch barrier."
+  }
+}
