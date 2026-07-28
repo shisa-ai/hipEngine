@@ -3870,10 +3870,20 @@ and shape/backend fallbacks.
    GQA3/local384 result closes ordinary GQA ownership at saturated SWA. The
    clean re-profile now measures attention at **11.764 ms/token**, versus
    Vulkan's logged **0.909 ms/token** and about **70%** of the remaining wall
-   gap. The next bounded lane therefore revives the proven **19.292 tok/s**
-   online GQA9/K64 topology only to test principled numerical repairs
-   (higher-precision partial state/merge or layer-bounded deployment) against
-   the complete category KL gate; exact GQA3 remains rollback.
+   gap. A cached-binary numerical ablation exactly reproduces the online
+   GQA9 result (**19.263 vs 17.081 tok/s**, max KL **0.314247**), but all three
+   static one-third SWA depth policies are worse at max KL
+   **0.470646/0.762249/0.737907**. The errors partly cancel across depth, so
+   layer-bounded deployment is closed as fragile and prompt-overfit-prone.
+   Re-running exact global GQA2 on the post-GQA3 baseline is also neutral-
+   negative (**17.082284 -> 17.074471 tok/s, -0.0457%**) and confirms the
+   existing 24-workgroup undersubscription closure. Source review sharpens the
+   comparator gap: Vulkan uses a real subgroup64 cooperative-matrix
+   **Br16 x Bc64** GQA9 tile before its K64 merge, whereas the rejected HIP
+   kernel copied only GQA ownership and split breadth. The next bounded lane is
+   therefore a true HIP WMMA/cooperative tile with bounded split-K state and a
+   predeclared higher-precision partial/merge repair; exact GQA3 remains
+   rollback.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

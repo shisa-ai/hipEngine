@@ -188170,3 +188170,35 @@ Vulkan local sizes verbatim will close the measured gap.
   clears the complete KL/top-1/category gate. Do not reopen source-F16
   geometry. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-gqa3-wall-reprofile.json`.
+
+## 2026-07-29 01:39 JST — Reject layer-bounded GQA9 and re-close global GQA2
+
+- Reuse the preserved rejected online-GQA9 cache binary for diagnostics only.
+  The new paired harness exactly reproduces the prior all-36-SWA result:
+  **17.081 -> 19.263 tok/s**, max KL **0.314247**, mean KL **0.005964**, and
+  **125/128** top-1. No cache binary is admitted to source or production.
+- Test all three architecture-static one-third depth policies in one resident
+  process. SWA ordinals modulo three select 12 layers each and reach
+  **17.759/17.772/17.767 tok/s**, but max KL worsens to
+  **0.470646/0.762249/0.737907**. The all-layer error is partly cancelled
+  across depth; layer selection is therefore numerically fragile and would
+  require prompt-driven overfitting to pursue. Close it.
+- Review llama.cpp Vulkan `c0bc8591e` more precisely. After GQA folding, the
+  natural GQA9/D128 shape selects subgroup64 cooperative-matrix FlashAttention
+  at **Br16 x Bc64/local256**, then eight K64 splits and a bounded-state merge.
+  The rejected hipEngine body reproduced GQA9 ownership and split breadth but
+  not the cooperative QK/PV tile.
+- RED rejects the absent global fused-GQA2 leaf option. GREEN instantiates the
+  existing exact fixed-shape template for two adjacent GQA6 heads, 24 local256
+  blocks, and half the GQA1 K readers. F32 context and gated BF16 are byte-
+  exact at live513/576/639; the leaf changes **-8.292%/+1.084%/+1.528%**.
+  A current post-GQA3 production pair is neutral-negative:
+  **17.082284 -> 17.074471 tok/s (-0.0457%, +0.0268 ms/token)** with KL0 and
+  **128/128** top-1. This confirms the existing 24-workgroup/40-CU
+  undersubscription closure; remove the kernel, wrapper, registry, leaf, and
+  diagnostic plumbing.
+- Production remains exact fused-GQA3 SWA plus fused-GQA1 global at
+  **17.139971 tok/s**. Next build a true HIP WMMA/cooperative **Br16 x Bc64**
+  GQA tile with bounded split-K state and an explicit high-precision
+  partial/merge gate. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-attention-gqa-repair-screens-rejected.json`.
