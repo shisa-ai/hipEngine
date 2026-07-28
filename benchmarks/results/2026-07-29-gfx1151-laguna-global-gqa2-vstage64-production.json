@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T03:00:29+09:00",
+  "kind": "hipengine_laguna_global_gqa2_vstage64_production",
+  "status": "accepted",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "ce6d178c4c95d5e1dd4366fb739c6666427e8a56",
+  "tracked_clean": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "repetitions": 3,
+    "matrix_chunk": 2048,
+    "attention_chunk": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-gqa2-vstage64-production-clean.json",
+    "raw_output_sha256": "fa4d1712c9b94b5e39f0c30740e913e03f79f6ed9dfa92998480d31fb8952680"
+  },
+  "production": {
+    "decode_median_tok_s": 18.230063621276216,
+    "decode_median_ms_per_token": 54.854443778951214,
+    "decode_median_seconds": 6.966514359926805,
+    "decode_samples_tok_s": [
+      18.219716880487006,
+      18.230063621276216,
+      18.23500716011166
+    ],
+    "decode_samples_seconds": [
+      6.970470553031191,
+      6.966514359926805,
+      6.9646257270360366
+    ],
+    "prefill_median_tok_s": 654.9830692604751,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "lifecycle_exact": true
+  },
+  "comparison": {
+    "prior_clean_swa_vstage64_tok_s": 18.02650137103834,
+    "throughput_change_percent": 1.1292388137219111,
+    "saved_ms_per_token": 0.6194376702031832,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 58.98283105901656,
+    "same_source_seven_pair_control_tok_s": 18.034298449433802,
+    "same_source_seven_pair_candidate_tok_s": 18.2370897328481,
+    "same_source_change_percent": 1.124475587353202
+  },
+  "correctness": {
+    "f32_context_vs_rollback_byte_exact": true,
+    "gated_bf16_vs_rollback_byte_exact": true,
+    "ring_wrap_and_eviction_cpu_reference_pass": true,
+    "generated_trajectory_exact": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "allocation_lifecycle_pass": true
+  },
+  "notes": [
+    "Untracked shared-tree artifacts are excluded from tracked-clean status.",
+    "GQA2 V-stage64 is bounded to natural capacity-4096 global decode through live4000; exact GQA1 remains the fallback above that bound."
+  ]
+}
