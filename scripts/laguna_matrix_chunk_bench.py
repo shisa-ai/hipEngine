@@ -20,10 +20,14 @@ import numpy as np
 
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
-from hipengine.core.memory import host_array_ptr, memory_stats
+from hipengine.core.memory import free, host_array_ptr, malloc, memory_stats
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf import FULL_ATTENTION
-from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+import hipengine.runtime.laguna_gguf_runner as runner_module
+from hipengine.runtime.laguna_gguf_runner import (
+    LagunaGGUFResidentSession,
+    LagunaHiddenCaptureTargets,
+)
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_prefill_profile import _profile_token_stream
 from scripts.laguna_target_ar_bench import (
@@ -43,6 +47,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MATRIX_ROWS = (128, 256, 512)
 ATTENTION_ROWS = 128
 LENGTHS = (512, 1024, 4096)
+ALL_HIDDEN_DEPTHS = tuple(range(1, 49))
 _EXACT_FIELDS = (
     "next_token_id",
     "next_token_logit_hex",
@@ -77,6 +82,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
+    parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3")
+    parser.add_argument(
+        "--direct-gguf",
+        action="store_true",
+        help="load the source GGUF directly instead of the repacked cache",
+    )
+    parser.add_argument("--safety-reserve-gib", type=float, default=4.0)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
@@ -92,6 +104,128 @@ def _mode_order(
         raise ValueError("matrix policy order requires at least one mode")
     shift = (int(length_index) + int(repetition)) % len(modes)
     return modes[shift:] + modes[:shift]
+
+
+def _validate_protocol(
+    *,
+    lengths: Sequence[int],
+    matrix_rows: Sequence[int],
+    attention_rows: int,
+    context_length: int,
+    repetitions: int,
+    warmup_rows: int,
+) -> None:
+    profiled_lengths = tuple(int(value) for value in lengths)
+    modes = tuple(int(value) for value in matrix_rows)
+    if not profiled_lengths or tuple(sorted(profiled_lengths)) != profiled_lengths:
+        raise ValueError("matrix screen lengths must be positive ascending values")
+    if len(set(profiled_lengths)) != len(profiled_lengths) or profiled_lengths[0] <= 0:
+        raise ValueError("matrix screen lengths must be positive distinct values")
+    if len(modes) < 2 or tuple(sorted(modes)) != modes:
+        raise ValueError("matrix screen rows must be at least two ascending capacities")
+    if modes[0] != 128:
+        raise ValueError("matrix screen requires M128 as the exact control")
+    if modes[-1] > 2_048:
+        raise ValueError("matrix screen rows cannot exceed 2048")
+    if profiled_lengths[0] < modes[-1]:
+        raise ValueError("every matrix capacity must be exercised by the shortest length")
+    if int(attention_rows) != ATTENTION_ROWS:
+        raise ValueError(f"matrix screen requires attention rows {ATTENTION_ROWS}")
+    if int(context_length) < max(*profiled_lengths, *modes):
+        raise ValueError("largest matrix-screen shape exceeds admitted context")
+    if int(repetitions) < 2:
+        raise ValueError("matrix screen requires at least two repetitions")
+    if int(warmup_rows) <= 0 or int(warmup_rows) > ATTENTION_ROWS:
+        raise ValueError("warmup rows must fit one attention tile")
+
+
+def _routing_occupancy_summary(
+    selected_experts: Mapping[int, Sequence[int]],
+    *,
+    rows: int,
+    top_k: int,
+    expert_count: int,
+) -> dict[str, Any]:
+    parsed_rows = int(rows)
+    parsed_top_k = int(top_k)
+    parsed_experts = int(expert_count)
+    if parsed_rows <= 0 or parsed_top_k <= 0 or parsed_experts <= 0:
+        raise ValueError("routing occupancy dimensions must be positive")
+    route_slots = parsed_rows * parsed_top_k
+    rowbatches = (2, 4, 8, 16, 32)
+    layers: dict[str, dict[str, Any]] = {}
+    for layer_id, raw_selected in sorted(selected_experts.items()):
+        selected = np.asarray(tuple(int(value) for value in raw_selected), dtype=np.int64)
+        if selected.size != route_slots:
+            raise ValueError(
+                f"routing layer {layer_id} has {selected.size} lanes; expected {route_slots}"
+            )
+        if np.any(selected < 0) or np.any(selected >= parsed_experts):
+            raise ValueError(f"routing layer {layer_id} contains an invalid expert ID")
+        counts = np.bincount(selected, minlength=parsed_experts)
+        active = counts[counts > 0]
+        full = {
+            str(rowbatch): int(np.sum((counts // rowbatch) * rowbatch))
+            for rowbatch in rowbatches
+        }
+        tails = {
+            str(rowbatch): int(np.sum(counts % rowbatch))
+            for rowbatch in rowbatches
+        }
+        layers[str(int(layer_id))] = {
+            "route_slots": route_slots,
+            "active_experts": int(active.size),
+            "mean_routes_per_all_expert": route_slots / parsed_experts,
+            "mean_routes_per_active_expert": float(np.mean(active)),
+            "median_routes_per_active_expert": float(np.median(active)),
+            "max_routes_per_expert": int(np.max(active)),
+            "experts_at_least_rows": {
+                str(rowbatch): int(np.sum(counts >= rowbatch))
+                for rowbatch in rowbatches
+            },
+            "full_route_slots_by_rowbatch": full,
+            "tail_route_slots_by_rowbatch": tails,
+            "full_route_utilization_by_rowbatch": {
+                key: value / route_slots for key, value in full.items()
+            },
+        }
+    if not layers:
+        raise ValueError("routing occupancy requires at least one sparse layer")
+    return {
+        "rows": parsed_rows,
+        "top_k": parsed_top_k,
+        "expert_count": parsed_experts,
+        "layers": layers,
+        "aggregate": {
+            "layer_count": len(layers),
+            "route_slots_per_layer": route_slots,
+            "mean_active_experts": statistics.mean(
+                int(layer["active_experts"]) for layer in layers.values()
+            ),
+            "mean_routes_per_all_expert": route_slots / parsed_experts,
+            "mean_routes_per_active_expert": statistics.mean(
+                float(layer["mean_routes_per_active_expert"])
+                for layer in layers.values()
+            ),
+            "max_routes_per_expert": max(
+                int(layer["max_routes_per_expert"]) for layer in layers.values()
+            ),
+            "full_route_utilization_by_rowbatch": {
+                str(rowbatch): statistics.mean(
+                    float(layer["full_route_utilization_by_rowbatch"][str(rowbatch)])
+                    for layer in layers.values()
+                )
+                for rowbatch in rowbatches
+            },
+            "tail_route_slots_by_rowbatch": {
+                str(rowbatch): sum(
+                    int(layer["tail_route_slots_by_rowbatch"][str(rowbatch)])
+                    for layer in layers.values()
+                )
+                for rowbatch in rowbatches
+            },
+        },
+    }
 
 
 def _correctness(
@@ -200,6 +334,8 @@ def _decision(
     correctness: Mapping[str, Any],
     *,
     recovered: bool,
+    full_state_pass: bool = True,
+    routing_prefix_pass: bool = True,
     matrix_rows: Sequence[int] = MATRIX_ROWS,
     lengths: Sequence[int] = LENGTHS,
 ) -> dict[str, Any]:
@@ -225,6 +361,10 @@ def _decision(
     failed = []
     if not correctness["pass"]:
         failed.append("matrix_policy_outputs_or_state_not_exact")
+    if not full_state_pass:
+        failed.append("all_hidden_boundaries_not_exact")
+    if not routing_prefix_pass:
+        failed.append("shared_prefix_routing_not_exact")
     if not recovered:
         failed.append("tracked_lifecycle_not_recovered")
     if selected == baseline_mode:
@@ -236,8 +376,9 @@ def _decision(
         "eligible_matrix_rows": eligible,
         "failed_checks": failed,
         "policy": (
-            "all logits/hidden/KV/cursor fields exact, deterministic repeats, exact lifecycle, "
-            f"and aggregate plus every-length wall improvement versus M{baseline_mode}"
+            "all logits/48 hidden boundaries/KV/cursor fields and shared-prefix routing "
+            "exact, deterministic repeats, exact lifecycle, and aggregate plus every-length "
+            f"wall improvement versus M{baseline_mode}"
         ),
     }
 
@@ -411,7 +552,237 @@ def _session(
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=matrix_rows,
         prefill_attention_chunk_size=args.attention_rows,
+        prefill_global_attention_chunk_size=args.attention_rows,
     )
+
+
+def _all_hidden_capture_targets(
+    session: LagunaGGUFResidentSession,
+) -> tuple[LagunaHiddenCaptureTargets, list[Any]]:
+    depths = tuple(range(1, int(session.config.block_count) + 1))
+    if depths != ALL_HIDDEN_DEPTHS:
+        raise ValueError(
+            f"matrix screen requires the 48-layer Laguna target; got {len(depths)} layers"
+        )
+    buffers: list[Any] = []
+    try:
+        for _ in depths:
+            buffers.append(
+                malloc(
+                    session.config.hidden_size * np.dtype(np.uint16).itemsize,
+                    runtime=session.runtime,
+                )
+            )
+        previous_depths = runner_module.LAGUNA_DFLASH_CAPTURE_DEPTHS
+        runner_module.LAGUNA_DFLASH_CAPTURE_DEPTHS = depths
+        try:
+            targets = LagunaHiddenCaptureTargets(
+                hidden_size=session.config.hidden_size,
+                buffers=dict(zip(depths, buffers, strict=True)),
+                rows=1,
+            )
+        finally:
+            runner_module.LAGUNA_DFLASH_CAPTURE_DEPTHS = previous_depths
+        return targets, buffers
+    except BaseException:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=session.runtime)
+        raise
+
+
+def _full_state_snapshot(
+    owner: LagunaGGUFResidentSession,
+    token_ids: Sequence[int],
+    args: argparse.Namespace,
+    *,
+    matrix_rows: int,
+    length: int,
+) -> dict[str, Any]:
+    before = memory_stats()
+    session = _session(owner, args, matrix_rows=matrix_rows)
+    targets: LagunaHiddenCaptureTargets | None = None
+    buffers: list[Any] = []
+    try:
+        targets, buffers = _all_hidden_capture_targets(session)
+        started = time.perf_counter()
+        result = session.prefill(
+            token_ids[:length],
+            capture_last=targets,
+            use_bulk=True,
+        )
+        session.runtime.device_synchronize()
+        elapsed = time.perf_counter() - started
+        logits = _device_values(session.runtime, result.logits, np.float32)
+        snapshot = {
+            "matrix_rows": matrix_rows,
+            "attention_rows": session.prefill_attention_chunk_size,
+            "global_attention_rows": session.prefill_global_attention_chunk_size,
+            "length": length,
+            "seconds_diagnostic_with_captures": elapsed,
+            "next_token_id": int(result.next_token_id),
+            "next_token_logit_hex": float(result.next_token_logit).hex(),
+            "logits_sha256": hashlib.sha256(logits.tobytes()).hexdigest(),
+            "final_hidden_sha256": _device_digest(
+                session.runtime, result.final_hidden, np.uint16
+            ),
+            "post_layer_hidden_sha256": _device_digest(
+                session.runtime, result.post_layer_hidden, np.uint16
+            ),
+            "hidden_boundary_sha256": {
+                str(depth): _device_digest(session.runtime, buffer, np.uint16)
+                for depth, buffer in targets.buffers.items()
+            },
+            "kv_sha256": _kv_digest(session),
+            "final_position": int(session.position),
+        }
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=session.runtime)
+        session.close()
+    after = memory_stats()
+    snapshot["tracked_returned_to_baseline"] = bool(
+        after["current_allocated_bytes"] == before["current_allocated_bytes"]
+        and after["active_allocations"] == before["active_allocations"]
+    )
+    return snapshot
+
+
+def _full_state_gate(
+    owner: LagunaGGUFResidentSession,
+    token_ids: Sequence[int],
+    args: argparse.Namespace,
+    *,
+    matrix_rows: Sequence[int],
+) -> dict[str, Any]:
+    modes = tuple(int(value) for value in matrix_rows)
+    length = modes[-1]
+    snapshots = {
+        str(mode): _full_state_snapshot(
+            owner,
+            token_ids,
+            args,
+            matrix_rows=mode,
+            length=length,
+        )
+        for mode in modes
+    }
+    baseline = snapshots[str(modes[0])]
+    comparisons = {}
+    for mode in modes:
+        current = snapshots[str(mode)]
+        checks = {
+            field: current[field] == baseline[field]
+            for field in _EXACT_FIELDS
+        }
+        boundary_checks = {
+            depth: digest == baseline["hidden_boundary_sha256"][depth]
+            for depth, digest in current["hidden_boundary_sha256"].items()
+        }
+        checks["all_48_hidden_boundaries"] = all(boundary_checks.values())
+        checks["attention_rows_fixed"] = (
+            current["attention_rows"] == ATTENTION_ROWS
+            and current["global_attention_rows"] == ATTENTION_ROWS
+        )
+        checks["tracked_returned_to_baseline"] = bool(
+            current["tracked_returned_to_baseline"]
+        )
+        comparisons[str(mode)] = {
+            "pass": all(checks.values()),
+            "checks": checks,
+            "hidden_boundary_exact": boundary_checks,
+        }
+    return {
+        "pass": all(value["pass"] for value in comparisons.values()),
+        "length": length,
+        "baseline_matrix_rows": modes[0],
+        "snapshots": snapshots,
+        "comparisons": comparisons,
+    }
+
+
+def _routing_probe(
+    owner: LagunaGGUFResidentSession,
+    token_ids: Sequence[int],
+    args: argparse.Namespace,
+    *,
+    matrix_rows: Sequence[int],
+) -> dict[str, Any]:
+    modes = tuple(int(value) for value in matrix_rows)
+    host_replays: dict[int, Any] = {}
+    summaries: dict[str, Any] = {}
+    all_recovered = True
+    for mode in modes:
+        before = memory_stats()
+        session = _session(owner, args, matrix_rows=mode)
+        try:
+            started = time.perf_counter()
+            replay = session.prefill_routing_replay(token_ids[:mode])
+            session.runtime.device_synchronize()
+            elapsed = time.perf_counter() - started
+            host_replays[mode] = replay
+            selected_payload = {
+                str(layer_id): list(values)
+                for layer_id, values in replay.selected_experts.items()
+            }
+            weight_payload = {
+                str(layer_id): [float(value) for value in values]
+                for layer_id, values in replay.routing_weights.items()
+            }
+            summaries[str(mode)] = {
+                "matrix_rows": mode,
+                "seconds_diagnostic_with_capture": elapsed,
+                "next_token_id": int(replay.result.next_token_id),
+                "final_position": int(session.position),
+                "selected_experts_sha256": _sha256_json(selected_payload),
+                "routing_weights_sha256": _sha256_json(weight_payload),
+                "occupancy": _routing_occupancy_summary(
+                    replay.selected_experts,
+                    rows=replay.rows,
+                    top_k=replay.top_k,
+                    expert_count=replay.expert_count,
+                ),
+            }
+        finally:
+            session.close()
+        after = memory_stats()
+        recovered = bool(
+            after["current_allocated_bytes"] == before["current_allocated_bytes"]
+            and after["active_allocations"] == before["active_allocations"]
+        )
+        summaries[str(mode)]["tracked_returned_to_baseline"] = recovered
+        all_recovered = bool(all_recovered and recovered)
+
+    baseline_mode = modes[0]
+    baseline = host_replays[baseline_mode]
+    prefix_lanes = baseline.rows * baseline.top_k
+    shared_prefix = {}
+    for mode in modes:
+        replay = host_replays[mode]
+        ids_exact = all(
+            tuple(replay.selected_experts[layer_id][:prefix_lanes])
+            == tuple(baseline.selected_experts[layer_id])
+            for layer_id in baseline.selected_experts
+        )
+        weights_exact = all(
+            tuple(replay.routing_weights[layer_id][:prefix_lanes])
+            == tuple(baseline.routing_weights[layer_id])
+            for layer_id in baseline.routing_weights
+        )
+        shared_prefix[str(mode)] = {
+            "selected_experts_exact": ids_exact,
+            "routing_weights_exact": weights_exact,
+            "pass": bool(ids_exact and weights_exact),
+        }
+    return {
+        "pass": bool(
+            all(value["pass"] for value in shared_prefix.values()) and all_recovered
+        ),
+        "baseline_matrix_rows": baseline_mode,
+        "shared_prefix_lanes_per_layer": prefix_lanes,
+        "shared_prefix": shared_prefix,
+        "modes": summaries,
+        "tracked_returned_to_baseline": all_recovered,
+    }
 
 
 def _run_one(
@@ -424,8 +795,13 @@ def _run_one(
     repetition: int,
 ) -> dict[str, Any]:
     before = memory_stats()
+    gpu_free_before, gpu_total = owner.runtime.mem_get_info()
     session = _session(owner, args, matrix_rows=matrix_rows)
+    after_allocate = memory_stats()
+    gpu_free_after_allocate, gpu_total_after_allocate = owner.runtime.mem_get_info()
     try:
+        if gpu_total_after_allocate != gpu_total:
+            raise RuntimeError("HIP total memory changed during matrix session allocation")
         started = time.perf_counter()
         result = session.prefill(token_ids[:length], use_bulk=True)
         session.runtime.device_synchronize()
@@ -434,6 +810,8 @@ def _run_one(
         row = {
             "matrix_rows": matrix_rows,
             "attention_rows": session.prefill_attention_chunk_size,
+            "global_attention_rows": session.prefill_global_attention_chunk_size,
+            "raw_k_prefill_rowbatch": session.raw_k_prefill_rowbatch,
             "length": length,
             "repetition": repetition,
             "chunks": math.ceil(length / matrix_rows),
@@ -460,6 +838,17 @@ def _run_one(
                 "total_nbytes": session.prefill_scratch_plan.total_nbytes,
                 "admission_nbytes": session.prefill_scratch_admission_nbytes,
             },
+            "allocation_observation": {
+                "tracked_delta_after_session_allocate": (
+                    after_allocate["current_allocated_bytes"]
+                    - before["current_allocated_bytes"]
+                ),
+                "gpu_free_delta_after_session_allocate": (
+                    gpu_free_before - gpu_free_after_allocate
+                ),
+                "gpu_free_before": gpu_free_before,
+                "gpu_free_after_session_allocate": gpu_free_after_allocate,
+            },
         }
     finally:
         session.close()
@@ -474,22 +863,18 @@ def _run_one(
 def run(args: argparse.Namespace) -> dict[str, Any]:
     lengths = tuple(int(value) for value in args.lengths)
     matrix_rows = tuple(int(value) for value in args.matrix_rows)
-    if lengths != LENGTHS:
-        raise ValueError(f"matrix screen requires lengths={LENGTHS}")
-    if len(matrix_rows) < 2 or tuple(sorted(matrix_rows)) != matrix_rows:
-        raise ValueError("matrix screen rows must be at least two ascending capacities")
-    if matrix_rows[-1] > 2_048:
-        raise ValueError("matrix screen rows cannot exceed 2048")
-    if args.attention_rows != ATTENTION_ROWS:
-        raise ValueError(f"matrix screen requires attention rows {ATTENTION_ROWS}")
-    if args.context_length < max(lengths):
-        raise ValueError("largest matrix-screen length exceeds admitted context")
-    if args.repetitions < 2:
-        raise ValueError("matrix screen requires at least two repetitions")
-    if args.warmup_rows <= 0 or args.warmup_rows > ATTENTION_ROWS:
-        raise ValueError("warmup rows must fit one attention tile")
+    _validate_protocol(
+        lengths=lengths,
+        matrix_rows=matrix_rows,
+        attention_rows=args.attention_rows,
+        context_length=args.context_length,
+        repetitions=args.repetitions,
+        warmup_rows=args.warmup_rows,
+    )
     if not args.model.is_file() or not args.model_sha256:
         raise ValueError("matrix screen requires the pinned model and SHA-256")
+    if not math.isfinite(args.safety_reserve_gib) or args.safety_reserve_gib < 0.0:
+        raise ValueError("matrix screen safety reserve must be finite and nonnegative")
     repo = _repo_state()
     if not repo["tracked_clean"]:
         raise RuntimeError("retained Laguna matrix screen requires a clean tracked worktree")
@@ -500,14 +885,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolved_backend=args.backend,
         target_arch=args.backend.removeprefix("hip_"),
         model_path=args.model,
-        quant="gguf_q4_k_m",
+        quant=args.quant_label,
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile="laguna_prefill_matrix_chunk_screen",
         timing_protocol=(
             "same_load_m"
             + "_m".join(str(value) for value in matrix_rows)
-            + "_attention128_512_1024_4096"
+            + "_attention128_"
+            + "_".join(str(value) for value in lengths)
         ),
         warmups=len(matrix_rows),
         repetitions=args.repetitions,
@@ -531,12 +917,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             compiler_version=_compiler_version(args.compiler_version_file),
             require_cached_build=args.require_cached_build,
             progress=_progress,
-            repacked_cache=args.repacked_cache,
+            repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
-            prefill_chunk_size=matrix_rows[0],
+            prefill_chunk_size=matrix_rows[-1],
             prefill_attention_chunk_size=ATTENTION_ROWS,
+            prefill_global_attention_chunk_size=ATTENTION_ROWS,
+            safety_reserve_nbytes=int(args.safety_reserve_gib * (1 << 30)),
         )
         load_seconds = time.perf_counter() - load_started
+        full_state = _full_state_gate(
+            owner,
+            token_stream,
+            args,
+            matrix_rows=matrix_rows,
+        )
+        routing = _routing_probe(
+            owner,
+            token_stream,
+            args,
+            matrix_rows=matrix_rows,
+        )
         for mode in matrix_rows:
             warmup = _session(owner, args, matrix_rows=mode)
             try:
@@ -545,7 +945,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             finally:
                 warmup.close()
         for repetition in range(args.repetitions):
-            for length_index, length in enumerate(LENGTHS):
+            for length_index, length in enumerate(lengths):
                 for mode in _mode_order(
                     length_index,
                     repetition,
@@ -600,6 +1000,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         aggregate,
         correctness,
         recovered=recovered,
+        full_state_pass=bool(full_state["pass"]),
+        routing_prefix_pass=bool(routing["pass"]),
         matrix_rows=matrix_rows,
         lengths=lengths,
     )
@@ -623,10 +1025,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": {
             "path": str(args.model.resolve()),
             "sha256": args.model_sha256,
-            "quant": "Q4_K_M mixed GGUF v3",
-            "repacked_cache": str(args.repacked_cache.resolve()),
+            "quant": args.quant_label,
+            "direct_gguf": bool(args.direct_gguf),
+            "repacked_cache": (
+                None if args.direct_gguf else str(args.repacked_cache.resolve())
+            ),
             "repacked_cache_manifest_sha256": (
-                _sha256_bytes(manifest_path.read_bytes()) if manifest_path.is_file() else None
+                _sha256_bytes(manifest_path.read_bytes())
+                if not args.direct_gguf and manifest_path.is_file()
+                else None
             ),
         },
         "platform": {
@@ -640,6 +1047,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "lengths": list(lengths),
             "matrix_rows": list(matrix_rows),
             "attention_rows": ATTENTION_ROWS,
+            "global_attention_rows": ATTENTION_ROWS,
             "repetitions": args.repetitions,
             "warmup_rows_per_mode": args.warmup_rows,
             "mode_order": "rotating Latin order by length and repetition",
@@ -651,6 +1059,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_suite_sha256": _sha256_bytes(args.prompts.read_bytes()),
             "token_stream_sha256": _sha256_json(token_stream),
             "token_source": token_source,
+            "direct_gguf": bool(args.direct_gguf),
+            "quant_label": args.quant_label,
+            "safety_reserve_gib": args.safety_reserve_gib,
+            "all_hidden_boundary_gate_rows": full_state["length"],
+            "routing_occupancy_rows": list(matrix_rows),
             "boundary_gate": (
                 "tests/test_laguna_kv_attention.py::"
                 "test_laguna_swa_resident_attention_slices_match_chunks_across_ring_wrap"
@@ -667,6 +1080,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "tracked_returned_to_baseline": recovered,
         },
         "relative_quality": relative_quality,
+        "full_state": full_state,
+        "routing": routing,
         "decision": decision,
         "memory": {
             "tracked_before": tracked_before,
@@ -678,7 +1093,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": [str(Path(sys.executable).resolve()), *sys.argv],
         "limitations": [
             "Shape-policy screen uses one deterministic canonical-prompt-derived long token stream.",
-            "Canonical 68-122-token category prompts do not cross any screened matrix capacity.",
+            "The canonical prompt suite supplies a deterministic token stream extended to each requested length.",
             "No package default changes until the clean screen and required rollup are retained.",
         ],
     }
