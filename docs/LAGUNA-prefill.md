@@ -19,10 +19,11 @@ selected IQ **45.021%/45.343%**, and kernel span **16.309%/15.133%** without
 changing dispatch count. Both changed-arithmetic decisions remain closed: P6
 fails complete quality and its IQ2 repair density, while WPF-1R's separate
 raw-Q5/Q6 screen fails touched-row and traffic density before repair
-implementation. The remaining execution order is:
+implementation. The rejected raw-Q5/Q6 MMQ runtime owner/public selector is
+now removed. The remaining execution order is:
 
-1. remove the rejected raw-Q5/Q6 MMQ runtime owner/public selector plus obsolete
-   local256/group8 grouped gate/up and losing pair16-rowbatch4 surfaces;
+1. remove obsolete local256/group8 grouped gate/up and losing
+   pair16-rowbatch4 surfaces;
 2. run **WPF-3** against SWA specifically, which owns most measured short
    attention time;
 3. screen **WPF-1T** exact Q5/Q6 output-column tiling over a bounded

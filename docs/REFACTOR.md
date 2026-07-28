@@ -85,17 +85,15 @@ should be removed or collapsed.
 
 ## Laguna raw-Q5/Q6 prefill MMQ selector
 
-- Added 2026-07-28 as the default-off WPF-1B admission seam.
-  `LagunaGGUFResidentSession(..., raw_k_prefill_mmq=True|False)` lazily owns one
-  bounded producer-row Q8_1 workspace and library only on supported gfx1100.
-  Quant-specific crossover policy stays on registered Q5_K/Q6_K plugin keys;
-  N48/N72 and all key/shape/backend misses retain the current exact rowbatch32
-  owner unless an explicit smaller slab is selected. gfx1151
-  excludes the producer, policy, and MMQ keys and rejects explicit enablement.
+- Added 2026-07-28 as the default-off WPF-1B admission seam. The temporary
+  `LagunaGGUFResidentSession(..., raw_k_prefill_mmq=True|False)` lazily owned one
+  bounded producer-row Q8_1 workspace and library on gfx1100. Quant-specific
+  crossover policy keys selected only N>=1024; N48/N72 and all misses retained
+  the exact rowbatch owner.
 - D4, D8, and D8R8 runtime candidates are performance-positive but rejected by
   the complete quality lane at maximum KL **0.624304/0.400292/0.964321**. Do
   not promote any direct policy and do not add D16 or another blind precision
-  sibling. The default-off owner currently selects D8R8 only as diagnostic
+  sibling. The temporary owner ultimately selected D8R8 only as diagnostic
   infrastructure for measuring mismatch/risk density.
 - WPF-1R now closes bounded repair on the raw-Q5/Q6 roles themselves. One
   natural M512 pass captures all **381/381** projection tensors; 333 are
@@ -106,13 +104,12 @@ should be removed or collapsed.
   reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads, so all 333
   fail all three prospective gates. No repair queue/kernel/overflow route or
   promotion lane was added.
-- The removal trigger is active. In a separate cleanup unit, remove the public
-  positive `raw_k_prefill_mmq` selector/setter, lazy workspace/library owner,
-  direct policy/ABI dispatch, and owner-focused tests. Preserve exact
-  rowbatch32 and smaller-slab fallbacks. D4/D8/D8R8 primitive keys may remain
-  only where the published ceiling/rejection evidence justifies them; remove
-  unreferenced wrappers and policy surfaces. Perform this cleanup after WPF-2b
-  and before the SWA-targeted WPF-3 lane. Evidence:
+- **Closed 2026-07-29:** remove the public `raw_k_prefill_mmq` constructor
+  selector/setter, backend capabilities, lazy workspace/library owner,
+  quant-policy keys, context/ABI dispatch, benchmark flags/telemetry, and
+  owner-focused tests. Exact rowbatch32 and smaller-slab fallbacks remain.
+  Direct D4/D8/D8R8 wrappers and primitive keys remain only as published
+  ceiling/rejection evidence; no production owner can select them. Evidence:
   `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json`.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
