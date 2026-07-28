@@ -943,7 +943,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
 | [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna S 2.1 gfx1151 support contract, implementation record, DFlash boundary, and evidence index |
-| [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 WPF-2 exact grouped-IQ matrix512/RB32 retained with P6/WPF-1R/WPF-3 next, plus the gfx1151 campaign record |
+| [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 WPF-2 exact grouped-IQ matrix512/RB32 retained, P6/WPF-1R rejected, and WPF-3 next, plus the gfx1151 campaign record |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |

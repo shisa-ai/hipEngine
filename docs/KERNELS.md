@@ -413,8 +413,8 @@ but the complete 18-prompt/576-step lane reaches maximum KL **0.683239** at
 **85.946%** BF16 mismatch coordinates and **99.496%** touched active expert
 output rows, versus frozen **5%/20%** stop rules. No runtime owner, repair
 queue, selector, or default was added; retain the P6 key only as explicit
-primitive/ceiling evidence. This does not adjudicate WPF-1R's separate raw
-Q5/Q6 density screen.
+primitive/ceiling evidence. That IQ2 result does not adjudicate WPF-1R; the
+separate raw-Q5/Q6 screen below closes on its own actual tensors.
 Evidence: [`P6 M512 rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
@@ -462,7 +462,8 @@ The package default therefore remains MMQ-off and is now exact rowbatch32.
 D4->D8 improves only
 275/576 teacher steps while worsening 301/576 and leaves 28 steps above the KL
 limit in both variants. The completed two-stage residual screen below is the
-last blind precision variant; future changed arithmetic requires exact repair.
+last blind precision variant; WPF-1R subsequently rejects sparse exact repair
+for this Q5/Q6 owner.
 Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) ·
 [`D8 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json).
 
@@ -482,11 +483,29 @@ hidden boundaries/KV/live spans. Clean default-off A/B moves
 **562/576 (97.569%)** top-1; category top-1 remains above 90%. Reducing maximum
 actual-role KL roughly 68x versus D8 while worsening the autoregressive maximum
 closes D16 and further blind residual precision screens. D4/D8/D8R8 remain
-explicit diagnostics, package production remains MMQ-off/rowbatch32, and any
-future MMQ owner must use bounded fail-closed exact repair against the newly
-widened exact baseline.
+explicit primitive diagnostics and package production remains
+MMQ-off/rowbatch32. WPF-1R below now closes this runtime owner rather than
+adding bounded repair.
 Evidence: [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) ·
 [`D8R8 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json).
+
+The M512 WPF-1R screen captures all **381/381** raw-Q5/Q6 projection tensors;
+333 satisfy the existing D8R8 policy and 48 narrow N48/N72 gates remain exact.
+Measured BF16 mismatches are only **0.500-5.270%** of coordinates, but they
+already touch **72.266-100%** of encoded output-weight rows in every eligible
+tensor. Coordinate repair would reread **0.160-1.686x** the complete exact
+RB32 family, so all 333 fail the frozen 20% touched-row stop and 331 also fail
+the 25% read stop before conservative risk detection. The per-tensor max-error
+BF16-midpoint envelope reaches **9.142-93.418%** uncertain coordinates,
+**99.512-100%** touched rows, and **2.925-29.894x** exact-family reads; all 333
+fail all three conservative limits. Finite output, BF16/F32 RNE agreement,
+complete inventory, token 2930, position 511, and allocation recovery pass.
+No queue, repair kernel, overflow route, runtime mode, or timing/quality lane is
+added. Retain exact matrix512/RB32 production and remove the rejected
+`raw_k_prefill_mmq` owner/public selector in a separate cleanup unit while
+keeping primitive keys only where their ceiling/rejection evidence remains
+useful.
+Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
