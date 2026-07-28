@@ -207,6 +207,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance exact SWA GQA3 against its saturated-512 reducer",
     )
     parser.add_argument(
+        "--compare-swa-fused-fixed512",
+        action="store_true",
+        help="counterbalance saturated split SWA against exact fused attention",
+    )
+    parser.add_argument(
         "--compare-global-fixedshape-reduce",
         action="store_true",
         help="counterbalance exact global reduction against its natural shape",
@@ -319,6 +324,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_f16_decode_onebarrier,
             args.compare_f16_decode_fixedk,
             args.compare_swa_fixed512_reduce,
+            args.compare_swa_fused_fixed512,
             args.compare_global_fixedshape_reduce,
             args.compare_selected_natural_decode,
             args.compare_selected_natural_tile8_decode,
@@ -355,6 +361,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_f16_decode_onebarrier
         or args.compare_f16_decode_fixedk
         or args.compare_swa_fixed512_reduce
+        or args.compare_swa_fused_fixed512
         or args.compare_global_fixedshape_reduce
         or args.compare_selected_natural_decode
         or args.compare_selected_natural_tile8_decode
@@ -422,6 +429,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_split_gate_fusion = False
     active_swa_split_wave_local = False
     active_swa_split_fixed512_reduce = False
+    active_swa_fused_fixed512 = False
     active_global_split_fixedshape_reduce = False
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
@@ -521,6 +529,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_split_fixed512_reduce = (
             owner.kv_cache.swa_split_fixed512_reduce
         )
+        active_swa_fused_fixed512 = owner.kv_cache.swa_fused_fixed512
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
@@ -583,6 +592,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.kv_cache.swa_split_fixed512_reduce = (
                             mode == "candidate"
                         )
+                    if args.compare_swa_fused_fixed512:
+                        owner.kv_cache.swa_fused_fixed512 = mode == "candidate"
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
@@ -806,6 +817,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_fixed512_reduce": (
                 args.compare_swa_fixed512_reduce
             ),
+            "compare_swa_fused_fixed512": args.compare_swa_fused_fixed512,
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -823,6 +835,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "swa_split_fixed512_reduce": (
                 active_swa_split_fixed512_reduce
             ),
+            "swa_fused_fixed512": active_swa_fused_fixed512,
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce
             ),

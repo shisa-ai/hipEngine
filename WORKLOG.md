@@ -187912,3 +187912,39 @@ Vulkan local sizes verbatim will close the measured gap.
   **17.007001 tok/s / 58.799 ms**, cumulative **+48.317%** from 11.466687.
   Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json`.
+
+## 2026-07-28 22:45 JST — Retain exact fused-GQA2 SWA decode
+
+- The required lineage audit remains blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; this unit ports no
+  external kernel. RED failed on the absent fused-GQA2 registry key. GREEN
+  passes saturated ring, wrap, and explicit-eviction F32/BF16 byte identity.
+  The initial focused broad bundle had one isolated compile failure after
+  rejected-candidate cleanup accidentally removed an `extern "C" int`
+  declaration; restoring it repaired the only failing node. Per the focused
+  repair rule, the complete changed attention test file plus runtime selector
+  then passes **3/3**, while the original run had established all other nodes
+  green.
+- Reject three exact ownership screens. A parallel three-head shared-V reducer
+  regresses the cache-hot complete layer **25.286%**. One-head local128 fusion
+  regresses **8.190%**. One-head local256 fusion improves the cache-hot leaf
+  **8.142%**, but seven resident-model pairs regress
+  **17.015877 -> 16.839214 tok/s (-1.038%, +0.617 ms/token)**. Full tracing
+  explains the reversal: fused is **272.271 us/layer**, versus retained GQA3
+  score+fixed reducer **21.119 + 230.192 = 251.311 us/layer**, because the
+  one-head body rereads K nine times. Remove all three code/test surfaces.
+- Retain saturated natural 72Q/8KV/D128 fused GQA2 on gfx1151. Five local256
+  owners per KV head carry query pairs (the fifth carries the ninth head),
+  preserve the exact wave32 QK tree, scalar slot-order softmax, PV FMA order,
+  divide, gate, and F32/BF16 stores, and remove the global score plane plus one
+  launch. The cache-hot leaf is **2.960% slower**, but seven resident-model
+  p512/d128 pairs all win: **17.013184 -> 17.065241 tok/s (+0.306%,
+  -0.179 ms/token)**. All IDs, hashes, final token 74107/position 638, state,
+  and lifecycle match.
+- Cached native tracing observes the intended kernel at **78.147 us** with
+  **40 local256 blocks / 320 wave32s per SWA layer**, VGPR32/SGPR128/
+  LDS6144/scratch0. Shorter live counts, non-natural shapes, peer backends,
+  and capability rollback retain exact GQA3 score plus fixed512 reduction.
+  Canonical p512/d128 is now **17.065241 tok/s / 58.599 ms/token**,
+  cumulative **+48.825%** from 11.466687. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json`.

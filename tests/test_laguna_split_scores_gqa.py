@@ -42,6 +42,7 @@ def test_laguna_swa_split_gqa3_score_variants_are_registered_on_gfx1151() -> Non
         "swa_context_split_exact_gated_gqa3_scores_spans",
         "swa_context_split_tile16_exact_gated_gqa3_scores_spans",
         "swa_context_split_tile16_exact_gated_gqa3_scores_fixed512_spans",
+        "swa_context_fused_exact_gated_gqa2_fixed512_spans",
     )
     assert all(
         resolve(
@@ -70,6 +71,7 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
         build_laguna_kv_attention,
         laguna_swa_attention_decode_split_exact_gated_gqa3_scores_bf16_spans,
         laguna_swa_attention_decode_split_exact_gated_wave_local_bf16_spans,
+        laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
         laguna_swa_attention_decode_split_tile16_exact_gated_wave_local_bf16_spans,
@@ -111,9 +113,11 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
         retained_context_device = malloc(width * 4, runtime=runtime)
         candidate_context_device = malloc(width * 4, runtime=runtime)
         fixed512_context_device = malloc(width * 4, runtime=runtime)
+        fused_gqa2_context_device = malloc(width * 4, runtime=runtime)
         retained_gated_device = malloc(width * 2, runtime=runtime)
         candidate_gated_device = malloc(width * 2, runtime=runtime)
         fixed512_gated_device = malloc(width * 2, runtime=runtime)
+        fused_gqa2_gated_device = malloc(width * 2, runtime=runtime)
         score_scratch_device = malloc(heads * capacity * 4, runtime=runtime)
         physical_scratch_device = malloc(heads * capacity * 4, runtime=runtime)
         allocations.extend(
@@ -125,9 +129,11 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                 retained_context_device,
                 candidate_context_device,
                 fixed512_context_device,
+                fused_gqa2_context_device,
                 retained_gated_device,
                 candidate_gated_device,
                 fixed512_gated_device,
+                fused_gqa2_gated_device,
                 score_scratch_device,
                 physical_scratch_device,
             )
@@ -216,14 +222,26 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                     library=library,
                     runtime=runtime,
                 )
+                laguna_swa_attention_decode_fused_exact_gated_gqa2_fixed512_bf16_spans(
+                    *common,
+                    fused_gqa2_context_device.ptr,
+                    gate_device.ptr,
+                    fused_gqa2_gated_device.ptr,
+                    *tail,
+                    sliding_window=capacity,
+                    library=library,
+                    runtime=runtime,
+                )
             runtime.device_synchronize()
 
             retained_context = np.empty(width, dtype=np.float32)
             candidate_context = np.empty_like(retained_context)
             fixed512_context = np.empty_like(retained_context)
+            fused_gqa2_context = np.empty_like(retained_context)
             retained_gated = np.empty(width, dtype=np.uint16)
             candidate_gated = np.empty_like(retained_gated)
             fixed512_gated = np.empty_like(retained_gated)
+            fused_gqa2_gated = np.empty_like(retained_gated)
             copy_device_to_host(
                 host_array_ptr(retained_context),
                 retained_context_device,
@@ -261,6 +279,18 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                     nbytes=fixed512_gated.nbytes,
                     runtime=runtime,
                 )
+                copy_device_to_host(
+                    host_array_ptr(fused_gqa2_context),
+                    fused_gqa2_context_device,
+                    nbytes=fused_gqa2_context.nbytes,
+                    runtime=runtime,
+                )
+                copy_device_to_host(
+                    host_array_ptr(fused_gqa2_gated),
+                    fused_gqa2_gated_device,
+                    nbytes=fused_gqa2_gated.nbytes,
+                    runtime=runtime,
+                )
             np.testing.assert_array_equal(
                 candidate_context,
                 retained_context,
@@ -281,6 +311,16 @@ def test_laguna_swa_split_gqa3_scores_match_exact_wave_local_at_ring_boundaries(
                     fixed512_gated,
                     retained_gated,
                     err_msg=f"fixed512 gated mismatch at {position=}",
+                )
+                np.testing.assert_array_equal(
+                    fused_gqa2_context,
+                    retained_context,
+                    err_msg=f"fused GQA2 context mismatch at {position=}",
+                )
+                np.testing.assert_array_equal(
+                    fused_gqa2_gated,
+                    retained_gated,
+                    err_msg=f"fused GQA2 gated mismatch at {position=}",
                 )
     finally:
         cache.free()

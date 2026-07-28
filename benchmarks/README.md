@@ -53,7 +53,7 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 
 Three exact gfx1100 structural transfers plus seven gfx1151-native owners now
 improve paired p512/d128 gfx1151 eager c=1 decode
-**11.466687 -> 17.007001 tok/s (+48.317%)**. Native
+**11.466687 -> 17.065241 tok/s (+48.825%)**. Native
 head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
 **127/65/257** threshold bundle reaches **14.528110 tok/s (+26.487%
@@ -96,6 +96,16 @@ leaf improves **5.35-7.13%**; seven exact production pairs move
 **16.991621 -> 17.007001 tok/s (+0.091%)**, saving **0.053 ms/token** with
 **7/7** wins. Cached tracing records all **5,969** tile8 calls and zero
 tile16/generic fallback.
+The exact fused-GQA2 SWA successor owns two adjacent query heads per
+workgroup, fuses QK, ordered softmax, PV, gate, and stores, and eliminates the
+global score plane plus one launch at saturated 512. Seven resident-model
+pairs move **17.013184 -> 17.065241 tok/s (+0.306%)**, saving
+**0.179 ms/token** with every candidate faster and every trajectory/state byte
+unchanged. The cache-hot leaf is **2.96% slower**, but the full resident model
+wins because each K vector is reread five rather than nine times per KV head.
+Tracing records 40 local256 workgroups / 320 wave32s per SWA layer,
+VGPR32/LDS6144/scratch0. Exact one-head fusion wins the hot leaf but regresses
+resident production **1.038%** and is removed.
 CPU-oracle, F32/BF16/`KVLiveSpans` byte,
 reducer-bit-exact,
 complete 128-token trajectory, ID/position, native trace, and lifecycle gates
@@ -106,6 +116,7 @@ retained **654.249 tok/s** short headline. The eager global-attention ABI still
 caps decode cache capacity at 4,096, so the long-context publication below
 remains prefill-only.
 [`retained GQA3 score artifact`](results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
+[`retained fused-GQA2 SWA artifact`](results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json) ·
 [`retained selected tile8 artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json) ·
 [`retained selected natural-shape artifact`](results/2026-07-28-gfx1151-laguna-selected-natural-decode-retained.json) ·
 [`retained global fixed-shape reducer artifact`](results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
@@ -1288,6 +1299,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact fused-GQA2 saturated SWA decode | 2026-07-28 | base `ae5f0c463`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; two HIP queues; p512/d128 eager c=1; ring/wrap/eviction byte identity, nine-sample leaf, seven resident-model A/B pairs, and cached native trace | **Retained gfx1151 decode default**: five owners per KV head fuse exact QK, ordered softmax, PV, and gate for query-head pairs, removing the global score plane/launch while preserving all arithmetic and output bytes. Seven complete pairs improve **17.013184 -> 17.065241 tok/s (+0.306%, -0.179 ms/token)** with every candidate faster and identical trajectories. The cache-hot leaf is **2.96% slower**, while one-head local256 fusion improves that leaf **8.14%** but regresses resident production **1.038%** and is removed. Trace records 40 local256 blocks / 320 wave32s per SWA layer, VGPR32/LDS6144/scratch0. [`artifact`](results/2026-07-28-gfx1151-laguna-swa-fused-gqa2-retained.json). | Yes, for saturated natural-shape gfx1151 SWA and exact p512/d128 scope | Rerun after fused attention arithmetic/ownership, ring/span ABI, model/quant, compiler/runtime, or device/queue changes; shorter live counts, non-natural shapes, and peer backends retain exact GQA3 score plus fixed512 reduction. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact global fixed-shape reduction | 2026-07-28 | base `2f5d621f5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; two HIP queues; p512/d128 eager c=1; live 257/513/576/639 byte identity, nine-sample leaf, seven same-session A/B pairs, and cached whole-model trace | **Retained gfx1151 decode default**: natural 48Q/8KV/D128/capacity-4096 global attention keeps dynamic live spans plus 48 local256 reducer workgroups and specializes only fixed dimensions, scratch strides, and bounded addressing. Complete score+reduce improves **0.7-2.0%** at live 513/576/639; production improves **16.832097 -> 16.846689 tok/s (+0.087%, -0.051 ms/token)** with every candidate faster and identical trajectories. Trace records **1,524 = 12 x 127** fixed reducers, zero generic fallback, local256/VGPR24/LDS512/scratch0. [`artifact`](results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json). | Yes, for natural-shape capacity-4096 gfx1151 global attention and exact p512/d128 scope | Rerun after global score/reducer arithmetic, span ABI, model/quant, compiler/runtime, or device/queue changes; non-natural shapes/capacities and peer backends keep the generic exact route. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact saturated-512 SWA reduction | 2026-07-28 | base `6ce10017d`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; two HIP queues; p512/d128 eager c=1; live/wrap/eviction byte identity, nine-sample leaf, seven same-session A/B pairs, and cached whole-model trace | **Retained gfx1151 decode default**: saturated 512-slot SWA keeps the exact GQA3 score owner plus 72 local128 value workgroups / 288 wave32s and specializes only 72Q/8KV/D128 bounds/addressing. Complete score+reduce improves **0.108265 -> 0.081059 ms/layer (-25.13%)**; production improves **16.386231 -> 16.833740 tok/s (+2.731%, -1.622 ms/token)** with every candidate faster and identical trajectories. Trace records **4,572 = 36 x 127** fixed reducers, zero generic fallback, local128/VGPR16/LDS0/scratch0. [`artifact`](results/2026-07-28-gfx1151-laguna-swa-fixed512-reduce-retained.json). | Yes, for saturated natural-shape gfx1151 SWA and exact p512/d128 scope | Rerun after SWA score/reducer arithmetic, ring/span ABI, model/quant, compiler/runtime, or device/queue changes; live below 512 and peer backends keep the generic exact route. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 fixed-K decode | 2026-07-28 | base `3a9be397a`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; BF16 KV; two HIP queues; p512/d128 eager c=1; natural-K byte identity, seven same-session A/B pairs, and cached whole-model trace | **Retained gfx1151 decode default**: rows==1 QKV/gate/O preserve the local256/eight-wave/one-output reduction exactly while compile-time-specializing K3072/K6144/K9216. All six roles improve **15.91-26.93%** and weighted F16 family falls **30.952 -> 24.482 ms/token (-20.90%)**. Production improves retained one-barrier **14.786076 -> 16.391201 tok/s (+10.856%)**; every candidate beats every control and trajectories are identical. Trace records exactly **18,288 = 144 x 127** fixed-K calls, zero fallback, and local256/VGPR24/LDS512/scratch0. [`fixed-K artifact`](results/2026-07-28-gfx1151-laguna-f16-fixedk-retained.json), [`one-barrier predecessor`](results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json). | Yes, for declared gfx1151 rows==1 natural-K source-F16 roles and p512/d128 exact scope | Rerun after F16 projection arithmetic/dispatch, model/quant, compiler/runtime, or device/queue changes; explicit `HIPENGINE_LAGUNA_F16_DECODE=onebarrier` is the exact generic-K rollback. |
