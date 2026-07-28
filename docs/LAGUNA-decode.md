@@ -3917,6 +3917,17 @@ Three tracked-clean selector-unset runs measure
 **+66.974%** over the sprint start, with exact IDs/state/lifecycle. Evidence:
 [`clean global direct-store production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json).
 
+The clean post-direct-store census keeps **816 dispatches/token** and measures
+**50.016 ms** kernel sum / **52.567 ms** span. Attention is now
+**5.466 ms/token = 4.152 SWA + 1.314 global**. The global direct-store change
+cuts global **10.70%**, total attention **3.28%**, kernel sum **0.44%**, and
+span **0.47%** from the last census. Against Vulkan's **0.909 ms** attention,
+the residual is **4.557 ms/token**, or **48.5%** of the remaining clean wall
+gap. Copy-codegen cleanup is now exhausted; the next bounded attack is a
+Vulkan-informed cooperative Br16/Bc64 tile with an explicit numerical repair
+strategy, not another unqualified online-GQA association. Evidence:
+[`post-direct-store wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

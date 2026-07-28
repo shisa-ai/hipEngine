@@ -188494,3 +188494,19 @@ Vulkan local sizes verbatim will close the measured gap.
   position 638, deterministic state, and allocation lifecycle are exact.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-vstage64-vec16-direct-production.json`.
+
+## 2026-07-29 04:20 JST — Re-profile the direct-store production wall
+
+- A clean cached `rocprofv3 --kernel-trace` on `771324c24` segments 127
+  embedding-to-argmax decode transitions at exactly **816 dispatches/token**.
+  Median kernel sum is **50.016 ms** and median span **52.567 ms**.
+- Attention is **5.466 ms/token = 4.152 SWA + 1.314 global**. Versus the last
+  clean census, global improves **10.70%**, attention **3.28%**, kernel sum
+  **0.44%**, and span **0.47%**. Source-F16 is **24.084 ms**, selected gate/up
+  **8.406**, selected down **4.825**, and dense/shared **3.718**.
+- Vulkan logs **0.909 ms/token** attention. The remaining attention gap is
+  **4.557 ms/token**, about **48.5%** of the clean wall gap. Copy-codegen
+  cleanup is exhausted; next build a bounded Br16/Bc64 cooperative tile with
+  an explicit numerical repair strategy rather than repeating the rejected
+  unqualified online GQA9 association. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json`.

@@ -1226,6 +1226,15 @@ Tracked-clean selector-unset production measures
 and **+66.974%** over the 11.466687 sprint start. Generated IDs, next/final
 tokens, final position, and allocation lifecycle remain exact.
 
+The clean post-direct-store trace retains **816 dispatches/token** and measures
+**50.016 ms** kernel sum / **52.567 ms** span. Attention is **5.466 ms**:
+**4.152 ms SWA + 1.314 ms global**. Versus the pre-direct census, global falls
+**10.70%**, total attention **3.28%**, kernel sum **0.44%**, and span **0.47%**.
+The remaining Vulkan attention gap is **4.557 ms/token** and **48.5%** of the
+clean wall gap. Further attention work must change the cooperative algorithm,
+not copy lowering. Evidence:
+[`post-direct-store wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-direct-store-wall-reprofile.json).
+
 ### Laguna post-350 selected-expert screens
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
