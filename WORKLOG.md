@@ -188982,3 +188982,25 @@ Vulkan local sizes verbatim will close the measured gap.
   11.466687 sprint start. Raw artifact SHA-256 is
   `843aabb5...d37ae3`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp8-production.json`.
+
+## 2026-07-29 08:10 JST — Retain exact mixed32 sixteen-lane exp issue
+
+- Extend exact issue width from eight to sixteen weights. Lanes 0..15 each
+  compute one compiler `expf`; lane 0 retains original denominator order and
+  each dimension retains original PV FMA order. No LDS, barrier, launch, or
+  repair plane is added.
+- RED is the absent wrapper. GREEN passes positions 512-519 plus explicit
+  eviction with F32 context and gated BF16 byte identity. Nine leaf samples
+  improve **0.083740 -> 0.082224 ms (-1.81%)**. Cached tracing improves the
+  stable final-three window **78.814 -> 77.265 us (-1.97%)** at unchanged
+  VGPR104/SGPR128/LDS24576/scratch0.
+- Seven queue-matched resident p512/d128 pairs improve
+  **19.506557 -> 19.523370 tok/s (+0.0862%, -0.0441 ms/token)**; the slowest
+  candidate beats the fastest control. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, position 638, determinism, and lifecycle remain exact.
+- Promote only inside the qualified gfx1151 exp8/mixed32 route. Exp8 remains
+  explicit rollback; shorter/non-natural and peer-backend routes are
+  unchanged. Focused owner/runner/profile validation reports **39 passed**.
+  Ruff is not installed in the current environment; py_compile passes.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp16-retained.json`.

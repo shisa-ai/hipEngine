@@ -1978,6 +1978,23 @@ should be boring.
   Then collapse the positive selector into the qualified gfx1151 mixed32
   dispatch while retaining registered exp4 for compiler/codegen bisection.
 
+## Laguna gfx1151 mixed32 exact exp16 selector
+
+- Added 2026-07-29 as the default-off
+  `LagunaKVCache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512`
+  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp16(...)`, and
+  `--compare-swa-mixed32-exp16`. False restores retained exp8; it changes no
+  geometry, arithmetic order, or non-natural route.
+- Promotion gate satisfied: exact sixteen-lane issue improves the leaf
+  **0.083740 -> 0.082224 ms (-1.81%)**, stable cached trace
+  **78.814 -> 77.265 us (-1.97%)**, and all seven resident p512/d128 pairs
+  **19.506557 -> 19.523370 tok/s (+0.0862%, -0.0441 ms/token)** with complete
+  sample separation and identical trajectories/state/lifecycle.
+- Keep the explicit false rollback through clean production publication and
+  the next attention checkpoint. Then collapse the positive selector into the
+  qualified gfx1151 mixed32 dispatch while retaining registered exp8 for
+  compiler/codegen bisection.
+
 ## Laguna gfx1151 exact global exp-domain selector
 
 - Added 2026-07-29 as the default-off
