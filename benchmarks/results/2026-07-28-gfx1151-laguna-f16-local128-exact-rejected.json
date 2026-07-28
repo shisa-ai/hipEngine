@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T09:24:36.598702+00:00",
+  "kind": "hipengine_laguna_f16_decode_local128_exact_leaf",
+  "status": "rejected",
+  "hardware": {
+    "device": "AMD Radeon 8060S",
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151",
+    "queue_policy": 2,
+    "runtime": "TheRock HIP 7.15"
+  },
+  "source": {
+    "baseline_revision": "1cf292aa222d6a8735828c6397f0b133f17be36d",
+    "candidate_state": "temporary uncommitted screen; implementation, wrappers, registry keys, and RED/GREEN coverage removed after rejection",
+    "kernel": "hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.hip"
+  },
+  "candidate": {
+    "description": "one local128 workgroup owns one output; each physical thread independently accumulates logical retained thread t and t+128 at stride 256, four waves publish the retained eight wave sums, and thread 0 adds them in retained order after one barrier",
+    "physical_waves_per_output": 4,
+    "logical_partial_chains_per_output": 256,
+    "barriers": 1,
+    "byte_exact": true
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate local128_exact --samples 7 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-local128-exact-directional.json",
+    "rows": 1,
+    "samples": 7,
+    "warmups_per_mode": 5,
+    "burst": 50,
+    "order": "counterbalanced by repetition",
+    "data": "deterministic nonzero BF16 activations and FP16 weights",
+    "baseline": "retained local256 one-barrier owner"
+  },
+  "results": [
+    {
+      "name": "full_qkv",
+      "baseline_ms": 0.2803805351257324,
+      "candidate_ms": 0.3234077835083008,
+      "latency_change_percent": 15.346018354403057,
+      "baseline_effective_weight_gb_s": 179.51191931861294,
+      "candidate_effective_weight_gb_s": 155.6290558440074
+    },
+    {
+      "name": "swa_qkv",
+      "baseline_ms": 0.38079769134521485,
+      "candidate_ms": 0.4382222366333008,
+      "latency_change_percent": 15.080066553246851,
+      "baseline_effective_weight_gb_s": 181.73958921736423,
+      "candidate_effective_weight_gb_s": 157.92447350842852
+    },
+    {
+      "name": "full_gate",
+      "baseline_ms": 0.0033959800004959104,
+      "candidate_ms": 0.0045140799880027775,
+      "latency_change_percent": 32.924221795876086
+    },
+    {
+      "name": "swa_gate",
+      "baseline_ms": 0.0034095999598503113,
+      "candidate_ms": 0.004554939866065979,
+      "latency_change_percent": 33.5916212958294
+    },
+    {
+      "name": "full_output",
+      "baseline_ms": 0.22513046264648437,
+      "candidate_ms": 0.2961886405944824,
+      "latency_change_percent": 31.56311105688907,
+      "baseline_effective_weight_gb_s": 167.6749363735627,
+      "candidate_effective_weight_gb_s": 127.44829080627208
+    },
+    {
+      "name": "swa_output",
+      "baseline_ms": 0.3083418655395508,
+      "candidate_ms": 0.4337612533569336,
+      "latency_change_percent": 40.67543263965086,
+      "baseline_effective_weight_gb_s": 183.63741784112997,
+      "candidate_effective_weight_gb_s": 130.53979248212372
+    }
+  ],
+  "modeled_family": {
+    "baseline_ms_per_token": 31.038653379678724,
+    "candidate_ms_per_token": 39.04470952391624,
+    "latency_change_percent": 25.793825673761827,
+    "modeled_regression_ms_per_token": 8.006056144237515
+  },
+  "correctness": {
+    "red_then_green": true,
+    "coverage": "K256/K512, F32 and BF16 outputs, and triple Q/K/V matrix boundary",
+    "all_shapes_byte_exact": true
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-local128-trace.Q3Kx17 --output-file trace -- .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate local128_exact --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-local128-trace.Q3Kx17/child.json",
+    "sha256": "35208d94c2e0059547c7062342ecfe487299bdfb8089dfa8f3723e7884ea71f7",
+    "baseline": {
+      "workgroup_size": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "workgroup_size": 128,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "retain": false,
+    "reason": "Every natural role regresses and the weighted family loses 25.79%; halving physical waves per output loses bandwidth despite identical codegen resources and one barrier.",
+    "production": "unchanged at 14.800191 tok/s p512/d128",
+    "closed_work": "Do not repeat an exact one-output F16 owner below eight physical waves/output on gfx1151."
+  }
+}

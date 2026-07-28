@@ -3411,9 +3411,19 @@ control, and cached whole-model tracing records all
 **18,288 = 144 x 127** expected candidate calls with zero retained GEMVs.
 `HIPENGINE_LAGUNA_F16_DECODE=gemv` remains the exact LD-2 rollback.
 
+The bounded exact local128 follow-up is closed and removed. It recreates the
+retained 256 logical accumulation chains and eight ordered wave sums with four
+physical waves/output, but every natural role regresses: QKV **15.1-15.3%**,
+gate **32.9-33.6%**, and output **31.6-40.7%**. Weighted family time moves
+**31.039 -> 39.045 ms/token (+25.79%)**. Cached tracing shows both candidate
+and retained at VGPR16/LDS512/scratch0; halving the physical waves is the
+failure. Exact one-output F16 owners below eight physical waves/output are now
+closed on gfx1151.
+
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
 [`retained F16 one-barrier owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json) ·
+[`rejected F16 local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json) ·
 [`tensorized SWA decode leaf`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-decode-hipblaslt-leaf.json) ·
 [`decode roofline/Qwen/Vulkan review`](../benchmarks/results/2026-07-28-gfx1151-laguna-decode-roofline-qwen-vulkan-review.json).
 
@@ -3500,9 +3510,11 @@ closed unless a future design preserves the retained 288-wave concurrency.
    retained at **-0.698%** weighted family time. Seven same-session p512/d128
    pairs improve **14.758912 -> 14.800191 tok/s (+0.280%)**, every candidate
    beats every control, trajectories match, and cached tracing records all
-   **18,288** intended calls with zero fallback GEMVs. Continue toward the
-   F16 family floor before screening one local128 owner/output. Do not repeat
-   launch-only local-size substitution.
+   **18,288** intended calls with zero fallback GEMVs. The exact local128
+   follow-up is also closed at **+25.79%** weighted family time despite
+   unchanged VGPR/LDS/scratch. Continue toward the F16 family floor without
+   reducing below eight physical waves/output; do not repeat launch-only
+   local-size substitution.
 3. **LD-3 — decode-only compressed source-F16 representation.** If LD-2 cannot
    close enough of the 6.22-ms comparator gap, capture real projection inputs
    and screen a persistent Q8-class side representation. This is a new quality

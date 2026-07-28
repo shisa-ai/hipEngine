@@ -187643,3 +187643,23 @@ Vulkan local sizes verbatim will close the measured gap.
   67.567 ms/token**, **+0.405%** over the previous 14.740486 canonical row.
   Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json`.
+
+## 2026-07-28 18:27 JST — Reject exact source-F16 local128 owner
+
+- RED/GREEN screened a structurally exact local128 owner rather than repeating
+  launch-only thread substitution. Each physical thread independently
+  accumulates retained logical threads `t` and `t+128` at stride 256; four
+  waves publish the same eight ordered wave sums and thread 0 stores after one
+  barrier. K256/K512 F32/BF16 and triple-boundary outputs are byte-exact.
+- Seven counterbalanced 50-launch samples reject every natural role. Full/SWA
+  QKV regress **15.35%/15.08%**, gates **32.92%/33.59%**, and outputs
+  **31.56%/40.68%**. Weighted family time moves
+  **31.039 -> 39.045 ms/token (+25.79%, +8.006 ms/token)**.
+- Cached tracing records local128/VGPR16/SGPR128/LDS512/scratch0 versus the
+  retained local256 with the same resources. Large-role effective bandwidth
+  falls as low as **183.6 -> 130.5 GB/s**; physical-wave concurrency is the
+  blocker. Remove the HIP bodies/exports, wrappers, registry keys, tests, and
+  harness mode. Production remains **14.800191 tok/s**. Exact one-output F16
+  owners below eight physical waves/output are closed. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json`;
+  trace SHA-256 `35208d94...1f7`.

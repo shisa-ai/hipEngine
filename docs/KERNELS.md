@@ -358,6 +358,13 @@ records all **18,288 = 144 x 127** expected candidate calls with zero retained
 decode GEMVs. `HIPENGINE_LAGUNA_F16_DECODE=gemv` remains the exact LD-2
 rollback. Evidence:
 [`retained one-barrier decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-onebarrier-retained.json).
+The follow-up exact local128 owner is closed and removed: reconstructing the
+same eight logical wave sums with four physical waves/output is byte-exact but
+regresses every natural role and moves weighted family time
+**31.039 -> 39.045 ms/token (+25.79%)**. Candidate and retained codegen are
+both VGPR16/LDS512/scratch0, so the lost physical concurrency—not registers or
+LDS—is the blocker. Evidence:
+[`rejected local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
