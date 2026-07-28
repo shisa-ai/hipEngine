@@ -4158,6 +4158,13 @@ beats every control with exact state. gfx1151 selects exp32 only inside the
 qualified exp16 route. Evidence:
 [`retained mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-retained.json).
 
+Three tracked-clean selector-unset runs measure
+**19.521938/19.530839/19.533770 tok/s**, median **19.530839**. This is
+aggregate-flat at **+0.0038% / -0.0019 ms/token** versus clean exp16; retain
+on the fully separated seven-pair A/B and positive leaf/trace. Production is
+**+70.327%** over sprint start and IDs/state/lifecycle remain exact. Evidence:
+[`clean mixed32 exp32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-production.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

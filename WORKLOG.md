@@ -189034,3 +189034,16 @@ Vulkan local sizes verbatim will close the measured gap.
 - Promote only inside qualified gfx1151 exp16/mixed32; exp16 remains rollback.
   Focused owner/runner/profile validation reports **40 passed**. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-retained.json`.
+
+## 2026-07-29 08:25 JST — Publish clean mixed32 wave32 production
+
+- Three tracked-clean, require-cached, selector-unset p512/d128 runs on
+  `d6128a3be` measure **19.521938/19.530839/19.533770 tok/s**, median
+  **19.530839**. This is aggregate-flat at **+0.0038% / 0.0019 ms/token**
+  versus clean exp16; retain on fully separated seven-pair A/B plus positive
+  leaf/trace, not on the clean aggregate alone.
+- All runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, position 638, determinism, lifecycle, and zero tracked
+  bytes after teardown. Production is **+70.327%** over sprint start. Raw
+  artifact SHA-256 is `468c5931...d8c83`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-production.json`.

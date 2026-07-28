@@ -2008,7 +2008,9 @@ should be boring.
   **77.185 -> 76.838 us (-0.45%)**, and all seven resident pairs
   **19.524103 -> 19.538164 tok/s (+0.0720%, -0.0369 ms/token)** with complete
   separation and exact state.
-- Keep false rollback through clean publication and the next wall census.
+- Clean selector-unset production is aggregate-flat at **19.530839 tok/s**
+  (**+0.0038%** versus exp16), so retain on the stronger separated A/B and
+  leaf/trace evidence. Keep false rollback through the next wall census.
   Then collapse positive selector semantics while retaining exp16 as the
   compiler/codegen rollback. Wave32 closes the natural issue-width screen.
 
