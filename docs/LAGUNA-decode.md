@@ -3541,6 +3541,7 @@ Evidence:
 [`rejected GQA2 LDS-V staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vstage-rejected.json) ·
 [`rejected rebalanced cooperative GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-cooperative-rebalanced-rejected.json) ·
 [`rejected GQA2 LDS weight cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-weightcache-rejected.json) ·
+[`rejected persistent exact GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json) ·
 [`post-GQA3 production wall re-profile`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-gqa3-wall-reprofile.json) ·
 [`retained fused one-head global owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fused-gqa1-retained.json) ·
 [`retained global fixed-shape reducer`](../benchmarks/results/2026-07-28-gfx1151-laguna-global-fixedshape-reduce-retained.json) ·
@@ -3986,6 +3987,30 @@ normal-launch persistent K64 producer plus ordered reducer that avoids the
 already-rejected cooperative-launch barrier. Evidence:
 [`rejected GQA2 direct-vec16 staging`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-vec16-rejected.json).
 
+That persistent seam is exact but also closed. Thirty-two local256 workgroups
+produce the comparator-shaped **8 KV heads x 8 K64** score tasks, rendezvous
+through a monotonic device counter, then replay the retained ordered
+maximum/compiler-`expf`/denominator/PV phase. Positions 512-519 plus explicit
+eviction are F32/BF16 byte-exact. The leaf nevertheless regresses
+**0.098299 -> 0.395157 ms (+301.99%)**. Tracing shows
+**VGPR40/SGPR128/LDS0/scratch0**, so this is not a spill or occupancy accident:
+the global score-plane writes/reads and grid rendezvous are the cost. The
+candidate fails before a 78.8-GB resident-model run and is fully removed.
+
+This sharpens rather than weakens the llama.cpp result. Vulkan is fast because
+its subgroup64 cooperative-matrix **Br16 x Bc64** tile performs full-GQA QK,
+online softmax state, and PV reuse as one tensorized operation; **64 K64
+workgroups** preserve breadth, and only compact bounded state crosses the
+merge. Copying split breadth while retaining Laguna's exact scalar score/PV
+association creates a repair boundary more expensive than the retained fused
+GQA3 kernel. The next admissible attention candidate must therefore do one of
+two materially new things: keep broader grouped-Q reuse inside one fused
+ordinary-workgroup phase, or tensorize QK/PV with an independently measured
+high-precision repair that passes the complete category gate. Do not retry a
+full score plane, cooperative/global phase boundary, or approximate online
+merge. Evidence:
+[`rejected persistent exact GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-persistent-gqa9-rejected.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
@@ -4082,9 +4107,13 @@ and shape/backend fallbacks.
    GQA9/K64 body then proves an **81.09%** leaf win, but fails the complete
    gate at max KL **1.754897**; exact-QK/PV split association also fails at
    **0.810355**. Exact ordered split repair is **21.58%** slower. Cooperative
-   split-K is therefore closed under the current exactness contract. Re-profile
-   the retained V-stage64 wall, then screen vectorized/async V staging and a
-   V-staged global GQA2 geometry; do not resume approximate split softmax/PV.
+   split-K is therefore closed under the current exactness contract. A final
+   normal-launch persistent GQA9/K64 score-plane repair is byte-exact but
+   regresses the leaf **301.99%** at VGPR40/scratch0, proving that changing the
+   launch API does not remove the global phase tax. Re-profile the retained
+   V-stage64 wall, then screen broader grouped reuse inside one ordinary fused
+   phase or an independently gated tensorized high-precision repair; do not
+   resume full-score repairs or approximate split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches
