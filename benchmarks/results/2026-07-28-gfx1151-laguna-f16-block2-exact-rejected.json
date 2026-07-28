@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T10:45:00+00:00",
+  "kind": "hipengine_laguna_f16_decode_block2_exact_leaf",
+  "status": "rejected_performance",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model_shape": {
+    "model": "Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "rows": 1,
+    "source_f16_calls_per_token": 144
+  },
+  "source": {
+    "base_revision": "5a57834577d227ff9113dec8849fb6f506a8bd69",
+    "candidate_uncommitted": true,
+    "candidate_removed": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.hip"
+  },
+  "candidate": {
+    "geometry": "one local256 workgroup owns two adjacent output columns",
+    "arithmetic": "each output retains 256 logical accumulators, eight wave32 shuffle reductions, and the ordered eight-wave sum",
+    "reuse": "share one activation load and one workgroup barrier across two outputs",
+    "expected_risk": "half as many workgroups and physical waves across the output grid"
+  },
+  "red_green": {
+    "red": "2 expected ImportError failures before wrappers/kernel existed",
+    "green": "2 passed on K256/K512 odd-width single/triple fixtures",
+    "byte_exact": true
+  },
+  "protocol": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate block2 --samples 3 --warmups 2 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-block2-directional.json",
+    "raw_sha256": "2a3064bed5b526356264807ae693cbefa52902b97717648202265ddc6cddbd21",
+    "data": "deterministic nonzero BF16 activations and FP16 weights",
+    "timing": "counterbalanced HIP-event medians"
+  },
+  "results": [
+    {
+      "role": "full_qkv",
+      "shape": "K3072 N6144+1024+1024",
+      "calls_per_token": 12,
+      "control_ms": 0.2833889961242676,
+      "candidate_ms": 0.2967859983444214,
+      "latency_change_percent": 4.727424989458351
+    },
+    {
+      "role": "swa_qkv",
+      "shape": "K3072 N9216+1024+1024",
+      "calls_per_token": 36,
+      "control_ms": 0.38311851024627686,
+      "candidate_ms": 0.40004630088806153,
+      "latency_change_percent": 4.418421503806513
+    },
+    {
+      "role": "full_gate",
+      "shape": "K3072 N48",
+      "calls_per_token": 12,
+      "control_ms": 0.0037751000374555586,
+      "candidate_ms": 0.005025399848818779,
+      "latency_change_percent": 33.119647134064564
+    },
+    {
+      "role": "swa_gate",
+      "shape": "K3072 N72",
+      "calls_per_token": 36,
+      "control_ms": 0.01391810029745102,
+      "candidate_ms": 0.017933599650859833,
+      "latency_change_percent": 28.850915481218497
+    },
+    {
+      "role": "full_output",
+      "shape": "K6144 N3072",
+      "calls_per_token": 12,
+      "control_ms": 0.22524259090423585,
+      "candidate_ms": 0.24873058795928954,
+      "latency_change_percent": 10.427866666229146
+    },
+    {
+      "role": "swa_output",
+      "shape": "K9216 N3072",
+      "calls_per_token": 36,
+      "control_ms": 0.30914390087127686,
+      "candidate_ms": 0.3281235933303833,
+      "latency_change_percent": 6.13943616730428
+    }
+  ],
+  "modeled_family": {
+    "control_ms_per_token": 31.571378655731678,
+    "candidate_ms_per_token": 33.46622961312532,
+    "latency_change_percent": 6.0017998518719695,
+    "added_ms_per_token": 1.8948509573936434,
+    "all_six_roles_faster": false,
+    "all_six_roles_byte_exact": true
+  },
+  "decision": {
+    "retained": false,
+    "reason": "Sharing one local256 workgroup across two outputs reduces output-grid concurrency and regresses every natural role.",
+    "production": "unchanged gfx1151 one-output local256 one-barrier owner at 14.800191 tok/s",
+    "closed": "exact multi-output F16 blocks that reduce the one-workgroup-per-output grid",
+    "next": "preserve the full output grid and screen load/cache/code-generation levers"
+  }
+}

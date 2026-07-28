@@ -187739,3 +187739,26 @@ Vulkan local sizes verbatim will close the measured gap.
   reduction-order-changing geometry; reopen only with an exact/reduction-order-
   preserving consumer. Evidence:
   `benchmarks/results/2026-07-28-gfx1151-laguna-q4-pack8-decode-geometry-rejected.json`.
+
+## 2026-07-28 19:45 JST — Reject exact Laguna F16 block2 decode
+
+- Reopen LD-2 with a different exact premise: retain local256 and all eight
+  physical waves/output, but let each workgroup carry two adjacent columns.
+  Each output preserves the current 256 thread-local K sequences, wave32
+  shuffle tree, ordered eight-wave sum, and output conversion; only activation
+  loads and the single reducer barrier are shared.
+- RED first: the two K256/K512 odd-width fixtures fail on missing symbols.
+  GREEN after the diagnostic implementation is **2/2**, byte-exact for F32
+  and BF16 single output plus triple output whose pairs cross matrix
+  boundaries.
+- Directional command:
+  `PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate block2 --samples 3 --warmups 2 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-block2-directional.json`.
+- Every natural role regresses: full/SWA QKV **+4.73%/+4.42%**,
+  full/SWA gate **+33.12%/+28.85%**, and full/SWA output
+  **+10.43%/+6.14%**. Weighted family time is
+  **31.571 -> 33.466 ms/token (+6.00%, +1.895 ms/token)**.
+- Remove all candidate kernel/wrapper/leaf/test changes without a model run.
+  Production remains the exact local256 one-output one-barrier owner at
+  **14.800191 tok/s**. LD-2 now treats one-workgroup/output as part of the
+  architecture contract alongside eight waves/output. Evidence:
+  `benchmarks/results/2026-07-28-gfx1151-laguna-f16-block2-exact-rejected.json`.

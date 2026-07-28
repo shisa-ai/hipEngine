@@ -365,6 +365,14 @@ regresses every natural role and moves weighted family time
 both VGPR16/LDS512/scratch0, so the lost physical concurrency—not registers or
 LDS—is the blocker. Evidence:
 [`rejected local128 exact owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-local128-exact-rejected.json).
+The exact local256 block2 follow-up is also closed and removed. It keeps all
+eight waves and the complete reduction tree for each output, but shares each
+workgroup across two adjacent columns. All six natural roles remain byte-exact
+and regress **4.42-33.12%**; weighted family time moves
+**31.571 -> 33.466 ms/token (+6.00%)**. The one-workgroup-per-output grid is
+therefore part of the gfx1151 performance contract, not just the eight-wave
+reduction. Evidence:
+[`rejected exact block2 owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-f16-block2-exact-rejected.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
