@@ -16,15 +16,16 @@ should be removed or collapsed.
 
 ## Laguna raw-Q5/Q6 prefill rowbatch selector
 
-- Added 2026-07-28 as the default-off WPF-1 runtime admission seam.
-  `LagunaGGUFResidentSession(..., raw_k_prefill_rowbatch=4|8)` scopes exact
-  fixed-grid-Y Q5/Q6 row reuse to one bulk-prefill execution owner; zero keeps
-  the scalar raw-K fallback. gfx1151 explicitly excludes all eight W7900 keys.
-- Promote gfx1100 to rowbatch8 only after actual first/last weights, complete
-  state, and repeated 512/1K gates pass. Keep zero plus rowbatch4 through one
-  release for rollback and the K3072/N72 crossover. Then remove rowbatch4 and
-  the public positive selector if rowbatch8 remains universally retained;
-  preserve the scalar registered fallback for unsupported shapes/backends.
+- Added 2026-07-28 as the default-off WPF-1 runtime admission seam, then
+  promoted rowbatch8 on gfx1100 after actual-weight/full-state and repeated
+  512/1K gates passed exactly. `LagunaGGUFResidentSession(...,
+  raw_k_prefill_rowbatch=0|4|8)` scopes fixed-grid-Y Q5/Q6 row reuse to one
+  bulk-prefill execution owner; zero is the scalar rollback. gfx1151 explicitly
+  excludes all eight W7900 keys and remains zero.
+- Keep zero plus rowbatch4 through one release for rollback and the K3072/N72
+  crossover. Then remove rowbatch4 and the public positive selector if
+  rowbatch8 remains universally retained; preserve the scalar registered
+  fallback for unsupported shapes/backends.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 

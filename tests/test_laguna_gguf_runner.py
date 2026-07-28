@@ -1118,13 +1118,13 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
 
 
-def test_laguna_raw_k_prefill_rowbatch_is_default_off_and_explicit() -> None:
+def test_laguna_raw_k_prefill_rowbatch8_is_gfx1100_default_and_rollbackable() -> None:
     from hipengine.runtime.laguna_gguf_runner import (
         LagunaGGUFResidentSession,
         resolve_laguna_raw_k_prefill_rowbatch,
     )
 
-    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 0
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 8
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151") == 0
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 4) == 4
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 8) == 8

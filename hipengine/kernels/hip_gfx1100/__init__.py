@@ -100,10 +100,11 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
-# WPF-1's exact Q5/Q6 rowbatch primitive is available but remains default-off
-# until actual-weight/full-state and repeated 512/1K admission complete.
+# WPF-1 exact Q5/Q6 rowbatch8 is the retained W7900 bulk-prefill default after
+# bit-exact full-state and repeated 512/1K admission. Zero and rowbatch4 remain
+# explicit rollback/crossover routes; small-B and unsupported shapes fall back.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = True
-GGUF_RAW_K_PREFILL_ROWBATCH = 0
+GGUF_RAW_K_PREFILL_ROWBATCH = 8
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
