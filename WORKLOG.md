@@ -189064,3 +189064,20 @@ Vulkan local sizes verbatim will close the measured gap.
   plane/rendezvous, and roughly 2x staged-V reuse. This transfers llama.cpp's
   GQA reuse rather than its inexact tensorized arithmetic. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json`.
+
+## 2026-07-29 08:37 JST — Reject exact GQA4+5 local512 SWA
+
+- Implemented the no-global-plane exact GQA4+5 screen: two local512 owners per
+  KV head, 16 workgroups, two dimensions per lane, retained wave32 QK and
+  token-order softmax/PV arithmetic, and one shared 64-slot V stage.
+- RED was the absent wrapper. GREEN passes the focused wrapped/evicted CPU
+  oracle with F32 context and gated BF16 byte identity.
+- Nine 50-launch leaf samples regress the retained mixed32 exp32 owner
+  **0.081615 -> 0.086053 ms (+5.44%)**. The extra K/V reuse does not repay
+  halving ordinary-grid parallelism **32 -> 16**, so tracing and resident
+  integration stop.
+- Removed the kernel, wrapper, registry, oracle call, and harness choice.
+  Production remains **19.530839 tok/s**. Next gate is existing 24-block
+  GQA3/local384 with the retained exact wave32 exp issue; a loss closes
+  sub-32-block ordinary-grid ownership. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-local512-rejected.json`.
