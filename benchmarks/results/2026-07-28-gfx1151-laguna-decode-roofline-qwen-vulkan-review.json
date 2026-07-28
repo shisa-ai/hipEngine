@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-28T15:19:52+09:00",
+  "kind": "hipengine_laguna_gfx1151_decode_roofline_qwen_transfer_vulkan_review",
+  "status": "accepted_diagnostic_review",
+  "pass": true,
+  "performance_claim": false,
+  "purpose": "Re-rank Laguna S 2.1 gfx1151 c=1 decode after the gfx1100 transfer, using a same-GGUF Vulkan control, the retained production trace, an active-byte roofline, Qwen3.5 gfx1100-to-gfx1151 lessons, and architecture-local F16 geometry screens.",
+  "repo": {
+    "branch": "main",
+    "revision": "cdc72f35b3ad12267c70f62a41708054bc1b65c7",
+    "tracked_clean_before_review": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "cu_count": 40,
+    "theoretical_memory_gb_s": 256.0,
+    "measured_reference_read_roof_gb_s": 221.0,
+    "read_roof_source": "docs/ROOFLINE-gfx1151.md local/reference Mesa RADV+tuned large-read row",
+    "read_roof_qualification": "This is the retained same-platform achievable-read anchor, not a fresh HIP counter result from the decode process."
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "source_tensor_payload_bytes": 75169369088,
+    "hipengine_materialized_resident_weight_bytes": 76737907712,
+    "architecture": {
+      "layers": 48,
+      "hidden_size": 3072,
+      "attention": "12 global plus 36 sliding-window layers",
+      "query_heads": "48 global, 72 sliding-window",
+      "kv_heads": 8,
+      "head_dim": 128,
+      "sliding_window": 512,
+      "experts": 256,
+      "active_experts": 10
+    }
+  },
+  "protocol": {
+    "hipengine_workload": "p512/d128 eager c=1; exactly 127 synchronized forward_token calls; BF16 KV; matrix chunk 2048; GPU_MAX_HW_QUEUES=2",
+    "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-d9-production.json",
+    "hipengine_trace": "/tmp/laguna-gfx1151-d9-production-census-20260728/gfx1151/3587750_kernel_trace.csv",
+    "hipengine_trace_sha256": "e97c5ac061d3de226f1595bec0f0bfd85a8453b06b72eb7d7d72a6fc17bd305b",
+    "vulkan_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 0 -n 128 -d 512 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress",
+    "vulkan_perf_logger_command": "GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=8 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 0 -n 8 -d 512 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress",
+    "vulkan_build": {
+      "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+      "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "build_number": 10107,
+      "backend": "Vulkan RADV STRIX_HALO",
+      "tracked_clean": true
+    },
+    "comparator_qualification": "Same GGUF, GPU, nominal depth, FlashAttention, batch and ubatch. Vulkan uses F16 KV and llama-bench random tokens; hipEngine uses BF16 KV and its deterministic natural trajectory. The row is a directional implementation comparator, not a bit-exact backend race."
+  },
+  "topline": {
+    "hipengine": {
+      "tokens_per_second": 14.5552653385,
+      "milliseconds_per_token": 68.7036599295,
+      "repetitions": 3,
+      "status": "retained production"
+    },
+    "llamacpp_vulkan": {
+      "tokens_per_second": 23.348381,
+      "milliseconds_per_token": 42.8295220983,
+      "repetitions": 1,
+      "status": "same-GGUF directional baseline"
+    },
+    "vulkan_lead_percent": 60.4119228128,
+    "wall_gap_ms_per_token": 25.8741378312
+  },
+  "active_encoded_weight_bytes_proxy": {
+    "method": "Count every dense/router/output tensor once, 10/256 of each rank-3 expert tensor, and one embedding row. Resident bytes reflect the physical hipEngine decode layout; source bytes reflect the raw GGUF layout.",
+    "caveat": "This is an encoded payload proxy, not a DRAM counter. It excludes activation, KV, metadata and output traffic; cache reuse and selected-expert address variation can move physical traffic.",
+    "families": {
+      "source_f16_attention_projections": {
+        "source_bytes": 5606326272,
+        "resident_bytes": 5606326272
+      },
+      "selected_routed_experts": {
+        "source_bytes": 2681487360,
+        "resident_bytes": 2739486720
+      },
+      "shared_experts": {
+        "source_bytes": 268148736,
+        "resident_bytes": 337747968
+      },
+      "lm_head": {
+        "source_bytes": 252887040,
+        "resident_bytes": 252887040
+      },
+      "routers": {
+        "source_bytes": 147897344,
+        "resident_bytes": 147897344
+      },
+      "dense_layer0_ffn": {
+        "source_bytes": 73433088,
+        "resident_bytes": 87588864
+      },
+      "norm_bias_metadata": {
+        "source_bytes": 1191936,
+        "resident_bytes": 1191936
+      },
+      "token_embedding_one_row": {
+        "source_bytes": 1728,
+        "resident_bytes": 1728
+      }
+    },
+    "source_total_bytes_per_token": 9031373504,
+    "resident_total_bytes_per_token": 9173127872
+  },
+  "roofline": {
+    "resident_weight_floor_at_221_gb_s_ms": 41.5073659367,
+    "resident_weight_ceiling_at_221_gb_s_tok_s": 24.0921093747,
+    "resident_weight_floor_at_256_gb_s_ms": 35.83253075,
+    "resident_weight_ceiling_at_256_gb_s_tok_s": 27.9076018096,
+    "hipengine_wall_effective_resident_proxy_gb_s": 133.517310161,
+    "hipengine_wall_percent_of_221": 60.415072471,
+    "hipengine_kernel_sum_effective_resident_proxy_gb_s": 137.883834346,
+    "hipengine_kernel_sum_percent_of_221": 62.3908752697,
+    "vulkan_wall_effective_source_proxy_gb_s": 210.867949525,
+    "vulkan_wall_percent_of_221": 95.4153617759,
+    "interpretation": "The whole-model proxy says Vulkan is already close to the practical streaming envelope while hipEngine is not. Family attribution is required because attention is not represented by the weight-byte ledger and cache effects make the proxy non-additive."
+  },
+  "hipengine_trace": {
+    "kernels_per_token": 869,
+    "median_device_kernel_sum_ms": 66.527943,
+    "median_dispatch_span_ms": 70.366809,
+    "median_span_minus_kernel_sum_ms": 3.876527,
+    "unprofiled_wall_minus_kernel_sum_ms": 2.1757169295,
+    "unprofiled_wall_minus_kernel_sum_percent": 3.1668158555,
+    "device_overlap_ms": 0.0,
+    "queue_interpretation": "The trace is fully serialized: interval union equals kernel sum. Submission/launch cleanup is bounded to a few percent and cannot explain the Vulkan gap.",
+    "families_ms_per_token": {
+      "source_f16_attention_projections": 30.9806,
+      "attention_total": 14.6127098583,
+      "attention_global_scores": 0.3757607165,
+      "attention_global_reduce": 2.6228347559,
+      "attention_swa_scores": 1.6585447638,
+      "attention_swa_reduce": 9.955569622,
+      "selected_q4_gate_up": 8.5496,
+      "selected_q4_q6_down": 5.1311,
+      "dense_shared_q4": 3.0222,
+      "dense_q6": 0.698,
+      "router": 1.0714,
+      "norms": 0.6396,
+      "d9_moe_tail_next_rmsnorm": 0.4292
+    }
+  },
+  "vulkan_perf_logger": {
+    "test_time_utc": "2026-07-28T06:02:28Z",
+    "logged_wall_ms_per_token": 45.1822935,
+    "logged_kernel_total_ms_per_token": 43.6306,
+    "logged_operation_invocations_per_token": 1114,
+    "qualification": "The logger perturbs wall and reports graph operation/kernel-family aggregates. Use family ratios, not its 22.13 tok/s row, as the comparator decomposition.",
+    "families_ms_per_token": {
+      "source_f16_attention_projections": 24.758568,
+      "flash_attention_total": 0.909423,
+      "flash_attention_global_12_layers": 0.226785,
+      "flash_attention_swa_36_layers": 0.682638,
+      "selected_q4_gate_up": 7.46409,
+      "selected_q4_q6_down": 4.52509
+    },
+    "source_findings": [
+      "n=1 routes through Vulkan one-row MMV/MMV-ID rather than the prefill MMQ path; mul_mat_vec_max_cols is 8.",
+      "On AMD, Q4_K with K>=2048 can quantize the activation to reusable Q8_1 and use integer dot; Q6_K is explicitly excluded from MMVQ and stays on the floating dequant path.",
+      "The AMD decode kernels use subgroup-oriented one-row ownership; RADV STRIX_HALO reports subgroup64.",
+      "FlashAttention fuses the 48 D128 GQA layers instead of materializing hipEngine's score plane and replaying a scalar slot-order value reducer."
+    ]
+  },
+  "gap_attribution": {
+    "source_f16_gap_ms": 6.222032,
+    "source_f16_share_of_wall_gap_percent": 24.047301752,
+    "attention_gap_ms": 13.7032868583,
+    "attention_share_of_wall_gap_percent": 52.9613274368,
+    "combined_gap_ms": 19.9253188583,
+    "combined_share_of_wall_gap_percent": 77.0086271888,
+    "selected_gate_up_gap_ms": 1.08551,
+    "selected_down_gap_ms": 0.60601,
+    "interpretation": "Attention is the first architecture task. F16 remains second. Selected expert kernels are already close enough to the practical read roof that another generic Qwen quant port is lower leverage."
+  },
+  "family_roofline": {
+    "source_f16": {
+      "active_bytes": 5606326272,
+      "hipengine_ms": 30.9806,
+      "effective_gb_s": 180.962482069,
+      "percent_of_221": 81.8834760495,
+      "floor_at_221_ms": 25.3684446697,
+      "unchanged_byte_maximum_saving_ms": 5.6121553303
+    },
+    "selected_routed_experts": {
+      "active_resident_bytes": 2739486720,
+      "hipengine_gate_up_plus_down_ms": 13.6807,
+      "effective_gb_s": 200.244630757,
+      "percent_of_221": 90.6084302069
+    },
+    "attention_kv_payload_at_live512": {
+      "unique_k_plus_v_bytes_per_layer": 2097152,
+      "unique_k_plus_v_bytes_all_layers": 100663296,
+      "query_head_repeated_k_plus_v_bytes_all_layers": 830472192,
+      "hipengine_repeated_payload_proxy_gb_s": 56.8321823983,
+      "hipengine_unique_payload_proxy_gb_s": 6.8887493816,
+      "vulkan_unique_payload_proxy_gb_s": 110.689190839,
+      "interpretation": "The current split score producer is cheap; 86.1% of attention time is in the global/SWA reducers. A useful replacement must parallelize K and reuse each KV head across its six global or nine SWA query heads without collapsing the grid below gfx1151 occupancy."
+    }
+  },
+  "architecture_local_f16_geometry_screens": {
+    "method": "One cached full-model p512/d128 run per candidate. Only rows==1 F16 single/triple launches were monkeypatched to the requested legal thread count; prefill remained local256. Candidate code was not retained.",
+    "baseline": {
+      "threads": 256,
+      "tokens_per_second": 14.5552653385,
+      "final_token_id": 74107,
+      "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32"
+    },
+    "local64": {
+      "tokens_per_second": 13.8549477957,
+      "delta_percent": -4.8114378305,
+      "added_ms_per_token": 3.4727217319,
+      "final_token_id": 340,
+      "generated_ids_sha256": "9b5f36720b850743c248fe7d7d33c5624669b10316152a217fbe44655328a087",
+      "raw_path": "/tmp/laguna-p512-d128-f16-local64-screen.json",
+      "raw_sha256": "4e52124d3a1811963d0c7d9e415a7e38d355b73e9f76ea744bc01da91d930d7e"
+    },
+    "local128": {
+      "tokens_per_second": 14.2633727387,
+      "delta_percent": -2.0054089911,
+      "added_ms_per_token": 1.4059851256,
+      "final_token_id": 855,
+      "generated_ids_sha256": "57ac06079038a9040210bed5b242ea5642ba5497073dd784b4cef20750ce0891",
+      "raw_path": "/tmp/laguna-p512-d128-f16-local128-screen.json",
+      "raw_sha256": "97e102c7b4942a599858bb44c0d7f18229062c0e7e77051ca013e78db8d3a347"
+    },
+    "decision": "Reject simple local64/local128 substitution before quality work. Retain local256. The next F16 premise is an exact eight-wave/eight-output block where each wave reconstructs the current eight partial sequences for one output and avoids cross-wave barriers; it is not another thread-count sweep."
+  },
+  "qwen35_gfx1100_to_gfx1151_lessons": [
+    {
+      "lesson": "Transfer ownership and reuse hypotheses, not fixed bodies or thresholds.",
+      "qwen_evidence": "gfx1151 needed native C2/C4/C8 execution, a 5+3 LM-head partition instead of gfx1100 6+2, and C8-only pair reuse.",
+      "laguna_application": "Use separate D128 qgroup6 global and qgroup9 SWA specializations and tune split count/local size on 40 CUs."
+    },
+    {
+      "lesson": "Physical width is an independent seam.",
+      "qwen_evidence": "Several pair-reuse wins promoted only at physical C8 and were neutral or worse at C1/C2/C4.",
+      "laguna_application": "This campaign is C1 latency. Do not import C8 pair-reuse conclusions; batch/server throughput keeps separate gates."
+    },
+    {
+      "lesson": "Reduction width is a numerical contract.",
+      "qwen_evidence": "gfx1151 admitted whole-row C4/C8 attention because generic row-chunk2 changed row-local numerics.",
+      "laguna_application": "Gate global/SWA split-K merge order at live 65/127/257/512, page boundaries, ring wrap and eviction; exact and quality-gated lanes remain separate."
+    },
+    {
+      "lesson": "Preserve grid breadth on the 40-CU target.",
+      "qwen_evidence": "Target-specific occupancy widths won while broad workgroup collapses failed; Laguna's own qhead3/GQA3 screens lost when 72 workgroups became 24.",
+      "laguna_application": "Grouped-GQA attention must create 40-80 or more independent blocks per layer through K64/K128 splits rather than one block per KV head."
+    },
+    {
+      "lesson": "Microkernel wins do not imply cycle wins.",
+      "qwen_evidence": "Q8T16 local geometry and pair reuse often shrank a leaf but disappeared or reversed in p512/d128 or serving gates.",
+      "laguna_application": "Require actual-weight leaf, full p512/d128, p128/p512/p1K/p4K context seams, full state, lifecycle and heldout quality before promotion."
+    },
+    {
+      "lesson": "Stable ownership is separate from ephemeral execution rows.",
+      "qwen_evidence": "Occupancy-adaptive dense rows preserved scheduler, GDN and KV ownership while changing only execution width.",
+      "laguna_application": "Every attention candidate consumes the full KVLiveSpans ABI and preserves page/ring ownership; Laguna has no GDN state to port."
+    }
+  ],
+  "ranked_next_work": [
+    {
+      "id": "LD-1",
+      "priority": 1,
+      "title": "D128 grouped-GQA split-K decode attention",
+      "premise": "Adapt the Qwen grouped-GQA split-K topology, not its D256/qgroup8 constants. Use separate qgroup6 global and qgroup9 SWA bodies, K64/K128 splits to retain gfx1151 grid breadth, fused score/softmax/PV, and a bounded merge+gate.",
+      "first_gate": "Attention <=3.0 ms/token at p512 with every exact boundary fixture passing; stretch <=1.5 ms/token. Full decode must improve in both process orders before category work.",
+      "expected_system_ceiling": "Recovering 10-13 ms/token moves the current 68.70 ms wall into roughly the 17-18 tok/s range before F16 work."
+    },
+    {
+      "id": "LD-2",
+      "priority": 2,
+      "title": "Exact F16 wave-owned multi-output GEMV",
+      "premise": "One local256 block owns eight output columns; each wave owns one output and keeps eight per-lane partial sequences so the current 256-thread reduction tree can be reconstructed without LDS or cross-wave barriers.",
+      "closed_variants": "Simple local64 and local128 substitutions are rejected at -4.81% and -2.01%.",
+      "first_gate": "Actual QKV/O shapes must reduce the 30.98 ms family toward the 25.37 ms unchanged-byte floor with bit-exact outputs and no p512/d128 regression."
+    },
+    {
+      "id": "LD-3",
+      "priority": 3,
+      "title": "Decode-only compressed representation for source-F16 projections",
+      "premise": "Source-F16 owns 61.12% of active resident bytes. A persistent Q8-class decode side representation could remove about 2.8 GB of traffic/token, but adds capacity and a new quality surface.",
+      "first_gate": "Projection-input capture, primitive error/KL screen, complete heldout KL <=0.05 and top-1 >=90%, then context/capacity and p512/d128."
+    },
+    {
+      "id": "LD-4",
+      "priority": 4,
+      "title": "Dense/shared raw-layout decode and residual quant cleanup",
+      "premise": "Pack8 expands shared/dense Q4 resident traffic and the remaining family is slower than Vulkan, but the complete ceiling is only a few milliseconds.",
+      "first_gate": "Counter or actual-byte evidence plus a complete-wall win; do not reopen selected expert bodies already at about 91% of the read roof."
+    },
+    {
+      "id": "LD-5",
+      "priority": 5,
+      "title": "Submission replay and residual fusion",
+      "premise": "Current unprofiled wall minus device sum is only about 2.18 ms/token. Graph/AQL work is bounded cleanup after the two dominant kernels.",
+      "first_gate": "A measured repeated submission/synchronization boundary; no launch-count-only promotion."
+    }
+  ],
+  "definition_of_next_pause": {
+    "near_term_target": ">=18 tok/s p512/d128 with the same state and quality contract",
+    "comparator_target": "23.348 tok/s same-GGUF Vulkan directional row",
+    "mandatory_context_seams": [
+      "live 65/127/257/512",
+      "global page 255/256/511/512/1023/1024",
+      "SWA ring 511/512/513",
+      "p128/p512/p1K/p4K decode snapshots",
+      "p512/d128 production trajectory"
+    ],
+    "correctness": "Kernel CPU-reference gate plus full hidden/logit/KVLiveSpans/reset/lifecycle state; any changed association additionally requires the heldout category KL/top-1 gate.",
+    "stop_rule": "Do not resume generic Q4/Q6 selected-expert tuning or launch shaving while attention and F16 explain 77% of the comparator gap."
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before report construction",
+    "reason": "Missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout.",
+    "fallback_review": "In-tree docs/KERNELS.md, current registrations, Qwen/Laguna retained and rejected artifacts, live HIP sources, and the read-only llama.cpp Vulkan source were inspected. No external reference repo was modified."
+  }
+}
