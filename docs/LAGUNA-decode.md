@@ -4056,6 +4056,22 @@ a structurally new exact or fully category-gated candidate.
 Evidence:
 [`post-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-mixed32-wall-reprofile.json).
 
+The first post-census Vulkan transfer is exact but rejected. Vulkan computes
+one probability tile in LDS `Psh` and consumes it with cooperative PV; the
+mixed32 scalar body recomputes softmax in four dimension waves. A four-way
+P-cache candidate computes the maximum once, divides independent compiler
+`expf` calls across those waves, overwrites the dead LDS score plane with
+weights, and replays the denominator once in original slot order. Wrapped and
+evicted F32/BF16 output is byte-exact, but the leaf regresses
+**0.091439 -> 0.097556 ms (+6.690%)**. Resources stay VGPR104/scratch0 while
+LDS rounds **24,576 -> 25,088 B**. Three new full-workgroup barriers and LDS
+traffic outweigh removing arithmetic that already overlaps across SIMD
+waves. Remove the candidate completely. Do not retry scalar `Psh`; the next
+transfer must couple probability reuse to tensorized PV or avoid a
+block-wide synchronization boundary.
+Evidence:
+[`rejected mixed32 P-cache4`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pcache4-rejected.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
