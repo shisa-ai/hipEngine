@@ -1347,10 +1347,16 @@ falls **2699.147 -> 1828.710 ms (1.476x, -32.249%)** versus RB32. It traces at
 local128, VGPR72, SGPR50, LDS512, and private0 with zero spills. The no-override
 M512 gate is KL0/bit-exact through all 48 boundaries and full K/V spans; the
 same-weight promotion gate improves **131.491/124.949 -> 169.046/157.420 tok/s
-(+28.561%/+25.987%)** at 512/1K. Explicit RB32 and unsupported widths remain
-exact fallbacks; gfx1151 excludes the W7900 keys. Canonical topline/4K reopening
-still require clean selector-unset publication and tracing. P6 and WPF-1R
-remain closed. The detailed gates are owned by `LAGUNA-prefill.md`.
+(+28.561%/+25.987%)** at 512/1K. Clean selector-unset publication reaches
+**169.253/159.229 tok/s (+28.301%/+26.412%)** versus the preceding exact packet;
+cached dense/shared projection and kernel span fall **38.546%/38.875%** and
+**21.893%/20.852%**. Both short rows clear 150 tok/s, and the restored clean 4K
+gate reaches **123.084 tok/s** with deterministic IDs/positions/lifecycle and
+full allocation recovery. Explicit RB32 and unsupported widths remain exact
+fallbacks; gfx1151 excludes the W7900 keys. The 16K+ campaign remains closed
+because 512/4K is still far below 800/700 and no replacement roofline has been
+accepted. P6 and WPF-1R remain closed. The detailed gates are owned by
+`LAGUNA-prefill.md`.
 
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16

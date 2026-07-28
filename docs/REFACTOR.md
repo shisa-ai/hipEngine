@@ -34,12 +34,12 @@ should be removed or collapsed.
   exact `(4,8)` through the gfx1100 package. It applies only to full RB32 slabs
   with output width divisible by four; explicit `rowbatch`, smaller slabs, and
   unsupported widths keep RB32. The no-override M512 state gate is KL0 across
-  all 48 boundaries/KV spans, and dirty 512/1K improves
-  **131.491/124.949 -> 169.046/157.420 tok/s**. Keep the variant seam through
-  clean short publication, the restored 4K gate, and one bounded decision on
-  whether `(2,16)` owns its four faster actual configurations. Then remove any
-  unowned `(2,16)` wrappers/keys and collapse benchmark-only setter surface;
-  retain RB32 as the required generic exact fallback.
+  all 48 boundaries/KV spans, clean 512/1K publishes **169.253/159.229 tok/s**,
+  and the restored 4K gate passes at **123.084 tok/s**. Those publication
+  triggers are satisfied. Keep the variant seam only through one bounded
+  decision on whether `(2,16)` owns its four faster actual configurations.
+  Then remove any unowned `(2,16)` wrappers/keys and collapse benchmark-only
+  setter surface; retain RB32 as the required generic exact fallback.
 
 ## Laguna prefill matrix-capacity selector
 
