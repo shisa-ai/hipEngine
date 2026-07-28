@@ -378,9 +378,14 @@ D8/S8 policy/ABI and allocates **2,359,296 bytes** at M128; rejected D4 remains
 available only through its explicit primitive keys. Shared-weight M128 full
 state passes at KL **0.002081**, same top-1, and byte-exact candidate repeat
 across all 48 hidden boundaries/KV/live spans. Clean default-off A/B moves
-**79.179/73.808 -> 129.083/115.802 tok/s** at 512/1K. The package default is
-still MMQ-off/rowbatch8 pending the complete quality gate.
-Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json).
+**79.179/73.808 -> 129.083/115.802 tok/s** at 512/1K, but the complete
+576-step lane rejects D8 at maximum KL **0.400292** despite **98.264%** top-1.
+The package default therefore remains MMQ-off/rowbatch8. D4->D8 improves only
+275/576 teacher steps while worsening 301/576 and leaves 28 steps above the KL
+limit in both variants; next screen a two-stage per-K16 Q8 residual correction,
+not another runtime promotion attempt.
+Evidence: [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) ·
+[`D8 runtime rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |

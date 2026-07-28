@@ -35,16 +35,16 @@ should be removed or collapsed.
   Quant-specific crossover policy stays on registered Q5_K/Q6_K plugin keys;
   N48/N72 and all key/shape/backend misses retain exact rowbatch8. gfx1151
   excludes the producer, policy, and MMQ keys and rejects explicit enablement.
-- The first D4 runtime candidate is performance-positive but rejected by the
-  complete quality lane at max KL **0.624304**. Keep it default-off only while
-  finer producer grouping or a bounded correction is actively compared. Do not
-  promote the D4 policy. The default-off owner now selects the D8/S8 sibling;
-  remove D4 runtime assumptions after D8 is accepted or rejected.
+- D4 and D8 runtime candidates are performance-positive but rejected by the
+  complete quality lane at maximum KL **0.624304/0.400292**. Do not promote
+  either policy. Keep the default-off owner only while the bounded two-stage
+  per-K16 Q8 residual correction is actively compared.
 - Promote the gfx1100 package default and remove the public positive selector
   only after full state, 512/1K end-to-end performance, and both orders of the
-  complete 18-prompt train+heldout quality lane pass. Remove the MMQ owner and
-  policy if the accuracy refinement also fails without a bounded correction;
-  preserve rowbatch8 as the mandatory exact fallback either way.
+  complete 18-prompt train+heldout quality lane pass. If the residual candidate
+  also fails, remove the public owner/policy and runtime D4/D8 ABI assumptions;
+  diagnostic primitive keys may remain only with explicit evidence value.
+  Preserve rowbatch8 as the mandatory exact fallback either way.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
