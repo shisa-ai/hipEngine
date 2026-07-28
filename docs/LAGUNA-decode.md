@@ -4165,6 +4165,21 @@ on the fully separated seven-pair A/B and positive leaf/trace. Production is
 **+70.327%** over sprint start and IDs/state/lifecycle remain exact. Evidence:
 [`clean mixed32 exp32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-production.json).
 
+The clean post-wave32 census keeps **816 dispatches/token** and measures
+**48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is now
+**4.478 ms/token = 3.181 SWA + 1.289 global**. Since exp4, SWA falls
+**7.74%**, total attention **5.62%**, and span **0.64%**. Same-GGUF llama.cpp
+Vulkan remains at **0.909 ms**, leaving **3.568 ms/token** and **42.6%** of
+the complete wall gap in attention. Evidence:
+[`post-exp32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json).
+
+The next structural gate transfers llama.cpp's decisive GQA reuse without
+copying its inexact tensorized arithmetic: one fused local512 owner handles
+four or five query heads per KV head, keeps the exact wave32 QK reduction and
+ordered softmax/PV chains, computes two output dimensions per lane, and cuts
+SWA workgroups **32 -> 16**. Unlike the rejected persistent GQA9 experiment,
+it has no global score plane, rendezvous, atomics, or reducer launch.
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128

@@ -189047,3 +189047,20 @@ Vulkan local sizes verbatim will close the measured gap.
   bytes after teardown. Production is **+70.327%** over sprint start. Raw
   artifact SHA-256 is `468c5931...d8c83`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-production.json`.
+
+## 2026-07-29 08:30 JST — Re-profile the post-wave32 decode wall
+
+- A tracked-clean, require-cached `rocprofv3 --kernel-trace` run on
+  `0f7140d4e` segments all 127 p512/d128 decode transitions. No compiler runs
+  under profiling; every token keeps **816 compute dispatches**.
+- Median kernel sum is **48.966 ms/token** and span **51.519 ms/token**.
+  Attention is **4.478 ms = 3.181 SWA + 1.289 global**. Since post-exp4,
+  attention falls **5.62%**, SWA **7.74%**, sum **0.67%**, span **0.64%**.
+- llama.cpp Vulkan remains **0.909 ms/token** attention. The residual
+  **3.568-ms** attention gap explains **42.6%** of the complete clean
+  **8.372-ms/token** wall gap, so attention remains the first comparator gap.
+- Select an exact fused 4+5-query local512 screen: 16 workgroups, two output
+  dimensions per lane, exact wave32 QK and ordered softmax/PV, no global score
+  plane/rendezvous, and roughly 2x staged-V reuse. This transfers llama.cpp's
+  GQA reuse rather than its inexact tensorized arithmetic. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json`.
