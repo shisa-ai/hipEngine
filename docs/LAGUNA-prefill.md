@@ -4,9 +4,10 @@ Last updated: 2026-07-29
 
 ## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
-Status: **WPF-H1 queued from matched llama.cpp HIP attribution; WPF-1T remains
-production and 16K+ remains deferred**. This section is the authority for the
-Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port. The longer
+Status: **WPF-H1 source-faithful Q5_K MMQ port queued from matched llama.cpp
+HIP attribution; WPF-1T remains production and 16K+ remains deferred**. This
+section is the authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna
+`UD-Q2_K_XL` port. The longer
 gfx1151/Q4 campaign record begins below and remains evidence, not a source of
 automatic defaults or tile geometry.
 
@@ -34,37 +35,133 @@ native Vulkan row. The llama.cpp HIP server-native secondary row is
 bit-identical, so **694.184** is a performance-parity target, not a correctness
 oracle; every hipEngine candidate still passes the repository quality gate.
 
-Cached traces localize **99.83%** of the **2.286-s** kernel-sum gap to four
-families: at least **1.353 s** dense/shared Q5/Q6, **0.469 s** attention,
-**0.402 s** IQ3/IQ4 selected down, and only **0.057 s** IQ2 gate/up. llama.cpp
-launches **2,824** kernels versus hipEngine's **1,477**, yet its kernel sum is
-**0.724 s** versus **3.010 s**. Launch count and Python submission are therefore
-not the cause. The revised execution order is:
+### Matched M512 kernel/module gap ledger
 
-1. **WPF-H1 dense Q5/Q6 tensorized tile:** first distribute larger exact
-   output/row tiles while preserving each output's K/reduction order; only
-   after that exact ceiling is measured may a source-faithful F32-to-Q8_1
-   128x128/K256 comparator run the complete quality lane. Do not relabel the
-   rejected D4/D8/D8R8 variants as new work.
-2. **WPF-H2 full-M512 tiled attention:** remove safe four-M128 slicing and
-   extend exact adjacent-query K/V reuse beyond qrow4. A compensated F16/WMMA,
-   multi-head, stream-K route is a separate quality-gated fallback, not an
-   inference from the rejected online qrow4 path.
-3. **WPF-H3 IQ3/IQ4 selected down:** reprice larger exact expert-major
-   row/output tiles, then isolate a source-faithful Q8_1 MMQ comparator before
-   composing any approximation with H1/H2.
-4. Defer IQ2/P6 and WPF-4 launch/fusion. IQ2 is already close to llama.cpp and
+The preserved matched traces support a finer, exhaustive attribution than the
+original four-family conservative view. The rows below are disjoint physical
+kernel/module groups and reconcile exactly to both captured kernel sums. Delta
+is **hipEngine minus llama.cpp HIP**, so a positive value is remaining
+hipEngine work. This is summed GPU-kernel time, not wall time, and no benchmark
+was rerun to produce this reclassification. This ledger and the H1-H5 order
+below supersede the linked artifact's original conservative `gap_attribution`
+and `campaign_revision` fields; its measurements, hashes, and source audit
+remain the evidence inputs.
+
+| Kernel/module | hipEngine ms | llama.cpp HIP ms | Delta ms |
+| --- | ---: | ---: | ---: |
+| Embedding lookup | 0.020 | 0.000 | **+0.020** |
+| Q5_K projections | 1,274.342 | 58.951 | **+1,215.391** |
+| Q6_K projections, including llama dequant/casts/GEMM | 156.111 | 14.916 | **+141.195** |
+| Q8_0 dense-MLP projections | 7.484 | 0.206 | **+7.278** |
+| Q4_K LM-head projection | 0.422 | 0.268 | **+0.154** |
+| IQ2_XS selected gate/up | 430.054 | 404.903 | **+25.151** |
+| IQ3_XXS special gate/up | 31.822 | 0.075 | **+31.747** |
+| IQ3_XXS selected down | 531.414 | 152.380 | **+379.034** |
+| IQ4_XS selected down | 26.428 | 3.146 | **+23.282** |
+| Miscellaneous F32 matrix-vector | 0.000 | 0.012 | **-0.012** |
+| Global + SWA attention core | 490.919 | 21.725 | **+469.194** |
+| KV writes / `set_rows` | 0.694 | 0.894 | **-0.200** |
+| BF16-to-F16 attention/KV conversion | 0.000 | 0.862 | **-0.862** |
+| Q/K RMSNorm + RoPE | 7.201 | 7.791 | **-0.590** |
+| Other RMSNorm; hipEngine post-attention add is fused | 1.671 | 1.608 | **+0.063** |
+| Softplus attention gating | 3.462 | 1.796 | **+1.667** |
+| MoE router logits | 12.382 | 7.505 | **+4.876** |
+| MoE sigmoid correction / top-k | 0.863 | 0.449 | **+0.414** |
+| MoE compact/inverse map vs ID scheduler | 22.908 | 21.716 | **+1.192** |
+| MoE hidden gather / `get_rows` | 6.854 | 0.007 | **+6.847** |
+| Standalone SiLU-times-gate activation | 0.278 | 4.340 | **-4.062** |
+| MoE expert weighting/reduce | 3.105 | 6.904 | **-3.799** |
+| Residual/elementwise adds | 1.401 | 4.098 | **-2.697** |
+| Q8_1 activation quantization | 0.000 | 5.798 | **-5.798** |
+| Runtime copy/fill kernels | 0.000 | 3.950 | **-3.950** |
+| Argmax | 0.003 | 0.000 | **+0.003** |
+| **Total summed kernel time** | **3,009.837** | **724.299** | **+2,285.538** |
+
+The semantic matching uses demangled symbols, launch shapes, quant type, and
+model-graph role. Fusion differs, so support work remains visible rather than
+being silently charged to a favored family. In particular:
+
+- hipEngine attention is **114.812 ms global + 376.107 ms SWA**. llama.cpp's
+  same-symbol M512 path is **20.884 ms FlashAttention main + 0.841 ms stream-K
+  fixup**; the trace has no trustworthy per-launch global/SWA marker, so only
+  the combined attention delta is claimed.
+- llama.cpp's **14.916-ms Q6_K stack** is **9.583 ms Q6 rocBLAS + 1.983 ms
+  dequantization + 1.948 ms F32-to-F16 + 1.385 ms F16-to-F32 + 0.017 ms
+  MMVQ**. The separate **7.505-ms** rocBLAS router work is charged to router
+  logits, not Q6.
+- hipEngine's selected gate/up and Q/K norm+RoPE bodies fuse work that llama.cpp
+  launches separately. The standalone activation/support rows keep the two
+  totals exhaustive despite that difference.
+- llama.cpp exposes no distinct embedding or GPU argmax body in this capture.
+  Conversely, its **3.950-ms** process-level copy/fill tail has no counterpart
+  inside hipEngine's embedding-to-argmax request segment. These small negative
+  rows are reconciliation items, not optimization targets.
+
+Four rows explain almost the complete gap:
+
+| Order | Direct target | hipEngine / llama.cpp | Exact delta | Gap share | Cumulative share | Modeled hipEngine kernel sum after parity |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Q5_K projections | **21.617x** | **1,215.391 ms** | **53.18%** | **53.18%** | **1,794.446 ms** |
+| 2 | Global + SWA attention | **22.597x** | **469.194 ms** | **20.53%** | **73.71%** | **1,325.252 ms** |
+| 3 | IQ3_XXS selected down | **3.487x** | **379.034 ms** | **16.58%** | **90.29%** | **946.218 ms** |
+| 4 | Q6_K projections | **10.466x** | **141.195 ms** | **6.18%** | **96.47%** | **805.023 ms** |
+
+The last column is a kernel-sum replacement model: it substitutes llama.cpp's
+measured module cost into hipEngine one row at a time. It is not a tok/s or
+wall-time forecast. The important planning fact is exact: these four measured
+module deltas total **2,204.814 ms**, or **96.47%** of the complete
+**2,285.538-ms** kernel gap.
+
+The exact ledger supersedes the original conservative family rollup for
+campaign ordering. Q5_K, attention, IQ3_XXS down, and Q6_K account for
+**96.47%** of the complete kernel gap. llama.cpp still launches **2,824**
+kernels versus hipEngine's **1,477**, yet sums only **0.724 s** versus
+**3.010 s**. Launch count and Python submission are therefore not the cause.
+
+For these four lanes, the audited llama.cpp HIP algorithm is the **primary
+implementation candidate**, not a fallback delayed behind another exact-only
+tiling campaign. Port it in-tree from `c0bc8591e`, cite the exact source files
+and commit, preserve hipEngine's raw-pointer/four-axis registry and
+`KVLiveSpans` contracts, and retain the current exact kernel as the unfused or
+changed-arithmetic fallback. Copying the proven dataflow, tile ownership, and
+WMMA strategy is encouraged; production promotion still requires hipEngine's
+correctness and complete quality lanes.
+
+The revised execution order is:
+
+1. **WPF-H1 source-faithful Q5_K Q8_1/WMMA MMQ:** port the traced F32-to-Q8_1
+   producer and 256-thread I128/J128/K256 Q5_K consumer, including the affine
+   activation-sum metadata. Its measured body is **21.617x** faster and closes
+   **1,215.391 ms / 53.18%** of the total gap. The rejected D4/D8/D8R8 paths
+   are not substitutes for this complete llama.cpp-shaped producer/consumer.
+2. **WPF-H2 source-faithful full-M512 FlashAttention:** port
+   `flash_attn_ext_f16<128,128,8,8>` geometry, eight-head grouping, dynamic
+   Q/K/V staging, and stream-K fixup behind `KVLiveSpans`, with explicit BF16
+   storage-to-F16 arithmetic disclosure. Its measured body is **22.597x**
+   faster and closes **469.194 ms / 20.53%**.
+3. **WPF-H3 source-faithful IQ3_XXS/IQ4_XS selected down MMQ:** reuse
+   hipEngine's compact expert metadata, but port llama.cpp's Q8_1-packed
+   128x128/K256 i-quant MMQ consumer. IQ3 down alone is **3.487x** faster and
+   closes **379.034 ms / 16.58%**; carry IQ4 as the same-family companion.
+4. **WPF-H4 source-faithful Q6_K dequantize-plus-rocBLAS:** port the bounded
+   F16 dequantization/cast/GEMM stack selected by llama.cpp at M512 rather than
+   forcing Q6 through the Q5 MMQ design. It is **10.466x** faster and closes
+   **141.195 ms / 6.18%**. Do not add a persistent full-family sidecar.
+5. **WPF-H5 residual tail:** reprofile only after H1-H4 are independently
+   admitted and stacked. IQ2/P6, launch fusion, and small support kernels stay
+   deferred; IQ2 core is only **25.151 ms** behind in the exact ledger and
    span-minus-sum is only **15.211 ms / 0.503%** at M512.
-5. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
+6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
    only evidence of attainable hardware performance.
 
 Quality-lane calibration is diagnostic only. It cannot waive the repository
-KL/top-1 contract or promote D4, D8, D8R8, P6, or another approximate variant.
-The fixed M512 stream is attribution-only and cannot promote a candidate; all
-changed-arithmetic lanes use the complete train+heldout category suite and
-category heldouts.
+KL/top-1 contract or promote D4, D8, D8R8, P6, or another failing approximate
+variant. The fixed M512 stream is attribution-only and cannot promote a
+candidate; every changed-arithmetic port uses the complete train+heldout
+category suite and category heldouts. A source-faithful port that fails those
+gates remains a valuable measured ceiling, but cannot become production.
 
 The historical **150 tok/s** short dependency passes at both 512 and 1K, and
 its required restored 4K gate is complete. WPF-1T reached it with exact
@@ -96,7 +193,7 @@ result proves that 150 was only an intermediate gate, not a credible endpoint.
 | Rejected WPF-1B screens | D4 **129.572/116.116 tok/s**, max KL **0.624304**; D8 **129.083/115.802**, max KL **0.400292**; D8R8 **123.466/111.324**, max KL **0.964321** at 512/1K |
 | Rejected P6 / P6-repair screen | Existing IQ2 MMQ gate/up is **3.336x** faster over 46 actual M512 layers and reaches diagnostic **122.135/110.761 tok/s (+23.082%/+20.972%)**, but complete quality reaches max KL **0.683239** at **565/576** top-1. P6 repair stops at **85.946%** uncertain coordinates and **99.496%** touched active output rows; WPF-1R's separately measured raw-Q5/Q6 screen is also rejected. |
 | Rejected WPF-1R raw-Q5/Q6 repair | All **381/381** projection tensors are captured at M512; 333 are D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch **72.266-100%** of output-weight rows and imply **0.160-1.686x** exact-RB32 family reads; the conservative midpoint envelope reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads. No repair queue/kernel/runtime route is admitted. |
-| Current attribution | Fresh M512: hipEngine dense/shared **1.438 s**, IQ2 gate/up **0.462 s**, IQ3/IQ4 down **0.558 s**, attention **0.491 s**, kernel sum/span **3.010/3.025 s**, and **1,477** dispatches. llama.cpp HIP is **0.724 s / 2,824 dispatches**; conservative matched gaps are **1.353/0.057/0.402/0.469 s**, respectively. More llama.cpp dispatches and only **15.211 ms** hipEngine span-minus-sum keep launch/fusion deferred. |
+| Current attribution | The exhaustive M512 ledger reconciles hipEngine **3,009.837 ms** and llama.cpp HIP **724.299 ms** exactly. Ordered gaps are Q5_K **1,215.391 ms (53.18%, 21.617x body ratio)**, attention **469.194 ms (20.53%, 22.597x)**, IQ3_XXS down **379.034 ms (16.58%, 3.487x)**, and Q6_K **141.195 ms (6.18%, 10.466x)**. Together they close **2,204.814 ms / 96.47%**. More llama.cpp dispatches and only **15.211 ms** hipEngine span-minus-sum keep launch/fusion deferred. |
 | Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-C1 M256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json) · [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) · [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json) · [`WPF-2b pair16 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) · [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json) · [`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) · [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) · [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json) · [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json) · [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) · [`WPF-1T default`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) · [`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) · [`WPF-1T role policy`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json) · [`matched llama.cpp HIP/Vulkan attribution`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) · [`P6/P6-repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json) · [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json) |
 
 WPF-1 established the first retained W7900 prefill default. One shared
@@ -403,9 +500,23 @@ exact arithmetic/dataflow hypothesis.
 
 ### llama.cpp dataflow to transfer
 
-The relevant lesson is dataflow, not API or literal constants. The source below
-is byte-identical to llama.cpp `c0bc8591e`; the committed measurement patch
-touches only `tools/llama-bench`.
+The same-hardware speed ratios justify direct, source-faithful ports rather
+than treating llama.cpp as inspiration only. The source below is byte-identical
+to llama.cpp `c0bc8591e`; the committed measurement patch touches only
+`tools/llama-bench`. Port the algorithm, producer/consumer contract, tile
+ownership, and traced starting geometry into hipEngine's registry/ABI model;
+do not port llama.cpp's host API or contiguous-cache ABI. The starting source
+map at that commit is:
+
+- H1/H3 producer and MMQ: `ggml/src/ggml-cuda/quantize.cu`, `mmq.cu`,
+  `mmq.cuh`, and `mmq-config-rdna4.cuh`; routed compaction additionally audits
+  `mmid.cu`.
+- H2 attention: `ggml/src/ggml-cuda/fattn-mma-f16.cuh` and
+  `fattn-common.cuh`.
+- H4 Q6 selection/dequantization: `ggml/src/ggml-cuda/ggml-cuda.cu`,
+  `mmq.cu`, and `convert.cu`, plus hipEngine's existing torch-free rocBLAS
+  binding. Re-audit exact call ownership before implementation rather than
+  copying llama.cpp host dispatch.
 
 - `MMVQ_MAX_BATCH_SIZE=8`; M512 takes MMQ. RDNA3's high-expert rule selects MMQ
   for the 256-expert routed matrices. The host chooses the AMD-WMMA config,
@@ -418,16 +529,19 @@ touches only `tools/llama-bench`.
   uses a device inverse map so each physical token is quantized before its
   top-k compact slots are written. hipEngine already owns compact expert-major
   metadata; transfer the producer/consumer contract, not `mm_ids_helper`.
-- Dense Q5_K at M512 uses custom Q8_1 MMQ. Dense Q6_K does **not**: M512 exceeds
-  gfx1100's Q6 `<=128` MMQ threshold, so Q6 dequantizes to F16 and runs rocBLAS.
-  The prior blanket statement that every Q5/Q6 projection used MMQ was wrong.
-  Even charging all llama.cpp Q8_1 packing, Q6 dequantization, rocBLAS, and
-  residual quant matmuls to dense/shared yields only **84.322 ms** versus
-  hipEngine's **1,437.654 ms**.
-- IQ3_XXS/IQ4_XS selected down uses the same compact Q8_1 + 128x128/K256 MMQ
-  framework and totals **155.601 ms**, versus hipEngine exact grouped down at
-  **557.842 ms**. IQ2 gate/up is already comparatively close at
-  **404.903 vs 461.876 ms**; do not reopen P6 ahead of down.
+- Dense Q5_K at M512 uses custom Q8_1 MMQ: **58.951 ms** for the same 235
+  projections versus hipEngine's **1,274.342 ms**, a **21.617x** body ratio.
+  Port this complete path first. Dense Q6_K does **not** use that MMQ: M512
+  exceeds gfx1100's Q6 `<=128` threshold, so Q6 uses a bounded dequant/cast/F16
+  rocBLAS stack. Its correctly isolated **14.916 ms** compares with
+  hipEngine's **156.111 ms**, a **10.466x** ratio. The old conservative
+  **84.322-ms** combined charge deliberately included unrelated router/support
+  work and is not the implementation ledger.
+- IQ3_XXS selected down uses the same compact Q8_1 + 128x128/K256 MMQ framework
+  and measures **152.380 ms** versus hipEngine **531.414 ms**, a **3.487x**
+  ratio. The two IQ4_XS down calls are **3.146 vs 26.428 ms**. IQ2 gate/up core
+  is already comparatively close at **404.903 vs 430.054 ms**; do not reopen
+  P6 ahead of down.
 - FlashAttention is `flash_attn_ext_f16<128,128,8,8>` plus one general stream-K
   fixup per layer. It stages Q/K/V and mask tiles dynamically, groups eight GQA
   heads, and uses F16 WMMA across 128 query rows. Its **21.725 ms / 96 calls**
@@ -438,10 +552,12 @@ touches only `tools/llama-bench`.
   native-F16 row is **56.274 tok/s**, versus hipEngine **169.228** and HIP
   **694.184**. Vulkan shader geometry is not the next W7900 campaign.
 
-A source-faithful Q8_1 or F16-WMMA comparator changes arithmetic. Same first
-token **2930** does not make it production-correct. Exact-first candidates must
-preserve bytes; reassociated candidates must pass the complete 18-prompt,
-576-step train+heldout lane and category-heldouts before any clean publication.
+A source-faithful Q8_1 or F16-WMMA port changes arithmetic. Same first token
+**2930** does not make it production-correct. That is a promotion constraint,
+not a reason to postpone the port: H1-H4 implement and measure the audited
+llama.cpp route first, retain the existing exact registered path as fallback,
+and require the complete 18-prompt/576-step train+heldout lane plus category
+heldouts before any clean publication.
 
 ### WPF execution order
 
@@ -462,10 +578,11 @@ preserve bytes; reassociated candidates must pass the complete 18-prompt,
 | **WPF-1R guarded exact repair** | **Rejected before implementation** | All 381 raw-Q5/Q6 tensors are captured at M512; all 333 eligible tensors fail conservative density/touched-row/read stops. Measured mismatches alone touch **72.266-100%** of rows and imply up to **1.686x** exact-family reads. No queue, repair kernel, overflow route, runtime mode, full-state/category lane, or timing gate is added. |
 | **WPF-3 short SWA attention** | **Complete; exact qrow4 retained and online qrow4 rejected** | One wave keeps one head and production's per-row two-pass arithmetic while reusing K/V across four causal rows; this is distinct from rejected cross-head/tiled sharing. The C256 policy keeps exact wave32 below crossover. Four M128 slices improve **21.059 -> 9.389 ms (2.243x)** bit-exactly; qrow4 traces at local32/VGPR72/LDS0/scratch0. The no-override M512 gate is KL0 across all 48 boundaries/KV spans. Clean 512/1K improves **+11.131%/+16.842%**, while cached SWA and complete span fall **55.411%/59.449%** and **9.643%/14.228%**. Changed-association online qrow4 improves complete-suite prefill **0.995%** but is rejected at max KL **0.394600** despite **564/576** top-1. |
 | **WPF-1T exact dense output tiling** | **Complete; retained gfx1100 production through 4K** | `(2,16)` and `(4,8)` preserve RB32's 32 accumulators/thread, K ownership, FMA order, wave tree, and serial wave sum. Both are byte-exact/faster on all 15 unique actual Q5/Q6 M512 configurations. Production-weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms** over 381 invocations; `(4,8)` is **1.476x (-32.249%)** and compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills. Exactly four role keys select `(2,16)`, reducing the all-`(4,8)` family another **36.773 ms (2.011%)** to **1791.936 ms**. The frozen 512/1K gate passes at **+0.545%/+0.459%**; a package repeat remains exact/positive at **+0.382%/+0.242%** but misses its repeated 1K magnitude threshold. Explicit RB32, smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks; the public variant setter/constructor is removed. No-override M512 is KL0 across all 48 boundaries/KV spans. Canonical clean 512/1K remains **169.253/159.229 tok/s (+28.301%/+26.412%)** and tracing cuts dense/shared **38.546%/38.875%**. Restored 4K reaches **123.084 tok/s** with deterministic ID/position/lifecycle and allocation recovery. |
-| **WPF-H1 matched-gap dense Q5/Q6 tile** | **Next** | The conservative matched gap is **1.353 s / 59.21%** of total kernel delta. First distribute larger exact output/row tiles with staged K slices while preserving per-output arithmetic. Only after measuring that ceiling may a source-faithful F32-to-Q8_1 128x128/K256 comparator proceed; it must be materially different from rejected D4/D8/D8R8 and pass the complete quality lane. Closing this gap alone models about **306 tok/s**. |
-| **WPF-H2 matched-gap full-M512 attention** | Queued after H1 | The matched gap is **0.469 s / 20.53%**. Exact-first removes safe M128 slicing and extends qrow reuse beyond four. Compensated F16/WMMA multi-head stream-K is separately quality-gated and retains an unfused `KVLiveSpans` fallback. Closing H1+H2 models about **426 tok/s**. |
-| **WPF-H3 matched-gap IQ3/IQ4 down** | Queued after H2 | The matched gap is **0.402 s / 17.60%**. Reprice exact larger expert-major row/output tiling, then isolate a source-faithful Q8_1 MMQ comparator. Do not compose approximations across lanes before each passes independently. Closing H1-H3 models about **640 tok/s**. |
-| **WPF-H4 IQ2/tail** | Deferred | IQ2 gate/up is only **56.973 ms** behind llama.cpp and the prior P6 quality/repair rejection remains binding. Revisit only after H1-H3 reprofile. |
+| **WPF-H1 source-faithful Q5_K MMQ** | **Next** | Port llama.cpp `c0bc8591e` F32-to-Q8_1 producer plus 256-thread I128/J128/K256 Q5_K WMMA consumer as the primary candidate. Same-shape bodies are **1,274.342 vs 58.951 ms (21.617x)**; exact delta is **1,215.391 ms / 53.18%**. Preserve the current exact coltile fallback and run the complete quality lane. Modeled kernel sum after parity is **1,794.446 ms**. |
+| **WPF-H2 source-faithful full-M512 FlashAttention** | Queued after H1 | Port the traced F16 `128x128`, eight-head, stream-K/fixup route behind `KVLiveSpans`; do not copy contiguous-cache ownership. Same-shape bodies are **490.919 vs 21.725 ms (22.597x)**; exact delta is **469.194 ms / 20.53%**, bringing cumulative closure to **73.71%** and modeled kernel sum to **1,325.252 ms**. Keep exact qrow4/M128 fallbacks and run the complete quality lane. |
+| **WPF-H3 source-faithful IQ3/IQ4 selected-down MMQ** | Queued after H2 | Reuse hipEngine compact route metadata and port llama.cpp's Q8_1-packed 128x128/K256 i-quant consumer. IQ3 is **531.414 vs 152.380 ms (3.487x)**; exact delta is **379.034 ms / 16.58%**, bringing cumulative closure to **90.29%** and modeled kernel sum to **946.218 ms**. Carry IQ4 as the companion format; gate independently before stacking. |
+| **WPF-H4 source-faithful Q6_K F16/rocBLAS** | Queued after H3 | Port llama.cpp's bounded M512 Q6 dequantize/cast/F16-rocBLAS route rather than forcing Q6 into Q5 geometry. Same-shape stacks are **156.111 vs 14.916 ms (10.466x)**; exact delta is **141.195 ms / 6.18%**, bringing cumulative closure to **96.47%** and modeled kernel sum to **805.023 ms**. No persistent full-family sidecar; retain exact coltile fallback and run the complete quality lane. |
+| **WPF-H5 residual tail** | Deferred | Reprofile after H1-H4. IQ2 core is only **25.151 ms** behind in the exhaustive ledger and prior P6 quality/repair rejection remains binding; launch/fusion remains deferred at **15.211 ms** span-minus-sum. |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh M512 span-minus-sum is only **15.211 ms / 0.503%**, and llama.cpp is faster despite **2,824 vs 1,477** dispatches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | Clean 4K remains **123.084 tok/s**. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
@@ -485,7 +602,7 @@ For every WPF kernel or owner:
    weight sidecar fits the 48-GiB budget. Bounded producer/risk/repair queues
    such as the current 4,325,376-byte M128 D8R8 workspace are allowed when
    capacity is explicit, liveness-aliased, fail-closed, and teardown-exact.
-4. H1-H3 start with actual-shape M512 leaves, then gate 512/1K in both process
+4. H1-H4 start with actual-shape M512 leaves, then gate 512/1K in both process
    orders with exact IDs/positions/state, deterministic repeats, finite logits,
    and allocation recovery. Do not favorable-rerun or waive a per-order
    regression by pooling. Small wins use at least 15 samples or the established
