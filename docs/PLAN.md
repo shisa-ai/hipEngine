@@ -1435,11 +1435,16 @@ records **3,001.692-ms** kernel sum in a **3,016.780-ms** span across **1,477**
 dispatches; only **15.087 ms / 0.500%** lies outside kernels. Exact Q5 coltile
 remains first at **1,270.458 ms / 42.325%**, ahead of selected IQ3/IQ4 down
 **557.091 ms**, attention **488.304 ms**, gate/up **460.143 ms**, and Q6
-**157.073 ms**. WPF-H5A therefore tests bounded transient raw-Q5-to-F32
-expansion plus exact BF16-to-F32 widening and F32 SGEMM. It must add no
-persistent sidecar, fail closed to exact coltile, and pass the complete quality
-lane because SGEMM changes reduction association. Do not stack rejected H1-H4
-arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
+**157.073 ms**. WPF-H5A's standalone bounded raw-Q5-to-F32/BF16-to-F32/SGEMM
+leaf is now admitted: exact fallback for the regressive N48 role plus the F32
+candidate elsewhere moves the actual 235-call family **1,256.936 -> 221.137 ms
+(5.684x)** by events and **1,223.263 -> 231.966 ms (5.273x)** by synchronized
+wall. Raw operand values are exact and candidate output passes at max mean KL
+**1.59e-9**, max-row KL **5.79e-8**, and top-1 **100%**. The stack still costs
+**3.751x** llama.cpp's matched Q5 trace. Next add only default-off transient
+ownership and run complete state plus the binding 18-prompt/576-step lane;
+SGEMM reassociation cannot promote from the leaf result. Do not stack rejected
+H1-H4 arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

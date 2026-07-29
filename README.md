@@ -113,9 +113,14 @@ numbers below.
   **169.516 tok/s** versus llama.cpp HIP **694.184 tok/s (4.095x)**. Its cached
   trace is **3,001.692/3,016.780 ms** kernel sum/span with only **0.500%**
   outside kernels; Q5 exact coltile alone owns **1,270.458 ms / 42.325%**.
-  WPF-H5A next tests transient exact-value F32 Q5 expansion plus SGEMM, with the
-  full quality gate binding for reduction reassociation
-  ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json)).
+  WPF-H5A's separately registered exact-value F32 Q5 producer/SGEMM leaf now
+  moves the role-qualified 235-call family **1,256.936 -> 221.137 ms
+  (5.684x)** by HIP events, corroborated by **5.273x** synchronized wall. The
+  regressive N48 gate remains exact fallback; all candidate outputs are finite
+  at max mean KL **1.59e-9** and top-1 **100%**. Production remains exact until
+  default-off ownership and the full 18-prompt/576-step reassociation gate pass
+  ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
+  [H5A leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted
