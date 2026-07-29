@@ -5234,19 +5234,24 @@ The remaining attention sequence is:
     row preserves tokens, trajectory, positions, repeat determinism, and
     allocation lifecycle. Promote the qualified gfx1151 capability, retain
     the preceding mixed40 schedule as exact rollback, remove comparison-only
-    plumbing, and leave peer backends unchanged. Clean selector-unset
-    publication remains next. Evidence:
+    plumbing, and leave peer backends unchanged. Tracked-clean selector-unset
+    production is **20.489321/20.503390/20.494732 tok/s**, median
+    **20.494732 tok/s**: **+0.05296% / -0.02584 ms/token** over the preceding
+    clean packet and **+78.733%** over sprint start. The normal route reports
+    tail producers active without a comparison selector and preserves exact
+    repeated trajectory/state/lifecycle. Evidence:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json) ·
-    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json).
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json) ·
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.483884 tok/s** | **48.819 ms** | **+78.638%** |
+| hipEngine current production | **20.494732 tok/s** | **48.793 ms** | **+78.733%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.989 ms/token** | hipEngine is **12.269%** below Vulkan throughput |
+| Remaining wall gap | — | **5.964 ms/token** | hipEngine is **12.222%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
