@@ -5723,6 +5723,24 @@ The remaining attention sequence is:
     trajectory/state/lifecycle passes. Evidence:
     [`clean local512 value-tail production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-production.json).
 
+74. Re-screen four-vector denominator prefetch only after local512 and
+    producer-value-tail transport materially change the kernel. **Rejected
+    and removed at the resident gate:** the candidate issues four adjacent
+    probability `ds_load_b128` operations before consuming the same 16
+    components in the original order. QK, softmax, denominator, PV, gate, and
+    store association remain unchanged.
+
+    The 9x50 and 21x100 byte-exact leaves improve
+    **0.031314 -> 0.030273 ms (-3.322%)** and
+    **0.031099 -> 0.030302 ms (-2.563%)**, winning all **9/9** and **21/21**
+    pairs. The complete model rejects the isolated saving: seven
+    counterbalanced p512/d128 pairs move **20.734191 -> 20.731204 tok/s
+    (-0.01440%, +0.00695 ms/token)**, median paired change is **-0.00713%**,
+    and only **3/7** pairs improve. Exact trajectory/state/lifecycle passes.
+    Remove the kernel, capability, runtime selector, and comparison CLI.
+    Production remains **20.731612 tok/s**. Evidence:
+    [`local512 denominator-prefetch4 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-denom-prefetch4-runtime-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

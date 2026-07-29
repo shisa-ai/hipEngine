@@ -192145,3 +192145,27 @@ Vulkan local sizes verbatim will close the measured gap.
   position 638, determinism, and zero tracked bytes after teardown. Raw hash
   is `24385a7d...adad`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-production.json`.
+
+## 2026-07-30 06:30 JST — Reject local512 denominator-prefetch4 runtime
+
+- Re-screen four-vector denominator prefetch only after local512 and
+  producer-value-tail transport materially change the body. The candidate
+  issues four adjacent probability `ds_load_b128` operations before consuming
+  the same 16 components in the original order. No arithmetic association
+  changes. RED-first is not informative for a new symbol-only specialization;
+  extend the existing wrapped/evicted byte oracle with the candidate.
+- The 9x50 leaf improves **0.031314 -> 0.030273 ms (-3.322%)**, winning
+  **9/9** pairs. The stronger 21x100 leaf improves
+  **0.031099 -> 0.030302 ms (-2.563%)**, winning **21/21** pairs. F32 context
+  and gated BF16 are byte-identical. Raw hashes are
+  `5be1418b...da0` / `2f795d87...b0a6`; the CPU-reference oracle passes.
+- Seven counterbalanced actual-model p512/d128 pairs reject the candidate:
+  median decode moves **20.734191 -> 20.731204 tok/s (-0.01440%)**, or
+  **48.22952 -> 48.23646 ms/token (+0.00695 ms)**. Median paired change is
+  **-0.00713%** and only **3/7** pairs improve. Every run preserves tokens
+  **2930/74107**, trajectory SHA `94f803f7...bda32`, position 638,
+  determinism, and teardown. Raw hash is `aeab59ec...08b7`.
+- Remove the kernel, Python wrapper, gfx1151 capability, runtime route,
+  comparison CLI, and test additions. The tracked code returns exactly to
+  production `cb202f57c`; production remains **20.731612 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-denom-prefetch4-runtime-rejected.json`.

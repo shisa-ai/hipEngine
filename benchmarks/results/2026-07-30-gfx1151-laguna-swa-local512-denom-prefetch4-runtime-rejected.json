@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T06:30:00+09:00",
+  "kind": "hipengine_laguna_swa_local512_denom_prefetch4_runtime_rejection",
+  "status": "rejected_removed",
+  "performance_claim": true,
+  "source_revision": "cb202f57c375ba214cd55a72871fd8e0b929fa5d",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "control": "retained mixed40 local512 producer-value-tail SWA",
+    "candidate": "issue four adjacent probability ds_load_b128 operations before consuming the same 16 components in the original denominator order",
+    "arithmetic": "unchanged scalar-F32 QK, softmax, denominator, and PV association",
+    "scope": "36 saturated SWA decode layers"
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "nine_by_fifty": {
+      "control_median_ms": 0.03131376028060913,
+      "candidate_median_ms": 0.03027342081069946,
+      "latency_change_percent": -3.322307703025662,
+      "paired_candidate_wins": 9,
+      "paired_samples": 9,
+      "median_paired_saving_ms": 0.0010651803016662603,
+      "raw_sha256": "5be1418becf14a8a609131de844c60e3a7d77e424f826180ef4d720092211da0"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.03109947919845581,
+      "candidate_median_ms": 0.030302350521087647,
+      "latency_change_percent": -2.5631576409412715,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "median_paired_saving_ms": 0.0007898902893066426,
+      "raw_sha256": "2f795d874bd23e0678a50fd6232e0ca79c0ae5cccd03552e769a1e756d0bb0a6"
+    },
+    "correctness": {
+      "context_f32_byte_exact": true,
+      "gated_bf16_byte_exact": true,
+      "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+      "cpu_reference_result": "1 passed"
+    }
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions_per_mode": 7,
+    "order": "AB/BA counterbalanced",
+    "control_median_tok_s": 20.734190786420342,
+    "candidate_median_tok_s": 20.731204242446086,
+    "throughput_change_percent": -0.014403957236719389,
+    "control_ms_per_token": 48.22951666167461,
+    "candidate_ms_per_token": 48.23646462141118,
+    "regression_ms_per_token": 0.006947959736571363,
+    "paired_candidate_wins": 3,
+    "paired_samples": 7,
+    "median_paired_change_percent": -0.007133189751062918,
+    "median_paired_saving_ms_per_token": -0.0034400727599859238,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-local512-denom-prefetch4 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-swa-local512-denom-prefetch4-ab.json",
+    "raw_sha256": "aeab59ec6b4a167b10caf113edf1d24a63565835163d33f0b9e32025884e08b7"
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true,
+    "selector_fallback_test": "1 passed",
+    "profile_harness_tests": "35 passed"
+  },
+  "cleanup": {
+    "kernel_removed": true,
+    "wrapper_removed": true,
+    "gfx1151_capability_removed": true,
+    "runtime_route_removed": true,
+    "comparison_cli_removed": true,
+    "production_tok_s": 20.731611664181482
+  },
+  "decision": "Reject and remove. Local512 makes four-vector denominator prefetch a strong isolated leaf optimization, but the saving does not survive complete-model composition. Do not retry denominator prefetch without also eliminating a larger synchronization or PV cost."
+}
