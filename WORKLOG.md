@@ -192299,3 +192299,30 @@ Vulkan local sizes verbatim will close the measured gap.
   fuse useful cross-output work without multiplying instruction footprint.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-selected-gate-up-unroll12-rejected.json`.
+
+## 2026-07-30 07:50 JST — Reject global local512 V-stage128
+
+- Review the same-source llama.cpp Vulkan FlashAttention path and transfer one
+  still-unscreened exact seam: double the retained global local512 value tile
+  from 64 to 128 rows. This halves staged-V loop/barrier count without changing
+  QK, producer maximum, `expf`, denominator, probability pre-normalization, PV,
+  gate, conversion, or store association.
+- RED is the focused wrapped/evicted global oracle importing the absent V128
+  wrapper. GREEN passes after implementation with byte-identical F32 context
+  and gated BF16 at live 513/576/639. Cache-hot 9x50 leaves improve
+  **1.522%/1.164%/1.233%**. Cache-only tracing names both intended
+  grid32/local512 kernels at allocated VGPR48/SGPR128/scratch0; candidate
+  dynamic LDS is **38,960/39,680/40,448 bytes**.
+- Seven counterbalanced actual-model p512/d128 pairs are flat:
+  **20.736505 -> 20.737910 tok/s (+0.00678%, -0.00327 ms/token)**, only
+  **3/7** candidate wins, and **-0.00540%** median paired change. All runs
+  preserve tokens **2930/74107**, trajectory SHA `94f803f7...bda32`,
+  position 638, determinism, and allocation teardown. Raw leaf/trace/resident
+  hashes are `b5771a20...3b370`, `38a18311...8c99`, and
+  `2c223c39...c863`.
+- Remove the kernel, wrapper, registry route, oracle addition, leaf selector,
+  runtime selector, and comparison CLI. Production returns byte-for-byte to
+  `67989c665` at **20.744351 tok/s**. Exact attention stage-width
+  micro-tuning is closed on both SWA and global; move to the traced
+  **2.234-ms/token** dense/shared dual-Q4 owner. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-local512-vstage128-rejected.json`.
