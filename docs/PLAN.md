@@ -1359,10 +1359,31 @@ cached dense/shared projection and kernel span fall **38.546%/38.875%** and
 **21.893%/20.852%**. Both short rows clear 150 tok/s, and the restored clean 4K
 gate reaches **123.084 tok/s** with deterministic IDs/positions/lifecycle and
 full allocation recovery. Explicit RB32 and unsupported widths remain exact
-fallbacks; gfx1151 excludes the W7900 keys. The 16K+ campaign remains closed
-because 512/4K is still far below 800/700 and no replacement roofline has been
-accepted. P6 and WPF-1R remain closed. The detailed gates are owned by
-`LAGUNA-prefill.md`.
+fallbacks; gfx1151 excludes the W7900 keys.
+
+A same-host direct-M512 refresh now fixes the next external target. Identical
+512 token IDs, context4096 admission, direct M512, FlashAttention, BF16 K/V,
+and one last-row projection measure hipEngine **169.228 tok/s** versus
+same-revision llama.cpp HIP **694.184 tok/s (4.102x)**; both select first token
+2930. Same-revision Vulkan is only **56.274 tok/s** with native F16 K/V, so HIP,
+not Vulkan, is the active prefill comparator. Cached traces attribute **99.83%**
+of the **2.286-s** kernel gap to dense/shared Q5/Q6 (**>=1.353 s**), attention
+(**0.469 s**), IQ3/IQ4 down (**0.402 s**), and IQ2 gate/up (**0.057 s**).
+llama.cpp launches **2,824 vs 1,477** kernels but sums only **0.724 vs 3.010 s**,
+excluding launch count as the primary cause. Source audit at `c0bc8591e` shows
+F32-to-Q8_1 256-thread 128x128/K256 WMMA MMQ for Q5/IQ families, Q6
+dequantization plus rocBLAS at M512, device expert compaction, and
+`flash_attn_ext_f16<128,128,8,8>` plus stream-K fixup.
+
+The W7900 order is now WPF-H1 exact-first dense Q5/Q6 tensor tiling, then WPF-H2
+full-M512 exact-first attention, then WPF-H3 IQ3/IQ4 selected down. Any Q8_1 or
+F16/WMMA fallback is an isolated changed-arithmetic comparator and must pass the
+complete train+heldout quality lane before composition. P6/IQ2 and WPF-4 remain
+deferred because their measured gaps are small; prior P6, WPF-1R, D4/D8/D8R8,
+and online-SWA rejections remain closed. Keep 16K+ closed until direct M512
+reaches **694.184 tok/s**, then measure matched llama.cpp HIP at M4K before
+setting a long-context parity gate; 800/700 remains stretch. The detailed gates
+and comparator caveats are owned by `LAGUNA-prefill.md`.
 
 LAP-0 is complete at the clean gfx1151 control packet. LAP-1 is complete: the
 source-arithmetic packed-dot body, live-row schedule, and direct resident-T16

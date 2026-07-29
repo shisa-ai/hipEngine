@@ -1,0 +1,64 @@
+# MEASUREMENT ONLY: make llama-bench consume hipEngine's Laguna M512 stream.
+#
+# Base: c0bc8591e8815c63cb01dd3f051a8b0df02501c9. When
+# LLAMA_BENCH_MATCHED_LAGUNA_M512 is set, this patch fixes context admission at
+# 4096, replaces llama-bench's synthetic tokens with the exact 512-token
+# mixed_ja_en stream, and reports the last-row top-1 token after each sample.
+# It changes no backend graph, kernel selection, quant arithmetic, or timed
+# llama_decode boundary.
+--- a/tools/llama-bench/llama-bench.cpp
++++ b/tools/llama-bench/llama-bench.cpp
+@@ -1289,7 +1289,7 @@
+     llama_context_params to_llama_cparams() const {
+         llama_context_params cparams = llama_context_default_params();
+ 
+-        cparams.n_ctx           = n_prompt + n_gen + n_depth;
++        cparams.n_ctx           = getenv("LLAMA_BENCH_MATCHED_LAGUNA_M512") ? 4096 : n_prompt + n_gen + n_depth;
+         cparams.n_batch         = n_batch;
+         cparams.n_ubatch        = n_ubatch;
+         cparams.type_k          = type_k;
+@@ -2135,9 +2135,17 @@
+ 
+     while (n_processed < n_prompt) {
+         int n_tokens = std::min(n_prompt - n_processed, n_batch);
+-        tokens[0]    = n_processed == 0 && llama_vocab_get_add_bos(vocab) ? llama_vocab_bos(vocab) : std::rand() % n_vocab;
+-        for (int i = 1; i < n_tokens; i++) {
+-            tokens[i] = std::rand() % n_vocab;
++        if (getenv("LLAMA_BENCH_MATCHED_LAGUNA_M512")) {
++#include "laguna-matched-m512-tokens.inc"
++            GGML_ASSERT(n_prompt == 512);
++            for (int i = 0; i < n_tokens; ++i) {
++                tokens[i] = matched_laguna_m512[n_processed + i];
++            }
++        } else {
++            tokens[0] = n_processed == 0 && llama_vocab_get_add_bos(vocab) ? llama_vocab_bos(vocab) : std::rand() % n_vocab;
++            for (int i = 1; i < n_tokens; i++) {
++                tokens[i] = std::rand() % n_vocab;
++            }
+         }
+         int res = llama_decode(ctx, llama_batch_get_one(tokens.data(), n_tokens));
+         if (res != 0) {
+@@ -2459,6 +2467,17 @@
+ 
+             uint64_t t_ns = get_time_ns() - t_start;
+             t.samples_ns.push_back(t_ns);
++            if (getenv("LLAMA_BENCH_MATCHED_LAGUNA_M512") && t.n_prompt == 512) {
++                const float * logits = llama_get_logits_ith(ctx, -1);
++                const int32_t n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(llama_get_model(ctx)));
++                int32_t top1 = 0;
++                for (int32_t token = 1; token < n_vocab; ++token) {
++                    if (logits[token] > logits[top1]) {
++                        top1 = token;
++                    }
++                }
++                fprintf(stderr, "llama-bench: matched Laguna M512 top1 = %d\n", top1);
++            }
+         }
+ 
+         if (p) {
+--- /dev/null
++++ b/tools/llama-bench/laguna-matched-m512-tokens.inc
+@@ -0,0 +1,3 @@
++static constexpr llama_token matched_laguna_m512[512] = {
++    2, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 10470, 554, 95139, 3407, 5545, 405, 11186, 83, 55468, 466, 4618, 48643, 81, 705, 2843, 14861, 1999, 3383, 19688, 95, 350, 10841, 92590, 35046, 50105, 314, 74689, 46406, 70187, 79023, 74825, 5983, 4482, 187, 13497, 23035, 16262, 28993, 69407, 17630, 17496, 9467, 46714, 3457, 21642, 36882, 13105, 7772, 87612, 13488, 77969, 35776, 50283, 43066, 70187, 74107, 2149, 71156, 10905, 13044, 17630, 19306, 315, 46804, 12879, 73803, 7772, 33383, 74689, 25095, 6439, 166, 7808, 314, 11897, 35046, 13969, 171, 46714, 25423, 1437, 99, 268, 23, 19, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 10470, 554, 95139, 3407, 5545, 405, 11186, 83, 55468, 466, 4618, 48643, 81, 705, 2843, 14861, 1999, 3383, 19688, 95, 350, 10841, 92590, 35046, 50105, 314, 74689, 46406, 70187, 79023, 74825, 5983, 4482, 187, 13497, 23035, 16262, 28993, 69407, 17630, 17496, 9467, 46714, 3457, 21642, 36882, 13105, 7772, 87612, 13488, 77969, 35776, 50283, 43066, 70187, 74107, 2149, 71156, 10905, 13044, 17630, 19306, 315, 46804, 12879, 73803, 7772, 33383, 74689, 25095, 6439, 166, 7808, 314, 11897, 35046, 13969, 171, 46714, 25423, 1437, 99, 268, 23, 19, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 10470, 554, 95139, 3407, 5545, 405, 11186, 83, 55468, 466, 4618, 48643, 81, 705, 2843, 14861, 1999, 3383, 19688, 95, 350, 10841, 92590, 35046, 50105, 314, 74689, 46406, 70187, 79023, 74825, 5983, 4482, 187, 13497, 23035, 16262, 28993, 69407, 17630, 17496, 9467, 46714, 3457, 21642, 36882, 13105, 7772, 87612, 13488, 77969, 35776, 50283, 43066, 70187, 74107, 2149, 71156, 10905, 13044, 17630, 19306, 315, 46804, 12879, 73803, 7772, 33383, 74689, 25095, 6439, 166, 7808, 314, 11897, 35046, 13969, 171, 46714, 25423, 1437, 99, 268, 23, 19, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 10470, 554, 95139, 3407, 5545, 405, 11186, 83, 55468, 466, 4618, 48643, 81, 705, 2843, 14861, 1999, 3383, 19688, 95, 350, 10841, 92590, 35046, 50105, 314, 74689, 46406, 70187, 79023, 74825, 5983, 4482, 187, 13497, 23035, 16262, 28993, 69407, 17630, 17496, 9467, 46714, 3457, 21642, 36882, 13105, 7772, 87612, 13488, 77969, 35776, 50283, 43066, 70187, 74107, 2149, 71156, 10905, 13044, 17630, 19306, 315, 46804, 12879, 73803, 7772, 33383, 74689, 25095, 6439, 166, 7808, 314, 11897, 35046, 13969, 171, 46714, 25423, 1437, 99, 268, 23, 19, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882
++};
