@@ -177,6 +177,15 @@ rises **24,576 -> 40,960 bytes** and clang allocates **104 -> 224 VGPRs**.
 Both after-consume and before-consume copy schedules fail the predeclared 5%
 gate, all candidate code is removed, and production remains
 **19.667705 tok/s**.
+The next comparator-derived precision screen scopes exact-QK/tensorized-PV to
+each complete twelve-layer SWA role in Laguna's `FULL,SWA,SWA,SWA` cycle.
+Every role fails the complete 18-prompt/576-step KL gate:
+**1.590854/1.690376/4.873391** maximum KL versus the **0.05** ceiling, with
+**562/561/560 of 576** top-1 and only **3.94-3.98%** directional speedup.
+No historical candidate code is ported. Tensorized PV is closed even for a
+principled one-third-depth scope; production remains **19.667705 tok/s** and
+future attention work must preserve scalar PV association or prove a
+higher-precision cooperative result.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

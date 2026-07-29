@@ -4354,7 +4354,19 @@ The remaining attention sequence is:
    predeclared >=5% gate; all candidate code is removed before production.
    Evidence:
    [`rejected V-stage64 ping-pong`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-vstage64-pingpong-rejected.json).
-5. The next material design must raise arithmetic per K/V ownership/load
+5. The structural precision screen is **complete and rejected**. The exact
+   layer pattern is `FULL,SWA,SWA,SWA`, so the predeclared candidate applies
+   the already-proven exact-QK/tensorized-PV path to each complete 12-layer
+   SWA role (`layer_id mod 4 = 1,2,3`) rather than arbitrary layer IDs.
+   Across the complete 18-prompt/576-step gate, roles 1/2/3 reach max KL
+   **1.590854/1.690376/4.873391** at
+   **562/561/560 of 576** top-1. All fail the 0.05 KL ceiling despite only
+   **3.94-3.98%** directional decode speedup. The historical diagnostic
+   worktree is discarded; no candidate code or default reaches current main.
+   This closes tensorized PV even on an architecture-defined one-third SWA
+   scope. Do not bisect arbitrary layer IDs. Evidence:
+   [`rejected structural-role tensorized PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-tensorized-pv-role-rejected.json).
+6. The next material design must raise arithmetic per K/V ownership/load
    event, not merely alter synchronization. Revisit llama.cpp's cooperative
    matrix GQA tile as a precision-design problem: retain its compact
    GQA9/K64 ownership and tensorized QK/PV throughput, but establish an
@@ -4366,6 +4378,12 @@ The remaining attention sequence is:
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
 intrinsically higher precision or a cheap independently valid error bound.
+The comparator audit confirms why direct copying fails: the same-GGUF
+llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
+F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
+even tensorized PV alone on every complete SWA role. A new candidate must
+therefore preserve scalar PV association or prove a genuinely tighter
+higher-precision cooperative result; selective deployment is not a repair.
 The approximate output itself is not a usable repair oracle. Reusing scalar
 ownership, global score planes, approximate online merges, or output-derived
 midpoint repair at either owner or component granularity is closed by the
