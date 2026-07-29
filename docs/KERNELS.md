@@ -1504,6 +1504,15 @@ K/V owners and byte-exact output, but regress live513/576/639
 the saved singleton PV work. Production source is restored byte-for-byte;
 future global ownership work must remain single-launch. Evidence:
 [`rejected global split32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-split32-exp32-rejected.json).
+The tracked-clean post-mixed32 census records **768 compute + 5 runtime-copy
+dispatches/token**, **48.701 ms/token** kernel sum, and **52.205 ms/token**
+span. Attention is **4.365 ms/token = 3.183 SWA + 1.182 global**; global is
+**5.00%** below the prior GQA2-exp32 census while SWA is flat. The remaining
+**3.456-ms/token** attention gap is **43.1%** of the complete same-GGUF Vulkan
+publication-wall gap. Next attention work targets saturated SWA in one launch,
+starting with packed BF16 dot2 plus two-term F32 input decomposition rather
+than a split merge or output-derived repair. Evidence:
+[`post-global-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

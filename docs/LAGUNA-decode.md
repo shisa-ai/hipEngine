@@ -4318,13 +4318,24 @@ replay overwhelm the saved output work. All candidate code is removed and the
 production source is restored byte-for-byte. Evidence:
 [`rejected global split32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-split32-exp32-rejected.json).
 
-The remaining exact global-attention sequence is:
+The remaining attention sequence is:
 
-1. Re-profile the clean retained-mixed32 attention wall.
-2. Use that census to select one single-launch seam; ordinary 40-block
-   ownership and pair/singleton split launches are closed.
-3. Only then decide whether the residual gap justifies a new tensorized kernel
-   or a larger architectural change.
+1. Re-profile the clean retained-mixed32 attention wall. **Complete:** the
+   tracked-clean 127-transition census records **768 compute + 5 runtime-copy
+   dispatches/token**, **48.701 ms/token** kernel sum, and **52.205 ms/token**
+   dispatch span. Attention is **4.365 ms/token = 3.183 SWA + 1.182 global**.
+   Global mixed32 transfers a **5.00%** family reduction versus the preceding
+   GQA2-exp32 census; SWA is flat. Against same-GGUF Vulkan's
+   **0.909 ms/token**, attention still leaves **3.456 ms/token**, or **43.1%**
+   of the complete **8.015-ms/token** publication-wall gap. Evidence:
+   [`post-global-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json).
+2. Target the **3.183-ms saturated SWA family** with one launch. The next
+   bounded screen uses packed BF16 dot2 issue with two-term F32 input
+   decompositions, retaining sequential FP32 accumulation and avoiding both
+   the rejected WMMA split merge and any output-derived repair. Gate wrap and
+   eviction numerics first, then the 18-prompt quality suite and leaf.
+3. Only if that intrinsic path cannot approach the quality ceiling should the
+   residual gap justify a larger architectural change.
 
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with

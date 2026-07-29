@@ -189377,3 +189377,28 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **19.667705 tok/s**. No runtime A/B or trace was run under the leaf
   stop rule. Raw SHA-256 is `1be7e45a...5ca066`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-split32-exp32-rejected.json`.
+
+## 2026-07-29 11:44 JST — Re-profile post-global-mixed32 decode wall
+
+- A tracked-clean, require-cached `rocprofv3 --kernel-trace` run on
+  `f7ced1b8a` segments all 127 p512/d128 decode transitions. No compiler runs
+  under profiling. Each transition has **768 compute + 5 runtime-copy
+  dispatches**, reflecting the retained Q4 dual launch contraction.
+- Median kernel sum is **48.701082 ms/token** and dispatch span is
+  **52.204569 ms/token**. Attention is
+  **4.365075 ms/token = 3.182894 SWA + 1.182181 global**. Relative to the
+  preceding GQA2-exp32 census, global falls **5.00%**, complete attention
+  falls **1.42%**, and SWA is flat. The span's **+1.38%** change is profiler
+  variance and is not a performance claim; publication remains the clean
+  **19.667705 tok/s** packet.
+- Same-GGUF llama.cpp Vulkan remains **0.909423 ms/token** attention and
+  **23.348381 tok/s**. hipEngine's residual **3.455652-ms/token** attention
+  gap is **43.1%** of the complete **8.015250-ms/token** publication-wall
+  gap. The trace names global mixed32 at grid8192/local256/VGPR56/LDS512 and
+  saturated SWA at grid12288/local384/VGPR104/LDS24576, both scratch-free.
+- Saturated SWA's **3.183 ms/token** remains the next attention target. The
+  next bounded single-launch screen uses packed BF16 dot2 issue with two-term
+  F32 input decomposition, preserving sequential FP32 accumulation and
+  avoiding rejected WMMA split merges and output-derived repair. Trace/bench
+  SHA-256 values are `a9837ba0...bca41d` / `30c8c58f...9bdb8`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json`.
