@@ -1475,6 +1475,20 @@ of the complete wall gap. The next exact structural gate is a fused
 global score plane, and roughly 2x staged-V reuse. Evidence:
 [`post-exp32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json).
 
+The exact global-attention owner now has a mixed32 specialization for the
+natural 48Q/8KV/D128/capacity-4096 route through live4000. It maps each
+six-query GQA group as **2+2+1+1**, raising the grid from 24 to 32 local256
+blocks while retaining the GQA2 exp32 QK/softmax/PV association. Idle waves in
+singleton owners remain barrier-active for every staged-V tile. The evicted
+live513/576/639 fixture is F32/BF16 byte-exact; leaves improve
+**5.19%/8.39%/8.39%**, and all seven resident p512/d128 pairs improve
+**19.641357 -> 19.668893 tok/s (+0.1402%, -0.0713 ms/token)** with exact
+generated state. Cached tracing names grid8192/local256 at
+VGPR56/SGPR128/static-LDS512/scratch0. gfx1151 selects mixed32 inside the
+qualified GQA2-exp32 route; the 24-block primitive remains registered exact
+rollback. Evidence:
+[`retained global mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-retained.json).
+
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
 **5.466 -> 4.873 ms/token (-10.84%)**, split as **3.583 SWA + 1.280 global**.

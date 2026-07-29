@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_global_mixed32_exp32_retained",
+  "date": "2026-07-29",
+  "status": "retained",
+  "source_revision": "d02dc7cfe744d91f7d411c4216de9b1c6b847dc6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "control": "exact 24-workgroup global GQA2 exp32 owner with two query heads per block",
+    "candidate": "exact 32-workgroup mixed owner partitions each six-query GQA group as 2+2+1+1",
+    "motivation": "recover gfx1151 occupancy while retaining staged-K/V reuse, following the cooperative-work breadth seen in llama.cpp Vulkan FlashAttention",
+    "arithmetic_changed": false,
+    "dispatches_changed": false,
+    "resident_bytes_changed": 0
+  },
+  "correctness": {
+    "cpu_oracle_live_counts": [
+      513,
+      576,
+      639
+    ],
+    "explicit_eviction": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "fixture_kl": 0.0,
+    "fixture_top1_agreement": 1.0,
+    "generated_ids_match": true,
+    "next_tokens_match": true,
+    "final_positions_exact": true,
+    "repeat_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "leaf": {
+    "protocol": "9 samples, 5 warmups, 50 launches/sample",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.08051429748535156,
+        "candidate_median_ms": 0.07633927822113037,
+        "latency_change_percent": -5.185438356436977
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.09156966209411621,
+        "candidate_median_ms": 0.08388801574707032,
+        "latency_change_percent": -8.38885518562973
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.10035105705261231,
+        "candidate_median_ms": 0.09192811965942382,
+        "latency_change_percent": -8.393471519460416
+      }
+    ],
+    "raw_sha256": "9e97da2464f2a6ccfafcfd563f0b779279bc236d1cefb936e5b9ba28b79647ae"
+  },
+  "trace": {
+    "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, true, true, true, true, true>",
+    "candidate_workgroups": 32,
+    "workgroup_size": 256,
+    "candidate_timed_duration_us_at_live_513_576_639": [
+      72.456,
+      78.588,
+      85.561
+    ],
+    "candidate_vgpr": 56,
+    "candidate_sgpr": 128,
+    "candidate_static_lds_bytes": 512,
+    "candidate_dynamic_lds_bytes_at_live_513_576_639": [
+      22544,
+      23296,
+      24064
+    ],
+    "candidate_scratch_bytes": 0,
+    "raw_sha256": "903b81e031d1056d3c830c237633b157b8119aa424d93d9029d1dab9bc27b0c9"
+  },
+  "resident_ab": {
+    "workload": "p512/d128 eager c=1, 127 synchronized decode transitions",
+    "pairs": 7,
+    "control_median_tok_s": 19.6413569567319,
+    "candidate_median_tok_s": 19.668892832658088,
+    "throughput_change_percent": 0.14019334808101913,
+    "control_median_ms_per_token": 50.91297929175198,
+    "candidate_median_ms_per_token": 50.84170260664633,
+    "wall_change_ms_per_token": -0.07127668510565144,
+    "candidate_wins": 7,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "raw_sha256": "23c142264300f78eabe40e82df85566ad87004ffb0d0a48f1278ecfa5d92fd7b"
+  },
+  "validation": {
+    "focused_tests": "59 passed",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback tests/test_laguna_gguf_runner.py::test_laguna_global_mixed32_switch_is_session_scoped tests/test_laguna_long_context_profile.py tests/test_gfx1151_backend.py",
+    "resident_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-mixed32 --allow-dirty --output /tmp/laguna-p512-d128-global-mixed32-ab.json",
+    "trace_command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-global-mixed32-trace.P76dSf/trace -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-exp32-vstage64-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty"
+  },
+  "decision": {
+    "production_default": true,
+    "scope": "gfx1151 gated natural 48Q/8KV/D128 capacity4096 global decode through live4000",
+    "rollback": "24-workgroup exact GQA2 exp32 sibling"
+  }
+}
