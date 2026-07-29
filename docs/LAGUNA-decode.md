@@ -4943,6 +4943,20 @@ The remaining attention sequence is:
     below 32 blocks are now closed even with the retained stage-cache
     schedule. Evidence:
     [`rejected GQA4+5 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-stage-pcache-rejected.json).
+41. Test the intermediate all-active GQA3 stage-cache owner. **Complete and
+    rejected:** three local384 owners per KV head keep all 12 waves active,
+    reduce V ownership **4 -> 3**, and reuse one exact probability sequence
+    per query through the retained K64 publication barrier. The
+    wrap/explicit-eviction oracle remains F32/BF16 byte-exact, but every
+    cache-hot candidate sample loses and median latency moves
+    **0.056152 -> 0.059231 ms (+5.484%)**. The 24-block point still
+    underfills the 40-CU device more than its saved V traffic repays.
+    Remove the wrapper, template instantiation, registry, oracle call, and
+    leaf choice before tracing/runtime work. Production remains the
+    **32-block mixed owner at 20.270314 tok/s**. Together with the 16-block
+    result, this closes scalar occupancy/reuse below 32 workgroups under the
+    retained probability-cache schedule. Evidence:
+    [`rejected GQA3 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-stage-pcache-rejected.json).
 
 Current exact decode checkpoint:
 

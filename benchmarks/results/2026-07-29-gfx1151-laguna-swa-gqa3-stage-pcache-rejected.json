@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T22:50:01+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa3_stage_probability_cache_screen",
+  "status": "rejected_leaf",
+  "pass": false,
+  "performance_claim": false,
+  "source_revision": "64fa0468763909aecc98e3a401a09afe78be7ec3",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "family": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "exact three-owner-per-KV GQA3 local384 body with all 12 waves active, producer maxima/gates, and one exact probability producer per query overlapping the K64 V-stage copy",
+    "workgroups": 24,
+    "local_size": 384,
+    "median_ms": 0.059230680465698245,
+    "samples_ms": [
+      0.059230680465698245,
+      0.05908802032470703,
+      0.05922991752624512,
+      0.059210681915283205,
+      0.05956192016601562,
+      0.05924853801727295,
+      0.059338321685791014,
+      0.059182019233703614,
+      0.05923490047454834
+    ]
+  },
+  "control": {
+    "description": "production exact mixed32 2+2+2+3 local384 stage-probability-cache owner",
+    "workgroups": 32,
+    "local_size": 384,
+    "median_ms": 0.056151537895202636,
+    "samples_ms": [
+      0.05750986099243164,
+      0.05605274200439453,
+      0.056128320693969724,
+      0.05644209861755371,
+      0.05604315757751465,
+      0.05616116046905518,
+      0.056080198287963866,
+      0.056151537895202636,
+      0.056158738136291506
+    ]
+  },
+  "result": {
+    "latency_change_percent": 5.483629987556715,
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_max_abs_error": 0.0
+  },
+  "protocol": {
+    "red": "The focused wrap/eviction oracle failed to import the absent GQA3 stage-cache wrapper.",
+    "green": "The same oracle passed after implementation with byte-identical F32 context and BF16 gated output through positions 512-519 and explicit position-200 eviction.",
+    "correctness_command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "benchmark_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa3-exp32-producer-max-gate-stage-pcache-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-gqa3-stage-pcache-leaf.json",
+    "raw_output_sha256": "37cbdf748f74b268d8970857e459381598f0f86899565ee02b06c70a81c6f851"
+  },
+  "decision": {
+    "reason": "The 24-block all-active GQA3 owner still underfills the 40-CU target enough to outweigh reducing V ownership from four to three, even after exact probability reuse.",
+    "runtime_integrated": false,
+    "implementation_removed": true,
+    "production_unchanged_tok_s": 20.270314,
+    "next": "Keep the 32-block mixed owner. Scalar occupancy/reuse points below 32 blocks are closed under the retained stage-cache schedule."
+  }
+}

@@ -190948,3 +190948,21 @@ Vulkan local sizes verbatim will close the measured gap.
   with the retained stage-cache schedule. Raw SHA-256 is
   `b434681d...27267277`; evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-stage-pcache-rejected.json`.
+
+## 2026-07-29 22:50 JST — Reject GQA3 stage-cache ownership
+
+- Screen the intermediate scalar reuse point after the 16-block GQA4+5 miss:
+  24 local384 workgroups, three all-active query owners per KV head, producer
+  maxima/gates, and one exact probability producer per query overlapping the
+  K64 V-stage copy. This reduces V ownership **4 -> 3** without idle waves.
+- RED fails on the absent wrapper. GREEN passes wrapped positions 512-519
+  plus explicit position-200 eviction with byte-identical F32 context and BF16
+  gated output.
+- All nine candidate samples lose. Median cache-hot latency moves
+  **0.056152 -> 0.059231 ms (+5.484%)**. Even with probability reuse, 24
+  blocks underfill the 40-CU device more than the saved V traffic repays.
+- Remove the wrapper/template instantiation, registry key, oracle call, and
+  harness choice before trace/runtime work. Production remains the 32-block
+  mixed owner at **20.270314 tok/s**. The 16/24/32 results now pin the exact
+  scalar occupancy seam. Raw SHA-256 is `37cbdf74...6f851`; evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-stage-pcache-rejected.json`.
