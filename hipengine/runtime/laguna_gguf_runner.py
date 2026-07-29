@@ -853,8 +853,6 @@ class LagunaEagerLibraries:
     iq_grouped_prefill: object
     moe_group: object
     routed_sum: object
-    iq_source_mmq_producer: object | None = None
-    iq_source_mmq_consumer: object | None = None
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -907,8 +905,6 @@ class LagunaEagerLibraries:
             "selected_down": self.selected_experts,
             "selected_down_iq": self.iq_selected_experts,
             "grouped_iq_prefill": self.iq_grouped_prefill,
-            "iq_source_mmq_producer": self.iq_source_mmq_producer,
-            "iq_source_mmq": self.iq_source_mmq_consumer,
             "grouped_metadata": self.moe_group,
             "grouped_gather": self.moe_group,
             "grouped_down": self.selected_experts,
@@ -1470,26 +1466,6 @@ def resolve_laguna_iq2_grid64(
     return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
 
 
-def resolve_laguna_iq_source_mmq(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the explicit source-IQ MMQ candidate on qualified backends."""
-
-    selected = bool(
-        backend_package_capability(backend, "LAGUNA_IQ_SOURCE_MMQ", False)
-        if requested is None
-        else requested
-    )
-    if selected and not backend_package_capability(
-        backend,
-        "LAGUNA_IQ_SOURCE_MMQ_SUPPORTED",
-        False,
-    ):
-        raise ValueError(f"Laguna IQ source MMQ is not supported on {backend!r}")
-    return selected
-
-
 def resolve_laguna_raw_k_prefill_rowbatch(
     backend: str,
     requested: int | None = None,
@@ -2036,7 +2012,6 @@ def load_laguna_eager_libraries(
     backend: str,
     compiler_version: str | None = None,
     require_cached: bool = False,
-    iq_source_mmq: bool = False,
 ) -> LagunaEagerLibraries:
     """Build/load every library used by one eager session exactly once."""
 
@@ -2064,13 +2039,7 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
         build_gguf_iq_selected_prefill,
     )
-    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
-        build_gguf_iq_source_mmq_prefill,
-    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
-    from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
-        build_gguf_k_mmq_prefill,
-    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
     )
@@ -2130,14 +2099,6 @@ def load_laguna_eager_libraries(
             iq_grouped_prefill=build_gguf_iq_selected_prefill(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
-            iq_source_mmq_producer=(
-                build_gguf_k_mmq_prefill(**kwargs) if iq_source_mmq else None
-            ),
-            iq_source_mmq_consumer=(
-                build_gguf_iq_source_mmq_prefill(**kwargs)
-                if iq_source_mmq
-                else None
-            ),
         )
 
 
@@ -2213,7 +2174,6 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
-        use_iq_source_mmq: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -2358,10 +2318,6 @@ class LagunaGGUFResidentSession:
         self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
             self.backend,
             use_iq2_grid64,
-        )
-        self.use_iq_source_mmq = resolve_laguna_iq_source_mmq(
-            self.backend,
-            use_iq_source_mmq,
         )
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
@@ -2641,10 +2597,7 @@ class LagunaGGUFResidentSession:
             if q4_precomputed_activation_sums is None
             else q4_precomputed_activation_sums
         )
-        self.selected_down_mode = resolve_laguna_selected_down_mode(
-            self.backend,
-            "grouped_source_mmq" if self.use_iq_source_mmq else None,
-        )
+        self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
         self.fuse_selected_silu_pack = bool(
             backend_package_capability(
@@ -2754,7 +2707,6 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
-                iq_source_mmq=self.use_iq_source_mmq,
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -2924,12 +2876,10 @@ class LagunaGGUFResidentSession:
     def set_selected_down_mode(self, mode: str) -> None:
         """Select the explicit diagnostic sparse-down route for later row runs."""
 
-        selected = resolve_laguna_selected_down_mode(self.backend, mode)
-        if selected == "grouped_source_mmq" and not self.use_iq_source_mmq:
-            raise ValueError(
-                "Laguna source-MMQ down requires use_iq_source_mmq=True ownership"
-            )
-        self.selected_down_mode = selected
+        self.selected_down_mode = resolve_laguna_selected_down_mode(
+            self.backend,
+            mode,
+        )
 
     def set_selected_gate_up_mode(self, mode: str) -> None:
         """Select the explicit compact selected gate/up prefill candidate."""
@@ -5533,7 +5483,6 @@ __all__ = [
     "resolve_laguna_eager_kernel_plan",
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",
-    "resolve_laguna_iq_source_mmq",
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",

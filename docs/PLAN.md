@@ -1399,27 +1399,27 @@ F32 PV, full-attention-only, and SWA-only followups also fail. Remove the runtim
 owner/selector and retain only the separately registered corrected primitive as
 ceiling evidence; exact qrow4/M128 remains production.
 
-WPF-H3 now has an admitted standalone gfx1100 primitive pending runtime and
-complete-quality gates. The strict DS4 producer plus raw-IQ I128/J128/K256
-consumer moves all 45 IQ3_XXS and two IQ4_XS actual M512 selected-down layers
-**565.437 -> 115.951 ms (4.877x)**. IQ3 alone is **111.016 ms**, **27.145%**
-below llama.cpp's matched **152.380-ms** family trace. Every layer is faster;
-maximum mean KL is **0.000756** and minimum top-1 is **97.578%**. Preserve the
-disclosed layer-47 IQ4 per-row outlier (**3.307 max row KL**, **2048 max abs**)
-and require the complete quality lane before promotion. The spill-free
-consumers are local `(32,8)`, dynamic-LDS57,856, scratch0 at VGPR152/248 for
-IQ3/IQ4; gfx1151 is excluded. Next integrate one producer per selected-down
-activation with exact grouped fallback, then run full state, the complete
-18-prompt/576-step lane, clean 512/1K timing, and reprofile.
+WPF-H3's standalone gfx1100 primitive remains admitted, but runtime promotion
+is rejected. The strict DS4 producer plus raw-IQ I128/J128/K256 consumer moves
+all 45 IQ3_XXS and two IQ4_XS actual M512 selected-down layers **565.437 ->
+115.951 ms (4.877x)**; IQ3 alone is **27.145% below** llama.cpp's matched
+**152.380-ms** family trace. Complete-suite natural-prompt prefill improves
+**152.276 -> 181.556 tok/s (1.192x)**, but the binding 18-prompt/576-step lane
+reaches maximum KL **0.373028 > 0.05** at **567/576** top-1. An IQ3-source,
+IQ4-exact structural followup reaches maximum KL **0.372917**, isolating source
+IQ3 arithmetic rather than the two IQ4 layers. Poolside, deterministic repeats,
+complete M512 state, and lifecycle pass but cannot waive KL. Remove the runtime
+owner/selector/tile128 metadata route and retain exact grouped production plus
+the separately registered spill-free VGPR152/248 leaf; gfx1151 stays excluded.
 
-WPF-H4 source-faithful Q6_K F16 dequantize-plus-rocBLAS follows the H3 runtime
-decision. These audited llama.cpp routes are primary performance candidates,
-not fallbacks delayed behind a new exact-only tiling campaign. Keep source
-commit/path attribution, the four-axis registry, raw-pointer kernel ABI,
-`KVLiveSpans`, and registered exact fallbacks. Prior H1 source-Q5, H2 source
-attention/stream-K, P6, WPF-1R, D4/D8/D8R8, and online-SWA rejections remain
-closed; H5/IQ2 and WPF-4 are deferred until retained H3-H4 routes are stacked
-and reprofiled.
+WPF-H4 source-faithful Q6_K F16 dequantize-plus-rocBLAS is now active. These
+audited llama.cpp routes are primary performance candidates, not fallbacks
+delayed behind a new exact-only tiling campaign. Keep source commit/path
+attribution, the four-axis registry, raw-pointer kernel ABI, `KVLiveSpans`, and
+registered exact fallbacks. Prior H1 source-Q5, H2 source attention/stream-K, H3
+source-IQ, P6, WPF-1R, D4/D8/D8R8, and online-SWA rejections remain closed;
+H5/IQ2 and WPF-4 are deferred until H4 is independently decided and the
+retained production route is reprofiled.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

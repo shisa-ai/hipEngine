@@ -107,19 +107,18 @@ should be removed or collapsed.
 
 ## Laguna source-IQ selected-down MMQ selector
 
-- Added 2026-07-29 for WPF-H3 qualification only. The default-off
-  `use_iq_source_mmq` owner conditionally loads the strict DS4 producer and
-  IQ3/IQ4 source-MMQ consumer, reuses the existing bounded `activation_q8`
-  scratch plane (**5,898,240 bytes** at M512), and selects
-  `grouped_source_mmq`. J128 tile metadata is built on device; any unsupported
-  quant/key/backend falls closed to exact grouped down. gfx1151 is excluded.
-- Removal/promotion trigger: after complete M512 state, the binding
-  18-prompt/576-step train+heldout/category-heldout lane, counter-ordered
-  512/1K timing, and all-family tracing, either promote the package capability
-  and remove the temporary public constructor switch or remove all runtime
-  ownership/capabilities/tests on rejection. Keep the separately registered
-  producer/consumer and tile-map utility as explicit leaf evidence unless a
-  concrete maintenance blocker is recorded.
+- WPF-H3's temporary default-off runtime seam is removed. The complete
+  18-prompt/576-step lane rejects source IQ3/IQ4 selected down at maximum KL
+  **0.373028 > 0.05** despite **567/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **1.192x** faster. A structural
+  IQ3-source/IQ4-exact followup is also rejected at maximum KL **0.372917**;
+  the source IQ3 arithmetic, not the two IQ4 layers, owns the failure.
+- No constructor switch, package capability, tile128 metadata owner, scratch
+  reuse route, or grouped source dispatch remains. Keep the separately
+  registered strict DS4 producer and IQ3/IQ4 consumers as leaf evidence; exact
+  grouped down remains production. All 45 IQ3 roles share K1024/N3072, so do
+  not add prompt- or layer-conditioned selection. Reopen only with materially
+  different arithmetic and a fresh complete quality gate.
 
 ## Laguna source FlashAttention selector
 
