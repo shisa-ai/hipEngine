@@ -1692,10 +1692,15 @@ DPP-QK sibling. It preserves the scalar four-FMA QK body and the retained
 with `permlanex16` plus DPP moves. The live513/576/639 eviction oracle is
 F32/BF16 byte-exact, while cached 9x50 leaves improve
 **14.51%/7.05%/6.73%**. Cache-only tracing names the intended local256/
-grid8192 body at VGPR48/SGPR128/LDS512/scratch0. The primitive is retained
-without changing production; a default-off full-model selector is the next
-gate. Evidence:
-[`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json).
+grid8192 body at VGPR48/SGPR128/LDS512/scratch0. All seven counterbalanced
+resident p512/d128 pairs improve, with complete sample separation and exact
+generated state: median decode is
+**20.088665 -> 20.114355 tok/s (+0.128%, -0.064 ms/token)**. gfx1151
+therefore promotes DPP transport on the qualified producer-max route; the
+registered shuffle sibling is exact rollback and peer backends remain
+unchanged. Evidence:
+[`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json) ·
+[`global DPP-QK retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

@@ -190644,3 +190644,26 @@ Vulkan local sizes verbatim will close the measured gap.
   require exact generated state plus a positive actual 12-layer result.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json`.
+
+## 2026-07-29 20:36 JST — Promote exact global DPP-QK on gfx1151
+
+- Added a default-off session selector above only the retained gated
+  48Q/8KV/D128/capacity4096/live<=4000 producer-max global route, plus a
+  comparison-harness flag. Focused selector, owner/rollback, harness, and
+  gfx1151 capability tests pass (**60 passed**).
+- Ran seven counterbalanced resident p512/d128 pairs with 127 synchronized
+  decode calls per row, queue policy 2, cached code only, and load excluded.
+  Every pair improves with complete sample separation:
+  **20.088665 -> 20.114355 tok/s (+0.128%, -0.06358 ms/token)**.
+- Control/candidate next token `2930`, final token `74107`, all 128-token
+  trajectories (`94f803f7...bda32`), final position 638, repeat determinism,
+  and allocation lifecycle are exact. Raw SHA-256 is
+  `5f7ba309...83361`.
+- Promote
+  `LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE`
+  for gfx1151. The registered producer-max shuffle sibling remains exact
+  rollback; peer backends are unchanged. Next commit this gate, run the
+  tracked-clean selector-unset three-repeat production checkpoint, and remove
+  the comparison-only selector.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json`.
