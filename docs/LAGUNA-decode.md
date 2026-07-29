@@ -4746,16 +4746,20 @@ The remaining attention sequence is:
     [`exact attention core audit`](../benchmarks/results/2026-07-29-gfx1151-laguna-exact-attention-core-audit.json).
 
 32. Preserve the retained QK association and reduce exact cross-lane cost.
-    **Next:** screen the in-tree exact DPP reduction pattern on only the global
-    scalar QK tree. It must preserve the current
-    **+16,+8,+4,+2,+1** F32 association while replacing the five
-    `ds_bpermute` shuffles with `permlanex16` plus DPP moves. The first gate is
-    BF16-bit equality at live513/576/639 with explicit eviction, followed by
-    a positive cached leaf result at every shape. Only an exact leaf winner
-    advances to cache-only trace and the 576-step recurrent gate. If DPP is
-    neutral or negative, the next material screen is a broader exact
-    cooperative owner—not explicit K packing, another approximate QK/PV
-    route, or a global score round-trip.
+    **Primitive admitted:** the separate DPP-QK sibling keeps the scalar
+    four-FMA QK body and the current **+16,+8,+4,+2,+1** F32 association,
+    replacing only five `ds_bpermute` shuffles with `permlanex16` plus DPP
+    moves. The explicit-eviction live513/576/639 oracle is F32/BF16
+    byte-exact. Cached 9x50 leaves improve
+    **0.073112 -> 0.062502 ms (-14.51%)**,
+    **0.079892 -> 0.074258 ms (-7.05%)**, and
+    **0.087375 -> 0.081498 ms (-6.73%)**. Cache-only tracing names the
+    intended grid8192/local256 body at
+    VGPR48/SGPR128/LDS512/scratch0 with no compiler under profiling.
+    Production remains **20.069608 tok/s**. Next add a default-off
+    global-only selector and require exact generated state plus a positive
+    actual 12-layer decode result before promotion. Evidence:
+    [`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json).
 
 Current exact decode checkpoint:
 
