@@ -5127,7 +5127,7 @@ The remaining attention sequence is:
     gate. Evidence:
     [`post-global-probability census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json).
 48. Overlap the exact SWA denominator replay with PV on pair-owner blocks.
-    **Retained as a registered primitive pending the resident gate:** the
+    **Retained and promoted on gfx1151:** the
     existing mixed32 launch has 24 pair-owner blocks whose waves 8/9 are idle
     during PV. Those waves now perform the unchanged vectorized 64-term
     denominator replay while all eight active output waves execute their
@@ -5139,14 +5139,23 @@ The remaining attention sequence is:
     explicit-eviction oracle with byte-identical F32 context and gated BF16
     output. The 9x50 leaf moves **0.045257 -> 0.045117 ms (-0.310%)**. The
     stronger 21x100 screen moves **0.045329 -> 0.045182 ms (-0.324%)** with
-    **21/21** paired wins, although the distributions do not completely
+    **21/21** paired wins, although the leaf distributions do not completely
     separate. Cache-only tracing names the distinct specialization at
     grid12288/local384, VGPR104, SGPR128, LDS25,600, and scratch0; the
-    compiler does not run under profiling. Retain this exact primitive, but
-    keep production at **20.414792 tok/s** until seven counterbalanced
-    p512/d128 resident pairs prove a measurable whole-model benefit.
+    compiler does not run under profiling.
+
+    All seven counterbalanced p512/d128 resident candidates beat every
+    control with complete separation, moving median decode
+    **20.411948 -> 20.430138 tok/s
+    (+0.08912%, -0.04362 ms/token)**. Every row preserves tokens, the exact
+    trajectory, final position, repeat determinism, and allocation lifecycle.
+    Promote the qualified gfx1151 capability, retain active-wave denominator
+    replay as exact rollback, remove the comparison-only CLI/cache seam, and
+    leave peer backends unchanged. Clean selector-unset publication remains
+    next.
     Evidence:
-    [`idle-wave vector denominator primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json).
+    [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json) ·
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json).
 
 Current exact decode checkpoint:
 

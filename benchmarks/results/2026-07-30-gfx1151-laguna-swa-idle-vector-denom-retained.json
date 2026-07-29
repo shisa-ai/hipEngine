@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T00:55:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_idle_vector_denominator_retained",
+  "status": "retained_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "ab290b2a8d9a43e15957cfc43bbca531fbcd1d34",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_id": "mixed_ja_en_review",
+    "prefill_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_size": 2048,
+    "attention_rows": 128,
+    "mode": "eager c=1"
+  },
+  "control": {
+    "description": "production active-wave vectorized denominator and probability replay",
+    "decode_median_tok_s": 20.411947718617196,
+    "decode_samples_tok_s": [
+      20.39804148690757,
+      20.41006221125295,
+      20.411947718617196,
+      20.414085646365415,
+      20.414511037249774,
+      20.409089375078135,
+      20.41549827884223
+    ]
+  },
+  "candidate": {
+    "description": "pair-owner idle waves replay the exact vectorized denominator concurrently with active-wave PV",
+    "decode_median_tok_s": 20.430138319841582,
+    "decode_samples_tok_s": [
+      20.426360605312993,
+      20.433589315933062,
+      20.429104729522138,
+      20.42871285365018,
+      20.437325437130585,
+      20.430138319841582,
+      20.43465300809956
+    ]
+  },
+  "result": {
+    "throughput_change_percent": 0.08911742022441604,
+    "saving_ms_per_token": 0.043620566258162796,
+    "paired_candidate_wins": 7,
+    "paired_samples": 7,
+    "minimum_paired_change_percent": 0.0716525223718234,
+    "maximum_paired_change_percent": 0.13883253656288286,
+    "complete_sample_separation": true
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "validation": {
+    "focused_route_and_profile": "2 passed",
+    "broader_route_and_profile": "57 passed, 1 pre-existing stale allocation-count assertion failed (expected 243 while production and the canonical owner test establish 245); candidate adds no allocation"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-idle-vector-denom --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-idle-vector-denom-ab.json",
+    "raw_sha256": "ba7aae911329202ce0c64d0689d363dbe49f1580cfa5269108f58b0179dd08ca",
+    "timed_order": "AB/BA counterbalanced by repetition",
+    "load_seconds_excluded": 88.76974580995739
+  },
+  "decision": {
+    "retain": true,
+    "promote_gfx1151": true,
+    "capability": "LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "qualified_shape": "gated 72Q/8KV/D128/SWA512 exact BF16-KV decode",
+    "rollback": "registered active-wave vectorized denominator and probability replay",
+    "comparison_seam_removed": true,
+    "peer_backends_unchanged": true,
+    "production_topline_pending_clean_publication": true
+  }
+}
