@@ -36,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+    laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_bf16_spans,
     laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
@@ -73,6 +74,7 @@ def _parse_args() -> argparse.Namespace:
             "mixed32-exp32-vstage64-vec16-direct-assume-exp",
             "mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp",
             "mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp",
+            "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp",
         ),
         default="fixed512",
     )
@@ -129,6 +131,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
             args.compiler_version_file
         )
+    gated_only = (
+        args.candidate
+        == "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp"
+    )
 
     runtime = get_hip_runtime()
     library = build_laguna_kv_attention(
@@ -246,6 +252,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "mixed32-exp32-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+            "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         }[args.candidate]
         candidate_kernel = {
             "fixed512": laguna_swa_attention_decode_split_tile16_exact_gated_gqa3_scores_fixed512_bf16_spans,
@@ -262,7 +269,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "mixed32-exp32-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+            "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         }[args.candidate]
+        context_sentinel = np.full(
+            Q_HEADS * HEAD_DIM,
+            np.float32(-123.5),
+            dtype=np.float32,
+        )
+        if gated_only:
+            copy_host_to_device(
+                candidate_context,
+                host_array_ptr(context_sentinel),
+                context_sentinel.nbytes,
+                runtime=runtime,
+            )
 
         def control() -> None:
             control_kernel(
@@ -297,9 +317,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         candidate_gated_host = _download(runtime, candidate_gated, np.uint16)
         context_exact = np.array_equal(control_context_host, candidate_context_host)
         gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
+        context_store_omitted = bool(
+            gated_only
+            and np.array_equal(candidate_context_host, context_sentinel)
+        )
         if (
             args.candidate != "fused-gqa3-vstage64-vec16-direct-fast-exp"
-            and (not context_exact or not gated_exact)
+            and (
+                not gated_exact
+                or (gated_only and not context_store_omitted)
+                or (not gated_only and not context_exact)
+            )
         ):
             raise AssertionError(f"{args.candidate} reducer is not byte-exact")
 
@@ -353,17 +381,24 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "burst": args.burst,
             },
             "correctness": {
-                "context_f32_byte_exact": context_exact,
+                "context_f32_byte_exact": (
+                    None if gated_only else context_exact
+                ),
+                "context_f32_store_omitted": context_store_omitted,
                 "gated_bf16_byte_exact": gated_exact,
                 "gated_bf16_mismatches": int(
                     np.count_nonzero(
                         candidate_gated_host != control_gated_host
                     )
                 ),
-                "context_max_abs_error": float(
-                    np.max(
-                        np.abs(
-                            candidate_context_host - control_context_host
+                "context_max_abs_error": (
+                    None
+                    if gated_only
+                    else float(
+                        np.max(
+                            np.abs(
+                                candidate_context_host - control_context_host
+                            )
                         )
                     )
                 ),

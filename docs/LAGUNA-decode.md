@@ -4544,6 +4544,20 @@ The remaining attention sequence is:
     [`fused-SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json),
     [`fused-SiLU retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json),
     [`fused-SiLU production`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-production.json).
+21. Remove the dead F32 attention-context store. **SWA primitive retained;
+    global sibling rejected:** llama.cpp's fused-attention graph writes only
+    the output consumed downstream, while Laguna's gated decode runner also
+    wrote an F32 context scratch that it never reads. A separately registered
+    saturated-SWA specialization keeps a `-123.5` F32 sentinel untouched and
+    emits byte-identical gated BF16 output. All nine leaf pairs improve
+    **0.058948 -> 0.058681 ms (-0.453%)** at unchanged
+    grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0. Do not generalize the
+    result: the otherwise identical global specialization regresses all
+    live513/576/639 medians by **0.043-0.068%** and wins only 3/2/1 of nine
+    pairs, so it is removed. Production remains **20.056756 tok/s** until the
+    SWA-only primitive passes a resident p512/d128 gate. Evidence:
+    [`SWA gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json),
+    [`global rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json).
 
 Current exact decode checkpoint:
 

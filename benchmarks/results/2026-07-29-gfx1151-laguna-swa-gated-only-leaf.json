@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T16:32:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gated_only_leaf",
+  "status": "retained_registered_candidate",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "b390eb4d08107c9562c6af260a670c98c4bfb6cd",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "72Q/8KV/D128/SWA512",
+    "production_contract": "The fused gated decode runner consumes only the BF16 gated output; its F32 context scratch is dead."
+  },
+  "change": {
+    "mechanism": "Specialize the retained producer-max/producer-gate kernel so it omits the unused F32 context store.",
+    "removed_work": "One 9,216-element F32 context write per saturated SWA launch.",
+    "unchanged": [
+      "QK multiplication and wave32 reduction tree",
+      "score materialization and producer maxima",
+      "compiler expf issue",
+      "logical-slot denominator order",
+      "per-dimension scalar PV FMA order",
+      "context divide, gate multiply, and BF16 rounding",
+      "gated BF16 store",
+      "grid, workgroup, LDS, and register resources"
+    ]
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed before implementation because the gated-only wrapper did not exist.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py -k 'swa_gqa3_vstage64_matches'",
+    "green_result": "1 passed",
+    "positions": "512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_store_omitted": true,
+    "context_sentinel": -123.5,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73"
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-gated-only-leaf.json",
+    "raw_sha256": "e85230cbab611c86aca51fa522431e39d4c27cb178a1248726cbfcefb1981761",
+    "control_median_ms": 0.05894777774810791,
+    "candidate_median_ms": 0.05868072032928467,
+    "latency_change_percent": -0.45304068961583566,
+    "paired_wins": 9,
+    "paired_samples": 9,
+    "warmups": 5,
+    "launches_per_sample": 50,
+    "context_f32_store_omitted": true,
+    "gated_bf16_byte_exact": true
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -f csv -d /tmp/laguna-swa-gated-only-trace.qyV5zi -o gatedonly -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp --samples 1 --warmups 1 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-gated-only-trace.qyV5zi/child.json",
+    "raw_sha256": "2ad5ad9e65fd8f9ab5a121733f07d7d407f7064e1cff4d5f0e68692c44a01296",
+    "child_sha256": "199809c74c221710ca7590c7f20848f4004d59c682dea9a02e43f70ac5254ec4",
+    "control_template": "<64,true,true,true,true,false,false,false,true,true,true,true>",
+    "candidate_template": "<64,true,true,true,true,false,false,false,true,true,true,false>",
+    "control": {
+      "grid_blocks": 32,
+      "workgroup_size": 384,
+      "allocated_vgpr": 104,
+      "allocated_sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid_blocks": 32,
+      "workgroup_size": 384,
+      "allocated_vgpr": 104,
+      "allocated_sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "timing_use": "Resource and symbol attribution only; the non-profiled nine-sample leaf is the performance evidence."
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "environment_blocked",
+    "reason": "The checker cannot open the absent read-only external checkout /home/lhl/amd-gpu-tuning/reference/atlas; no external source was copied."
+  },
+  "decision": {
+    "retained": true,
+    "runtime_default_changed": false,
+    "next_gate": "Add a session-scoped gfx1151 selector and run matched resident Poolside Laguna S 2.1 p512/d128 control/candidate pairs before promotion.",
+    "production_before_tok_s": 20.0567558587,
+    "production_status": "unchanged"
+  }
+}

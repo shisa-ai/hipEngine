@@ -1556,6 +1556,21 @@ Vulkan is **2.749 ms/token**, **38.2%** of the complete wall gap. The global
 candidate appears at grid8192/local256/VGPR48/SGPR128/LDS512/scratch0:
 [`post-global-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json).
 
+The llama.cpp output-ownership audit exposed one smaller exact SWA
+specialization. The fused gated decode runner consumes only the BF16 gated
+context, so a separately registered producer-max/producer-gate sibling omits
+the dead 9,216-element F32 context store. The wrapped/evicted fixture keeps a
+`-123.5` sentinel untouched and produces byte-identical gated BF16 output.
+All nine paired 50-launch samples improve
+**0.058948 -> 0.058681 ms (-0.453%)**. Cached tracing names the final-false
+template at unchanged grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0.
+The analogous global specialization is rejected and removed: live
+513/576/639 regress **0.068%/0.045%/0.043%**, winning only 3/2/1 of nine
+pairs. Production remains **20.056756 tok/s** pending the SWA-only resident
+gate. Evidence:
+[`retained SWA gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json),
+[`rejected global gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json).
+
 The exact scalar form of llama.cpp-style whole-GQA ownership is closed.
 One local384 block per KV head stages all nine queries and reuses each K/V
 tile and exp32 weight while preserving the production denominator and scalar
