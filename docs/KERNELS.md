@@ -2039,6 +2039,10 @@ wins and exact state/lifecycle. gfx1151 promotes V128 for the saturated
 natural shape; the preceding V64 symbol remains registered rollback and peer
 backend selection is unchanged:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-retained.json).
+Tracked-clean selector-unset production is
+**20.744351 tok/s (48.20589 ms/token)**, **+0.06145% / -0.02962 ms/token**
+over the preceding clean packet and **+80.910%** over sprint start:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-production.json).
 Compounding the retained local512/value-tail body with four-vector
 denominator prefetch is removed after the resident gate. The byte-exact
 21x100 leaf improves **0.031099 -> 0.030302 ms (-2.563%)** with all 21 pairs

@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_local512_vstage128_production",
+  "status": "accepted",
+  "created_at": "2026-07-30T06:57:00+09:00",
+  "performance_claim": true,
+  "source_revision": "568e8ae93eacea43b78b8dc3dceb52e72c5e8816",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "Ryzen AI MAX+ 395",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 128,
+    "decode_forward_calls": 127,
+    "matrix_chunk_rows": 2048,
+    "attention_rows": 128,
+    "mode": "eager c=1"
+  },
+  "protocol": {
+    "selector_unset": true,
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true,
+    "require_cached_build": true,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-vstage128-clean-production.json"
+  },
+  "result": {
+    "decode_tok_s_samples": [
+      20.728552720253465,
+      20.744350974546737,
+      20.751098107034572
+    ],
+    "decode_tok_s_median": 20.744350974546737,
+    "ms_per_token": 48.20589476272347,
+    "previous_clean_tok_s": 20.731611664181482,
+    "throughput_change_percent": 0.06144872174731475,
+    "saving_ms_per_token": 0.02962190613854432,
+    "sprint_start_tok_s": 11.466687,
+    "change_from_sprint_start_percent": 80.90971676951449,
+    "llama_cpp_vulkan_tok_s": 23.348381,
+    "llama_cpp_vulkan_ms_per_token": 42.829522098341635,
+    "remaining_gap_ms_per_token": 5.376372664381833,
+    "throughput_below_vulkan_percent": 11.152936151989568
+  },
+  "correctness": {
+    "next_tokens": [
+      2930,
+      2930,
+      2930
+    ],
+    "final_tokens": [
+      74107,
+      74107,
+      74107
+    ],
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "tracked_allocations_recovered": true,
+    "pass": true
+  },
+  "capabilities": {
+    "global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape": true,
+    "swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512": true
+  },
+  "raw_sha256": "4becc88abf46920f0efd0dda708f9bb70c097355d951d6a64620fd2b708a8ebd",
+  "evidence": {
+    "retention": "benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-retained.json"
+  }
+}
