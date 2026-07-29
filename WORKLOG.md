@@ -191013,3 +191013,24 @@ Vulkan local sizes verbatim will close the measured gap.
   Keep the exact registered primitive/oracle/leaf harness diagnostic-only.
   Production remains **20.270314 tok/s**. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-runtime-rejected.json`.
+
+## 2026-07-29 23:19 JST — Reject post-barrier SWA denominator replay
+
+- Audit another exact mechanism inspired by llama.cpp's tile-local
+  probability reuse. Production performs 64 wave-shuffle transports per
+  query/K64 stage to replay the exact denominator sequence. The candidate
+  instead consumes the already-published probability tile from LDS on
+  producer lane zero after the existing publication barrier, in identical
+  visible-slot order, while other waves compute PV. The existing end-of-stage
+  barrier preserves the dependency; no new barrier or reassociation is added.
+- RED fails on the absent wrapper. GREEN passes the focused wrapped/evicted
+  oracle with byte-identical F32 context and BF16 gated output.
+- Every one of nine cache-hot samples loses. Median leaf latency moves
+  **0.056170 -> 0.060017 ms (+6.849%)**. Serial LDS replay delays the full
+  producer wave more than removing the shuffles saves.
+- Remove the kernel specialization, wrapper, registry, oracle call, and leaf
+  harness choice before runtime work. Production remains
+  **20.270314 tok/s**. Do not retry scalar denominator replay without a
+  parallel exact prefix/reduction or changed producer ownership. Raw SHA-256
+  is `bfcf2f38...015f9f34`; evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json`.

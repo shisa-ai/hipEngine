@@ -1799,6 +1799,15 @@ median saving. Remove all comparison runtime plumbing and retain only the
 registered diagnostic primitive; production remains **20.270314 tok/s**:
 [`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json),
 [`runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-runtime-rejected.json).
+Replaying the exact denominator from the published K64 probability tile is
+closed. The candidate removes 64 wave-shuffle transports per query/stage and
+performs the identical visible-slot sequence through LDS on producer lane
+zero after the existing publication barrier. Wrapped/evicted F32/BF16 output
+is byte-exact, but all nine cache-hot samples regress
+**0.056170 -> 0.060017 ms (+6.849%)**. Serial LDS replay delays the producer
+wave more than the shuffles cost; all candidate code is removed and
+production remains **20.270314 tok/s**. Evidence:
+[`post-barrier denominator rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
