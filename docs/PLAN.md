@@ -1477,9 +1477,15 @@ only 12x4 for F32 N48. H5G's exact constant-80/96 tiles own five roles, trace at
 VGPR168/200 with zero scratch, and publish **188.393/175.042/132.743 tok/s**.
 H5H closes larger exact tiles: constant-112 is scratch-free at VGPR232 but loses
 every role; constant-128 reaches VGPR256/28–52 B scratch and also loses every
-role. All candidates are removed. Reprofile post-H5G before selecting the next
-family. Do not stack rejected H1-H5B arithmetic or reopen P6/repair; launch
-fusion remains deferred at 0.500%.
+role. All candidates are removed. The retained H5G request segment now
+reconciles **2,667.034 ms / 1,720 dispatches** in a **2,702.091-ms** kernel
+span: Q5 is **920.633 ms**, IQ3/IQ4 down **560.642 ms**, gate/up **470.116
+ms**, attention **468.533 ms**, Q6 **177.047 ms**, and all remaining kernels
+**70.063 ms**. Q5 geometry and prior attention lanes are closed; WPF-H5I next
+reuses the bounded serial plane for exact raw-Q6-to-F32 expansion plus the
+production-ordered consumer. If that role-inclusive lane closes, return to
+exact IQ3/IQ4 row ownership. Do not stack rejected H1-H5B arithmetic or reopen
+P6/repair; launch fusion remains deferred at **1.297%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

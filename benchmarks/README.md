@@ -26,8 +26,17 @@ VGPR168/200 with LDS1536 and zero scratch. The matched llama.cpp HIP M512 target
 remains **694.184 tok/s**, now a **3.685x** gap. H5H closes larger ordered tiles:
 constant-112 is scratch-free at VGPR232 but loses every role, while constant-128
 hits VGPR256 plus 28–52 B scratch and also loses every role. All candidates are
-removed. Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays
-closed below the 800/700 stretch gate.
+removed. Reclassifying the retained package-default request segment gives
+**2,667.034 ms / 1,720 dispatches** in a **2,702.091-ms** kernel span. Physical
+families are Q5 **920.633 ms**, IQ3/IQ4 down **560.642 ms**, IQ2/special-IQ3
+gate/up **470.116 ms**, attention **468.533 ms**, Q6 **177.047 ms**, and all
+remaining kernels **70.063 ms**. Q5 geometry and the prior exact/quality-gated
+attention lanes are closed, so WPF-H5I next reuses the bounded transient plane
+for **exact raw-Q6-to-F32 expansion plus the production-ordered consumer**;
+production/topline are unchanged
+([post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
+Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed
+below the 800/700 stretch gate.
 
 A post-publication exact
 [`role-qualified coltile policy`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)
@@ -189,8 +198,11 @@ N48 at **1.187%/0.496%** event/wall. H5G then retains
 8x10/16x5/8x12/12x8 on five roles and publishes exact
 **188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. H5H
 then rejects constant-112/128 after no role wins and a VGPR256 spill cliff;
-all candidate exports are removed ([H5H rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json)). Reprofile the post-H5G residual next; do not
-reopen rejected arithmetic.
+all candidate exports are removed ([H5H rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json)). The retained H5G request reclassification is
+**2,667.034 ms**, led by Q5 **920.633**, IQ down **560.642**, attention
+**468.533**, and Q6 **177.047 ms**. WPF-H5I selects exact-Q6 F32 expansion plus
+the ordered consumer; do not reopen rejected arithmetic
+([residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

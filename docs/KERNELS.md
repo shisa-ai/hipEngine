@@ -682,7 +682,13 @@ every role. All seven temporary bodies are removed. The public per-session
 selector is removed; benchmark A/B uses scoped mutation. Evidence:
 [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
 [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
-[`H5H boundary rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json).
+[`H5H boundary rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json) ·
+[`post-H5G residual`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json).
+The retained request reclassification puts exact Q6 coltile at **177.047 ms /
+146 calls** versus matched llama.cpp **14.920 ms**, selecting a raw-Q6 exact-F32
+producer feeding this existing ordered `f32_weight` family as WPF-H5I. This is
+target selection only; no Q6 composite or policy is catalogued until its
+producer-inclusive role gate passes.
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

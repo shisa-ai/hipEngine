@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_post_h5g_exact_residual_reclassification",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_and_next_target",
+  "performance_claim": false,
+  "scope": "Reclassify the retained package-default H5G direct-M512 trace after the H5H ordered-Q5 boundary closed, without rerunning the GPU or changing production.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "production_revision": "e786c681a",
+    "analysis_revision": "de6557eb8",
+    "h5h_restored_production_source": true,
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json",
+    "production_artifact_sha256": "cb6e5a7eb12fc9dcf0d8bfc876614c100ccb6d05958ec100358ec3c676189c36",
+    "h5h_boundary_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28"
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "context_length": 4096,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "flash_attention": true,
+    "output": "one synchronized last-row first-token projection",
+    "token_stream_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+    "segmentation": "request begins at the Q5 embedding launch and ends at argmax stage 2; model-load gaps and pre-request copy kernels are excluded",
+    "reused_measurement": true,
+    "gpu_rerun_performed": false,
+    "reason_reused": "H5H restored all runtime/kernel source to the traced H5G production bytes and introduced no retained candidate."
+  },
+  "production_wall_context": {
+    "m512_tok_s": 188.39333422791606,
+    "m1024_tok_s": 175.04173852597643,
+    "m4096_tok_s": 132.74306247138355,
+    "matched_llamacpp_m512_tok_s": 694.184,
+    "required_m512_speedup": 3.6847588203953343,
+    "next_token": 2930,
+    "position": 511,
+    "correctness": "KL0 and byte-exact complete H5G M512 state; publication rows finite and lifecycle-clean"
+  },
+  "request_trace": {
+    "dispatches": 1720,
+    "kernel_sum_ms": 2667.034011,
+    "kernel_span_ms": 2702.091023,
+    "span_minus_sum_ms": 35.057012,
+    "span_minus_sum_percent": 1.2974030741968738,
+    "raw_process_trace_dispatches": 2258,
+    "raw_process_kernel_sum_ms": 2670.016975,
+    "raw_process_trace_note": "The additional 538 pre-request rows and 2.982964 ms are excluded from request attribution."
+  },
+  "families": [
+    {
+      "rank_by_hipengine_time": 1,
+      "family": "Q5_K exact producer plus ordered consumers",
+      "calls": 470,
+      "hipengine_ms": 920.633148,
+      "share_percent": 34.51898791702361,
+      "matched_llamacpp_ms": 58.95103,
+      "gap_ms": 861.682118,
+      "ratio": 15.61691369938744,
+      "decision": "closed for further ordered geometry by H5H; changed-association Q5 routes remain quality-rejected"
+    },
+    {
+      "rank_by_hipengine_time": 2,
+      "family": "IQ3_XXS plus IQ4_XS exact selected down",
+      "calls": 47,
+      "hipengine_ms": 560.64169,
+      "share_percent": 21.02116762244769,
+      "matched_llamacpp_ms": 155.495249,
+      "gap_ms": 405.146441,
+      "ratio": 3.60552295716765,
+      "decision": "retain as the next fallback target after the fresh exact-Q6 lane"
+    },
+    {
+      "rank_by_hipengine_time": 3,
+      "family": "IQ2_XS plus special-IQ3 exact selected gate/up",
+      "calls": 47,
+      "hipengine_ms": 470.115767,
+      "share_percent": 17.626913082511866,
+      "matched_llamacpp_ms": 404.977857,
+      "gap_ms": 65.13791,
+      "ratio": 1.160843139628743,
+      "decision": "defer: the retained pair16 exact route is already within 1.161x of the comparator"
+    },
+    {
+      "rank_by_hipengine_time": 4,
+      "family": "global plus SWA exact attention",
+      "calls": 192,
+      "hipengine_ms": 468.532644,
+      "share_percent": 17.567554146950094,
+      "matched_llamacpp_ms": 21.725298,
+      "gap_ms": 446.807346,
+      "ratio": 21.56622403982675,
+      "decision": "exact adjacent-row/tiled alternatives and changed-association transfer lanes are already closed; reopen only with a materially new exact state-compression/dataflow premise"
+    },
+    {
+      "rank_by_hipengine_time": 5,
+      "family": "Q6_K exact coltile projections",
+      "calls": 146,
+      "hipengine_ms": 177.047483,
+      "share_percent": 6.638366150179552,
+      "matched_llamacpp_ms": 14.919865,
+      "gap_ms": 162.127618,
+      "ratio": 11.86656065587725,
+      "decision": "selected next: exact raw-Q6-to-F32 expansion plus the proven production-ordered F32-weight consumer"
+    },
+    {
+      "rank_by_hipengine_time": 6,
+      "family": "all remaining request kernels",
+      "calls": 818,
+      "hipengine_ms": 70.063279,
+      "share_percent": 2.6270110808871867,
+      "decision": "defer while individual launch/fusion residue remains below the 5 percent stop threshold"
+    }
+  ],
+  "reconciliation": {
+    "family_hipengine_sum_ms": 2667.034011,
+    "matched_llamacpp_total_kernel_sum_ms": 724.298567,
+    "complete_kernel_gap_ms": 1942.735444,
+    "five_matched_family_gap_sum_ms": 1940.901433,
+    "five_matched_family_gap_share_percent": 99.90559646164566
+  },
+  "next_target": {
+    "id": "WPF-H5I",
+    "name": "exact-value Q6_K F32 expansion plus production-ordered consumer",
+    "rationale": "The 162.128-ms Q6 gap is the largest fresh exact lane after Q5 geometry and exact attention schedules closed. The existing 150,994,944-byte serial projection plane can be reused without a sidecar, and the consumer preserves each output's K/FMA/wave/store association.",
+    "first_gate": "Independent raw-Q6-to-F32 oracle plus rows17/33 byte equality against exact Q6 coltile over every retained ordered geometry.",
+    "performance_gate": "Producer-inclusive HIP-event and synchronized-wall screen over all seven actual M512 Q6 configurations and 146 calls; only roles faster on both clocks may select.",
+    "promotion_gate": "Complete M512 state/repeat/lifecycle, cached physical-symbol trace, and clean 512/1K/4K non-regression before package promotion.",
+    "fallback_if_closed": "Return to exact IQ3/IQ4 selected-down row ownership; do not reopen rejected Q8_1/F16/SGEMM/hipBLASLt arithmetic."
+  },
+  "source_artifacts": {
+    "h5g_trace_csv_sha256": "6456452fff38f8cca893623d4d7f920f76f95e6cd20272e488030ce4a7d6355f",
+    "h5g_trace_harness_sha256": "c717755fd03c9cfccb29d1530aa838a91a1bc73154db8dd84d832605dcf08336",
+    "raw_trace_committed": false
+  },
+  "decision": {
+    "production_changed": false,
+    "benchmark_topline_changed": false,
+    "accepted_attribution": true,
+    "launch_fusion_remains_deferred": true,
+    "long_context_remains_deferred": true
+  }
+}

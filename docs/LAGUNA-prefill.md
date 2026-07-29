@@ -6,7 +6,8 @@ Last updated: 2026-07-30
 
 Status: **WPF-H1 through WPF-H5B changed-arithmetic runtimes are rejected;
 exact H5G constant-80/96 ordered-Q5 is production, H5H closes larger tiles,
-post-H5G residual reprofile is next, and 16K+ remains deferred**. This section is the
+post-H5G attribution selects exact-Q6 WPF-H5I next, and 16K+ remains
+deferred**. This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
 geometry.
@@ -110,7 +111,22 @@ Constant-80/96 bodies are VGPR168/200, LDS1536, scratch0. Complete state remains
 KL0 and clean package throughput is **188.393/175.042/132.743 tok/s**. H5H
 rejects constant-112 despite scratch-free VGPR232 and constant-128 after both
 universal role regressions and a VGPR256/28–52 B scratch cliff. All seven bodies
-are removed ([H5H rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json)); reprofile the post-H5G residual next.
+are removed ([H5H rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json)).
+
+The retained H5G request segment contains **1,720 dispatches / 2,667.034 ms**
+in a **2,702.091-ms** kernel span. Disjoint physical families are exact Q5
+producer+ordered consumer **920.633 ms**, IQ3/IQ4 down **560.642 ms**,
+IQ2/special-IQ3 gate/up **470.116 ms**, exact attention **468.533 ms**, exact
+Q6 coltile **177.047 ms**, and all remaining request kernels **70.063 ms**.
+Against the matched llama.cpp trace, their named gaps are **861.682/405.146/
+65.138/446.807/162.128 ms**. Q5 remains largest but H5H closes its exact
+geometry; the exact attention schedules and changed-association transfer lanes
+are also closed. **WPF-H5I** therefore reuses the existing 150,994,944-byte
+serial plane for exact raw-Q6-to-F32 expansion plus the production-ordered
+F32-weight consumer. Screen all seven configurations/**146 calls** inclusively
+on event and wall clocks before runtime ownership. If no Q6 role wins, return to
+exact IQ3/IQ4 row ownership
+([post-H5G residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
 ### Matched M512 kernel/module gap ledger
 
@@ -262,7 +278,10 @@ The revised execution order is:
    constant-80/96 geometries on five roles and publishes
    **188.393/175.042/132.743 (+2.192%/+2.055%/+1.329%)** over H5F. H5H rejects
    and removes constant-112/128 after no role wins and the VGPR256 spill cliff.
-   Reprofile the post-H5G residual; do not stack H1-H5B or reopen P6.
+   The post-H5G request reclassifies at **2,667.034 ms**, led by Q5 **920.633**,
+   IQ down **560.642**, attention **468.533**, and Q6 **177.047 ms**. H5I next
+   tests exact-Q6 F32 expansion plus the ordered consumer across all 146 calls;
+   IQ3/IQ4 row ownership follows if it closes. Do not stack H1-H5B or reopen P6.
 6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
@@ -307,7 +326,7 @@ result proves that 150 was only an intermediate gate, not a credible endpoint.
 | Rejected WPF-1B screens | D4 **129.572/116.116 tok/s**, max KL **0.624304**; D8 **129.083/115.802**, max KL **0.400292**; D8R8 **123.466/111.324**, max KL **0.964321** at 512/1K |
 | Rejected P6 / P6-repair screen | Existing IQ2 MMQ gate/up is **3.336x** faster over 46 actual M512 layers and reaches diagnostic **122.135/110.761 tok/s (+23.082%/+20.972%)**, but complete quality reaches max KL **0.683239** at **565/576** top-1. P6 repair stops at **85.946%** uncertain coordinates and **99.496%** touched active output rows; WPF-1R's separately measured raw-Q5/Q6 screen is also rejected. |
 | Rejected WPF-1R raw-Q5/Q6 repair | All **381/381** projection tensors are captured at M512; 333 are D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch **72.266-100%** of output-weight rows and imply **0.160-1.686x** exact-RB32 family reads; the conservative midpoint envelope reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads. No repair queue/kernel/runtime route is admitted. |
-| Current attribution | The exhaustive M512 ledger reconciles hipEngine **3,009.837 ms** and llama.cpp HIP **724.299 ms** exactly. Ordered gaps are Q5_K **1,215.391 ms (53.18%, 21.617x body ratio)**, attention **469.194 ms (20.53%, 22.597x)**, IQ3_XXS down **379.034 ms (16.58%, 3.487x)**, and Q6_K **141.195 ms (6.18%, 10.466x)**. Together they close **2,204.814 ms / 96.47%**. More llama.cpp dispatches and only **15.211 ms** hipEngine span-minus-sum keep launch/fusion deferred. |
+| Current attribution | The retained H5G request segment is **2,667.034 ms / 1,720 dispatches** in a **2,702.091-ms** kernel span. Physical families are Q5 **920.633 ms**, IQ3/IQ4 down **560.642**, gate/up **470.116**, attention **468.533**, Q6 **177.047**, and remaining **70.063 ms**. Against matched llama.cpp, Q5/attention/IQ-down/Q6 gaps are **861.682/446.807/405.146/162.128 ms**. Q5 geometry and prior attention lanes are closed, selecting exact-Q6 H5I; **35.057 ms / 1.297%** span-minus-sum keeps launch/fusion deferred. |
 | Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-C1 M256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json) · [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) · [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json) · [`WPF-2b pair16 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) · [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json) · [`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) · [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) · [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json) · [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json) · [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) · [`WPF-1T default`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) · [`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) · [`WPF-1T role policy`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json) · [`matched llama.cpp HIP/Vulkan attribution`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json) · [`WPF-H1 Q5 source-MMQ candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) · [`P6/P6-repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json) · [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json) |
 
 WPF-1 established the first retained W7900 prefill default. One shared
