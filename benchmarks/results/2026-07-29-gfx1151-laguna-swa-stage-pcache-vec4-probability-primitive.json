@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T23:52:08+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_vec4_probability_primitive",
+  "status": "retained_primitive_pending_resident_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "2ab2ce96787c82ab71e54c286bfb19495dbdc740",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "shape": {
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "control": "retained stage probability cache with vectorized denominator replay",
+    "candidate": "read the contiguous K64 probability row as sixteen aligned float4 vectors inside PV",
+    "exactness": "issue x/y/z/w FMAs in the original slot 0..63 order for every output dimension",
+    "llamacpp_transfer": "reuse one published probability tile with lower data-movement overhead; no Vulkan API, F16 KV, or cooperative-matrix arithmetic is copied"
+  },
+  "correctness": {
+    "red": "focused wrapped/evicted oracle failed with ImportError before the wrapper existed",
+    "green": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_passed": true,
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "performance": {
+    "screen_9x50": {
+      "control_median_ms": 0.0454258394241333,
+      "candidate_median_ms": 0.04527833938598633,
+      "latency_change_percent": -0.3247051458307504,
+      "paired_candidate_wins": 9,
+      "paired_samples": 9,
+      "raw_sha256": "f50691b94f1834e85e4f58038c884ef43936af4b6a056de4b93c3529ac35be92"
+    },
+    "screen_21x100": {
+      "control_median_ms": 0.04530571937561035,
+      "candidate_median_ms": 0.04517426013946533,
+      "latency_change_percent": -0.290160354932556,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "complete_sample_separation": false,
+      "raw_sha256": "6187aaeaf4e6faac21f4dcf9a37c241bd21b6097e7d7f7a88fedc1bb8439cb17"
+    }
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-vec4-prob-trace.fKlGbD --output-file vec4prob -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-stage-pcache-vec4-denom-probability-vstage64-vec16-direct-assume-exp --samples 1 --warmups 1 --burst 2 --allow-dirty --require-cached-build --output /tmp/laguna-vec4-prob-trace.fKlGbD/leaf.json",
+    "raw_sha256": "a18962c66538293a527883285c5bb4bfc74388281462fa7a892350144b4aebcf",
+    "candidate_template_suffix": "false,true,false,true,true",
+    "grid_size_x": 12288,
+    "workgroup_size_x": 384,
+    "vgpr_count": 104,
+    "sgpr_count": 128,
+    "lds_bytes": 25600,
+    "scratch_bytes": 0,
+    "compiler_invocations_under_profiler": 0
+  },
+  "validation": {
+    "python_compile": "passed",
+    "lineage_check": "blocked by absent read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout"
+  },
+  "decision": {
+    "retain_registered_primitive": true,
+    "promote_runtime": false,
+    "production_tok_s": 20.358648888653548,
+    "next": "Run seven counterbalanced resident p512/d128 pairs against the retained vectorized-denominator production control."
+  }
+}
