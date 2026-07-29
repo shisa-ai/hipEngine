@@ -1943,9 +1943,12 @@ decode moves **20.502555 -> 20.508345 tok/s
 (+0.02824%, -0.01377 ms/token)**; the sole losing-pair magnitude is smaller
 than the median paired gain. gfx1151 promotes the capability, the prior
 mixed40 schedule remains exact rollback, and comparison plumbing is removed.
-Clean selector-unset publication remains next:
+Tracked-clean selector-unset production is **20.494732 tok/s**,
+**+0.05296% / -0.02584 ms/token** over the preceding clean packet and
+**+78.733%** over sprint start:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json),
-[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json).
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json),
+[`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
