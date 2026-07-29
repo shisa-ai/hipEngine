@@ -311,6 +311,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance natural selected gate/up against exact tile8",
     )
+    parser.add_argument(
+        "--compare-selected-natural-tile8-parallel-decode",
+        action="store_true",
+        help="counterbalance serial and eight-lane exact tile8 reduction tails",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -430,6 +435,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_global_mixed32,
             args.compare_selected_natural_decode,
             args.compare_selected_natural_tile8_decode,
+            args.compare_selected_natural_tile8_parallel_decode,
         )
     )
     if active_comparisons > 1:
@@ -633,6 +639,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_selected_natural_tile8_decode=(
                 False
                 if args.compare_selected_natural_tile8_decode
+                else None
+            ),
+            use_selected_natural_tile8_parallel_decode=(
+                False
+                if args.compare_selected_natural_tile8_parallel_decode
                 else None
             ),
         )
@@ -839,6 +850,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_selected_natural_tile8_decode:
                         owner.set_selected_natural_tile8_decode(
+                            mode == "candidate"
+                        )
+                    if args.compare_selected_natural_tile8_parallel_decode:
+                        owner.set_selected_natural_tile8_parallel_decode(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -1092,6 +1107,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_selected_natural_tile8_decode": (
                 args.compare_selected_natural_tile8_decode
+            ),
+            "compare_selected_natural_tile8_parallel_decode": (
+                args.compare_selected_natural_tile8_parallel_decode
             ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,
