@@ -4329,13 +4329,20 @@ The remaining attention sequence is:
    **0.909 ms/token**, attention still leaves **3.456 ms/token**, or **43.1%**
    of the complete **8.015-ms/token** publication-wall gap. Evidence:
    [`post-global-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json).
-2. Target the **3.183-ms saturated SWA family** with one launch. The next
-   bounded screen uses packed BF16 dot2 issue with two-term F32 input
-   decompositions, retaining sequential FP32 accumulation and avoiding both
-   the rejected WMMA split merge and any output-derived repair. Gate wrap and
-   eviction numerics first, then the 18-prompt quality suite and leaf.
-3. Only if that intrinsic path cannot approach the quality ceiling should the
-   residual gap justify a larger architectural change.
+2. Target the **3.183-ms saturated SWA family** with one launch. The bounded
+   packed-BF16 dot2 screen is **complete and rejected**. The two-term F32
+   decomposition regresses the leaf **1.05%**. Dropping the residual buys only
+   **0.17%** and fails the canonical 18-prompt/576-step gate at max KL
+   **1.265727**, **25.31x** the 0.05 ceiling, despite **564/576** top-1.
+   The dot2 body, wrapper, selector, oracle seam, and harness are removed.
+   Evidence:
+   [`rejected QK dot2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-qkdot2-rejected.json).
+3. Move to a materially structural exact single-launch SWA design. Preserve
+   all F32 QK/softmax/PV arithmetic, but raise useful work per synchronization
+   point and reduce repeated K/V traffic. The concrete next screen must come
+   from the llama.cpp implementation audit and target at least a **5%** leaf
+   reduction before full-model integration; sub-percent approximate
+   instruction substitutions are closed.
 
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
@@ -4343,7 +4350,9 @@ intrinsically higher precision or a cheap independently valid error bound.
 The approximate output itself is not a usable repair oracle. Reusing scalar
 ownership, global score planes, approximate online merges, or output-derived
 midpoint repair at either owner or component granularity is closed by the
-measured failures.
+measured failures. Packed-BF16 QK dot2 is also closed: its compensated path is
+slower and its one-term path spends far more than the complete quality budget
+for a sub-percent leaf gain.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all

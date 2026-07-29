@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_qkdot2_screen",
+  "status": "rejected_and_removed",
+  "created_at": "2026-07-29T12:05:31+09:00",
+  "source_revision": "71ae41ffa583c842a1c0ffbcd7beb0c458b2d43a",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16",
+    "resident_nbytes": 78780135444
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "workgroups": 32,
+    "local_size": 384
+  },
+  "candidates": {
+    "two_term_compensated_qk_dot2": {
+      "description": "BF16 v_dot2 QK over rounded query plus BF16 residual, with retained exact scalar softmax and PV",
+      "control_median_ms": 0.0816948413848877,
+      "candidate_median_ms": 0.08255446434020997,
+      "latency_change_percent": 1.0522365191607985,
+      "context_max_abs_error": 6.51925802230835e-09,
+      "gated_bf16_mismatches": 3,
+      "gated_max_abs_error": 7.450580596923828e-09,
+      "raw_sha256": "ab7f6951725b4fa73568fad60c6c927ce69cbe04ad84291c8e799a69f8000680",
+      "decision": "rejected at leaf because it is slower"
+    },
+    "single_term_qk_dot2": {
+      "description": "BF16 v_dot2 QK over rounded query only, with retained exact scalar softmax and PV",
+      "control_median_ms": 0.08160079956054687,
+      "candidate_median_ms": 0.08146530151367187,
+      "latency_change_percent": -0.1660499009871419,
+      "context_max_abs_error": 5.187466740608215e-07,
+      "gated_bf16_mismatches": 160,
+      "gated_max_abs_error": 0.00006103515625,
+      "raw_sha256": "de29890210ce9e3694cd36cdc8b80bbc70e8a70e17029043ea6653524943a6e7",
+      "decision": "advanced to canonical quality gate on positive directional leaf"
+    }
+  },
+  "quality": {
+    "protocol": "18 prompts x 32 teacher-forced transitions at saturated p512",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompt_extension": "repeat_without_leading_bos",
+    "steps": 576,
+    "finite": true,
+    "max_kl_divergence": 1.2657267494118343,
+    "top1_matches": 564,
+    "top1_agreement": 0.9791666666666666,
+    "max_logits_abs": 7.838199138641357,
+    "required_max_kl": 0.05,
+    "required_minimum_top1": 0.9,
+    "categories": {
+      "code": {
+        "max_kl_divergence": 1.2657267494118343,
+        "top1_agreement": 0.9739583333333334
+      },
+      "general_en": {
+        "max_kl_divergence": 0.3566654460181974,
+        "top1_agreement": 1.0
+      },
+      "general_ja": {
+        "max_kl_divergence": 0.8222505026101933,
+        "top1_agreement": 0.953125
+      },
+      "mixed_ja_en": {
+        "max_kl_divergence": 0.5969017439521402,
+        "top1_agreement": 0.9921875
+      }
+    },
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "50ef17fabfdfb83f6cc836742825618b701dcb257bbe6338cdbec6b0cb98074b"
+  },
+  "commands": {
+    "two_term_leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-compensated-qkdot2 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-compensated-qkdot2-leaf.json",
+    "single_term_leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-qkdot2 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-qkdot2-leaf.json",
+    "quality": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_swa_qkdot2_quality_gate.py --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-qkdot2-quality.json"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "all_candidate_code_removed": true,
+    "production_unchanged_tok_s": 19.667705,
+    "reason": "The compensated path is 1.05% slower, while the only positive leaf is just 0.17% faster and reaches 25.31x the permitted KL ceiling. Extending the approximation into PV or adding repair cannot justify this instruction-level premise.",
+    "next": "Use a single-launch structural SWA redesign with exact arithmetic; do not reopen packed-BF16 QK without a materially different precision strategy."
+  }
+}
