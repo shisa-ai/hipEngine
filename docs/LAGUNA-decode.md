@@ -4509,6 +4509,31 @@ The remaining attention sequence is:
     comparison seam; retain the architecture capability, cache owner, and
     producer-max rollback. Evidence:
     [`post-producer-gate census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-gate-wall-reprofile.json).
+19. Parallelize the exact selected-Q4 tile8 tail. **Complete and promoted:**
+    the retained resident-T16 body had eight independent column reductions but
+    completed all of them serially on thread 0. Lanes 0..7 now finish one
+    column each while preserving every K/FMA owner, wave32 reduction, ordered
+    wave0..3 sum, and BF16 store boundary. The actual layer-1 gate/up leaf
+    improves **0.130259 -> 0.128862 ms (-1.072%)**, with all 21 pairs positive
+    and zero output mismatches. All seven exact resident p512/d128 pairs then
+    improve **19.998518 -> 20.007478 tok/s (+0.0448%)**. Clean selector-unset
+    production is **19.996444/20.007890/20.020236 tok/s**, median
+    **20.007890**: **+0.0241% / -0.0121 ms/token** over the prior packet and
+    **+74.487%** over sprint start. Cached tracing records all **5,969**
+    selected gate/up calls in the `true` specialization at
+    grid16384x10/local128, VGPR96/SGPR128/LDS512/scratch0. Evidence:
+    [`parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json),
+    [`parallel-tail retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-retained.json),
+    [`parallel-tail production`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-production.json).
+
+Current exact decode checkpoint:
+
+| Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
+| --- | ---: | ---: | ---: |
+| hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
+| hipEngine current production | **20.007890 tok/s** | **49.980 ms** | **+74.487%** |
+| same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
+| Remaining wall gap | — | **7.150 ms/token** | hipEngine is **14.31%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,

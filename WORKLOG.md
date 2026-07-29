@@ -190009,3 +190009,27 @@ Vulkan local sizes verbatim will close the measured gap.
   selector-unset p512/d128 publication and cached symbol trace complete.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-retained.json`.
+
+## 2026-07-29 15:43 JST — Publish selected-Q4 parallel-tail production
+
+- A tracked-clean, selector-unset p512/d128 production run at `16b93ebe3`
+  measures **19.996444/20.007890/20.020236 tok/s**, median
+  **20.007890 tok/s**. This is **+0.0241% / -0.0121 ms/token** over the prior
+  20.003064 clean packet and **+74.487%** over the 11.466687 sprint start.
+- Repeated next/final tokens 2930/74107, generated-ID hash, final position
+  638, tracked ownership, and zero-allocation teardown remain exact. Raw
+  SHA-256 is `3d52e139...7932`.
+- The cached tracked-clean 129-request trace discards warmup128 and timed
+  prefill512, then summarizes 127 decode transitions. All **5,969** selected
+  gate/up calls use
+  `q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short,true>`;
+  false-specialization calls are zero. The production launch is
+  grid16384x10/local128, VGPR96/SGPR128/LDS512/scratch0.
+- Trace medians are **47.929603 ms/token** kernel sum, **50.370923 ms** span,
+  **3.643638 ms** attention, **24.066472 ms** source-F16,
+  **8.390139 ms** selected gate/up, **4.833549 ms** selected down, and
+  **3.536034 ms** dense/shared. Independent trace-family variance is not the
+  causal claim; the retained seven-pair A/B is.
+- Trace/child SHA-256 values are `55cc85a5...38de` and
+  `44674f0f...9cc2`; no compiler ran under the profiler. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-production.json`.
