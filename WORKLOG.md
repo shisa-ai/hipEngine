@@ -191630,3 +191630,25 @@ Vulkan local sizes verbatim will close the measured gap.
   integration. Close staged-V word packing and retain the compiler's faster
   16-bit LDS replay. Production remains **20.494732 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-broadcast-rejected.json`.
+
+## 2026-07-30 02:39 JST — Reject lane-major resident BF16 keys
+
+- Isolate llama.cpp Vulkan's vectorized cooperative K-load premise with a
+  byte-neutral diagnostic layout: transpose each D128 key from
+  `[part4][lane32]` to `[lane32][part4]`, so each lane replaces four 16-bit
+  cache loads with one aligned 64-bit load and extracts the same four BF16
+  values in the original QK order. QK, softmax, PV, ownership, dispatches, and
+  resident byte count are unchanged.
+- RED fails importing the absent wrapper. GREEN passes the focused
+  wrapped/explicitly-evicted oracle with byte-identical F32 context and gated
+  BF16 output.
+- The 9x50 leaf improves **0.037159 -> 0.037098 ms (-0.164%, 8/9 wins)**,
+  but the stronger 21x100 screen contracts to **0.037045 -> 0.037019 ms
+  (-0.069%, 17/21 wins)**. Raw SHA-256 values are
+  `a6369048...c5b13` / `2545f164...ffd9`. This is noise-scale and cannot
+  justify migrating every relevant KV writer and reader. Remove the wrapper,
+  layout branch, registry/export, test side-buffer, and leaf selector; skip
+  tracing and resident integration. Production remains **20.494732 tok/s**.
+  The material llama.cpp target remains cooperative K/V tile reuse plus
+  tensorized QK/PV, not key-layout-only vectorization. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-lane-major-key-rejected.json`.
