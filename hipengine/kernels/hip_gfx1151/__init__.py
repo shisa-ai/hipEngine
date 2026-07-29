@@ -68,9 +68,9 @@ LAGUNA_SELECTED_NATURAL_TILE8_DECODE = True
 # The exact tile8 parallel-tail sibling preserves every column's arithmetic.
 # All seven resident p512/d128 pairs are exact and positive.
 LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE = True
-# Default-off exact fusion screen: the qualified parallel tile8 owner
-# materializes the BF16 SiLU intermediate directly.
-LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = False
+# Promoted exact fusion: the qualified parallel tile8 owner materializes the
+# BF16 SiLU intermediate directly; all seven resident pairs are positive.
+LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = True
 # Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
 # 2048-row projection/MoE transactions while attention and physical KV writes
 # remain independently tiled at 128. M2048 is byte-identical at pp512, keeps

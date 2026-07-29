@@ -1949,6 +1949,9 @@ should be boring.
   Then retain the two-launch chain as registered rollback through one clean
   production/symbol checkpoint before removing the temporary setter/profile
   seam. Remove the fused route and selector if the resident gate regresses.
+- The promotion trigger is satisfied: all seven exact resident pairs improve
+  **20.008491 -> 20.063975 tok/s (+0.2773%)**. Keep the comparison seam only
+  through the clean selector-unset production/symbol checkpoint.
 
 ## Laguna gfx1151 SWA exponential decode selector
 
