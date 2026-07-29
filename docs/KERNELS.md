@@ -1778,6 +1778,11 @@ byte-exact, but halving workgroups **32 -> 16** regresses the leaf
 **0.056133 -> 0.061001 ms (+8.673%)**. All candidate code is removed;
 production remains the 32-block stage-cache owner. Evidence:
 [`rejected GQA4+5 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-stage-pcache-rejected.json).
+The intermediate 24-block/all-active GQA3 recombination is byte-exact too,
+but regresses **0.056152 -> 0.059231 ms (+5.484%)**. The retained
+probability cache therefore does not move the gfx1151 scalar ownership seam:
+16 and 24 blocks lose, while 32 blocks remains production. Evidence:
+[`rejected GQA3 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-stage-pcache-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
