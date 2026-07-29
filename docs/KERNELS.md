@@ -1737,6 +1737,12 @@ only for the saturated natural shape. The producer-max/gate sibling remains
 registered exact rollback; peer and non-natural routes are unchanged.
 Evidence:
 [`retained stage probability cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json).
+Tracked-clean selector-unset production is
+**20.260703/20.278430/20.270314 tok/s**, median **20.270314**:
+**+0.8219% / -0.4055 ms/token** over the preceding clean packet and
+**+76.776%** over sprint start. The new capability is active without a
+comparison route and exact repeated state/lifecycle passes:
+[`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
