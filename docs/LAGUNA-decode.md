@@ -4605,8 +4605,8 @@ The remaining attention sequence is:
     mandatory for this tile; do not retry local32 logical-wave replay.
     Production remains **20.056756 tok/s**. Evidence:
     [`rejected wave32 replay`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json).
-25. Parallelize the exact selected-down tail. **Runtime retained; clean
-    publication pending:** Q4 and planar-Q6 keep their local128 four-wave K/FMA
+25. Parallelize the exact selected-down tail. **Retained and published:** Q4
+    and planar-Q6 keep their local128 four-wave K/FMA
     bodies, wave trees, LDS publication, barrier, and BF16 boundary. Lanes
     0..15 now each own one independent ordered wave0..3 sum and store instead
     of thread 0 serializing all 16 columns. Actual Q4 down improves
@@ -4615,20 +4615,25 @@ The remaining attention sequence is:
     mismatches. Cached tracing preserves local128/LDS512/scratch0 and VGPR
     **104/80**. All seven resident p512/d128 pairs improve
     **20.052490 -> 20.075641 tok/s (+0.1155%, -0.0575 ms/token)** with exact
-    generated trajectory, state, and lifecycle. The gfx1151 capability now
-    defaults on; tracked-clean selector-unset publication and a cached symbol
-    trace remain before updating the production topline. Evidence:
+    generated trajectory, state, and lifecycle. Tracked-clean selector-unset
+    production is **20.069608 tok/s**, **+0.0641% / -0.0319 ms/token** over
+    the prior clean packet and **+75.025%** over sprint start. Cached tracing
+    proves all **5,969** selected-down calls use the Q4/planar-Q6
+    parallel-tail specializations and cuts the family
+    **4.836836 -> 4.798765 ms/token (-0.787%)** at unchanged resources.
+    Evidence:
     [`selected-down parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json) ·
-    [`selected-down parallel-tail retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-retained.json).
+    [`selected-down parallel-tail retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-retained.json) ·
+    [`selected-down parallel-tail production`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.056756 tok/s** | **49.859 ms** | **+74.913%** |
+| hipEngine current production | **20.069608 tok/s** | **49.827 ms** | **+75.025%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **7.029 ms/token** | hipEngine is **14.10%** below Vulkan throughput |
+| Remaining wall gap | — | **6.997 ms/token** | hipEngine is **14.04%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,

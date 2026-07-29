@@ -190338,3 +190338,30 @@ Vulkan local sizes verbatim will close the measured gap.
   unchanged. Next run tracked-clean selector-unset production and a cached
   symbol/resource trace before removing the comparison-only seam. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-retained.json`.
+
+## 2026-07-29 17:45 JST — Publish selected-down parallel-tail production
+
+- Tracked-clean, selector-unset p512/d128 production at `0060706c9` measures
+  **20.060505/20.069608/20.075268 tok/s**, median **20.069608**. This is
+  **+0.0641% / -0.0319 ms/token** over the prior clean 20.056756 packet and
+  **+75.025%** over the 11.466687 sprint start.
+- Repeated next/final tokens 2930/74107, generated-ID hash, final position
+  638, tracked ownership, and zero-allocation teardown remain exact. Raw
+  SHA-256 is `a3a2e9f5...f021e`.
+- A cached tracked-clean trace contains 129 requests: warmup128, timed
+  prefill512, and 127 one-row decode transitions at exactly **721**
+  dispatches/token. All **3,048 Q4 (24/token)** plus **2,921 planar-Q6
+  (23/token)** selected-down calls use the final `parallel_tail=true`
+  specialization; serial-tail calls are zero. Q4/Q6 remain local128,
+  VGPR104/80, SGPR128, LDS512, scratch0.
+- The trace cuts selected-down **4.836836 -> 4.798765 ms/token (-0.787%)**;
+  kernel sum/span are **47.825294/50.166526 ms/token**. Trace/child SHA-256
+  values are `2ed5af7d...8b78d` and `ce60d91a...1fb2`; no compiler runs under
+  the profiler. The generic prefill-only summary command correctly rejects
+  the extra 127 decode segments; analysis reuses its repository segmentation
+  and family-summary helpers after discarding the first two requests.
+- Production is now **20.069608 tok/s**. Remove the comparison-only
+  constructor override, setter, CLI lane, and setter test; retain the
+  capability-selected session field and exact registered serial rollback.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-production.json`.
