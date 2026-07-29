@@ -3122,6 +3122,15 @@ class LagunaGGUFResidentSession:
             bool(enabled)
         )
 
+    def set_decode_global_producer_max(self, enabled: bool) -> None:
+        """Select exact global score-producer maxima or its mixed32 rollback."""
+
+        if self.kv_cache is None:
+            raise RuntimeError("Laguna KV cache is not available")
+        self.kv_cache.global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape = (
+            bool(enabled)
+        )
+
     @property
     def resident_nbytes(self) -> int:
         self._check_open()
