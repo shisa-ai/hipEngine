@@ -189631,3 +189631,19 @@ Vulkan local sizes verbatim will close the measured gap.
   three-repetition p512/d128 publication before re-profiling attention.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json`.
+
+## 2026-07-29 13:37 JST — Publish exact producer-max production
+
+- Tracked-clean `a6cc3d477`, cached builds, two HIP queues, and no comparison
+  selector measure p512/d128 decode at
+  **19.978220/19.990914/19.983610 tok/s**, median **19.983610**.
+- This is **+1.606% / -0.804 ms/token** over prior clean 19.667705 and
+  **+74.275%** over the 11.466687 sprint start. The profile records the
+  producer-max capability active by default.
+- All three runs select next token 2930 and final token 74107, share trajectory
+  hash `94f803f7...da32`, finish at position 638, and return tracked
+  allocations to zero. Raw SHA-256 is `16a3b9c0...2196`.
+- Production publication is complete. Next run a cached 127-transition wall
+  census to re-rank SWA/global/other gaps against same-GGUF llama.cpp Vulkan.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-production.json`.

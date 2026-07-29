@@ -1483,6 +1483,11 @@ saturated natural SWA shape; mixed32/exp32 remains the exact rollback.
 Evidence:
 [`producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json).
 [`producer-max retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json).
+Tracked-clean selector-unset production confirms
+**19.983610 tok/s**, **+1.606% / -0.804 ms/token** over the prior clean
+19.667705 packet, with the capability active and exact repeated
+state/lifecycle:
+[`producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-production.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is

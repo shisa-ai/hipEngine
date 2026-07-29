@@ -29,6 +29,10 @@ should be removed or collapsed.
   **19.684442 -> 19.996117 tok/s (+1.583%)** with exact state/lifecycle.
   Keep the comparison switch through the pending clean publication and
   post-promotion attention census, then remove it.
+- **Clean publication passed:** selector-unset production is
+  **19.983610 tok/s** with exact state/lifecycle. The comparison switch now
+  remains only for the pending post-promotion attention census and should be
+  removed in that logical unit.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 

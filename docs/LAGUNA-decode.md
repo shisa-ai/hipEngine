@@ -4409,9 +4409,15 @@ The remaining attention sequence is:
    saturated natural SWA shape; mixed32/exp32 remains rollback. Evidence:
    [`retained producer-max primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json).
    [`retained producer-max runtime`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json).
-10. Publish a tracked-clean selector-unset three-run p512/d128 result, then
-    re-profile the attention wall against llama.cpp Vulkan.
-11. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
+10. Publish a tracked-clean selector-unset three-run p512/d128 result.
+    **Complete:** **19.978220/19.990914/19.983610 tok/s**, median
+    **19.983610**, is **+1.606% / -0.804 ms/token** over the prior clean
+    19.667705 packet and **+74.275%** over sprint start. The capability is
+    active without a comparison selector and repeated state/lifecycle is
+    exact. Evidence:
+    [`producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-production.json).
+11. Re-profile the clean attention wall against llama.cpp Vulkan.
+12. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
     precision-design problem: retain its compact GQA9/K64 ownership and
     tensorized QK/PV throughput, but establish an independently valid
     score/numerator error bound or a higher-precision cooperative
