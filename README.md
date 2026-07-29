@@ -71,14 +71,13 @@ numbers below.
 - The same Laguna family is supported on W7900/gfx1100 with the
   `UD-Q2_K_XL` GGUF. Its exact matrix512/attention128 prefill default combines
   role-qualified Q5/Q6 output tiling, pair16 grouped IQ gate/up/down,
-  adjacent-row qrow4 SWA after a measured C256 crossover, and H5E's transient
-  exact-F32 Q5 expansion plus production-ordered 8x4/4x16/8x8/16x4 reduction
-  on all eight roles. No dequantized weight persists. Clean package-default
-  H5E throughput is **184.997/172.104/131.496 tok/s** at 512/1K/4K, improving
-  H5D by **+3.166%/+2.941%/+1.944%**. H5F retains exact 12x4 only for F32 N48
-  at **+1.187%/+0.496%** event/wall; the current package is aggregate-flat at
-  **185.019/172.076/131.147 tok/s**. Full logits, all 48 hidden boundaries,
-  routing
+  adjacent-row qrow4 SWA after a measured C256 crossover, and transient exact-F32
+  Q5 expansion plus production-ordered 8x4/12x4/8x10/16x5/8x12/12x8 reduction
+  on all eight roles. No dequantized weight persists. H5E reached
+  **184.997/172.104/131.496 tok/s** at 512/1K/4K; H5F retained the narrow exact
+  N48 micro-win. H5G's constant-80/96 tiles now publish
+  **188.393/175.042/132.743 tok/s**, another **+2.192%/+2.055%/+1.329%** over
+  H5F. Full logits, all 48 hidden boundaries, routing
   prefixes, active K/V, and every `KVLiveSpans` field are bit-exact at KL 0 on
   the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
   deterministic, and lifecycle-clean. The 150-tok/s short gate and restored 4K
@@ -143,13 +142,14 @@ numbers below.
   1x64/2x32. The final-source 235-call gate moves H5D weighted event/wall
   **1,085.630/1,040.166 -> 951.876/961.993 ms (-12.320%/-7.515%)** with the same
   bounded 150,994,944-byte plane and no persistent sidecar. H5F's 12x4 N48
-  micro-policy saves another **4.224/1.989 us** by event/wall per M512 request;
-  the other constant-48 geometries are removed. The package-default
-  route is KL0/byte-exact across all 48 boundaries, logits, K/V, repeats, and
-  lifecycle. Current package production is **185.019/172.076/131.147 tok/s** at
-  512/1K/4K (aggregate-flat versus H5E), leaving a **3.752x** matched M512 gap
-  to llama.cpp HIP
-  ([H5E production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
+  micro-policy saves another **4.224/1.989 us** per M512 request. H5G retains
+  exact 8x10/16x5/8x12/12x8 on five roles; its strong changed-role gate cuts
+  H5F **8.639%/7.479%** by event/wall and traces at VGPR168/200 with zero
+  scratch. The package-default route remains KL0/byte-exact across all 48
+  boundaries, logits, K/V, repeats, and lifecycle. Current production is
+  **188.393/175.042/132.743 tok/s** at 512/1K/4K, leaving a **3.685x** matched
+  M512 gap to llama.cpp HIP
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
   [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
