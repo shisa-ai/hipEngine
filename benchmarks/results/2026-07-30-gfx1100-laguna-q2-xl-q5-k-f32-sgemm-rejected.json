@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_wpfh5a_q5_k_f32_sgemm_rejection",
+  "created_at": "2026-07-30",
+  "status": "rejected_complete_quality_gate",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "standalone_primitive_revision": "15126dcee",
+    "standalone_leaf_revision": "7a12e5c33",
+    "runtime_integration_revision": "5a6d7abee88e2d0171f9b74f371fa65801cbfce2",
+    "quality_revision": "5a6d7abee88e2d0171f9b74f371fa65801cbfce2",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "quality_candidate_min_rows": 16,
+    "quality_candidate_max_rows": 512,
+    "teacher_forced_steps_per_prompt": 32,
+    "teacher_forced_steps": 576,
+    "free_running_horizons": [
+      16,
+      32
+    ],
+    "free_running_repetitions": 3,
+    "timed_order": "alternating exact_q5/exact_value_q5_f32_rocblas per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "candidate_scope": "seven package-qualified raw-Q5 shapes transiently expand exact F32 weights and exact BF16-widened activations, run rocBLAS SGEMM, and cast only BF16 outputs; N48, c=1, and all misses remain exact",
+    "workspace_bytes": 195035136,
+    "clean_512_1k_promotion_run_performed": false,
+    "four_k_or_longer_run_performed": false
+  },
+  "performance": {
+    "exact_prefill_tok_s": 152.35885005253644,
+    "candidate_prefill_tok_s": 202.7070875195566,
+    "prefill_speedup": 1.3304582401984464,
+    "ttft_speedup": 1.3275491418278635,
+    "h16_e2e_speedup": 1.2145307381669137,
+    "h32_e2e_speedup": 1.1553303174283451,
+    "decode_speedup_h16": 0.999713923965164,
+    "decode_speedup_h32": 0.9999553290972859,
+    "category_prefill_speedup": {
+      "code": 1.3023634666367792,
+      "general_en": 1.2940956888373476,
+      "general_ja": 1.3629450914627976,
+      "mixed_ja_en": 1.3639534507636792
+    },
+    "standalone_q5_family": {
+      "exact_coltile_event_ms": 1256.9361335515975,
+      "candidate_policy_event_ms": 221.13655824065208,
+      "event_speedup": 5.683981624529652,
+      "exact_coltile_wall_ms": 1223.2627801131457,
+      "candidate_policy_wall_ms": 231.9661949761212,
+      "wall_speedup": 5.273452798754015,
+      "matched_llamacpp_ms": 58.95103
+    },
+    "claim_valid": false,
+    "reason": "The mandatory complete quality gate failed; runtime speed and standalone family timing are diagnostic only."
+  },
+  "complete_quality_gate": {
+    "pass": false,
+    "finite": true,
+    "max_kl_divergence": 1.1436268397342317,
+    "kl_threshold": 0.05,
+    "top1_matches": 564,
+    "steps": 576,
+    "top1_agreement": 0.9791666666666666,
+    "top1_threshold": 0.9,
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "categories": {
+      "code": {
+        "steps": 192,
+        "max_kl_divergence": 0.1690852239416618,
+        "top1_matches": 190,
+        "top1_agreement": 0.9895833333333334
+      },
+      "general_en": {
+        "steps": 128,
+        "max_kl_divergence": 0.18641620276948906,
+        "top1_matches": 122,
+        "top1_agreement": 0.953125
+      },
+      "general_ja": {
+        "steps": 128,
+        "max_kl_divergence": 1.1436268397342317,
+        "top1_matches": 128,
+        "top1_agreement": 1.0
+      },
+      "mixed_ja_en": {
+        "steps": 128,
+        "max_kl_divergence": 0.5671239183984855,
+        "top1_matches": 124,
+        "top1_agreement": 0.96875
+      }
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "kl_divergence": 0.00015682291693663912,
+      "candidate_top1": 94557,
+      "reference_top1": 94557
+    },
+    "free_running": {
+      "pairs": 54,
+      "h16_exact_pairs": 45,
+      "h32_exact_pairs": 30,
+      "same_mode_repeat_deterministic": true
+    },
+    "all_prompts_exercised_changed_arithmetic": true
+  },
+  "deep_state_screen": {
+    "rows": 512,
+    "pass": true,
+    "kl_divergence": 0.0003742110249998739,
+    "top1_agreement": 1.0,
+    "next_token_id": 2930,
+    "candidate_repeat_exact": true,
+    "all_hidden_boundaries_checked": 48,
+    "complete_kv_and_live_spans_checked": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "29f9458be43bb4dd84198360bb6e4f8dcf399dd9db9fd3a37be36770bfdac969",
+    "harness_sha256": "84440c053c4ec996b0590f6c76f04c8b745ef79da75336ca23865e9612b58127"
+  },
+  "integrated_trace": {
+    "total_dispatches": 2387,
+    "candidate_producers": 223,
+    "candidate_rocblas_bodies": 223,
+    "candidate_bf16_result_casts": 141,
+    "exact_n48_coltile_calls": 12,
+    "candidate_kernel_sum_ms": 219.662394,
+    "trace_sha256": "d63db8d31ce2055747a0d9008ec0282fa7614f5beda7b14943134b80e3299fa5"
+  },
+  "memory": {
+    "runtime_workspace_bytes": 195035136,
+    "peak_tracked_bytes": 42051447548,
+    "peak_allocations": 1874,
+    "total_allocated_bytes": 161441215056,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "decision": {
+    "pass": false,
+    "reason": "The exact-value Q5 route is fast and deterministic but SGEMM reassociation reaches maximum KL 1.143627, above the mandatory 0.05 ceiling.",
+    "runtime_default_changed": false,
+    "production": "retain exact role-qualified Q5 coltile and the clean 169.253/159.229/123.084 tok/s 512/1K/4K packet",
+    "cleanup": "Remove the default-off runtime owner, constructor switch, context-local ABI, conditional eager library and rocBLAS ownership, 195,035,136-byte workspace, package capabilities, and focused integration tests; retain only the separately registered exact-value primitive and leaf evidence.",
+    "next_action": "Qualify the existing exact BF16-cache-to-F32 dense-initial hipBLASLt attention path on gfx1100 behind complete KVLiveSpans; do not stack rejected H1-H5A arithmetic."
+  },
+  "source_artifacts": {
+    "raw_quality_sha256": "4388d00add62bb8a2c4300132acf819cc868c33068fc4f844d05a24d503942df",
+    "quality_harness_sha256": "6d9f8f3643cfe9a2f980f61f15be4443e88ef03f4f6b107cf149d1902f3b2dbe",
+    "stderr_sha256": "905e3f15bb776718de4f38e6db0b42dceb63ed091c1ef3341652040787bda298",
+    "candidate_leaf_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5a_q5_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpfh5a_q5_f32_rocblas --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpfh5a-q5-quality-natural-tail.json"
+}

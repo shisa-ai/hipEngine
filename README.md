@@ -117,13 +117,16 @@ numbers below.
   moves the role-qualified 235-call family **1,256.936 -> 221.137 ms
   (5.684x)** by HIP events, corroborated by **5.273x** synchronized wall. The
   regressive N48 gate remains exact fallback; all candidate outputs are finite
-  at max mean KL **1.59e-9** and top-1 **100%**. A default-off bounded owner now
-  passes natural M512 at KL **0.0003742**, top-1 **100%**, deterministic complete
-  state, and exact teardown. Cached integration traces **223** producers/SGEMMs,
-  **141** BF16 casts, and all **12** N48 calls on exact coltile. Production
-  remains exact until the full 18-prompt/576-step reassociation gate passes
+  at max mean KL **1.59e-9** and top-1 **100%**. Its default-off owner passes
+  natural M512 at KL **0.0003742**, but the binding 18-prompt/576-step lane
+  rejects SGEMM reassociation at maximum KL **1.143627 > 0.05** despite
+  **564/576 (97.917%)** top-1 and diagnostic prefill **152.359 -> 202.707 tok/s
+  (1.330x)**. The owner/workspace/selector are removed and exact production is
+  unchanged. H5B next qualifies the existing exact BF16-cache-to-F32
+  dense-initial hipBLASLt attention route on gfx1100
   ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
-  [H5A leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json)).
+  [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
+  [leaf evidence](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted
