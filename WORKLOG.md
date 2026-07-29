@@ -189134,3 +189134,19 @@ Vulkan local sizes verbatim will close the measured gap.
   11.466687 sprint start. Raw artifact SHA-256 is
   `b829d198...26f783`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-production.json`.
+
+## 2026-07-29 09:03 JST — Re-profile post-global-exp32 decode wall
+
+- A tracked-clean, require-cached `rocprofv3 --kernel-trace` run on
+  `5cc67087e` segments all 127 p512/d128 decode transitions. No compiler runs
+  under profiling; every token keeps **816 compute dispatches**.
+- Global attention transfers the exact exp32 gain:
+  **1.288661 -> 1.244374 ms/token (-3.44%)**. Complete attention falls
+  **4.477845 -> 4.427829 ms/token (-1.12%)**, kernel sum is
+  **48.954823 ms/token**, and dispatch span is **51.493134 ms/token**.
+- Same-GGUF llama.cpp Vulkan remains **0.909423 ms/token** attention. The
+  residual **3.518406-ms** attention gap explains **42.4%** of the complete
+  clean **8.290741-ms/token** wall gap, so attention remains the first
+  comparator gap. Trace/bench SHA-256 values are
+  `819ac649...c04c0` / `70220eb6...ec4e`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-exp32-wall-reprofile.json`.

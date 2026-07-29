@@ -4212,6 +4212,17 @@ without a comparison selector; IDs, state, and lifecycle remain exact.
 Evidence:
 [`clean global GQA2 exp32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gqa2-exp32-production.json).
 
+The clean post-global census confirms the leaf transfer. At unchanged
+**816 dispatches/token**, global attention falls
+**1.288661 -> 1.244374 ms/token (-3.44%)**; complete attention falls
+**4.477845 -> 4.427829 ms/token (-1.12%)**, kernel sum is
+**48.954823 ms/token**, and dispatch span is **51.493134 ms/token**.
+Same-GGUF llama.cpp Vulkan remains at **0.909423 ms/token** attention.
+The residual **3.518406-ms** attention gap is still **42.4%** of the clean
+**8.290741-ms/token** wall gap, so attention remains the first comparative
+priority. Evidence:
+[`post-global-exp32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-exp32-wall-reprofile.json).
+
 Exact scalar issue/ownership work is now closed for both attention families.
 The next material SWA gate must start from llama.cpp's actual advantage:
 tensorized QK and PV inside one GQA tile, with a separately budgeted
