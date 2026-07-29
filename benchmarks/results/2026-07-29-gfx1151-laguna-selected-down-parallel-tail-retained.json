@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T17:36:00+09:00",
+  "kind": "hipengine_laguna_selected_down_parallel_tail_retained",
+  "status": "retained",
+  "performance_claim": true,
+  "source": {
+    "revision": "aec0a005d2b2386e688ea4f6e7989e072bdd84c8",
+    "tracked_clean": true,
+    "leaf_evidence": "benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "candidate": {
+    "control": "exact natural selected-down with thread-0 serial ordered tail",
+    "candidate": "exact natural selected-down with lanes 0..15 parallel ordered tail",
+    "scope": "gfx1151 c1/top10 Q4 and planar-Q6 resident-T16 selected down",
+    "rollback": "registered serial natural selected-down owner"
+  },
+  "protocol": {
+    "shape": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk_rows": 2048,
+    "attention_rows": 128,
+    "decode_forward_calls_per_sample": 127,
+    "warmup_rows": 128,
+    "repetitions": 7,
+    "timed_order": "control/candidate order alternates by repetition",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-selected-down-natural-parallel-decode --allow-dirty --output /tmp/laguna-selected-down-natural-parallel-runtime.json",
+    "raw_sha256": "247167453c2c1dcfc3a6aaf17c1e0ec535ef2502d62273c0ee6fb02d5efb9c3e"
+  },
+  "results": {
+    "control_median_decode_seconds": 6.333378093782812,
+    "control_median_decode_tok_s": 20.05248985919064,
+    "candidate_median_decode_seconds": 6.326074578799307,
+    "candidate_median_decode_tok_s": 20.075640654888495,
+    "median_throughput_change_percent": 0.11545097820979677,
+    "control_ms_per_token": 49.86911884868356,
+    "candidate_ms_per_token": 49.81161085668746,
+    "median_ms_per_token_change": -0.057507991996102445,
+    "paired_throughput_change_percent": [
+      0.13962450153282013,
+      0.10742442594442458,
+      0.09578977392461496,
+      0.07405823531847489,
+      0.14409093113740834,
+      0.1448548027680019,
+      0.17071856175485678
+    ],
+    "positive_pairs": 7,
+    "total_pairs": 7
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "pass": true
+  },
+  "decision": {
+    "retained_runtime": true,
+    "action": "Promote LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE on gfx1151.",
+    "production_topline_pending": "Run tracked-clean selector-unset p512/d128 publication and cached symbol trace.",
+    "peer_backends_changed": false
+  }
+}

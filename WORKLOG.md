@@ -190322,3 +190322,19 @@ Vulkan local sizes verbatim will close the measured gap.
   also passes. Python compilation and diff checks pass.
 - `docs/REFACTOR.md` records the promotion/removal trigger. Production remains
   **20.056756 tok/s**. Next run the seven-pair exact resident p512/d128 gate.
+
+## 2026-07-29 17:36 JST — Retain selected-down parallel-tail runtime
+
+- At tracked-clean `aec0a005d`, seven control/candidate measurements run in
+  counterbalanced order inside one resident model session. Every pair
+  improves; median fixed-horizon decode moves
+  **20.052490 -> 20.075641 tok/s (+0.1155%)**, or
+  **49.869119 -> 49.811611 ms/token (-0.057508 ms)**.
+- Generated IDs `94f803f7...bda32`, next/final tokens 2930/74107, final
+  position 638, deterministic repeats, tracked ownership, and zero-allocation
+  teardown are exact. Raw SHA-256 is `24716745...b9c3e`.
+- Promote `LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE` on gfx1151. The
+  serial natural owner remains registered rollback; peer backends are
+  unchanged. Next run tracked-clean selector-unset production and a cached
+  symbol/resource trace before removing the comparison-only seam. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-retained.json`.
