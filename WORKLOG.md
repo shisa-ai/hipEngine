@@ -190140,3 +190140,15 @@ Vulkan local sizes verbatim will close the measured gap.
   `1c1080ec...0fc`, `6456c69f...bdf4`, `171c52bd...6f5`, and
   `d34ef134...0d4f`; no compiler ran under the profiler. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-production.json`.
+
+## 2026-07-29 16:15 JST — Close tile8 fused-SiLU comparison seam
+
+- The required selector-unset production checkpoint and cached
+  symbol/launch/resource census are complete. Remove the temporary
+  `--compare-selected-tile8-parallel-silu-decode` profile switch, session
+  setter, setter-only test, comparison-contract test, and closed
+  `docs/REFACTOR.md` entry.
+- Retain the architecture capability, resolved constructor/session field,
+  exact fused route, and registered parallel tile8 plus standalone SiLU
+  rollback. Qualified gfx1151 production remains capability-selected;
+  non-natural shapes and peer backends remain unchanged.
