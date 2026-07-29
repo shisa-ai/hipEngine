@@ -1903,9 +1903,13 @@ complete separation, moving **20.411948 -> 20.430138 tok/s
 (+0.08912%, -0.04362 ms/token)** with exact state/lifecycle. gfx1151
 promotes the qualified capability, active-wave replay remains exact rollback,
 comparison plumbing is removed, and peer backends are unchanged. Clean
-selector-unset publication remains next:
+selector-unset production is **20.412363/20.425412/20.429048 tok/s**, median
+**20.425412**, or **+0.05202% / -0.02547 ms/token** over the preceding clean
+packet and **+78.128%** over sprint start. The normal route reports the
+capability active and preserves exact repeated state/lifecycle:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json),
-[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json).
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json),
+[`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
