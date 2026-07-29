@@ -5647,23 +5647,31 @@ The remaining attention sequence is:
     127-transition trace names exactly **4,572 = 36 x 127** local512 calls,
     proving production dispatch. The local384 body remains the exact rollback;
     other backends are unchanged. Tracked-clean selector-unset production is
-    the next publication gate. Evidence:
-    [`local512 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json).
+    **20.550788/20.559001/20.557302 tok/s**, median
+    **20.557302 tok/s** (**48.645 ms/token**): **+0.29510% /
+    -0.14355 ms/token** over the preceding clean packet and **+79.278%** over
+    sprint start. All three runs report the local512 capability active and
+    retain exact trajectory/state/lifecycle. Evidence:
+    [`local512 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json),
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.496816 tok/s** | **48.788 ms** | **+78.751%** |
+| hipEngine current production | **20.557302 tok/s** | **48.645 ms** | **+79.278%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.959 ms/token** | hipEngine is **12.213%** below Vulkan throughput |
+| Remaining wall gap | — | **5.815 ms/token** | hipEngine is **11.954%** below Vulkan throughput |
 
-The producer-max result captures one exact piece of llama.cpp's advantage:
-cooperative work should be computed by the waves that already own the data,
-not replayed by every consumer. The next material gate after its resident
-promotion still requires tensorized QK and PV inside one GQA tile with
-intrinsically higher precision or a cheap independently valid error bound.
+The producer-max and local512 results capture two exact pieces of llama.cpp's
+advantage: cooperative work should be computed by the waves that already own
+the data, and a block should expose enough independent work to cover the
+machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
+cover one logical token each; larger blocks add no score ownership. The next
+bounded exact screen applies this workgroup-size/launch-bound axis to the
+retained global mixed32 body at live513/576/639 before returning to tensorized
+QK/PV.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
@@ -5677,14 +5685,12 @@ measured failures. Packed-BF16 QK dot2 is also closed: its compensated path is
 slower and its one-term path spends far more than the complete quality budget
 for a sub-percent leaf gain.
 
-Scalar ownership is closed around the retained mixed32 point: 24, 32, 36, 40,
-split pair/triple, and whole-GQA owners have all been measured. Stage
-probability caching now supplies the missing exact coupling: each K64 tile's
-identical probabilities are produced concurrently with V loading and reused
-through the already-required barrier, avoiding the three extra barriers that
-rejected P-cache4. The next bounded attention screen transfers that exact
-schedule to the 12 global layers before revisiting any lower-precision
-cooperative-matrix result. On the retained global three-term GQA6/K64 sibling,
+Scalar ownership is closed around the retained mixed32/mixed40 points: 24, 32,
+36, 40, split pair/triple, and whole-GQA owners have all been measured. Stage
+probability caching and pre-normalization now supply the exact coupling in both
+SWA and global attention. The remaining exact scheduling question is whether
+the global body benefits from more waves at unchanged owner count, as SWA did.
+On the retained global three-term GQA6/K64 sibling,
 left-versus-right component association changes thousands of F32 contexts but
 zero gated BF16 bins, while forward-versus-reverse FP64 split merge changes no
 output; both miss all **3/3** known exact BF16 errors. Do not reconstruct the

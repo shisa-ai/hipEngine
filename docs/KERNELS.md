@@ -2001,6 +2001,11 @@ grid40/local512, **VGPR32/SGPR128/LDS25,600/scratch0**. gfx1151 promotes the
 qualified capability; local384 remains exact rollback and peer backends are
 unchanged:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json).
+Tracked-clean selector-unset production is
+**20.550788/20.559001/20.557302 tok/s**, median **20.557302**, or
+**+0.29510% / -0.14355 ms/token** over the preceding clean packet and
+**+79.278%** over sprint start, with exact repeated trajectory/state/lifecycle:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-production.json).
 The exact double-buffer successor is removed at the leaf stop. It reduces
 staged-loop barriers **16 -> 9** but adds **17,152 B** dynamic LDS and narrows
 pair-block next-stage loading to four waves; the byte-exact 9x50 leaf

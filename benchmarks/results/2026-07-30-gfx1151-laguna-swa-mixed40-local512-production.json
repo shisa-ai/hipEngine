@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T05:28:00+09:00",
+  "kind": "hipengine_laguna_swa_mixed40_local512_production",
+  "status": "accepted",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "revision": "4050f3773f91de3d0fb92dcac1d1d233c21e2d43",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "selector_unset": true,
+    "jit_policy": "require_cached after one prebuild outside the measured process",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-swa-mixed40-local512-production.json",
+    "raw_sha256": "3e95ec9d4d214e77a42baf23d92e23752002b6b96193045915cdde5ee5cb8e88"
+  },
+  "timings": {
+    "decode_samples_tok_s": [
+      20.550788052244428,
+      20.559001004773123,
+      20.5573024344362
+    ],
+    "decode_median_tok_s": 20.5573024344362,
+    "decode_median_ms_per_token": 48.64451467741545,
+    "previous_production_tok_s": 20.4968156657,
+    "throughput_change_percent": 0.2951032478543336,
+    "wall_saving_ms_per_token": 0.14355154271603254,
+    "sprint_start_tok_s": 11.466687,
+    "sprint_change_percent": 79.27848239370445
+  },
+  "correctness": {
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "integration": {
+    "capability": "hip_gfx1151.LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "capability_selected_by_production_allocator": true,
+    "fallback": "swa_context_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans",
+    "other_backends_unchanged": true
+  },
+  "comparator": {
+    "same_gguf_llama_cpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llama_cpp_vulkan_ms_per_token": 42.829522,
+    "hipengine_throughput_gap_percent": 11.954056110202249,
+    "hipengine_wall_gap_ms_per_token": 5.814992579073817
+  },
+  "decision": "Accept 20.557302 tok/s as the clean production checkpoint. The exact local512 schedule wins the paired gate and clean publication, is selected without benchmark overrides, and retains local384 as rollback."
+}
