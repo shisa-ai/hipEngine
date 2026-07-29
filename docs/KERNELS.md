@@ -1488,6 +1488,11 @@ VGPR56/SGPR128/static-LDS512/scratch0. gfx1151 selects mixed32 inside the
 qualified GQA2-exp32 route; the 24-block primitive remains registered exact
 rollback. Evidence:
 [`retained global mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-retained.json).
+Tracked-clean selector-unset production on `ab2ea899c` measures
+**19.660256/19.667705/19.670663 tok/s**, median **19.667705**:
+**+0.1917% / -0.0975 ms/token** over the preceding clean packet and
+**+71.520%** over sprint start, with exact repeated state. Evidence:
+[`clean global mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

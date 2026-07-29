@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_global_mixed32_exp32_production",
+  "date": "2026-07-29",
+  "status": "retained_production",
+  "source_revision": "ab2ea899cbe922d8ab8dd70ad477ebdd87123f03",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_rows": 2048,
+    "attention_rows": 2048,
+    "swa_attention_rows": 128
+  },
+  "protocol": {
+    "tracked_clean": true,
+    "comparison_selector_set": false,
+    "require_cached_build": true,
+    "repetitions": 3,
+    "load_seconds_excluded": 87.88920215889812,
+    "global_mixed32_default_active": true
+  },
+  "decode": {
+    "samples_tok_s": [
+      19.660256129690993,
+      19.66770537724997,
+      19.6706631148584
+    ],
+    "median_tok_s": 19.66770537724997,
+    "prior_clean_tok_s": 19.630076,
+    "change_percent": 0.1916924684854493,
+    "wall_change_ms_per_token": -0.09746559896468199,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 71.52038227999044,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "llamacpp_ahead_percent": 18.714311365511605,
+    "wall_gap_ms_per_token": 8.015250121844261
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "final_position": 638,
+    "tracked_returned_to_baseline": true
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-mixed32-production.json",
+  "raw_sha256": "7cddfc4a1ee0c1b927df60e1b588755fae03363b7d0d7666e59b338761383296",
+  "evidence": {
+    "candidate": "benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-retained.json"
+  }
+}
