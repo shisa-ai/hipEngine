@@ -5185,19 +5185,25 @@ The remaining attention sequence is:
     (+0.33313%, -0.16249 ms/token)**. Every row preserves tokens, trajectory,
     final position, repeat determinism, and allocation lifecycle. Promote the
     qualified gfx1151 capability, retain mixed32 as exact rollback, remove the
-    comparison-only CLI/cache seam, and leave peer backends unchanged. Clean
-    selector-unset publication remains next. Evidence:
+    comparison-only CLI/cache seam, and leave peer backends unchanged.
+    Tracked-clean selector-unset production is
+    **20.479107/20.483884/20.498437 tok/s**, median **20.483884**:
+    **+0.28627% / -0.13975 ms/token** over the preceding clean packet and
+    **+78.638%** over sprint start. The normal route reports mixed40 active
+    without a comparison selector and preserves exact repeated
+    trajectory/state/lifecycle. Evidence:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json) ·
-    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json).
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json) ·
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.425412 tok/s** | **48.959 ms** | **+78.128%** |
+| hipEngine current production | **20.483884 tok/s** | **48.819 ms** | **+78.638%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **6.129 ms/token** | hipEngine is **12.519%** below Vulkan throughput |
+| Remaining wall gap | — | **5.989 ms/token** | hipEngine is **12.269%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
