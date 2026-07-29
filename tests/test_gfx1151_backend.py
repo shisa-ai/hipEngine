@@ -866,7 +866,18 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_RAW_K_PREFILL_VARIANT",
         )
-        == "coltile4_rowbatch8"
+        == "coltile"
+    )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
+    ) == frozenset(
+        {
+            ("gguf_q5_k", "bf16_bf16_out", 3072, 12288),
+            ("gguf_q5_k", "bf16_f32_out", 3072, 6144),
+            ("gguf_q5_k", "bf16_f32_out", 3072, 9216),
+            ("gguf_q6_k", "bf16_f32_out", 3072, 9216),
+        }
     )
     assert (
         backend_package_capability(
@@ -902,6 +913,13 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
         )
         is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
+        )
+        == frozenset()
     )
     for quant in ("gguf_q5_k", "gguf_q6_k"):
         for row_batch in (4, 8):

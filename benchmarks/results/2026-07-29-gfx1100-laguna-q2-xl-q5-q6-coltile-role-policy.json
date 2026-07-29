@@ -1,0 +1,325 @@
+{
+  "correctness_lineage": {
+    "coltile2_vs_rowbatch32": "Synthetic BF16/F32 outputs are byte-exact on 17/33-row tails; all 15 actual M512 configurations are exact.",
+    "coltile4_vs_rowbatch32_deep_state": "Prior package promotion is KL0 and bit-exact through all 48 hidden boundaries, full K/V, and KVLiveSpans.",
+    "pair_checks": "All 28 baseline/candidate pairs match token, next-logit bits, complete logits, final hidden, post-layer hidden, and cursor.",
+    "prior_evidence": [
+      "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json",
+      "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json",
+      "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json"
+    ]
+  },
+  "date": "2026-07-29",
+  "decision": "Select exact coltile2_rowbatch16 only for four measured gfx1100 shape keys and keep coltile4_rowbatch8 for every other eligible full-RB32 slab. Remove the public Laguna variant constructor/setter surface; explicit rowbatch remains the generic rollback.",
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_count": 1
+  },
+  "inputs_sha256": {
+    "/tmp/laguna-wpf1t-coltile-actual-m512.json": "78abd31979debc39014358b9d16882d00e81eaa3ae37bb8730591fefaa221c6f",
+    "/tmp/laguna-wpf1t-coltile2-mixed-ab.json": "5e020ae7796535df92aa650f68ea569c07ab18cb40a0dd1f74914ec44d98249a",
+    "/tmp/laguna-wpf1t-coltile2-package-ab.json": "40a5d6cbe256f99ad8f6d0f3f928d03feeb6f561d3343f1c530e7d4f3b08692e"
+  },
+  "kind": "hipengine_laguna_wpf1t_q5_q6_coltile_role_policy",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "performance_claim_scope": "Production-weighted four-role kernel sub-window plus same-resident 512/1K prefill. The canonical clean 169.253/159.229/123.084 tok/s headline is unchanged.",
+  "policy": {
+    "all_other_eligible_shapes": "coltile4_rowbatch8",
+    "explicit_fallback": "rowbatch",
+    "gfx1151_qualified_shapes": [],
+    "package_variant": "coltile",
+    "public_variant_constructor_removed": true,
+    "public_variant_setter_removed": true,
+    "qualified_coltile2_shapes": [
+      [
+        "gguf_q5_k",
+        "bf16_bf16_out",
+        3072,
+        12288
+      ],
+      [
+        "gguf_q5_k",
+        "bf16_f32_out",
+        3072,
+        6144
+      ],
+      [
+        "gguf_q5_k",
+        "bf16_f32_out",
+        3072,
+        9216
+      ],
+      [
+        "gguf_q6_k",
+        "bf16_f32_out",
+        3072,
+        9216
+      ]
+    ]
+  },
+  "production_weighted_leaf_forecast": {
+    "all_outputs_exact": true,
+    "coltile4_family_ms": 1828.7097358703616,
+    "family_reduction_percent": 2.0108930127047993,
+    "harness_sha256": "c1dae09b46c7d7d5a9f67f350ccd5cc4ecfd98865090b0051486b3a6359accd1",
+    "qualified_policy_family_ms": 1791.9363395690918,
+    "qualified_rows": [
+      {
+        "coltile2_event_ms": 19.621388244628907,
+        "coltile4_event_ms": 21.063151550292968,
+        "key": [
+          "gguf_q5_k",
+          "bf16_bf16_out",
+          3072,
+          12288
+        ],
+        "production_invocations": 2,
+        "representative_tensor": "blk.0.ffn_gate.weight",
+        "weighted_savings_ms": 2.883526611328122
+      },
+      {
+        "coltile2_event_ms": 10.583332824707032,
+        "coltile4_event_ms": 10.907672882080078,
+        "key": [
+          "gguf_q5_k",
+          "bf16_f32_out",
+          3072,
+          6144
+        ],
+        "production_invocations": 12,
+        "representative_tensor": "blk.0.attn_q.weight",
+        "weighted_savings_ms": 3.892080688476554
+      },
+      {
+        "coltile2_event_ms": 15.240139770507813,
+        "coltile4_event_ms": 16.071495056152344,
+        "key": [
+          "gguf_q5_k",
+          "bf16_f32_out",
+          3072,
+          9216
+        ],
+        "production_invocations": 35,
+        "representative_tensor": "blk.1.attn_q.weight",
+        "weighted_savings_ms": 29.09743499755857
+      },
+      {
+        "coltile2_event_ms": 10.846514129638672,
+        "coltile4_event_ms": 11.746868133544922,
+        "key": [
+          "gguf_q6_k",
+          "bf16_f32_out",
+          3072,
+          9216
+        ],
+        "production_invocations": 1,
+        "representative_tensor": "blk.47.attn_q.weight",
+        "weighted_savings_ms": 0.9003540039062496
+      }
+    ],
+    "raw_sha256": "78abd31979debc39014358b9d16882d00e81eaa3ae37bb8730591fefaa221c6f",
+    "savings_ms": 36.77339630126949,
+    "source_production_invocations": 381,
+    "source_unique_configurations": 15,
+    "tracked_returned_to_baseline": true
+  },
+  "red_green": {
+    "command": "uv run pytest -q tests/test_gguf_k_rowtile_gemv.py tests/test_laguna_gguf_runner.py tests/test_gfx1151_backend.py tests/test_laguna_long_context_profile.py",
+    "result": "133 passed"
+  },
+  "repo": {
+    "base_revision": "e230f39f8794be0d6f05e66a977f793a3856eea7",
+    "candidate_worktree": true
+  },
+  "same_resident_admission": {
+    "acceptance_policy": "full logits/hidden/cursor exact; both 512/1K median speedups >1.003x; lifecycle exact",
+    "initial_frozen_gate": {
+      "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 /tmp/laguna_wpf1t_coltile2_mixed_ab.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf1t-coltile2-mixed-ab.json",
+      "correctness_passed": true,
+      "harness_sha256": "cbfab7e25ccd3abee91e115b2ef17ab577ec7543497b02bb48f8c94199ac7504",
+      "passed": true,
+      "raw_sha256": "5e020ae7796535df92aa650f68ea569c07ab18cb40a0dd1f74914ec44d98249a",
+      "repo_tracked_clean": true,
+      "rows": {
+        "1024": {
+          "baseline_median_tok_s": 157.15651795979184,
+          "baseline_seconds": [
+            6.41379998694174,
+            6.449465407058597,
+            6.505587846972048,
+            6.515797202009708,
+            6.518058874178678,
+            6.519858703017235,
+            6.526068743085489
+          ],
+          "candidate_median_tok_s": 157.87788733542425,
+          "candidate_seconds": [
+            6.356297557940707,
+            6.453713424038142,
+            6.478459608042613,
+            6.4860254800878465,
+            6.492108999984339,
+            6.500117189949378,
+            6.50400210195221
+          ],
+          "median_paired_change_percent": 0.3997140866612403,
+          "median_speedup": 1.0045901333587512,
+          "pair_count": 7,
+          "pair_wins": 6,
+          "throughput_change_percent": 0.4590133358751247
+        },
+        "512": {
+          "baseline_median_tok_s": 167.54156846633353,
+          "baseline_seconds": [
+            2.9739253050647676,
+            3.0174448639154434,
+            3.0391363170929253,
+            3.0559580209665,
+            3.056227895896882,
+            3.059396227123216,
+            3.0591330900788307
+          ],
+          "candidate_median_tok_s": 168.45394874897306,
+          "candidate_seconds": [
+            2.9687280589714646,
+            3.005426849005744,
+            3.028473983053118,
+            3.039406341034919,
+            3.0459490991197526,
+            3.0461677459534258,
+            3.0497609570156783
+          ],
+          "median_paired_change_percent": 0.35206952740793884,
+          "median_speedup": 1.0054456950056718,
+          "pair_count": 7,
+          "pair_wins": 7,
+          "throughput_change_percent": 0.5445695005671825
+        }
+      },
+      "same_mode_repeat_deterministic": true,
+      "tracked_returned_to_baseline": true
+    },
+    "package_path_repeat": {
+      "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 /tmp/laguna_wpf1t_coltile2_package_ab.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf1t-coltile2-package-ab.json",
+      "correctness_passed": true,
+      "directionally_non_regressive": true,
+      "dispatch_monkeypatch_used_for_candidate": false,
+      "failed_check": "1K median speedup 1.002418x <= 1.003x",
+      "harness_sha256": "45177cdae314be31083df4f84fd27aee4f31e2b8c1b7e58a0be57933d1a1debd",
+      "passed_strict_repeat_threshold": false,
+      "raw_sha256": "40a5d6cbe256f99ad8f6d0f3f928d03feeb6f561d3343f1c530e7d4f3b08692e",
+      "rows": {
+        "1024": {
+          "baseline_median_tok_s": 157.14499081159946,
+          "baseline_seconds": [
+            6.421712673967704,
+            6.463921454967931,
+            6.515436760848388,
+            6.516275159083307,
+            6.52833989309147,
+            6.529082532040775,
+            6.531284539960325
+          ],
+          "candidate_median_tok_s": 157.52489777269028,
+          "candidate_seconds": [
+            6.365525524830446,
+            6.467860177159309,
+            6.492423488991335,
+            6.500559685984626,
+            6.504088023211807,
+            6.510277827037498,
+            6.511095667025074
+          ],
+          "median_paired_change_percent": 0.310068749834147,
+          "median_speedup": 1.0024175569270695,
+          "pair_count": 7,
+          "pair_wins": 6,
+          "throughput_change_percent": 0.2417556927069464
+        },
+        "512": {
+          "baseline_median_tok_s": 167.4094119213616,
+          "baseline_seconds": [
+            2.9776694600004703,
+            3.021421537036076,
+            3.048639265121892,
+            3.0599331450648606,
+            3.0583704591263086,
+            3.0636735251173377,
+            3.0635378709994256
+          ],
+          "candidate_median_tok_s": 168.04903722551006,
+          "candidate_seconds": [
+            2.9741348980460316,
+            3.0064527080394328,
+            3.0384445290546864,
+            3.0480373499449342,
+            3.046729743015021,
+            3.0499893659725785,
+            3.0508344888221473
+          ],
+          "median_paired_change_percent": 0.3902772096982643,
+          "median_speedup": 1.003820724873276,
+          "pair_count": 7,
+          "pair_wins": 7,
+          "throughput_change_percent": 0.38207248732760046
+        }
+      },
+      "same_mode_repeat_deterministic": true,
+      "tracked_returned_to_baseline": true
+    },
+    "pooled_diagnostic_not_acceptance_gate": {
+      "1024": {
+        "baseline": {
+          "median_seconds": 6.516036180546507,
+          "median_tok_s": 157.150754174314,
+          "samples": 14
+        },
+        "candidate": {
+          "median_seconds": 6.492266244487837,
+          "median_tok_s": 157.72612542953118,
+          "samples": 14
+        },
+        "pair_count": 14,
+        "pair_wins": 12,
+        "speedup": 1.0036612694494549,
+        "throughput_change_percent": 0.3661269449454885
+      },
+      "512": {
+        "baseline": {
+          "median_seconds": 3.056092958431691,
+          "median_tok_s": 167.53417090517604,
+          "samples": 14
+        },
+        "candidate": {
+          "median_seconds": 3.042677720077336,
+          "median_tok_s": 168.27283304489654,
+          "samples": 14
+        },
+        "pair_count": 14,
+        "pair_wins": 14,
+        "speedup": 1.004409023757539,
+        "throughput_change_percent": 0.44090237575389324
+      }
+    },
+    "retention_basis": "The frozen admission gate passed. The implementation repeat missed the strict 1K magnitude threshold but remained exact and positive; 26/28 total pairs win and both pooled medians exceed 0.3%. Retention is therefore limited to the four measured keys and the independently positive named kernel sub-window."
+  },
+  "schema": "hipengine.laguna.wpf1t_coltile_role_policy.v1",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "537ba04752ea4915f4fe4c09f2f7070de28ccf5cda62aa8de1357e5378c0ab84",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "52298a42300ad388332af668e355082e0d2125a1382ec5a852979a4a202dc2f3",
+    "hipengine/runtime/gguf_linear.py": "426578e9d3409102fc1fd14366bf002538a8fa3c7a5f4688084794ec2694f9ed",
+    "hipengine/runtime/laguna_gguf_runner.py": "f4832c1cf39e35de73dc8ad4f7ceb7d6d9e971d13790dceb62cb7aa9599a5b2f",
+    "tests/test_gfx1151_backend.py": "d574af9e1542f3d3ebaadccd87c1251e3206c6a0aef93a0d8ed30d84a5e2098f",
+    "tests/test_gguf_k_rowtile_gemv.py": "98be46d405539a3c37fa3f03f349f44daecbe04c6f08fdfaf007804801a99469",
+    "tests/test_laguna_gguf_runner.py": "6c0803afd9e188b06b0e065a4e9dd3299c182381adfe44f624f60bdd6c9879f2"
+  },
+  "status": "retained_shape_policy_borderline_repeat",
+  "temporary_builder_sha256": "78fd4ad8e9a89edefe1ef81fc5a93875931f957d85333aff8d62f929a016e960"
+}

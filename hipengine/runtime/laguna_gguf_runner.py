@@ -1518,12 +1518,11 @@ def resolve_laguna_raw_k_prefill_variant(
         else requested
     )
     variant = str(selected).strip().lower()
-    if variant not in {"rowbatch", "coltile4_rowbatch8"}:
+    if variant not in {"rowbatch", "coltile"}:
         raise ValueError(
-            "Laguna raw-K prefill variant must be 'rowbatch' or "
-            "'coltile4_rowbatch8'"
+            "Laguna raw-K prefill variant must be 'rowbatch' or 'coltile'"
         )
-    if variant == "coltile4_rowbatch8" and not backend_package_capability(
+    if variant == "coltile" and not backend_package_capability(
         backend,
         "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
         False,
@@ -2176,7 +2175,6 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
-        raw_k_prefill_variant: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2325,14 +2323,9 @@ class LagunaGGUFResidentSession:
             self.backend,
             raw_k_prefill_rowbatch,
         )
-        raw_k_variant_request = (
-            "rowbatch"
-            if raw_k_prefill_rowbatch is not None and raw_k_prefill_variant is None
-            else raw_k_prefill_variant
-        )
         self.raw_k_prefill_variant = resolve_laguna_raw_k_prefill_variant(
             self.backend,
-            raw_k_variant_request,
+            "rowbatch" if raw_k_prefill_rowbatch is not None else None,
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2958,14 +2951,6 @@ class LagunaGGUFResidentSession:
             row_batch,
         )
         self.raw_k_prefill_variant = "rowbatch"
-
-    def set_raw_k_prefill_variant(self, variant: str) -> None:
-        """Select exact Q5/Q6 output tiling or the explicit RB32 rollback."""
-
-        self.raw_k_prefill_variant = resolve_laguna_raw_k_prefill_variant(
-            self.backend,
-            variant,
-        )
 
     def set_f16_prefill_mode(self, mode: str) -> None:
         """Select the explicit rows>1 source-F16 projection route."""

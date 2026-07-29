@@ -1340,14 +1340,20 @@ lane improves complete-suite natural-prompt prefill **117.170 -> 118.335 tok/s
 (+0.995%)** but is rejected at maximum KL **0.394600 > 0.05** despite
 **564/576** top-1, deterministic repeats, and positive h16/h32 E2E. Exact
 qrow4-C256 remains the gfx1100 default; the independently owned gfx1151 online
-registrations remain. WPF-1T now promotes exact Q5/Q6
-`coltile4_rowbatch8` as the gfx1100 package default after all 15 actual M512
-configurations are byte-exact/faster and the 381-invocation-weighted kernel sum
-falls **2699.147 -> 1828.710 ms (1.476x, -32.249%)** versus RB32. It traces at
-local128, VGPR72, SGPR50, LDS512, and private0 with zero spills. The no-override
+registrations remain. WPF-1T now promotes an exact Q5/Q6 `coltile` policy as
+the gfx1100 package default after all 15 actual M512 configurations are
+byte-exact/faster and the 381-invocation-weighted `(4,8)` kernel sum falls
+**2699.147 -> 1828.710 ms (1.476x, -32.249%)** versus RB32. It traces at
+local128, VGPR72, SGPR50, LDS512, and private0 with zero spills. Four measured
+`(quant, output, K, N)` keys use `(2,16)` instead, saving another **36.773 ms
+(2.011%)** from that Q5/Q6 family; every other eligible key keeps `(4,8)`. The
+frozen seven-pair ownership gate improves **+0.545%/+0.459%** at 512/1K. A
+package-path repeat remains exact and positive at **+0.382%/+0.242%** but misses
+the repeated 1K `>0.3%` magnitude threshold, so the policy is limited to those
+four keys and does not replace the canonical clean headline. The no-override
 M512 gate is KL0/bit-exact through all 48 boundaries and full K/V spans; the
-same-weight promotion gate improves **131.491/124.949 -> 169.046/157.420 tok/s
-(+28.561%/+25.987%)** at 512/1K. Clean selector-unset publication reaches
+original same-weight promotion improves **131.491/124.949 -> 169.046/157.420
+tok/s (+28.561%/+25.987%)**. Clean selector-unset publication remains
 **169.253/159.229 tok/s (+28.301%/+26.412%)** versus the preceding exact packet;
 cached dense/shared projection and kernel span fall **38.546%/38.875%** and
 **21.893%/20.852%**. Both short rows clear 150 tok/s, and the restored clean 4K

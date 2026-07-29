@@ -116,12 +116,22 @@ LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. WPF-1T's exact constant-accumulator screen admits four adjacent output
-# columns for full RB32 slabs. Explicit rowbatch preserves the preceding exact
-# owner; zero/4/8/16/32 and unsupported output widths remain fallbacks.
+# columns for full RB32 slabs, then qualifies `(2,16)` only for four measured
+# `(quant, output variant, K, N)` configurations. Explicit rowbatch preserves
+# the preceding exact owner; zero/4/8/16/32 and unsupported widths remain
+# fallbacks.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = True
 GGUF_RAW_K_PREFILL_ROWBATCH = 32
 GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = True
-GGUF_RAW_K_PREFILL_VARIANT = "coltile4_rowbatch8"
+GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset(
+    {
+        ("gguf_q5_k", "bf16_bf16_out", 3072, 12288),
+        ("gguf_q5_k", "bf16_f32_out", 3072, 6144),
+        ("gguf_q5_k", "bf16_f32_out", 3072, 9216),
+        ("gguf_q6_k", "bf16_f32_out", 3072, 9216),
+    }
+)
+GGUF_RAW_K_PREFILL_VARIANT = "coltile"
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -190,6 +200,7 @@ __all__ = [
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
     "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",

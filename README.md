@@ -70,8 +70,10 @@ numbers below.
   runtime and benchmark paths.
 - The same Laguna family is supported on W7900/gfx1100 with the
   `UD-Q2_K_XL` GGUF. Its exact matrix512/attention128 prefill default combines
-  four-output/eight-row Q5/Q6 tiling, pair16 grouped IQ gate/up/down, and
-  adjacent-row qrow4 SWA after a measured C256 crossover. Clean
+  role-qualified Q5/Q6 output tiling, pair16 grouped IQ gate/up/down, and
+  adjacent-row qrow4 SWA after a measured C256 crossover. Four measured
+  `(quant, output, K, N)` keys use two-output/sixteen-row geometry; every other
+  eligible key keeps four-output/eight-row geometry. Clean
   package-resolved throughput is **169.253/159.229/123.084 tok/s** at
   512/1K/4K; the short rows improve **+28.301%/+26.412%** over the preceding
   exact packet. Full logits, all 48 hidden boundaries, routing prefixes,
@@ -79,7 +81,8 @@ numbers below.
   M512 gate; 4K IDs, positions, repeats, and lifecycle are deterministic. The
   150-tok/s short gate and restored 4K gate pass, while 16K+ stays closed below
   the 800/700 512/4K stretch target
-  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json)).
+  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
+  [role policy](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted

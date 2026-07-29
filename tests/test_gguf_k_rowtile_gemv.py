@@ -196,15 +196,16 @@ def test_raw_k_prefill_rowbatch16_32_are_not_aliased_to_gfx1151() -> None:
                         f"rowbatch{row_batch}_bf16_{output_dtype}_out",
                     )
                 )
-        for output_dtype in ("bf16", "f32"):
-            assert not is_registered(
-                KernelKey(
-                    "hip_gfx1151",
-                    "linear",
-                    quant,
-                    f"coltile4_rowbatch8_bf16_{output_dtype}_out",
+        for col_tile, row_batch in ((2, 16), (4, 8)):
+            for output_dtype in ("bf16", "f32"):
+                assert not is_registered(
+                    KernelKey(
+                        "hip_gfx1151",
+                        "linear",
+                        quant,
+                        f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
+                    )
                 )
-            )
 
 
 def test_raw_k_prefill_rowbatch_dispatch_is_exactly_scoped() -> None:
@@ -302,6 +303,12 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
         _raw_k_prefill_rowbatch_dispatch,
     )
 
+    qualified = {
+        ("gguf_q5_k", "bf16_bf16_out", 12288),
+        ("gguf_q5_k", "bf16_f32_out", 6144),
+        ("gguf_q5_k", "bf16_f32_out", 9216),
+        ("gguf_q6_k", "bf16_f32_out", 9216),
+    }
     for quant in ("gguf_q5_k", "gguf_q6_k"):
         for output_dtype in ("bf16", "f32"):
             base = GGUFLinearDispatch(
@@ -313,18 +320,36 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
                 ),
                 "raw",
             )
-            selected = _raw_k_prefill_rowbatch_dispatch(
+            for out_features in (72, 6144, 9216, 12288):
+                selected = _raw_k_prefill_rowbatch_dispatch(
+                    base,
+                    rows=512,
+                    in_features=3072,
+                    out_features=out_features,
+                    row_batch=32,
+                    variant="coltile",
+                )
+                geometry = (
+                    "coltile2_rowbatch16"
+                    if (quant, f"bf16_{output_dtype}_out", out_features) in qualified
+                    else "coltile4_rowbatch8"
+                )
+                assert selected.key.variant == (
+                    f"{geometry}_bf16_{output_dtype}_out"
+                )
+                assert selected.abi == "raw"
+
+            other_k = _raw_k_prefill_rowbatch_dispatch(
                 base,
                 rows=512,
-                in_features=3072,
-                out_features=72,
+                in_features=3328,
+                out_features=9216,
                 row_batch=32,
-                variant="coltile4_rowbatch8",
+                variant="coltile",
             )
-            assert selected.key.variant == (
+            assert other_k.key.variant == (
                 f"coltile4_rowbatch8_bf16_{output_dtype}_out"
             )
-            assert selected.abi == "raw"
 
             for row_batch, out_features in ((16, 72), (32, 73)):
                 fallback = _raw_k_prefill_rowbatch_dispatch(
@@ -333,7 +358,7 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
                     in_features=3072,
                     out_features=out_features,
                     row_batch=row_batch,
-                    variant="coltile4_rowbatch8",
+                    variant="coltile",
                 )
                 assert fallback.key.variant == (
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out"
@@ -355,7 +380,7 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
             in_features=3072,
             out_features=72,
             row_batch=32,
-            variant="coltile4_rowbatch8",
+            variant="coltile",
         )
         is unsupported
     )
@@ -375,8 +400,8 @@ def test_raw_k_prefill_rowbatch_session_is_nested_and_fail_closed() -> None:
         assert raw_k_prefill_rowbatch() == 32
         with raw_k_prefill_rowbatch_session(16):
             assert raw_k_prefill_rowbatch() == 16
-        with raw_k_prefill_variant_session("coltile4_rowbatch8"):
-            assert raw_k_prefill_variant() == "coltile4_rowbatch8"
+        with raw_k_prefill_variant_session("coltile"):
+            assert raw_k_prefill_variant() == "coltile"
         assert raw_k_prefill_rowbatch() == 32
         assert raw_k_prefill_variant() == "rowbatch"
     assert raw_k_prefill_rowbatch() == 0
@@ -488,7 +513,7 @@ def test_launch_gguf_linear_honors_raw_k_prefill_coltile_session() -> None:
     try:
         with (
             raw_k_prefill_rowbatch_session(32),
-            raw_k_prefill_variant_session("coltile4_rowbatch8"),
+            raw_k_prefill_variant_session("coltile"),
         ):
             launch_gguf_linear(
                 weight,
