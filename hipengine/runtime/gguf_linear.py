@@ -133,7 +133,7 @@ _RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset({"gguf_q5_k", "gguf_q6_k"})
 _RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
 )
-_RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile4_rowbatch8"})
+_RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile"})
 _raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
     "raw_k_prefill_rowbatch",
     default=0,
@@ -660,9 +660,7 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
 
     selected = str(variant).strip().lower()
     if selected not in _RAW_K_PREFILL_VARIANTS:
-        raise ValueError(
-            "raw-K prefill variant must be 'rowbatch' or 'coltile4_rowbatch8'"
-        )
+        raise ValueError("raw-K prefill variant must be 'rowbatch' or 'coltile'")
     token = _raw_k_prefill_variant.set(selected)
     try:
         yield
@@ -743,7 +741,7 @@ def _raw_k_prefill_rowbatch_dispatch(
     output_variant = dispatch.key.variant[len("prefill_") :]
     selected_variant = f"rowbatch{selected}_{output_variant}"
     if (
-        geometry == "coltile4_rowbatch8"
+        geometry == "coltile"
         and selected == 32
         and out_features % 4 == 0
         and backend_package_capability(
@@ -752,7 +750,23 @@ def _raw_k_prefill_rowbatch_dispatch(
             False,
         )
     ):
-        selected_variant = f"coltile4_rowbatch8_{output_variant}"
+        shape_key = (
+            dispatch.key.quant,
+            output_variant,
+            int(in_features),
+            int(out_features),
+        )
+        coltile2_shapes = backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
+            frozenset(),
+        )
+        geometry = (
+            "coltile2_rowbatch16"
+            if shape_key in coltile2_shapes
+            else "coltile4_rowbatch8"
+        )
+        selected_variant = f"{geometry}_{output_variant}"
     return GGUFLinearDispatch(
         KernelKey(
             dispatch.key.backend,

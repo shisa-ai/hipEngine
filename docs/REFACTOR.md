@@ -30,16 +30,20 @@ should be removed or collapsed.
   now satisfied: remove rowbatch4/16 and their explicit CLI/registry surface in
   a separate cleanup unit because no retained end-to-end policy selects either.
   Preserve scalar registered fallback for unsupported shapes/backends.
-- WPF-1T adds `raw_k_prefill_variant=rowbatch|coltile4_rowbatch8` and promotes
-  exact `(4,8)` through the gfx1100 package. It applies only to full RB32 slabs
-  with output width divisible by four; explicit `rowbatch`, smaller slabs, and
-  unsupported widths keep RB32. The no-override M512 state gate is KL0 across
-  all 48 boundaries/KV spans, clean 512/1K publishes **169.253/159.229 tok/s**,
-  and the restored 4K gate passes at **123.084 tok/s**. Those publication
-  triggers are satisfied. Keep the variant seam only through one bounded
-  decision on whether `(2,16)` owns its four faster actual configurations.
-  Then remove any unowned `(2,16)` wrappers/keys and collapse benchmark-only
-  setter surface; retain RB32 as the required generic exact fallback.
+- WPF-1T first promoted exact `(4,8)` through the gfx1100 package for full
+  RB32 slabs with output width divisible by four. The no-override M512 state
+  gate is KL0 across all 48 boundaries/KV spans, clean 512/1K publishes
+  **169.253/159.229 tok/s**, and restored 4K passes at **123.084 tok/s**.
+  The bounded `(2,16)` decision is now complete: exactly four
+  `(quant, output, K, N)` keys save **36.773 ms (2.011%)** from the 381-call
+  Q5/Q6 family. The frozen seven-pair gate passes **+0.545%/+0.459%** at
+  512/1K; a package-path repeat remains exact and positive at
+  **+0.382%/+0.242%** but misses the repeated 1K `>0.3%` magnitude threshold.
+  Keep `(2,16)` only for those four measured keys and `(4,8)` everywhere else;
+  pooled 14-pair diagnostics are **+0.441%/+0.366%** with **14/14** and
+  **12/14** wins. The benchmark-only Laguna variant constructor/setter surface
+  is removed; explicit rowbatch selection still restores RB32. The internal
+  context-local `coltile` owner remains necessary to scope production dispatch.
 
 ## Laguna prefill matrix-capacity selector
 

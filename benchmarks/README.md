@@ -2,9 +2,9 @@
 
 Last updated: **2026-07-29**
 
-The current W7900 Laguna UD-Q2_K_XL prefill packet is
+The canonical clean W7900 Laguna UD-Q2_K_XL prefill packet is
 [`2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json).
-Exact matrix512/attention128 now reuses each BF16 activation load across four
+Exact matrix512/attention128 reuses each BF16 activation load across four
 adjacent Q5/Q6 output columns and eight rows while retaining pair16 grouped IQ
 gate/up/down plus the C256-qualified exact qrow4 SWA policy. Clean
 package-resolved publication moves the preceding exact packet
@@ -20,6 +20,19 @@ local128/VGPR72/SGPR50/LDS512/private0 with zero spills; explicit RB32,
 unsupported widths, smaller slabs, and gfx1151 remain exact fallbacks. Both
 short rows exceed 150 tok/s and 4K is now measured; 16K+ stays closed below the
 800/700 512/4K stretch gate.
+
+A post-publication exact
+[`role-qualified coltile policy`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)
+selects two-output/sixteen-row geometry for only four measured
+`(quant, output, K, N)` keys and leaves every other eligible key on the traced
+four-output/eight-row body. This reduces the 381-call Q5/Q6 family
+**1828.710 -> 1791.936 ms (-2.011%, -36.773 ms)**. Its frozen seven-pair gate
+improves 512/1K **167.542/157.157 -> 168.454/157.878 tok/s
+(+0.545%/+0.459%)** with exact outputs; the package-path repeat remains exact
+and positive at **+0.382%/+0.242%** but misses the repeated 1K `>0.3%`
+magnitude threshold. The policy is therefore limited to those four keys, the
+public variant constructor/setter is removed, RB32 remains fallback, and the
+canonical clean headline above is unchanged.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

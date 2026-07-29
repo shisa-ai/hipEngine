@@ -477,10 +477,16 @@ The weighted RB32/`(2,16)`/`(4,8)` sums are **2699.147/2220.526/1828.710 ms**;
 It compiles at local128/VGPR72/SGPR50/LDS512/private0 with zero spills; RB32 is
 VGPR73/SGPR107/LDS1024/private0 with 14 Q5 / 5 Q6 SGPR spills. Cached tracing
 names all eight quant/dtype/geometry instantiations at plausible 13.52-23.64 us
-on the tail fixture and spawns no compiler. gfx1100 now exports `(4,8)` as the
-package variant for divisible-by-four full RB32 slabs; explicit `rowbatch`,
-smaller slabs, unsupported widths, and gfx1151 remain exact fallbacks. A
-no-override natural M512 gate is KL0/bit-exact through all 48 hidden boundaries
+on the tail fixture and spawns no compiler. gfx1100 exports a package-owned
+`coltile` shape policy for divisible-by-four full RB32 slabs. Exactly four
+`(quant, output, K, N)` keys select `(2,16)`, reducing the all-`(4,8)` weighted
+family **1828.710 -> 1791.936 ms (-2.011%)**; every other eligible key keeps
+`(4,8)`. The frozen seven-pair gate improves **+0.545%/+0.459%** at 512/1K. A
+package-path repeat remains exact and positive at **+0.382%/+0.242%** but misses
+the repeated 1K `>0.3%` magnitude threshold, so no broader shape owns
+`(2,16)`. Explicit `rowbatch`, smaller slabs, unsupported widths, and gfx1151
+remain exact fallbacks. The public Laguna variant constructor/setter is removed.
+A no-override natural M512 gate is KL0/bit-exact through all 48 hidden boundaries
 and full K/V/`KVLiveSpans`. Same-weight rotating 512/1K promotion improves
 **131.491/124.949 -> 169.046/157.420 tok/s (+28.561%/+25.987%)**, with every
 pair/repeat exact and lifecycle recovery. Clean selector-unset publication
@@ -493,7 +499,8 @@ allocation recovery. The 150-tok/s short gate passes, but 16K+ remains closed
 below the 800/700 512/4K stretch gate. Evidence:
 [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) ·
 [`WPF-1T default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) ·
-[`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json).
+[`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
+[`WPF-1T role policy`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json).
 
 The existing explicit P6 signed-byte IQ2 MMQ32 primitive is now rejected as a
 Laguna runtime after actual M512 repricing. Over all 46 IQ2 gate/up layers its
