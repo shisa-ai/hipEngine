@@ -1903,7 +1903,22 @@ Tracked-clean selector-unset production is
 **20.489386/20.496816/20.498178 tok/s**, median **20.496816**, with exact
 trajectory/state/lifecycle:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-production.json).
-The following clean 127-transition census measures **721 compute + 5
+The post-promotion 127-transition census measures **46.910112 ms/token**
+kernel sum, **49.119568 ms/token** dispatch span, and
+**2.746352 ms/token** attention =
+**1.754009 SWA + 0.992343 global**. Relative to the post-mixed40 checkpoint,
+global falls another **1.197%** while SWA stays flat. Same-GGUF Vulkan remains
+at **0.909423 ms/token** attention, leaving **1.836929 ms/token**, or
+**30.83%** of the total production wall gap:
+[`post-prenorm census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-prenorm-wall-reprofile.json).
+An explicit one-reciprocal-per-query SWA diagnostic proves final division is
+not that gap: removing **9,144** output-lane divisions improves the leaf only
+**0.391%**, changes F32 context bits, and estimates just
+**0.00525 ms/token** across 36 layers. It is removed before resident or
+quality gating:
+[`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-reciprocal-normalize-rejected.json).
+The preceding post-vector-probability 127-transition census measured
+**721 compute + 5
 runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and
 **3.023432 ms/token** attention. Global falls
 **1.110485 -> 1.005649 ms/token (-9.441%)** while SWA remains

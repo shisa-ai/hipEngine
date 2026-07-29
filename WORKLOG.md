@@ -191908,3 +191908,39 @@ Vulkan local sizes verbatim will close the measured gap.
   throughput. Add the selected pre-normalization capability to future
   long-context profile protocol records. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-production.json`.
+
+## 2026-07-30 04:35 JST — Re-profile post-pre-normalization decode
+
+- From tracked-clean `df3f6cfd8`, run one require-cached two-queue
+  `rocprofv3 --kernel-trace` p512/d128 process. No compiler runs under the
+  profiler; the 127 decode transitions retain the exact trajectory and
+  lifecycle.
+- Median kernel sum/span are **46.910112/49.119568 ms/token**. Attention is
+  **2.746352 ms/token = 1.754009 SWA + 0.992343 global**. Relative to the
+  post-mixed40 census, global falls **1.197%** and SWA is flat.
+- Same-GGUF llama.cpp Vulkan remains **0.909423 ms/token** attention. The
+  residual attention gap is **1.836929 ms/token**, or **30.83%** of the
+  complete **5.958544-ms/token** production wall gap. Source-F16, selected
+  gate/up, selected down, and dense/shared measure
+  **24.037891/8.371274/4.795802/3.521736 ms/token**.
+- Trace/child SHA-256 values are `21bb9e8f...f9be` /
+  `5a99cb19...e914`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-global-prenorm-wall-reprofile.json`.
+
+## 2026-07-30 04:37 JST — Reject SWA reciprocal final normalization
+
+- Audit llama.cpp's online-softmax normalization against the retained
+  saturated SWA body. Test the transferable scalar seam: on the final K64
+  stage, the existing denominator producer computes and publishes one
+  reciprocal per query before the existing barrier; 128 output dimensions
+  multiply instead of dividing.
+- This changes divisions per launch **9,216 -> 72** without a new launch,
+  barrier, or allocation. The 9x50 leaf improves only
+  **0.037304 -> 0.037159 ms (-0.391%)**, about
+  **0.00525 ms/token** across all 36 SWA layers.
+- F32 context changes by at most **1.86e-9**; the fixture's gated BF16 remains
+  byte-identical. The gain is far below the material gate for a new numerical
+  surface, so stop before trace/resident/recurrent-quality work and remove the
+  kernel, symbol, wrapper, registry, and harness selector. Raw SHA-256 is
+  `769a313b...c456c`. Production remains **20.496816 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-reciprocal-normalize-rejected.json`.
