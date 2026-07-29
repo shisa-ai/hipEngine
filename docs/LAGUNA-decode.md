@@ -5195,6 +5195,23 @@ The remaining attention sequence is:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-production.json).
+50. Re-profile the mixed40 wall before changing the body. **Complete:** the
+    tracked-clean 127-transition trace still has **721 compute
+    dispatches/token**. SWA falls **2.017783 -> 1.757218 ms/token
+    (-12.913%)**, total attention falls **3.023432 -> 2.761582 ms/token
+    (-8.661%)**, kernel sum falls **47.174209 -> 46.893051 ms/token
+    (-0.596%)**, and kernel span falls **50.598383 -> 49.116885 ms/token
+    (-2.928%)**. Global attention and all major projection families remain
+    flat.
+
+    Same-GGUF Vulkan remains at **0.909423 ms/token** attention. The exact
+    attention gap is now **1.852159 ms/token**, **30.92%** of the current
+    **5.989-ms/token** production wall gap, and hipEngine attention is
+    **3.04x** the comparator. Keep the 40-block geometry and next move
+    probability generation onto otherwise-idle tail waves while idle waves
+    8/9 retain denominator replay; this preserves the complete arithmetic
+    sequence while removing producer work from the PV-owner waves. Evidence:
+    [`post-mixed40 census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json).
 
 Current exact decode checkpoint:
 

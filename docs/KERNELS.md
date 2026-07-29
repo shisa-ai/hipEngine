@@ -1928,6 +1928,11 @@ preceding clean packet and **+78.638%** over sprint start:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-production.json).
+The subsequent tracked-clean 127-transition trace measures the complete
+transfer: SWA falls **2.017783 -> 1.757218 ms/token (-12.913%)**, total
+attention falls **3.023432 -> 2.761582 ms/token (-8.661%)**, and kernel span
+falls **2.928%**. Keep mixed40 geometry for the next body-scheduling screen:
+[`post-mixed40 census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
