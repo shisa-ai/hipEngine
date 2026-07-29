@@ -33,7 +33,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
     resolve_laguna_moe_branch_concurrency,
-    resolve_laguna_q5_f32_ordered_prefill,
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
@@ -1181,12 +1180,10 @@ def test_laguna_q5_f32_ordered_prefill_is_default_on_gfx1100_only() -> None:
         ("f32", 3072, 6144): "coltile16_rowbatch4",
         ("f32", 3072, 9216): "coltile4_rowbatch16",
     }
-    assert resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100")
-    assert resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100", True)
-    assert not resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100", False)
-    with pytest.raises(ValueError, match="not supported"):
-        resolve_laguna_q5_f32_ordered_prefill("hip_gfx1151", True)
-    assert "use_q5_f32_ordered_prefill" in signature(
+    assert runner_module._resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100")
+    assert not runner_module._resolve_laguna_q5_f32_ordered_prefill("hip_gfx1151")
+    assert "resolve_laguna_q5_f32_ordered_prefill" not in runner_module.__all__
+    assert "use_q5_f32_ordered_prefill" not in signature(
         runner_module.LagunaGGUFResidentSession
     ).parameters
 

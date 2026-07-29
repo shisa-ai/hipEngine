@@ -1618,11 +1618,8 @@ def resolve_laguna_raw_k_prefill_variant(
     return variant
 
 
-def resolve_laguna_q5_f32_ordered_prefill(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve the package-default exact ordered-Q5 route or reject a policy miss."""
+def _resolve_laguna_q5_f32_ordered_prefill(backend: str) -> bool:
+    """Resolve the stabilized package-default exact ordered-Q5 route."""
 
     selected = bool(
         backend_package_capability(
@@ -1630,8 +1627,6 @@ def resolve_laguna_q5_f32_ordered_prefill(
             "GGUF_Q5_F32_ORDERED_PREFILL",
             False,
         )
-        if requested is None
-        else requested
     )
     policy = backend_package_capability(
         backend,
@@ -2296,7 +2291,6 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
-        use_q5_f32_ordered_prefill: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2449,11 +2443,8 @@ class LagunaGGUFResidentSession:
             self.backend,
             "rowbatch" if raw_k_prefill_rowbatch is not None else None,
         )
-        self.use_q5_f32_ordered_prefill = (
-            resolve_laguna_q5_f32_ordered_prefill(
-                self.backend,
-                use_q5_f32_ordered_prefill,
-            )
+        self._q5_f32_ordered_prefill_enabled = (
+            _resolve_laguna_q5_f32_ordered_prefill(self.backend)
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2837,7 +2828,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
-                use_q5_f32_ordered=self.use_q5_f32_ordered_prefill,
+                use_q5_f32_ordered=self._q5_f32_ordered_prefill_enabled,
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -2863,7 +2854,7 @@ class LagunaGGUFResidentSession:
                 config,
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
-                use_q5_f32_ordered=self.use_q5_f32_ordered_prefill,
+                use_q5_f32_ordered=self._q5_f32_ordered_prefill_enabled,
             )
             self.prefill_scratch_admission_nbytes = max(
                 DEFAULT_LAGUNA_SCRATCH_BYTES,
@@ -2968,7 +2959,7 @@ class LagunaGGUFResidentSession:
                 max_rows=self.prefill_chunk_size,
                 runtime=self.runtime,
             )
-            if self.use_q5_f32_ordered_prefill:
+            if self._q5_f32_ordered_prefill_enabled:
                 assert self.libraries.q5_f32_ordered is not None
                 self.q5_f32_ordered_scratch = (
                     LagunaQ5F32OrderedScratch.allocate(
@@ -5643,7 +5634,6 @@ __all__ = [
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
-    "resolve_laguna_q5_f32_ordered_prefill",
     "resolve_laguna_raw_k_prefill_rowbatch",
     "resolve_laguna_raw_k_prefill_variant",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",

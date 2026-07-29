@@ -56,13 +56,13 @@ should be removed or collapsed.
   selector-unset checkpoint publishes **184.997/172.104/131.496 tok/s** through
   4K, **+3.166%/+2.941%/+1.944%** over H5D. This is retained production, not a
   rejected experiment.
-- H5E satisfies the named rollback checkpoint. In the next separate cleanup
-  unit, remove the public
-  `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=...)` boolean and
-  explicit resolver override. Retain the package role map, context-local bounded
-  owner, registered unfused producer/consumer chain, and raw-coltile miss
-  fallback required by policy. Use explicit package-policy mutation only in
-  benchmark harnesses that still require an exact A/B control.
+- Cleanup completed immediately after the H5E checkpoint: remove the public
+  `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=...)` boolean, rename the
+  resolver as a private package-only helper, and remove it from `__all__`.
+  Retain the package role map, context-local bounded owner, registered unfused
+  producer/consumer chain, and raw-coltile miss fallback required by policy.
+  Benchmark harnesses use scoped package-policy mutation for exact A/B control;
+  production has no per-session selector surface.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 

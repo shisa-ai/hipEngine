@@ -137,7 +137,7 @@ GGUF_RAW_K_PREFILL_VARIANT = "coltile"
 # H5E doubles output ownership on six role-qualified geometries, reducing the
 # producer-inclusive weighted Q5 family another 12.32% by events / 7.52% by
 # synchronized wall while remaining byte-exact. Every key/backend/row/capacity
-# miss retains raw coltile; explicit False is rollback.
+# miss retains raw coltile; benchmark A/B uses scoped package-policy mutation.
 GGUF_Q5_F32_ORDERED_PREFILL = True
 GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ("bf16", 3072, 1024): "coltile8_rowbatch4",
