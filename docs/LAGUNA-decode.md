@@ -5523,7 +5523,7 @@ The remaining attention sequence is:
     for singleton owners. Production remains **20.494732 tok/s**. Evidence:
     [`singleton direct-PV rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-singleton-direct-pv-rejected.json).
 66. Normalize each global probability once before its 128-lane PV replay.
-    **Exact primitive admitted; resident gate pending:** the retained global
+    **Retained and promoted on gfx1151:** the retained global
     path stores each exponential plus one reciprocal, then all 128 output
     lanes repeat the same FP32 multiplication. The new registered sibling
     performs that identical multiply once per probability in LDS and adds one
@@ -5537,11 +5537,17 @@ The remaining attention sequence is:
     grid8192/local256, VGPR48, SGPR128, static-LDS512, and scratch0; no
     compiler runs under profiling.
 
-    Retain the separately registered primitive and next gate only the 12
-    global decode layers in seven counterbalanced actual-model p512/d128
-    pairs. Production remains **20.494732 tok/s** until that gate passes.
+    Seven counterbalanced actual-model p512/d128 pairs move the 12-global-layer
+    decode median **20.501353 -> 20.503954 tok/s (+0.01269%)**, saving
+    **0.00619 ms/token** by independent medians. The candidate wins **5/7**
+    pairs with a median paired saving of **0.00558 ms/token**; every pair
+    preserves the same generated-state SHA, tokens, position, and lifecycle.
+    gfx1151 now selects the qualified capability, other backends remain
+    unchanged, and the prior exact probability replay remains the fallback.
+    A clean production packet is the next checkpoint.
     Evidence:
-    [`global probability pre-normalization primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json).
+    [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json),
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json).
 
 Current exact decode checkpoint:
 

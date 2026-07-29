@@ -191874,3 +191874,22 @@ Vulkan local sizes verbatim will close the measured gap.
   12-global-layer p512/d128 gate. Production remains
   **20.494732 tok/s** pending that result. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json`.
+
+## 2026-07-30 04:18 JST — Promote exact global probability pre-normalization
+
+- Gate only the 12 global decode layers in seven counterbalanced actual-model
+  p512/d128 pairs. Control/candidate medians are
+  **20.501353 -> 20.503954 tok/s (+0.01269%)**, or
+  **-0.00619 ms/token** by independent medians. The candidate wins **5/7**
+  pairs; median paired saving is **0.00558 ms/token**.
+- All fourteen samples generate the identical 128-token state
+  (`94f803f7...bda32`), token **2930 -> 74107**, final position **638**, and
+  tracked allocations return to zero. Raw artifact SHA-256 is
+  `a56c842e...34de`.
+- Promote a gfx1151-only capability through the Laguna KV allocator and exact
+  split-attention selector. The preceding probability-vec4 key remains the
+  fallback; gfx1100 and unsupported backends do not inherit the route. Remove
+  the temporary registry-replacement benchmark plumbing.
+- Focused selection/fallback and cached GPU eviction-oracle tests each pass
+  (**1 passed** apiece). Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json`.
