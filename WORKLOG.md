@@ -190616,3 +190616,31 @@ Vulkan local sizes verbatim will close the measured gap.
   pattern against the retained +16,+8,+4,+2,+1 scalar QK association.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-exact-attention-core-audit.json`.
+
+## 2026-07-29 20:28 JST — Admit exact global DPP-QK primitive
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before reports because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+  This screen reuses the already in-tree exact DPP pattern from
+  `quant/gguf_iq_gemv.hip`; it does not copy an external parent.
+- RED: the focused global live513/576/639 eviction test fails importing the
+  absent DPP wrapper. GREEN: add a separately registered mixed32 producer-max
+  sibling that preserves the scalar four-FMA QK body and retained
+  **+16,+8,+4,+2,+1** F32 addition tree while replacing only shuffle
+  transport with `permlanex16` plus DPP moves. The focused test passes with
+  F32 context and BF16 gated output byte-exact at every shape, including
+  explicit position-200 eviction.
+- Cached 9x50 leaves improve
+  **0.073112 -> 0.062502 ms (-14.51%)**,
+  **0.079892 -> 0.074258 ms (-7.05%)**, and
+  **0.087375 -> 0.081498 ms (-6.73%)**. Raw SHA-256 is
+  `a1c58254...8ffcb`.
+- Cache-only tracing names the intended
+  `<2,64,true,true,true,true,true,true,false,true>` kernel at grid8192/
+  local256, VGPR48/SGPR128/LDS512/scratch0. The trace CSV SHA-256 is
+  `17abe248...8e278`; no compiler ran under the profiler.
+- Retain the primitive and harness seam only. Production remains
+  **20.069608 tok/s**. Next wire a default-off global-only selector and
+  require exact generated state plus a positive actual 12-layer result.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json`.

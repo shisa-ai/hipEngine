@@ -1686,6 +1686,16 @@ Tracked-clean selector-unset production on `ab2ea899c` measures
 **+0.1917% / -0.0975 ms/token** over the preceding clean packet and
 **+71.520%** over sprint start, with exact repeated state. Evidence:
 [`clean global mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json).
+The mixed32 producer-max owner now also has a separately registered exact
+DPP-QK sibling. It preserves the scalar four-FMA QK body and the retained
+**+16,+8,+4,+2,+1** F32 tree, replacing only `ds_bpermute` shuffle transport
+with `permlanex16` plus DPP moves. The live513/576/639 eviction oracle is
+F32/BF16 byte-exact, while cached 9x50 leaves improve
+**14.51%/7.05%/6.73%**. Cache-only tracing names the intended local256/
+grid8192 body at VGPR48/SGPR128/LDS512/scratch0. The primitive is retained
+without changing production; a default-off full-model selector is the next
+gate. Evidence:
+[`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

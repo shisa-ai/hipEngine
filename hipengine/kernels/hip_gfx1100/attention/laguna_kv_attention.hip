@@ -1293,6 +1293,38 @@ void laguna_global_attention_split_exact_gated_fixedshape_reduce_kernel(
 // keeps all 48 local256 workgroups and the fixed-shape reducer's eight-wave
 // token partition/softmax merge order, then uses four dimension waves.
 // Dynamic LDS scales with the live scan rather than the 4096-slot capacity.
+__device__ inline float laguna_permlanex16_f32(float value) {
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_permlanex16(
+      data.bits, data.bits, 0x76543210U, 0xFEDCBA98U, false, false);
+  return data.value;
+}
+
+template <int kDppControl>
+__device__ inline float laguna_dpp_move_f32(float value) {
+  union FloatBits {
+    float value;
+    int bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_mov_dpp(
+      data.bits, kDppControl, 0xF, 0xF, true);
+  return data.value;
+}
+
+__device__ inline float laguna_reduce_wave32_dpp_exact_tree(float value) {
+  value += laguna_permlanex16_f32(value);
+  value += laguna_dpp_move_f32<0x108>(value);
+  value += laguna_dpp_move_f32<0x104>(value);
+  value += laguna_dpp_move_f32<0x102>(value);
+  value += laguna_dpp_move_f32<0x101>(value);
+  return value;
+}
+
 template <
     int kOwnedQueries,
     int kValueStage,
@@ -1302,7 +1334,8 @@ template <
     bool kSoftmaxExp32 = false,
     bool kMixed32Owners = false,
     bool kProducerMax = false,
-    bool kWmmaThreeTermQk = false>
+    bool kWmmaThreeTermQk = false,
+    bool kDppQkReduction = false>
 __global__ __launch_bounds__(256)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1502,8 +1535,12 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
             acc += query_values[q_local][item] * key_values[item];
           }
         }
-        for (int offset = 16; offset > 0; offset >>= 1) {
-          acc += __shfl_down(acc, offset);
+        if constexpr (kDppQkReduction) {
+          acc = laguna_reduce_wave32_dpp_exact_tree(acc);
+        } else {
+          for (int offset = 16; offset > 0; offset >>= 1) {
+            acc += __shfl_down(acc, offset);
+          }
         }
         if (lane == 0) {
           const float score =
@@ -7137,6 +7174,85 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_produce
           true,
           true,
           true,
+          true>),
+      dim3(32),
+      dim3(256),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * scan_slots) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
           true>),
       dim3(32),
       dim3(256),
