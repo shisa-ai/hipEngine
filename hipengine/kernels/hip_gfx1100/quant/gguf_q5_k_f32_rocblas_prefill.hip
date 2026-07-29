@@ -1,9 +1,9 @@
-// Exact-value raw Q5_K to F32 expansion for transient rocBLAS SGEMM.
+// Exact-value raw Q5_K/Q6_K to F32 expansion for transient ordered prefill.
 //
-// The dequantized plane is caller-owned projection-local scratch.  This keeps
-// hipEngine's resident BF16 activation values and the established raw-Q5 F32
-// scale/min expression; only the downstream SGEMM reduction association may
-// differ from the exact coltile fallback.  No persistent weight sidecar exists.
+// The dequantized plane is caller-owned projection-local scratch. Q5 preserves
+// its raw scale/min expression and Q6 forms the signed integer scale*quant
+// product before the single F32 super-scale multiply. Ordered consumers retain
+// the exact coltile association; no persistent weight sidecar exists.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
@@ -14,7 +14,9 @@ using half_t = _Float16;
 
 constexpr int QK_K = 256;
 constexpr int Q5_K_BLOCK_BYTES = 176;
+constexpr int Q6_K_BLOCK_BYTES = 210;
 constexpr int Q5_K_THREADS = 64;
+constexpr int Q6_K_THREADS = 64;
 
 __device__ __forceinline__ float fp16_bytes_to_float(const uint8_t* ptr) {
   union {
@@ -66,6 +68,15 @@ __device__ __forceinline__ float q5_k_value(
   const float min_value = static_cast<float>(q5_k_min(scales, subblock));
   const float quant = static_cast<float>(low | (high << 4));
   return d * scale * quant - dmin * min_value;
+}
+
+__device__ __forceinline__ float q6_k_exact_value(
+    float d,
+    int8_t scale,
+    int quant) {
+  // Match the retained raw-Q6 coltile expression exactly: the signed integer
+  // product is formed first, converted once to F32, then multiplied by d.
+  return d * static_cast<float>(static_cast<int>(scale) * quant);
 }
 
 __device__ __forceinline__ float bf16_bits_to_float(uint16_t bits) {
@@ -124,6 +135,41 @@ __global__ void gguf_q5_k_dequantize_f32_exact_kernel(
       qweight + block_id * Q5_K_BLOCK_BYTES;
   float* __restrict__ dst = out + block_id * QK_K;
   expand_q5_block(block, dst, tid);
+}
+
+__global__ void gguf_q6_k_dequantize_f32_exact_kernel(
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ out) {
+  const int64_t block_id = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  const int ip = tid >> 5;
+  const int lane = tid & 31;
+  const int scale_index = 8 * ip + (lane >> 4);
+  const uint8_t* __restrict__ block =
+      qweight + block_id * Q6_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ ql = block + 64 * ip + lane;
+  const uint8_t qh = block[128 + 32 * ip + lane];
+  const int8_t* __restrict__ scales =
+      reinterpret_cast<const int8_t*>(block + 192) + scale_index;
+  const float d = fp16_bytes_to_float(block + 208);
+  float* __restrict__ dst = out + block_id * QK_K + 128 * ip + lane;
+
+  dst[0] = q6_k_exact_value(
+      d,
+      scales[0],
+      static_cast<int>((ql[0] & 0x0Fu) | (((qh >> 0) & 3u) << 4)) - 32);
+  dst[32] = q6_k_exact_value(
+      d,
+      scales[2],
+      static_cast<int>((ql[32] & 0x0Fu) | (((qh >> 2) & 3u) << 4)) - 32);
+  dst[64] = q6_k_exact_value(
+      d,
+      scales[4],
+      static_cast<int>((ql[0] >> 4) | (((qh >> 4) & 3u) << 4)) - 32);
+  dst[96] = q6_k_exact_value(
+      d,
+      scales[6],
+      static_cast<int>((ql[32] >> 4) | (((qh >> 6) & 3u) << 4)) - 32);
 }
 
 template <typename out_t, int COL_TILE, int ROW_BATCH>
@@ -296,6 +342,27 @@ extern "C" int hipengine_gguf_q5_k_dequantize_f32_exact(
       gguf_q5_k_dequantize_f32_exact_kernel,
       dim3(static_cast<unsigned int>(total_blocks)),
       dim3(Q5_K_THREADS),
+      0,
+      stream,
+      qweight,
+      out);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q6_k_dequantize_f32_exact(
+    const uint8_t* qweight,
+    float* out,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!qweight || !out || !valid_shape(in_features, out_features)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total_blocks = out_features * (in_features / QK_K);
+  hipLaunchKernelGGL(
+      gguf_q6_k_dequantize_f32_exact_kernel,
+      dim3(static_cast<unsigned int>(total_blocks)),
+      dim3(Q6_K_THREADS),
       0,
       stream,
       qweight,

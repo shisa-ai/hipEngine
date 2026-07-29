@@ -24,10 +24,11 @@ from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as q5_raw
 from hipengine.kernels.hip_gfx1100.quant import gguf_q5_k_f32_rocblas_prefill as q5_f32
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
-from tests.test_gguf_k_gemv import make_q5_k_weight
+from tests.test_gguf_k_gemv import make_q5_k_weight, make_q6_k_weight
 
 _QK_K = 256
 _Q5_BLOCK_BYTES = 176
+_Q6_BLOCK_BYTES = 210
 _SOURCE = (
     Path(__file__).parents[1]
     / "hipengine"
@@ -96,6 +97,76 @@ def _edge_q5_weight(out_features: int, in_features: int) -> np.ndarray:
                 (row + 2 * block_id) % len(scale_patterns)
             ]
     return raw
+
+
+def _edge_q6_weight(out_features: int, in_features: int) -> np.ndarray:
+    raw = make_q6_k_weight(out_features, in_features)
+    ql_pattern = np.asarray(
+        [0x00, 0xFF, 0x0F, 0xF0, 0x55, 0xAA, 0x33, 0xCC], dtype=np.uint8
+    )
+    qh_pattern = np.asarray([0x00, 0xFF, 0x55, 0xAA], dtype=np.uint8)
+    scales = np.asarray(
+        [-128, -64, -1, 0, 1, 2, 7, 15, 31, 63, 96, 127, -7, 0, 11, -32],
+        dtype=np.int8,
+    )
+    d_values = (np.float16(0.5), np.float16(-0.25), np.float16(0.0))
+    blocks_per_row = in_features // _QK_K
+    for row in range(out_features):
+        for block_id in range(blocks_per_row):
+            start = block_id * _Q6_BLOCK_BYTES
+            raw[row, start : start + 128] = np.resize(
+                np.roll(ql_pattern, row + block_id), 128
+            )
+            raw[row, start + 128 : start + 192] = np.resize(
+                np.roll(qh_pattern, row + 2 * block_id), 64
+            )
+            raw[row, start + 192 : start + 208] = np.roll(
+                scales, row + block_id
+            ).view(np.uint8)
+            raw[row, start + 208 : start + 210] = np.asarray(
+                [d_values[(row + block_id) % len(d_values)]], dtype=np.float16
+            ).view(np.uint8)
+    return raw
+
+
+def _exact_q6_f32_cpu(qweight: np.ndarray, in_features: int) -> np.ndarray:
+    """Independently reproduce the raw-Q6 production weight expression."""
+
+    raw = np.ascontiguousarray(qweight, dtype=np.uint8)
+    blocks_per_row = in_features // _QK_K
+    if raw.ndim != 2 or raw.shape[1] != blocks_per_row * _Q6_BLOCK_BYTES:
+        raise ValueError("invalid Q6 fixture bytes")
+    out = np.empty((raw.shape[0], in_features), dtype=np.float32)
+    for row in range(raw.shape[0]):
+        for block_id in range(blocks_per_row):
+            block = raw[
+                row,
+                block_id * _Q6_BLOCK_BYTES : (block_id + 1) * _Q6_BLOCK_BYTES,
+            ]
+            ql = block[:128]
+            qh = block[128:192]
+            scales = block[192:208].view(np.int8)
+            d = np.float32(block[208:210].view(np.float16)[0])
+            for within in range(_QK_K):
+                group32 = within >> 5
+                lane = within & 31
+                base64 = 64 if group32 >= 4 else 0
+                ql_byte = ql[base64 + (group32 & 1) * 32 + lane]
+                low = (
+                    ql_byte & np.uint8(0x0F)
+                    if (group32 & 2) == 0
+                    else ql_byte >> np.uint8(4)
+                )
+                high = (
+                    qh[(32 if group32 >= 4 else 0) + lane]
+                    >> np.uint8(2 * (group32 & 3))
+                ) & np.uint8(3)
+                quant = (int(low) | (int(high) << 4)) - 32
+                scaled_quant = int(scales[within >> 4]) * quant
+                out[row, block_id * _QK_K + within] = np.float32(
+                    d * np.float32(scaled_quant)
+                )
+    return out
 
 
 def _device(array: np.ndarray, runtime):
@@ -229,6 +300,55 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert "COL_TILE * ROW_BATCH == 96" in source
 
 
+def test_q6_f32_ordered_registry_build_scope_and_workspace_contract() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    q5_f32.register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
+
+    assert q5_f32.q6_k_f32_ordered_workspace_nbytes(12_288, 3_072) == 150_994_944
+    dequant_key = KernelKey(
+        "hip_gfx1100", "dequant", "gguf_q6_k", "raw_f32_exact_local64"
+    )
+    assert resolve(
+        backend=dequant_key.backend,
+        layer=dequant_key.layer,
+        quant=dequant_key.quant,
+        variant=dequant_key.variant,
+    ) is q5_f32.gguf_q6_k_dequantize_f32_exact
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            dequant_key.layer,
+            dequant_key.quant,
+            dequant_key.variant,
+        )
+    )
+
+    for col_tile, row_batch in _ORDERED_GEOMETRIES:
+        for output_dtype in ("bf16", "f32"):
+            suffix = (
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            )
+            function = getattr(q5_f32, f"gguf_q6_k_f32_ordered_{suffix}")
+            key = KernelKey(
+                "hip_gfx1100", "linear", "gguf_q6_k", f"f32_ordered_{suffix}"
+            )
+            assert resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            ) is function
+            assert not is_registered(
+                KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
+            )
+
+    source = _SOURCE.read_text()
+    assert "__global__ void gguf_q6_k_dequantize_f32_exact_kernel" in source
+
+
 def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> None:
     with pytest.raises(ValueError, match="multiple of 256"):
         q5_f32.gguf_q5_k_dequantize_f32_exact(1, 2, 192, 7)
@@ -250,6 +370,12 @@ def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> Non
         )
     with pytest.raises(ValueError, match="divisible by 4"):
         q5_f32.gguf_q5_k_f32_ordered_coltile4_rowbatch8_bf16_bf16_out(
+            1, 2, 3, 4, 17, 512, 66
+        )
+    with pytest.raises(ValueError, match="multiple of 256"):
+        q5_f32.gguf_q6_k_dequantize_f32_exact(1, 2, 384, 7)
+    with pytest.raises(ValueError, match="divisible by 8"):
+        q5_f32.gguf_q6_k_f32_ordered_coltile8_rowbatch4_bf16_f32_out(
             1, 2, 3, 4, 17, 512, 66
         )
 
@@ -328,6 +454,43 @@ def test_q5_exact_f32_dequant_matches_independent_cpu_values() -> None:
     np.testing.assert_array_equal(
         fused_x_f32.view(np.uint32), expected_x_f32.view(np.uint32)
     )
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+def test_q6_exact_f32_dequant_matches_independent_cpu_values() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    in_features = 512
+    raw = _edge_q6_weight(out_features=5, in_features=in_features)
+    expected = _exact_q6_f32_cpu(raw, in_features)
+    actual = np.empty_like(expected)
+    runtime = get_hip_runtime()
+    library = q5_f32.build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        raw_dev = _device(raw, runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        buffers.extend((raw_dev, out_dev))
+        q5_f32.gguf_q6_k_dequantize_f32_exact(
+            raw_dev.ptr,
+            out_dev.ptr,
+            in_features,
+            raw.shape[0],
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(actual), out_dev, actual.nbytes, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    after = memory_stats()
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
     assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
     assert after["active_allocations"] == before["active_allocations"]
 
@@ -472,6 +635,94 @@ def test_q5_f32_ordered_geometries_match_raw_coltile_bytes(rows: int) -> None:
                 candidate = getattr(
                     q5_f32,
                     f"gguf_q5_k_f32_ordered_coltile{col_tile}_"
+                    f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                )
+                candidate(
+                    x_dev.ptr,
+                    weight_dev.ptr,
+                    actual_dev.ptr,
+                    weight_f32_dev.ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    library=ordered_library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                copy_device_to_host(
+                    host_array_ptr(actual),
+                    actual_dev,
+                    actual.nbytes,
+                    runtime=runtime,
+                )
+                np.testing.assert_array_equal(actual, expected)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    after = memory_stats()
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+@pytest.mark.parametrize("rows", [17, 33])
+def test_q6_f32_ordered_geometries_match_raw_coltile_bytes(rows: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    in_features, out_features = 512, 48
+    rng = np.random.default_rng(20260731 + rows)
+    x_bf16 = _bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    qweight = _edge_q6_weight(out_features, in_features)
+    runtime = get_hip_runtime()
+    raw_library = q5_raw.build_gguf_k_gemv(load=True)
+    ordered_library = q5_f32.build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        x_dev = _device(x_bf16, runtime)
+        weight_dev = _device(qweight, runtime)
+        weight_f32_dev = malloc(
+            q5_f32.q6_k_f32_ordered_workspace_nbytes(
+                in_features, out_features
+            ),
+            runtime=runtime,
+        )
+        buffers.extend((x_dev, weight_dev, weight_f32_dev))
+        for output_dtype in ("bf16", "f32"):
+            host_dtype = np.uint16 if output_dtype == "bf16" else np.float32
+            expected = np.empty((rows, out_features), dtype=host_dtype)
+            actual = np.empty_like(expected)
+            expected_dev = malloc(expected.nbytes, runtime=runtime)
+            actual_dev = malloc(actual.nbytes, runtime=runtime)
+            buffers.extend((expected_dev, actual_dev))
+            control = getattr(
+                q5_raw,
+                f"gguf_q6_k_gemv_coltile4_rowbatch8_bf16_"
+                f"{output_dtype}_out",
+            )
+            control(
+                x_dev.ptr,
+                weight_dev.ptr,
+                expected_dev.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=raw_library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(expected),
+                expected_dev,
+                expected.nbytes,
+                runtime=runtime,
+            )
+            for col_tile, row_batch in _ORDERED_GEOMETRIES:
+                candidate = getattr(
+                    q5_f32,
+                    f"gguf_q6_k_f32_ordered_coltile{col_tile}_"
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out",
                 )
                 candidate(

@@ -530,9 +530,10 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q6_k",
             "f16_rocblas_source_bf16_f32_out",
         ),
-        # WPF-H5A's transient F32 Q5 producer/SGEMM leaf is gfx1100-only until
-        # gfx1151 receives an independent resource, timing, and quality gate.
+        # WPF-H5A/H5I transient exact-F32 Q5/Q6 producers are gfx1100-only
+        # until gfx1151 receives independent resource, timing, and quality gates.
         ("dequant", "gguf_q5_k", "raw_f32_exact_local64"),
+        ("dequant", "gguf_q6_k", "raw_f32_exact_local64"),
         (
             "dequant_cast",
             "gguf_q5_k",
@@ -548,7 +549,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k",
             "f32_rocblas_exact_values_bf16_f32_out",
         ),
-        # WPF-H5C's production-ordered F32-weight consumers and raw-Q5
+        # WPF-H5C/H5I production-ordered F32-weight consumers and raw-Q5/Q6
         # composites remain gfx1100-only pending an independent gfx1151 gate.
         *(
             (
@@ -560,6 +561,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             for quant, prefix in (
                 ("f32_weight", "ordered_"),
                 ("gguf_q5_k", "f32_ordered_"),
+                ("gguf_q6_k", "f32_ordered_"),
             )
             for col_tile, row_batch in (
                 (4, 8),
