@@ -530,6 +530,24 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q6_k",
             "f16_rocblas_source_bf16_f32_out",
         ),
+        # WPF-H5A's transient F32 Q5 producer/SGEMM leaf is gfx1100-only until
+        # gfx1151 receives an independent resource, timing, and quality gate.
+        ("dequant", "gguf_q5_k", "raw_f32_exact_local64"),
+        (
+            "dequant_cast",
+            "gguf_q5_k",
+            "raw_f32_bf16_input_exact_local64",
+        ),
+        (
+            "linear",
+            "gguf_q5_k",
+            "f32_rocblas_exact_values_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q5_k",
+            "f32_rocblas_exact_values_bf16_f32_out",
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),
