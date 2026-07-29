@@ -387,7 +387,11 @@ plumbing. Tracked-clean selector-unset production is
 **20.403940/20.414792/20.418871 tok/s**, median **20.414792**:
 **+0.3190% / -0.1563 ms/token** over the preceding clean packet and
 **+78.036%** over sprint start. Exact repeated trajectory/state/lifecycle
-passes and the capability is active without a selector.
+passes and the capability is active without a selector. The clean
+127-transition census attributes the transfer directly: global attention
+falls **1.110485 -> 1.005649 ms/token (-9.441%)**, total attention falls to
+**3.023432 ms/token**, and kernel sum falls to **47.174209 ms/token**. The
+remaining attention gap versus same-GGUF Vulkan is **2.114009 ms/token**.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

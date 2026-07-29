@@ -5109,6 +5109,23 @@ The remaining attention sequence is:
     [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json).
+47. Re-profile the post-transfer decode wall. **Complete:** one tracked-clean,
+    cache-only 127-transition trace keeps **721 compute + 5 runtime-copy
+    dispatches/token** and measures **47.174209 ms/token** kernel sum.
+    Global attention falls **1.110485 -> 1.005649 ms/token (-9.441%)** while
+    SWA is flat at **2.017783 ms/token**; total attention falls
+    **3.135648 -> 3.023432 ms/token (-3.579%)**. Source-F16 remains flat at
+    **24.027570 ms/token**.
+
+    Same-GGUF Vulkan spends **0.909423 ms/token** in attention. The remaining
+    exact-attention gap is therefore **2.114009 ms/token**, **34.35%** of the
+    current **6.155-ms/token** production wall gap, and hipEngine attention
+    is still **3.32x** the comparator. Continue with the 36-layer saturated
+    SWA body, which owns **2.017783 ms/token**, using a single-launch exact
+    data-movement or scheduling change. Do not retry lower-precision
+    cooperative QK/PV arithmetic already rejected by the recurrent-state
+    gate. Evidence:
+    [`post-global-probability census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
