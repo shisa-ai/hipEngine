@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T22:57:06+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_idle_producer_primitive",
+  "status": "retained_primitive_pending_resident_gate",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "cache-hot saturated-SWA leaf only; production remains unchanged pending seven resident p512/d128 pairs",
+  "source_revision": "5c91460ad87c1e6d115cafb6119c4041480e8cb1",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "family": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 32,
+    "threads_per_block": 384
+  },
+  "change": {
+    "description": "On the 24 pair-owner blocks, move each query's exact probability and denominator production from active output waves 0/4 to otherwise-idle waves 8/9. All eight active output waves can then participate in compact K64 V staging; triple-owner blocks retain the production schedule.",
+    "arithmetic": "The QK products and tree, producer maxima/gates, expf inputs/results, ordered denominator, per-dimension PV FMA/divide, F32 context, and RNE BF16 gated output are unchanged.",
+    "resources": "Grid32/local384, VGPR104, SGPR128, LDS25,600, and scratch0 are unchanged.",
+    "production_changed": false,
+    "rollback": "The current stage-probability-cache specialization remains production."
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed to import the absent idle-producer wrapper before implementation.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "green_result": "2 passed",
+    "wrapped_positions": [512, 513, 514, 515, 516, 517, 518, 519],
+    "explicit_eviction_position": 200,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-stage-pcache-idle-producer-vstage64-vec16-direct-assume-exp --samples 21 --warmups 10 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-stage-pcache-idle-producer-leaf-21x100.json",
+    "raw_sha256": "4aba011b38b6184ef44bc3622516a0e187942fd0e75543674a1e9263a84acb74",
+    "control": "production stage probability cache with active output-wave producers",
+    "candidate": "stage probability cache with otherwise-idle pair-owner producers",
+    "control_samples_ms": [
+      0.056076879501342776,
+      0.05600553035736084,
+      0.05598361968994141,
+      0.056828608512878416,
+      0.05611807823181152,
+      0.05609924793243408,
+      0.05613170146942139,
+      0.056147398948669436,
+      0.05612535953521729,
+      0.05620282173156738,
+      0.056184000968933105,
+      0.056166768074035645,
+      0.056149139404296874,
+      0.056163978576660153,
+      0.05615355968475342,
+      0.05619763851165772,
+      0.05621848106384277,
+      0.056189260482788085,
+      0.056281838417053226,
+      0.05628745079040527,
+      0.05620089054107666
+    ],
+    "candidate_samples_ms": [
+      0.055859251022338866,
+      0.05584763050079346,
+      0.05583455085754394,
+      0.05598523139953613,
+      0.0559966516494751,
+      0.055979018211364744,
+      0.05593258857727051,
+      0.05591455936431885,
+      0.05596827030181885,
+      0.05598069190979004,
+      0.056016888618469235,
+      0.05598924160003662,
+      0.055990438461303714,
+      0.05601930141448975,
+      0.056089839935302734,
+      0.05602972984313965,
+      0.056053781509399415,
+      0.05603172779083252,
+      0.05607464790344238,
+      0.05601854801177979,
+      0.05623906135559082
+    ],
+    "control_median_ms": 0.056163978576660153,
+    "candidate_median_ms": 0.055990438461303714,
+    "latency_change_percent": -0.30898828707366377,
+    "paired_candidate_wins": 20,
+    "paired_samples": 21,
+    "confirmation_9x50": {
+      "control_median_ms": 0.05601823806762695,
+      "candidate_median_ms": 0.05584871768951416,
+      "latency_change_percent": -0.30261640487182495,
+      "raw_sha256": "a954f1bf504270cb81dfd9ac53f195e3ac8fde33ea6497147531fb1f9bd4252c"
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-idle-producer-trace.UpPZSN --output-file idleproducer -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 1 --warmups 0 --burst 1 --candidate mixed32-exp32-producer-max-gate-stage-pcache-idle-producer-vstage64-vec16-direct-assume-exp --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-idle-producer-trace.UpPZSN/leaf.json",
+    "trace_sha256": "b1349ed1a55a6115bd13f7efa3ce325f3cfbfff9107b9b55e2663863e51f8bcd",
+    "leaf_sha256": "9a50897d0d323a0e17244b624675de6998dfd00087d6edc6d79fc73ddae6fc69",
+    "compiler_invocations_under_profiler": 0,
+    "control_and_candidate_grid_size_x": 12288,
+    "control_and_candidate_workgroup_size_x": 384,
+    "control_and_candidate_vgpr_count": 104,
+    "control_and_candidate_sgpr_count": 128,
+    "control_and_candidate_lds_bytes": 25600,
+    "control_and_candidate_scratch_bytes": 0
+  },
+  "lineage": {
+    "external_source_copied": false,
+    "llamacpp_reference": "/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e",
+    "transferred_mechanism": "keep probability production tile-local and overlap it with cooperative V movement",
+    "literal_port": false
+  },
+  "decision": {
+    "retain": true,
+    "promote": false,
+    "reason": "The candidate is exact, changes the critical schedule rather than only lane transport, improves both leaf screens, and preserves the production resource envelope.",
+    "next_gate": "Add a comparison-only gfx1151 route and run seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 pairs. Promote only on an exact positive resident result.",
+    "production_unchanged_tok_s": 20.270314
+  }
+}
