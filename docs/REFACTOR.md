@@ -30,6 +30,10 @@ should be removed or collapsed.
   **19.992650 -> 20.012052 tok/s (+0.097%)**. The gfx1151 architecture
   capability is promoted. Keep the comparison switch through the pending clean
   publication and post-promotion attention census, then remove it.
+- **Clean publication passed:** selector-unset production is
+  **20.003064 tok/s**, **+0.0835%** over the prior packet, with exact repeated
+  state/lifecycle. The comparison switch now remains only for the pending
+  post-promotion attention census and should be removed in that logical unit.
 
 ## Laguna exact SWA producer-maximum selector
 

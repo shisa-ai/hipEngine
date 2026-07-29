@@ -4490,9 +4490,13 @@ The remaining attention sequence is:
     **19.986371 tok/s** until a matched resident gate. That gate is now
     complete: all seven exact pairs improve and median decode moves
     **19.992650 -> 20.012052 tok/s (+0.097%)**, so gfx1151 promotes the
-    specialization. A clean selector-unset publication remains pending.
+    specialization. Clean selector-unset production is
+    **19.991789/20.003064/20.005123 tok/s**, median **20.003064**:
+    **+0.0835% / -0.0418 ms/token** over the prior 19.986371 packet and
+    **+74.445%** over sprint start, with exact repeated state/lifecycle.
     Evidence: [`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json),
-    [`producer-gate retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json).
+    [`producer-gate retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json),
+    [`producer-gate production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-production.json).
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
