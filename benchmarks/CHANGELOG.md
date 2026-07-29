@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-30
+
+- [retained gfx1151 Laguna exact SWA vectorized probability runtime] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 / all seven exact resident candidate runs beat their paired controls and median decode moves **20.366610 -> 20.379415 tok/s (+0.06287%, -0.03085 ms/token)**; promote the qualified gfx1151 capability, remove comparison plumbing, and retain scalar PV probability reads as rollback; `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json`.
+
 ## 2026-07-29
 
 - [retained gfx1151 Laguna exact SWA vectorized probability primitive] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV saturated decode / read the published K64 probability row as sixteen aligned `float4` values while preserving the 64-FMA order; the byte-exact 21x100 leaf improves **0.045306 -> 0.045174 ms (-0.290%)** with **21/21** paired wins and unchanged resources; retain pending resident gate, production unchanged at **20.358649 tok/s**; `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json`.

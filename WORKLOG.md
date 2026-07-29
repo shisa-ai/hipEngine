@@ -191149,3 +191149,22 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json`.
+
+## 2026-07-30 00:01 JST — Promote vectorized SWA probability replay
+
+- Add a default-off cache field, session setter, profile CLI, and routing test.
+  The focused routing/profile bundle passes **36** tests.
+- Seven counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128
+  candidate runs beat their paired controls. Median decode moves
+  **20.366610 -> 20.379415 tok/s
+  (+0.06287%, -0.03085 ms/token)**. The smallest paired win is
+  **+0.01625%**; raw SHA-256 is `b1d21b57...daca63`.
+- Every row preserves next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown.
+- Promote
+  `LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512`
+  on gfx1151. Scalar probability reads remain exact registered rollback and
+  peer backends are unchanged. Remove the comparison-only CLI/session seam;
+  clean selector-unset publication remains next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json`.
