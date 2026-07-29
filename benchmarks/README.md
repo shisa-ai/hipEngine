@@ -125,9 +125,13 @@ max mean/max-row KL is **1.59e-9/5.79e-8**, top-1 is **100%**, raw-Q5 F32 values
 and BF16 widening are bit-exact, and **236,716,032 peak tracked bytes** return
 to zero. The selected stack remains **3.751x** llama.cpp's matched Q5 trace and
 the modeled complete kernel sum is **1,952.371 ms**; both are attribution, not
-end-to-end forecasts. Exact production and the canonical headline remain
-unchanged pending default-off ownership, complete state, and the binding
-18-prompt/576-step quality lane.
+end-to-end forecasts. The default-off owner now allocates one admitted
+**195,035,136-byte** workspace only when selected. Natural M512 passes at KL
+**0.0003742**, top-1 **100%**, token **2930**, deterministic complete state, and
+exact teardown. Cached integration traces exactly **223** producers, **223**
+SGEMMs, **141** BF16 casts, and **12** exact N48 calls; the candidate stack sums
+**219.662 ms**. Exact production and the canonical headline remain unchanged
+pending the binding 18-prompt/576-step quality lane.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

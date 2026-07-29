@@ -62,7 +62,6 @@
     "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
   },
   "promotion_blockers": [
-    "default-off runtime ownership and complete natural-M512 deterministic state are not yet implemented",
     "the binding complete 18-prompt/576-step train+heldout and category-heldout quality gate has not run",
     "clean counter-ordered 512/1K end-to-end timing and all-family tracing have not run"
   ],
@@ -298,6 +297,65 @@
       "workspace_bytes": 138412032
     }
   ],
+  "runtime_integration": {
+    "backend": "hip_gfx1100",
+    "base_revision": "7a12e5c33",
+    "default": false,
+    "exact_fallback_shape": [
+      "f32",
+      3072,
+      48
+    ],
+    "fallback": "retained exact raw-Q5 coltile on disabled/session/N48/c1/small-row/key/backend/capacity miss",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "116711044015dd4bb8a2cb9dcde708b07b27055b021199a8d8ba29d6c0d56a6a",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "90ecb215a90cca253a520db2b529986d0612ea6051e15bf34b02ebabd98e9926",
+      "hipengine/runtime/gguf_linear.py": "f438ede6fd32587e8fe94b42e2bcbf84d452f83fbc3a2fccab6edd481f14d9b6",
+      "hipengine/runtime/laguna_gguf_runner.py": "21da24ab51160991f2fb7737cb23fb7ef69e256fa069c503b6ba5eb87c6e22c1",
+      "tests/test_gguf_k_rowtile_gemv.py": "85bf9e2768cdc17b434e0ceec6577cf636cac2542a70b34817e37979a7ddda71",
+      "tests/test_laguna_gguf_runner.py": "19839bb9929f67cf2eada71c7b839dd8a02c78989ee310b76c1d2369bc32df1d"
+    },
+    "integrated_trace": {
+      "candidate_bf16_output_casts": 141,
+      "candidate_f32_output_casts": 0,
+      "candidate_producers": 223,
+      "candidate_rocblas": 223,
+      "candidate_stack_kernel_sum_ms": 219.662394,
+      "cast_kernel_sum_ms": 0.916127,
+      "exact_n48_coltile_calls": 12,
+      "producer_kernel_sum_ms": 18.717948,
+      "producer_resources": "local64/VGPR16/SGPR128/LDS0/scratch0",
+      "rocblas_kernel_sum_ms": 200.028319,
+      "total_dispatches": 2387
+    },
+    "natural_m512_state": {
+      "all_48_hidden_boundaries_repeat_exact": true,
+      "candidate_repeat_exact": true,
+      "complete_kv_and_kvlivespans_repeat_exact": true,
+      "exact_hidden_boundaries_vs_control": 0,
+      "finite": true,
+      "mean_kl": 0.0003742110249998739,
+      "next_token": 2930,
+      "top1_agreement": 1.0,
+      "tracked_returned_to_baseline": true
+    },
+    "qualified_rows_default": [
+      512,
+      512
+    ],
+    "qualified_shapes": 7,
+    "quality_harness_min_rows": 16,
+    "removed_after_quality_rejection": false,
+    "selector": "LagunaGGUFResidentSession(use_q5_f32_rocblas=True)",
+    "source_artifacts": {
+      "full_state_harness_sha256": "84440c053c4ec996b0590f6c76f04c8b745ef79da75336ca23865e9612b58127",
+      "full_state_json_sha256": "29f9458be43bb4dd84198360bb6e4f8dcf399dd9db9fd3a37be36770bfdac969",
+      "integrated_trace_harness_sha256": "34bd40bc34ddfc2f7e5625ca960aacd26a3d441d7a0ccd8359379376a30c7d88",
+      "integrated_trace_sha256": "d63db8d31ce2055747a0d9008ec0282fa7614f5beda7b14943134b80e3299fa5"
+    },
+    "workspace_allocations": 1,
+    "workspace_bytes": 195035136
+  },
   "schema": 1,
   "source_artifacts": {
     "harness_sha256": "b793121461225e60fed95021d9d0dfca147758eb02aac9a1c82fbf733e53c724",
@@ -306,11 +364,11 @@
     "rocprof_trace_sha256": "27f80823ebd93271603bb6a86ca753a1c5932b078552b569477a39639d4f7cf4",
     "stdout_sha256": "d2df8b287dc2450e96e3b6b4c547cde2ba16fd7fc8a0ddd5f71e7cfa22505ed0"
   },
-  "status": "standalone_leaf_admitted_runtime_pending_complete_quality_gate",
+  "status": "default_off_runtime_admitted_complete_quality_pending",
   "validation": {
     "cached_profile_dispatches": 40,
     "cached_profile_expected_chain_only": true,
-    "focused_gpu_and_host_tests": "37 passed across rocBLAS/Q5 GPU/registry/gfx1151 coverage plus 8 build tests",
+    "focused_gpu_and_host_tests": "220 passed across runner/dispatch/Q5 GPU/rocBLAS/registry/gfx1151/profile/build coverage",
     "gfx1151_alias_exclusion": "passed",
     "py_compile": "passed",
     "ruff": "passed"

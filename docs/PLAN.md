@@ -1441,9 +1441,12 @@ candidate elsewhere moves the actual 235-call family **1,256.936 -> 221.137 ms
 (5.684x)** by events and **1,223.263 -> 231.966 ms (5.273x)** by synchronized
 wall. Raw operand values are exact and candidate output passes at max mean KL
 **1.59e-9**, max-row KL **5.79e-8**, and top-1 **100%**. The stack still costs
-**3.751x** llama.cpp's matched Q5 trace. Next add only default-off transient
-ownership and run complete state plus the binding 18-prompt/576-step lane;
-SGEMM reassociation cannot promote from the leaf result. Do not stack rejected
+**3.751x** llama.cpp's matched Q5 trace. The default-off transient owner is now
+mechanically admitted: natural M512 passes at KL **0.0003742**, top-1 **100%**,
+deterministic complete state, and exact teardown; tracing observes the intended
+**223** producer/SGEMM stacks, **141** BF16 casts, and **12** exact N48 calls.
+Run the binding 18-prompt/576-step lane next; SGEMM reassociation cannot promote
+from leaf or single-prompt state. Do not stack rejected
 H1-H4 arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

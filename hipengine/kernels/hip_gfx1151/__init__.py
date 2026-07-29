@@ -303,6 +303,10 @@ GGUF_RAW_K_PREFILL_ROWBATCH = 0
 GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
 GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset()
 GGUF_RAW_K_PREFILL_VARIANT = "rowbatch"
+# WPF-H5A remains unavailable on gfx1151 until independent quality/performance
+# admission; generic aliasing already excludes its four primitive keys.
+GGUF_Q5_F32_ROCBLAS_PREFILL = False
+GGUF_Q5_F32_ROCBLAS_PREFILL_SHAPES = frozenset()
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -734,6 +738,8 @@ __all__ = [
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_Q5_F32_ROCBLAS_PREFILL",
+    "GGUF_Q5_F32_ROCBLAS_PREFILL_SHAPES",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",

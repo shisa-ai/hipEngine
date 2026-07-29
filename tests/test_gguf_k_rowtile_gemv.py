@@ -386,6 +386,221 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
     )
 
 
+def test_q5_f32_rocblas_prefill_dispatch_is_session_and_shape_scoped() -> None:
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+        register_gguf_q5_k_f32_rocblas_prefill_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey
+    from hipengine.runtime.gguf_linear import (
+        GGUFLinearDispatch,
+        Q5F32RocblasPrefillSession,
+        _q5_f32_rocblas_prefill_dispatch,
+        q5_f32_rocblas_prefill_session,
+    )
+
+    register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
+    base_by_output = {
+        output_dtype: GGUFLinearDispatch(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q5_k",
+                f"prefill_bf16_{output_dtype}_out",
+            ),
+            "raw",
+        )
+        for output_dtype in ("bf16", "f32")
+    }
+    session = Q5F32RocblasPrefillSession(
+        min_rows=16,
+        max_rows=512,
+        weight_f32_ptr=1000,
+        weight_f32_nbytes=150_994_944,
+        x_f32_ptr=2000,
+        x_f32_nbytes=18_874_368,
+        out_f32_ptr=3000,
+        out_f32_nbytes=25_165_824,
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    qualified = {
+        ("bf16", 3072, 1024),
+        ("bf16", 3072, 12288),
+        ("bf16", 6144, 3072),
+        ("bf16", 9216, 3072),
+        ("f32", 3072, 72),
+        ("f32", 3072, 6144),
+        ("f32", 3072, 9216),
+    }
+    for output_dtype, in_features, out_features in qualified:
+        base = base_by_output[output_dtype]
+        assert (
+            _q5_f32_rocblas_prefill_dispatch(
+                base,
+                rows=512,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            is base
+        )
+
+    with q5_f32_rocblas_prefill_session(session):
+        for rows in (16, 97, 511, 512):
+            for output_dtype, in_features, out_features in qualified:
+                selected = _q5_f32_rocblas_prefill_dispatch(
+                    base_by_output[output_dtype],
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+                assert selected == GGUFLinearDispatch(
+                    KernelKey(
+                        "hip_gfx1100",
+                        "linear",
+                        "gguf_q5_k",
+                        f"f32_rocblas_exact_values_bf16_{output_dtype}_out",
+                    ),
+                    "raw_q5_f32_rocblas",
+                )
+
+        for rows, in_features, out_features in (
+            (1, 3072, 1024),
+            (15, 3072, 1024),
+            (512, 3072, 48),
+            (512, 3328, 1024),
+        ):
+            base = base_by_output["f32"]
+            assert (
+                _q5_f32_rocblas_prefill_dispatch(
+                    base,
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+                is base
+            )
+        unsupported = GGUFLinearDispatch(
+            KernelKey(
+                "hip_gfx1151",
+                "linear",
+                "gguf_q5_k",
+                "prefill_bf16_f32_out",
+            ),
+            "raw",
+        )
+        assert (
+            _q5_f32_rocblas_prefill_dispatch(
+                unsupported,
+                rows=512,
+                in_features=3072,
+                out_features=72,
+            )
+            is unsupported
+        )
+
+    with pytest.raises(ValueError, match="min_rows"):
+        Q5F32RocblasPrefillSession(
+            min_rows=513,
+            max_rows=512,
+            weight_f32_ptr=1000,
+            weight_f32_nbytes=150_994_944,
+            x_f32_ptr=2000,
+            x_f32_nbytes=18_874_368,
+            out_f32_ptr=3000,
+            out_f32_nbytes=25_165_824,
+            dequant_library="dequant-library",
+            cast_library="cast-library",
+            rocblas="rocblas-handle",
+        )
+
+
+def test_launch_gguf_linear_honors_q5_f32_rocblas_prefill_session() -> None:
+    from types import SimpleNamespace
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+        register_gguf_q5_k_f32_rocblas_prefill_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, register
+    from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+    from hipengine.runtime.gguf_linear import (
+        Q5F32RocblasPrefillSession,
+        clear_gguf_linear_dispatch_cache,
+        launch_gguf_linear,
+        q5_f32_rocblas_prefill_session,
+    )
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "f32_rocblas_exact_values_bf16_f32_out",
+    )
+    register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    raw = SimpleNamespace(tensor=SimpleNamespace(ptr=200))
+    weight = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k"),
+        allocation=lambda name: raw,
+    )
+    session = Q5F32RocblasPrefillSession(
+        min_rows=16,
+        max_rows=512,
+        weight_f32_ptr=400,
+        weight_f32_nbytes=150_994_944,
+        x_f32_ptr=500,
+        x_f32_nbytes=18_874_368,
+        out_f32_ptr=600,
+        out_f32_nbytes=25_165_824,
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    register(key, candidate, replace=True)
+    clear_gguf_linear_dispatch_cache()
+    try:
+        with q5_f32_rocblas_prefill_session(session):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=300,
+                rows=97,
+                in_features=3072,
+                out_features=72,
+                output_dtype="f32",
+                backend="hip_gfx1100",
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        register(key, original, replace=True)
+        clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 200, 300, 500, 400, 600, 97, 3072, 72),
+            {
+                "stream": 7,
+                "dequant_library": "dequant-library",
+                "cast_library": "cast-library",
+                "rocblas": "rocblas-handle",
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+
+
 def test_raw_k_prefill_rowbatch_session_is_nested_and_fail_closed() -> None:
     from hipengine.runtime.gguf_linear import (
         raw_k_prefill_rowbatch,
