@@ -198,6 +198,75 @@ def test_laguna_long_hipblaslt_shape_and_algorithm_bands() -> None:
     ) == 2
 
 
+def test_laguna_hipblaslt_package_algorithm_map_precedes_builtin_policy() -> None:
+    from hipengine.runtime.laguna_attention_hipblaslt import (
+        _normalize_algorithm_indices,
+        _preferred_algorithm_index,
+    )
+
+    package_indices = {
+        (48, 256, "qk"): 2,
+        (48, 256, "pv"): 3,
+    }
+    normalized = _normalize_algorithm_indices(package_indices)
+    assert normalized == package_indices
+    assert normalized is not package_indices
+    assert _preferred_algorithm_index(
+        query_rows=128,
+        query_heads=48,
+        context=256,
+        operation="qk",
+        packed_queries=True,
+        algorithm_indices=normalized,
+    ) == 2
+    assert _preferred_algorithm_index(
+        query_rows=128,
+        query_heads=48,
+        context=256,
+        operation="pv",
+        packed_queries=True,
+        algorithm_indices=normalized,
+    ) == 3
+    assert _preferred_algorithm_index(
+        query_rows=128,
+        query_heads=48,
+        context=256,
+        operation="qk",
+        packed_queries=False,
+        algorithm_indices=normalized,
+    ) == 23
+    assert _preferred_algorithm_index(
+        query_rows=128,
+        query_heads=72,
+        context=384,
+        operation="qk",
+        packed_queries=True,
+        algorithm_indices=normalized,
+    ) == 30
+
+
+@pytest.mark.parametrize(
+    "algorithm_indices",
+    (
+        [],
+        {(48, 256): 2},
+        {("48", 256, "qk"): 2},
+        {(48, 256, "other"): 2},
+        {(48, 256, "qk"): -1},
+        {(48, 256, "qk"): True},
+    ),
+)
+def test_laguna_hipblaslt_rejects_malformed_algorithm_maps(
+    algorithm_indices,
+) -> None:
+    from hipengine.runtime.laguna_attention_hipblaslt import (
+        _normalize_algorithm_indices,
+    )
+
+    with pytest.raises((TypeError, ValueError), match="algorithm"):
+        _normalize_algorithm_indices(algorithm_indices)
+
+
 def test_laguna_swa_hipblaslt_shape_contract() -> None:
     from hipengine.runtime.laguna_attention_hipblaslt import (
         LagunaSwaAttentionHipblasLt,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
@@ -105,6 +106,45 @@ _LONG_PACKED_ALGORITHM_BANDS = (
 )
 
 
+def _normalize_algorithm_indices(
+    algorithm_indices: Mapping[tuple[int, int, str], int] | None,
+) -> dict[tuple[int, int, str], int]:
+    if algorithm_indices is None:
+        return {}
+    if not isinstance(algorithm_indices, Mapping):
+        raise TypeError("Laguna attention algorithm indices must be a mapping")
+    normalized: dict[tuple[int, int, str], int] = {}
+    for key, index in algorithm_indices.items():
+        if not isinstance(key, tuple) or len(key) != 3:
+            raise ValueError(
+                "Laguna attention algorithm keys must be "
+                "(query_heads, context, operation) tuples"
+            )
+        query_heads, context, operation = key
+        if (
+            isinstance(query_heads, bool)
+            or not isinstance(query_heads, int)
+            or query_heads <= 0
+            or isinstance(context, bool)
+            or not isinstance(context, int)
+            or context <= 0
+        ):
+            raise ValueError(
+                "Laguna attention algorithm query_heads/context must be "
+                "positive integers"
+            )
+        if operation not in {"qk", "pv"}:
+            raise ValueError(
+                "Laguna attention algorithm operation must be 'qk' or 'pv'"
+            )
+        if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+            raise ValueError(
+                "Laguna attention algorithm indices must be non-negative integers"
+            )
+        normalized[(query_heads, context, operation)] = index
+    return normalized
+
+
 def _preferred_algorithm_index(
     *,
     query_rows: int,
@@ -112,8 +152,13 @@ def _preferred_algorithm_index(
     context: int,
     operation: str,
     packed_queries: bool,
+    algorithm_indices: Mapping[tuple[int, int, str], int] | None = None,
 ) -> int:
     key = (int(query_heads), int(context), str(operation))
+    if packed_queries and algorithm_indices is not None:
+        selected = algorithm_indices.get(key)
+        if selected is not None:
+            return int(selected)
     wide_key = (
         int(query_rows),
         int(query_heads),
@@ -346,10 +391,12 @@ class LagunaAttentionHipblasLt:
         max_q_heads: int = _MAX_Q_HEADS,
         block_context: int | None = None,
         query_rows: int = _ROWS,
+        algorithm_indices: Mapping[tuple[int, int, str], int] | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.packed_queries = bool(packed_queries)
         self.wave_rows_softmax = bool(wave_rows_softmax)
+        self.algorithm_indices = _normalize_algorithm_indices(algorithm_indices)
         self.max_context = int(max_context)
         self.max_q_heads = int(max_q_heads)
         self.query_rows = int(query_rows)
@@ -543,6 +590,7 @@ class LagunaAttentionHipblasLt:
                     context=parsed_context,
                     operation="qk",
                     packed_queries=self.packed_queries,
+                    algorithm_indices=self.algorithm_indices,
                 )
             ),
         )
@@ -587,6 +635,7 @@ class LagunaAttentionHipblasLt:
                         context=parsed_context,
                         operation="pv",
                         packed_queries=self.packed_queries,
+                        algorithm_indices=self.algorithm_indices,
                     )
                 ),
             )

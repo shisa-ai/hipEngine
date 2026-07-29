@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_f32_hipblaslt_dense_initial_attention_candidate",
   "date": "2026-07-30",
-  "status": "standalone_transfer_candidate_admitted_runtime_policy_pending",
+  "status": "default_off_runtime_candidate_integrated_quality_pending",
   "performance_claim": false,
   "hardware": {
     "device": "AMD Radeon Pro W7900",
@@ -41,6 +41,14 @@
       "unsupported heads, contexts, or backends"
     ],
     "complete_kv_live_spans_consumed": true,
+    "package_capability_default": false,
+    "package_component_policy": {
+      "packed_queries": true,
+      "packed_query_producer": true,
+      "wave_rows_softmax": true,
+      "packed_output_gate": true
+    },
+    "package_algorithm_map_validated_and_owner_propagated": true,
     "gfx1100_algorithm_policy": {
       "context_256": {"qk": 2, "pv": 2},
       "context_384": {"qk": 1, "pv": 2},
@@ -88,10 +96,18 @@
       "all_48_hidden_boundaries_repeat_exact": true,
       "complete_kv_and_kvlivespans_repeat_exact": true,
       "tracked_returned_to_baseline": true,
-      "first_pair_control_tok_s": 170.27061760380695,
-      "first_pair_candidate_tok_s": 187.33281278510847,
-      "first_pair_speedup": 1.100206338717832,
-      "candidate_repeat_tok_s": 195.70927686331044
+      "first_pair_control_tok_s": 170.6723118238559,
+      "first_pair_candidate_tok_s": 186.91402546160637,
+      "first_pair_speedup": 1.095163143126068,
+      "candidate_repeat_tok_s": 195.8322596700864,
+      "package_resolved_algorithm_indices": {
+        "h48_c256": {"qk": 2, "pv": 2},
+        "h48_c384": {"qk": 1, "pv": 2},
+        "h48_c512": {"qk": 3, "pv": 2},
+        "h72_c256": {"qk": 2, "pv": 2},
+        "h72_c384": {"qk": 1, "pv": 2},
+        "h72_c512": {"qk": 3, "pv": 2}
+      }
     }
   },
   "integrated_cached_trace": {
@@ -124,8 +140,15 @@
     "no_compiler_under_profile": true,
     "profile_span_note": "The first profiled owner includes lazy hipBLASLt descriptor setup and profiler gaps; kernel sum, not profiled span, is the retained attribution."
   },
+  "integration_validation": {
+    "red_result": "9 failed at absent map normalization/package policy/owner propagation",
+    "focused_runner_backend_result": "59 passed",
+    "focused_map_cpu_reference_result": "9 passed",
+    "ruff_pycompile_diff_check": true,
+    "gfx1151_does_not_inherit_gfx1100_algorithm_map": true,
+    "default_production_route_unchanged": true
+  },
   "promotion_blockers": [
-    "gfx1100 package capability and architecture-local algorithm ownership are not implemented",
     "the structurally valid multi-prompt changed-association quality gate has not run",
     "clean counter-ordered 512/1K timing and a committed all-family trace have not run"
   ],
@@ -133,9 +156,9 @@
     "leaf_json_sha256": "21194aa89a9f8ab9e1029afd3bc19da96ef73cb79529da86dde6d305e5057e15",
     "leaf_harness_sha256": "8617649de351e6cb207aa3fa4f20aed82e9787b5caafeda39ddf466681cd2e6f",
     "leaf_stdout_sha256": "9a9a4fdcafa5a1629e8b8b6d6723029478cec8e978cdeb89b714a3a1156e5a26",
-    "full_state_json_sha256": "4be25fefa92c07477bdaab2f71147438d559c6ed01c255ba3a8bbebe13cdc222",
-    "full_state_harness_sha256": "cfa5a88851a03df5e20f2a5b07e862b0f8fbba2aeb34009d292cc2494014d1bb",
-    "full_state_stdout_sha256": "e99590dce51a38ddd8f4675c73f18b349f67274e694512d90b4082dbc008c17e",
+    "package_resolved_full_state_json_sha256": "e07b349b3c6e10ab129bc8df2ce03ee42ea30c0099df1c69aa49f89844d3a70c",
+    "package_resolved_full_state_harness_sha256": "9fc6ca1711e5f7feb193950ce0b7d79a682a6774ab9c47c54b90fd9a91329157",
+    "preintegration_full_state_stdout_sha256": "e99590dce51a38ddd8f4675c73f18b349f67274e694512d90b4082dbc008c17e",
     "trace_csv_sha256": "4c547ea36ce5dd6a44481ec0ed4315509d11ba8cfd7e5473379dff91afb09355",
     "trace_harness_sha256": "bee8c3e6b28f67563ddf75dc4040c14de865ae571e1a9af4f1def0e48963e705",
     "trace_stdout_sha256": "93c530cd0c772980161704e632554d9aca23d7b06304ff55d349aeb10d4027a0"
@@ -147,7 +170,8 @@
   },
   "decision": {
     "standalone_candidate_admitted": true,
+    "default_off_runtime_candidate_integrated": true,
     "production_changed": false,
-    "next_action": "Add a default-off gfx1100 package capability plus architecture-local algorithm map without a backend branch, then run multi-prompt changed-association quality before clean timing."
+    "next_action": "Run the structurally valid multi-prompt changed-association quality gate through complete M512 tiles before clean timing."
   }
 }

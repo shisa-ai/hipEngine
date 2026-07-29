@@ -127,8 +127,9 @@ numbers below.
   **109.897 -> 62.655 ms (1.754x)**, natural M512 passes KL **0.000429** / top-1
   **100%**, and cached request tracing cuts attention **488.304 -> 60.669 ms
   (8.049x)** plus complete kernel sum **3,001.692 -> 2,603.520 ms (-13.265%)**.
-  Production remains exact pending committed default-off ownership and a
-  multi-prompt changed-association gate
+  The W7900 heuristic map and packed/wave components are now integrated behind
+  a default-false package capability, with package-resolved M512 state/repeat
+  gates green. Production remains exact pending a multi-prompt changed-association gate
   ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
   [H5B candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)).

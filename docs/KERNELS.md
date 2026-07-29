@@ -210,8 +210,12 @@ owner passes KL **0.000429**, token **2930**, deterministic complete state/KV,
 and lifecycle. Cached tracing names exactly **144** widen/QK/softmax/PV stacks,
 keeps **48** start-0 exact calls, and moves attention **488.304 -> 60.669 ms
 (8.049x)** while complete kernel sum falls **3,001.692 -> 2,603.520 ms
-(-13.265%)**. This admits a standalone transfer candidate only; gfx1100 package
-capability and multi-prompt changed-association quality remain pending. Evidence:
+(-13.265%)**. gfx1100 now publishes the validated heuristic map plus packed/wave
+component policy behind an explicit default-false top-level capability. A
+package-resolved exact/candidate/repeat M512 rerun selects all six intended
+shape indices and preserves KL **0.000429**, top-1 **100%**, deterministic
+complete state, and teardown. Multi-prompt changed-association quality remains
+pending before promotion. Evidence:
 `benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json`.
 
 The long-context successor extends that packed-query/library design without
