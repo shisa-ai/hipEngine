@@ -111,9 +111,9 @@ def _kernel_family(name: str) -> str:
         for marker in ("gemv_kernel", "grouped_smallm_kernel", "mmq64x32")
     ):
         return "selected_q4_q6_down"
-    if "laguna_global_attention_prefill" in lowered:
+    if "laguna_global_attention_" in lowered:
         return "global_attention"
-    if "laguna_swa_attention_prefill" in lowered:
+    if "laguna_swa_attention_" in lowered:
         return "swa_attention"
     if "write_kv_rows" in lowered and "laguna_" in lowered:
         return "prefill_kv_write"

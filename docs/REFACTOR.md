@@ -33,6 +33,10 @@ should be removed or collapsed.
   **19.983610 tok/s** with exact state/lifecycle. The comparison switch now
   remains only for the pending post-promotion attention census and should be
   removed in that logical unit.
+- **Closed 2026-07-29:** the census confirms SWA **-21.36%** and kernel sum
+  **-1.46%**. The profile comparison flag and session setter are removed in
+  the census unit; retain only the architecture capability, current owner,
+  and registered mixed32/exp32 rollback.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
