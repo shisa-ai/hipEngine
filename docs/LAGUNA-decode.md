@@ -5212,6 +5212,24 @@ The remaining attention sequence is:
     8/9 retain denominator replay; this preserves the complete arithmetic
     sequence while removing producer work from the PV-owner waves. Evidence:
     [`post-mixed40 census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json).
+51. Separate mixed40 exponent, denominator, and PV roles. **Retained as an
+    exact primitive pending the resident gate:** pair-owner waves 10/11 now
+    generate the two probability rows while waves 8/9 replay their ordered
+    denominators and waves 0-7 retain ordered PV; singleton blocks use wave
+    11, wave 8, and waves 0-3 respectively. QK, exponent inputs, denominator
+    order, every PV FMA, gate, stores, ownership, resident bytes, and launch
+    count are unchanged.
+
+    RED fails importing the absent wrapper. GREEN passes the wrapped and
+    explicitly evicted oracle with byte-identical F32 context and gated BF16.
+    The 9x50 leaf moves **0.036995 -> 0.036961 ms (-0.091%)** with **6/9**
+    paired wins. The stronger 21x100 screen moves
+    **0.037001 -> 0.036896 ms (-0.285%)** with **20/21** paired wins.
+    Cache-only tracing records unchanged grid15,360/local384, VGPR104,
+    SGPR128, LDS25,600, and scratch0; no compiler runs under profiling.
+    Retain the primitive but require seven exact counterbalanced p512/d128
+    resident pairs before any promotion. Evidence:
+    [`mixed40 tail-producer primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json).
 
 Current exact decode checkpoint:
 

@@ -191450,3 +191450,24 @@ Vulkan local sizes verbatim will close the measured gap.
   Raw trace/child SHA-256 values are `40129b6a...8e5` /
   `12f7c01f...2732`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json`.
+
+## 2026-07-30 01:33 JST — Retain exact mixed40 tail-producer primitive
+
+- Add a one-launch mixed40 schedule that assigns exponent generation to tail
+  waves 10/11 on pair blocks and wave 11 on singleton blocks. Idle waves 8/9
+  or 8 retain ordered denominator replay; active output waves retain every
+  ordered PV FMA. QK, exponent inputs, gate, stores, ownership, resident
+  bytes, and dispatch count are unchanged.
+- RED fails importing the absent wrapper. GREEN passes the focused wrapped
+  and explicitly evicted oracle with byte-identical F32 context and gated
+  BF16 output.
+- The 9x50 leaf moves **0.036995 -> 0.036961 ms (-0.091%)** with **6/9**
+  paired wins. The stronger 21x100 leaf moves
+  **0.037001 -> 0.036896 ms (-0.285%)** with **20/21** paired wins. Raw
+  SHA-256 values are `c6c8ec8e...081` / `b5e5fdab...248f`.
+- Cache-only tracing records unchanged grid15,360/local384, VGPR104, SGPR128,
+  LDS25,600, and scratch0, with no compiler under profiling. Raw trace/child
+  SHA-256 values are `d2fa4277...959e` / `aaed7d96...49c2`.
+- Retain the exact primitive pending seven counterbalanced p512/d128 resident
+  pairs. Production remains **20.483884 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json`.

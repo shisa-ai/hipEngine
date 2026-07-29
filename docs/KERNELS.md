@@ -1933,6 +1933,13 @@ transfer: SWA falls **2.017783 -> 1.757218 ms/token (-12.913%)**, total
 attention falls **3.023432 -> 2.761582 ms/token (-8.661%)**, and kernel span
 falls **2.928%**. Keep mixed40 geometry for the next body-scheduling screen:
 [`post-mixed40 census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json).
+The exact tail-producer sibling assigns exponent generation to waves 10/11,
+ordered denominator replay to waves 8/9, and ordered PV to waves 0-7 without
+changing geometry or arithmetic. Wrapped/evicted output is F32/BF16
+byte-exact; the strong 21x100 leaf improves
+**0.037001 -> 0.036896 ms (-0.285%)** with **20/21** paired wins and
+unchanged resources. Retain pending the resident wall gate:
+[`tail-producer primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
