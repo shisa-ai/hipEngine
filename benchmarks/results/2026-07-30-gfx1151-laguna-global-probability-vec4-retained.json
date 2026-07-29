@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T00:24:00+09:00",
+  "kind": "hipengine_laguna_global_probability_vec4_retained",
+  "status": "accepted_runtime_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "1ca93fa639f2421177b6fd67d2678a5d520fb97e",
+    "primitive_artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json",
+    "comparison_plumbing_removed_after_gate": true
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk": 2048,
+    "swa_attention_chunk": 128,
+    "warmup_rows": 128,
+    "paired_repetitions": 7,
+    "decode_forward_calls_per_run": 127,
+    "load_seconds_excluded": 90.18680684291758,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-global-probability-vec4 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-global-probability-vec4-ab.json",
+    "raw_sha256": "d96560809d1b3f9fcb951f3d151311450b37eb2cb94f2e843a37e4779438060c"
+  },
+  "performance": {
+    "control_samples_tok_s": [
+      20.36254624662783,
+      20.3747058667038,
+      20.373475807112662,
+      20.369710133095953,
+      20.37340613916375,
+      20.367432070358454,
+      20.374798087851694
+    ],
+    "candidate_samples_tok_s": [
+      20.409868563717577,
+      20.40120804659704,
+      20.411165235112566,
+      20.406089100616494,
+      20.40954390919103,
+      20.405725294182126,
+      20.410971339805783
+    ],
+    "control_median_tok_s": 20.37340613916375,
+    "candidate_median_tok_s": 20.40954390919103,
+    "throughput_change_percent": 0.17737716403645187,
+    "control_median_ms_per_token": 49.083594229131,
+    "candidate_median_ms_per_token": 48.99668529827705,
+    "ms_per_token_change": -0.08690893085395146,
+    "paired_candidate_wins": 7,
+    "paired_trials": 7,
+    "complete_cross_sample_separation": true,
+    "minimum_pair_change_percent": 0.13007392630168813,
+    "maximum_pair_change_percent": 0.23239881946288676
+  },
+  "correctness": {
+    "pass": true,
+    "control_candidate_next_tokens_match": true,
+    "control_candidate_generated_ids_match": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_position": 638,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_after_bytes": 0,
+    "tracked_after_allocations": 0
+  },
+  "selection": {
+    "backend": "hip_gfx1151",
+    "capability": "LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE",
+    "qualified_shape": "gated 48Q/8KV/D128/capacity4096/live<=4000",
+    "new_default": true,
+    "rollback": "registered exact producer-max DPP-QK global kernel with scalar probability replay",
+    "peer_backends_unchanged": true,
+    "comparison_only_cli_and_session_setter_removed": true
+  },
+  "validation": {
+    "focused_tests_passed": 37,
+    "python_compilation_passed": true
+  },
+  "next": "Publish tracked-clean selector-unset p512/d128 production, then re-profile the attention wall."
+}

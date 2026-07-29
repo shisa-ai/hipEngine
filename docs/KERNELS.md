@@ -1870,9 +1870,15 @@ positive tests, BF16 V conversion, or accumulation order. The explicit
 eviction oracle is F32/BF16 byte-exact. Strong 21x100 leaves improve
 live513/576/639 **13.006%/17.248%/10.395%**, with complete separation at
 every shape. Cache-only tracing names grid8192/local256, VGPR48, SGPR128,
-static-LDS512, scratch0 and no compiler. Retain the primitive pending a
-default-off 12-global-layer gate; production remains **20.349871 tok/s**:
-[`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json).
+static-LDS512, scratch0 and no compiler. The 12-global-layer gate passes with
+complete separation: all seven candidates beat every control, moving
+**20.373406 -> 20.409544 tok/s
+(+0.17738%, -0.08691 ms/token)** with exact state/lifecycle. gfx1151
+promotes the qualified capability, scalar probability replay remains exact
+rollback, and comparison plumbing is removed. Production remains
+**20.349871 tok/s** pending clean publication:
+[`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json),
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

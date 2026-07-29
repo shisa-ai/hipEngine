@@ -5072,8 +5072,8 @@ The remaining attention sequence is:
     [`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json).
-46. Transfer vector probability replay to global attention. **Primitive
-    retained; runtime gate next:** unlike SWA, the retained global kernel
+46. Transfer vector probability replay to global attention. **Retained and
+    promoted:** unlike SWA, the retained global kernel
     already stores its complete normalized probability plane in LDS, but PV
     still consumes one scalar probability per token. The exact successor pads
     each score/probability plane to a four-float stride, preserving alignment
@@ -5090,12 +5090,20 @@ The remaining attention sequence is:
     complete sample separation at every shape. Cache-only tracing names the
     distinct `<...,true>` specialization at grid8192/local256, VGPR48,
     SGPR128, static-LDS512, scratch0; no compiler runs under profiling.
-    Retain the separately registered primitive. Production remains
-    **20.349871 tok/s** pending a default-off 12-global-layer resident gate.
+    The 12-global-layer resident gate passes with complete separation: all
+    seven candidates beat every control, moving median decode
+    **20.373406 -> 20.409544 tok/s
+    (+0.17738%, -0.08691 ms/token)**. Every run preserves tokens, the exact
+    128-token trajectory, positions, repeat state, and allocation lifecycle.
+    Promote the qualified gfx1151 capability, retain scalar probability
+    replay as exact rollback, and remove the comparison-only CLI/session
+    seam. Production remains **20.349871 tok/s** pending selector-unset
+    publication.
     This is the directly transferable part of llama.cpp Vulkan's tile-local
     probability reuse; its cooperative lower-precision QK/PV arithmetic
     remains outside the exact BF16 recurrent contract. Evidence:
-    [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json).
+    [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json) ·
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json).
 
 Current exact decode checkpoint:
 
