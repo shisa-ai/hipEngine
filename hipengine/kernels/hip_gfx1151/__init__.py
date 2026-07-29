@@ -508,6 +508,18 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k",
             "mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
         ),
+        # WPF-H5J's K1024 resident-segment IQ3 and one-wave IQ4 schedules are
+        # W7900-only pending independent gfx1151 resource/performance gates.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out",
+        ),
+        (
+            "moe_linear",
+            "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(

@@ -51,6 +51,10 @@ _SYMBOL_IQ3_GROUPED_SINGLE = (
 _SYMBOL_IQ3_GROUPED_SINGLE_ROWBATCH8 = (
     "hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
 )
+_SYMBOL_IQ3_GROUPED_SINGLE_K1024_RESIDENT_ROWBATCH8 = (
+    "hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_"
+    "rowbatch8_bf16_bf16_out"
+)
 _SYMBOL_IQ4_GROUPED_DUAL = (
     "hipengine_gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out"
 )
@@ -59,6 +63,10 @@ _SYMBOL_IQ4_GROUPED_SINGLE = (
 )
 _SYMBOL_IQ4_GROUPED_SINGLE_K512_WAVE32 = (
     "hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out"
+)
+_SYMBOL_IQ4_GROUPED_SINGLE_K1024_WAVE32 = (
+    "hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_"
+    "bf16_bf16_out"
 )
 _SYMBOL_IQ3_WMMA_DUAL = (
     "hipengine_gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out"
@@ -410,6 +418,46 @@ def gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
     )
 
 
+def gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_common(
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+    )
+    if in_features != 1024:
+        raise ValueError(
+            "in_features must be exactly 1024 for grouped IQ3 resident rowbatch8"
+        )
+    _launch_grouped_single(
+        _SYMBOL_IQ3_GROUPED_SINGLE_K1024_RESIDENT_ROWBATCH8,
+        x_ptr,
+        expert_start_compact_ptr,
+        qweight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -578,6 +626,44 @@ def gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_common(
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+    )
+    if in_features != 1024:
+        raise ValueError("in_features must be exactly 1024 for grouped IQ4 wave32")
+    _launch_grouped_single(
+        _SYMBOL_IQ4_GROUPED_SINGLE_K1024_WAVE32,
+        x_ptr,
+        expert_start_compact_ptr,
+        qweight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out(
@@ -1049,6 +1135,11 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out",
+            gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq3_xxs",
             "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
             gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
         ),
@@ -1076,6 +1167,11 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
             "gguf_iq4_xs",
             "selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out",
             gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
+            gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out,
         ),
         (
             "gguf_iq4_xs",
@@ -1109,6 +1205,7 @@ __all__ = [
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_bf16_bf16_out",
+    "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
@@ -1116,6 +1213,7 @@ __all__ = [
     "gguf_iq4_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out",
     "gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out",
+    "gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
     "gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out",
     "gguf_iq4_xs_selected_wmma_prefill_compact_bf16_bf16_out",
     "plan_gguf_iq_selected_prefill_build",
