@@ -1955,6 +1955,13 @@ pair-block next-stage loading to four waves; the byte-exact 9x50 leaf
 regresses **0.037106 -> 0.040897 ms (+10.219%)**. Do not retry without a
 different loader/overlap mechanism:
 [`double-buffer rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-double-buffer-rejected.json).
+The storage-only compact2 successor is also removed at the leaf stop. It
+preserves all 12 wave roles and exact arithmetic while shrinking the mixed40
+query-indexed structures from three rows to two (**-2,360 logical bytes**),
+but the 9x50 and 21x100 leaves regress **0.017%/0.041%** with only **4/9** and
+**9/21** paired wins. Do not retry unless a compounded change also reduces
+VGPR pressure or changes occupancy:
+[`compact2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-compact2-storage-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
