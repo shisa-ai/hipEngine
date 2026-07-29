@@ -263,9 +263,12 @@ __device__ __forceinline__ void process_attention_tile(
     const float batch_max = fmaxf(local_max, lane_xor16(local_max));
     const bool has_data = isfinite(batch_max);
     const float next_max = has_data ? fmaxf(running_max, batch_max) : 0.0f;
-    const float previous_scale = has_data && isfinite(running_max)
-        ? expf(running_max - next_max)
-        : 0.0f;
+    // A causal query tile can exhaust its visible keys before the shared
+    // K64 scan. Empty future-only batches must preserve, not erase, the
+    // online-softmax state accumulated by preceding batches.
+    const float previous_scale = !has_data
+        ? 1.0f
+        : isfinite(running_max) ? expf(running_max - next_max) : 0.0f;
 #pragma unroll
     for (int tile = 0; tile < HEAD_DIM / 32; ++tile) {
 #pragma unroll

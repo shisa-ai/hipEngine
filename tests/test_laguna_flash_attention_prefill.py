@@ -176,21 +176,26 @@ def _attention_reference(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
-    ("mode", "num_q_heads", "capacity", "sliding_window"),
-    [("global", 48, 256, None), ("swa", 72, 32, 512)],
+    ("mode", "num_q_heads", "capacity", "sliding_window", "rows"),
+    [
+        ("global", 48, 256, None, 17),
+        ("swa", 72, 32, 512, 17),
+        ("global", 48, 256, None, 65),
+        ("swa", 72, 96, 512, 65),
+    ],
 )
 def test_laguna_source_flash_attention_tails_and_spans_pass_quality(
     mode: str,
     num_q_heads: int,
     capacity: int,
     sliding_window: int | None,
+    rows: int,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     before = memory_stats()
-    rows = 17
-    rng = np.random.default_rng(0xFA22 + num_q_heads)
+    rng = np.random.default_rng(0xFA22 + num_q_heads + rows)
     query = rng.normal(0.0, 0.16, size=(rows, num_q_heads, 128)).astype(
         np.float32
     )
