@@ -5598,6 +5598,32 @@ The remaining attention sequence is:
     storage alone; its cooperative QK/PV execution is the material mechanism.
     Evidence:
     [`FP16 scaled-score rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-fp16-scaled-scores-rejected.json).
+70. Screen the untested GQA9/K128 split-softmax point using the recovered
+    llama-shaped ownership. **Rejected and removed at the leaf gate:** the
+    cached earlier K64 code object reveals its actual scalar topology: keep all
+    nine queries resident, partition K tokens across eight waves, publish the
+    score/weight tile, and flatten 9 x 128 outputs so one V load updates up to
+    five query accumulators. K128 halves the merge from eight to four split
+    states, but also yields only **8 KV heads x 4 splits = 32 workgroups** on
+    the 40-CU gfx1151.
+
+    Three deliberately simpler drafts establish the scheduling hazards:
+    serialized staged-V, wave-per-query direct-V, and wave-per-query
+    published-weight bodies regress **381.27%/322.94%/369.44%**. The recovered
+    two-axis ownership is much better but still moves the 9x50 leaf
+    **0.037223 -> 0.095496 ms (+156.55%)**. Its fixture error is small
+    (**2.61e-8** F32, four gated BF16 values), but performance alone rejects
+    it before recurrent quality or resident integration.
+
+    Cache-only tracing proves this is not a compiler-spill accident: the main
+    body is grid32/local256, **VGPR56/SGPR128/LDS9728/scratch0**, with an
+    **84.96-us** warm dispatch plus **1.36-us** merge. K128 underfills the
+    device while doubling serial token work per block. Remove the kernel,
+    export, wrapper, registry, and harness selector. Production remains
+    **20.496816 tok/s**. The mandatory lineage script was independently
+    blocked by its missing read-only Atlas checkout; in-tree Laguna and cached
+    K64 lineage were audited directly. Evidence:
+    [`GQA9/K128 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-gqa9-splitk128-rejected.json).
 
 Current exact decode checkpoint:
 

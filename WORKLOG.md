@@ -191962,3 +191962,28 @@ Vulkan local sizes verbatim will close the measured gap.
   Raw SHA-256 is `aa2f3176...c19dbb`; production remains
   **20.496816 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-fp16-scaled-scores-rejected.json`.
+
+## 2026-07-30 05:05 JST — Reject source-shaped GQA9/K128 SWA split
+
+- Audit the cached rejected-K64 code object and recover the scalar structure
+  behind its speed: eight waves partition the K tile while all nine queries
+  remain resident, then flattened output ownership lets one V load update up
+  to five query accumulators. This is the scalar reuse topology beneath the
+  llama.cpp-shaped K64 screen; cooperative F16 QK/PV remains the comparator's
+  additional advantage.
+- Screen K128 to halve online-softmax merge association from eight to four
+  states. Serialized staged-V, wave-per-query direct-V, and wave-per-query
+  published-weight drafts regress **381.27%/322.94%/369.44%**. The recovered
+  two-axis body improves those drafts but still moves the cached 9x50 leaf
+  **0.037223 -> 0.095496 ms (+156.55%)**.
+- A require-cached trace reports the intended grid32/local256,
+  **VGPR56/SGPR128/LDS9728/scratch0**, with **84.96 us** in the warm main body
+  and **1.36 us** in merge. The loss is structural: 32 blocks underfill 40
+  CUs while each block carries twice K64's serial token work. Stop before
+  recurrent quality/resident integration and remove every candidate seam.
+- `scripts/check_lineage.py --kind kernel --diff stat` is environment-blocked
+  by the manifest's missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; ROCm/gfx1151 is healthy and the
+  in-tree/cached Laguna lineage was audited directly. Production stays
+  **20.496816 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-gqa9-splitk128-rejected.json`.
