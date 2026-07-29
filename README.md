@@ -78,7 +78,11 @@ numbers below.
   N48 micro-win. H5G's constant-80/96 tiles now publish
   **188.393/175.042/132.743 tok/s**, another **+2.192%/+2.055%/+1.329%** over
   H5F. H5H closes larger exact tiles: constant-112 loses every role and
-  constant-128 reaches VGPR256 with 28–52 B scratch. Full logits, all 48 hidden
+  constant-128 reaches VGPR256 with 28–52 B scratch. The retained H5G request
+  reclassifies to **2,667.034 ms / 1,720 dispatches**: Q5 **920.633 ms**, IQ
+  down **560.642 ms**, attention **468.533 ms**, and Q6 **177.047 ms**. With Q5
+  geometry and prior attention lanes closed, WPF-H5I next tests exact-Q6 F32
+  expansion through the existing ordered consumer. Full logits, all 48 hidden
   boundaries, routing prefixes, active K/V, and every `KVLiveSpans` field are
   bit-exact at KL 0 on
   the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
@@ -154,6 +158,7 @@ numbers below.
   regressions and the constant-128 spill cliff
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
   [H5H boundary rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json) ·
+  [post-H5G residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json) ·
   [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
