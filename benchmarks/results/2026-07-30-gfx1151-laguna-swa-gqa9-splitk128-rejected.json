@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T05:05:05+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa9_splitk128_rejected",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "e80f96aefa67be70384b62285d54a1dcf7b87907",
+    "candidate_uncommitted": true,
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "recovered_code_object": "/home/lhl/.cache/hipengine/build/laguna_kv_attention-21a0b3e2b1834e71/laguna_kv_attention.so",
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_contract": {
+    "model": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "72Q/8KV/D128/SWA512",
+    "production_decode_tok_s": 20.496815665674816
+  },
+  "premise": {
+    "reason": "The earlier GQA9/K64 topology was fast but failed recurrent quality. K128 halves the number of online-softmax split states and their merge association while retaining 8 KV heads x 4 splits = 32 main workgroups.",
+    "llamacpp_mechanism": "The recovered K64 code object keeps all nine queries resident while eight waves partition the K tile, then flattens the 9x128 outputs so one V load feeds up to five query accumulators.",
+    "gate": "Require a material leaf win before any recurrent model-quality or resident integration work."
+  },
+  "screens": [
+    {
+      "name": "serialized staged-V draft",
+      "control_median_ms": 0.03772661924362183,
+      "candidate_median_ms": 0.18156553268432618,
+      "latency_change_percent": 381.2663745772083,
+      "raw_sha256": "330d9084cd421fa78421a612cfcc7d7a447263b0ecc1b0a60e4edaa12e648014",
+      "finding": "Nine sequential PV phases and nine block barriers dominate."
+    },
+    {
+      "name": "wave-per-query direct-V draft",
+      "control_median_ms": 0.037155940532684326,
+      "candidate_median_ms": 0.1571485233306885,
+      "latency_change_percent": 322.94319852421,
+      "raw_sha256": "cd05fabb42a7102e76eb130a65b298158d0bb83e5ae850a0e9fbd779f1400b15",
+      "finding": "Removing V staging and serial head barriers is insufficient without full-GQA K/V reuse."
+    },
+    {
+      "name": "wave-per-query published-weight draft",
+      "control_median_ms": 0.03700788021087646,
+      "candidate_median_ms": 0.17372852325439453,
+      "latency_change_percent": 369.43656935891306,
+      "raw_sha256": "e0375d51ba35e7e5e20584a851f51e3d5e810d1cd2fa635608ec8b9b18af4125",
+      "finding": "Scalar weight publication removes shuffles but remains serialized by head."
+    },
+    {
+      "name": "recovered two-axis GQA9 reuse",
+      "control_median_ms": 0.03722316026687622,
+      "candidate_median_ms": 0.095496244430542,
+      "latency_change_percent": 156.55060920639042,
+      "raw_sha256": "488a4657b253ac3b18c4c00f9dac3dcc3c42fce3e207518ea34e1b734c5f28c5",
+      "correctness": {
+        "context_max_abs_error": 2.60770320892334e-08,
+        "gated_bf16_mismatches": 4,
+        "gated_max_abs_error": 3.814697265625e-06
+      },
+      "finding": "The source-shaped ownership is the best K128 draft but still loses by 2.57x."
+    }
+  ],
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-k128-trace.4j8Bwx -o k128 -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-splitk128 --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "raw_sha256": "8d9a74b15a253760423df3008a78604900821696093bb7cf7b46194fdf09407b",
+    "main": {
+      "grid_blocks": 32,
+      "workgroup_size": 256,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 9728,
+      "scratch_bytes": 0,
+      "warm_duration_ms": 0.08496
+    },
+    "merge": {
+      "grid_blocks": 72,
+      "workgroup_size": 128,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "warm_duration_ms": 0.001362
+    },
+    "compiler_invocations_under_profiler": 0
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "environment_blocked",
+    "reason": "The manifest references missing read-only checkout /home/lhl/amd-gpu-tuning/reference/atlas; current in-tree Laguna and cached rejected-K64 lineage were inspected directly."
+  },
+  "decision": {
+    "retained": false,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 20.496815665674816,
+    "reason": "The best source-shaped K128 body has the intended VGPR/LDS/scratch resources, so its 2.57x loss is structural: 32 blocks underfill 40 CUs and each block serializes twice K64's token work. Stop before model quality and resident integration.",
+    "next": "Do not retry K128 split softmax. The llama.cpp gap comes from tensorized F16 cooperative QK/PV plus K64 breadth; exact scalar association has no remaining source-shaped split-K route."
+  }
+}
