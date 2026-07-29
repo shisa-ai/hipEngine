@@ -191549,3 +191549,33 @@ Vulkan local sizes verbatim will close the measured gap.
   compounded with a material VGPR/occupancy change. Production remains
   **20.494732 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-compact2-storage-rejected.json`.
+
+## 2026-07-30 02:08 JST — Retain exact denominator-prefetch4 primitive
+
+- Re-profile the retained mixed40 tail-producer body with one require-cached
+  `rocprofv3` process per counter and four steady dispatches per process.
+  Median memory-unit busy is **51.264%**, L2 hit is **49.742%**, fetch size is
+  **2,091.125 KiB**, and each 480-wave dispatch issues **1,764,240 VALU**,
+  **482,056 LDS**, and **640,936 SALU** instructions. Median wave cycles are
+  **47,948,181.5 quad-cycles**. This is a mixed instruction/latency body, not
+  a DRAM or LDS-capacity roof.
+- ISA inspection identifies sixteen serialized denominator
+  `ds_load_b128`/`lgkmcnt(0)`/four-add chains. Add a separately registered
+  exact sibling that issues four adjacent vector loads first, then consumes
+  the same 16 components in the original scalar order. The compiler emits
+  four load groups with `lgkmcnt(3/2/1/0)` while code size/instruction count
+  remain **5,740 bytes / 1,070 instructions** and all 64 ordered adds remain.
+- RED fails importing the absent wrapper. GREEN passes the wrapped/explicitly
+  evicted oracle with byte-identical F32 context and gated BF16 output.
+- The 9x50 leaf improves **0.037188 -> 0.037036 ms (-0.410%)**, **9/9**
+  wins; raw SHA-256 is `a992b197...847`. The stronger 21x100 leaf improves
+  **0.037597 -> 0.037559 ms (-0.101%)** with **19 wins, one tie, one loss**;
+  raw SHA-256 is `f4b54974...774f`.
+- The first trace process fails closed before any kernel because its pinned
+  compiler-version cache key is absent. Prebuild that exact key outside the
+  profiler, then run one successful cache-only trace. It records unchanged
+  grid15,360/local384, VGPR104, SGPR128, LDS25,600, and scratch0; trace/child
+  SHA-256 values are `08a2fb66...f6c9` / `086c52ed...a114`.
+- Retain the registered primitive pending seven counterbalanced exact
+  p512/d128 resident pairs. Production remains **20.494732 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json`.
