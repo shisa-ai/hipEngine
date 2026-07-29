@@ -191077,3 +191077,23 @@ Vulkan local sizes verbatim will close the measured gap.
   peer backends unchanged. Remove the dedicated comparison flag; selector-
   unset publication remains next. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json`.
+
+## 2026-07-29 23:41 JST — Publish vectorized SWA denominator production
+
+- Run the normal tracked-clean selector-unset Poolside Laguna S 2.1 Q4_K_M
+  BF16-KV p512/d128 eager c=1 protocol at retained revision `e102b0087`.
+  Decode is **20.351478/20.360810/20.358649 tok/s**, median
+  **20.358649**: **+0.4358% / -0.2141 ms/token** over clean stage-cache
+  production and **+77.546%** over the 11.466687 sprint start.
+- The normal route reports the vectorized-denominator capability active.
+  All three runs preserve next/final tokens **2930/74107**, trajectory
+  SHA-256 `94f803f7...ebda32`, final position 638, repeat determinism, and
+  zero tracked allocations after teardown. Load remains excluded and the
+  repository is tracked-clean; raw output SHA-256 is
+  `4e29b404...7e3b358`.
+- Current wall is **49.119 ms/token**. Against same-GGUF llama.cpp Vulkan
+  **23.348381 tok/s / 42.8295 ms**, the remaining gap is
+  **6.290 ms/token** or **12.805%** throughput. Next run a cached
+  127-transition wall census, then screen exact vectorized probability replay
+  inside the retained SWA PV loop. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-production.json`.

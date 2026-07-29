@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T23:41:23+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_vec4_denom_production",
+  "status": "accepted_production",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "production_revision": "e102b00875d82f352f8fe4354f5a944f050668c3",
+    "tracked_clean": true,
+    "comparison_selector_active": false,
+    "retained_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk": 2048,
+    "swa_attention_chunk": 128,
+    "warmup_rows": 128,
+    "repetitions": 3,
+    "decode_forward_calls_per_run": 127,
+    "load_seconds_excluded": 89.73470692406408,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-swa-vec4-denom-production.json",
+    "raw_sha256": "4e29b4045dd82cd767eea27faca969d33d2371369a3cf3da29ff9bf7d7e3b358"
+  },
+  "performance": {
+    "samples_tok_s": [
+      20.351478122509874,
+      20.360809558611596,
+      20.358648888653548
+    ],
+    "median_tok_s": 20.358648888653548,
+    "median_ms_per_token": 49.119173156786864,
+    "prior_production_tok_s": 20.270313915467614,
+    "prior_production_ms_per_token": 49.33322711085064,
+    "throughput_change_percent": 0.4357849294012617,
+    "ms_per_token_change": -0.21405395406377892,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 77.54604175254411,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llamacpp_vulkan_ms_per_token": 42.829522098341634,
+    "remaining_wall_gap_ms_per_token": 6.28965105844523,
+    "remaining_throughput_gap_percent": 12.80487975310345
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_position": 638,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_after_bytes": 0,
+    "tracked_after_allocations": 0
+  },
+  "selection": {
+    "backend": "hip_gfx1151",
+    "capability": "LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "active_without_selector": true,
+    "comparison_only_profile_route_removed": true,
+    "rollback": "registered exact stage probability cache with wave-shuffle denominator replay",
+    "peer_backends_unchanged": true
+  },
+  "next": "Run a cached 127-transition wall census, then test exact vectorized probability replay inside the retained SWA PV loop."
+}
