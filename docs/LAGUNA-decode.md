@@ -4462,6 +4462,17 @@ The remaining attention sequence is:
     accumulation before any whole-model quality run. The measured scalar
     split merge, global score plane, output-derived repair, packed-BF16 dot2,
     and synchronization-only variants remain closed.
+15. Screen exact scalar whole-GQA ownership before changing arithmetic.
+    **Complete and rejected:** one local384 block per KV head stages all nine
+    queries and computes each K/V/exp32 value once while preserving the exact
+    denominator and PV order. Despite byte identity, the leaf regresses
+    **0.058989 -> 0.138660 ms (+135.1%)**. Tracing exposes only eight blocks,
+    VGPR224, LDS44,544, and scratch0. Preventing full loop unrolling worsens
+    the leaf to **0.173172 ms (+192.8%)**. All candidate code is removed.
+    This confirms that llama.cpp's whole-GQA ownership is inseparable from
+    cooperative-matrix parallelism; scalar traffic reuse underfills and
+    serializes gfx1151. Evidence:
+    [`rejected scalar GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-shared-scalar-rejected.json).
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
