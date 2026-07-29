@@ -5451,6 +5451,30 @@ The remaining attention sequence is:
     error-free transform—not another output-derived midpoint or consensus
     heuristic. Production remains **20.494732 tok/s**. Evidence:
     [`PV-bound precondition rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-attention-pv-bound-screen-rejected.json).
+63. Test whether F32 Q8_1 metadata repairs the selected gate/up integer-dot
+    quality failure before building residual machinery.
+    **Rejected and removed:** on actual layer-1 resident gate/up weights at
+    `x_rows=1, routes=10, K=3072, N=1024`, the compact FP16-scale Q8_1 pack
+    plus dp4a fused-SiLU consumer improves the inclusive leaf
+    **0.127712 -> 0.095370 ms (-25.32%)**. Replacing its 36-byte block with
+    a 40-byte block carrying F32 `d` and `s` remains fast at
+    **0.129319 -> 0.100381 ms (-22.38%)**, but it does not repair accuracy.
+
+    Both variants differ from the exact retained result in **8,451 BF16
+    values** with **0.125 max absolute error**, and their complete candidate
+    BF16 outputs have the same SHA-256. The selected consumer recomputes the
+    quantized-byte sum and never uses stored `s`; widening metadata changes
+    neither Q8 bytes nor the eventual BF16 result. Therefore this proposed
+    fix cannot explain or remove the earlier full-model one-plane Q8_1
+    quality failure.
+
+    Remove the temporary F32 block, quantizer symbol, consumer symbol,
+    wrappers, registry key, test imports, and both leaf selectors. The
+    **speed mechanism remains open**, but only behind a design that changes
+    the activation approximation itself—bounded residual repair, selective
+    exact blocks, or another mixed scheme—and then passes the complete KL
+    and top-1 gate. Production remains **20.494732 tok/s**. Evidence:
+    [`Q8_1 F32-scale rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-f32-scale-rejected.json).
 
 Current exact decode checkpoint:
 

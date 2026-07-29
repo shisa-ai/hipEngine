@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T03:39:28+09:00",
+  "kind": "hipengine_laguna_gfx1151_selected_q4_q8_scale_precision_screen",
+  "status": "rejected_quality_mechanism",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16"
+  },
+  "workload": {
+    "family": "selected expert gate/up fused SiLU",
+    "shape": "x_rows=1, routes=10, experts=256, K=3072, N=1024",
+    "weights": "actual layer-1 resident Q4_K T16 gate/up tensors",
+    "activation_seed": 20260728,
+    "timing": "5 warmups, 21 counterbalanced samples, 50 launches per sample",
+    "control": "exact retained natural-tile8-parallel fused-SiLU kernel",
+    "candidate": "one BF16-to-Q8_1 pack launch plus selected Q4_K T16 dp4a fused-SiLU launch"
+  },
+  "commands": {
+    "common_prefix": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --gate-only --warmups 5 --samples 21 --burst 50 --allow-dirty",
+    "fp16_scale": "--gate-candidate q8-dp4a-silu --output /tmp/laguna-selected-q8-dp4a-silu-fp16scale-checksum-21x50.json",
+    "f32_scale": "--gate-candidate q8-f32-scale-dp4a-silu --output /tmp/laguna-selected-q8-dp4a-silu-f32scale-checksum-21x50.json"
+  },
+  "results": {
+    "fp16_scale": {
+      "control_ms": 0.12771220207214357,
+      "candidate_inclusive_ms": 0.09536986351013184,
+      "candidate_delta_percent": -25.324391904026378,
+      "bf16_mismatches": 8451,
+      "max_abs_error": 0.125,
+      "raw_sha256": "e9584b8944ca3047272d3694def224c677031fca8fd121922c72b02ea0de5caf"
+    },
+    "f32_scale": {
+      "control_ms": 0.12931918144226073,
+      "candidate_inclusive_ms": 0.10038091659545899,
+      "candidate_delta_percent": -22.377395622259087,
+      "bf16_mismatches": 8451,
+      "max_abs_error": 0.125,
+      "raw_sha256": "eb6c82c6783cb5653ca169225e0fe908b3c6fb014235d3f462d01e34bee878ed"
+    },
+    "control_bf16_sha256": "92aa3f81fba8397dad248a64b541f4de5e945eb32840dddb69093655afeccad6",
+    "fp16_scale_candidate_bf16_sha256": "102b9f9292d665515dde87e4773c2896d2130f839fbbee05694d671962acddaf",
+    "f32_scale_candidate_bf16_sha256": "102b9f9292d665515dde87e4773c2896d2130f839fbbee05694d671962acddaf",
+    "candidate_outputs_bit_identical": true
+  },
+  "analysis": {
+    "stored_q8_sum_used_by_selected_consumer": false,
+    "quantized_q8_bytes_changed_by_scale_storage": false,
+    "finding": "Widening Q8_1 d/s metadata from FP16 to FP32 does not change a single candidate BF16 output at this selected gate/up seam. It therefore cannot repair the previously rejected full-model one-plane Q8_1 quality result.",
+    "speed_premise": "Reusable Q8_1 packing plus integer dot remains a real performance mechanism: both inclusive two-launch candidates beat the exact leaf by more than 22%. The missing piece is quantization error correction, not scale-storage range or precision."
+  },
+  "decision": {
+    "retain_f32_scale_implementation": false,
+    "retain_q8_leaf_selector": false,
+    "reason": "The proposed F32 scale/sum metadata produces exactly the same approximate BF16 output while being slower than the compact FP16-scale block in this screen.",
+    "next_reopen_condition": "A bounded residual or mixed exact/quantized scheme that changes the Q8 activation approximation itself and passes the full decode KL/top-1 gate.",
+    "production_decode_tok_s": 20.494732
+  },
+  "repo_revision": "eba7477a4d2b326a9808248937352b969b78e387"
+}

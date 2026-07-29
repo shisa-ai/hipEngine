@@ -191756,3 +191756,29 @@ Vulkan local sizes verbatim will close the measured gap.
   bound; require a materially tighter certified mechanism or cheap
   error-free transform. Production remains **20.494732 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-attention-pv-bound-screen-rejected.json`.
+
+## 2026-07-30 03:39 JST — Reject F32-scale Q8_1 selected gate/up repair
+
+- Following the measured llama.cpp mechanism, screen reusable Q8_1 activation
+  packing plus integer dot at the actual Laguna selected gate/up shape
+  (`x_rows=1`, ten routes, 256 experts, K3072/N1024). Inclusive quantize plus
+  fused-SiLU dp4a improves the exact retained leaf
+  **0.127712 -> 0.095370 ms (-25.324%)**, so the speed premise is real.
+- Add a temporary 40-byte diagnostic Q8_1 block with F32 `d/s` metadata,
+  preserving the quantized byte plane and otherwise identical consumer.
+  It remains positive at **0.129319 -> 0.100381 ms (-22.377%)** but produces
+  the exact same candidate BF16 SHA-256 as the compact FP16-scale path.
+  Both have **8,451** mismatches and **0.125** max absolute error against the
+  exact kernel.
+- The selected consumer recomputes the signed-byte sum and does not consume
+  stored `s`; F32 metadata changes neither Q8 bytes nor final BF16 outputs.
+  Remove all temporary HIP/Python/registry/test/leaf code. Reopen Q8_1 only
+  around a scheme that changes the activation approximation itself and passes
+  full-model KL/top-1, not another metadata-width change. Production remains
+  **20.494732 tok/s**.
+- Exact commands use
+  `scripts/laguna_selected_natural_decode_leaf.py --gate-only --warmups 5
+  --samples 21 --burst 50 --allow-dirty` with candidates
+  `q8-dp4a-silu` and `q8-f32-scale-dp4a-silu`. Raw SHA-256:
+  `e9584b89...e5caf` / `eb6c82c6...78ed`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-f32-scale-rejected.json`.
