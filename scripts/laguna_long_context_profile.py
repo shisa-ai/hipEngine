@@ -88,7 +88,6 @@ COMPARISON_ARGUMENTS = (
     "compare_global_assume_exp",
     "compare_global_exp32",
     "compare_global_mixed32",
-    "compare_global_dpp_qk",
     "compare_selected_natural_decode",
     "compare_selected_natural_tile8_decode",
 )
@@ -335,11 +334,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-global-mixed32",
         action="store_true",
         help="counterbalance exact 24-owner GQA2 and 32-owner mixed global attention",
-    )
-    parser.add_argument(
-        "--compare-global-dpp-qk",
-        action="store_true",
-        help="counterbalance retained global QK shuffles against exact DPP transport",
     )
     parser.add_argument(
         "--compare-selected-natural-decode",
@@ -812,8 +806,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_decode_global_exp32(mode == "candidate")
                     if args.compare_global_mixed32:
                         owner.set_decode_global_mixed32(mode == "candidate")
-                    if args.compare_global_dpp_qk:
-                        owner.set_decode_global_dpp_qk(mode == "candidate")
                     if args.compare_selected_natural_decode:
                         owner.set_selected_natural_decode(
                             mode == "candidate"
@@ -1068,7 +1060,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_global_assume_exp": args.compare_global_assume_exp,
             "compare_global_exp32": args.compare_global_exp32,
             "compare_global_mixed32": args.compare_global_mixed32,
-            "compare_global_dpp_qk": args.compare_global_dpp_qk,
             "compare_selected_natural_decode": (
                 args.compare_selected_natural_decode
             ),

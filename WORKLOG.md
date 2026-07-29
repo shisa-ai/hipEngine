@@ -190667,3 +190667,24 @@ Vulkan local sizes verbatim will close the measured gap.
   the comparison-only selector.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json`.
+
+## 2026-07-29 20:39 JST — Publish clean global DPP-QK production
+
+- Committed promotion `91596b4b5`, then ran the selector-unset p512/d128
+  production protocol from a tracked-clean tree with cached code only.
+  Three decode samples are
+  **20.088017/20.105078/20.116745 tok/s**, median **20.105078**:
+  **+0.1767% / -0.0879 ms/token** over the preceding clean 20.069608 packet
+  and **+75.335%** over the 11.466687 sprint start.
+- All runs produce next token `2930`, final token `74107`, trajectory
+  `94f803f7...bda32`, and final position 638. Repeat determinism and
+  zero-allocation lifecycle recovery pass. Raw SHA-256 is
+  `709b5dc4...e9362b3`.
+- Removed the comparison-only session setter, profile option, and setter test.
+  The gfx1151 capability selects DPP directly; the registered producer-max
+  shuffle sibling remains exact rollback.
+- Updated the canonical benchmark rollup/changelog and current decode table.
+  Same-GGUF Vulkan remains **23.348381 tok/s / 42.829522 ms/token**; the wall
+  gap is now **6.909 ms/token**.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-production.json`.

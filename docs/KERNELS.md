@@ -1701,6 +1701,12 @@ registered shuffle sibling is exact rollback and peer backends remain
 unchanged. Evidence:
 [`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json) ·
 [`global DPP-QK retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json).
+Tracked-clean selector-unset production is
+**20.088017/20.105078/20.116745 tok/s**, median **20.105078**:
+**+0.1767% / -0.0879 ms/token** over the preceding 20.069608 packet and
+**+75.335%** over sprint start. The comparison-only session/profile seam is
+removed; the capability selects the registered sibling directly:
+[`global DPP-QK production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
