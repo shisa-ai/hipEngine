@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
@@ -46,6 +47,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
@@ -943,6 +945,16 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         t16_selected_library,
     )
     np.testing.assert_array_equal(q4_actual, q4_ref)
+    q4_parallel = _run_direct_single(
+        gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q4_tiles,
+        down_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(q4_parallel, q4_actual)
 
     q6_down = _stack_experts(
         make_q6_k_weight,
@@ -980,6 +992,16 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         t16_selected_library,
     )
     np.testing.assert_array_equal(q6_actual, q6_ref)
+    q6_parallel = _run_direct_single(
+        gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q6_tiles,
+        down_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(q6_parallel, q6_actual)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

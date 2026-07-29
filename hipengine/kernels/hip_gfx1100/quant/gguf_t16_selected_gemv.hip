@@ -1908,7 +1908,8 @@ template <
     typename scalar_t,
     int qtype,
     bool qmicro = false,
-    bool qmicro_planar = false>
+    bool qmicro_planar = false,
+    bool parallel_tail = false>
 __global__ __launch_bounds__(128, 4)
 void qk_t16_selected_natural_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -2030,7 +2031,19 @@ void qk_t16_selected_natural_gemv_kernel(
   }
   __syncthreads();
 
-  if (tid == 0) {
+  if constexpr (parallel_tail) {
+    if (tid < T16_COLS) {
+      const int col = tid;
+      float total = 0.0f;
+#pragma unroll
+      for (int g = 0; g < 4; ++g) {
+        total += xchg[g * T16_COLS + col];
+      }
+      scalar_t* __restrict__ out_row =
+          out + row * kOutFeatures + out_tile * T16_COLS;
+      out_row[col] = float_to_scalar<scalar_t>(total);
+    }
+  } else if (tid == 0) {
     scalar_t* __restrict__ out_row =
         out + row * kOutFeatures + out_tile * T16_COLS;
 #pragma unroll
@@ -2880,7 +2893,8 @@ template <
     typename scalar_t,
     int qtype,
     bool qmicro = false,
-    bool qmicro_planar = false>
+    bool qmicro_planar = false,
+    bool parallel_tail = false>
 int launch_qk_natural(const void* x,
                       const void* selected,
                       const void* tiles,
@@ -2899,7 +2913,7 @@ int launch_qk_natural(const void* x,
   const dim3 grid(3072 / T16_COLS, 10);
   hipLaunchKernelGGL(
       (qk_t16_selected_natural_gemv_kernel<
-          scalar_t, qtype, qmicro, qmicro_planar>),
+          scalar_t, qtype, qmicro, qmicro_planar, parallel_tail>),
       grid,
       block,
       0,
@@ -3120,6 +3134,16 @@ hipengine_gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out(
       num_experts, stream);
 }
 
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_qk_natural<uint16_t, 4, false, false, true>(
+      x, selected, tiles, out, x_rows, rows, in_features, out_features,
+      num_experts, stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out(
     const void* x, const void* selected, const void* tiles, void* out,
     int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
@@ -3200,6 +3224,16 @@ hipengine_gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out(
     int64_t x_rows, int64_t rows, int64_t num_experts,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_qk_natural<uint16_t, 6, true, true>(
+      x, selected, tiles, out, x_rows, rows, in_features, out_features,
+      num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_qk_natural<uint16_t, 6, true, true, true>(
       x, selected, tiles, out, x_rows, rows, in_features, out_features,
       num_experts, stream);
 }

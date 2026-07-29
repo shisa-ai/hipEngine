@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T17:24:18+09:00",
+  "kind": "hipengine_laguna_gfx1151_selected_down_parallel_tail_leaf",
+  "status": "candidate_primitive",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "b154db043c12c2e7224eb0a5f0ae017aedb64045",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip",
+    "lineage_check": "blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; candidate is an in-tree exact tail-ownership specialization"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_layouts": [
+      "gguf_q4_k_t16_v1",
+      "gguf_q6_k_t16_qmicro_planar"
+    ],
+    "shape": "c1/top10 selected down, ten distinct K1024 rows to N3072"
+  },
+  "candidate": {
+    "description": "Keep the local128/four-wave natural Q4 and planar-Q6 down bodies unchanged through their LDS publication barrier, then assign each of the 16 independent ordered wave0..3 reductions and BF16 stores to lanes 0..15 instead of serializing them on thread 0.",
+    "resident_weight_delta_bytes": 0,
+    "persistent_scratch_delta_bytes": 0
+  },
+  "correctness": {
+    "red": "The focused natural selected-decode fixture failed collection because both parallel-tail wrappers were absent.",
+    "green_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "green_result": "1 passed",
+    "complete_changed_test_file": "102 passed",
+    "q4_bf16_mismatches": 0,
+    "q6_bf16_mismatches": 0,
+    "quality": "KL=0 and top-1=100% relative to production by byte equality"
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate natural --down-candidate parallel-tail --warmups 5 --samples 21 --burst 50 --allow-dirty --output /tmp/laguna-selected-down-parallel-tail-leaf.json",
+    "raw_sha256": "a90ae24313cb8fb04c6ef11512602e7c4b1f4ebaa285fce25b23ab56c6143e4b",
+    "q4_down": {
+      "control_median_ms": 0.05930017948150635,
+      "candidate_median_ms": 0.05744709968566895,
+      "latency_change_percent": -3.1249143123003753,
+      "paired_wins": 20,
+      "paired_samples": 21
+    },
+    "q6_down": {
+      "control_median_ms": 0.07359583854675293,
+      "candidate_median_ms": 0.07290411949157714,
+      "latency_change_percent": -0.9398888155019325,
+      "paired_wins": 21,
+      "paired_samples": 21
+    }
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --stats --output-format csv -d /tmp/laguna-down-parallel-tail-trace.SIG0zJ -- .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "raw_sha256": "81f73abe40a755ec122f6c74ae97c8fe35c498db867466ebfbcee0753ee57657",
+    "q4_resources": "local128, VGPR104, SGPR128, LDS512, scratch0",
+    "q6_resources": "local128, VGPR80, SGPR128, LDS512, scratch0",
+    "expected_symbols_observed": true,
+    "compiler_under_profiler": false
+  },
+  "decision": {
+    "primitive_retained": true,
+    "production_default_changed": false,
+    "production_tok_s": 20.0567558587,
+    "production_status": "unchanged",
+    "next_gate": "Add a gfx1151-only session-scoped selector and require seven exact counterbalanced p512/d128 pairs before promotion."
+  }
+}

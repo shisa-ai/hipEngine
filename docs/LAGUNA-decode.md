@@ -4605,6 +4605,17 @@ The remaining attention sequence is:
     mandatory for this tile; do not retry local32 logical-wave replay.
     Production remains **20.056756 tok/s**. Evidence:
     [`rejected wave32 replay`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json).
+25. Parallelize the exact selected-down tail. **Primitive retained; runtime
+    gate pending:** Q4 and planar-Q6 keep their local128 four-wave K/FMA
+    bodies, wave trees, LDS publication, barrier, and BF16 boundary. Lanes
+    0..15 now each own one independent ordered wave0..3 sum and store instead
+    of thread 0 serializing all 16 columns. Actual Q4 down improves
+    **0.059300 -> 0.057447 ms (-3.125%, 20/21 wins)** and planar-Q6 improves
+    **0.073596 -> 0.072904 ms (-0.940%, 21/21 wins)** with zero BF16
+    mismatches. Cached tracing preserves local128/LDS512/scratch0 and VGPR
+    **104/80**. Production remains **20.056756 tok/s** until a seven-pair
+    resident p512/d128 gate passes. Evidence:
+    [`selected-down parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json).
 
 Current exact decode checkpoint:
 

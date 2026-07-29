@@ -190283,3 +190283,26 @@ Vulkan local sizes verbatim will close the measured gap.
   waves are required to hide the selected-Q4 memory/decode work; do not retry
   local32 logical-wave replay. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json`.
+
+## 2026-07-29 17:24 JST — Retain exact selected-down parallel-tail primitive
+
+- RED fails collection on the absent Q4 and planar-Q6 natural parallel-tail
+  wrappers. GREEN leaves each local128 four-wave K/FMA body, wave tree, LDS
+  publication, barrier, and BF16 boundary unchanged, assigning the 16
+  independent ordered wave0..3 sums/stores to lanes 0..15 instead of thread 0.
+- The focused production-shape oracle passes byte-exactly. The complete
+  changed test file passes **102/102**. Actual layer-10 Q4 and layer-1
+  planar-Q6 down weights use ten distinct K1024 input rows and N3072 output.
+  Twenty-one counterbalanced 50-launch samples improve Q4
+  **0.059300 -> 0.057447 ms (-3.125%, 20/21 wins)** and Q6
+  **0.073596 -> 0.072904 ms (-0.940%, 21/21 wins)** with zero BF16
+  mismatches. Raw SHA-256 is `a90ae243...6143e4b`.
+- A non-profiled warmup precedes cache-only tracing. Both expected `true`
+  specializations run with unchanged local128/LDS512/scratch0 and VGPR
+  **104/80** for Q4/Q6. Trace SHA-256 is `81f73abe...57657`; no compiler runs
+  under the profiler.
+- Retain the separately registered primitive without changing production.
+  Current production remains **20.056756 tok/s**. Next add a scoped gfx1151
+  session selector and require seven exact counterbalanced p512/d128 pairs.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json`.
