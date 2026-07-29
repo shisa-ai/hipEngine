@@ -5385,6 +5385,21 @@ The remaining attention sequence is:
     issues multiple `global_load_b128` operations before the corresponding
     stores, allowing gfx1151 to overlap memory latency. Evidence:
     [`unsupported global-to-LDS load`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-global-load-lds-unsupported.json).
+60. Overlap the supported staged-V source loads in registers.
+    **Rejected and removed at the leaf stop:** issue two ordinary 16-byte
+    V-cache loads before either corresponding LDS write, preserving every
+    staged byte, LDS slot, barrier, owner, arithmetic operation, and dispatch.
+    RED fails on the absent wrapper; GREEN is F32/BF16 byte-exact under wrap
+    and explicit eviction.
+
+    The paired 9x50 leaf regresses **0.037081 -> 0.045278 ms (+22.106%)**.
+    The extra live 128-bit value state is much more expensive than the
+    load-to-store dependency it attempts to hide. Remove the kernel branch,
+    export, wrapper, registry key, test call, and leaf selector completely;
+    skip tracing and resident integration. Production remains
+    **20.494732 tok/s**. Do not try a deeper staged-V source prefetch—the
+    bounded depth-two screen already fails decisively. Evidence:
+    [`value-prefetch2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-value-prefetch2-rejected.json).
 
 Current exact decode checkpoint:
 

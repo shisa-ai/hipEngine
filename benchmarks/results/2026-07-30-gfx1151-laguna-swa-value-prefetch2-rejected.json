@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T03:05:42+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_value_prefetch2_rejected",
+  "status": "rejected_at_leaf",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "b7c282c53885632cc2c6dc0ddd6fef92ce01b7ae",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "Issue two ordinary 16-byte V-cache loads before either corresponding LDS store in the direct mixed40 tail-producer V-stage64 path.",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "ownership_changed": false,
+    "abi_changed": false
+  },
+  "correctness": {
+    "red": "focused test failed importing the intentionally absent diagnostic wrapper",
+    "green": "focused wrapped/explicitly-evicted SWA oracle passed",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "protocol": "paired 9 samples x 50 launches after 3 warmups",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 9 --warmups 3 --burst 50 --candidate mixed40-exp32-producer-max-gate-stage-pcache-tail-producer-value-prefetch2-idle-vec4-denom-probability-vstage64-vec16-direct-assume-exp --allow-dirty --output /tmp/laguna-swa-value-prefetch2-9x50.json",
+    "control_median_ms": 0.037081320285797116,
+    "candidate_median_ms": 0.04527833938598633,
+    "latency_change_percent": 22.10552115461981,
+    "control_samples_ms": [
+      0.041499180793762205,
+      0.03694266080856323,
+      0.037083718776702884,
+      0.037070879936218264,
+      0.037081320285797116,
+      0.03708771944046021,
+      0.03706768035888672,
+      0.03714711904525757,
+      0.03707338094711304
+    ],
+    "candidate_samples_ms": [
+      0.04534396171569824,
+      0.04511956214904785,
+      0.04528063774108887,
+      0.04524136066436767,
+      0.04525497913360596,
+      0.04521249771118164,
+      0.04533926010131836,
+      0.04529036045074463,
+      0.04527833938598633
+    ],
+    "raw_sha256": "8f9d34510660a8c74434679d34285834179926d29ba424e7c32585bde9c724f8"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "resident_gate_skipped": true,
+    "production_tok_s": 20.49473174761836,
+    "reason": "Keeping two 128-bit V values live before the LDS stores regresses the exact leaf by 22.11%, so extra source-load concurrency is substantially worse than the original dependency chain.",
+    "next": "Do not retry staged-V source prefetch or wider prefetch depth; return to changes that reduce cooperative work rather than increasing live transport state."
+  }
+}

@@ -191692,3 +191692,22 @@ Vulkan local sizes verbatim will close the measured gap.
   ordinary V-cache global loads before their unchanged LDS stores to overlap
   latency without changing arithmetic or ownership. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-global-load-lds-unsupported.json`.
+
+## 2026-07-30 03:05 JST — Reject mixed40 staged-V source prefetch2
+
+- Establish RED by importing the absent diagnostic wrapper, then add a
+  transport-only candidate to the exact mixed40 tail-producer. Each loader
+  issues two ordinary 16-byte V-cache loads before either corresponding LDS
+  store. Staged bytes, LDS layout, barriers, ownership, dispatches, QK,
+  softmax, PV association, and stores are unchanged.
+- GREEN passes the focused wrapped/explicitly-evicted oracle with byte-exact
+  F32 context and gated BF16 output.
+- The paired 9x50 leaf regresses **0.037081 -> 0.045278 ms (+22.106%)**.
+  Extra live 128-bit source state is substantially worse than the dependency
+  it attempts to hide. Remove the kernel branch, export, wrapper, registry
+  key, test call, and leaf selector; skip trace and resident integration.
+  Production remains **20.494732 tok/s**.
+- Exact command:
+  `GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 9 --warmups 3 --burst 50 --candidate mixed40-exp32-producer-max-gate-stage-pcache-tail-producer-value-prefetch2-idle-vec4-denom-probability-vstage64-vec16-direct-assume-exp --allow-dirty --output /tmp/laguna-swa-value-prefetch2-9x50.json`
+  (raw SHA-256 `8f9d3451...24f8`). Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-value-prefetch2-rejected.json`.
