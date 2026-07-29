@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T20:36:00+09:00",
+  "kind": "hipengine_laguna_global_dpp_qk_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "source": {
+    "primitive_revision": "75fbb97be359cae9aa934019ce84635bb9ecf0d6",
+    "promotion_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk": 2048,
+    "swa_attention_chunk": 128,
+    "warmup_rows": 128,
+    "repetitions": 7,
+    "decode_forward_calls_per_run": 127,
+    "timed_order": "control/candidate then alternating direction",
+    "load_seconds_excluded": 89.90720884804614,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-dpp-qk --allow-dirty --output /tmp/laguna-p512-d128-global-dpp-qk-ab.json",
+    "raw_sha256": "5f7ba3091fe756357da20d4ec9309faa6107ba9509928320ff3642bf80383361"
+  },
+  "performance": {
+    "control_median_tok_s": 20.088664776737943,
+    "candidate_median_tok_s": 20.114354766452593,
+    "throughput_change_percent": 0.12788301263506607,
+    "control_ms_per_token": 49.779309488495105,
+    "candidate_ms_per_token": 49.715731504453405,
+    "ms_per_token_change": -0.06357798404170012,
+    "all_paired_repetitions_positive": true,
+    "complete_sample_separation": true,
+    "control_samples_tok_s": [
+      20.08388460731409,
+      20.086502164227692,
+      20.08602471158648,
+      20.088664776737943,
+      20.093769553512622,
+      20.097952142632185,
+      20.101528868640045
+    ],
+    "candidate_samples_tok_s": [
+      20.11421360122639,
+      20.117628540555263,
+      20.114354766452593,
+      20.10925224365334,
+      20.117664529434304,
+      20.112474509631475,
+      20.122962844143522
+    ]
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_position": 638,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "leaf_context_f32_byte_exact": true,
+    "leaf_gated_bf16_byte_exact": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "selection": {
+    "backend": "hip_gfx1151",
+    "capability": "LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE",
+    "qualified_shape": "gated 48Q/8KV/D128/capacity4096/live<=4000 on the retained producer-max mixed32 route",
+    "promoted": true,
+    "rollback": "registered producer-max mixed32 sibling with retained shuffle transport",
+    "peer_backends_unchanged": true
+  },
+  "decision": {
+    "retained": true,
+    "runtime_default_changed": true,
+    "reason": "The exact leaf wins at every production live point and all seven resident samples are positive with complete separation and exact state/lifecycle.",
+    "next_gate": "Run tracked-clean selector-unset three-repetition p512/d128 production, then remove the comparison-only session selector."
+  }
+}

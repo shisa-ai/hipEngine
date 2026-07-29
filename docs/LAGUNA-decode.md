@@ -4756,10 +4756,15 @@ The remaining attention sequence is:
     **0.087375 -> 0.081498 ms (-6.73%)**. Cache-only tracing names the
     intended grid8192/local256 body at
     VGPR48/SGPR128/LDS512/scratch0 with no compiler under profiling.
-    Production remains **20.069608 tok/s**. Next add a default-off
-    global-only selector and require exact generated state plus a positive
-    actual 12-layer decode result before promotion. Evidence:
-    [`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json).
+    The default-off resident gate then improves all seven p512/d128 pairs with
+    complete sample separation and exact trajectories/state. Median decode is
+    **20.088665 -> 20.114355 tok/s (+0.128%, -0.064 ms/token)**.
+    gfx1151 now defaults DPP transport on the qualified producer-max route;
+    the registered shuffle sibling remains exact rollback and peer backends
+    are unchanged. Next run the tracked-clean selector-unset production
+    checkpoint and remove the comparison-only selector. Evidence:
+    [`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json) ·
+    [`global DPP-QK retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json).
 
 Current exact decode checkpoint:
 
