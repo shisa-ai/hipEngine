@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_swa_pair36_rejected",
+  "timestamp": "2026-07-29T21:21:03+09:00",
+  "status": "rejected_removed",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16",
+    "sha256": "7da520c5...5753f"
+  },
+  "baseline_revision": "80f65df96adcfc90f0094892077efed9d51305e1",
+  "premise": {
+    "control": "32 local384 mixed owners partition each nine-query GQA group as 2+2+2+3, launching 384 waves of which 288 own output dimensions.",
+    "candidate": "One local256 launch pairs all 72 query heads into 36 fully active blocks. Thirty-two blocks share one KV head; four boundary blocks process two KV heads sequentially. The candidate launches exactly 288 output waves."
+  },
+  "correctness": {
+    "red": "The saturated-512 wrap/eviction oracle failed importing the absent pair36 wrapper.",
+    "green_command": "uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green": "1 passed",
+    "coverage": "positions 512..519 with explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_sha256": "53d9bb47fc552029b4131e22ce11468d415590a5ca77a7dcc47ac09b908a2cde",
+    "gated_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73"
+  },
+  "leaf": {
+    "shape": "capacity/window/live=512, 72Q/8KV/D128",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate pair36-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-pair36-leaf.json",
+    "control_median_ms": 0.058748421669006345,
+    "candidate_median_ms": 0.10393588066101074,
+    "latency_change_percent": 76.91689020446273,
+    "control_samples_ms": [
+      0.0596619176864624,
+      0.058622422218322756,
+      0.05882038116455078,
+      0.05882609844207764,
+      0.05874112129211426,
+      0.058620119094848634,
+      0.05910667896270752,
+      0.058748421669006345,
+      0.058728361129760744
+    ],
+    "candidate_samples_ms": [
+      0.10085251808166504,
+      0.10393588066101074,
+      0.1019426155090332,
+      0.10514379501342773,
+      0.10436973571777344,
+      0.1016181755065918,
+      0.1044692039489746,
+      0.10439388275146484,
+      0.10177616119384765
+    ],
+    "raw_sha256": "adb743622679ea5a10403c02bb0681ea52e15a54160ddccd9e6016253ab7ba7c"
+  },
+  "nounroll_repair": {
+    "change": "Prevent explicit duplication of the two-phase staged-V loop with pragma unroll 1.",
+    "control_median_ms": 0.05875624179840088,
+    "candidate_median_ms": 0.10373147964477539,
+    "latency_change_percent": 76.54546388567445,
+    "raw_sha256": "cb1cf0ca1432890d2b5209ccd5dfa5013e8c37b65c3aa7ad19a550fc72069062",
+    "decision": "No material repair."
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-swa-pair36-trace.Fensrc -o pair36 -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate pair36-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp --samples 1 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "control": {
+      "grid": 12288,
+      "local": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid": 9216,
+      "local": 256,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "csv_sha256": "66c125a8f7a71954303d8ffce599809da53a13e82de229af6e49836dd430ab1d"
+  },
+  "decision": {
+    "resident_gate_run": false,
+    "reason": "Eliminating 96 idle waves cannot repay the dual-KV code path and 25% extra K/V ownership. Resources are unchanged, and suppressing phase-loop unrolling does not repair the loss.",
+    "production_tok_s": 20.1050782292,
+    "production_changed": false,
+    "code_retained": false
+  }
+}

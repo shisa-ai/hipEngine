@@ -4809,6 +4809,27 @@ The remaining attention sequence is:
     also changing probability/KV ownership. Evidence:
     [`rejected exact dim2 output owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-dim2-output-rejected.json).
 
+35. Remove mixed32's idle waves without adding a second launch. **Complete and
+    rejected:** one local256 dispatch pairs all 72 query heads into 36 fully
+    active owners. Thirty-two blocks reuse one KV head; the four pairs that
+    cross a nine-query GQA boundary process their two KV heads sequentially.
+    This launches exactly 288 useful output waves instead of mixed32's 384
+    total/288 useful waves. Each query retains its exact QK, maximum, exp32,
+    denominator, PV, divide, gate, and store order. The wrap/eviction oracle
+    is F32/BF16 byte-exact.
+
+    Cached 9x50 leaves regress **0.058748 -> 0.103936 ms (+76.92%)**.
+    A cache-only trace confirms grid9216/local256 and unchanged
+    VGPR104/SGPR128/LDS25,088/scratch0, so this is not a resource-allocation
+    accident. Suppressing explicit two-phase loop unrolling is immaterial:
+    **0.058756 -> 0.103731 ms (+76.55%)**. The four dual-KV blocks and
+    **25%** extra K/V ownership outweigh idle-wave removal. Skip resident
+    decode, remove all candidate code, and leave production at
+    **20.105078 tok/s**. Together with the 40-block same-KV GQA2 and
+    two-launch pair/triple failures, this closes scalar pair ownership around
+    the retained mixed32 point. Evidence:
+    [`rejected exact pair36 owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-pair36-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -4836,12 +4857,15 @@ measured failures. Packed-BF16 QK dot2 is also closed: its compensated path is
 slower and its one-term path spends far more than the complete quality budget
 for a sub-percent leaf gain.
 
-The next exact scalar ownership screen is a single-launch 36-block pair
-packing: pair all 72 query heads, keep 32 same-KV pair owners, and let only
-four boundary pairs process two KV heads sequentially. This removes all 96
-idle output waves from mixed32 without the rejected two-launch pair/triple
-split. It must beat the leaf before any resident run; the nearby 40-block
-same-KV GQA2 loss means a neutral result closes this scalar branch.
+Scalar ownership is now closed around the retained mixed32 point: 24, 32, 36,
+40, split pair/triple, and whole-GQA owners have all been measured. The next
+attention candidate must couple cooperative probability/KV reuse to its
+output tile. The strongest remaining precision seam is a consensus guard:
+compare two fast, independently associated high-precision cooperative
+results, accept only identical BF16 bins, and replay exact scalar work for
+disagreements. It is viable only if the guard catches every reference
+mismatch on the wrapped/evicted leaf and the double-fast path plus replay
+still beats production before any recurrent quality run.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all
