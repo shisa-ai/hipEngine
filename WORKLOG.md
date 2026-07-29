@@ -189990,3 +189990,22 @@ Vulkan local sizes verbatim will close the measured gap.
 - Python compilation and the complete profile-harness test file pass
   **36/36**. Rerun the intended seven control/candidate pairs from the repaired
   committed revision.
+
+## 2026-07-29 15:33 JST — Promote exact selected-Q4 parallel tail
+
+- The repaired artifact contains the required 14 rows: seven control and seven
+  candidate measurements in counterbalanced order within one resident model
+  session. All **7/7** pairs favor the eight-lane tail; paired gains span
+  **+0.031% to +0.173%**.
+- Median fixed-horizon decode improves
+  **19.998518 -> 20.007478 tok/s (+0.0448%)**, or
+  **50.003706 -> 49.981311 ms/token (-0.022395 ms)**. Repeated next token 2930,
+  final token 74107, generated-ID hash, final position 638, and allocation
+  teardown are exact.
+- Promote `LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE` on gfx1151.
+  Registered serial tile8 remains the exact rollback; non-natural shapes and
+  peer backends are unchanged. Raw SHA-256 is `b13b7733...53ae`.
+- Production topline remains **20.003064 tok/s** until a tracked-clean,
+  selector-unset p512/d128 publication and cached symbol trace complete.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-retained.json`.

@@ -1950,6 +1950,10 @@ should be boring.
   promote the parallel tail when every matched p512/d128 resident pair is
   exact and positive, retaining serial tile8 only as the registered rollback;
   or remove the candidate and selector if the full-cycle gate regresses.
+- The promotion trigger is satisfied: all seven resident p512/d128 pairs are
+  exact and positive at **19.998518 -> 20.007478 tok/s (+0.0448%)**. Keep the
+  serial tile8 rollback and comparison seam through one decode checkpoint,
+  then collapse qualified gfx1151 selection to the parallel tail.
 
 ## Laguna gfx1151 SWA exponential decode selector
 
