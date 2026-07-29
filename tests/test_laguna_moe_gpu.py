@@ -17,6 +17,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.quant import gguf_iq_source_mmq_prefill  # noqa: F401
 from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.loading.laguna_gguf import (
     SLIDING_ATTENTION,
@@ -572,6 +573,103 @@ def test_laguna_grouped_pair16_preserves_route_major_c1_gate_up(
     assert [name for name, _, _ in calls] == ["compact", "route_major", "gather"]
 
 
+def test_laguna_grouped_source_mmq_down_reuses_compact_rows_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        return lambda *args, **kwargs: calls.append((name, args, kwargs))
+
+    monkeypatch.setattr(
+        laguna_moe_module,
+        "gguf_q8_1_ds4_quantize_bf16_kmajor",
+        record("producer"),
+        raising=False,
+    )
+    route = SimpleNamespace(
+        function=record("consumer"),
+        allocation_name="raw",
+        library_key="iq_source_mmq",
+    )
+    plan = SimpleNamespace(
+        grouped_source_mmq_down_routes={"gguf_iq3_xxs": route},
+        mmq128_tile_map=record("tile_map"),
+        grouped_weighted_sum=record("weighted_sum"),
+        expert_count=256,
+        top_k=10,
+        expert_ffn_size=1024,
+        hidden_size=3072,
+    )
+
+    def buffer(ptr: int, nbytes: int = 1 << 30) -> SimpleNamespace:
+        return SimpleNamespace(ptr=ptr, nbytes=nbytes)
+
+    scratch = SimpleNamespace(
+        plan=plan,
+        grouped_expert_start=buffer(3),
+        grouped_expert_start_mmq32=buffer(4),
+        grouped_sorted_experts=buffer(5),
+        grouped_mmq_total=buffer(6),
+        grouped_sorted_weights=buffer(7),
+        grouped_sorted_lanes=buffer(8),
+        grouped_lane_to_row=buffer(9),
+        expert_gate=buffer(10),
+        activation_q8=buffer(11, 5_898_240),
+        expert_down=buffer(13),
+        routed_output=buffer(14),
+    )
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(quant_key="gguf_iq3_xxs"),
+        allocation=lambda _name: SimpleNamespace(tensor=buffer(12)),
+    )
+    layer = SimpleNamespace(weight=lambda _slot: weight)
+
+    assert laguna_moe_module._launch_selected_down_grouped_source_mmq(
+        layer,
+        scratch,
+        tokens=512,
+        lanes=5120,
+        stream=15,
+        runtime=SimpleNamespace(),
+        libraries={
+            "iq_source_mmq_producer": "producer-lib",
+            "iq_source_mmq": "consumer-lib",
+        },
+    )
+    assert [name for name, _, _ in calls] == [
+        "tile_map",
+        "producer",
+        "consumer",
+        "weighted_sum",
+    ]
+    _, tile_args, tile_kwargs = calls[0]
+    assert tile_args[:5] == (3, 4, 5, 6, 256)
+    assert tile_kwargs["tile_capacity"] == 294
+    _, producer_args, producer_kwargs = calls[1]
+    assert producer_args == (10, 11, 5120, 1024)
+    assert producer_kwargs["library"] == "producer-lib"
+    _, consumer_args, consumer_kwargs = calls[2]
+    assert consumer_args[:6] == (11, 3, 4, 5, 12, 13)
+    assert consumer_kwargs["compact_rows"] == 5120
+    assert consumer_kwargs["mmq_total_rows"] == 37_632
+    assert consumer_kwargs["library"] == "consumer-lib"
+    assert calls[3][1][:5] == (13, 7, 8, 9, 14)
+
+    missing = SimpleNamespace(
+        plan=SimpleNamespace(grouped_source_mmq_down_routes={})
+    )
+    assert not laguna_moe_module._launch_selected_down_grouped_source_mmq(
+        layer,
+        missing,
+        tokens=512,
+        lanes=5120,
+        stream=0,
+        runtime=None,
+        libraries=None,
+    )
+
+
 def test_obsolete_laguna_grouped_prefill_keys_are_removed() -> None:
     obsolete = {
         "gguf_iq2_xs": (
@@ -627,6 +725,10 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1100", "grouped_exact")
         == "grouped_exact"
+    )
+    assert (
+        resolve_laguna_selected_down_mode("hip_gfx1100", "grouped_source_mmq")
+        == "grouped_source_mmq"
     )
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151", "adaptive_grouped_smallm")
@@ -1683,6 +1785,12 @@ def test_laguna_iq2_grid64_route_is_c1_only_and_default_off() -> None:
     )
     assert retained.grouped_pair16_gate_up_routes["gguf_iq2_xs"].library_key == (
         "grouped_iq_prefill"
+    )
+    assert retained.grouped_source_mmq_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out"
+    )
+    assert retained.grouped_source_mmq_down_routes["gguf_iq4_xs"].library_key == (
+        "iq_source_mmq"
     )
     assert not retained.c1_selected_gate_up_keys
     assert candidate.selected_gate_up_keys["gguf_iq2_xs"].variant == (

@@ -28,6 +28,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_eager_kernel_plan,
     resolve_laguna_head_kv_fusion,
     resolve_laguna_iq2_grid64,
+    resolve_laguna_iq_source_mmq,
     resolve_laguna_mixed_attention_projections,
     resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
@@ -118,10 +119,14 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     prefill = object()
     q4_prefill = object()
     iq_grouped_prefill = object()
+    iq_source_mmq_producer = object()
+    iq_source_mmq_consumer = object()
     values["f16_projection"] = exact
     values["f16_projection_prefill"] = prefill
     values["q4_prefill_linear"] = q4_prefill
     values["iq_grouped_prefill"] = iq_grouped_prefill
+    values["iq_source_mmq_producer"] = iq_source_mmq_producer
+    values["iq_source_mmq_consumer"] = iq_source_mmq_consumer
     libraries = LagunaEagerLibraries(**values)
 
     assert libraries.f16_linear["fp16_weight"] is exact
@@ -132,6 +137,8 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
         is q4_prefill
     )
     assert libraries.moe["grouped_iq_prefill"] is iq_grouped_prefill
+    assert libraries.moe["iq_source_mmq_producer"] is iq_source_mmq_producer
+    assert libraries.moe["iq_source_mmq"] is iq_source_mmq_consumer
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
@@ -1150,6 +1157,18 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     assert not hasattr(LagunaGGUFResidentSession, "set_raw_k_prefill_variant")
     assert "raw_k_prefill_variant" not in signature(
         LagunaGGUFResidentSession.__init__
+    ).parameters
+
+
+def test_laguna_iq_source_mmq_is_explicit_gfx1100_candidate_only() -> None:
+    assert not resolve_laguna_iq_source_mmq("hip_gfx1100")
+    assert resolve_laguna_iq_source_mmq("hip_gfx1100", True)
+    assert not resolve_laguna_iq_source_mmq("hip_gfx1100", False)
+    assert not resolve_laguna_iq_source_mmq("hip_gfx1151")
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_iq_source_mmq("hip_gfx1151", True)
+    assert "use_iq_source_mmq" in signature(
+        runner_module.LagunaGGUFResidentSession.__init__
     ).parameters
 
 

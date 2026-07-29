@@ -27,6 +27,7 @@ _SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS_PARALLEL = (
 _SYMBOL_TILE_MAP = "hipengine_qwen35_moe_wmma_tile_map"
 _SYMBOL_MMQ32_TILE_MAP = "hipengine_qwen35_moe_mmq32_tile_map"
 _SYMBOL_MMQ64_TILE_MAP = "hipengine_qwen35_moe_mmq64_tile_map"
+_SYMBOL_MMQ128_TILE_MAP = "hipengine_qwen35_moe_mmq128_tile_map"
 _SYMBOL_SCATTER = "hipengine_qwen35_moe_group_scatter"
 _SYMBOL_SCATTER_GATHER = "hipengine_qwen35_moe_group_scatter_gather_lowp"
 _SYMBOL_GATHER = "hipengine_qwen35_moe_gather_packed_hidden_lowp"
@@ -443,6 +444,47 @@ def qwen35_moe_mmq64_tile_map(
     _check_launch(runtime, err)
 
 
+def qwen35_moe_mmq128_tile_map(
+    expert_start_compact_ptr: int,
+    mmq_expert_start_ptr: int,
+    tile_expert_ptr: int,
+    mmq_total_ptr: int,
+    num_experts: int,
+    *,
+    tile_capacity: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Map compact expert starts to 128-row source-MMQ tile ownership."""
+
+    _check_num_experts(num_experts)
+    _check_nonnegative(tile_capacity, "tile_capacity")
+    library = library or build_qwen35_moe_group_scatter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_MMQ128_TILE_MAP)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(mmq_expert_start_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(mmq_total_ptr),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(tile_capacity),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_moe_group_scatter(
     selected_experts_ptr: int,
     routing_weights_ptr: int,
@@ -680,6 +722,11 @@ def register_qwen35_moe_group_scatter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "moe_mmq_tile_map", "generic", "tile64"),
         qwen35_moe_mmq64_tile_map,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_mmq_tile_map", "generic", "tile128"),
+        qwen35_moe_mmq128_tile_map,
         replace=replace,
     )
     register(
