@@ -4246,10 +4246,21 @@ kernel, wrapper, diagnostic selector, oracle, and harness are removed.
 Evidence:
 [`rejected raw-numerator WMMA`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-raw-numerator-rejected.json).
 
-The next material SWA gate must start from llama.cpp's actual advantage:
-tensorized QK and PV inside one GQA tile, with a separately budgeted
-high-precision correction strategy. Reusing scalar ownership, global score
-planes, or approximate online merges is closed by the measured failures.
+Output-midpoint repair is also closed. A guarded sibling runs the fast
+raw-numerator tile, detects approximate gated values near a BF16 midpoint, and
+replays the retained exact mixed32 owner only for ambiguous 2/3-head groups.
+Guards of **64/128/256/512** F32 low-mantissa units still leave
+**9/4/2/1** BF16 mismatches on the wrap/eviction fixture. The first byte-exact
+guard, **1024**, repairs so broadly that the leaf regresses
+**0.081869 -> 0.118805 ms (+45.12%)**. The kernel, wrapper, oracle seam, and
+harness choice are removed before runtime integration. Evidence:
+[`rejected guarded WMMA repair`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-guarded-repair-rejected.json).
+
+The next material SWA gate must improve llama.cpp's actual advantage rather
+than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
+intrinsically higher precision or a much finer correction unit than a complete
+query owner. Reusing scalar ownership, global score planes, approximate online
+merges, or grouped output-midpoint repair is closed by the measured failures.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all
@@ -4383,11 +4394,14 @@ and shape/backend fallbacks.
    nine-head issue pressure. A single-normalization raw-numerator WMMA repair
    retains a **57.95%** leaf win and improves the prior WMMA max KL
    **1.754897 -> 1.426066**, but remains 28.52x over budget and is removed.
-   Apply
-   exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
+   Grouped BF16-midpoint repair is also removed: the first byte-exact guard
+   repairs nearly every owner and regresses **0.081869 -> 0.118805 ms
+   (+45.12%)**.
+   Exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
    and **+0.0479%** complete decode. The next material SWA step requires an
-   independently gated tensorized high-precision repair. Do not resume
-   scalar ownership, full-score repairs, or approximate split softmax/PV.
+   intrinsically higher-precision tensor path or component-fine correction.
+   Do not resume scalar ownership, full-score repairs, grouped midpoint repair,
+   or approximate split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches

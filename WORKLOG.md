@@ -189239,3 +189239,25 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw artifact SHA-256 is `d87e92f7...975d3`; clean load time
   **94.907 s** is excluded. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-production.json`.
+
+## 2026-07-29 10:39 JST — Reject grouped midpoint repair for WMMA SWA
+
+- Recovered the removed compensated-BF16 GQA9/K64 raw-numerator source from
+  the session journal, without relying on its cached binary. RED was the
+  absent guarded wrapper. The candidate ran the fast two-phase WMMA path,
+  detected approximate gated values near a BF16 rounding midpoint, and
+  replayed the retained exact mixed32 owner only for ambiguous 2/3-head
+  groups. The live runner audit confirmed only fused BF16 `gated_context`
+  feeds the output projection; no resident scratch growth was required.
+- Narrow low-mantissa guards **64/128/256/512** still leave **9/4/2/1** BF16
+  mismatches on positions 512-519 after ring wrap and explicit position-200
+  eviction. A **1024** guard makes both F32 context and BF16 gated output byte
+  exact on the leaf, but activates exact replay so broadly that nine
+  50-launch samples regress retained mixed32 exp32
+  **0.081869 -> 0.118805 ms (+45.12%)**.
+- Removed the raw kernel, guarded replay, wrappers, registry entry, oracle
+  extension, and harness choice before runtime integration. Production stays
+  **19.630076 tok/s**. Grouped output-midpoint repair is closed; the next
+  tensor attempt must improve the fast arithmetic itself or correct at a
+  materially finer unit. Raw leaf SHA-256 is `fbef057c...ee3b`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-guarded-repair-rejected.json`.
