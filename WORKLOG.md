@@ -190111,3 +190111,32 @@ Vulkan local sizes verbatim will close the measured gap.
   selector-unset p512/d128 checkpoint and cached symbol/launch-count trace
   complete. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json`.
+
+## 2026-07-29 16:13 JST — Publish tile8 parallel-tail SiLU production
+
+- A tracked-clean, selector-unset p512/d128 production run at `be8f372ef`
+  measures **20.053892/20.056756/20.064872 tok/s**, median
+  **20.056756 tok/s**. This is **+0.2442% / -0.1218 ms/token** over the
+  previous 20.007890 clean packet and **+74.913%** over the 11.466687 sprint
+  start. Repeated next/final tokens 2930/74107, generated-ID hash, final
+  position 638, tracked ownership, and zero-allocation teardown remain exact.
+  Raw SHA-256 is `1c1080ec...0fc`.
+- The cache-only 129-request trace segments warmup128, timed prefill512, and
+  127 decode transitions. Every decode token now contains exactly **721**
+  compute dispatches versus **768** before. All **5,969** selected gate/up
+  calls use
+  `q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short,true,true>`;
+  the prior non-SiLU specialization is absent. Standalone SiLU falls
+  **12,065 -> 6,096** calls, exactly removing 47 selected calls/token while
+  retaining 48 non-selected/shared calls/token.
+- The fused specialization remains grid16384x10/local128,
+  VGPR96/SGPR128/LDS512/scratch0. Trace medians are **47.859942 ms/token**
+  kernel sum, **50.199873 ms** span, **3.647160 ms** attention,
+  **24.049411 ms** source-F16, **8.383096 ms** selected gate/up,
+  **4.836836 ms** selected down, and **3.517488 ms** dense/shared.
+  Independent trace-family variance is attribution only; the retained
+  seven-pair A/B supplies the causal claim.
+- Raw production, trace, child, and derived-analysis SHA-256 values are
+  `1c1080ec...0fc`, `6456c69f...bdf4`, `171c52bd...6f5`, and
+  `d34ef134...0d4f`; no compiler ran under the profiler. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-production.json`.

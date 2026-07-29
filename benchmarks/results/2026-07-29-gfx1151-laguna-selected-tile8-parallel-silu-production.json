@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T16:13:28+09:00",
+  "kind": "hipengine_laguna_gfx1151_selected_tile8_parallel_silu_production",
+  "status": "accepted_production",
+  "performance_claim": true,
+  "source": {
+    "revision": "be8f372efc92f480d8a626e76c73d2075fc06b5e",
+    "tracked_clean": true,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_shared_tree_artifacts_excluded": true,
+    "leaf_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json",
+    "retained_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-tile8-parallel-silu-production.json",
+    "raw_sha256": "1c1080ecd15a858d10a3c26778c3262fa4228143655fd90789e4a94d944890fc",
+    "workload": "p512/d128 eager c=1, matrix2048, attention128",
+    "comparison_selector_active": false,
+    "parallel_tail_silu_capability_active": true,
+    "repetitions": 3
+  },
+  "performance": {
+    "prior_clean_decode_tok_s": 20.007890075,
+    "production_decode_tok_s": 20.056755858655933,
+    "throughput_change_percent": 0.2442325676,
+    "prior_ms_per_token": 49.9802825911,
+    "production_ms_per_token": 49.8585118674,
+    "saving_ms_per_token": 0.1217707237,
+    "decode_samples_tok_s": [
+      20.053892094050486,
+      20.056755858655933,
+      20.064872380016347
+    ],
+    "cumulative_sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 74.9132583688,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "hipengine_below_vulkan_percent": 14.0978731731,
+    "vulkan_faster_percent": 16.4115531173
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0
+  },
+  "trace": {
+    "command_scope": "tracked-clean cached-build p512/d128 production, 129 requests segmented as warmup128 + prefill512 + 127 decode transitions",
+    "trace_path": "/tmp/laguna-tile8-parallel-silu-production-trace.FUPzQt/tile8parallelsiluproduction_kernel_trace.csv",
+    "trace_sha256": "6456c69f76817555a6705b17cb62ea83243f77de27f4555fdd40ce34271ebdf4",
+    "child_artifact_path": "/tmp/laguna-tile8-parallel-silu-production-trace.FUPzQt/bench.json",
+    "child_artifact_sha256": "171c52bd487f16783b3bf984ce0c42992a818e4e4eaf6fa3ddf04dcdf35b96f5",
+    "decode_analysis_path": "/tmp/laguna-tile8-parallel-silu-production-trace.FUPzQt/decode-analysis.json",
+    "decode_analysis_sha256": "d34ef134ba0c458fcd65539143f270e3f8bdb8ea7c79992a6fad0f9349890d4f",
+    "compiler_ran_under_profiler": false,
+    "decode_transitions": 127,
+    "prior_compute_dispatches_per_token": 768,
+    "compute_dispatches_per_token": 721,
+    "selected_gate_up_calls": 5969,
+    "fused_parallel_silu_calls": 5969,
+    "parallel_without_silu_calls": 0,
+    "remaining_nonselected_silu_calls": 6096,
+    "prior_standalone_silu_calls": 12065,
+    "kernel_specialization": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true>",
+    "grid": [
+      16384,
+      10,
+      1
+    ],
+    "workgroup": [
+      128,
+      1,
+      1
+    ],
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "median_kernel_sum_ms_per_token": 47.859942,
+    "median_span_ms_per_token": 50.199873,
+    "median_attention_ms_per_token": 3.64716,
+    "median_source_f16_ms_per_token": 24.049411,
+    "median_selected_q4_gate_up_ms_per_token": 8.383096,
+    "median_selected_down_ms_per_token": 4.836836,
+    "median_dense_shared_ms_per_token": 3.517488,
+    "median_router_ms_per_token": 1.05326,
+    "median_norm_rope_gate_ms_per_token": 1.058107,
+    "median_activation_residual_ms_per_token": 0.177257,
+    "median_lm_head_ms_per_token": 1.119061,
+    "median_global_attention_ms_per_token": 1.150357,
+    "median_swa_attention_ms_per_token": 2.48991,
+    "note": "Independent profiler-run family variance is not used as causal performance evidence; the seven-pair retained artifact supplies the matched A/B claim."
+  },
+  "decision": {
+    "production": true,
+    "qualified_scope": "natural-shape resident-T16 selected Q4 gate/up c=1 decode on gfx1151",
+    "rollback": "registered exact parallel tile8 gate/up plus standalone SiLU",
+    "peer_backends_unchanged": true,
+    "next": "Remove the temporary session/profile comparison seam, then use the new wall census to select the next exact decode seam."
+  }
+}

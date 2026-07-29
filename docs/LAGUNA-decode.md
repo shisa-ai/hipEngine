@@ -4525,15 +4525,34 @@ The remaining attention sequence is:
     [`parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json),
     [`parallel-tail retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-retained.json),
     [`parallel-tail production`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-production.json).
+20. Fuse exact BF16 SiLU into the selected tile8 parallel-tail body.
+    **Complete and promoted:** gate and up still independently round-trip
+    through BF16 before the identical `gate * sigmoid(gate) * up`
+    expression, so the expert intermediate is byte-identical. The candidate
+    removes the temporary 20,480-byte gate/up plane write plus reread and one
+    launch per shared layer. The actual layer-1 gate/up+SiLU leaf improves
+    **0.131058 -> 0.129529 ms (-1.167%)**, with all 21 pairs positive and zero
+    BF16 mismatches. All seven exact resident pairs improve
+    **20.008491 -> 20.063975 tok/s (+0.2773%, -0.1382 ms/token)**. Clean
+    selector-unset production is
+    **20.053892/20.056756/20.064872 tok/s**, median **20.056756**:
+    **+0.2442% / -0.1218 ms/token** over the prior packet and **+74.913%**
+    over sprint start. Cached tracing confirms **721** compute dispatches per
+    token versus **768**, all **5,969** selected calls in
+    `<unsigned short,true,true>`, and unchanged
+    grid16384x10/local128/VGPR96/SGPR128/LDS512/scratch0. Evidence:
+    [`fused-SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json),
+    [`fused-SiLU retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json),
+    [`fused-SiLU production`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.007890 tok/s** | **49.980 ms** | **+74.487%** |
+| hipEngine current production | **20.056756 tok/s** | **49.859 ms** | **+74.913%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **7.150 ms/token** | hipEngine is **14.31%** below Vulkan throughput |
+| Remaining wall gap | — | **7.029 ms/token** | hipEngine is **14.10%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
