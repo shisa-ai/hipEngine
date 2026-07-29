@@ -191225,3 +191225,24 @@ Vulkan local sizes verbatim will close the measured gap.
   exact generated state plus a positive actual 12-layer p512/d128 result.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json`.
+
+## 2026-07-30 00:24 JST — Promote global vector probability replay
+
+- Add a default-off gfx1151 capability/cache field, session setter, profile
+  CLI, registry route, and rollback test. The focused routing/profile bundle
+  passes **37** tests.
+- Seven counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128
+  candidate runs beat every control. Median decode moves
+  **20.373406 -> 20.409544 tok/s
+  (+0.17738%, -0.08691 ms/token)**. Individual pair changes are
+  **+0.1301% to +0.2324%**; raw SHA-256 is
+  `d9656080...38060c`.
+- Every row preserves next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown.
+- Promote
+  `LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE`
+  on gfx1151. Scalar probability replay remains exact registered rollback and
+  peer backends are unchanged. Remove the comparison-only CLI/session seam;
+  clean selector-unset publication remains next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json`.
