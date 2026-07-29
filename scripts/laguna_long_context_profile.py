@@ -302,11 +302,6 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance exact 24-owner GQA2 and 32-owner mixed global attention",
     )
     parser.add_argument(
-        "--compare-global-producer-max",
-        action="store_true",
-        help="counterbalance exact global mixed32 against score-producer maxima",
-    )
-    parser.add_argument(
         "--compare-selected-natural-decode",
         action="store_true",
         help="counterbalance selected-MoE decode against natural-shape siblings",
@@ -433,7 +428,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.compare_global_assume_exp,
             args.compare_global_exp32,
             args.compare_global_mixed32,
-            args.compare_global_producer_max,
             args.compare_selected_natural_decode,
             args.compare_selected_natural_tile8_decode,
         )
@@ -488,7 +482,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or args.compare_global_assume_exp
         or args.compare_global_exp32
         or args.compare_global_mixed32
-        or args.compare_global_producer_max
         or args.compare_selected_natural_decode
         or args.compare_selected_natural_tile8_decode
     )
@@ -837,8 +830,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_decode_global_exp32(mode == "candidate")
                     if args.compare_global_mixed32:
                         owner.set_decode_global_mixed32(mode == "candidate")
-                    if args.compare_global_producer_max:
-                        owner.set_decode_global_producer_max(mode == "candidate")
                     if args.compare_selected_natural_decode:
                         owner.set_selected_natural_decode(
                             mode == "candidate"
@@ -1093,7 +1084,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_global_assume_exp": args.compare_global_assume_exp,
             "compare_global_exp32": args.compare_global_exp32,
             "compare_global_mixed32": args.compare_global_mixed32,
-            "compare_global_producer_max": args.compare_global_producer_max,
             "compare_selected_natural_decode": (
                 args.compare_selected_natural_decode
             ),
