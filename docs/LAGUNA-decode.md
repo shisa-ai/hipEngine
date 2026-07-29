@@ -4681,6 +4681,23 @@ The remaining attention sequence is:
     or carry an independently valid exact-repair proof.
     Evidence:
     [`global three-term WMMA rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-rejected.json).
+29. Isolate cooperative QK behind the retained exact reducer. **Complete and
+    rejected:** the GQA6/K64 three-term WMMA body publishes only head-major
+    QK scores and physical slots into the retained split ABI; the unchanged
+    fixed-shape reducer preserves token-order exponentials, denominator,
+    scalar F32 PV association, gate, and BF16 output. The eviction oracle
+    passes with maximum F32 context error **5.59e-9** and gated BF16
+    mismatches **1/1/0** at live513/576/639, but the extra scratch traffic
+    and second dispatch overwhelm the QK saving. Cached 9x50 medians regress
+    **0.073180 -> 0.142756 ms (+95.08%)**,
+    **0.079873 -> 0.164129 ms (+105.49%)**, and
+    **0.087535 -> 0.179403 ms (+104.95%)**. The leaf stop rule removes the
+    candidate before trace, recurrent quality, or runtime integration.
+    Production remains **20.069608 tok/s**. Do not retry a two-dispatch
+    QK-only route; a viable tensorized-QK candidate must retain exact scalar
+    PV ownership inside one dispatch and eliminate global score scratch.
+    Evidence:
+    [`rejected WMMA QK plus exact reducer`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-wmma-qk-exact-reduce-rejected.json).
 
 Current exact decode checkpoint:
 

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T19:31:56+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_wmma_qk_exact_reduce_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "0801fa4ed4f52453d6983bfd03d38c39a4f6b457",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "48Q/8KV/D128/global4096"
+  },
+  "candidate": {
+    "description": "Use the admitted GQA6/K64 three-term WMMA body only for QK score production, publish head-major scores and physical slots into the retained split scratch ABI, then run the unchanged exact fixed-shape softmax/PV/gate reducer.",
+    "premise": "Isolate tensorized QK while preserving the retained token-order exponentials, denominator, scalar F32 PV association, gate, and BF16 output boundary."
+  },
+  "correctness": {
+    "red": "The focused global live513/576/639 eviction oracle failed before implementation because the QK-only wrapper did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "green_result": "1 passed",
+    "explicit_eviction_position": 200,
+    "max_context_f32_abs": 5.587935447692871e-09,
+    "gated_bf16_mismatches": [
+      1,
+      1,
+      0
+    ]
+  },
+  "leaf": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-gqa6-k64-three-term-qk-exact-reduce --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-qk-only-leaf.json",
+    "raw_sha256": "dd285563a5cf019d965e2c7980d238254bf49cc72d1b23bc0f4ca804e395f173",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.07318004131317139,
+        "candidate_median_ms": 0.1427561569213867,
+        "latency_change_percent": 95.0752614506827
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.07987291812896728,
+        "candidate_median_ms": 0.16412925720214844,
+        "latency_change_percent": 105.48799398706849
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.08753532409667969,
+        "candidate_median_ms": 0.1794026756286621,
+        "latency_change_percent": 104.9488906107415
+      }
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "trace_run": false,
+    "full_model_quality_run": false,
+    "runtime_gate_run": false,
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "reason": "The clean QK-only ablation is 95.08-105.49% slower at every natural leaf shape. Cooperative QK cannot repay the global score/slot publication plus a second exact reducer dispatch.",
+    "next_gate": "Do not retry a two-dispatch QK-only route. Any further tensorized-QK screen must keep scalar exact-PV ownership inside one dispatch and eliminate global score scratch."
+  }
+}

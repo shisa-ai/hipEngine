@@ -190509,3 +190509,24 @@ Vulkan local sizes verbatim will close the measured gap.
   preserve retained F32 association or provide an independently valid
   exact-repair proof. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-rejected.json`.
+
+## 2026-07-29 19:32 JST — Reject two-dispatch global WMMA QK
+
+- Built a clean QK-only ablation: the admitted GQA6/K64 three-term WMMA
+  partial publishes head-major scores and physical slots, then the unchanged
+  fixed-shape reducer performs token-order exponentials, denominator, scalar
+  F32 PV, gate, and BF16 output.
+- RED fails on the absent wrapper. GREEN passes the focused live513/576/639
+  eviction oracle. Maximum context error is **5.59e-9** and gated BF16
+  mismatches are **1/1/0**.
+- Cached 9x50 leaves decisively reject the composition:
+  **0.073180 -> 0.142756 ms (+95.08%)**,
+  **0.079873 -> 0.164129 ms (+105.49%)**, and
+  **0.087535 -> 0.179403 ms (+104.95%)**. Raw leaf SHA-256 is
+  `dd285563...5f173`.
+- Remove the export, wrapper, key, harness seam, test extension, and
+  QK-only branch before trace/full-model quality/runtime work. Production
+  remains **20.069608 tok/s**. Cooperative QK is not profitable when it must
+  pay global score/slot scratch plus a second exact reducer dispatch; the next
+  screen must keep exact scalar PV in the same launch. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-wmma-qk-exact-reduce-rejected.json`.
