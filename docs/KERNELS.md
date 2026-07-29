@@ -1978,6 +1978,12 @@ pairs then reject runtime ownership: median decode moves
 route and retain production unchanged:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json),
 [`runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-runtime-rejected.json).
+The packed-V-DPP successor keeps all eight output waves and scalar PV
+association while one even lane loads each aligned BF16 pair and delivers it
+to its odd neighbor. It is byte-exact, but the 9x50 leaf regresses
+**0.036950 -> 0.045846 ms (+24.075%)**. Remove it before tracing or runtime
+integration; cross-lane delivery does not repay the 16-bit LDS reads:
+[`packed-V-DPP rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-dpp-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
