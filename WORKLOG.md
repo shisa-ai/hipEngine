@@ -191527,3 +191527,25 @@ Vulkan local sizes verbatim will close the measured gap.
   different loader/overlap mechanism. Production remains
   **20.494732 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-double-buffer-rejected.json`.
+
+## 2026-07-30 01:58 JST — Reject mixed40 compact2 storage
+
+- Add an exact diagnostic that specializes the retained mixed40 kernel's
+  query-indexed score/max/gate/probability/denominator and register arrays from
+  three rows to the actual two-query maximum. Keep the conceptual third
+  output-wave slot so tail-exp, idle-denominator, active-PV, QK, gate, stores,
+  ownership, and launch geometry are unchanged. Logical static allocation
+  falls **25,512 -> 23,152 bytes (-2,360 B)** before compiler alignment.
+- RED fails importing the absent compact2 wrapper. GREEN passes the
+  wrapped/explicitly evicted oracle with byte-identical F32 context and gated
+  BF16 output.
+- The 9x50 leaf moves **0.037741 -> 0.037747 ms (+0.017%)** with **4/9**
+  wins; raw SHA-256 is `3887d32e...487`. The stronger 21x100 leaf moves
+  **0.037749 -> 0.037764 ms (+0.041%)** with **9/21** wins; raw SHA-256 is
+  `327c91e1...0a6`.
+- Remove the wrapper, template branch, leaf selector, and test call. Skip
+  tracing and resident integration. Storage-only compaction does not address
+  the retained 104-VGPR schedule or buy useful occupancy; retry only when
+  compounded with a material VGPR/occupancy change. Production remains
+  **20.494732 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-compact2-storage-rejected.json`.

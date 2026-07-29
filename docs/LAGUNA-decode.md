@@ -5259,6 +5259,23 @@ The remaining attention sequence is:
     materially different loader/overlap mechanism. Production remains
     **20.494732 tok/s**. Evidence:
     [`double-buffer rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-double-buffer-rejected.json).
+53. Compact mixed40's unused third-query storage. **Rejected and removed at
+    the leaf stop:** mixed40 owns at most two queries, so the diagnostic
+    shrinks its score/max/gate/probability/denominator and register arrays from
+    three query rows to two while preserving the conceptual third output-wave
+    slot. Tail exponent waves 10/11, idle denominator waves 8/9, active PV
+    waves 0-7, every arithmetic operation, and the 40-block grid remain
+    unchanged. This removes **2,360 logical static bytes** before compiler
+    alignment.
+
+    The wrapped/evicted oracle is F32/BF16 byte-exact, but the 9x50 leaf moves
+    **0.037741 -> 0.037747 ms (+0.017%, 4/9 wins)** and the stronger 21x100
+    screen moves **0.037749 -> 0.037764 ms (+0.041%, 9/21 wins)**. Skip
+    tracing and resident integration; remove the wrapper, template branch,
+    leaf selector, and test call. Storage-only compaction does not address the
+    retained 104-VGPR schedule or buy useful occupancy. Production remains
+    **20.494732 tok/s**. Evidence:
+    [`compact2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-compact2-storage-rejected.json).
 
 Current exact decode checkpoint:
 
