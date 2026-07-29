@@ -191674,3 +191674,21 @@ Vulkan local sizes verbatim will close the measured gap.
   is not the missing Vulkan multiplier; select a measured cooperative-work or
   instruction-dependency change next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-restrict-noalias-rejected.json`.
+
+## 2026-07-30 02:59 JST — Close unsupported gfx1151 global-to-LDS load
+
+- Audit the retained mixed40 ISA against the cooperative llama.cpp Vulkan
+  path. Each staged-V vector currently compiles to `global_load_b128`,
+  `s_waitcnt vmcnt(0)`, and `ds_store_b128`, exposing a real load-to-store
+  dependency that the cooperative implementation avoids.
+- Screen LLVM's `__builtin_amdgcn_global_load_lds` as an exact transport-only
+  replacement. The gfx1151 compile rejects it with
+  **`needs target feature vmem-to-lds-load-insts`**. This is a target
+  capability boundary, not a tunable kernel result; do not force an
+  unsupported feature.
+- Remove the diagnostic branch and export completely. The production HIP
+  source is byte-clean, no benchmark is claimed, and production remains
+  **20.494732 tok/s**. The next supported experiment will issue multiple
+  ordinary V-cache global loads before their unchanged LDS stores to overlap
+  latency without changing arithmetic or ownership. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-global-load-lds-unsupported.json`.

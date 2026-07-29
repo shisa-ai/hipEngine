@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T02:59:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_global_load_lds_unsupported",
+  "status": "unsupported_at_compile",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "2f5bb9ee236668177fce514b52e2e37b0012b770",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "premise": {
+    "description": "Replace the retained staged-V global_load_b128, wait, ds_store_b128 chain with LLVM's direct global-to-LDS load intrinsic while preserving staged bytes, LDS layout, barriers, ownership, and all attention arithmetic.",
+    "llama_cpp_reference": "/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "ownership_changed": false,
+    "abi_changed": false
+  },
+  "isa_audit": {
+    "production_sequence": [
+      "global_load_b128",
+      "s_waitcnt vmcnt(0)",
+      "ds_store_b128"
+    ],
+    "llvm_intrinsic": "__builtin_amdgcn_global_load_lds",
+    "supported_sizes_bytes": [
+      1,
+      2,
+      4
+    ]
+  },
+  "compile": {
+    "result": "failed_as_expected_for_target",
+    "diagnostic": "'__builtin_amdgcn_global_load_lds' needs target feature vmem-to-lds-load-insts",
+    "target": "gfx1151"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "benchmark_skipped": true,
+    "production_tok_s": 20.49473174761836,
+    "reason": "gfx1151 does not expose the required target feature through the supported compiler target, so this cannot be a valid production path.",
+    "next": "Preserve ordinary gfx1151 global/LDS instructions and test a bounded exact V-stage source prefetch that issues multiple global loads before their LDS stores."
+  }
+}

@@ -5368,6 +5368,23 @@ The remaining attention sequence is:
     the qualifiers and skip resident integration. Production remains
     **20.494732 tok/s**. Evidence:
     [`restrict/noalias rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-restrict-noalias-rejected.json).
+59. Replace staged-V's global-load/wait/LDS-store chain with a direct
+    global-to-LDS load.
+    **Unsupported on gfx1151 and removed before benchmarking:** the retained
+    mixed40 ISA stages each 16-byte value vector as `global_load_b128`,
+    `s_waitcnt vmcnt(0)`, then `ds_store_b128`. LLVM exposes
+    `__builtin_amdgcn_global_load_lds`, which would remove the register and
+    explicit LDS-store leg without changing bytes, layout, barriers,
+    ownership, or arithmetic. The gfx1151 compile rejects it, however:
+    **`needs target feature vmem-to-lds-load-insts`**. Do not force an
+    unsupported target feature or publish a result from a different target.
+
+    Remove the candidate completely; the production HIP source is byte-clean
+    and remains **20.494732 tok/s**. The supported successor is an exact
+    source-prefetch screen that keeps ordinary global and LDS instructions but
+    issues multiple `global_load_b128` operations before the corresponding
+    stores, allowing gfx1151 to overlap memory latency. Evidence:
+    [`unsupported global-to-LDS load`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-global-load-lds-unsupported.json).
 
 Current exact decode checkpoint:
 

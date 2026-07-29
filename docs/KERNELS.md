@@ -2002,6 +2002,14 @@ exact but does not improve the generated schedule measurably. Three pre/post
 21x100 processes move the production-tail median
 **0.037002 -> 0.037097 ms (+0.259%)**. Remove the compiler-only annotation:
 [`restrict/noalias rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-restrict-noalias-rejected.json).
+Do not use LLVM's direct global-to-LDS intrinsic for gfx1151 attention.
+Although the retained staged-V ISA exposes a concrete
+`global_load_b128 -> s_waitcnt vmcnt(0) -> ds_store_b128` dependency chain,
+the gfx1151 compile rejects `__builtin_amdgcn_global_load_lds` because the
+target lacks `vmem-to-lds-load-insts`. The diagnostic candidate was removed
+before benchmarking. Keep the ordinary supported instructions and pursue
+multi-load issue/source prefetch if this dependency is revisited:
+[`unsupported global-to-LDS load`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-global-load-lds-unsupported.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
