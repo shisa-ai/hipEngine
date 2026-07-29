@@ -190434,3 +190434,26 @@ Vulkan local sizes verbatim will close the measured gap.
   **20.069608 tok/s**. Global's repeated softplus is hidden better than SWA's;
   the added LDS publication/dependency dominates. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-gate-rejected.json`.
+
+## 2026-07-29 18:54 JST — Reject exact global physical-slot rematerialization
+
+- The retained fused global owner uses dynamic LDS for two query-score planes,
+  one int32 physical-slot plane, and a 64x128 BF16 V stage. At live513-639,
+  removing the physical plane puts the modeled score+V footprint below the
+  three-workgroup-per-64-KiB LDS threshold.
+- RED fails on the absent wrapper. GREEN removes the physical plane,
+  recomputes exact visibility once during softmax, and rematerializes one
+  physical slot per 16-thread staged-V vector group. The live513/576/639
+  oracle with explicit position-200 eviction is F32/BF16 byte-exact.
+- Nine 50-launch samples reject the occupancy premise:
+  **0.073445 -> 0.075353 ms (+2.60%)**,
+  **0.079795 -> 0.082079 ms (+2.86%)**, and
+  **0.087454 -> 0.089966 ms (+2.87%)**. The candidate loses all **27/27**
+  pairs; reduced dynamic LDS does not produce useful residency for this
+  local256/VGPR schedule, and metadata rematerialization is net overhead.
+- Remove the body, export, wrapper, registry key, harness mode, and test
+  extension before trace/runtime work. Production remains
+  **20.069608 tok/s**. Stop screening small exact global epilogues; material
+  attention progress requires a cooperative core plus an independently valid
+  correctness mechanism. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-physical-remat-rejected.json`.

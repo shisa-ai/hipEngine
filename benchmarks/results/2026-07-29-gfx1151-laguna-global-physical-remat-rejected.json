@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T18:54:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_physical_remat_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "2859c068a1dc5d97b54af93412a64df701bc57f4",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "48Q/8KV/D128/global4096"
+  },
+  "candidate": {
+    "description": "Remove the per-token int32 physical-slot LDS plane from the retained fused global kernel. Recompute visibility once during softmax and one physical slot per 16-thread vector-load group during staged PV.",
+    "premise": "At live513-639, reducing dynamic LDS from score+physical+V to score+V crosses the modeled three-workgroup-per-64-KiB occupancy threshold while preserving all arithmetic."
+  },
+  "correctness": {
+    "red": "The focused global live513/576/639 eviction oracle failed before implementation because the rematerialized-physical wrapper did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "green_result": "1 passed",
+    "explicit_eviction_position": 200,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "leaf": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-exp32-producer-max-remat-physical-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.07344547748565673,
+        "candidate_median_ms": 0.07535307884216308,
+        "latency_change_percent": 2.597302681950553,
+        "paired_wins": 0,
+        "paired_samples": 9
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.0797951602935791,
+        "candidate_median_ms": 0.08207858085632325,
+        "latency_change_percent": 2.861602826967302,
+        "paired_wins": 0,
+        "paired_samples": 9
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.08745437622070312,
+        "candidate_median_ms": 0.08996627807617187,
+        "latency_change_percent": 2.8722426069675677,
+        "paired_wins": 0,
+        "paired_samples": 9
+      }
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "trace_run": false,
+    "runtime_gate_run": false,
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "reason": "The exact candidate regresses every live-count median by 2.60-2.87%, with complete sample separation against it. Lower dynamic LDS does not yield useful residency for this local256 schedule; metadata rematerialization is net overhead.",
+    "next_gate": "Stop screening small exact global epilogues. Material attention progress requires a cooperative core plus an independently valid correctness mechanism."
+  }
+}
