@@ -189907,3 +189907,26 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw SHA-256 is `6fa20a09...a479f`. Next: cached 127-transition attention
   census, then remove the temporary comparison setter/profile flag. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-production.json`.
+
+## 2026-07-29 15:04 JST — Attribute producer-gate and close its screen
+
+- A tracked-clean cached rocprofv3 run at `009a563bf` yields 129 exact
+  embedding-through-argmax segments: discard warmup128 and timed prefill512,
+  then summarize all 127 decode transitions.
+- Producer-gate moves SWA **2.497126 -> 2.490833 ms/token (-0.252%)**,
+  attention **3.658463 -> 3.657386 ms (-0.029%)**, kernel sum
+  **47.955880 -> 47.935239 ms (-0.043%)**, and span
+  **50.405381 -> 50.368946 ms (-0.072%)**. Grid32/local384,
+  VGPR104/SGPR128/LDS25,088/scratch0 remain unchanged.
+- Same-GGUF Vulkan attention remains **0.909423 ms/token**. hipEngine's
+  residual attention gap is **2.747963 ms/token**, or **38.36%** of the full
+  7.162819-ms production wall gap.
+- Trace/child SHA-256 values are `a3b69829...6c8a` and
+  `534a1a24...a7a6`; no compiler ran under the profiler.
+- Close and remove the temporary `--compare-swa-producer-gate` switch,
+  session setter, and setter-only test. Keep the promoted architecture
+  capability, cache field, registered primitive, and producer-max rollback.
+  Exact scalar attention ownership/softmax micro-screens are now exhausted;
+  next material work is higher-precision cooperative attention or the exact
+  selected-Q4 comparative gap. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-gate-wall-reprofile.json`.

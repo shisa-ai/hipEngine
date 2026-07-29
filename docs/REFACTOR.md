@@ -34,6 +34,11 @@ should be removed or collapsed.
   **20.003064 tok/s**, **+0.0835%** over the prior packet, with exact repeated
   state/lifecycle. The comparison switch now remains only for the pending
   post-promotion attention census and should be removed in that logical unit.
+- **Closed 2026-07-29:** the census confirms SWA **-0.252%**, kernel sum
+  **-0.043%**, unchanged resources, and the intended producer-gate symbol. The
+  profile comparison flag, session setter, and setter-only test are removed;
+  retain the architecture capability, fail-closed cache field, registered
+  primitive, and producer-max rollback.
 
 ## Laguna exact SWA producer-maximum selector
 

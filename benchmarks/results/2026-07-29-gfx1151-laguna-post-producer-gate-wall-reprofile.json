@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T15:04:24+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_producer_gate_decode_wall_reprofile",
+  "status": "accepted_attribution_checkpoint",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "009a563bf2457b0d6d0c346bc73be0e7326548b7",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-post-producer-gate-wall.uUCn9b",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-producer-gate-wall.uUCn9b --output-file postproducergate -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-producer-gate-wall.uUCn9b/bench.json",
+    "trace_sha256": "a3b69829e6d010720a3cc287f4acca0ae859696fd4ffccd5197bd53a36146c8a",
+    "bench_sha256": "534a1a24531b424ad386083d1915eeb3bf1f960e2cb1f9b34a3bda6f7039a7a6",
+    "segmentation": "Sort the two-queue trace by start timestamp and globally unique Dispatch_Id, close each request at argmax stage 2, discard warmup128 and timed prefill512, and report medians over 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 19.397070799081252,
+    "publication_wall_tok_s": 20.00306416323085,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true,
+    "compiler_invocations_under_profiler": 0
+  },
+  "decode": {
+    "segments": 127,
+    "compute_dispatches_per_token": 768,
+    "median_kernel_sum_ms_per_token": 47.935239,
+    "median_kernel_span_ms_per_token": 50.368946,
+    "attention": {
+      "calls_per_token": 48,
+      "median_ms_per_token": 3.657386
+    },
+    "attention_breakdown": {
+      "swa_producer_gate_calls_per_token": 36,
+      "swa_producer_gate_median_ms_per_token": 2.490833,
+      "global_producer_max_calls_per_token": 12,
+      "global_producer_max_median_ms_per_token": 1.148477
+    },
+    "attention_resources": {
+      "swa": {
+        "grid_size_x": 12288,
+        "workgroup_size_x": 384,
+        "vgpr_count": 104,
+        "sgpr_count": 128,
+        "lds_bytes": 25088,
+        "scratch_bytes": 0
+      },
+      "global": {
+        "grid_size_x": 8192,
+        "workgroup_size_x": 256,
+        "vgpr_count": 48,
+        "sgpr_count": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    },
+    "family_medians_ms_per_token": {
+      "source_f16_projection": 24.063961,
+      "selected_q4_gate_up": 8.388785,
+      "selected_q4_q6_down": 4.825775,
+      "dense_shared_quant_projection": 3.524645,
+      "router": 1.064281,
+      "norm_rope_gate": 1.059265,
+      "activation_reduce_residual": 0.217169,
+      "lm_head_argmax": 1.118858,
+      "embedding": 0.002285
+    }
+  },
+  "comparison": {
+    "prior_post_global_producer_max_profile": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json",
+      "kernel_sum_ms_per_token": 47.95588,
+      "kernel_span_ms_per_token": 50.405381,
+      "attention_ms_per_token": 3.658463,
+      "swa_attention_ms_per_token": 2.497126,
+      "global_attention_ms_per_token": 1.148914
+    },
+    "changes_percent": {
+      "kernel_sum": -0.043041645779406945,
+      "kernel_span": -0.07228394920771875,
+      "attention": -0.02943859210821076,
+      "swa_attention": -0.25200971036304365,
+      "global_attention": -0.03803591913755788
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "wall_ms_per_token": 42.829522098341634,
+      "logged_attention_ms_per_token": 0.909423,
+      "hipengine_attention_gap_ms_per_token": 2.747963,
+      "hipengine_total_wall_gap_ms_per_token": 7.162818667038501,
+      "attention_share_of_remaining_wall_gap": 0.38364268701167015
+    }
+  },
+  "finding": {
+    "priority": "The exact scalar SWA producer-gate seam is retained but nearly exhausted at wall scale; attention remains a large comparative gap, while source-F16 remains the dominant absolute family.",
+    "reason": "Producer-gate cuts SWA by 0.006293 ms/token and kernel sum by 0.020641 ms/token at unchanged resources. Remaining attention is 2.490833-ms SWA plus 1.148477-ms global, still 2.747963 ms/token slower than Vulkan.",
+    "next_gate": "Close the temporary comparison seam. Do not repeat scalar attention ownership or softmax micro-screens already rejected; either solve higher-precision cooperative QK/PV as a numerics project or pivot to the exact selected-Q4 comparative gap."
+  }
+}

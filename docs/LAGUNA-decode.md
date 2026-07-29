@@ -4497,6 +4497,18 @@ The remaining attention sequence is:
     Evidence: [`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json),
     [`producer-gate retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json),
     [`producer-gate production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-production.json).
+18. Re-profile and close the comparison seam. **Complete:** the clean
+    127-transition census keeps 768 compute dispatches/token and measures
+    SWA **2.497126 -> 2.490833 ms/token (-0.252%)**, attention
+    **3.658463 -> 3.657386 ms (-0.029%)**, kernel sum
+    **47.955880 -> 47.935239 ms (-0.043%)**, and span
+    **50.405381 -> 50.368946 ms (-0.072%)**. Resources remain
+    local384/VGPR104/LDS25,088/scratch0. Against Vulkan's
+    **0.909423 ms/token** attention, the residual **2.747963-ms/token** gap is
+    **38.36%** of the full wall gap. Remove the temporary session/profile
+    comparison seam; retain the architecture capability, cache owner, and
+    producer-max rollback. Evidence:
+    [`post-producer-gate census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-gate-wall-reprofile.json).
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,

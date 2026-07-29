@@ -1563,6 +1563,10 @@ Clean selector-unset production is **20.003064 tok/s**, **+0.0835%** over the
 prior packet and **+74.445%** over sprint start, with exact repeated
 state/lifecycle:
 [`producer-gate production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-production.json).
+The post-promotion census attributes the exact micro-win to SWA:
+**2.497126 -> 2.490833 ms/token (-0.252%)** at unchanged resources; total
+kernel sum improves **0.043%**. The temporary comparison seam is removed:
+[`post-producer-gate census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-gate-wall-reprofile.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
