@@ -2119,3 +2119,7 @@ should be boring.
   and session setter at the next attention-census commit; retain the
   architecture capability, cache field, and registered mixed32/exp32
   rollback.
+- **Closed 2026-07-29:** remove `--compare-global-producer-max`, its session
+  setter, and the setter-only test after clean publication. The default-on
+  gfx1151 capability, fail-closed cache field, registered producer-max
+  primitive, and mixed32/exp32 rollback remain.

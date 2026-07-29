@@ -189754,3 +189754,17 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw SHA-256 is `10494aab...ac6d`. Next remove the comparison-only setter and
   flag, then run a clean 127-transition attention census. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-production.json`.
+
+## 2026-07-29 14:12 JST — Retire global producer-max comparison selector
+
+- Clean selector-unset publication satisfied the refactor trigger. Remove
+  `--compare-global-producer-max`,
+  `LagunaGGUFResidentSession.set_decode_global_producer_max(...)`, and the
+  setter-only test.
+- Retain the default-on gfx1151 architecture capability, fail-closed cache
+  field, registered producer-max primitive, and registered mixed32/exp32
+  rollback. Production selection and protocol capability reporting are
+  unchanged.
+- Focused validation passes **37 tests** across the profile harness, retained
+  mixed32 session rollback, and complete cache capability/dispatch bundle.
+  Next run a tracked-clean 127-transition attention census.

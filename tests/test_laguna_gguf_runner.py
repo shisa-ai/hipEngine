@@ -480,25 +480,6 @@ def test_laguna_global_mixed32_switch_is_session_scoped() -> None:
     )
 
 
-def test_laguna_global_producer_max_switch_is_session_scoped() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.kv_cache = SimpleNamespace(
-        global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape=False,
-    )
-
-    session.set_decode_global_producer_max(True)
-    assert (
-        session.kv_cache.global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape
-        is True
-    )
-
-    session.set_decode_global_producer_max(False)
-    assert (
-        session.kv_cache.global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape
-        is False
-    )
-
-
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
     runtime = _FakeRuntime()
     rows = 3
