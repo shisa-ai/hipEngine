@@ -3960,7 +3960,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         )
         assert (
             gfx1151_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512
-            is False
+            is True
         )
         gfx1151_cache.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = (
             False

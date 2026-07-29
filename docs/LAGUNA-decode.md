@@ -4487,8 +4487,12 @@ The remaining attention sequence is:
     The wrap/eviction oracle is F32/BF16 byte-exact; the leaf improves
     **0.059058 -> 0.058680 ms (-0.641%)**. Tracing keeps
     grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0. Production stays
-    **19.986371 tok/s** until a matched resident gate. Evidence:
-    [`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json).
+    **19.986371 tok/s** until a matched resident gate. That gate is now
+    complete: all seven exact pairs improve and median decode moves
+    **19.992650 -> 20.012052 tok/s (+0.097%)**, so gfx1151 promotes the
+    specialization. A clean selector-unset publication remains pending.
+    Evidence: [`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json),
+    [`producer-gate retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json).
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
