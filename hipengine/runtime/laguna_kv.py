@@ -148,6 +148,7 @@ class LagunaKVCache:
         swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512: bool,
         swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512: bool,
         swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512: bool,
+        swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -220,6 +221,9 @@ class LagunaKVCache:
         )
         self.swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512 = bool(
             swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
+        )
+        self.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = bool(
+            swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512
         )
         self.runtime = runtime
         self.position = -1
@@ -556,6 +560,16 @@ class LagunaKVCache:
                                             (
                                                 (
                                                     (
+                                                        "swa_context_fused_exact_gated_"
+                                                        "mixed32_exp32_producer_max_"
+                                                        "vstage64_vec16_direct_assume_"
+                                                        "exp_fixed512_spans"
+                                                    )
+                                                    if (
+                                                        self.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512
+                                                        and self.swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
+                                                    )
+                                                    else (
                                                         "swa_context_fused_exact_gated_"
                                                         "mixed32_exp32_vstage64_vec16_"
                                                         "direct_assume_exp_fixed512_spans"
@@ -1537,6 +1551,14 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = bool(
+        selected_swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
+        and backend_package_capability(
+            backend,
+            "LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+            False,
+        )
+    )
     selected_global_split_fixedshape_reduce = bool(
         selected_split_gate_fusion
         and backend_package_capability(
@@ -1662,6 +1684,9 @@ def allocate_laguna_kv_cache(
         ),
         swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512=(
             selected_swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
+        ),
+        swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512=(
+            selected_swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512
         ),
     )
     buffers: list[DeviceBuffer] = []
@@ -1915,6 +1940,10 @@ def allocate_laguna_kv_cache(
                 selected_swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512
                 and split_enabled
             ),
+            swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512=(
+                selected_swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512
+                and split_enabled
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -1952,6 +1981,7 @@ def _validate_split_backend(
     swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512: bool,
     swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512: bool,
     swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512: bool,
+    swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512: bool,
 ) -> None:
     if all(
         threshold is None
@@ -2185,6 +2215,16 @@ def _validate_split_backend(
                 (
                     "swa_context_fused_exact_gated_mixed32_exp32_vstage64_"
                     "vec16_direct_assume_exp_fixed512_spans"
+                ),
+            )
+        )
+    if swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512:
+        requested.append(
+            (
+                swa_tile16_threshold,
+                (
+                    "swa_context_fused_exact_gated_mixed32_exp32_producer_max_"
+                    "vstage64_vec16_direct_assume_exp_fixed512_spans"
                 ),
             )
         )

@@ -189596,3 +189596,19 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **19.667705 tok/s** until a session-scoped gfx1151 selector passes
   matched resident p512/d128 state/lifecycle/performance gates. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json`.
+
+## 2026-07-29 13:31 JST — Admit default-off producer-max runtime gate
+
+- RED required the absent `set_decode_swa_producer_max(...)` session method.
+  GREEN adds a default-off gfx1151 capability, fail-closed cache field,
+  highest-priority saturated natural-shape variant selection, backend-key
+  validation, session setter, and counterbalanced
+  `--compare-swa-producer-max` profile route. Peer backends and the production
+  default remain unchanged.
+- Focused validation passes **35 tests**:
+  the new session-scope test, the complete cache capability/rollback test, and
+  `tests/test_laguna_long_context_profile.py`.
+- The temporary selector cleanup trigger is recorded in `docs/REFACTOR.md`.
+  Next run matched resident Poolside Laguna S 2.1 p512/d128 pairs with two HIP
+  queues and cached builds, retaining only on exact state/lifecycle plus
+  positive throughput.
