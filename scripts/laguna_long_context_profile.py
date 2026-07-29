@@ -61,6 +61,37 @@ PROFILE_CHUNK_SIZES = (128, 256, 512, 1024, 2048)
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json"
 )
+COMPARISON_ARGUMENTS = (
+    "compare_long_attention_hipblaslt",
+    "compare_block_attention_hipblaslt",
+    "compare_dense_contiguous_cache",
+    "compare_swa_attention_hipblaslt",
+    "compare_f16_decode_onebarrier",
+    "compare_f16_decode_fixedk",
+    "compare_swa_fixed512_reduce",
+    "compare_swa_fused_fixed512",
+    "compare_swa_gqa3_local384",
+    "compare_swa_gqa3_vstage64",
+    "compare_swa_gqa3_vstage64_vec16",
+    "compare_swa_gqa3_vstage64_vec16_direct",
+    "compare_swa_assume_exp",
+    "compare_swa_mixed32",
+    "compare_swa_mixed32_exp4",
+    "compare_swa_mixed32_exp8",
+    "compare_swa_mixed32_exp16",
+    "compare_swa_mixed32_exp32",
+    "compare_global_fixedshape_reduce",
+    "compare_global_fused_fixedshape",
+    "compare_global_gqa2_vstage64",
+    "compare_global_gqa2_vstage64_vec16",
+    "compare_global_gqa2_vstage64_vec16_direct",
+    "compare_global_assume_exp",
+    "compare_global_exp32",
+    "compare_global_mixed32",
+    "compare_selected_natural_decode",
+    "compare_selected_natural_tile8_decode",
+    "compare_selected_natural_tile8_parallel_decode",
+)
 
 
 def _parse_chunk_size(value: str | int) -> int:
@@ -86,6 +117,10 @@ def _parse_decode_output_tokens(value: str | int) -> int:
     if output_tokens not in DECODE_OUTPUT_TOKENS:
         raise argparse.ArgumentTypeError("decode output tokens must be 1 or 128")
     return output_tokens
+
+
+def _active_comparison_count(args: argparse.Namespace) -> int:
+    return sum(bool(getattr(args, name)) for name in COMPARISON_ARGUMENTS)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -404,40 +439,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "--compare-long-attention-hipblaslt and "
             "--long-attention-hipblaslt are mutually exclusive"
         )
-    active_comparisons = sum(
-        bool(value)
-        for value in (
-            args.compare_long_attention_hipblaslt,
-            args.compare_block_attention_hipblaslt,
-            args.compare_dense_contiguous_cache,
-            args.compare_swa_attention_hipblaslt,
-            args.compare_f16_decode_onebarrier,
-            args.compare_f16_decode_fixedk,
-            args.compare_swa_fixed512_reduce,
-            args.compare_swa_fused_fixed512,
-            args.compare_swa_gqa3_local384,
-            args.compare_swa_gqa3_vstage64,
-            args.compare_swa_gqa3_vstage64_vec16,
-            args.compare_swa_gqa3_vstage64_vec16_direct,
-            args.compare_swa_assume_exp,
-            args.compare_swa_mixed32,
-            args.compare_swa_mixed32_exp4,
-            args.compare_swa_mixed32_exp8,
-            args.compare_swa_mixed32_exp16,
-            args.compare_swa_mixed32_exp32,
-            args.compare_global_fixedshape_reduce,
-            args.compare_global_fused_fixedshape,
-            args.compare_global_gqa2_vstage64,
-            args.compare_global_gqa2_vstage64_vec16,
-            args.compare_global_gqa2_vstage64_vec16_direct,
-            args.compare_global_assume_exp,
-            args.compare_global_exp32,
-            args.compare_global_mixed32,
-            args.compare_selected_natural_decode,
-            args.compare_selected_natural_tile8_decode,
-            args.compare_selected_natural_tile8_parallel_decode,
-        )
-    )
+    active_comparisons = _active_comparison_count(args)
     if active_comparisons > 1:
         raise ValueError("only one Laguna comparison may be active")
     if (
@@ -461,36 +463,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "--compare-dense-contiguous-cache and "
             "--dense-contiguous-cache are mutually exclusive"
         )
-    comparison = bool(
-        args.compare_long_attention_hipblaslt
-        or args.compare_block_attention_hipblaslt
-        or args.compare_dense_contiguous_cache
-        or args.compare_swa_attention_hipblaslt
-        or args.compare_f16_decode_onebarrier
-        or args.compare_f16_decode_fixedk
-        or args.compare_swa_fixed512_reduce
-        or args.compare_swa_fused_fixed512
-        or args.compare_swa_gqa3_local384
-        or args.compare_swa_gqa3_vstage64
-        or args.compare_swa_gqa3_vstage64_vec16
-        or args.compare_swa_gqa3_vstage64_vec16_direct
-        or args.compare_swa_assume_exp
-        or args.compare_swa_mixed32
-        or args.compare_swa_mixed32_exp4
-        or args.compare_swa_mixed32_exp8
-        or args.compare_swa_mixed32_exp16
-        or args.compare_swa_mixed32_exp32
-        or args.compare_global_fixedshape_reduce
-        or args.compare_global_fused_fixedshape
-        or args.compare_global_gqa2_vstage64
-        or args.compare_global_gqa2_vstage64_vec16
-        or args.compare_global_gqa2_vstage64_vec16_direct
-        or args.compare_global_assume_exp
-        or args.compare_global_exp32
-        or args.compare_global_mixed32
-        or args.compare_selected_natural_decode
-        or args.compare_selected_natural_tile8_decode
-    )
+    comparison = active_comparisons > 0
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
     if not args.model_sha256:
