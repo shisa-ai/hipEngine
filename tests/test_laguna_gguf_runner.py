@@ -35,7 +35,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
-    resolve_laguna_source_flash_attention,
 )
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.registry import KernelKey, is_registered
@@ -73,14 +72,6 @@ class _FakeRuntime:
         stream: int,
     ) -> None:
         self.copies.append((int(dst), int(src), int(nbytes), kind, int(stream)))
-
-
-def test_laguna_source_flash_attention_is_explicit_and_gfx1100_only() -> None:
-    assert not resolve_laguna_source_flash_attention("hip_gfx1100")
-    assert resolve_laguna_source_flash_attention("hip_gfx1100", True)
-    assert not resolve_laguna_source_flash_attention("hip_gfx1151")
-    with pytest.raises(ValueError, match="not supported"):
-        resolve_laguna_source_flash_attention("hip_gfx1151", True)
 
 
 def test_laguna_moe_branch_concurrency_requires_two_automatic_queues() -> None:
@@ -954,7 +945,6 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.prefill_cached_meta is True
     assert session.prefill_global_qrow6 is True
     assert session.prefill_dense_initial is True
-    assert session.use_source_flash_attention is False
     assert session.q6_compact_activation is True
     assert session.q6_half_row_activation is True
     assert session.q6_skip_padded_activation is True
