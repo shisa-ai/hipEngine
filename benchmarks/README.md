@@ -47,6 +47,17 @@ more dispatches (**2,824 vs 1,477**) but only **0.724 vs 3.010 s** of summed
 kernel time. This is an external performance target and source audit, not a
 cross-engine logits/quality proof or a production-default change.
 
+The first [`WPF-H1 source-Q5 MMQ candidate`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json)
+measures every actual M512 Q5 role and all 235 production invocations. A strict
+DS4 producer plus isolated fast-math aligned I128/J128/K256 consumer moves the
+weighted exact leaf **1,562.932 -> 97.110 ms (16.094x, -93.786%)**; N48/N72
+remain exact. Fixtures pass at maximum mean KL **6.793e-6** and minimum top-1
+**98.242%**; cached aligned resources are local `(32,8)`, VGPR192, 57,856-byte
+dynamic LDS, and scratch0. The candidate remains **1.647x** llama.cpp's
+matched **58.951-ms** Q5 trace and is not production: runtime reuse, complete
+quality, clean 512/1K state/timing, and an all-family trace are pending. The
+canonical clean headline above is unchanged.
+
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen

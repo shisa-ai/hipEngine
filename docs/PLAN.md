@@ -1377,7 +1377,16 @@ F32-to-Q8_1 256-thread 128x128/K256 WMMA MMQ for Q5/IQ families, bounded Q6
 dequantization/casts plus F16 rocBLAS at M512, device expert compaction, and
 `flash_attn_ext_f16<128,128,8,8>` plus stream-K fixup.
 
-The W7900 order is now WPF-H1 source-faithful Q5_K Q8_1/WMMA MMQ, WPF-H2
+WPF-H1's primitive is now admitted: the strict byte-exact DS4 producer plus
+isolated fast-math aligned I128/J128/K256 consumer moves the actual eight-role,
+235-call weighted M512 leaf **1,562.932 -> 97.110 ms (16.094x)** while N48/N72
+remain exact. Fixture quality reaches maximum mean KL **6.793e-6** and minimum
+top-1 **98.242%**; cached resources are local `(32,8)`, VGPR192,
+57,856-byte dynamic LDS, and scratch0. It remains **1.647x** llama.cpp's matched
+**58.951-ms** Q5 trace, so runtime producer reuse, complete quality, clean
+512/1K, state/lifecycle, and all-family tracing are the active H1 blockers.
+
+The remaining W7900 order is WPF-H1 runtime/quality integration, WPF-H2
 source-faithful full-M512 F16-WMMA FlashAttention/stream-K, WPF-H3
 source-faithful Q8_1 IQ3/IQ4 selected-down MMQ, and WPF-H4 source-faithful Q6_K
 F16 dequantize-plus-rocBLAS. These audited llama.cpp routes are the primary

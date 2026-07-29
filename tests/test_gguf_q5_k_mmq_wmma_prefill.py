@@ -159,6 +159,12 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
     artifact = mmq.plan_gguf_k_mmq_prefill_build(compiler_version="test")
     assert artifact.output_path.name == "gguf_k_mmq_prefill.so"
     assert any(path.name == "gguf_k_mmq_prefill.hip" for path in artifact.sources)
+    source_artifact = mmq.plan_gguf_q5_k_source_mmq_prefill_build(
+        compiler_version="test"
+    )
+    assert source_artifact.output_path.name == "gguf_q5_k_source_mmq_prefill.so"
+    assert "-ffast-math" in source_artifact.flags
+    assert "-ffast-math" not in artifact.flags
     source = _SOURCE.read_text()
     assert "__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32" in source
     assert "torch::Tensor" not in source
@@ -220,7 +226,8 @@ def _run_candidate(
         (rows, out_features), dtype=np.uint16 if output_dtype == "bf16" else np.float32
     )
     reference = gguf_q5_k_gemv(_bf16_to_f32(x_bf16), qweight)
-    library = mmq.build_gguf_k_mmq_prefill(load=True)
+    producer_library = mmq.build_gguf_k_mmq_prefill(load=True)
+    consumer_library = mmq.build_gguf_q5_k_source_mmq_prefill(load=True)
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
@@ -239,7 +246,7 @@ def _run_candidate(
             packed_dev.ptr,
             rows,
             hidden,
-            library=library,
+            library=producer_library,
             runtime=runtime,
         )
         fn = (
@@ -254,7 +261,7 @@ def _run_candidate(
             rows,
             hidden,
             out_features,
-            library=library,
+            library=consumer_library,
             runtime=runtime,
         )
         runtime.device_synchronize()
