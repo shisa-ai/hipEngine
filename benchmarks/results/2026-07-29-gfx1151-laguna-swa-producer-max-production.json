@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T13:37:26+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_producer_max_production",
+  "status": "accepted_production",
+  "performance_claim": true,
+  "source": {
+    "revision": "a6cc3d4771eecaa5c96d3e4ce9115ec458d678b6",
+    "tracked_clean": true,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_shared_tree_artifacts_excluded": true,
+    "retained_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-swa-producer-max-production.json",
+    "raw_sha256": "16a3b9c0885af0b3780f18276a1273355dc53d22c3971fb218326e9979e62196",
+    "workload": "p512/d128 eager c=1, matrix2048, attention128",
+    "comparison_selector_active": false,
+    "producer_max_capability_active": true,
+    "repetitions": 3
+  },
+  "performance": {
+    "prior_clean_decode_tok_s": 19.667705,
+    "production_decode_tok_s": 19.983610374003796,
+    "throughput_change_percent": 1.6062137092446527,
+    "saving_ms_per_token": 0.8037655254398572,
+    "decode_samples_tok_s": [
+      19.978219571668966,
+      19.99091350701646,
+      19.983610374003796
+    ],
+    "cumulative_sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 74.2753628315118
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0
+  },
+  "decision": {
+    "production": true,
+    "qualified_scope": "gated saturated natural-shape 72Q/8KV/D128/SWA512 decode on gfx1151",
+    "rollback": "exact mixed32 exp32 V-stage64 vec16-direct assumed-domain owner",
+    "peer_backends_unchanged": true,
+    "next": "Run a cached 127-transition attention wall census against the same-GGUF llama.cpp Vulkan comparator."
+  }
+}
