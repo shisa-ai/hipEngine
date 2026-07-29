@@ -74,21 +74,19 @@ only the corrected standalone
 [`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)
 remains, and the canonical exact production headline above is unchanged.
 
-The [`WPF-H3 IQ3/IQ4 source-MMQ leaf`](results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json)
-is **admitted as a standalone candidate**. It reuses compact expert metadata
-and the strict K-major DS4 producer, then consumes raw expert-major IQ3_XXS or
-IQ4_XS bytes with source-shaped I128/J128/K256 integer WMMA. Across all **45
-IQ3 + 2 IQ4** actual M512 selected-down layers, exact grouped output moves
-**565.437 -> 115.951 ms (4.877x)** and every layer is faster. IQ3 alone is
-**111.016 ms**, **27.145% below** llama.cpp's matched **152.380-ms** IQ3 trace.
-Maximum mean KL is **0.000756** and minimum top-1 is **97.578%**. Layer 47's
-IQ4 result has a disclosed **3.307 max per-row KL / 2048 max-abs** outlier, so
-only the repository's primitive mean-KL/top-1 gate has passed; complete model
-quality remains binding. Immediate fragment consumption leaves IQ3/IQ4 at
-VGPR152/248 with 57,856-byte dynamic LDS and no scratch. Runtime ownership,
-full state, complete 18-prompt/576-step quality, clean 512/1K timing, and
-all-family tracing are pending; production and the canonical headline above
-are unchanged.
+The [`WPF-H3 IQ3/IQ4 source-MMQ runtime`](results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-rejected.json)
+is **rejected for production** despite a faster standalone leaf. The strict
+K-major DS4 producer and source-shaped I128/J128/K256 raw-IQ consumers move all
+**45 IQ3 + 2 IQ4** actual M512 selected-down layers **565.437 -> 115.951 ms
+(4.877x)**; IQ3 alone is **27.145% below** llama.cpp's matched trace. Runtime
+natural-prompt prefill improves **152.276 -> 181.556 tok/s (1.192x)**, but the
+binding 18-prompt/576-step lane reaches maximum KL **0.373028 > 0.05** at
+**567/576 (98.438%)** top-1. Keeping both IQ4 layers exact leaves maximum KL
+**0.372917**, so source IQ3 arithmetic owns the failure. Poolside, deterministic
+repeats, complete M512 state, and lifecycle pass. The temporary runtime owner,
+tile128 metadata route, and selector are removed; only the separately registered
+[`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json)
+remains, and exact grouped down plus the canonical headline above are unchanged.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
