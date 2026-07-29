@@ -58,8 +58,21 @@ repeats are deterministic, and lifecycle recovers, but high top-1 cannot waive
 the KL ceiling. The default-off runtime owner/workspace is removed; only the
 separately registered primitive and its
 [`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json)
-remain. Production and the canonical clean headline above are unchanged; WPF-H2
-full-M512 attention is next.
+remain. Production and the canonical clean headline above are unchanged.
+
+The new [`WPF-H2 source FlashAttention candidate`](results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)
+ports llama.cpp's D128/V128, eight-query/eight-GQA-head F16-WMMA body while
+retaining BF16 cache storage and complete `KVLiveSpans` addressing. Against the
+matched **490.919-ms** exact qrow4/M128 family, the standalone 12-global/36-SWA
+weighted body reaches **21.719 ms (22.603x)**, nominally matching llama.cpp's
+**21.725-ms** main+fixup trace; a separate nine-sample counter-ordered sustained
+family has median **20.971 ms**. Global and sliding-ring fixtures pass at maximum
+mean KL **2.53e-10**, minimum top-1 **94.12%**, and maximum absolute error
+**2.21e-4**. The attempted 144-block stream-K seam is removed because it is
+**1.751x slower** and produces non-finite output. This is leaf evidence only:
+runtime integration, the complete 18-prompt/576-step quality lane, state/timing,
+and reprofile gates remain pending, so production and the canonical clean
+headline above are unchanged.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

@@ -482,6 +482,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             for col_tile, row_batch in ((2, 16), (4, 8))
             for output_dtype in ("bf16", "f32")
         ),
+        # WPF-H2 copies llama.cpp's gfx1100 F16-WMMA FlashAttention geometry
+        # and remains excluded until gfx1151 receives an independent gate.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "source_f16_wmma_q8_gqa8_spans",
+        ),
         # WPF-H1 copies the gfx1100/RDNA3 source geometry and remains excluded
         # until gfx1151 receives an independent resource/correctness gate.
         ("activation_quant", "q8_1_ds4", "bf16_kmajor"),

@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_source_flash_attention_candidate",
+  "date": "2026-07-29",
+  "status": "candidate_admitted_pending_complete_model_quality_and_runtime_integration",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "source": "llama.cpp HIP c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "source_file": "ggml/src/ggml-cuda/fattn-mma-f16.cuh",
+    "source_sha256": "08977d8e...a4038",
+    "base_revision": "accfbc773",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_flash_attention_prefill.hip": "fb8854914c21efaa38b6f4d169004762a5e7db8987ae99fdcdb887c41b574b0e",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_flash_attention_prefill.py": "f45a8871d9bc40af7b34ac4844e305b8a93ea561ee3d94ceb16d89e999d6c6ba",
+      "tests/test_laguna_flash_attention_prefill.py": "f06c3ef3774443df7ed7c30159da1148b7bea1a7388d333437f2adebb0d9e1a8"
+    }
+  },
+  "protocol": {
+    "rows": 512,
+    "head_dim": 128,
+    "kv_heads": 8,
+    "global_q_heads": 48,
+    "swa_q_heads": 72,
+    "production_layers": {
+      "global": 12,
+      "swa": 36
+    },
+    "kv_storage": "BF16",
+    "query_output": "F32",
+    "wmma_operands": "F16",
+    "visibility": "complete KVLiveSpans base_offsets/live_counts/token_positions/evict_mask/row_positions",
+    "timing": "HIP events; nine ten-launch per-mode medians plus nine sustained 12-global/36-SWA counter-ordered family samples",
+    "four_k_or_longer_run_performed": false
+  },
+  "aggregate_ms": {
+    "exact_qrow4_m128_matched_trace": 490.919146,
+    "source_whole_tile_weighted_median": 21.718725872039798,
+    "source_whole_tile_sustained_counterorder_median": 20.970611572265625,
+    "matched_llamacpp_main_plus_fixup_trace": 21.725298,
+    "speedup_over_exact_body": 22.60349658135325,
+    "whole_tile_ratio_to_llamacpp": 0.9996974896289017,
+    "sustained_ratio_to_llamacpp": 0.9652623210169834,
+    "interpretation": "The source-shaped whole-tile body reaches nominal family parity with the matched llama.cpp main+fixup trace. The 0.03% leaf margin is noise-sized; the independently counter-ordered sustained family is 3.47% lower, but neither standalone measurement is an end-to-end throughput claim."
+  },
+  "timing_samples": {
+    "global_ms": [
+      0.23840529918670655,
+      0.25128540992736814,
+      0.2485574007034302,
+      0.24644029140472412,
+      0.25238139629364015,
+      0.2548893928527832,
+      0.2576253890991211,
+      0.2705204963684082,
+      0.26886940002441406
+    ],
+    "global_median_ms": 0.25238139629364015,
+    "swa_ms": [
+      0.46977858543395995,
+      0.4674984931945801,
+      0.4908106803894043,
+      0.5143147945404053,
+      0.5191708087921143,
+      0.5200869083404541,
+      0.5284788131713867,
+      0.5271069049835205,
+      0.5281989097595214
+    ],
+    "swa_median_ms": 0.5191708087921143,
+    "sustained_family_ms": [
+      21.896955490112305,
+      21.669227600097656,
+      21.36994743347168,
+      21.125186920166016,
+      20.970611572265625,
+      20.812732696533203,
+      20.58584976196289,
+      20.343847274780273,
+      20.17781639099121
+    ]
+  },
+  "correctness": {
+    "all_finite": true,
+    "global_fixture": {
+      "mean_kl": 2.3157027780323134e-10,
+      "max_row_kl": 3.563862071111533e-10,
+      "top1_agreement": 1.0,
+      "max_abs": 0.00017896294593811035
+    },
+    "sliding_ring_fixture": {
+      "mean_kl": 2.5212082326031805e-10,
+      "max_row_kl": 3.930791974099265e-10,
+      "top1_agreement": 0.9411764705882353,
+      "max_abs": 0.00022047758102416992
+    },
+    "physical_mapping_and_eviction_covered": true,
+    "complete_18_prompt_576_step_gate": "pending"
+  },
+  "resources": {
+    "kernel": "laguna_flash_attention_prefill_f16_wmma_whole_kernel",
+    "local": [32, 4, 1],
+    "vgpr": 208,
+    "sgpr_reported": 128,
+    "lds_bytes": 18432,
+    "scratch_bytes": 0,
+    "global_grid_threads": [2048, 32, 1],
+    "swa_grid_threads": [2048, 32, 2],
+    "traced_durations_us": [246.436, 223.157, 458.48, 434.84]
+  },
+  "rejected_stream_k": {
+    "status": "removed",
+    "weighted_family_ms": 38.02665767669678,
+    "ratio_to_selected_whole_tile": 1.7508696366784318,
+    "correctness": "rejected: both global and sliding M512 fixtures produced non-finite outputs and approximately 12.5% top-1 agreement",
+    "fixup_median_us": 17.1,
+    "reason": "The seam reproduced llama.cpp-class launch geometry and fixup cost but failed numerical ownership and slowed the corrected body. The workspace ABI, stream main, and fixup are absent from the retained implementation."
+  },
+  "lifecycle": {
+    "returned_to_baseline": true
+  },
+  "source_artifacts": {
+    "leaf_json_sha256": "1aa2c4287c0f77eab268d03e7559a9ec3e6a28e25f791f4b303d73b605b07f14",
+    "leaf_harness_sha256": "fd7f1575e218cab1b29f72f37f2afd5d4eb39e2726392c96fdbccc9ad3ec8224",
+    "trace_harness_sha256": "f6b38fba5ab1ba133f50e93becfc908883b48476316010c48e926320c9ee9ac1",
+    "counterorder_json_sha256": "fea7c3a92ed6fbd81778da4ae6257767a4c30840980f3383f37d2788849c84c1",
+    "counterorder_harness_sha256": "9e6dd570550c872de77e45fb82c7a0a9d64ea7ab645167e08664d18d91160552",
+    "rocprof_trace_sha256": "733a2cc691acb81c9341809a3eb561006dc92c848789bf08222882841e017169",
+    "rejected_stream_timing_sha256": "b15e720cadddc768171ee64ff6d672dea739b816912b553a79349a548373965b",
+    "rejected_stream_trace_sha256": "d8b75647be416ee2f37ec3a234e8fdd134c43746a1210f16af6c58d3793832ac"
+  },
+  "promotion_blockers": [
+    "runtime dense-initial ownership and explicit fallback routing are not integrated",
+    "complete 18-prompt/576-step train+heldout and category-heldout quality gate is pending",
+    "same-resident complete-state and clean end-to-end timing/reprofile are pending"
+  ]
+}
