@@ -5353,6 +5353,21 @@ The remaining attention sequence is:
     cooperative K/V tile reuse plus tensorized QK/PV, not a key-layout-only
     vector load. Evidence:
     [`lane-major-key rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-lane-major-key-rejected.json).
+58. Mark the retained one-phase attention buffers non-aliasing.
+    **Rejected and removed at the leaf stop:** apply `__restrict__` to the
+    independent query, K, V, context, gate, gated-output, and `KVLiveSpans`
+    pointers, matching the contract already used by the adjacent fused KV
+    writers. This changes no arithmetic, ABI, bytes, ownership, or dispatch.
+    RED is not applicable to a compiler-only pointer contract; the focused
+    wrapped/explicitly-evicted oracle remains byte-exact.
+
+    Three independent 21x100 processes before and after the annotation move
+    the production-tail median-of-process-medians
+    **0.037002 -> 0.037097 ms (+0.259%)**. The compiler already schedules the
+    retained body effectively under its existing argument contract. Remove
+    the qualifiers and skip resident integration. Production remains
+    **20.494732 tok/s**. Evidence:
+    [`restrict/noalias rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-restrict-noalias-rejected.json).
 
 Current exact decode checkpoint:
 

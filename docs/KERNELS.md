@@ -1997,6 +1997,11 @@ candidate before trace/runtime: key-layout-only vectorization does not justify
 migrating all KV writers/readers, and the material llama.cpp target remains
 cooperative K/V reuse plus tensorized QK/PV:
 [`lane-major-key rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-lane-major-key-rejected.json).
+Applying `__restrict__` to every independent retained mixed40 pointer is also
+exact but does not improve the generated schedule measurably. Three pre/post
+21x100 processes move the production-tail median
+**0.037002 -> 0.037097 ms (+0.259%)**. Remove the compiler-only annotation:
+[`restrict/noalias rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-restrict-noalias-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

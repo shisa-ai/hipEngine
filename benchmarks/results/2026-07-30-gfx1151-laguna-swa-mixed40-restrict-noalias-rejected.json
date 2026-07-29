@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T02:46:46+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_restrict_noalias_rejected",
+  "status": "rejected_at_leaf",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "9f9bbf653",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "Apply __restrict__ to every independent retained mixed40 query/K/V/output/gate/KVLiveSpans pointer, matching the non-alias contract already used by adjacent fused KV writers.",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "ownership_changed": false,
+    "abi_changed": false
+  },
+  "correctness": {
+    "red": "not applicable: this is a compiler-only pointer contract with no new behavior, symbol, registry key, or dispatch route",
+    "green": "focused wrapped/explicitly-evicted SWA oracle passed",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "protocol": "three independent 21x100 processes before and after the source-only pointer qualification; production-tail control leg from the denominator-prefetch harness",
+    "baseline_control_medians_ms": [
+      0.03695112943649292,
+      0.03701006889343262,
+      0.037001650333404544
+    ],
+    "candidate_control_medians_ms": [
+      0.037097439765930176,
+      0.037554800510406494,
+      0.037055881023406984
+    ],
+    "baseline_median_of_processes_ms": 0.037001650333404544,
+    "candidate_median_of_processes_ms": 0.037097439765930176,
+    "latency_change_percent": 0.258878811,
+    "raw_sha256": {
+      "baseline_1": "24d096c401c0c3692636564208aec1f0aa98685679f24c21c2ab8c180977dbe5",
+      "baseline_2": "5bf09c55e9c88937c149cf0273d1d66953c970bc72a38fe18476d3a7d0f61de4",
+      "baseline_3": "238816466b3e0331f9a9cebfcd96d56d07db2359fb2ddcb3ca3932bb874f75e9",
+      "candidate_1": "0dbb38980814ca89d46c82daddc789bc167a44e3716971174b631873022d601f",
+      "candidate_2": "d6c382f7a8f4c80fe12b2761d6024d43f700ccd33c691571c0d47f17f4014505",
+      "candidate_3": "8bedcdec17e0824da0e2e5c47c611c6cf60f0d34bfd159102167b7852b0fd806"
+    }
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "resident_gate_skipped": true,
+    "production_tok_s": 20.49473174761836,
+    "reason": "The compiler-only non-alias annotation produces no measurable speedup and the median process result is 0.259% slower.",
+    "next": "Do not retry pointer qualifiers alone; select a mechanism that changes cooperative work or a measured instruction/latency dependency."
+  }
+}
