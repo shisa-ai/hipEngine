@@ -189449,3 +189449,29 @@ Vulkan local sizes verbatim will close the measured gap.
   double-buffered V staging to remove the overwrite-only post-consume barrier.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-exp32-current-template-rejected.json`.
+
+## 2026-07-29 12:29 JST — Reject exact ping-pong V staging
+
+- RED required the absent double-buffered mixed32-exp32 wrapper. GREEN covers
+  positions 512-519 after ring wrap plus explicit position-200 eviction and
+  is F32/BF16 byte-exact.
+- Two 64-slot V buffers reduce staged-V barriers **16 -> 8**. The initial
+  after-consume copy schedule improves the nine-sample leaf only
+  **0.081619 -> 0.081534 ms (-0.10%)**. Moving the alternate-buffer load
+  before current-buffer consumption to shorten softmax/PV register lifetimes
+  improves **0.081569 -> 0.081210 ms (-0.44%)**. Both fail the predeclared
+  >=5% gate.
+- Cached tracing explains the weak result: static LDS rises
+  **24,576 -> 40,960 bytes** and clang allocates **104 -> 224 VGPRs** under
+  both copy schedules, with SGPR128, scratch0, and unchanged grid32/local384.
+  The schedule repair does not remove the compiler footprint.
+- Removed the template generalization, HIP/Python wrapper, registry entry,
+  oracle extension, and leaf-harness choice. `git diff --exit-code` confirms
+  the four touched production/test/harness files match `685def142` byte for
+  byte. No resident-model run was made; production remains
+  **19.667705 tok/s**.
+- Leaf/trace SHA-256 values are `641be638...b18d` and
+  `277c1d30...36a`. Synchronization-only double buffering is closed. Next
+  increase arithmetic per K/V ownership/load event with a precision-qualified
+  cooperative GQA tile rather than more scalar scheduling. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-vstage64-pingpong-rejected.json`.

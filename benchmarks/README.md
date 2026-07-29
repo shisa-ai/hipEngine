@@ -170,7 +170,13 @@ current exp32 template under the local384 launch bound. It fixes the prior
 leaf **0.081815 -> 0.086925 ms (+6.25%)**. The candidate is removed before
 production; ordinary 40-block GQA2 is now closed independently of register
 pressure. The next exact seam keeps mixed32 ownership and double-buffers the
-64-slot V stage to remove its overwrite-only post-consume barriers.
+64-slot V stage to remove its overwrite-only post-consume barriers. That seam
+is now closed as well: halving staged-V barriers **16 -> 8** is byte-exact but
+improves the leaf only **0.081569 -> 0.081210 ms (-0.44%)**, while static LDS
+rises **24,576 -> 40,960 bytes** and clang allocates **104 -> 224 VGPRs**.
+Both after-consume and before-consume copy schedules fail the predeclared 5%
+gate, all candidate code is removed, and production remains
+**19.667705 tok/s**.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_vstage64_pingpong_screen",
+  "status": "rejected_and_removed",
+  "created_at": "2026-07-29T12:29:46+09:00",
+  "source_revision": "685def14269e074ab461660e2f310fbd767c1ce4",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "exact retained mixed32-exp32 body with two ping-pong 64-slot V buffers and eight rather than sixteen staged-V barriers",
+    "gate": "at least 5% leaf latency reduction before production integration",
+    "post_consume_schedule": {
+      "control_median_ms": 0.0816190242767334,
+      "candidate_median_ms": 0.08153413772583008,
+      "latency_change_percent": -0.10400338849372304,
+      "raw_sha256": "b3a0fc401ab6ba723d2b6e7e0c9240174e3ff256e3d1b612a5903077272000c4"
+    },
+    "pre_consume_schedule": {
+      "control_median_ms": 0.0815694808959961,
+      "candidate_median_ms": 0.08121040344238281,
+      "latency_change_percent": -0.44021054157635797,
+      "raw_sha256": "641be638358e57e9d9f4271a7fb18ddb970d29ede6dd7a2aefec9ab3c5b9c201"
+    }
+  },
+  "correctness": {
+    "red": "missing ping-pong wrapper",
+    "green": "positions 512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction"
+  },
+  "trace": {
+    "candidate": {
+      "grid_blocks": 32,
+      "workgroup_size": 384,
+      "vgpr": 224,
+      "sgpr": 128,
+      "lds_bytes": 40960,
+      "scratch_bytes": 0
+    },
+    "control": {
+      "grid_blocks": 32,
+      "workgroup_size": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    },
+    "raw_sha256": "277c1d306e5b6d42644fa7f53b788a4ae8a722c9ae016a90a099681645cb736a"
+  },
+  "commands": {
+    "correctness": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-vstage64-vec16-direct-assume-exp-pingpong --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-mixed32-exp32-pingpong-preschedule-leaf.json",
+    "trace": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-pingpong-preschedule-trace-20260729 --output-file pingpong -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-vstage64-vec16-direct-assume-exp-pingpong --samples 1 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-pingpong-preschedule-trace-20260729/leaf.json"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "production_screen_run": false,
+    "all_candidate_code_removed": true,
+    "production_unchanged_tok_s": 19.667705,
+    "reason": "Halving V-stage barriers is byte-exact but improves the leaf only 0.44%. Double buffering raises static LDS by 16 KiB and clang allocates 224 rather than 104 VGPRs under both copy schedules. Synchronization-only ping-pong is not a material path on this body.",
+    "next": "Keep the retained single buffer and 32-block ownership. The next material attention design must increase arithmetic per ownership/load event, following llama.cpp's cooperative-matrix GQA reuse, while preserving or independently bounding Laguna quality."
+  }
+}
