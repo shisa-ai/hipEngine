@@ -189959,3 +189959,18 @@ Vulkan local sizes verbatim will close the measured gap.
   next wire the candidate behind a session-scoped gfx1151 selector and run the
   matched resident p512/d128 state/lifecycle/performance gate. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json`.
+
+## 2026-07-29 15:23 JST — Add default-off selected-Q4 parallel-tail screen
+
+- RED first fails collection on the absent gfx1151 capability and also names
+  the missing MoE-plan route plus session setter. GREEN adds the separately
+  resolved four-axis route, default-off architecture capability, constructor
+  field, session setter, c1 dispatch flag, and
+  `--compare-selected-natural-tile8-parallel-decode`.
+- The comparison keeps retained natural tile8 enabled in both modes and
+  toggles only its serial versus eight-lane tail. Key miss, explicit false,
+  non-natural shapes, and peer backends retain the prior registered owners.
+- Validation passes Python compilation and **38** focused backend, plan,
+  session, and complete profile-harness tests. `docs/REFACTOR.md` records the
+  exact promotion/removal triggers. Production remains **20.003064 tok/s**;
+  next run seven counterbalanced resident p512/d128 pairs.

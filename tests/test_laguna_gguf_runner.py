@@ -309,6 +309,17 @@ def test_laguna_selected_natural_tile8_decode_switch_is_session_scoped() -> None
     assert session.use_selected_natural_tile8_decode is False
 
 
+def test_laguna_selected_natural_tile8_parallel_switch_is_session_scoped() -> None:
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session.use_selected_natural_tile8_parallel_decode = False
+
+    session.set_selected_natural_tile8_parallel_decode(True)
+    assert session.use_selected_natural_tile8_parallel_decode is True
+
+    session.set_selected_natural_tile8_parallel_decode(False)
+    assert session.use_selected_natural_tile8_parallel_decode is False
+
+
 def test_laguna_swa_assume_exp_switch_is_session_scoped() -> None:
     session = object.__new__(runner_module.LagunaGGUFResidentSession)
     session.kv_cache = SimpleNamespace(
