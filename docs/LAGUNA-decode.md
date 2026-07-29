@@ -5770,6 +5770,23 @@ The remaining attention sequence is:
     -0.02962 ms/token** over the preceding clean packet and **+80.910%** over
     sprint start, with exact repeated trajectory/state/lifecycle:
     [`V-stage128 production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-production.json).
+76. Bound V-stage128's 32-item vector probability/PV loop to unroll factor 16.
+    **Rejected and removed:** the byte-exact 9x50 and 21x100 leaves improve
+    **0.030454 -> 0.029083 ms (-4.503%)** and
+    **0.030667 -> 0.029348 ms (-4.302%)**, with all 21 strong pairs positive.
+    The scheduling change does not achieve its resource goal: control and
+    candidate both trace at **VGPR176/SGPR128/LDS43,008/scratch0**.
+
+    Seven counterbalanced actual-model pairs move
+    **20.752041 -> 20.751527 tok/s (-0.00248%)**, or
+    **48.18803 -> 48.18923 ms/token (+0.00119 ms)**. Median paired change is
+    **+0.00554%** with **5/7** wins, but the independent headline regresses.
+    Remove the kernel, wrapper, registry entry, runtime selector, comparison
+    CLI, and oracle addition. Production remains **20.744351 tok/s**.
+    Pragma-only unroll tuning is closed; the next candidate must structurally
+    shorten the live range and measurably reduce VGPR or complete-model wall.
+    Evidence:
+    [`V-stage128 bounded16 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage128-bounded16-rejected.json).
 
 Current exact decode checkpoint:
 
