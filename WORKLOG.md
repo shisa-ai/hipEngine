@@ -192015,3 +192015,24 @@ Vulkan local sizes verbatim will close the measured gap.
   rollback and other backends remain unchanged. Clean selector-unset
   production publication is next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json`.
+
+## 2026-07-30 05:28 JST — Publish clean mixed40 local512 production
+
+- Commit `4050f3773` is tracked-clean. The first cached-only invocation stops
+  before model load because final source wording/formatting changed the
+  attention cache key. Rebuild that one library outside profiling, then rerun
+  the unchanged `require_cached` production command; the failed invocation
+  produces no timing sample.
+- Selector-unset p512/d128 production measures
+  **20.550788/20.559001/20.557302 tok/s**, median
+  **20.557302 tok/s (48.645 ms/token)**. This is **+0.29510% /
+  -0.14355 ms/token** over the preceding **20.496816** clean packet and
+  **+79.278%** over the **11.466687** sprint start.
+- All three runs report the local512 capability active, generate trajectory
+  SHA `94f803f7...bda32` with first/final tokens **2930/74107**, finish at
+  position **638**, and return tracked allocations to zero. The raw artifact
+  SHA-256 is `3e95ec9d...8e88`.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s / 42.830 ms/token**.
+  The current gap is **5.815 ms/token**, or **11.954%** in throughput.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-production.json`.
