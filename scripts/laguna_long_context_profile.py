@@ -80,7 +80,6 @@ COMPARISON_ARGUMENTS = (
     "compare_swa_mixed32_exp8",
     "compare_swa_mixed32_exp16",
     "compare_swa_mixed32_exp32",
-    "compare_swa_gated_only",
     "compare_global_fixedshape_reduce",
     "compare_global_fused_fixedshape",
     "compare_global_gqa2_vstage64",
@@ -295,11 +294,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-swa-mixed32-exp32",
         action="store_true",
         help="counterbalance retained exp16 against exact wave-wide expf",
-    )
-    parser.add_argument(
-        "--compare-swa-gated-only",
-        action="store_true",
-        help="counterbalance retained SWA context writes against gated-only output",
     )
     parser.add_argument(
         "--compare-global-fixedshape-reduce",
@@ -537,9 +531,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape = (
         False
     )
-    active_swa_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512 = (
-        False
-    )
     active_long_attention_hipblaslt = False
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
@@ -675,9 +666,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512 = (
             owner.kv_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512
         )
-        active_swa_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512 = (
-            owner.kv_cache.swa_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512
-        )
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
@@ -792,8 +780,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_decode_swa_mixed32_exp16(mode == "candidate")
                     if args.compare_swa_mixed32_exp32:
                         owner.set_decode_swa_mixed32_exp32(mode == "candidate")
-                    if args.compare_swa_gated_only:
-                        owner.set_decode_swa_gated_only(mode == "candidate")
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
@@ -1056,7 +1042,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_mixed32_exp8": args.compare_swa_mixed32_exp8,
             "compare_swa_mixed32_exp16": args.compare_swa_mixed32_exp16,
             "compare_swa_mixed32_exp32": args.compare_swa_mixed32_exp32,
-            "compare_swa_gated_only": args.compare_swa_gated_only,
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -1125,9 +1110,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512": (
                 active_swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512
-            ),
-            "swa_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512": (
-                active_swa_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512
             ),
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce

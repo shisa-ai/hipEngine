@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T16:46:21+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gated_only_resident_gate",
+  "status": "rejected_runtime_removed",
+  "performance_claim": false,
+  "source": {
+    "revision": "b44dd1c3c4bae958f2e0ed17dc784d4db5e84cd4",
+    "tracked_clean": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "leaf_evidence": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "shape": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk_rows": 2048,
+    "attention_rows": 128,
+    "decode_forward_calls_per_sample": 127,
+    "warmup_rows": 128,
+    "repetitions": 7,
+    "timed_order": "control/candidate order alternates by repetition",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-gated-only --output /tmp/laguna-p512-d128-swa-gated-only-ab.json",
+    "raw_sha256": "7a209fba78c4efa0c64efd12294c4cd9414e0e633b7dbc61e62e92fb1e9e7702"
+  },
+  "timings": {
+    "control_median_decode_seconds": 6.330825577955693,
+    "control_median_decode_tok_s": 20.060574791733558,
+    "candidate_median_decode_seconds": 6.329827569890767,
+    "candidate_median_decode_tok_s": 20.063737692335213,
+    "median_throughput_change_percent": 0.01576674962950886,
+    "median_ms_per_token_change": -0.007858331219878778,
+    "paired_throughput_change_percent": [
+      0.06225385146234608,
+      0.029530100750818633,
+      0.10424620159128484,
+      -0.07129798538456633,
+      0.025923500432578628,
+      0.0024603880544482593,
+      0.003923284825368967
+    ],
+    "positive_pairs": 6,
+    "total_pairs": 7
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "pass": true
+  },
+  "decision": {
+    "retained_runtime": false,
+    "candidate_runtime_code_removed": true,
+    "registered_primitive_retained_for_diagnostics": true,
+    "production_tok_s": 20.0567558587,
+    "production_status": "unchanged",
+    "reason": "The 0.0158% median change is noise-level, and one pair regresses 0.0713%, larger than the projected saving. The frozen all-seven-positive promotion gate fails.",
+    "rollback": "Production remains the exact context-writing producer-max/producer-gate specialization.",
+    "next_gate": "Do not repeat the dead-store screen without a materially different attention ownership or store-consumption contract."
+  }
+}

@@ -190199,3 +190199,24 @@ Vulkan local sizes verbatim will close the measured gap.
   `docs/REFACTOR.md` records the promotion/removal trigger. Production
   remains **20.056756 tok/s**; next commit the screen and run seven matched
   resident p512/d128 pairs.
+
+## 2026-07-29 16:47 JST — Reject SWA gated-only resident ownership
+
+- Seven control/candidate measurements run in counterbalanced order within
+  one resident model session at clean `b44dd1c3c`. Generated IDs
+  `94f803f7...bda32`, next/final tokens 2930/74107, final position 638,
+  deterministic repeats, tracked ownership, and zero-allocation teardown are
+  exact.
+- Median fixed-horizon decode changes only
+  **20.060575 -> 20.063738 tok/s (+0.0158%)**, or
+  **49.849020 -> 49.841162 ms/token (-0.007858 ms)**. Six of seven pairs
+  improve, but repetition 3 loses **0.0713%**, larger than the modeled
+  0.010-ms/token saving. This fails the frozen all-seven-positive promotion
+  gate and is indistinguishable from resident-wall noise.
+- Remove the default-off gfx1151 capability, KV-cache field and route,
+  session setter, profile comparison switch, setter/routing tests, and
+  `docs/REFACTOR.md` entry. Keep the separately registered exact primitive
+  and leaf harness for diagnostics; production remains the context-writing
+  producer-gate owner at **20.056756 tok/s**. Raw SHA-256 is
+  `7a209fba...7702`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-runtime-rejected.json`.

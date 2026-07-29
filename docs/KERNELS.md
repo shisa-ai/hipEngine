@@ -1564,11 +1564,15 @@ the dead 9,216-element F32 context store. The wrapped/evicted fixture keeps a
 All nine paired 50-launch samples improve
 **0.058948 -> 0.058681 ms (-0.453%)**. Cached tracing names the final-false
 template at unchanged grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0.
-The analogous global specialization is rejected and removed: live
-513/576/639 regress **0.068%/0.045%/0.043%**, winning only 3/2/1 of nine
-pairs. Production remains **20.056756 tok/s** pending the SWA-only resident
-gate. Evidence:
+The resident p512/d128 gate is noise-level and rejected:
+**20.060575 -> 20.063738 tok/s (+0.0158%)**, but only 6/7 pairs improve and
+one loses **0.0713%**, larger than the modeled saving. Its capability, cache
+field, session setter, and profile switch are removed. The analogous global
+specialization is also rejected and removed: live 513/576/639 regress
+**0.068%/0.045%/0.043%**, winning only 3/2/1 of nine pairs. Production
+remains **20.056756 tok/s**. Evidence:
 [`retained SWA gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json),
+[`rejected SWA runtime`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-runtime-rejected.json),
 [`rejected global gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json).
 
 The exact scalar form of llama.cpp-style whole-GQA ownership is closed.
