@@ -92,6 +92,12 @@ numbers below.
   and production stays exact
   ([rejection](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-rejected.json) ·
   [leaf evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)).
+  The separately registered WPF-H3 IQ3/IQ4 source-MMQ leaf moves all 47 actual
+  M512 selected-down layers **565.437 -> 115.951 ms (4.877x)**; IQ3 alone is
+  **27.145% below** llama.cpp's matched family trace. Primitive mean-KL/top-1
+  gates pass, but runtime and complete quality remain pending, with the
+  layer-47 max-row-KL outlier explicitly disclosed
+  ([candidate evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted

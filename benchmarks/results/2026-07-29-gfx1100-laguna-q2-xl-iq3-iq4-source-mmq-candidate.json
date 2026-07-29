@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_iq3_iq4_source_mmq_candidate",
+  "date": "2026-07-29",
+  "status": "candidate_admitted_pending_runtime_and_complete_quality_gates",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "source": "llama.cpp HIP c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "source_files": [
+      "ggml/src/ggml-cuda/mmq.cuh",
+      "ggml/src/ggml-cuda/mmq-load-tiles.cuh",
+      "ggml/src/ggml-cuda/mmq-vec-dot.cuh",
+      "ggml/src/ggml-cuda/mma.cuh"
+    ],
+    "base_revision": "22918e5fd",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.hip": "4f708de22e0306b4b77562a1974ac1d19a1156933d36ab3e473888fd203f9b0d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.py": "dd719d271c00bed653802ace5f9e5b740fed1c82b82d5bc2e0d97ae6a5fbad73",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.hip": "beac54fddbd7f4715429cb9fa387e4c3475628ac9895269ed1bd9d516e97d371",
+      "tests/test_gguf_iq_source_mmq_prefill.py": "639f4569c01db7bb076ecb2ed9ae0b4fdd23187e2a560fd7a52b199dc39a9d3f"
+    }
+  },
+  "protocol": {
+    "rows": 512,
+    "routed_lanes": 5120,
+    "experts": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "layers": 47,
+    "quant_layers": {
+      "gguf_iq3_xxs": 45,
+      "gguf_iq4_xs": 2
+    },
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "control": "retained exact grouped raw-IQ selected down",
+    "candidate": "one strict K-major DS4 producer plus one raw-IQ I128/J128/K256 source-MMQ consumer per layer",
+    "common_group_metadata_excluded": true,
+    "producer_included": true,
+    "warmups_per_arm_per_repeat": 1,
+    "counterbalanced_repetitions": 3,
+    "timing": "HIP event median summed across actual layers",
+    "workspace_bytes": 5898240,
+    "four_k_or_longer_run_performed": false,
+    "claim_scope": "actual-M512 selected-down primitive family only; not end-to-end throughput or a production-default claim"
+  },
+  "aggregate_ms": {
+    "exact_grouped": 565.436770439148,
+    "source_mmq": 115.95081377029419,
+    "speedup": 4.876522656919972,
+    "reduction_percent": 79.49358445856984,
+    "all_layers_faster": true,
+    "gguf_iq3_xxs": {
+      "layers": 45,
+      "exact_grouped": 540.2265577316284,
+      "source_mmq": 111.01565170288086,
+      "speedup": 4.8662197577101605,
+      "reduction_percent": 79.45016769093556,
+      "matched_llamacpp_trace": 152.379859,
+      "ratio_to_matched_llamacpp": 0.7285454418413713,
+      "speedup_over_matched_llamacpp": 1.3725979775160455
+    },
+    "gguf_iq4_xs": {
+      "layers": 2,
+      "exact_grouped": 25.21021270751953,
+      "source_mmq": 4.93516206741333,
+      "speedup": 5.108284664850526,
+      "reduction_percent": 80.4239488695662
+    },
+    "interpretation": "The IQ3 candidate is 27.15% below the matched llama.cpp IQ3 trace at the named family boundary. The measurements are from separate profiled/event protocols and are not a paired-process wall comparison."
+  },
+  "routing": {
+    "active_experts_min": 197,
+    "active_experts_max": 239,
+    "expert_local_padded_rows_min": 25984,
+    "expert_local_padded_rows_max": 31232,
+    "padding_ratio_min": 5.075,
+    "padding_ratio_max": 6.1
+  },
+  "correctness": {
+    "all_finite": true,
+    "all_layer_mean_kl_top1_gates_passed": true,
+    "max_mean_kl": 0.0007562850413033293,
+    "max_row_kl": 3.3071882258129506,
+    "min_top1_agreement": 0.97578125,
+    "max_abs": 2048.0,
+    "outlier_disclosure": "Layer 47 IQ4_XS owns the max absolute error, max mean KL, and max per-row KL while retaining 99.551% row top-1. Repository primitive admission is mean KL <=0.05 and top-1 >=90%; the per-row outlier is preserved here and requires the complete model quality lane before promotion.",
+    "tail_fixture_counts": [0, 1, 17, 128, 129],
+    "tail_fixture_quants": ["gguf_iq3_xxs", "gguf_iq4_xs"],
+    "complete_18_prompt_576_step_gate": "pending"
+  },
+  "resources": {
+    "producer": {
+      "local": [256, 1, 1],
+      "vgpr": 24,
+      "sgpr_reported": 128,
+      "scratch_bytes": 0
+    },
+    "iq3_consumer": {
+      "local": [32, 8, 1],
+      "vgpr": 152,
+      "sgpr_reported": 128,
+      "dynamic_lds_bytes": 57856,
+      "scratch_bytes": 0,
+      "traced_fixture_duration_us": 115.12
+    },
+    "iq4_consumer": {
+      "local": [32, 8, 1],
+      "vgpr": 248,
+      "sgpr_reported": 128,
+      "dynamic_lds_bytes": 57856,
+      "scratch_bytes": 0,
+      "traced_fixture_duration_us": 84.12
+    },
+    "post_scale_schedule_change": "Consume each WMMA fragment immediately: IQ3 VGPR208 -> 152; IQ4 VGPR256/scratch8 -> VGPR248/scratch0."
+  },
+  "lifecycle": {
+    "peak_tracked_bytes": 40228604572,
+    "peak_allocations": 1168,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "validation": {
+    "focused_iq_q5_primitive_tests": 60,
+    "gfx1151_registry_build_tests": 35,
+    "ruff": "passed",
+    "py_compile": "passed",
+    "gfx1151_alias_exclusion": "passed"
+  },
+  "source_artifacts": {
+    "actual_leaf_json_sha256": "95b3436e705a73aa139960c632f12ae40d15b2d44fa345be2f8f7b48e5775606",
+    "actual_leaf_harness_sha256": "5632af8f6b6e38f5f6e1dd4f3727749f7d9f490071f06ee55d07235a3bb19e7a",
+    "actual_leaf_stdout_sha256": "dba0af410ec93d45f18d5288820fe58af01ce343c1541d039fbd2fa3e71cdaa7",
+    "actual_leaf_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "rocprof_trace_sha256": "8222899589a9c7ae661f8bc67eb9c083062583f6bb1aa3c806deb36aecd69072"
+  },
+  "promotion_blockers": [
+    "runtime ownership must reuse one producer per selected-down activation and fail closed to exact grouped down",
+    "complete M512 state and deterministic repeat gates are pending",
+    "complete 18-prompt/576-step train+heldout and category-heldout quality gates are pending",
+    "clean counter-ordered 512/1K timing and all-family reprofile are pending"
+  ]
+}
