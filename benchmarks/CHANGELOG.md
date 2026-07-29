@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-30
 
+- [accepted gfx1100 Laguna Q2 XL exact residual reprofile] Radeon Pro W7900 / same-ID/context4096/direct-M512/BF16-KV apples-to-apples refresh measures exact hipEngine **169.516 tok/s** versus frozen matched llama.cpp HIP **694.184 tok/s (4.095x)**; cached tracing records **3,001.692/3,016.780 ms** kernel sum/span, **1,477** dispatches, and only **15.087 ms / 0.500%** outside kernels, while Q5 remains first at **1,270.458 ms / 42.325%** and selects transient exact-value F32 Q5 expansion plus SGEMM as WPF-H5A; attribution only, no production change; `benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json`.
 - [rejected gfx1100 Laguna Q2 XL WPF-H4 Q6_K F16/rocBLAS runtime] Radeon Pro W7900 / complete changed-arithmetic 18-prompt/576-step gate rejects the parity-beating source-Q6 leaf at max KL **0.338657 > 0.05** despite **567/576 (98.438%)** top-1, deterministic repeats, lifecycle recovery, and diagnostic natural-prompt prefill **151.784 -> 158.205 tok/s (1.042x)**; remove the runtime owner/97.5-MB workspace and retain exact production plus standalone leaf evidence; `benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json`.
 
 ## 2026-07-29

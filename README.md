@@ -109,6 +109,13 @@ numbers below.
   97,517,568-byte owner is removed and production stays exact
   ([rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json) ·
   [leaf evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json)).
+  A clean post-H4 apples-to-apples refresh measures exact hipEngine
+  **169.516 tok/s** versus llama.cpp HIP **694.184 tok/s (4.095x)**. Its cached
+  trace is **3,001.692/3,016.780 ms** kernel sum/span with only **0.500%**
+  outside kernels; Q5 exact coltile alone owns **1,270.458 ms / 42.325%**.
+  WPF-H5A next tests transient exact-value F32 Q5 expansion plus SGEMM, with the
+  full quality gate binding for reduction reassociation
+  ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted

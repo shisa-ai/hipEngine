@@ -1429,8 +1429,17 @@ fallbacks that can bypass quality. Keep source commit/path attribution, the
 four-axis registry, raw-pointer kernel ABI, `KVLiveSpans`, and registered exact
 fallbacks. H1 source-Q5, H2 source attention/stream-K, H3 source-IQ, H4
 source-Q6, P6, WPF-1R, D4/D8/D8R8, and online-SWA rejections remain closed.
-WPF-H5 now starts with a clean exact-production M512 reprofile; do not stack
-rejected H1-H4 arithmetic.
+WPF-H5's clean exact-production M512 reprofile is complete at **169.516 tok/s**
+versus the matched llama.cpp HIP **694.184 tok/s (4.095x)**. Cached tracing
+records **3,001.692-ms** kernel sum in a **3,016.780-ms** span across **1,477**
+dispatches; only **15.087 ms / 0.500%** lies outside kernels. Exact Q5 coltile
+remains first at **1,270.458 ms / 42.325%**, ahead of selected IQ3/IQ4 down
+**557.091 ms**, attention **488.304 ms**, gate/up **460.143 ms**, and Q6
+**157.073 ms**. WPF-H5A therefore tests bounded transient raw-Q5-to-F32
+expansion plus exact BF16-to-F32 widening and F32 SGEMM. It must add no
+persistent sidecar, fail closed to exact coltile, and pass the complete quality
+lane because SGEMM changes reduction association. Do not stack rejected H1-H4
+arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates
