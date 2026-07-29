@@ -5334,6 +5334,25 @@ The remaining attention sequence is:
     Remove the candidate before tracing or resident integration and close
     staged-V word packing. Production remains **20.494732 tok/s**. Evidence:
     [`packed-V-broadcast rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-broadcast-rejected.json).
+57. Make the resident BF16 key layout lane-major for one packed load.
+    **Rejected and removed at the leaf stop:** this byte-neutral diagnostic
+    transposes each D128 key from `[part4][lane32]` to `[lane32][part4]`.
+    Each lane replaces four 16-bit cache loads 32 elements apart with one
+    aligned 64-bit load and extracts the same four BF16 values in the original
+    QK order. This isolates one concrete llama.cpp Vulkan advantage—vectorized
+    cooperative K loading—without changing QK, softmax, PV, ownership, or
+    resident bytes.
+
+    The wrapped/evicted oracle is F32/BF16 byte-exact. The 9x50 screen improves
+    **0.037159 -> 0.037098 ms (-0.164%, 8/9 wins)**, but the stronger 21x100
+    screen collapses to **0.037045 -> 0.037019 ms (-0.069%, 17/21 wins)**.
+    That is noise-scale and cannot justify migrating every relevant KV writer
+    and reader. Remove the wrapper, layout branch, registry/export, test
+    side-buffer, and leaf selector before tracing or resident integration.
+    Production remains **20.494732 tok/s**. The missing Vulkan multiplier is
+    cooperative K/V tile reuse plus tensorized QK/PV, not a key-layout-only
+    vector load. Evidence:
+    [`lane-major-key rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-lane-major-key-rejected.json).
 
 Current exact decode checkpoint:
 

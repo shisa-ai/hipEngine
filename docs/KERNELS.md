@@ -1989,6 +1989,14 @@ the same aligned dword and select their own BF16 half is byte-exact but
 regresses the 9x50 leaf **0.037053 -> 0.037558 ms (+1.363%)**. Remove the
 candidate before tracing/runtime and retain 16-bit LDS value reads:
 [`packed-V-broadcast rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-broadcast-rejected.json).
+A byte-neutral lane-major BF16 key diagnostic then replaces each lane's four
+16-bit cache reads 32 elements apart with one aligned 64-bit load and ordered
+extracts. It preserves F32/BF16 bytes under wrap and explicit eviction, but its
+9x50 **0.164%** gain contracts to only **0.069%** at 21x100. Remove the
+candidate before trace/runtime: key-layout-only vectorization does not justify
+migrating all KV writers/readers, and the material llama.cpp target remains
+cooperative K/V reuse plus tensorized QK/PV:
+[`lane-major-key rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-lane-major-key-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
