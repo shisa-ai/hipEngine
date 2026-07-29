@@ -303,6 +303,10 @@ GGUF_RAW_K_PREFILL_ROWBATCH = 0
 GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
 GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset()
 GGUF_RAW_K_PREFILL_VARIANT = "rowbatch"
+# WPF-H4 copies gfx1100 source ownership and remains unavailable on gfx1151
+# until this backend receives independent quality/performance admission.
+GGUF_Q6_F16_ROCBLAS_PREFILL = False
+GGUF_Q6_F16_ROCBLAS_PREFILL_SHAPES = frozenset()
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -718,6 +722,8 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_Q6_F16_ROCBLAS_PREFILL",
+    "GGUF_Q6_F16_ROCBLAS_PREFILL_SHAPES",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",

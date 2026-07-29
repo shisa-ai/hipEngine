@@ -1418,9 +1418,11 @@ standalone gfx1100 leaf. A fused local64 raw-Q6/BF16 producer plus F16-compute
 family **174.351 -> 14.349 ms (12.151x)**, **3.825% below** the matched
 llama.cpp **14.919865-ms** stack, at max mean KL **3.441e-5** and min top-1
 **97.852%**. It creates no persistent weight sidecar and requires at most
-**97,517,568 bytes** of reusable M512 scratch. Production remains exact while
-the explicit default-off owner, complete state, 18-prompt/576-step quality,
-counter-ordered timing, and reprofile gates are pending.
+**97,517,568 bytes** of reusable M512 scratch. The explicit default-off owner
+is now integrated and natural M512 passes at KL **0.000721933**, top-1 **100%**,
+deterministic complete state, and exact teardown; cached tracing observes all
+144 source stacks. Production remains exact while the 18-prompt/576-step
+quality, counter-ordered timing, and reprofile gates are pending.
 
 These audited llama.cpp routes are primary performance candidates, not
 fallbacks delayed behind a new exact-only tiling campaign. Keep source

@@ -19,6 +19,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaHiddenCaptureTargets,
     LagunaPrefillChunkPolicy,
     LagunaPrefillScratchPlan,
+    LagunaQ6F16RocblasScratch,
     LagunaRowsScratch,
     _validate_laguna_context_length,
     capture_laguna_hidden_rows,
@@ -32,6 +33,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
     resolve_laguna_moe_branch_concurrency,
+    resolve_laguna_q6_f16_rocblas,
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
@@ -208,6 +210,27 @@ def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
         LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
 
 
+def test_laguna_q6_f16_rocblas_scratch_is_one_bounded_buffer_and_frees() -> None:
+    runtime = _FakeRuntime()
+    scratch = LagunaQ6F16RocblasScratch.allocate(max_rows=512, runtime=runtime)
+
+    assert scratch.buffer.nbytes == 97_517_568
+    assert scratch.weight_f16_ptr == scratch.buffer.ptr
+    assert scratch.x_f16_ptr == scratch.buffer.ptr + 75_497_472
+    assert scratch.out_f16_ptr == scratch.x_f16_ptr + 12_582_912
+    assert scratch.weight_f16_nbytes == 75_497_472
+    assert scratch.x_f16_nbytes == 12_582_912
+    assert scratch.out_f16_nbytes == 9_437_184
+    assert scratch.nbytes == 97_517_568
+
+    scratch.free(runtime=runtime)
+    scratch.free(runtime=runtime)
+    assert runtime.allocations == {}
+    assert len(runtime.freed) == 1
+    with pytest.raises(ValueError, match="max_rows"):
+        LagunaQ6F16RocblasScratch.allocate(max_rows=0, runtime=runtime)
+
+
 def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
     policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -259,6 +282,16 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     assert plan.total_nbytes == 439_021_600
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
+    assert plan.q6_f16_rocblas_nbytes == 0
+
+    q6_plan = LagunaPrefillScratchPlan.build(
+        config,
+        moe_plan,
+        policy=policy,
+        use_q6_f16_rocblas=True,
+    )
+    assert q6_plan.q6_f16_rocblas_nbytes == 97_517_568
+    assert q6_plan.total_nbytes == 536_539_168
 
     wide_policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -1207,6 +1240,23 @@ def test_laguna_p4_head_kv_default_is_gfx1100_only_and_rollbackable() -> None:
     )
     assert unsupported.global_head_kv is None
     assert unsupported.swa_head_kv is None
+
+
+def test_laguna_q6_f16_rocblas_is_default_off_gfx1100_only_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_Q6_F16_ROCBLAS_PREFILL", None
+    ) is False
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_Q6_F16_ROCBLAS_PREFILL", None
+    ) is False
+    assert not resolve_laguna_q6_f16_rocblas("hip_gfx1100")
+    assert resolve_laguna_q6_f16_rocblas("hip_gfx1100", True)
+    assert not resolve_laguna_q6_f16_rocblas("hip_gfx1100", False)
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_q6_f16_rocblas("hip_gfx1151", True)
+    assert "use_q6_f16_rocblas" in signature(
+        runner_module.LagunaGGUFResidentSession
+    ).parameters
 
 
 def test_laguna_mixed_attention_projection_default_is_gfx1100_only_and_rollbackable() -> None:

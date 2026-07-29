@@ -98,9 +98,11 @@ then writes F16 output for one BF16/F32 result cast. Across the actual six-shape
 minimum top-1 is **97.852%**. The candidate is **0.571 ms / 3.825% below** the
 matched llama.cpp **14.919865-ms** source-stack recount; this is a matched-family
 attribution, not a paired-process wall claim. Scratch is bounded at
-**97,517,568 bytes**, no dequantized weight persists, and exact coltile remains
-production until the default-off owner, complete state, 18-prompt/576-step
-quality, clean 512/1K timing, and all-family reprofile pass.
+**97,517,568 bytes** and no dequantized weight persists. The integrated
+default-off owner passes natural M512 at KL **0.000721933**, top-1 **100%**,
+deterministic complete state, and exact teardown; cached tracing observes all
+144 expected source stacks. Exact coltile remains production until the
+18-prompt/576-step quality, clean 512/1K timing, and all-family reprofile pass.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
