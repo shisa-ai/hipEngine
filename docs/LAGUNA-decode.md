@@ -5475,6 +5475,31 @@ The remaining attention sequence is:
     exact blocks, or another mixed scheme—and then passes the complete KL
     and top-1 gate. Production remains **20.494732 tok/s**. Evidence:
     [`Q8_1 F32-scale rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-f32-scale-rejected.json).
+64. Gate the fast compact-Q8 selected gate/up path on recurrent c=1 decode,
+    not its previously rejected prefill-only state.
+    **Rejected and removed at d16:** add a temporary explicit/default-off
+    registry-driven owner that quantizes each c=1 hidden row once and uses
+    the existing selected Q4_K T16 dp4a fused-SiLU consumer in all 47 sparse
+    layers. It reuses already-resident scratch and leaves prefill exact.
+    Focused plan, production-shape runtime, CPU-quality, and fused-rounding
+    tests pass.
+
+    After identical exact p512 prefill, the 16-transition teacher-forced gate
+    reaches mean/max KL **0.08036/0.59520** and top-1 **15/16 (93.75%)**.
+    The first top-1 miss is step 4, where token **268** becomes **26** at KL
+    **0.59520**—**11.90x** the maximum-KL ceiling. The single
+    non-counterbalanced directional timing also moves
+    **50.6409 -> 50.8302 ms/token (+0.374%)**, so the positive isolated leaf
+    does not transfer to this complete owner.
+
+    Stop before d128, tracing, or residual repair. Remove the compact
+    activation registry key, plan route, session flag/setter, runtime owner,
+    focused assertions, and diagnostic harness. This closes blanket compact
+    Q8_1 selected gate/up for both prefill and decode; reopen only around a
+    materially different activation representation with an independently
+    positive inclusive owner. Production remains **20.494732 tok/s**.
+    Evidence:
+    [`selected Q8 decode rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-decode-rejected.json).
 
 Current exact decode checkpoint:
 
