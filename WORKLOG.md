@@ -191344,3 +191344,22 @@ Vulkan local sizes verbatim will close the measured gap.
   peer backends stay unchanged, and comparison-only cache/profile plumbing is
   removed. Clean selector-unset production remains next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json`.
+
+## 2026-07-30 01:02 JST — Publish SWA idle-wave denominator production
+
+- Run the normal tracked-clean selector-unset Poolside Laguna S 2.1 Q4_K_M
+  BF16-KV p512/d128 eager c=1 protocol at retained revision `247dc1c35`.
+  Decode is **20.412363/20.425412/20.429048 tok/s**, median
+  **20.425412**: **+0.05202% / -0.02547 ms/token** over the preceding clean
+  20.414792 packet and **+78.128%** over the 11.466687 sprint start.
+- The normal route reports the idle-wave denominator capability active and no
+  comparison selector exists. All three runs preserve next/final tokens
+  **2930/74107**, trajectory SHA-256 `94f803f7...ebda32`, final position
+  638, repeat determinism, and zero tracked allocations after teardown.
+  Load remains excluded and the repository is tracked-clean; raw output
+  SHA-256 is `304ca2bd...bed5`.
+- Current wall is **48.959 ms/token**. Against same-GGUF llama.cpp Vulkan
+  **23.348381 tok/s / 42.830 ms**, the remaining gap is
+  **6.129 ms/token** and hipEngine is **12.519%** below Vulkan throughput.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json`.

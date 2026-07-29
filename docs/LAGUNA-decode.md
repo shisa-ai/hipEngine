@@ -5151,20 +5151,25 @@ The remaining attention sequence is:
     trajectory, final position, repeat determinism, and allocation lifecycle.
     Promote the qualified gfx1151 capability, retain active-wave denominator
     replay as exact rollback, remove the comparison-only CLI/cache seam, and
-    leave peer backends unchanged. Clean selector-unset publication remains
-    next.
+    leave peer backends unchanged. Tracked-clean selector-unset production is
+    **20.412363/20.425412/20.429048 tok/s**, median **20.425412**:
+    **+0.05202% / -0.02547 ms/token** over the preceding clean packet and
+    **+78.128%** over sprint start. The normal route reports the capability
+    active without a comparison selector and preserves exact repeated
+    trajectory/state/lifecycle.
     Evidence:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json) ·
-    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json).
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json) ·
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.414792 tok/s** | **48.984 ms** | **+78.036%** |
+| hipEngine current production | **20.425412 tok/s** | **48.959 ms** | **+78.128%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **6.155 ms/token** | hipEngine is **12.564%** below Vulkan throughput |
+| Remaining wall gap | — | **6.129 ms/token** | hipEngine is **12.519%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
