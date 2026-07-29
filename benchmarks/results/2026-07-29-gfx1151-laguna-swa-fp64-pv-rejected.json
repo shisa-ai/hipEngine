@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T17:01:42+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_fp64_pv_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "e08f4763ea953d8ee611f17ffc991904a46205e9",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_file": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "72Q/8KV/D128/SWA512"
+  },
+  "candidate": {
+    "description": "Preserve the retained exact QK, producer maximum, compiler expf, ordered F32 denominator, gate, and ownership, but replace each output dimension's 512 scalar F32 PV FMAs with one serial FP64 FMA chain and round once before the existing divide/gate/BF16 boundary.",
+    "premise": "Test whether intrinsically higher-precision PV association can provide a numerically admissible bridge toward llama.cpp Vulkan's cooperative-matrix PV without output-derived repair.",
+    "geometry": "unchanged 32 local384 workgroups"
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed before implementation because the FP64-PV wrapper did not exist.",
+    "green_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "positions": "512-519 after ring wrap plus explicit position-200 eviction",
+    "context_max_abs_error": 1.5832483768463135e-08,
+    "gated_bf16_mismatches": 5,
+    "gated_max_abs_error": 3.814697265625e-06
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-fp64pv-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-fp64pv-leaf.json",
+    "raw_sha256": "6a449e88d9bc8019cdb4be01cb693f238c47e6c6bcc389da084d0b9955bfa345",
+    "control_median_ms": 0.05897761821746826,
+    "candidate_median_ms": 0.16594221115112304,
+    "latency_change_percent": 181.36472134097392,
+    "samples": 9,
+    "warmups": 5,
+    "launches_per_sample": 50
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "production_tok_s": 20.0567558587,
+    "production_status": "unchanged",
+    "reason": "Serial FP64 PV is 2.81x the retained leaf and still does not reproduce the BF16 recurrent boundary. It fails before trace, model-quality, or runtime integration.",
+    "finding": "Greater mathematical accumulation precision is not equivalent to the retained scalar-F32 association. A future cooperative path must carry a validated high-precision algorithm and error bound; FP64 substitution is not that bridge."
+  }
+}

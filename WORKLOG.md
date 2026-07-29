@@ -190220,3 +190220,26 @@ Vulkan local sizes verbatim will close the measured gap.
   producer-gate owner at **20.056756 tok/s**. Raw SHA-256 is
   `7a209fba...7702`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-runtime-rejected.json`.
+
+## 2026-07-29 17:01 JST — Reject higher-precision scalar FP64 SWA PV
+
+- Re-audit llama.cpp Vulkan `c0bc8591e` and the retained mixed32 producer-max/
+  producer-gate body before opening another attention candidate. Vulkan's
+  advantage remains its subgroup64 cooperative Br16 x Bc64 QK/PV tile, full
+  GQA reuse, and shared probability tile; the already-rejected scalar
+  probability cache duplicated its barriers/LDS traffic without tensorized PV.
+- RED fails on the absent FP64-PV wrapper. GREEN preserves the exact QK,
+  producer maximum, compiler `expf`, ordered F32 denominator, divide, gate, and
+  ownership, changing only each output dimension's 512-term PV accumulator to
+  serial FP64 with one F32 round before the existing boundary. Positions
+  512-519 after ring wrap plus explicit position-200 eviction stay within the
+  CPU tolerance.
+- Reject and remove the candidate before trace or full-model quality work.
+  F32 context differs by at most **1.58325e-8**, but **5/9,216** gated BF16
+  outputs still change. Nine 50-launch samples regress
+  **0.058978 -> 0.165942 ms/layer (+181.36%)**. The result closes plain FP64
+  substitution: greater mathematical precision neither preserves the recurrent
+  scalar-F32 boundary nor approaches the cooperative throughput needed to
+  transfer Vulkan's tile. Production remains **20.056756 tok/s**. Raw SHA-256
+  is `6a449e88...5bfa345`; evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-fp64-pv-rejected.json`.

@@ -4564,6 +4564,21 @@ The remaining attention sequence is:
     [`SWA gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json),
     [`SWA runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-runtime-rejected.json),
     [`global rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json).
+22. Test intrinsically higher-precision PV before another tensorized repair.
+    **Complete and rejected:** the candidate keeps the exact retained QK,
+    producer maximum, compiler `expf`, ordered F32 denominator, ownership,
+    divide, gate, and stores, but accumulates each dimension's 512 PV terms
+    with one FP64 FMA chain and rounds once at the existing context boundary.
+    The wrapped/evicted oracle remains numerically close
+    (**1.58e-8** maximum F32 context error), but still changes **5/9,216**
+    gated BF16 values. More importantly, nine 50-launch samples regress
+    **0.058978 -> 0.165942 ms/layer (+181.36%)**. Remove the wrapper,
+    registry key, harness seam, test extension, and kernel specialization
+    before trace or model-quality work. This closes serial FP64 substitution:
+    mathematical accuracy alone does not reproduce Laguna's recurrent
+    scalar-F32 association, and it cannot bridge to llama.cpp's cooperative
+    Br16 x Bc64 PV tile. Production remains **20.056756 tok/s**. Evidence:
+    [`rejected FP64 PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fp64-pv-rejected.json).
 
 Current exact decode checkpoint:
 
