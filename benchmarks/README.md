@@ -245,6 +245,11 @@ falls **2.50%**, total attention **0.80%**, kernel sum **0.07%**, and span
 **0.06%** versus the pre-global-max census. Attention remains
 **2.749 ms/token** behind same-GGUF Vulkan and explains **38.2%** of the
 complete wall gap.
+An exact registered SWA successor now computes each per-head softplus gate
+once in the score phase and publishes it through the existing barrier. The
+wrap/eviction leaf improves **0.059058 -> 0.058680 ms (-0.641%)** with
+unchanged grid32/local384/VGPR104/LDS25,088/scratch0; production remains
+**19.986371 tok/s** pending its resident gate.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

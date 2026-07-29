@@ -4481,6 +4481,14 @@ The remaining attention sequence is:
     **0.059183 -> 0.059172 ms (-0.018%)**. The non-exact result does not
     justify a model-quality run, and all candidate code is removed. Evidence:
     [`rejected producer-scaled scores`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-scaled-scores-rejected.json).
+17. Publish the per-head softplus gate from the score phase. **Complete and
+    retained as a registered primitive:** one thread computes the identical
+    gate once per owned query and reuses the existing score-to-output barrier.
+    The wrap/eviction oracle is F32/BF16 byte-exact; the leaf improves
+    **0.059058 -> 0.058680 ms (-0.641%)**. Tracing keeps
+    grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0. Production stays
+    **19.986371 tok/s** until a matched resident gate. Evidence:
+    [`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json).
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
