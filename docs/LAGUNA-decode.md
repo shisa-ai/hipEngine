@@ -5806,6 +5806,29 @@ The remaining attention sequence is:
     a genuinely new arithmetic/traffic premise before returning to SWA and
     move next to the larger selected-MoE comparator gap:
     [`V-stage code-object audit`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage-codeobject-audit.json).
+78. Fully unroll the fixed twelve-block K3072 loop in the exact fused selected
+    gate/up tile8 owner. **Rejected and removed:** the actual-weight 9x50 and
+    21x100 leaves improve **0.134683 -> 0.133444 ms (-0.920%)** and
+    **0.134171 -> 0.132723 ms (-1.080%)**, with **18/21** strong paired wins
+    and zero BF16 mismatches.
+
+    The authoritative code object improves logical VGPR **96 -> 94** and SGPR
+    **34 -> 31**, with zero spills and unchanged 256-byte fixed LDS, but
+    expands kernel text **3,400 -> 17,220 bytes (5.06x)**. Cache-only tracing
+    names both local128/grid16384x10 specializations at allocated VGPR96,
+    LDS512, and scratch0.
+
+    Seven counterbalanced actual-model p512/d128 pairs reverse the leaf result:
+    **20.743597 -> 20.689042 tok/s (-0.2630%)**, or
+    **48.20765 -> 48.33476 ms/token (+0.12712 ms)**. Production wins
+    **7/7** pairs; median paired change is **-0.27974%**. Tokens, trajectory,
+    positions, determinism, and allocation teardown remain exact. Remove the
+    kernel, wrapper, registry route, oracle addition, leaf selector, runtime
+    route, and comparison CLI. Production remains **20.744351 tok/s**.
+    Fixed-K full unrolling is closed for this selected owner; the next LD-4
+    candidate must reduce weight/address traffic or fuse useful cross-output
+    work without multiplying instruction footprint:
+    [`selected gate/up unroll12 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-gate-up-unroll12-rejected.json).
 
 Current exact decode checkpoint:
 
@@ -5829,9 +5852,13 @@ remains **2.451x** llama.cpp Vulkan's logged **0.909423 ms/token**, a
 **1.319562-ms/token** gap representing **24.26%** of the complete remaining
 wall gap. Device-code inspection now closes pragma-only register/stage tuning:
 V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
-grid already maps one workgroup to each of the 40 CUs. The next bounded work is
-the selected-MoE address/K-loop contraction; return to attention only for a
-materially new exact-association or quality-safe cooperative premise.
+grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
+address/K-loop contraction is now closed: full K3072 unrolling wins the
+isolated leaf but loses all seven resident pairs while expanding code 5.06x.
+The next bounded work must instead reduce actual weight/address traffic or
+fuse useful cross-output work without multiplying instruction footprint;
+return to attention only for a materially new exact-association or
+quality-safe cooperative premise.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
