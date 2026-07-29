@@ -3670,7 +3670,8 @@ template <
     bool kProducerMax = false,
     bool kProducerGate = false,
     bool kStoreContext = true,
-    bool kDppQkReduction = false>
+    bool kDppQkReduction = false,
+    bool kStageProbabilityCache = false>
 __global__ __launch_bounds__(384)
 void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float* query,
@@ -3691,10 +3692,18 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
   constexpr int kOwnedQueries = 3;
   constexpr int kOwnersPerKv = kMixed32Owners ? 4 : 3;
   constexpr int kScoreWaves = 12;
+  static_assert(
+      !kStageProbabilityCache ||
+          (kValueStage == 64 && kSoftmaxExp32 && kProducerMax),
+      "stage probability cache requires V-stage64, exp32, and producer max");
   __shared__ float shared_scores[kOwnedQueries][kScanSlots];
   __shared__ int32_t shared_physical[kScanSlots];
   __shared__ float shared_wave_max[kOwnedQueries][kScoreWaves];
   __shared__ float shared_gate[kOwnedQueries];
+  __shared__ float shared_probability[
+      kOwnedQueries][kStageProbabilityCache ? kValueStage : 1];
+  __shared__ float shared_denom[
+      kStageProbabilityCache ? kOwnedQueries : 1];
   alignas(16) __shared__ uint16_t shared_value[
       (kValueStage > 0 ? kValueStage : 1) * kHeadDim];
 
@@ -3849,14 +3858,69 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
   if constexpr (kValueStage > 0) {
     for (int stage_base = 0; stage_base < kScanSlots;
          stage_base += kValueStage) {
+      const bool stage_probability_producer =
+          kStageProbabilityCache && active_output && (wave & 3) == 0;
+      if constexpr (kStageProbabilityCache) {
+        if (stage_probability_producer) {
+#pragma unroll
+          for (int local_base = 0; local_base < kValueStage;
+               local_base += 32) {
+            const int idx = stage_base + local_base + lane;
+            const bool visible = shared_physical[idx] >= 0;
+            const float shifted_score =
+                shared_scores[q_local][idx] * scale - wave_max;
+            if constexpr (kAssumeSoftmaxDomain) {
+              __builtin_assume(shifted_score <= 0.0f);
+            }
+            const float lane_weight =
+                visible ? expf(shifted_score) : 0.0f;
+            shared_probability[q_local][local_base + lane] = lane_weight;
+#pragma unroll
+            for (int item = 0; item < 32; ++item) {
+              const float weight = __shfl(lane_weight, item, 32);
+              if (lane == 0 &&
+                  shared_physical[stage_base + local_base + item] >= 0) {
+                wave_denom =
+                    laguna_ordered_add_f32(wave_denom, weight);
+              }
+            }
+          }
+          if (lane == 0) {
+            shared_denom[q_local] = wave_denom;
+          }
+        }
+      }
       if constexpr (kVectorValueStage) {
         constexpr int kValuesPerVector =
             static_cast<int>(sizeof(uint4) / sizeof(uint16_t));
         constexpr int kVectorsPerSlot = kHeadDim / kValuesPerVector;
         auto* shared_vectors = reinterpret_cast<uint4*>(shared_value);
-        for (int vector_idx = tid;
+        int value_loader_tid = tid;
+        int value_loader_threads = static_cast<int>(blockDim.x);
+        if constexpr (kStageProbabilityCache) {
+          if (stage_probability_producer) {
+            value_loader_tid = -1;
+          } else {
+            int producers_before = 0;
+#pragma unroll
+            for (int query_idx = 0;
+                 query_idx < kOwnedQueries;
+                 ++query_idx) {
+              if (query_idx < owned_queries &&
+                  query_idx * 4 < wave) {
+                ++producers_before;
+              }
+            }
+            value_loader_tid =
+                (wave - producers_before) * 32 + lane;
+            value_loader_threads =
+                (kScoreWaves - owned_queries) * 32;
+          }
+        }
+        for (int vector_idx = value_loader_tid;
+             vector_idx >= 0 &&
              vector_idx < kValueStage * kVectorsPerSlot;
-             vector_idx += static_cast<int>(blockDim.x)) {
+             vector_idx += value_loader_threads) {
           const int stage_slot = vector_idx / kVectorsPerSlot;
           const int vector_in_slot =
               vector_idx - stage_slot * kVectorsPerSlot;
@@ -3907,69 +3971,88 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
         }
       }
       __syncthreads();
-      constexpr int kSoftmaxBatch =
-          kSoftmaxExp32 ? 32 : (kSoftmaxExp16 ? 16 : (kSoftmaxExp8 ? 8 : 4));
-#pragma unroll
-      for (int local_base = 0; local_base < kValueStage;
-           local_base += kSoftmaxBatch) {
-        float weights[kSoftmaxBatch] = {};
-        if constexpr (
-            kSoftmaxExp4 || kSoftmaxExp8 || kSoftmaxExp16 || kSoftmaxExp32) {
-          float lane_weight = 0.0f;
-          if (active_output && lane < kSoftmaxBatch) {
-            const int idx = stage_base + local_base + lane;
-            const bool visible = shared_physical[idx] >= 0;
-            const float shifted_score =
-                shared_scores[q_local][idx] * scale - wave_max;
-            if constexpr (kAssumeSoftmaxDomain) {
-              __builtin_assume(shifted_score <= 0.0f);
-            }
-            lane_weight = visible ? expf(shifted_score) : 0.0f;
-          }
-#pragma unroll
-          for (int item = 0; item < kSoftmaxBatch; ++item) {
-            weights[item] = __shfl(lane_weight, item, 32);
-            if (active_output && lane == 0 &&
-                shared_physical[stage_base + local_base + item] >= 0) {
-              wave_denom =
-                  laguna_ordered_add_f32(wave_denom, weights[item]);
-            }
-          }
-        } else if (active_output && lane == 0) {
-#pragma unroll
-          for (int item = 0; item < kSoftmaxBatch; ++item) {
-            const int idx = stage_base + local_base + item;
-            const bool visible = shared_physical[idx] >= 0;
-            const float shifted_score =
-                shared_scores[q_local][idx] * scale - wave_max;
-            if constexpr (kAssumeSoftmaxDomain) {
-              // The visible score's own maximum participates in `wave_max`,
-              // so score-max is finite and non-positive. Keep the exact
-              // compiler `expf` expression while exposing that domain.
-              __builtin_assume(shifted_score <= 0.0f);
-            }
-            const float weight =
-                visible ? expf(shifted_score) : 0.0f;
-            weights[item] = weight;
-            if (visible) {
-              wave_denom = laguna_ordered_add_f32(wave_denom, weight);
-            }
-          }
-        }
+      if constexpr (kStageProbabilityCache) {
         if (active_output) {
 #pragma unroll
-          for (int item = 0; item < kSoftmaxBatch; ++item) {
-            const float weight =
-                (kSoftmaxExp4 || kSoftmaxExp8 || kSoftmaxExp16 ||
-                 kSoftmaxExp32)
-                ? weights[item]
-                : __shfl(weights[item], 0, 32);
-            const int value_idx =
-                (local_base + item) * kHeadDim + dim;
-            output_acc = fmaf(
-                weight,
-                laguna_bf16_bits_to_float(shared_value[value_idx]),
-                output_acc);
+          for (int local_base = 0; local_base < kValueStage;
+               local_base += 32) {
+#pragma unroll
+            for (int item = 0; item < 32; ++item) {
+              const int value_idx =
+                  (local_base + item) * kHeadDim + dim;
+              output_acc = fmaf(
+                  shared_probability[q_local][local_base + item],
+                  laguna_bf16_bits_to_float(shared_value[value_idx]),
+                  output_acc);
+            }
+          }
+          wave_denom = shared_denom[q_local];
+        }
+      } else {
+        constexpr int kSoftmaxBatch =
+            kSoftmaxExp32 ? 32 : (kSoftmaxExp16 ? 16 : (kSoftmaxExp8 ? 8 : 4));
+#pragma unroll
+        for (int local_base = 0; local_base < kValueStage;
+             local_base += kSoftmaxBatch) {
+          float weights[kSoftmaxBatch] = {};
+          if constexpr (
+              kSoftmaxExp4 || kSoftmaxExp8 || kSoftmaxExp16 || kSoftmaxExp32) {
+            float lane_weight = 0.0f;
+            if (active_output && lane < kSoftmaxBatch) {
+              const int idx = stage_base + local_base + lane;
+              const bool visible = shared_physical[idx] >= 0;
+              const float shifted_score =
+                  shared_scores[q_local][idx] * scale - wave_max;
+              if constexpr (kAssumeSoftmaxDomain) {
+                __builtin_assume(shifted_score <= 0.0f);
+              }
+              lane_weight = visible ? expf(shifted_score) : 0.0f;
+            }
+#pragma unroll
+            for (int item = 0; item < kSoftmaxBatch; ++item) {
+              weights[item] = __shfl(lane_weight, item, 32);
+              if (active_output && lane == 0 &&
+                  shared_physical[stage_base + local_base + item] >= 0) {
+                wave_denom =
+                    laguna_ordered_add_f32(wave_denom, weights[item]);
+              }
+            }
+          } else if (active_output && lane == 0) {
+#pragma unroll
+            for (int item = 0; item < kSoftmaxBatch; ++item) {
+              const int idx = stage_base + local_base + item;
+              const bool visible = shared_physical[idx] >= 0;
+              const float shifted_score =
+                  shared_scores[q_local][idx] * scale - wave_max;
+              if constexpr (kAssumeSoftmaxDomain) {
+                // The visible score's own maximum participates in `wave_max`,
+                // so score-max is finite and non-positive. Keep the exact
+                // compiler `expf` expression while exposing that domain.
+                __builtin_assume(shifted_score <= 0.0f);
+              }
+              const float weight =
+                  visible ? expf(shifted_score) : 0.0f;
+              weights[item] = weight;
+              if (visible) {
+                wave_denom = laguna_ordered_add_f32(wave_denom, weight);
+              }
+            }
+          }
+          if (active_output) {
+#pragma unroll
+            for (int item = 0; item < kSoftmaxBatch; ++item) {
+              const float weight =
+                  (kSoftmaxExp4 || kSoftmaxExp8 || kSoftmaxExp16 ||
+                   kSoftmaxExp32)
+                  ? weights[item]
+                  : __shfl(weights[item], 0, 32);
+              const int value_idx =
+                  (local_base + item) * kHeadDim + dim;
+              output_acc = fmaf(
+                  weight,
+                  laguna_bf16_bits_to_float(shared_value[value_idx]),
+                  output_acc);
+            }
           }
         }
       }
@@ -9489,6 +9572,75 @@ hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_m
           false,
           true,
           true,
+          true>),
+      dim3(32),
+      dim3(384),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      token_positions,
+      evict_mask,
+      row_positions,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 512 ||
+      sliding_window != 512 || scratch_stride != 512 ||
+      scan_slots != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
+          64,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          false,
           true>),
       dim3(32),
       dim3(384),

@@ -190795,3 +190795,40 @@ Vulkan local sizes verbatim will close the measured gap.
   workgroup barrier.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-attention-consensus-association-rejected.json`.
+
+## 2026-07-29 21:58 JST — Retain exact SWA stage probability cache
+
+- Implemented the exact next seam from the llama.cpp Vulkan audit. For each
+  K64 V stage, one output wave per active query computes the unchanged wave32
+  `expf` weights and exact slot-order denominator while the other waves load
+  V. The existing V-publication barrier now publishes both V and a **3 x 64**
+  FP32 probability tile, adding no barrier.
+- RED failed on the missing wrapper import. GREEN wrap/position-200 eviction
+  coverage is F32-context and gated-BF16 byte-exact. The focused production
+  routing/profile/oracle bundle passes **37 tests**.
+- The first schedule let probability producers duplicate V loads and regressed
+  **0.058816 -> 0.059560 ms (+1.266%)**. The bounded repair excludes those
+  two or three waves and compacts the same aligned V copies across the
+  remaining ten or nine waves. The cached 9x50 leaf then improves
+  **0.058734 -> 0.055996 ms (-4.662%)**, with every candidate sample faster
+  than every control. Raw SHA-256 is `99afeed5...4219`.
+- Cache-only tracing confirms grid32/local384 and unchanged
+  VGPR104/SGPR128/scratch0; LDS rises **25,088 -> 25,600 bytes**. Trace
+  SHA-256 is `c3d4353d...0f9a7`.
+- All seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M BF16-KV
+  p512/d128 pairs improve with complete sample separation:
+  **20.097968 -> 20.282916 tok/s (+0.9202%, -0.4537 ms/token)**. Generated
+  IDs, tokens, positions, determinism, and allocation lifecycle are exact.
+  Raw SHA-256 is `b964d08b...4550`.
+- Promote the gfx1151 capability only at gated saturated natural-shape
+  72Q/8KV/D128/SWA512. The producer-max/gate sibling remains exact rollback;
+  peer backends and non-natural shapes are unchanged. Remove the comparison
+  seam before commit. Next gate is tracked-clean selector-unset p512/d128
+  production, followed by a cached attention census.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before reporting drift because the manifest's read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent. The
+  llama.cpp shader was inspected read-only at `c0bc8591e`; no source was
+  copied.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json`.
