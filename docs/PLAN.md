@@ -1441,13 +1441,15 @@ candidate elsewhere moves the actual 235-call family **1,256.936 -> 221.137 ms
 (5.684x)** by events and **1,223.263 -> 231.966 ms (5.273x)** by synchronized
 wall. Raw operand values are exact and candidate output passes at max mean KL
 **1.59e-9**, max-row KL **5.79e-8**, and top-1 **100%**. The stack still costs
-**3.751x** llama.cpp's matched Q5 trace. The default-off transient owner is now
-mechanically admitted: natural M512 passes at KL **0.0003742**, top-1 **100%**,
-deterministic complete state, and exact teardown; tracing observes the intended
-**223** producer/SGEMM stacks, **141** BF16 casts, and **12** exact N48 calls.
-Run the binding 18-prompt/576-step lane next; SGEMM reassociation cannot promote
-from leaf or single-prompt state. Do not stack rejected
-H1-H4 arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
+**3.751x** llama.cpp's matched Q5 trace. Its default-off owner passes natural
+M512 at KL **0.0003742**, top-1 **100%**, deterministic complete state, and exact
+teardown, but the binding 18-prompt/576-step lane rejects SGEMM reassociation at
+maximum KL **1.143627 > 0.05** despite **564/576 (97.917%)** top-1 and diagnostic
+prefill **152.359 -> 202.707 tok/s (1.330x)**. Remove the owner, workspace,
+capabilities, and tests; retain exact production plus the standalone leaf. H5B
+next qualifies the existing exact BF16-cache-to-F32 dense-initial hipBLASLt
+attention premise on gfx1100 behind complete `KVLiveSpans`. Do not stack rejected
+H1-H5A arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

@@ -16,21 +16,18 @@ should be removed or collapsed.
 
 ## Laguna default-off Q5 exact-value F32/rocBLAS selector
 
-- Added 2026-07-30 for WPF-H5A after the standalone role policy moved the
-  235-call Q5 family **1,256.936 -> 221.137 ms (5.684x)** with exact N48
-  fallback, bit-exact operands, max mean KL **1.59e-9**, and top-1 **100%**.
-  `LagunaGGUFResidentSession(use_q5_f32_rocblas=True)` conditionally owns one
-  **195,035,136-byte** transient allocation, one rocBLAS handle, and one
-  context-local seven-shape dispatch. Package default remains false; c=1,
-  small rows, N48, key/backend/capacity misses, and disabled sessions stay exact.
-- Natural M512 passes at KL **0.0003742**, top-1 **100%**, deterministic complete
-  state, and exact teardown. Keep the owner only through the binding complete
-  18-prompt/576-step lane. If that lane fails, remove the constructor seam,
-  context-local ABI, conditional library/handle/workspace, backend capabilities,
-  and focused runtime tests while retaining the separately registered leaf and
-  required unfused numerical chain. If it passes and clean 512/1K timing is
-  non-regressive, promote the package capability and remove the explicit opt-in
-  once rollback/bisection no longer needs it.
+- WPF-H5A's temporary selector and owner are removed. The complete changed-
+  association 18-prompt/576-step lane rejects exact-value Q5 SGEMM at maximum
+  KL **1.143627 > 0.05** despite **564/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **152.359 -> 202.707 tok/s
+  (1.330x)**. The earlier M512 state gate passed at KL **0.000374211**, but it
+  cannot waive the category-heldout ceiling.
+- Remove the constructor seam, context-local ABI, conditional eager library,
+  rocBLAS handle, **195,035,136-byte** workspace owner, backend capabilities,
+  and focused runtime tests. Retain only the separately registered exact-value
+  raw-Q5/F32 producer/composite primitives, their required unfused numerical
+  chain, and leaf evidence. Exact role-qualified coltile remains production.
+  Reopen only with materially different arithmetic and a fresh complete gate.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 

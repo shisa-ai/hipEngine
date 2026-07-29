@@ -21,7 +21,15 @@
     "all_finite": true,
     "all_role_quality_gates_passed": true,
     "bf16_to_f32_input_bytes_exact": true,
-    "complete_18_prompt_576_step_gate": "pending",
+    "complete_18_prompt_576_step_gate": {
+      "pass": false,
+      "max_kl_divergence": 1.1436268397342317,
+      "kl_threshold": 0.05,
+      "top1_matches": 564,
+      "steps": 576,
+      "diagnostic_prefill_speedup": 1.3304582401984464,
+      "rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json"
+    },
     "fused_and_unfused_producers_byte_exact": true,
     "max_abs": 0.0078125,
     "max_mean_kl": 1.5896215272679752e-09,
@@ -62,8 +70,8 @@
     "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
   },
   "promotion_blockers": [
-    "the binding complete 18-prompt/576-step train+heldout and category-heldout quality gate has not run",
-    "clean counter-ordered 512/1K end-to-end timing and all-family tracing have not run"
+    "complete 18-prompt/576-step train+heldout and category-heldout quality reaches maximum KL 1.143627 above the mandatory 0.05 ceiling",
+    "runtime ownership was removed and clean 512/1K promotion timing was not run after the quality failure"
   ],
   "protocol": {
     "candidate": "one fused exact-value raw-Q5/BF16-to-F32 producer, one F32 rocBLAS SGEMM, and one F32-to-BF16 result cast for BF16 output",
@@ -345,7 +353,8 @@
     ],
     "qualified_shapes": 7,
     "quality_harness_min_rows": 16,
-    "removed_after_quality_rejection": false,
+    "removed_after_quality_rejection": true,
+    "removal_scope": "constructor switch, context-local ABI, conditional eager library and rocBLAS handle, bounded workspace owner, package capabilities, and focused integration tests",
     "selector": "LagunaGGUFResidentSession(use_q5_f32_rocblas=True)",
     "source_artifacts": {
       "full_state_harness_sha256": "84440c053c4ec996b0590f6c76f04c8b745ef79da75336ca23865e9612b58127",
@@ -364,11 +373,13 @@
     "rocprof_trace_sha256": "27f80823ebd93271603bb6a86ca753a1c5932b078552b569477a39639d4f7cf4",
     "stdout_sha256": "d2df8b287dc2450e96e3b6b4c547cde2ba16fd7fc8a0ddd5f71e7cfa22505ed0"
   },
-  "status": "default_off_runtime_admitted_complete_quality_pending",
+  "status": "standalone_leaf_admitted_runtime_rejected_complete_quality_gate",
   "validation": {
     "cached_profile_dispatches": 40,
     "cached_profile_expected_chain_only": true,
     "focused_gpu_and_host_tests": "220 passed across runner/dispatch/Q5 GPU/rocBLAS/registry/gfx1151/profile/build coverage",
+    "cleanup_validation": "110 passed across runner/dispatch/gfx1151/registry/Q5 GPU/rocBLAS/build coverage after runtime-owner removal",
+    "benchmark_sync_and_provenance_tests": "14 passed",
     "gfx1151_alias_exclusion": "passed",
     "py_compile": "passed",
     "ruff": "passed"

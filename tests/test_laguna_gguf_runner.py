@@ -19,7 +19,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaHiddenCaptureTargets,
     LagunaPrefillChunkPolicy,
     LagunaPrefillScratchPlan,
-    LagunaQ5F32RocblasScratch,
     LagunaRowsScratch,
     _validate_laguna_context_length,
     capture_laguna_hidden_rows,
@@ -33,7 +32,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
     resolve_laguna_moe_branch_concurrency,
-    resolve_laguna_q5_f32_rocblas,
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
@@ -119,12 +117,10 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     exact = object()
     prefill = object()
     q4_prefill = object()
-    q5_f32_rocblas = object()
     iq_grouped_prefill = object()
     values["f16_projection"] = exact
     values["f16_projection_prefill"] = prefill
     values["q4_prefill_linear"] = q4_prefill
-    values["q5_f32_rocblas"] = q5_f32_rocblas
     values["iq_grouped_prefill"] = iq_grouped_prefill
     libraries = LagunaEagerLibraries(**values)
 
@@ -134,14 +130,6 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     assert (
         libraries.linear["gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out"]
         is q4_prefill
-    )
-    assert (
-        libraries.linear["gguf_q5_k:f32_rocblas_exact_values_bf16_bf16_out"]
-        is q5_f32_rocblas
-    )
-    assert (
-        libraries.linear["gguf_q5_k:f32_rocblas_exact_values_bf16_f32_out"]
-        is q5_f32_rocblas
     )
     assert libraries.moe["grouped_iq_prefill"] is iq_grouped_prefill
 
@@ -220,27 +208,6 @@ def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
         LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
 
 
-def test_laguna_q5_f32_rocblas_scratch_is_one_bounded_buffer_and_frees() -> None:
-    runtime = _FakeRuntime()
-    scratch = LagunaQ5F32RocblasScratch.allocate(max_rows=512, runtime=runtime)
-
-    assert scratch.buffer.nbytes == 195_035_136
-    assert scratch.weight_f32_ptr == scratch.buffer.ptr
-    assert scratch.x_f32_ptr == scratch.buffer.ptr + 150_994_944
-    assert scratch.out_f32_ptr == scratch.x_f32_ptr + 18_874_368
-    assert scratch.weight_f32_nbytes == 150_994_944
-    assert scratch.x_f32_nbytes == 18_874_368
-    assert scratch.out_f32_nbytes == 25_165_824
-    assert scratch.nbytes == 195_035_136
-
-    scratch.free(runtime=runtime)
-    scratch.free(runtime=runtime)
-    assert runtime.allocations == {}
-    assert len(runtime.freed) == 1
-    with pytest.raises(ValueError, match="max_rows"):
-        LagunaQ5F32RocblasScratch.allocate(max_rows=0, runtime=runtime)
-
-
 def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
     policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -292,16 +259,6 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     assert plan.total_nbytes == 439_021_600
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
-    assert plan.q5_f32_rocblas_nbytes == 0
-
-    q5_plan = LagunaPrefillScratchPlan.build(
-        config,
-        moe_plan,
-        policy=policy,
-        use_q5_f32_rocblas=True,
-    )
-    assert q5_plan.q5_f32_rocblas_nbytes == 195_035_136
-    assert q5_plan.total_nbytes == 634_056_736
 
     wide_policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -1150,23 +1107,6 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert resolve_laguna_iq2_grid64("hip_gfx1100", True)
     assert not resolve_laguna_iq2_grid64("hip_gfx1100", False)
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
-
-
-def test_laguna_q5_f32_rocblas_is_default_off_gfx1100_only_and_rollbackable() -> None:
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_Q5_F32_ROCBLAS_PREFILL", None
-    ) is False
-    assert backend_package_capability(
-        "hip_gfx1151", "GGUF_Q5_F32_ROCBLAS_PREFILL", None
-    ) is False
-    assert not resolve_laguna_q5_f32_rocblas("hip_gfx1100")
-    assert resolve_laguna_q5_f32_rocblas("hip_gfx1100", True)
-    assert not resolve_laguna_q5_f32_rocblas("hip_gfx1100", False)
-    with pytest.raises(ValueError, match="not supported"):
-        resolve_laguna_q5_f32_rocblas("hip_gfx1151", True)
-    assert "use_q5_f32_rocblas" in signature(
-        runner_module.LagunaGGUFResidentSession
-    ).parameters
 
 
 def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
