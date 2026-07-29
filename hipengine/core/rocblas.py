@@ -92,6 +92,31 @@ class Rocblas:
             "rocblas_hgemm",
         )
 
+    def gemm_ex_rowmajor_nt_fp16_compute_f16(
+        self,
+        x_ptr: int,
+        weight_ptr: int,
+        out_ptr: int,
+        *,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        stream: int = 0,
+    ) -> None:
+        """FP16 row-major NT GEMM with FP16 accumulation and output."""
+
+        self._gemm_ex_rowmajor_nt_fp16(
+            x_ptr,
+            weight_ptr,
+            out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            output_datatype=ROCBLAS_DATATYPE_F16_R,
+            compute_datatype=ROCBLAS_DATATYPE_F16_R,
+            stream=stream,
+        )
+
     def gemm_ex_rowmajor_nt_fp16_compute_f32(
         self,
         x_ptr: int,
@@ -113,6 +138,7 @@ class Rocblas:
             in_features=in_features,
             out_features=out_features,
             output_datatype=ROCBLAS_DATATYPE_F16_R,
+            compute_datatype=ROCBLAS_DATATYPE_F32_R,
             stream=stream,
         )
 
@@ -137,6 +163,7 @@ class Rocblas:
             in_features=in_features,
             out_features=out_features,
             output_datatype=ROCBLAS_DATATYPE_F32_R,
+            compute_datatype=ROCBLAS_DATATYPE_F32_R,
             stream=stream,
         )
 
@@ -150,14 +177,21 @@ class Rocblas:
         in_features: int,
         out_features: int,
         output_datatype: int,
+        compute_datatype: int,
         stream: int,
     ) -> None:
         _check_shape(rows=rows, in_features=in_features, out_features=out_features)
         if output_datatype not in {ROCBLAS_DATATYPE_F16_R, ROCBLAS_DATATYPE_F32_R}:
             raise ValueError("rocBLAS FP16 GEMM output must be FP16 or FP32")
+        if compute_datatype not in {ROCBLAS_DATATYPE_F16_R, ROCBLAS_DATATYPE_F32_R}:
+            raise ValueError("rocBLAS FP16 GEMM compute must be FP16 or FP32")
         self.set_stream(stream)
-        alpha = ctypes.c_float(1.0)
-        beta = ctypes.c_float(0.0)
+        if compute_datatype == ROCBLAS_DATATYPE_F16_R:
+            alpha: ctypes.c_uint16 | ctypes.c_float = ctypes.c_uint16(0x3C00)
+            beta: ctypes.c_uint16 | ctypes.c_float = ctypes.c_uint16(0x0000)
+        else:
+            alpha = ctypes.c_float(1.0)
+            beta = ctypes.c_float(0.0)
         _check(
             self.library.rocblas_gemm_ex(
                 ctypes.c_void_p(self.handle),
@@ -180,7 +214,7 @@ class Rocblas:
                 ctypes.c_void_p(out_ptr),
                 ctypes.c_int(output_datatype),
                 ctypes.c_int(out_features),
-                ctypes.c_int(ROCBLAS_DATATYPE_F32_R),
+                ctypes.c_int(compute_datatype),
                 ctypes.c_int(ROCBLAS_GEMM_ALGO_STANDARD),
                 ctypes.c_int32(0),
                 ctypes.c_uint32(0),
@@ -219,6 +253,29 @@ def rocblas_hgemm_rowmajor_nt_fp16(
 ) -> None:
     blas = handle or get_rocblas()
     blas.hgemm_rowmajor_nt(
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        stream=stream,
+    )
+
+
+def rocblas_gemm_ex_rowmajor_nt_fp16_compute_f16(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int = 0,
+    handle: Rocblas | None = None,
+) -> None:
+    blas = handle or get_rocblas()
+    blas.gemm_ex_rowmajor_nt_fp16_compute_f16(
         x_ptr,
         weight_ptr,
         out_ptr,

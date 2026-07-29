@@ -1412,14 +1412,23 @@ complete M512 state, and lifecycle pass but cannot waive KL. Remove the runtime
 owner/selector/tile128 metadata route and retain exact grouped production plus
 the separately registered spill-free VGPR152/248 leaf; gfx1151 stays excluded.
 
-WPF-H4 source-faithful Q6_K F16 dequantize-plus-rocBLAS is now active. These
-audited llama.cpp routes are primary performance candidates, not fallbacks
-delayed behind a new exact-only tiling campaign. Keep source commit/path
-attribution, the four-axis registry, raw-pointer kernel ABI, `KVLiveSpans`, and
-registered exact fallbacks. Prior H1 source-Q5, H2 source attention/stream-K, H3
-source-IQ, P6, WPF-1R, D4/D8/D8R8, and online-SWA rejections remain closed;
-H5/IQ2 and WPF-4 are deferred until H4 is independently decided and the
-retained production route is reprofiled.
+WPF-H4 source-faithful Q6_K F16 dequantize-plus-rocBLAS now has an admitted
+standalone gfx1100 leaf. A fused local64 raw-Q6/BF16 producer plus F16-compute
+`rocblas_gemm_ex` and one output cast moves the actual six-shape/144-call M512
+family **174.351 -> 14.349 ms (12.151x)**, **3.825% below** the matched
+llama.cpp **14.919865-ms** stack, at max mean KL **3.441e-5** and min top-1
+**97.852%**. It creates no persistent weight sidecar and requires at most
+**97,517,568 bytes** of reusable M512 scratch. Production remains exact while
+the explicit default-off owner, complete state, 18-prompt/576-step quality,
+counter-ordered timing, and reprofile gates are pending.
+
+These audited llama.cpp routes are primary performance candidates, not
+fallbacks delayed behind a new exact-only tiling campaign. Keep source
+commit/path attribution, the four-axis registry, raw-pointer kernel ABI,
+`KVLiveSpans`, and registered exact fallbacks. Prior H1 source-Q5, H2 source
+attention/stream-K, H3 source-IQ, P6, WPF-1R, D4/D8/D8R8, and online-SWA
+rejections remain closed; H5/IQ2 and WPF-4 are deferred until H4 is
+independently decided and the retained production route is reprofiled.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

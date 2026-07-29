@@ -88,6 +88,20 @@ tile128 metadata route, and selector are removed; only the separately registered
 [`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json)
 remains, and exact grouped down plus the canonical headline above are unchanged.
 
+The [`WPF-H4 Q6_K F16/rocBLAS standalone leaf`](results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json)
+is **admitted pending runtime and complete-quality gates**. One local64 launch
+produces caller-owned F16 weight bytes from raw Q6_K while independently casting
+the resident BF16 activation; source-matching F16-compute `rocblas_gemm_ex`
+then writes F16 output for one BF16/F32 result cast. Across the actual six-shape,
+144-call M512 inventory, retained exact coltile moves **174.351 -> 14.349 ms
+(12.151x, -91.770%)**. Every role wins, maximum mean KL is **3.441e-5**, and
+minimum top-1 is **97.852%**. The candidate is **0.571 ms / 3.825% below** the
+matched llama.cpp **14.919865-ms** source-stack recount; this is a matched-family
+attribution, not a paired-process wall claim. Scratch is bounded at
+**97,517,568 bytes**, no dequantized weight persists, and exact coltile remains
+production until the default-off owner, complete state, 18-prompt/576-step
+quality, clean 512/1K timing, and all-family reprofile pass.
+
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen
