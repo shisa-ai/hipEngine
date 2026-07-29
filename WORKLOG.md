@@ -191893,3 +191893,18 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused selection/fallback and cached GPU eviction-oracle tests each pass
   (**1 passed** apiece). Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json`.
+
+## 2026-07-30 04:22 JST — Publish clean pre-normalized global decode
+
+- From tracked-clean promotion commit `aade6b59d`, run the normal selector-unset
+  p512/d128 eager c=1 path three times with cached code only. Decode measures
+  **20.489386/20.496816/20.498178 tok/s**, median **20.496816 tok/s**
+  (**48.788 ms/token**), or **+0.01017% / -0.00496 ms/token** versus the
+  preceding 20.494732 clean packet and **+78.751%** versus sprint start.
+- All runs produce the exact state SHA `94f803f7...bda32`, token
+  **2930 -> 74107**, final position **638**, and zero tracked allocations
+  after teardown. Raw artifact SHA-256 is `e23beb4b...fd6d`.
+- The remaining same-GGUF Vulkan gap is **5.959 ms/token** or **12.213%**
+  throughput. Add the selected pre-normalization capability to future
+  long-context profile protocol records. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-production.json`.

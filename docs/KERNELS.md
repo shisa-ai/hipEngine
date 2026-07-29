@@ -1899,6 +1899,10 @@ capability; the preceding probability-vec4 key remains fallback and other
 backends do not inherit it:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json),
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json).
+Tracked-clean selector-unset production is
+**20.489386/20.496816/20.498178 tok/s**, median **20.496816**, with exact
+trajectory/state/lifecycle:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-production.json).
 The following clean 127-transition census measures **721 compute + 5
 runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and
 **3.023432 ms/token** attention. Global falls

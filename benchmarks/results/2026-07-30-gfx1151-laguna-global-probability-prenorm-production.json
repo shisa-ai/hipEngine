@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T04:22:19+09:00",
+  "kind": "hipengine_laguna_global_probability_prenorm_production",
+  "status": "accepted",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "revision": "aade6b59dc36d4d9c051f77b51d1924d79987f59",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "selector_unset": true,
+    "jit_policy": "require_cached",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-probability-prenorm-production.json",
+    "raw_sha256": "e23beb4b2d2dce9d3a6c565da5972498891c7dd2ae0b99744fa64a182046fd6d"
+  },
+  "timings": {
+    "decode_samples_tok_s": [
+      20.489386323497456,
+      20.496815665715,
+      20.498177812715515
+    ],
+    "decode_median_tok_s": 20.496815665715,
+    "decode_median_ms_per_token": 48.78806622009578,
+    "previous_production_tok_s": 20.4947317476,
+    "throughput_change_percent": 0.010168067289995086,
+    "wall_saving_ms_per_token": 0.004960803402752845,
+    "sprint_start_tok_s": 11.466687,
+    "sprint_change_percent": 78.75098243908639
+  },
+  "correctness": {
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "integration": {
+    "capability": "hip_gfx1151.LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE",
+    "capability_selected_by_production_allocator": true,
+    "fallback": "global_context_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "other_backends_unchanged": true
+  },
+  "comparator": {
+    "same_gguf_llama_cpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llama_cpp_vulkan_ms_per_token": 42.829522,
+    "hipengine_throughput_gap_percent": 12.213118049962436,
+    "hipengine_wall_gap_ms_per_token": 5.958544220095781
+  },
+  "decision": "Accept 20.496816 tok/s as the clean production checkpoint. The exact pre-normalization gain is small at whole-model scope, but the stronger paired gate is positive and the prior exact kernel remains fallback."
+}
