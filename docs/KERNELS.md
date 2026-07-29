@@ -1518,6 +1518,13 @@ single-launch design informed by the llama.cpp audit, not another approximate
 instruction substitution, split merge, or output-derived repair. Evidence:
 [`post-global-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json),
 [`rejected QK dot2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-qkdot2-rejected.json).
+The first audit screen also closes a fresh current-template GQA2 rebuild.
+Keeping the local384 launch bound fixes the old **176 -> 104 VGPR** footprint,
+but 40 local256 blocks and five K/V owners regress the exact leaf
+**0.081815 -> 0.086925 ms (+6.25%)**. All code is removed before production.
+The next exact single-launch screen keeps mixed32 and ping-pongs two 64-slot V
+buffers, targeting the overwrite-only post-consume barrier:
+[`rejected current-template GQA2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-exp32-current-template-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

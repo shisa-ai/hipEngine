@@ -4337,12 +4337,20 @@ The remaining attention sequence is:
    The dot2 body, wrapper, selector, oracle seam, and harness are removed.
    Evidence:
    [`rejected QK dot2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-qkdot2-rejected.json).
-3. Move to a materially structural exact single-launch SWA design. Preserve
-   all F32 QK/softmax/PV arithmetic, but raise useful work per synchronization
-   point and reduce repeated K/V traffic. The concrete next screen must come
-   from the llama.cpp implementation audit and target at least a **5%** leaf
-   reduction before full-model integration; sub-percent approximate
-   instruction substitutions are closed.
+3. The first comparator-audit structural screen is **complete and rejected**.
+   It remaps the current exact exp32 template to 40 local256 GQA2 blocks under
+   the retained local384 launch bound. That fixes the predecessor's
+   **176 -> 104 VGPR** footprint, but the fifth K/V owner still regresses the
+   leaf **0.081815 -> 0.086925 ms (+6.25%)**. The candidate is removed before
+   production; ordinary 40-block GQA2 is closed independently of register
+   pressure. Evidence:
+   [`rejected current-template GQA2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-exp32-current-template-rejected.json).
+4. Keep the retained **32-block 2+2+2+3** ownership and attack synchronization
+   instead. Ping-pong two 64-slot V buffers so the next buffer can be filled
+   after consuming the current one without an overwrite hazard. This preserves
+   every QK/softmax/PV operation while reducing staged-V block barriers
+   **16 -> 8**. Require at least a **5%** leaf reduction before full-model
+   integration; sub-percent instruction substitutions are closed.
 
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with

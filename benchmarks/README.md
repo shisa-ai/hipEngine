@@ -164,6 +164,13 @@ the saturated leaf **1.05%**, while the one-term form improves it only
 **0.17%** and fails the canonical 18-prompt/576-step gate at max KL
 **1.265727** (**25.31x** the 0.05 ceiling) despite **97.92%** top-1. All
 candidate code is removed; the next SWA attack must be structural and exact.
+The first comparator-audit structural screen rebuilds exact GQA2 from the
+current exp32 template under the local384 launch bound. It fixes the prior
+**176 -> 104 VGPR** defect, but five K/V owners still regress the saturated
+leaf **0.081815 -> 0.086925 ms (+6.25%)**. The candidate is removed before
+production; ordinary 40-block GQA2 is now closed independently of register
+pressure. The next exact seam keeps mixed32 ownership and double-buffers the
+64-slot V stage to remove its overwrite-only post-consume barriers.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
