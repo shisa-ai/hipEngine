@@ -1511,6 +1511,11 @@ producer maxima only inside the qualified mixed32/exp32 route; mixed32/exp32
 remains exact rollback:
 [`global producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-leaf.json).
 [`global producer-max retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-retained.json).
+Tracked-clean selector-unset production is
+**19.982796/19.988868/19.986371 tok/s**, median **19.986371**:
+aggregate-flat-to-positive at **+0.0138% / -0.0069 ms/token** versus the
+prior clean packet, with the capability active and exact repeated state:
+[`global producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-production.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is

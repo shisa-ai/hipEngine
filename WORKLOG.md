@@ -189737,3 +189737,20 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next run tracked-clean selector-unset three-repetition p512/d128 production,
   then remove the comparison-only session setter/flag. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-retained.json`.
+
+## 2026-07-29 14:10 JST — Publish global producer-max production
+
+- Tracked-clean `bf21b6b84`, cached builds, two HIP queues, and no comparison
+  selector measure p512/d128 decode at
+  **19.982796/19.988868/19.986371 tok/s**, median **19.986371**.
+- This is aggregate-flat-to-positive at **+0.0138% / -0.0069 ms/token**
+  versus prior clean 19.983610. Retention remains grounded in the fully
+  separated seven-pair A/B (**+0.0765%**) plus positive leaf/resource
+  evidence. Cumulative decode is **+74.299%** over the 11.466687 sprint start.
+- The profile records the producer-max capability active and all comparison
+  flags false. All runs select next token 2930 and final token 74107, share
+  trajectory SHA `94f803f7...ebda32`, finish at position 638, and return
+  tracked allocations to zero.
+- Raw SHA-256 is `10494aab...ac6d`. Next remove the comparison-only setter and
+  flag, then run a clean 127-transition attention census. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-production.json`.

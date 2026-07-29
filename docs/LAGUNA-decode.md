@@ -4440,6 +4440,11 @@ The remaining attention sequence is:
     Evidence:
     [`global producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-leaf.json).
     [`global producer-max retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-retained.json).
+    Tracked-clean selector-unset production is
+    **19.982796/19.988868/19.986371 tok/s**, median **19.986371**:
+    aggregate-flat-to-positive at **+0.0138%** versus the prior packet and
+    exact across repeated state/lifecycle. Evidence:
+    [`global producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-production.json).
 13. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
     precision-design problem: retain its compact GQA9/K64 ownership and
     tensorized QK/PV throughput, but establish an independently valid
