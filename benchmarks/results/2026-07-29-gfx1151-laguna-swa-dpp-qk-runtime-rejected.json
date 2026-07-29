@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T20:58:00+09:00",
+  "kind": "hipengine_laguna_swa_dpp_qk_runtime_rejected",
+  "status": "primitive_retained_runtime_rejected",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "df3fe42272a9a0355f36889d0a3a4f9f8dc1eddb",
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "in_tree_pattern": "exact global DPP-QK reduction retained at 91596b4b5",
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_check_result": "blocked before reports because /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "candidate": {
+    "name": "mixed32-exp32-producer-max-gate-dpp-qk-vstage64-vec16-direct-assume-exp",
+    "change": "Preserve the exact 128-term product/addition tree while replacing only the +16,+8,+4,+2,+1 wave32 lane transport with permlanex16 plus DPP moves.",
+    "production_default_changed": false,
+    "registered_diagnostic_primitive_retained": true,
+    "runtime_comparison_path_removed": true
+  },
+  "red_green": {
+    "red": "The focused wrap/eviction test failed importing the absent DPP wrapper.",
+    "green": "The focused wrap/eviction test passed after adding the separate registered wrapper.",
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "explicit_eviction_position": 200
+  },
+  "leaf": {
+    "protocol": {
+      "capacity": 512,
+      "sliding_window": 512,
+      "query_heads": 72,
+      "kv_heads": 8,
+      "head_dim": 128,
+      "warmups": 3,
+      "samples": 9,
+      "burst": 50
+    },
+    "control_median_ms": 0.05889701843261719,
+    "candidate_median_ms": 0.05508443832397461,
+    "latency_change_percent": -6.473299005796818,
+    "all_candidate_samples_below_all_control_samples": true,
+    "raw_sha256": "d0386071ad7c3ed69f7b9a059ec4ca00d193fc5743c316955c8620164f6f93c2",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-dpp-qk-vstage64-vec16-direct-assume-exp --samples 9 --warmups 3 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-dpp-qk-leaf.json"
+  },
+  "trace": {
+    "kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<64,true,true,true,true,false,false,false,true,true,true,true,true>",
+    "grid_threads": 12288,
+    "workgroup_threads": 384,
+    "vgpr": 104,
+    "sgpr": 128,
+    "static_lds_bytes": 25088,
+    "scratch_bytes": 0,
+    "csv_sha256": "b834de8feb7b4179bcef45024c6f1f655356e7ad04747fa45aa37664c66b8285",
+    "compiler_ran_under_profiler": false
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk": 2048,
+    "swa_attention_chunk": 128,
+    "warmup_rows": 128,
+    "repetitions": 7,
+    "decode_forward_calls_per_run": 127,
+    "load_seconds_excluded": 89.94813512009569,
+    "control_samples_tok_s": [
+      20.09539694430574,
+      20.10407967516366,
+      20.103985299570954,
+      20.102751093143144,
+      20.111625854719787,
+      20.103418022876202,
+      20.107392917996755
+    ],
+    "candidate_samples_tok_s": [
+      20.08872195701393,
+      20.092120206359514,
+      20.094494369383487,
+      20.093890949148946,
+      20.09708433010134,
+      20.09924915533571,
+      20.082396799395227
+    ],
+    "control_median_tok_s": 20.103985299570954,
+    "candidate_median_tok_s": 20.093890949148946,
+    "throughput_change_percent": -0.05021069341024642,
+    "control_ms_per_token": 49.741381377817724,
+    "candidate_ms_per_token": 49.7663694169871,
+    "ms_per_token_change": 0.0249880391693722,
+    "all_paired_repetitions_negative": true,
+    "complete_sample_separation_against_candidate": false,
+    "raw_sha256": "a558709a10653239f64009408018f880bd3b139373ad2c87a97c0c661f07668d",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-dpp-qk --allow-dirty --output /tmp/laguna-p512-d128-swa-dpp-qk-ab.json"
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "final_position": 638,
+    "tracked_returned_to_baseline": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "decision": {
+    "retained": false,
+    "production_tok_s_unchanged": 20.105078229248285,
+    "reason": "The exact leaf win reverses under the resident 36-layer SWA queue: all seven candidate pairs are slower. Keep the primitive for diagnostics but remove the runtime selector and do not promote.",
+    "next": "Do not repeat DPP-only transport on the local384 SWA body without a materially different cooperative tile or resource profile."
+  }
+}
