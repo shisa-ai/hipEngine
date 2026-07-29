@@ -5624,6 +5624,31 @@ The remaining attention sequence is:
     blocked by its missing read-only Atlas checkout; in-tree Laguna and cached
     K64 lineage were audited directly. Evidence:
     [`GQA9/K128 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-gqa9-splitk128-rejected.json).
+71. Raise the retained mixed40 block from local384 to local512 without
+    collapsing its 40-owner grid. **Retained and promoted on gfx1151:** four
+    extra wave32s expand score/transport concurrency while the same 40
+    workgroups continue to fill all 40 CUs. Every QK reduction, exponent,
+    denominator addition, PV FMA, gate, and output conversion retains the
+    local384 arithmetic association.
+
+    The 9x50 and stronger 21x100 leaves improve
+    **0.037079 -> 0.030474 ms (-17.814%)** and
+    **0.037041 -> 0.030142 ms (-18.623%)**. Both F32 context and gated BF16
+    are byte-exact, and all 21 strong candidate samples beat their controls.
+    The launch bound also changes code allocation from **104 -> 32 VGPRs**;
+    cache-only production tracing records local512, grid40,
+    **SGPR128/LDS25,600/scratch0**.
+
+    Seven counterbalanced actual-model p512/d128 pairs all improve, moving
+    median decode **20.472516 -> 20.542123 tok/s (+0.34000%)**, or
+    **-0.16552 ms/token** by independent medians. Median paired saving is
+    **0.16731 ms/token**. Every run preserves the identical 128-token
+    trajectory SHA, first/final tokens, position, and lifecycle. A separate
+    127-transition trace names exactly **4,572 = 36 x 127** local512 calls,
+    proving production dispatch. The local384 body remains the exact rollback;
+    other backends are unchanged. Tracked-clean selector-unset production is
+    the next publication gate. Evidence:
+    [`local512 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json).
 
 Current exact decode checkpoint:
 

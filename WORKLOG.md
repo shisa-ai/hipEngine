@@ -191987,3 +191987,31 @@ Vulkan local sizes verbatim will close the measured gap.
   in-tree/cached Laguna lineage was audited directly. Production stays
   **20.496816 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-gqa9-splitk128-rejected.json`.
+
+## 2026-07-30 05:21 JST — Promote exact mixed40 local512 SWA scheduling
+
+- Keep the retained mixed40 2+2+2+2+1 query-owner partition and all **40**
+  workgroups, but raise each workgroup from local384/12 wave32s to
+  local512/16 wave32s. The extra score/transport waves preserve every scalar
+  QK, softmax, denominator, PV, gate, and conversion association.
+- Cached 9x50 and 21x100 leaves improve
+  **0.037079 -> 0.030474 ms (-17.814%)** and
+  **0.037041 -> 0.030142 ms (-18.623%)**. F32 context and gated BF16 are
+  byte-exact; all **21/21** strong pairs improve. Raw hashes are
+  `c57f067c...eab3` and `8043280c...2365`.
+- Seven counterbalanced actual-model p512/d128 pairs all improve:
+  **20.472516 -> 20.542123 tok/s (+0.34000%)**, or
+  **-0.16552 ms/token** by independent medians. Median paired saving is
+  **0.16731 ms/token**. All fourteen samples preserve trajectory SHA
+  `94f803f7...bda32`, tokens, position, allocations, and teardown. Raw hash is
+  `762a2851...be0`.
+- A require-cached `rocprofv3 --kernel-trace` of the promoted selector records
+  exactly **4,572 = 36 x 127** candidate calls at grid40/local512,
+  **VGPR32/SGPR128/LDS25,600/scratch0**, median traced duration **43.041 us**,
+  and no compiler. Trace/child hashes are
+  `9fc38030...7721` / `62b411f7...457`.
+- Focused wrapped/evicted CPU-oracle and allocator/selector/fallback tests
+  pass. gfx1151 promotes the qualified capability; local384 remains exact
+  rollback and other backends remain unchanged. Clean selector-unset
+  production publication is next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json`.

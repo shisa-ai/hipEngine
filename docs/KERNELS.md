@@ -1990,6 +1990,17 @@ Tracked-clean selector-unset production is **20.494732 tok/s**,
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-production.json).
+The exact local512 successor keeps that 40-owner grid and every arithmetic
+association while adding four score/transport wave32s per workgroup. The
+wrapped/evicted oracle is F32/BF16 byte-exact; 9x50 and 21x100 leaves improve
+**17.814%/18.623%**, with all 21 strong pairs positive. Seven resident
+p512/d128 pairs all improve **20.472516 -> 20.542123 tok/s (+0.34000%)** and
+preserve the complete generated-state/lifecycle contract. Cache-only
+production tracing records exactly **4,572 = 36 x 127** candidate calls at
+grid40/local512, **VGPR32/SGPR128/LDS25,600/scratch0**. gfx1151 promotes the
+qualified capability; local384 remains exact rollback and peer backends are
+unchanged:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json).
 The exact double-buffer successor is removed at the leaf stop. It reduces
 staged-loop barriers **16 -> 9** but adds **17,152 B** dynamic LDS and narrows
 pair-block next-stage loading to four waves; the byte-exact 9x50 leaf

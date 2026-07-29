@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T05:21:00+09:00",
+  "kind": "hipengine_laguna_swa_mixed40_local512_retention",
+  "status": "retained",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "36 saturated SWA decode layers",
+    "control": "mixed40 local384: 12 wave32s per 40-owner workgroup",
+    "candidate": "mixed40 local512: 16 wave32s per 40-owner workgroup",
+    "arithmetic": "unchanged scalar-F32 QK, softmax, denominator, and PV association",
+    "grid_workgroups": 40,
+    "control_local_threads": 384,
+    "candidate_local_threads": 512
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "nine_by_fifty": {
+      "control_median_ms": 0.03707885980606079,
+      "candidate_median_ms": 0.0304736590385437,
+      "latency_change_percent": -17.813926323693018,
+      "raw_sha256": "c57f067cc83d2b414df4750f464277aa49b47726d099c3ca624b2cbc27bfeab3"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.0370407509803772,
+      "candidate_median_ms": 0.03014249086380005,
+      "latency_change_percent": -18.6234348224516,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "raw_sha256": "8043280c6a0eb799402657748b56e2a17ebbad15e0f0cbb8bb22d1eb5e292365"
+    }
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions_per_mode": 7,
+    "order": "AB/BA counterbalanced",
+    "control_median_seconds": 6.203438876895234,
+    "candidate_median_seconds": 6.182418404147029,
+    "control_median_tok_s": 20.472515732042222,
+    "candidate_median_tok_s": 20.54212311395994,
+    "throughput_change_percent": 0.34000404654115357,
+    "wall_change_ms_per_token": -0.1655155334504336,
+    "paired_candidate_wins": 7,
+    "paired_samples": 7,
+    "median_paired_saving_ms_per_token": 0.16730515044329206,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-mixed40-local512 --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-local512-ab.json",
+    "raw_sha256": "762a2851c25601855ce88b5eb5d1ad8af76641c3d6dd500599fa4ea53ebfbbe0"
+  },
+  "correctness": {
+    "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "cpu_reference_result": "1 passed",
+    "candidate_control_context_f32_byte_exact": true,
+    "candidate_control_gated_bf16_byte_exact": true,
+    "candidate_control_kl": 0.0,
+    "candidate_control_top1_agreement_percent": 100.0,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-local512-production-trace.ZvLy9B --output-file local512 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-local512-production-trace.ZvLy9B/child.json",
+    "candidate_calls": 4572,
+    "expected_candidate_calls": 4572,
+    "grid_threads": 20480,
+    "workgroup_threads": 512,
+    "vgpr": 32,
+    "sgpr": 128,
+    "lds_bytes": 25600,
+    "scratch_bytes": 0,
+    "median_duration_ns": 43041,
+    "compiler_ran_under_profiler": false,
+    "kernel_trace_sha256": "9fc380309d1449a50c01d31d5e9538eb31e4de651cd93ac60e3a0dc5e2577721",
+    "child_sha256": "62b411f76f3decde3def7e0647a381462f3b651662d9db240db8ec2dc2cdc457"
+  },
+  "integration": {
+    "capability": "hip_gfx1151.LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "production_default_changed": true,
+    "fallback": "swa_context_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans",
+    "other_backends_unchanged": true
+  },
+  "decision": "Promote exact local512 scheduling for gfx1151 saturated mixed40 SWA. It preserves the 40-workgroup CU fill, adds four helper waves, lowers allocated VGPR 104 to 32, wins every leaf and resident pair, and retains the local384 specialization as exact rollback."
+}
