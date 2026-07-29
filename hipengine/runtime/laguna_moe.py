@@ -26,7 +26,11 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
-from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
+from hipengine.runtime.gguf_linear import (
+    launch_gguf_linear,
+    launch_gguf_linear_pair,
+    q5_source_mmq_activation_session,
+)
 
 _QK_K = 256
 _Q8_1_MMQ_BLOCK = 128
@@ -2594,36 +2598,37 @@ def _launch_laguna_shared_rows(
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
-    launch_gguf_linear(
-        shared_gate,
-        hidden_bf16_ptr,
-        scratch.shared_gate.ptr,
-        tokens,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
-    launch_gguf_linear(
-        shared_up,
-        hidden_bf16_ptr,
-        scratch.shared_up.ptr,
-        tokens,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
+    with q5_source_mmq_activation_session(hidden_bf16_ptr, tokens, h):
+        launch_gguf_linear(
+            shared_gate,
+            hidden_bf16_ptr,
+            scratch.shared_gate.ptr,
+            tokens,
+            h,
+            sf,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=tokens == 1,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+        )
+        launch_gguf_linear(
+            shared_up,
+            hidden_bf16_ptr,
+            scratch.shared_up.ptr,
+            tokens,
+            h,
+            sf,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=tokens == 1,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+        )
     plan.shared_silu(
         scratch.shared_gate.ptr,
         scratch.shared_up.ptr,
@@ -2637,21 +2642,26 @@ def _launch_laguna_shared_rows(
             runtime=runtime,
         ),
     )
-    launch_gguf_linear(
-        shared_down,
+    with q5_source_mmq_activation_session(
         scratch.shared_intermediate.ptr,
-        scratch.shared_output.ptr,
         tokens,
         sf,
-        h,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
+    ):
+        launch_gguf_linear(
+            shared_down,
+            scratch.shared_intermediate.ptr,
+            scratch.shared_output.ptr,
+            tokens,
+            sf,
+            h,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=tokens == 1,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+        )
 
 
 def run_laguna_moe_rows(

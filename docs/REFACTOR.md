@@ -1940,3 +1940,19 @@ should be boring.
   the runtime setter, multi-arm harness mode, both category
   comparisons/configurations, and focused tests are removed. Production
   remains model-declared top-10 for prefill and decode.
+
+## WPF-H1 source-Q5 MMQ candidate switch
+
+- Added 2026-07-29 as the explicit gfx1100 constructor switch
+  `use_q5_source_mmq`. It owns one bounded K-major DS4 workspace, resolves the
+  aligned Q5 policy through the four-axis registry, and retains exact
+  coltile/rowbatch for decode, M/N tails, unsupported roles, and gfx1151.
+- The first natural M512 deep-state gate passes at KL **0.0002241**, top-1
+  **100%**, deterministic candidate repeat, finite state, and complete tracked
+  allocation recovery. This is integration admission, not default promotion.
+- Keep the explicit switch through the complete 18-prompt/576-step plus
+  category-heldout quality lane, counter-ordered 512/1K timing, and clean
+  all-family trace. If all gates pass, promote the package capability and keep
+  explicit `False` only through WPF-H2 stacking/bisection; then collapse the
+  positive selector into the gfx1100 role policy. If any quality gate fails,
+  remove runtime ownership/workspace and retain only the qualified leaf.

@@ -38,6 +38,9 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
     laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import lm_head_argmax_stage1_blocks
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+    q8_1_ds4_kmajor_nbytes,
+)
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf import (
@@ -67,8 +70,11 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    q5_source_mmq_activation_session,
+    q5_source_mmq_prefill_session,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
+    resolve_q5_source_mmq_prefill_policy,
 )
 from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear,
@@ -630,6 +636,7 @@ class LagunaPrefillScratchPlan:
     attention_rows: int
     rows_nbytes: int
     moe_nbytes: int
+    q5_source_mmq_nbytes: int
 
     @classmethod
     def build(
@@ -638,6 +645,7 @@ class LagunaPrefillScratchPlan:
         moe_plan: LagunaMoEKernelPlan,
         *,
         policy: LagunaPrefillChunkPolicy,
+        q5_source_mmq: bool = False,
     ) -> "LagunaPrefillScratchPlan":
         rows_nbytes = LagunaRowsScratch.planned_nbytes(
             config,
@@ -647,16 +655,28 @@ class LagunaPrefillScratchPlan:
             moe_plan,
             max_rows=policy.matrix_rows,
         )
+        max_query_width = max(int(value) for value in config.head_counts) * int(
+            config.key_length
+        )
+        source_mmq_nbytes = (
+            q8_1_ds4_kmajor_nbytes(
+                policy.matrix_rows,
+                max(int(config.hidden_size), max_query_width),
+            )
+            if q5_source_mmq
+            else 0
+        )
         return cls(
             matrix_rows=policy.matrix_rows,
             attention_rows=policy.attention_rows,
             rows_nbytes=rows_nbytes,
             moe_nbytes=moe_nbytes,
+            q5_source_mmq_nbytes=source_mmq_nbytes,
         )
 
     @property
     def total_nbytes(self) -> int:
-        return self.rows_nbytes + self.moe_nbytes
+        return self.rows_nbytes + self.moe_nbytes + self.q5_source_mmq_nbytes
 
 
 @dataclass
@@ -853,6 +873,8 @@ class LagunaEagerLibraries:
     iq_grouped_prefill: object
     moe_group: object
     routed_sum: object
+    q5_source_mmq_producer: object | None = None
+    q5_source_mmq_consumer: object | None = None
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -1466,6 +1488,22 @@ def resolve_laguna_iq2_grid64(
     return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
 
 
+def resolve_laguna_q5_source_mmq(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve source Q5 MMQ only where its registry policy is present."""
+
+    selected = bool(
+        backend_package_capability(backend, "LAGUNA_Q5_SOURCE_MMQ", False)
+        if requested is None
+        else requested
+    )
+    if selected and resolve_q5_source_mmq_prefill_policy(backend) is None:
+        raise ValueError(f"Laguna Q5 source MMQ is not supported on {backend!r}")
+    return selected
+
+
 def resolve_laguna_raw_k_prefill_rowbatch(
     backend: str,
     requested: int | None = None,
@@ -2012,6 +2050,7 @@ def load_laguna_eager_libraries(
     backend: str,
     compiler_version: str | None = None,
     require_cached: bool = False,
+    q5_source_mmq: bool = False,
 ) -> LagunaEagerLibraries:
     """Build/load every library used by one eager session exactly once."""
 
@@ -2040,6 +2079,10 @@ def load_laguna_eager_libraries(
         build_gguf_iq_selected_prefill,
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+        build_gguf_k_mmq_prefill,
+        build_gguf_q5_k_source_mmq_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
     )
@@ -2099,6 +2142,14 @@ def load_laguna_eager_libraries(
             iq_grouped_prefill=build_gguf_iq_selected_prefill(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
+            q5_source_mmq_producer=(
+                build_gguf_k_mmq_prefill(**kwargs) if q5_source_mmq else None
+            ),
+            q5_source_mmq_consumer=(
+                build_gguf_q5_k_source_mmq_prefill(**kwargs)
+                if q5_source_mmq
+                else None
+            ),
         )
 
 
@@ -2174,6 +2225,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        use_q5_source_mmq: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -2318,6 +2370,15 @@ class LagunaGGUFResidentSession:
         self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
             self.backend,
             use_iq2_grid64,
+        )
+        self.use_q5_source_mmq = resolve_laguna_q5_source_mmq(
+            self.backend,
+            use_q5_source_mmq,
+        )
+        self.q5_source_mmq_policy = (
+            resolve_q5_source_mmq_prefill_policy(self.backend)
+            if self.use_q5_source_mmq
+            else None
         )
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
@@ -2648,6 +2709,7 @@ class LagunaGGUFResidentSession:
         self.moe_scratch: LagunaMoEScratch | None = None
         self.rows_scratch: LagunaRowsScratch | None = None
         self.rows_moe_scratch: LagunaMoEScratch | None = None
+        self.q5_source_mmq_workspace: DeviceBuffer | None = None
         self.verifier_scratch: LagunaVerifierScratch | None = None
         self.full_rope: LagunaDeviceRoPETables | None = None
         self.swa_rope: LagunaDeviceRoPETables | None = None
@@ -2707,6 +2769,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
+                q5_source_mmq=self.use_q5_source_mmq,
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -2732,6 +2795,7 @@ class LagunaGGUFResidentSession:
                 config,
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
+                q5_source_mmq=self.use_q5_source_mmq,
             )
             self.prefill_scratch_admission_nbytes = max(
                 DEFAULT_LAGUNA_SCRATCH_BYTES,
@@ -2836,6 +2900,11 @@ class LagunaGGUFResidentSession:
                 max_rows=self.prefill_chunk_size,
                 runtime=self.runtime,
             )
+            if self.prefill_scratch_plan.q5_source_mmq_nbytes:
+                self.q5_source_mmq_workspace = malloc(
+                    self.prefill_scratch_plan.q5_source_mmq_nbytes,
+                    runtime=self.runtime,
+                )
             if self.moe_branch_concurrency:
                 if self.moe_shared_low_priority:
                     priority_range = self.runtime.stream_priority_range()
@@ -3667,9 +3736,19 @@ class LagunaGGUFResidentSession:
                 libraries=self.libraries.embedding_libraries,
                 runtime=self.runtime,
             )
+            q5_workspace = self.q5_source_mmq_workspace
             with (
                 raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch),
                 raw_k_prefill_variant_session(self.raw_k_prefill_variant),
+                q5_source_mmq_prefill_session(
+                    workspace_ptr=0 if q5_workspace is None else q5_workspace.ptr,
+                    workspace_nbytes=(
+                        0 if q5_workspace is None else q5_workspace.nbytes
+                    ),
+                    policy=self.q5_source_mmq_policy,
+                    producer_library=self.libraries.q5_source_mmq_producer,
+                    consumer_library=self.libraries.q5_source_mmq_consumer,
+                ),
             ):
                 for layer_id in range(config.block_count):
                     self._run_layer_rows(
@@ -3835,28 +3914,35 @@ class LagunaGGUFResidentSession:
         assert self.libraries is not None
         config = self.weights.config
         if self.f16_prefill_mode == "retained":
-            launch_laguna_attention_projections(
-                layer.weight("attn_q"),
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                layer.weight("attn_gate"),
+            with q5_source_mmq_activation_session(
                 scratch.norm.ptr,
-                scratch.query.ptr,
-                scratch.key.ptr,
-                scratch.value.ptr,
-                scratch.gate_logits.ptr,
                 rows,
                 config.hidden_size,
-                q_width,
-                kv_width,
-                kv_width,
-                heads,
-                backend=self.backend,
-                stream=stream,
-                libraries=self.libraries,
-                runtime=self.runtime,
-                compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
-            )
+            ):
+                launch_laguna_attention_projections(
+                    layer.weight("attn_q"),
+                    layer.weight("attn_k"),
+                    layer.weight("attn_v"),
+                    layer.weight("attn_gate"),
+                    scratch.norm.ptr,
+                    scratch.query.ptr,
+                    scratch.key.ptr,
+                    scratch.value.ptr,
+                    scratch.gate_logits.ptr,
+                    rows,
+                    config.hidden_size,
+                    q_width,
+                    kv_width,
+                    kv_width,
+                    heads,
+                    backend=self.backend,
+                    stream=stream,
+                    libraries=self.libraries,
+                    runtime=self.runtime,
+                    compensated_wmma_eligible=(
+                        layer.attention_type == SLIDING_ATTENTION
+                    ),
+                )
             return
 
         route = self._ensure_f16_hipblaslt()
@@ -3928,19 +4014,26 @@ class LagunaGGUFResidentSession:
         assert self.libraries is not None
         config = self.weights.config
         if self.f16_prefill_mode == "retained":
-            launch_laguna_weight_linear(
-                layer.weight("attn_output"),
+            with q5_source_mmq_activation_session(
                 scratch.gated_context.ptr,
-                scratch.attention_output.ptr,
                 rows,
                 q_width,
-                config.hidden_size,
-                backend=self.backend,
-                stream=stream,
-                libraries=self.libraries,
-                runtime=self.runtime,
-                compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
-            )
+            ):
+                launch_laguna_weight_linear(
+                    layer.weight("attn_output"),
+                    scratch.gated_context.ptr,
+                    scratch.attention_output.ptr,
+                    rows,
+                    q_width,
+                    config.hidden_size,
+                    backend=self.backend,
+                    stream=stream,
+                    libraries=self.libraries,
+                    runtime=self.runtime,
+                    compensated_wmma_eligible=(
+                        layer.attention_type == SLIDING_ATTENTION
+                    ),
+                )
             return
 
         route = self._ensure_f16_hipblaslt()
@@ -4469,22 +4562,32 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         scratch = self.rows_scratch
         linear_libraries = self.libraries.linear
-        for slot, output in (("ffn_gate", scratch.dense_gate), ("ffn_up", scratch.dense_up)):
-            launch_gguf_linear(
-                layer.weight(slot),
-                scratch.norm.ptr,
-                output.ptr,
-                rows,
-                config.hidden_size,
-                config.feed_forward_length,
-                backend=self.backend,
-                stream=stream,
-                libraries=linear_libraries,
-                runtime=self.runtime,
-                use_wmma_prefill=False,
-                use_gemv_decode=rows == 1,
-                use_q4_pack8_wmma=self.dense_q4_prefill_mode == "wmma_pack8",
-            )
+        with q5_source_mmq_activation_session(
+            scratch.norm.ptr,
+            rows,
+            config.hidden_size,
+        ):
+            for slot, output in (
+                ("ffn_gate", scratch.dense_gate),
+                ("ffn_up", scratch.dense_up),
+            ):
+                launch_gguf_linear(
+                    layer.weight(slot),
+                    scratch.norm.ptr,
+                    output.ptr,
+                    rows,
+                    config.hidden_size,
+                    config.feed_forward_length,
+                    backend=self.backend,
+                    stream=stream,
+                    libraries=linear_libraries,
+                    runtime=self.runtime,
+                    use_wmma_prefill=False,
+                    use_gemv_decode=rows == 1,
+                    use_q4_pack8_wmma=(
+                        self.dense_q4_prefill_mode == "wmma_pack8"
+                    ),
+                )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
             scratch.dense_up.ptr,
@@ -4495,21 +4598,28 @@ class LagunaGGUFResidentSession:
             library=self.libraries.dense_silu,
             runtime=self.runtime,
         )
-        launch_gguf_linear(
-            layer.weight("ffn_down"),
+        with q5_source_mmq_activation_session(
             scratch.dense_intermediate.ptr,
-            scratch.dense_output.ptr,
             rows,
             config.feed_forward_length,
-            config.hidden_size,
-            backend=self.backend,
-            stream=stream,
-            libraries=linear_libraries,
-            runtime=self.runtime,
-            use_wmma_prefill=False,
-            use_gemv_decode=rows == 1,
-            use_q4_pack8_wmma=self.dense_q4_prefill_mode == "wmma_pack8",
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("ffn_down"),
+                scratch.dense_intermediate.ptr,
+                scratch.dense_output.ptr,
+                rows,
+                config.feed_forward_length,
+                config.hidden_size,
+                backend=self.backend,
+                stream=stream,
+                libraries=linear_libraries,
+                runtime=self.runtime,
+                use_wmma_prefill=False,
+                use_gemv_decode=rows == 1,
+                use_q4_pack8_wmma=(
+                    self.dense_q4_prefill_mode == "wmma_pack8"
+                ),
+            )
         self.kernel_plan.add(
             scratch.post_attention.ptr,
             scratch.dense_output.ptr,
@@ -5192,6 +5302,10 @@ class LagunaGGUFResidentSession:
             scratch = self.verifier_scratch
             self.verifier_scratch = None
             release(lambda: scratch.free(runtime=self.runtime))
+        if self.q5_source_mmq_workspace is not None:
+            workspace = self.q5_source_mmq_workspace
+            self.q5_source_mmq_workspace = None
+            release(lambda: free(workspace, runtime=self.runtime))
         if self.rows_moe_scratch is not None:
             scratch = self.rows_moe_scratch
             self.rows_moe_scratch = None
@@ -5490,5 +5604,6 @@ __all__ = [
     "resolve_laguna_raw_k_prefill_variant",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
+    "resolve_laguna_q5_source_mmq",
     "resolve_laguna_q5_wave32x2_variants",
 ]
