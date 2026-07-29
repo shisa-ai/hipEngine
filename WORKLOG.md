@@ -191579,3 +191579,23 @@ Vulkan local sizes verbatim will close the measured gap.
 - Retain the registered primitive pending seven counterbalanced exact
   p512/d128 resident pairs. Production remains **20.494732 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json`.
+
+## 2026-07-30 02:18 JST — Reject denominator-prefetch4 runtime ownership
+
+- Add a temporary default-off cache route and counterbalanced profile selector
+  for the exact denominator-prefetch4 primitive. Focused owner/profile
+  validation passes **36 tests** before the resident gate.
+- Seven exact p512/d128 eager-c1 pairs move median decode
+  **20.497384 -> 20.497114 tok/s (-0.00132%, +0.00064 ms/token)**. The median
+  paired change is **-0.00919%** and only **3/7** pairs improve, so the strong
+  leaf result does not survive full-model composition.
+- Every control/candidate row preserves next/final token, complete generated
+  trajectory hash, positions, repeat determinism, and allocation lifecycle.
+  Remove the temporary cache route, gfx1151 capability, profile selector, and
+  reporting. Keep the separately registered exact primitive as diagnostic
+  evidence; peer backends and production remain unchanged at
+  **20.494732 tok/s**.
+- Exact command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40-denom-prefetch4 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-denom-prefetch4-ab.json`
+  (raw SHA-256 `06330c0d...d598d`, load excluded **88.238 s**). Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-runtime-rejected.json`.
