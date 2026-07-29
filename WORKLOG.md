@@ -189791,3 +189791,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `469f166f...f2f05`; profiled throughput is attribution-only.
 - Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json`.
+
+## 2026-07-29 14:26 JST — Reject exact scalar whole-GQA9 SWA ownership
+
+- The read-only llama.cpp Vulkan `c0bc8591e` shader confirms its K/V reuse is
+  coupled to a Br16 x Bc64 cooperative-matrix tile. A new exact screen instead
+  gives one local384 block all nine query heads for one KV head, stages each
+  query once, fetches each K/V tile once, and shares each exp32 weight.
+- RED required the absent GQA9 wrapper. GREEN passes the existing wrapped
+  position-512-519 plus explicit position-200 eviction oracle; F32 context and
+  gated BF16 output are byte-exact to production.
+- The nine-sample 50-launch leaf regresses
+  **0.058989 -> 0.138660 ms (+135.1%)**. Cached tracing names the intended
+  grid8/local384 kernel at VGPR224/SGPR128/LDS44,544/scratch0. Raw leaf and
+  trace SHA-256 values are `df194ab8...35d4c` and
+  `cc4c3d0b...55fde`.
+- The only bounded compiler correction, preventing full unrolling of the
+  nine-query QK and 64-slot denominator/PV loops, regresses further:
+  **0.059144 -> 0.173172 ms (+192.8%)**.
+- Remove every candidate line. Scalar whole-GQA ownership serializes QK,
+  exposes only eight blocks, and spends too much LDS; llama.cpp's topology
+  only pays with cooperative matrix parallelism. Production remains
+  **19.986371 tok/s**.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
+  environment-blocked on the absent read-only Atlas checkout; the llama.cpp
+  shader was inspected without copying source. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-shared-scalar-rejected.json`.

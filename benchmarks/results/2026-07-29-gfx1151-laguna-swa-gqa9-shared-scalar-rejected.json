@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T14:26:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_gqa9_shared_scalar_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "1921f027b630a427a89e1160888755dc38e2b43a",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_file": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "72Q/8KV/D128/SWA512"
+  },
+  "candidate": {
+    "geometry": "8 local384 workgroups; one workgroup owns all nine queries for one KV head",
+    "mechanism": "Stage each query once, fetch each K/V tile once per KV head, publish producer maxima, compute each exp32 weight once into LDS, and retain the production logical-slot denominator and scalar PV FMA order.",
+    "comparison": "Production uses 32 local384 workgroups and partitions each nine-query GQA group as 2+2+2+3.",
+    "exactness_preserved": [
+      "QK multiplication and wave32 reduction tree",
+      "logical-slot maximum and denominator order",
+      "compiler expf result",
+      "per-dimension scalar PV FMA order",
+      "division, softplus gate, and stores"
+    ]
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed before implementation because the GQA9 wrapper did not exist.",
+    "green_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction -q",
+    "green_result": "1 passed",
+    "positions": "512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "context_sha256": "53d9bb47fc552029b4131e22ce11468d415590a5ca77a7dcc47ac09b908a2cde",
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73"
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-shared-exp32-producer-max-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-gqa9-shared-leaf.json",
+    "raw_sha256": "df194ab86680337e8c8a26d93a49e60a469684c23fcbd3095daa00f399435d4c",
+    "control_median_ms": 0.058988761901855466,
+    "candidate_median_ms": 0.13866042137145995,
+    "latency_change_percent": 135.0624371505896,
+    "samples": 9,
+    "warmups": 5,
+    "launches_per_sample": 50,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "resource_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-gqa9-shared-trace.YhxBiE -o gqa9shared -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-shared-exp32-producer-max-vstage64-vec16-direct-assume-exp --samples 3 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-gqa9-shared-trace.YhxBiE/leaf.json",
+    "trace_sha256": "cc4c3d0b5a0298c482acb544e0609e39d09d60b032c49e88a9ce24eb1fa55fde",
+    "grid_blocks": 8,
+    "workgroup_size": 384,
+    "allocated_vgpr": 224,
+    "allocated_sgpr": 128,
+    "lds_bytes": 44544,
+    "scratch_bytes": 0,
+    "timing_use": "Resource and symbol attribution only."
+  },
+  "bounded_followup": {
+    "change": "Prevent full unrolling of the nine-query QK loop and 64-slot denominator/PV loops.",
+    "command": "Same leaf protocol: 9 samples, 5 warmups, 50 launches/sample.",
+    "control_median_ms": 0.05914423942565918,
+    "candidate_median_ms": 0.1731722068786621,
+    "latency_change_percent": 192.79640512805875,
+    "result": "Worse than the original candidate; no further scalar GQA9 tuning."
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "environment_blocked",
+    "reason": "The checker cannot open the absent read-only external checkout /home/lhl/amd-gpu-tuning/reference/atlas; the llama.cpp shader was inspected read-only and no source was copied."
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "production_tok_s": 19.9863710167,
+    "production_status": "unchanged",
+    "finding": "Whole-GQA ownership only pays when paired with cooperative matrix parallelism. Scalar exact QK serializes nine queries, the eight-block grid underfills gfx1151, and the 44.5-KB LDS footprint limits residency.",
+    "next_gate": "Do not retry scalar whole-GQA owners. Any new comparator-shaped attention path must use genuinely cooperative higher-precision QK/PV or supply an independently valid error bound."
+  }
+}

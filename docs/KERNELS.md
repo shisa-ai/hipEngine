@@ -1526,6 +1526,16 @@ Vulkan is **2.749 ms/token**, **38.2%** of the complete wall gap. The global
 candidate appears at grid8192/local256/VGPR48/SGPR128/LDS512/scratch0:
 [`post-global-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json).
 
+The exact scalar form of llama.cpp-style whole-GQA ownership is closed.
+One local384 block per KV head stages all nine queries and reuses each K/V
+tile and exp32 weight while preserving the production denominator and scalar
+PV order. It is byte-exact but regresses the leaf
+**0.058989 -> 0.138660 ms (+135.1%)** at grid8/VGPR224/LDS44,544/scratch0.
+Constraining the fully unrolled loops worsens it to **0.173172 ms
+(+192.8%)**. All candidate code is removed. Whole-GQA reuse requires
+cooperative-matrix parallelism; scalar ownership underfills the device:
+[`rejected scalar GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-shared-scalar-rejected.json).
+
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
 **4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4
