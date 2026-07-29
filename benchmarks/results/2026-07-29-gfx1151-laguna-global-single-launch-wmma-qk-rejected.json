@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T19:53:24+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_single_launch_wmma_qk_screen",
+  "status": "quality_rejected_runtime_removed",
+  "performance_claim": false,
+  "source": {
+    "primitive_revision": "6a9d536988f96aa286a6dbff248b8227f23bb341",
+    "quality_revision": "6a9d536988f96aa286a6dbff248b8227f23bb341",
+    "runtime_selector_committed": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 77463095316
+  },
+  "candidate": {
+    "description": "The retained 32-block mixed 2+2+1+1 owner replaces only scalar QK with three non-overlapping BF16 WMMA terms while preserving producer maxima, exp32 ordered softmax, 64-slot staged scalar F32 PV, gate, and stores in one launch.",
+    "qualified_live_range": "127..4000",
+    "scope": "12 full-attention layers only",
+    "leaf_latency_change_percent": {
+      "live513": -19.444531400732027,
+      "live576": -20.91202451363951,
+      "live639": -15.933766878644923
+    }
+  },
+  "quality": {
+    "protocol": "18 canonical prompts extended to p512, 32 control-argmax teacher-forced transitions per prompt",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "steps": 576,
+    "finite": true,
+    "max_kl": 0.741272035597007,
+    "max_logits_abs": 7.637938976287842,
+    "top1_matches": 564,
+    "top1_agreement": 0.9791666666666666,
+    "required_max_kl": 0.05,
+    "required_minimum_top1": 0.9,
+    "categories": {
+      "code": {
+        "max_kl": 0.741272035597007,
+        "top1_agreement": 0.984375
+      },
+      "general_en": {
+        "max_kl": 0.45191158611989624,
+        "top1_agreement": 1.0
+      },
+      "general_ja": {
+        "max_kl": 0.6211484465738444,
+        "top1_agreement": 0.9453125
+      },
+      "mixed_ja_en": {
+        "max_kl": 0.582569809119273,
+        "top1_agreement": 0.984375
+      }
+    },
+    "lifecycle": {
+      "all_prompt_final_positions_exact": true,
+      "all_span_metadata_exact": true,
+      "all_reset_span_metadata_exact": true,
+      "all_reset_positions_exact": true,
+      "tracked_returned_to_baseline": true,
+      "allocation_recovery_exact": true
+    },
+    "raw_sha256": "deb25e67bac17757d330928e28963ec2dc02079221fbef6abbcdfc8dfb073793"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_wmma_qk_quality.py",
+  "decision": {
+    "retained_as_diagnostic_primitive": true,
+    "runtime_integrated": false,
+    "temporary_selector_and_quality_harness_removed": true,
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "reason": "Keeping QK and scalar PV in one launch recovers a real leaf win, but three-term WMMA QK still changes occasional BF16 context outputs and recurrently amplifies to 14.83 times the permitted KL ceiling. Exact-association attention work must replace this approximation class."
+  }
+}

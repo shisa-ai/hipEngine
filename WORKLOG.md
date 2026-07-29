@@ -190556,3 +190556,30 @@ Vulkan local sizes verbatim will close the measured gap.
   authoritative 18-prompt/576-step recurrent quality gate before any
   production timing or promotion. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-primitive.json`.
+
+## 2026-07-29 19:53 JST — Reject single-launch global WMMA-QK production
+
+- Added a temporary default-off, session-scoped selector over only the 12
+  global layers. Its focused RED/GREEN routing test passed; prefill, SWA,
+  peer backends, and production defaults remained unchanged.
+- Ran the authoritative saturated-p512 recurrent gate: all 18 canonical
+  train/heldout prompts are extended without the leading BOS, and control plus
+  candidate consume the control argmax for 32 comparisons each. This produces
+  **576** complete-vocabulary comparisons.
+- The candidate is finite and exact for final positions, every
+  `KVLiveSpans` metadata plane, reset state, lifecycle, and allocation
+  recovery. Suite top-1 is **564/576 (97.92%)** and every category exceeds
+  90%, but maximum KL is **0.741272**, **14.83x** the `0.05` ceiling.
+  Category max KL is code/general-en/general-ja/mixed
+  **0.741272/0.451912/0.621148/0.582570**; maximum logit delta is
+  **7.637939**. Raw quality SHA-256 is `deb25e67...b073793`.
+- Removed the selector, selector test extension, and temporary quality
+  harness. The separately registered primitive remains diagnostic because its
+  **15.93-20.91%** leaf win proves tile-local QK/PV ownership is mechanically
+  useful, but three-term WMMA QK association is not admissible for this
+  recurrent model. Production remains **20.069608 tok/s**.
+- Next stay on attention but return to exact arithmetic: profile the retained
+  mixed owner, then screen packed/shared K loads and K64/head reuse that
+  preserve each head's scalar QK sequence plus current maximum/exp32/PV order.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-rejected.json`.

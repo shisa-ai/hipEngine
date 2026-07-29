@@ -4699,7 +4699,7 @@ The remaining attention sequence is:
     Evidence:
     [`rejected WMMA QK plus exact reducer`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-wmma-qk-exact-reduce-rejected.json).
 30. Keep cooperative QK and ordered scalar PV in one launch. **Primitive
-    admitted; recurrent quality pending:** the 32-block mixed
+    retained; production route rejected:** the 32-block mixed
     **2+2+1+1** owner replaces only scalar QK with the proven three-term BF16
     WMMA producer. Producer maxima, exp32 ordered softmax, 64-slot staged
     scalar F32 PV, gate, and stores stay inside the same workgroup and
@@ -4710,11 +4710,29 @@ The remaining attention sequence is:
     improve **0.073108 -> 0.058893 ms (-19.44%)**,
     **0.079791 -> 0.063105 ms (-20.91%)**, and
     **0.087345 -> 0.073427 ms (-15.93%)**. A cache-only trace names
-    32 local256 blocks at VGPR104/SGPR128/LDS512/scratch0. Production remains
-    **20.069608 tok/s** pending the authoritative 18-prompt/576-step recurrent
-    quality gate.
+    32 local256 blocks at VGPR104/SGPR128/LDS512/scratch0. The authoritative
+    18-prompt/576-step saturated-p512 gate is finite with exact final
+    positions, every `KVLiveSpans` metadata plane, reset state, lifecycle, and
+    allocation recovery. It passes suite/category top-1 at **564/576
+    (97.92%)**, but max KL is **0.741272**, or **14.83x** the `0.05` ceiling;
+    category maxima are code/general-en/general-ja/mixed
+    **0.741272/0.451912/0.621148/0.582570**. The temporary selector and quality
+    harness are removed. Production remains **20.069608 tok/s**.
+    The result validates tile-local ownership as the right mechanical shape
+    but closes three-term WMMA QK as a quality-safe production route.
     Evidence:
-    [`single-launch WMMA-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-primitive.json).
+    [`single-launch WMMA-QK rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-rejected.json).
+
+31. Preserve the retained QK association and attack exact ownership overhead.
+    **Next:** profile the current mixed owner at instruction/memory-stall
+    granularity, then screen one source-order-preserving exact candidate at a
+    time: packed K loads shared across the six query heads, K64 nibble/row
+    reuse without changing each head's scalar FMA sequence, and wider
+    per-workgroup head ownership only while the current maximum/exp32/PV order
+    remains byte-identical. The first gate is BF16-bit equality at the
+    live513/576/639 eviction shapes plus a positive cached leaf result. Only
+    an exact leaf winner advances to trace and the 576-step recurrent gate.
+    Do not add another approximate QK/PV route or a global score round-trip.
 
 Current exact decode checkpoint:
 
