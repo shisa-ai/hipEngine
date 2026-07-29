@@ -49,6 +49,7 @@ _ORDERED_GEOMETRIES = (
     (8, 12),
     (12, 8),
 )
+_Q6_ORDERED_GEOMETRIES = ((8, 4), (16, 4), (16, 5))
 
 
 def _hip_available() -> bool:
@@ -331,10 +332,18 @@ def test_q6_f32_ordered_registry_build_scope_and_workspace_contract() -> None:
                 f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
                 f"{output_dtype}_out"
             )
-            function = getattr(q5_f32, f"gguf_q6_k_f32_ordered_{suffix}")
+            name = f"gguf_q6_k_f32_ordered_{suffix}"
             key = KernelKey(
                 "hip_gfx1100", "linear", "gguf_q6_k", f"f32_ordered_{suffix}"
             )
+            if (col_tile, row_batch) not in _Q6_ORDERED_GEOMETRIES:
+                assert not hasattr(q5_f32, name)
+                assert not is_registered(key)
+                assert not is_registered(
+                    KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
+                )
+                continue
+            function = getattr(q5_f32, name)
             assert resolve(
                 backend=key.backend,
                 layer=key.layer,
@@ -719,7 +728,7 @@ def test_q6_f32_ordered_geometries_match_raw_coltile_bytes(rows: int) -> None:
                 expected.nbytes,
                 runtime=runtime,
             )
-            for col_tile, row_batch in _ORDERED_GEOMETRIES:
+            for col_tile, row_batch in _Q6_ORDERED_GEOMETRIES:
                 candidate = getattr(
                     q5_f32,
                     f"gguf_q6_k_f32_ordered_coltile{col_tile}_"

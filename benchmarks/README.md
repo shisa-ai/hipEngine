@@ -31,10 +31,15 @@ removed. Reclassifying the retained package-default request segment gives
 families are Q5 **920.633 ms**, IQ3/IQ4 down **560.642 ms**, IQ2/special-IQ3
 gate/up **470.116 ms**, attention **468.533 ms**, Q6 **177.047 ms**, and all
 remaining kernels **70.063 ms**. Q5 geometry and the prior exact/quality-gated
-attention lanes are closed, so WPF-H5I next reuses the bounded transient plane
-for **exact raw-Q6-to-F32 expansion plus the production-ordered consumer**;
-production/topline are unchanged
-([post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
+attention lanes are closed. WPF-H5I's exact raw-Q6-to-F32 producer plus the
+existing ordered consumer is now byte-exact and role-positive: the strong
+producer-inclusive 146-call policy moves **194.758 -> 119.751 ms (1.626x,
+-38.513%)** by events and **189.722 -> 121.353 ms (1.563x, -36.037%)** by
+synchronized wall. Four roles use `16x5`/`16x4`/`8x4`; both long-K roles and
+the wide-N F32 role stay exact raw coltile. This is a standalone leaf pending bounded runtime state,
+integrated tracing, and clean 512/1K/4K qualification; production/topline are
+unchanged ([H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
+[post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed
 below the 800/700 stretch gate.
 
@@ -200,9 +205,14 @@ N48 at **1.187%/0.496%** event/wall. H5G then retains
 then rejects constant-112/128 after no role wins and a VGPR256 spill cliff;
 all candidate exports are removed ([H5H rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json)). The retained H5G request reclassification is
 **2,667.034 ms**, led by Q5 **920.633**, IQ down **560.642**, attention
-**468.533**, and Q6 **177.047 ms**. WPF-H5I selects exact-Q6 F32 expansion plus
-the ordered consumer; do not reopen rejected arithmetic
-([residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
+**468.533**, and Q6 **177.047 ms**. WPF-H5I's exact-Q6 producer plus ordered
+consumer now clears its all-role screen: strong event/wall sums fall
+**194.758/189.722 -> 119.751/121.353 ms (-38.513%/-36.037%)** with four
+candidate roles, two exact long-K fallbacks, and one exact wide-N fallback.
+Runtime qualification is next;
+do not reopen rejected arithmetic
+([H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
+[residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

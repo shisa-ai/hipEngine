@@ -81,8 +81,13 @@ numbers below.
   constant-128 reaches VGPR256 with 28–52 B scratch. The retained H5G request
   reclassifies to **2,667.034 ms / 1,720 dispatches**: Q5 **920.633 ms**, IQ
   down **560.642 ms**, attention **468.533 ms**, and Q6 **177.047 ms**. With Q5
-  geometry and prior attention lanes closed, WPF-H5I next tests exact-Q6 F32
-  expansion through the existing ordered consumer. Full logits, all 48 hidden
+  geometry and prior attention lanes closed, WPF-H5I's exact-Q6 F32 expansion
+  plus ordered consumer now clears the all-role leaf: strong producer-inclusive
+  event/wall timing falls **194.758/189.722 -> 119.751/121.353 ms
+  (-38.513%/-36.037%)** across all 146 calls. Four roles select exact
+  `16x5`/`16x4`/`8x4`; both long-K roles and the wide-N F32 role retain raw
+  coltile. This is standalone evidence pending bounded runtime ownership. Full
+  logits, all 48 hidden
   boundaries, routing prefixes, active K/V, and every `KVLiveSpans` field are
   bit-exact at KL 0 on
   the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
@@ -159,6 +164,7 @@ numbers below.
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
   [H5H boundary rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json) ·
   [post-H5G residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json) ·
+  [H5I leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
   [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
