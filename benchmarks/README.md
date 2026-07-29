@@ -23,8 +23,11 @@ active K/V and `KVLiveSpans`, repeat, and lifecycle are byte-exact at KL 0;
 every publication sample is exact and lifecycle-clean. Cached tracing observes
 exactly **235** producers and **235** consumers; 80/96-accumulator bodies are
 VGPR168/200 with LDS1536 and zero scratch. The matched llama.cpp HIP M512 target
-remains **694.184 tok/s**, now a **3.685x** gap. Both short rows exceed 150 tok/s and 4K remains
-positive; 16K+ stays closed below the 800/700 stretch gate.
+remains **694.184 tok/s**, now a **3.685x** gap. H5H closes larger ordered tiles:
+constant-112 is scratch-free at VGPR232 but loses every role, while constant-128
+hits VGPR256 plus 28–52 B scratch and also loses every role. All candidates are
+removed. Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays
+closed below the 800/700 stretch gate.
 
 A post-publication exact
 [`role-qualified coltile policy`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)
@@ -184,8 +187,10 @@ tracing names all **235** producers plus 235 expected consumers. H5F screens
 constant-48 ownership, rejects 8x6/6x8/4x12/3x16, and retains 12x4 only for F32
 N48 at **1.187%/0.496%** event/wall. H5G then retains
 8x10/16x5/8x12/12x8 on five roles and publishes exact
-**188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. Next
-screen the constant-112 register boundary; do not reopen rejected arithmetic.
+**188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. H5H
+then rejects constant-112/128 after no role wins and a VGPR256 spill cliff;
+all candidate exports are removed ([H5H rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json)). Reprofile the post-H5G residual next; do not
+reopen rejected arithmetic.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

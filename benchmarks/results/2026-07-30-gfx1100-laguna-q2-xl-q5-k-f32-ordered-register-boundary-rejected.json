@@ -1,0 +1,311 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_exact_ordered_register_boundary_rejected",
+  "date": "2026-07-30",
+  "status": "rejected_no_role_win_production_unchanged",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "e786c681a",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json",
+    "candidate_source": "temporary exact instantiations of the retained production-ordered template; all removed after rejection",
+    "tracked_source_restored_to_base": true
+  },
+  "protocol": {
+    "rows": 512,
+    "actual_role_configurations": 8,
+    "production_invocations": 235,
+    "inclusive_candidate": "one exact raw-Q5-to-F32 producer plus one BF16-input/F32-weight production-ordered local128 consumer",
+    "warmups": 3,
+    "counter_rotated_repetitions": 5,
+    "launches_per_sample": 2,
+    "clocks": [
+      "HIP event",
+      "synchronized wall"
+    ],
+    "admission": "byte-exact and faster than H5G on both clocks for at least one actual role",
+    "long_context_run_performed": false,
+    "full_state_run_performed": false,
+    "reason_full_state_omitted": "No candidate qualified any role; production policy and source are unchanged."
+  },
+  "constant_112": {
+    "candidates": [
+      "ordered_4x28",
+      "ordered_8x14",
+      "ordered_16x7"
+    ],
+    "qualified_role_count": 0,
+    "h5g_weighted_event_ms": 906.5022314749658,
+    "selected_weighted_event_ms": 906.5022314749658,
+    "h5g_weighted_wall_ms": 902.6990740094334,
+    "selected_weighted_wall_ms": 902.6990740094334,
+    "rows": [
+      {
+        "output_dtype": "bf16",
+        "in_features": 3072,
+        "out_features": 1024,
+        "production_invocations": 92,
+        "h5g_geometry": "ordered_8x4",
+        "best_candidate": "ordered_16x7",
+        "event_speedup_vs_h5g": 0.8956459602074425,
+        "wall_speedup_vs_h5g": 0.6434568914662654,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 3072,
+        "out_features": 12288,
+        "production_invocations": 2,
+        "h5g_geometry": "ordered_8x12",
+        "best_candidate": "ordered_8x14",
+        "event_speedup_vs_h5g": 0.9868477210945149,
+        "wall_speedup_vs_h5g": 0.9908724123226385,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 6144,
+        "out_features": 3072,
+        "production_invocations": 12,
+        "h5g_geometry": "ordered_16x5",
+        "best_candidate": "ordered_16x7",
+        "event_speedup_vs_h5g": 0.7358007748070047,
+        "wall_speedup_vs_h5g": 0.7798549473726687,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 9216,
+        "out_features": 3072,
+        "production_invocations": 35,
+        "h5g_geometry": "ordered_12x8",
+        "best_candidate": "ordered_16x7",
+        "event_speedup_vs_h5g": 0.9175116098591445,
+        "wall_speedup_vs_h5g": 0.9218340991337749,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 48,
+        "production_invocations": 12,
+        "h5g_geometry": "ordered_12x4",
+        "best_candidate": "ordered_16x7",
+        "event_speedup_vs_h5g": 0.7458812106617329,
+        "wall_speedup_vs_h5g": 0.7709519784522804,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 72,
+        "production_invocations": 35,
+        "h5g_geometry": "ordered_8x4",
+        "best_candidate": "ordered_8x14",
+        "event_speedup_vs_h5g": 0.38845662556586363,
+        "wall_speedup_vs_h5g": 0.4349595359591772,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 6144,
+        "production_invocations": 12,
+        "h5g_geometry": "ordered_16x5",
+        "best_candidate": "ordered_16x7",
+        "event_speedup_vs_h5g": 0.8077462194267253,
+        "wall_speedup_vs_h5g": 0.8702500996641989,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 9216,
+        "production_invocations": 35,
+        "h5g_geometry": "ordered_8x10",
+        "best_candidate": "ordered_8x14",
+        "event_speedup_vs_h5g": 0.9521420216283693,
+        "wall_speedup_vs_h5g": 0.9569091122203504,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      }
+    ],
+    "resources": {
+      "ordered_4x28": "local128/VGPR232/SGPR128/LDS2048/scratch0",
+      "ordered_8x14": "local128/VGPR232/SGPR128/LDS2048/scratch0",
+      "ordered_16x7": "local128/VGPR232/SGPR128/LDS2048/scratch0"
+    }
+  },
+  "constant_128": {
+    "candidates": [
+      "ordered_4x32",
+      "ordered_8x16",
+      "ordered_16x8",
+      "ordered_32x4"
+    ],
+    "qualified_role_count": 0,
+    "h5g_weighted_event_ms": 862.9738289192319,
+    "selected_weighted_event_ms": 862.9738289192319,
+    "h5g_weighted_wall_ms": 855.3584453184158,
+    "selected_weighted_wall_ms": 855.3584453184158,
+    "rows": [
+      {
+        "output_dtype": "bf16",
+        "in_features": 3072,
+        "out_features": 1024,
+        "production_invocations": 92,
+        "h5g_geometry": "ordered_8x4",
+        "best_candidate": "ordered_32x4",
+        "event_speedup_vs_h5g": 0.9468488497583795,
+        "wall_speedup_vs_h5g": 0.7626825692378123,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 3072,
+        "out_features": 12288,
+        "production_invocations": 2,
+        "h5g_geometry": "ordered_8x12",
+        "best_candidate": "ordered_16x8",
+        "event_speedup_vs_h5g": 0.780933940297193,
+        "wall_speedup_vs_h5g": 0.7830111322320201,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 6144,
+        "out_features": 3072,
+        "production_invocations": 12,
+        "h5g_geometry": "ordered_16x5",
+        "best_candidate": "ordered_32x4",
+        "event_speedup_vs_h5g": 0.8436495479167296,
+        "wall_speedup_vs_h5g": 0.8725943262302734,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 9216,
+        "out_features": 3072,
+        "production_invocations": 35,
+        "h5g_geometry": "ordered_12x8",
+        "best_candidate": "ordered_16x8",
+        "event_speedup_vs_h5g": 0.8926821724284436,
+        "wall_speedup_vs_h5g": 0.8981009132377845,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 48,
+        "production_invocations": 12,
+        "h5g_geometry": "ordered_12x4",
+        "best_candidate": "ordered_16x8",
+        "event_speedup_vs_h5g": 0.6704396920999763,
+        "wall_speedup_vs_h5g": 0.7115623008494182,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 72,
+        "production_invocations": 35,
+        "h5g_geometry": "ordered_8x4",
+        "best_candidate": "ordered_8x16",
+        "event_speedup_vs_h5g": 0.32572557310596256,
+        "wall_speedup_vs_h5g": 0.3599329057107801,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 6144,
+        "production_invocations": 12,
+        "h5g_geometry": "ordered_16x5",
+        "best_candidate": "ordered_32x4",
+        "event_speedup_vs_h5g": 0.7717991001422525,
+        "wall_speedup_vs_h5g": 0.84768492106099,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 9216,
+        "production_invocations": 35,
+        "h5g_geometry": "ordered_8x10",
+        "best_candidate": "ordered_16x8",
+        "event_speedup_vs_h5g": 0.8152808622993902,
+        "wall_speedup_vs_h5g": 0.8146713782202843,
+        "all_candidates_byte_exact": true,
+        "qualified_candidates": []
+      }
+    ],
+    "resources": {
+      "ordered_4x32": "local128/VGPR256/SGPR128/LDS2048/scratch52",
+      "ordered_8x16": "local128/VGPR256/SGPR128/LDS2048/scratch32",
+      "ordered_16x8": "local128/VGPR256/SGPR128/LDS2048/scratch28",
+      "ordered_32x4": "local128/VGPR256/SGPR128/LDS2048/scratch32"
+    }
+  },
+  "correctness": {
+    "constant_112_all_outputs_byte_exact": true,
+    "constant_128_all_outputs_byte_exact": true,
+    "constant_112_lifecycle_recovered": true,
+    "constant_128_lifecycle_recovered": true
+  },
+  "production": {
+    "changed": false,
+    "retained_m512_tok_s": 188.39333422791606,
+    "retained_m1024_tok_s": 175.04173852597643,
+    "retained_m4096_tok_s": 132.74306247138355,
+    "retained_policy": "H5G exact 8x4/12x4/8x10/16x5/8x12/12x8 role policy"
+  },
+  "source_artifacts": {
+    "constant_112_screen_json_sha256": "4ba160a7d6dc8f15256eb9200edf7572727bbe8e7f8a684d7da31816c0643226",
+    "constant_112_screen_harness_sha256": "0e6c6c297feee14bdeab80ebcc88ae60e0c1511aee1cfa07c3fced79788aac8f",
+    "constant_112_trace_csv_sha256": "1bae710d294b1533168832d31256bfd98e98cd433817ce530c10d3351fbbdc1c",
+    "constant_112_trace_harness_sha256": "6db3e3f5ced50b23cfa35aaac05bfcf516a941f3b445dd10ea28b6dec21e843b",
+    "constant_128_screen_json_sha256": "75f8509391c1e0312933071ff37d98e897cbfd697e85ef7597c5488638ea5d1f",
+    "constant_128_screen_harness_sha256": "970f08b9155e69eb06a683fc16616a2684475730e62c2f79c6ceb7f681713ea6",
+    "constant_128_trace_csv_sha256": "70968bdaa177d1b4568f00b03f3b44b06d9c5f65d9be8d466c83b952f0adc4c3",
+    "constant_128_trace_harness_sha256": "a714d47159bebf5774ee599b002def346d8dd4050f81b34cd7ad01b0ccd0c695"
+  },
+  "commands": {
+    "constant_112_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5h_q5_ordered_112_screen.py",
+    "constant_112_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5h-112-rocprof -- uv run python -u /tmp/laguna_wpfh5h_q5_ordered_112_trace.py",
+    "constant_128_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5h_q5_ordered_128_screen.py",
+    "constant_128_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5h-128-rocprof -- uv run python -u /tmp/laguna_wpfh5h_q5_ordered_128_trace.py"
+  },
+  "decision": {
+    "retain_candidate": false,
+    "remove_all_candidate_exports_and_registrations": true,
+    "close_larger_ordered_tiles": true,
+    "reason": "Constant-112 is scratch-free but slower on every actual role; constant-128 is slower on every role and crosses the VGPR256 spill cliff.",
+    "next_target": "Reprofile the post-H5G exact M512 residual and select the next non-Q5 kernel family."
+  }
+}

@@ -77,8 +77,10 @@ numbers below.
   **184.997/172.104/131.496 tok/s** at 512/1K/4K; H5F retained the narrow exact
   N48 micro-win. H5G's constant-80/96 tiles now publish
   **188.393/175.042/132.743 tok/s**, another **+2.192%/+2.055%/+1.329%** over
-  H5F. Full logits, all 48 hidden boundaries, routing
-  prefixes, active K/V, and every `KVLiveSpans` field are bit-exact at KL 0 on
+  H5F. H5H closes larger exact tiles: constant-112 loses every role and
+  constant-128 reaches VGPR256 with 28–52 B scratch. Full logits, all 48 hidden
+  boundaries, routing prefixes, active K/V, and every `KVLiveSpans` field are
+  bit-exact at KL 0 on
   the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
   deterministic, and lifecycle-clean. The 150-tok/s short gate and restored 4K
   gate pass, while 16K+ stays closed below the 800/700 512/4K stretch target
@@ -148,8 +150,10 @@ numbers below.
   scratch. The package-default route remains KL0/byte-exact across all 48
   boundaries, logits, K/V, repeats, and lifecycle. Current production is
   **188.393/175.042/132.743 tok/s** at 512/1K/4K, leaving a **3.685x** matched
-  M512 gap to llama.cpp HIP
+  M512 gap to llama.cpp HIP. H5H removes all larger candidates after universal
+  regressions and the constant-128 spill cliff
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
+  [H5H boundary rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json) ·
   [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
