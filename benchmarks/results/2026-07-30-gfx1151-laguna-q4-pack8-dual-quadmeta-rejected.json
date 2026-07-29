@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T08:00:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_q4_pack8_dual_quadmeta_rejected",
+  "status": "rejected_and_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "c4491c4edc045a52e7a8d1a68312360b160424f2",
+    "candidate_uncommitted": true
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "premise": {
+    "description": "Have one lane in each four-lane column quad load the dual-Q4 scale/min metadata and broadcast the four gate and four up values with shuffles.",
+    "traffic_hypothesis": "Replace 512 issued metadata bytes per K32 group with 128 unique load bytes while preserving the exact dual-Q4 dot, FMA, reduction, conversion, and store sequence.",
+    "production_family": "gguf_q4_k_pack8_dual_prefill_out_kernel, local32, 48 calls per token"
+  },
+  "correctness": {
+    "red": "Focused natural-shape dual-Q4 oracle failed importing the absent quad-metadata wrapper.",
+    "green": "Candidate passed the focused oracle against the two exact local32 singleton owners.",
+    "bf16_byte_exact": true,
+    "pass": true
+  },
+  "leaf": {
+    "protocol": "9 samples x 50 launches after 5 warmups at both natural decode shapes",
+    "rows": [
+      {
+        "shape": "shared M1 K3072 N1024",
+        "control_median_ms": 0.01352522,
+        "candidate_median_ms": 0.03456444,
+        "latency_change_percent": 155.555,
+        "candidate_wins": 0,
+        "pair_count": 9
+      },
+      {
+        "shape": "dense M1 K3072 N12288",
+        "control_median_ms": 0.472076721,
+        "candidate_median_ms": 0.514231682,
+        "latency_change_percent": 8.92968,
+        "candidate_wins": 0,
+        "pair_count": 9
+      }
+    ],
+    "raw_sha256": "2269c264f78e5301bf80c7316cd7f4588277541a64488dbf4b0710362091c8ee"
+  },
+  "trace": {
+    "control_and_candidate_workgroup_threads": 32,
+    "shared_grid_threads": 4096,
+    "dense_grid_threads": 49152,
+    "allocated_vgpr": 96,
+    "allocated_sgpr": 128,
+    "reported_static_lds_bytes": 512,
+    "scratch_bytes": 0,
+    "compiler_spawned_under_profiler": false,
+    "raw_sha256": "8baefc660a0bd2900f35ebfac511f07208861b8fad1f2b3087095784942614a2"
+  },
+  "commands": {
+    "correctness": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_q4_k_gemv.py::test_laguna_pack8_dual_decode_is_bf16_exact_to_two_local32_owners --tb=short",
+    "leaf": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_pack8_dual_decode_leaf.py --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-pack8-dual-quadmeta-9x50.json"
+  },
+  "decision": {
+    "retained": false,
+    "resident_gate_skipped": true,
+    "all_candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 20.7443509745,
+    "reason": "Both natural shapes regress decisively. The four quad-local metadata copies are evidently cheap cache/coalescing hits relative to executing 32 shuffle broadcasts per lane per K iteration.",
+    "next": "Screen an exact dense/shared dual-Q4 plus SiLU gate/up boundary fusion that removes an intermediate launch and BF16 write/read traffic."
+  }
+}

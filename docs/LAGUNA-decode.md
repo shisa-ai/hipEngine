@@ -5851,6 +5851,26 @@ The remaining attention sequence is:
     closed on both SWA and global; move to the traced
     **2.234-ms/token** dense/shared dual-Q4 owner:
     [`global V-stage128 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-local512-vstage128-rejected.json).
+80. Contract the exact dual-Q4 owner's repeated scale/min metadata loads with
+    one loader per four-lane column quad and shuffle broadcasts. **Rejected
+    and removed:** the candidate preserves every dot, FMA, reduction, BF16
+    conversion, and store boundary and passes the focused exact oracle, but
+    loses all nine leaf pairs at both natural decode shapes.
+
+    Shared M1 K3072 N1024 regresses
+    **0.013525 -> 0.034564 ms (+155.555%)**; dense M1 K3072 N12288 regresses
+    **0.472077 -> 0.514232 ms (+8.930%)**. Cache-only tracing confirms both
+    control and candidate use local32 at grid4096/grid49152 with
+    **VGPR96/SGPR128/LDS512/scratch0**. The redundant metadata loads are
+    evidently cheap cache/coalescing hits; 32 quad-local shuffles per lane per
+    K iteration cost much more than the bytes they replace.
+
+    Skip the resident gate, remove the kernel, wrapper, oracle addition, and
+    leaf harness, and keep production at **20.744351 tok/s**. Within-kernel
+    metadata broadcast is closed. Next screen the exact consumer boundary:
+    fuse the dense/shared dual-Q4 gate/up result with its SiLU-product consumer
+    to remove intermediate BF16 traffic and one launch per layer:
+    [`dual-Q4 quad-metadata rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-quadmeta-rejected.json).
 
 Current exact decode checkpoint:
 
@@ -5877,9 +5897,12 @@ V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
 grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
 address/K-loop contraction is now closed: full K3072 unrolling wins the
 isolated leaf but loses all seven resident pairs while expanding code 5.06x.
-The next bounded work is the traced **2.234-ms/token** dense/shared dual-Q4
-owner. It must reduce actual weight/address traffic or fuse useful cross-output
-work without multiplying instruction footprint. Return to attention only for
+The traced **2.234-ms/token** dense/shared dual-Q4 owner remains the next
+bounded family, but quad-local metadata broadcast is now closed by decisive
+natural-shape regressions. The next candidate is an exact dual-Q4 plus
+SiLU-product boundary fusion: preserve the current BF16 gate/up rounding
+points, then consume them in-kernel to remove temporary output traffic and a
+launch per layer. Return to attention only for
 a materially new exact-association or quality-safe cooperative premise:
 both SWA and global stage-width successors win isolated leaves but fail to
 produce a reliable complete-model improvement.
