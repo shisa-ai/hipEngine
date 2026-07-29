@@ -190483,3 +190483,29 @@ Vulkan local sizes verbatim will close the measured gap.
   and run the mandatory 18-prompt/576-step quality gate before any
   promotion. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-primitive.json`.
+
+## 2026-07-29 19:22 JST — Reject global three-term WMMA production
+
+- Added a temporary session-scoped gfx1151 selector over only the 12 global
+  layers and live spans `<=1024`; SWA, prefill, peer backends, and production
+  defaults remained unchanged. Its focused selector/rollback tests passed.
+- Reconstructed the authoritative saturated-p512 protocol used for the prior
+  SWA screen: all 18 canonical prompts are extended without the leading BOS,
+  then control and candidate consume the control argmax for 32 transitions
+  each. This produces **576** full-vocabulary comparisons.
+- The route is finite with exact final positions, every `KVLiveSpans`
+  metadata plane, reset state, lifecycle, and allocation recovery. It passes
+  suite/category top-1 at **559/576 (97.05%)**, but maximum KL is
+  **2.623766** (**52.48x** the `0.05` ceiling); category maxima are
+  code/general-en/general-ja/mixed **1.006985/0.276643/2.623766/1.293065**.
+  Maximum logit delta is **9.523836**. Raw quality SHA-256 is
+  `19df5758...a66726`.
+- Remove the temporary capability, session selector, runtime dispatch branch,
+  selector tests, and quality harness. Retain the separately registered leaf
+  primitive only as architectural evidence. Production remains
+  **20.069608 tok/s**.
+- Finding: an isolated context error near `1e-8` is not a useful admission
+  proxy for this recurrent model. Another cooperative attention route must
+  preserve retained F32 association or provide an independently valid
+  exact-repair proof. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-rejected.json`.

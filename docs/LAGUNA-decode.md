@@ -4660,7 +4660,7 @@ The remaining attention sequence is:
     Evidence:
     [`rejected global physical rematerialization`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-physical-remat-rejected.json).
 28. Build the material global GQA6 x K64 cooperative core. **Primitive
-    complete; full-model quality pending:** four QK waves and eight PV waves
+    retained; production route rejected:** four QK waves and eight PV waves
     cover one `(KV head, K64 split)` local256 block. F32 query and probability
     operands use three non-overlapping BF16 terms; split maxima/denominators
     and raw numerators feed a 48-block local128 FP64 merge. The explicit
@@ -4671,13 +4671,16 @@ The remaining attention sequence is:
     **0.079822 -> 0.043986 ms (-44.89%)**, and
     **0.087357 -> 0.046227 ms (-47.08%)**. Tracing names the intended
     partial at local256/VGPR96/LDS4,608/scratch0 and merge at
-    local128/VGPR24/LDS0/scratch0. This is a registered diagnostic, not a
-    production win: next add a default-off global-only resident selector and
-    run the complete 18-prompt/576-step gate. The candidate must clear max KL
-    **0.05**, top-1 **90%**, complete span/lifecycle checks, and matched
-    throughput before promotion.
+    local128/VGPR24/LDS0/scratch0. The complete 18-prompt/576-step
+    saturated-p512 gate is finite with exact span/reset/lifecycle state and
+    **559/576 (97.05%)** top-1, but max KL is **2.623766**, or **52.48x**
+    the `0.05` ceiling. The temporary global-only selector and quality harness
+    are removed; production remains unchanged. This closes unqualified
+    cooperative reduction association even when the isolated context error is
+    about `1e-8`. The next attention core must preserve retained association
+    or carry an independently valid exact-repair proof.
     Evidence:
-    [`global three-term WMMA primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-primitive.json).
+    [`global three-term WMMA rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-rejected.json).
 
 Current exact decode checkpoint:
 

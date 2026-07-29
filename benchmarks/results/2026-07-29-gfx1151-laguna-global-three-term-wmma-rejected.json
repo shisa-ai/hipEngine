@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T19:22:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_three_term_wmma_screen",
+  "status": "quality_rejected_runtime_removed",
+  "performance_claim": false,
+  "source": {
+    "primitive_revision": "a9540049434909024a94ba0840ae364b359520be",
+    "quality_revision": "a9540049434909024a94ba0840ae364b359520be",
+    "runtime_selector_committed": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 77463095316
+  },
+  "candidate": {
+    "description": "Global GQA6/K64 cooperative QK/PV with three non-overlapping BF16 terms, independent F32 WMMA accumulators, raw split numerators, and a query-head-parallel FP64 merge.",
+    "qualified_live_range": "127..1024",
+    "scope": "12 full-attention layers only",
+    "leaf_latency_change_percent": {
+      "live513": -43.44999716605811,
+      "live576": -44.8946181564765,
+      "live639": -47.082360770548114
+    }
+  },
+  "quality": {
+    "protocol": "18 canonical prompts extended to p512, 32 control-argmax teacher-forced transitions per prompt",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "steps": 576,
+    "finite": true,
+    "max_kl": 2.6237657966191974,
+    "max_logits_abs": 9.523836135864258,
+    "top1_matches": 559,
+    "top1_agreement": 0.9704861111111112,
+    "required_max_kl": 0.05,
+    "required_minimum_top1": 0.9,
+    "categories": {
+      "code": {
+        "max_kl": 1.0069845580369619,
+        "top1_agreement": 0.9739583333333334
+      },
+      "general_en": {
+        "max_kl": 0.27664290536978964,
+        "top1_agreement": 0.9921875
+      },
+      "general_ja": {
+        "max_kl": 2.6237657966191974,
+        "top1_agreement": 0.9453125
+      },
+      "mixed_ja_en": {
+        "max_kl": 1.2930653437713342,
+        "top1_agreement": 0.96875
+      }
+    },
+    "lifecycle": {
+      "all_prompt_final_positions_exact": true,
+      "all_span_metadata_exact": true,
+      "all_reset_span_metadata_exact": true,
+      "all_reset_positions_exact": true,
+      "tracked_returned_to_baseline": true
+    },
+    "raw_sha256": "19df5758d56d6c3871a4a8fc821067999b0d6db2a54ef85ef3ce1905e6a66726"
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt uv run python -u scripts/laguna_global_three_term_quality_gate.py --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-three-term-quality.json",
+  "decision": {
+    "retained_as_diagnostic_primitive": true,
+    "runtime_integrated": false,
+    "temporary_selector_and_quality_harness_removed": true,
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "reason": "The cooperative reduction association amplifies recurrently even though the isolated context error is about 1e-8; maximum full-model KL is 52.48 times the permitted ceiling."
+  }
+}
