@@ -5679,15 +5679,22 @@ The remaining attention sequence is:
     unchanged. Evidence:
     [`global local512 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-retained.json).
 
+    Tracked-clean selector-unset production at `96a19bc81` measures
+    **20.705514/20.727439/20.717479 tok/s**, median
+    **20.717479 tok/s (48.268 ms/token)**. This is **+0.77917% /
+    -0.37609 ms/token** over the preceding clean packet and **+80.675%** over
+    sprint start. All runs report the capability active and preserve exact
+    trajectory/state/lifecycle. Evidence:
+    [`clean global local512 production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.557302 tok/s** | **48.645 ms** | **+79.278%** |
-| hipEngine retained global-local512 A/B | **20.726022 tok/s** | **48.249 ms** | clean publication pending |
+| hipEngine current production | **20.717479 tok/s** | **48.268 ms** | **+80.675%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.815 ms/token** | hipEngine is **11.954%** below Vulkan throughput |
+| Remaining wall gap | — | **5.439 ms/token** | hipEngine is **11.268%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
