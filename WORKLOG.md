@@ -192128,3 +192128,20 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; this is an in-tree
   specialization, not a port. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-retained.json`.
+
+## 2026-07-30 06:17 JST — Publish clean local512 producer-wave V-tail production
+
+- Commit `e69f28bc6` is tracked-clean and the temporary comparison selector is
+  absent. Three selector-unset require-cached p512/d128 runs measure
+  **20.715636/20.731612/20.732043 tok/s**, median
+  **20.731612 tok/s (48.236 ms/token)**.
+- This is **+0.06821% / -0.03290 ms/token** over the preceding clean
+  **20.717479** packet and **+80.799%** over the 11.466687 sprint start.
+  The same-GGUF llama.cpp Vulkan comparison remains
+  **23.348381 tok/s / 42.830 ms/token**; the wall gap is now
+  **5.406 ms/token**, or **11.207%** in throughput.
+- All runs report the new SWA value-tail capability active, preserve first
+  and final tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, final
+  position 638, determinism, and zero tracked bytes after teardown. Raw hash
+  is `24385a7d...adad`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-production.json`.
