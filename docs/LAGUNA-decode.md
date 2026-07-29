@@ -4926,6 +4926,23 @@ The remaining attention sequence is:
     **20.270314 tok/s** on stage cache plus shuffle transport. Evidence:
     [`combined stage-cache/DPP primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json) ·
     [`runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-runtime-rejected.json).
+40. Recombine exact whole-GQA ownership with the retained probability/V-stage
+    overlap. **Complete and rejected:** the prior two-owner-per-KV
+    GQA4+5/local512 screen predated stage probability reuse, so the new
+    candidate halves staged-V duplication, assigns one exact probability and
+    denominator producer per query, and publishes through the existing K64
+    V-stage barrier. It preserves producer maxima/gates, every QK product and
+    reduction, slot-order denominator/PV chains, divide, and BF16 boundary.
+    The wrap/explicit-eviction oracle is F32-context and gated-BF16
+    byte-exact, but all nine cache-hot candidate samples lose:
+    **0.056133 -> 0.061001 ms (+8.673%)**. Probability reuse narrows the old
+    local512 miss but cannot repay cutting ordinary-grid workgroups
+    **32 -> 16** on the 40-CU target. Remove the kernel, wrapper, registry,
+    oracle call, and leaf choice before trace or runtime integration.
+    Production remains **20.270314 tok/s**. Scalar ownership recombinations
+    below 32 blocks are now closed even with the retained stage-cache
+    schedule. Evidence:
+    [`rejected GQA4+5 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-stage-pcache-rejected.json).
 
 Current exact decode checkpoint:
 
