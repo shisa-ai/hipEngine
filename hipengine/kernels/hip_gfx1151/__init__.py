@@ -61,9 +61,10 @@ LAGUNA_F16_DECODE_FIXEDK = True
 # only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
 # seven exact p512/d128 pairs admit the combined owner.
 LAGUNA_SELECTED_NATURAL_DECODE = True
-# Default-off production screen for the exact selected-down sibling that
-# distributes the final 16 ordered wave sums across lanes 0..15.
-LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = False
+# The exact selected-down sibling distributes the final 16 ordered wave sums
+# across lanes 0..15. All seven resident p512/d128 pairs are exact and
+# positive; the serial owner remains registered rollback.
+LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = True
 # Exact gate/up owner that splits each resident T16 tile across two 8-column
 # workgroups, halving live accumulators. The actual-weight leaf improves
 # 5.35-7.13%; seven exact p512/d128 pairs are all positive.

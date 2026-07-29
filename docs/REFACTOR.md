@@ -2166,3 +2166,8 @@ should be boring.
   flag and setter after clean selector-unset publication. On rejection,
   remove the capability, session field/setter, plan route, and comparison
   lane while retaining the separately registered primitive for diagnostics.
+- Promotion gate passed 2026-07-29: all seven resident pairs improve
+  **20.052490 -> 20.075641 tok/s (+0.1155%, -0.0575 ms/token)** with exact
+  generated state and lifecycle. The gfx1151 capability now defaults true;
+  remove the comparison-only constructor override, setter, and CLI lane after
+  clean selector-unset production plus cached symbol tracing.
