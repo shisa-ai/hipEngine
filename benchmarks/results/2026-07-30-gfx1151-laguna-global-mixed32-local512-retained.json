@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_global_mixed32_local512_retained",
+  "status": "retained",
+  "created_at": "2026-07-30T05:43:00+09:00",
+  "performance_claim": true,
+  "source_revision": "9d1931156ac3b6ae7fc1acf601584af0b73719ef",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "Ryzen AI MAX+ 395",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "raise the exact 32-owner global mixed32 body from local256 to local512 while preserving the original eight-wave softmax denominator tree",
+    "grid_workgroups": 32,
+    "control_threads": 256,
+    "candidate_threads": 512,
+    "control_softmax_waves": 8,
+    "candidate_softmax_waves": 8,
+    "candidate_qk_transport_waves": 16,
+    "candidate_value_transport_waves": 16,
+    "scope": "gfx1151 gated 48Q/8KV/D128 capacity4096 live<=4000 decode",
+    "rollback": "registered local256 probability-prenormalized mixed32 variant"
+  },
+  "correctness": {
+    "initial_naive_local512": {
+      "status": "rejected_before_timing",
+      "failure": "byte identity failed at live_count=513 because sixteen denominator owners changed the FP32 summation tree"
+    },
+    "retained_candidate": {
+      "live_counts": [
+        513,
+        576,
+        639
+      ],
+      "context_f32_byte_exact": true,
+      "gated_bf16_byte_exact": true,
+      "context_max_abs": 0.0,
+      "direct_cpu_oracle": "passed",
+      "wrapped_and_evicted": true,
+      "resident_generated_ids_match": true,
+      "resident_trajectory_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+      "first_token": 2930,
+      "final_token": 74107,
+      "final_position": 638,
+      "tracked_allocations_recovered": true
+    }
+  },
+  "leaf": {
+    "shape": "48Q/8KV/D128, live513/576/639",
+    "protocol": "balanced HIP events, cached 9x50 then 21x100",
+    "nine_by_fifty": [
+      {
+        "live_count": 513,
+        "control_ms": 0.05444178104400635,
+        "candidate_ms": 0.040573439598083495,
+        "latency_change_percent": -25.473710043969366
+      },
+      {
+        "live_count": 576,
+        "control_ms": 0.06051814079284668,
+        "candidate_ms": 0.046335577964782715,
+        "latency_change_percent": -23.43522560716268
+      },
+      {
+        "live_count": 639,
+        "control_ms": 0.07288861751556397,
+        "candidate_ms": 0.05066934108734131,
+        "latency_change_percent": -30.483876887194572
+      }
+    ],
+    "twenty_one_by_one_hundred": [
+      {
+        "live_count": 513,
+        "control_ms": 0.054994668960571286,
+        "candidate_ms": 0.04063613891601563,
+        "latency_change_percent": -26.108948950761178
+      },
+      {
+        "live_count": 576,
+        "control_ms": 0.060631728172302245,
+        "candidate_ms": 0.04642348766326904,
+        "latency_change_percent": -23.433672331846555
+      },
+      {
+        "live_count": 639,
+        "control_ms": 0.0729168176651001,
+        "candidate_ms": 0.05066747188568115,
+        "latency_change_percent": -30.513325309406724
+      }
+    ],
+    "raw_sha256": {
+      "nine_by_fifty": "010cfb87a6f4eb48ba02e66546257b2a751b2e49a17d15a5367ec89fc39e69e2",
+      "twenty_one_by_one_hundred": "58a8804f4421bdeab03c159aaf8ca22b4f98678d48b4a6a287307b8f17a56257"
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-local512-trace.3VSa6m --output-file global-local512 -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-local512-exp32-producer-max-dpp-qk-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build",
+    "kernel_template_local_threads": 512,
+    "grid_threads": 16384,
+    "workgroup_threads": 512,
+    "workgroups": 32,
+    "vgpr": 48,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "control_median_ns": 62657.5,
+    "candidate_median_ns": 49994.0,
+    "csv_sha256": "1379d500348054c4dae94c710b749553c2715c9488e3bffe598dc55cdb38bcd6"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix chunk 2048, attention rows 128",
+    "protocol": "seven counterbalanced same-resident-session pairs",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-global-mixed32-local512 --allow-dirty --output /tmp/laguna-p512-d128-global-mixed32-local512-ab.json",
+    "control_tok_s": 20.58156241969985,
+    "candidate_tok_s": 20.726022393954814,
+    "throughput_change_percent": 0.7018902224677159,
+    "control_ms_per_token": 48.587176211794294,
+    "candidate_ms_per_token": 48.24852453559402,
+    "saving_ms_per_token": 0.33865167620027137,
+    "paired_wins": 7,
+    "paired_samples": 7,
+    "median_paired_saving_ms_per_token": 0.34033636173864323,
+    "raw_sha256": "7836209fc39f192cfb0eb286640e4c3d4244172367260b29f1d06bca8e0ff244"
+  },
+  "validation": {
+    "python_compile": "passed",
+    "diff_check": "passed",
+    "focused_tests": [
+      "tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+      "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback"
+    ],
+    "focused_tests_status": "passed"
+  },
+  "decision": "promote the gfx1151 capability; retain local256 as exact rollback and leave peer backends unchanged"
+}

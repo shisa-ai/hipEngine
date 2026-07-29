@@ -1337,8 +1337,9 @@ template <
     bool kWmmaThreeTermQk = false,
     bool kDppQkReduction = false,
     bool kVectorProbabilityReplay = false,
-    bool kPreNormalizeProbability = false>
-__global__ __launch_bounds__(256)
+    bool kPreNormalizeProbability = false,
+    int kLocalThreads = 256>
+__global__ __launch_bounds__(kLocalThreads)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -1364,9 +1365,15 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   static_assert(
       !kPreNormalizeProbability || kVectorProbabilityReplay,
       "probability pre-normalization requires the vector probability plane");
+  static_assert(
+      kLocalThreads == 256 || kLocalThreads == 512,
+      "global fixed-shape attention supports local256 or local512");
   constexpr int kOwnersPerKv =
       kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries;
-  constexpr int kNumWarps = 8;
+  constexpr int kNumWarps = kLocalThreads / 32;
+  // local512 may widen independent QK and value transport, but the softmax
+  // denominator must retain the local256 eight-wave summation tree.
+  constexpr int kSoftmaxWarps = 8;
   extern __shared__ float dynamic_shared[];
   float* shared_scores = dynamic_shared;
   const int score_stride = kVectorProbabilityReplay
@@ -1620,40 +1627,44 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   float local_sum[kOwnedQueries] = {};
   if constexpr (kSoftmaxExp32) {
     constexpr int kSoftmaxBatch = 32;
-    for (int token_base = wave; token_base < context_len;
-         token_base += kNumWarps * kSoftmaxBatch) {
-      const int token = token_base + lane * kNumWarps;
-      const bool in_range = token < context_len;
-      const bool visible =
-          in_range && shared_physical[token] >= 0;
+    if (wave < kSoftmaxWarps) {
+      for (int token_base = wave; token_base < context_len;
+           token_base += kSoftmaxWarps * kSoftmaxBatch) {
+        const int token = token_base + lane * kSoftmaxWarps;
+        const bool in_range = token < context_len;
+        const bool visible =
+            in_range && shared_physical[token] >= 0;
 #pragma unroll
-      for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
-        if (q_local >= owned_queries) continue;
-        float lane_weight = 0.0f;
-        if (in_range) {
-          const int score_idx = q_local * score_stride + token;
-          const float shifted_score =
-              shared_scores[score_idx] - warp_buf[q_local][0];
-          if constexpr (kAssumeSoftmaxDomain) {
-            __builtin_assume(shifted_score <= 0.0f);
+        for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+          if (q_local >= owned_queries) continue;
+          float lane_weight = 0.0f;
+          if (in_range) {
+            const int score_idx = q_local * score_stride + token;
+            const float shifted_score =
+                shared_scores[score_idx] - warp_buf[q_local][0];
+            if constexpr (kAssumeSoftmaxDomain) {
+              __builtin_assume(shifted_score <= 0.0f);
+            }
+            lane_weight = visible ? expf(shifted_score) : 0.0f;
+            shared_scores[score_idx] = lane_weight;
           }
-          lane_weight = visible ? expf(shifted_score) : 0.0f;
-          shared_scores[score_idx] = lane_weight;
-        }
 #pragma unroll
-        for (int item = 0; item < kSoftmaxBatch; ++item) {
-          const float weight = __shfl(lane_weight, item, 32);
-          const int ordered_token =
-              token_base + item * kNumWarps;
-          if (lane == 0 && ordered_token < context_len) {
-            local_sum[q_local] += weight;
+          for (int item = 0; item < kSoftmaxBatch; ++item) {
+            const float weight = __shfl(lane_weight, item, 32);
+            const int ordered_token =
+                token_base + item * kSoftmaxWarps;
+            if (lane == 0 && ordered_token < context_len) {
+              local_sum[q_local] += weight;
+            }
           }
         }
       }
     }
   } else {
-    for (int token = wave; token < context_len; token += kNumWarps) {
-      if (lane == 0) {
+    if (wave < kSoftmaxWarps) {
+      for (int token = wave; token < context_len;
+           token += kSoftmaxWarps) {
+        if (lane != 0) continue;
         const bool visible = shared_physical[token] >= 0;
 #pragma unroll
         for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
@@ -7805,6 +7816,90 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_produce
           true>),
       dim3(32),
       dim3(256),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  constexpr int kLocalThreads = 512;
+  const int64_t score_stride = (scan_slots + 3) & ~int64_t{3};
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * score_stride) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          true,
+          true,
+          kLocalThreads>),
+      dim3(32),
+      dim3(kLocalThreads),
       shared_bytes,
       stream,
       query,

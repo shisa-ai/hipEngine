@@ -192036,3 +192036,32 @@ Vulkan local sizes verbatim will close the measured gap.
   The current gap is **5.815 ms/token**, or **11.954%** in throughput.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-production.json`.
+
+## 2026-07-30 05:43 JST — Retain exact global mixed32 local512 scheduling
+
+- The first local512 global draft correctly fails the byte-exact leaf before
+  timing at live513: distributing denominator terms across sixteen waves
+  changes the FP32 summation tree. Repair the candidate by retaining the
+  local256 eight-wave softmax/denominator ownership while all sixteen waves
+  partition independent QK and value transport.
+- Repaired 9x50 leaves improve live513/576/639
+  **25.47%/23.44%/30.48%**. Strong 21x100 leaves improve
+  **0.054995 -> 0.040636**, **0.060632 -> 0.046423**, and
+  **0.072917 -> 0.050667 ms** (**26.11%/23.43%/30.51%**). F32 context and
+  gated BF16 are byte-identical at all three shapes. Raw hashes are
+  `010cfb87...9e69e2` / `58a8804f...6257`.
+- Cache-only tracing names the intended `<...,512>` kernel at
+  grid32/local512, **VGPR48/SGPR128/LDS512/scratch0**. Its six traced calls
+  have **49.994 us** median versus **62.658 us** for local256. Trace hash is
+  `1379d500...8bcd6`.
+- All seven counterbalanced actual-model p512/d128 pairs improve
+  **20.581562 -> 20.726022 tok/s (+0.70189%)**, or
+  **48.5872 -> 48.2485 ms/token (-0.33865 ms)**. Median paired saving is
+  **0.34034 ms/token**. All runs preserve tokens **2930/74107**, trajectory
+  SHA `94f803f7...bda32`, position 638, deterministic state, and teardown.
+  Raw hash is `7836209f...f244`.
+- Direct wrapped/evicted CPU-reference and allocator/selector/fallback tests
+  pass. Promote the gfx1151 capability, retain local256 exact rollback, remove
+  the temporary comparison CLI, and leave peer backends unchanged. Clean
+  selector-unset publication is next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-retained.json`.
