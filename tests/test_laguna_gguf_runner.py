@@ -423,25 +423,6 @@ def test_laguna_swa_mixed32_exp32_switch_is_session_scoped() -> None:
     )
 
 
-def test_laguna_swa_producer_gate_switch_is_session_scoped() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.kv_cache = SimpleNamespace(
-        swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512=False,
-    )
-
-    session.set_decode_swa_producer_gate(True)
-    assert (
-        session.kv_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512
-        is True
-    )
-
-    session.set_decode_swa_producer_gate(False)
-    assert (
-        session.kv_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512
-        is False
-    )
-
-
 def test_laguna_global_assume_exp_switch_is_session_scoped() -> None:
     session = object.__new__(runner_module.LagunaGGUFResidentSession)
     session.kv_cache = SimpleNamespace(
