@@ -4788,6 +4788,27 @@ The remaining attention sequence is:
     changing its cooperative tile or resource profile. Evidence:
     [`SWA DPP-QK runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-dpp-qk-runtime-rejected.json).
 
+34. Transfer llama.cpp's vector-valued output ownership without changing
+    Laguna's exact scalar association. **Complete and rejected:** the Vulkan
+    shader at `c0bc8591e` keeps `FLOAT_TYPEV4 Of` accumulators per thread and
+    couples them to blockwise online softmax and K/V reuse. The screened exact
+    analogue gives each wave32 lane two adjacent value dimensions, reduces
+    the saturated mixed owner from local384/twelve waves to local192/six
+    waves, and preserves each dimension's complete slot-order FMA, divide,
+    gate, and store sequence. The wrap/eviction oracle is F32/BF16 byte-exact.
+
+    Cached 9x50 leaves nevertheless regress
+    **0.058696 -> 0.090448 ms (+54.10%)**, with every candidate sample slower.
+    Cache-only tracing shows that local size and grid halve as intended, but
+    each surviving wave serializes twice the QK/PV work and VGPR allocation
+    rises **104 -> 120** at unchanged SGPR128/LDS25,088/scratch0. This is not
+    a launch-bound-only miss: Vulkan's vector output ownership pays because
+    it is coupled to its cooperative online tile, not as an isolated scalar
+    remap. Skip the resident gate, remove all candidate code, and keep
+    production at **20.105078 tok/s**. Do not retry dimension packing without
+    also changing probability/KV ownership. Evidence:
+    [`rejected exact dim2 output owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-dim2-output-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -4814,6 +4835,13 @@ midpoint repair at either owner or component granularity is closed by the
 measured failures. Packed-BF16 QK dot2 is also closed: its compensated path is
 slower and its one-term path spends far more than the complete quality budget
 for a sub-percent leaf gain.
+
+The next exact scalar ownership screen is a single-launch 36-block pair
+packing: pair all 72 query heads, keep 32 same-KV pair owners, and let only
+four boundary pairs process two KV heads sequentially. This removes all 96
+idle output waves from mixed32 without the rejected two-launch pair/triple
+split. It must beat the leaf before any resident run; the nearby 40-block
+same-KV GQA2 loss means a neutral result closes this scalar branch.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all

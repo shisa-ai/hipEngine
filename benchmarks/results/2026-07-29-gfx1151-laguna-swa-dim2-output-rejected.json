@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_swa_dim2_output_rejected",
+  "timestamp": "2026-07-29T21:11:05+09:00",
+  "status": "rejected_removed",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16",
+    "sha256": "7da520c5...5753f"
+  },
+  "baseline_revision": "f9545df70341599cab1ff0046f376f39736474d6",
+  "premise": {
+    "llama_cpp_revision": "c0bc8591e",
+    "source": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp",
+    "observation": "The Vulkan shader owns vector4 output accumulators per lane and reuses blockwise probability/KV tiles. The screened exact analogue gave each wave32 lane two adjacent value dimensions and reduced the saturated SWA owner from 12 to 6 waves without changing either dimension's slot-order FMA chain."
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_report",
+    "reason": "/home/lhl/amd-gpu-tuning/reference/atlas is absent; the candidate was authored in-tree and did not copy an external kernel"
+  },
+  "correctness": {
+    "red": "The focused saturated-512 wrap/eviction oracle failed importing the absent dim2 wrapper.",
+    "green_command": "uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green": "1 passed",
+    "coverage": "positions 512..519 with explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_sha256": "53d9bb47fc552029b4131e22ce11468d415590a5ca77a7dcc47ac09b908a2cde",
+    "gated_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73"
+  },
+  "leaf": {
+    "shape": "capacity/window/live=512, 72Q/8KV/D128",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-dim2-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-dim2-leaf.json",
+    "control_median_ms": 0.05869617938995361,
+    "candidate_median_ms": 0.09044837951660156,
+    "latency_change_percent": 54.095855056764776,
+    "control_samples_ms": [
+      0.05863914012908936,
+      0.05871448040008545,
+      0.058558998107910154,
+      0.05866814136505127,
+      0.058757901191711426,
+      0.05869617938995361,
+      0.05866337776184082,
+      0.05875956058502197,
+      0.05872910022735596
+    ],
+    "candidate_samples_ms": [
+      0.09053471565246582,
+      0.09040647506713867,
+      0.09039686203002929,
+      0.09037604331970214,
+      0.09044837951660156,
+      0.09037303924560547,
+      0.09062479972839356,
+      0.09055106163024902,
+      0.0907812786102295
+    ],
+    "raw_sha256": "a044d7dcabd6462a2b0b5849b650f1bc737f59e33df1d1f51faf498aacb36f7a"
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-swa-dim2-trace.g7IBfR -o dim2 -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-dim2-vstage64-vec16-direct-assume-exp --samples 1 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "control": {
+      "grid": 12288,
+      "local": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid": 6144,
+      "local": 192,
+      "vgpr": 120,
+      "sgpr": 128,
+      "lds_bytes": 25088,
+      "scratch_bytes": 0
+    },
+    "csv_sha256": "3289012bb3a630612886060598774a68d28e0e1a3ff7b708f973c7d76be68aef"
+  },
+  "decision": {
+    "resident_gate_run": false,
+    "reason": "The candidate fails the leaf gate decisively. Halving wave count doubles serial QK/PV work per wave and raises VGPR allocation 104 -> 120; vector-valued output ownership does not transfer independently of llama.cpp's cooperative online tile.",
+    "production_tok_s": 20.1050782292,
+    "production_changed": false,
+    "code_retained": false
+  }
+}
