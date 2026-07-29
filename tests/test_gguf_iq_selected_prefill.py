@@ -579,6 +579,36 @@ def test_h5j_k1024_candidates_match_retained_bits_and_cpu_oracle(
     assert evaluate_logits(cpu_f32, actual_f32).passed
 
 
+def test_h5j_iq4_wave32_preserves_retained_shared_rounding_boundary(libraries) -> None:
+    grouped_library, _ = libraries
+    meta = _compact_meta([8])
+    in_features = 1024
+    out_features = 19
+    x_bf16 = _f32_to_bf16_u16(
+        np.random.default_rng(258)
+        .normal(0.0, 0.2, size=(meta.compact_rows, in_features))
+        .astype(np.float32)
+    )
+    qweight = _make_iq4_weight(meta.num_experts, out_features, in_features)
+    expected = _run_single_grouped(
+        gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out,
+        grouped_library,
+        x_bf16=x_bf16,
+        meta=meta,
+        qweight=qweight,
+        wmma=False,
+    )
+    actual = _run_single_grouped(
+        gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out,
+        grouped_library,
+        x_bf16=x_bf16,
+        meta=meta,
+        qweight=qweight,
+        wmma=False,
+    )
+    np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("counts", _COUNTS)
 def test_grouped_scalar_iq4_down_is_bit_exact_to_selected_single_fallback(
     libraries, counts: list[int]

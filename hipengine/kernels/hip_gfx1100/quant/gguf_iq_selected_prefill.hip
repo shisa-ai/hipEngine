@@ -1105,52 +1105,6 @@ __global__ void gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_kernel(
   }
 }
 
-// K=1024 has exactly 32 IQ4 subblocks, so the local128 fallback contains one
-// populated wave followed by three all-zero waves. Preserve the populated
-// wave's dot/shuffle and the original +0.0 wave-sum sequence while removing
-// idle lanes and cross-wave storage.
-__launch_bounds__(32, 8)
-__global__ void gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_kernel(
-    const uint16_t* __restrict__ x,
-    const int64_t* __restrict__ expert_start_compact,
-    const uint8_t* __restrict__ qweight,
-    uint16_t* __restrict__ out,
-    int compact_rows,
-    int out_features,
-    int num_experts) {
-  const int out_col = blockIdx.x;
-  const int expert = blockIdx.y;
-  if (out_col >= out_features || expert >= num_experts) return;
-  const int64_t begin = expert_start_compact[expert];
-  const int64_t end = expert_start_compact[expert + 1];
-  if (begin >= end) return;
-
-  constexpr int in_features = 1024;
-  constexpr int row_bytes =
-      (in_features / QK_K) * IQ4_XS_BLOCK_BYTES;
-  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
-  const uint8_t* __restrict__ weight_row =
-      qweight + static_cast<int64_t>(expert) * expert_bytes +
-      static_cast<int64_t>(out_col) * row_bytes;
-  const IQ4Segment segment = load_iq4_segment(weight_row, threadIdx.x);
-  const int x_offset = threadIdx.x * 32;
-
-  for (int64_t row = begin; row < end; ++row) {
-    float acc = dot_iq4_segment(segment, x + row * in_features + x_offset);
-    for (int offset = 16; offset > 0; offset >>= 1) {
-      acc += __shfl_down(acc, offset);
-    }
-    if (threadIdx.x == 0) {
-      float total = 0.0f;
-      total += acc;
-      total += 0.0f;
-      total += 0.0f;
-      total += 0.0f;
-      out[row * out_features + out_col] = float_to_bf16_bits(total);
-    }
-  }
-}
-
 __device__ inline half16_t load_compact_bf16_half16(
     const uint16_t* __restrict__ x,
     int64_t row,
@@ -1884,7 +1838,7 @@ extern "C" int hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave32_kernel,
+      gguf_iq4_xs_selected_grouped_prefill_compact_kernel,
       dim3(out_features, num_experts),
       dim3(32),
       0,
@@ -1894,6 +1848,7 @@ extern "C" int hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_k1024_wave
       qweight,
       out,
       static_cast<int>(compact_rows),
+      static_cast<int>(in_features),
       static_cast<int>(out_features),
       static_cast<int>(num_experts));
   return static_cast<int>(hipGetLastError());

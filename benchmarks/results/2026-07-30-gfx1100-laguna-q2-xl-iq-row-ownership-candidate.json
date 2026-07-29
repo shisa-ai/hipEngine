@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq_row_ownership_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_exact_candidate_admitted_runtime_owner_pending",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "leaf_revision": "c105fda3021716fc2dfd75e0d60d0ec08bab12b7",
+    "source": "net-new in-tree exact IQ3 resident-segment ownership plus an IQ4 local32 launch of the retained exact grouped body; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/__init__.py": "84fd2db927dba0828bf4477f5934a07133b1226a20d349e790bb10a60eb86897",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e060e426d6a36e182c8c502f031a0a9473ff05ad5c13b786ff0e98adee4d2932",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "b3a561daca2bf26fb7713474365166c29d57a7bbe784800565d9d111a3914f07",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "95b3f90685783b1e4f342f10c9ec46e263c858bd174ef44aa1bd0d516ccffad6",
+      "tests/test_gfx1151_backend.py": "16ad97d43fdd05380b0433dd2b8fea03405751afb6b3f8f65b248fe2b57053ef",
+      "tests/test_gguf_iq_selected_prefill.py": "ee93b02734079179f2d3a4b6e2a7ec132d62026f3967c19cc046be0b1c4b43f3"
+    }
+  },
+  "candidate": {
+    "iq3": "one local128 workgroup retains each decoded K1024 eight-value segment across the complete active expert row range while replaying the retained rowbatch8 FMA, wave reduction, serial wave sum, barrier, and BF16 store phases",
+    "iq4": "the K1024 variant launches the retained exact dynamic grouped body at local32, where all 32 subblock lanes are populated; sharing the physical body preserves its shared-memory rounding boundary while removing three idle waves",
+    "persistent_weight_sidecar_bytes": 0,
+    "additional_workspace_bytes": 0,
+    "additional_runtime_allocations": 0,
+    "unfused_fallbacks_registered": true,
+    "gfx1151_fail_closed": true
+  },
+  "protocol": {
+    "claim_scope": "actual-M512 IQ3_XXS/IQ4_XS selected-down primitive family only; not end-to-end throughput or a production-default claim",
+    "rows": 512,
+    "compact_rows": 5120,
+    "expert_count": 256,
+    "top_k": 10,
+    "actual_model_weights": true,
+    "actual_natural_prompt_routing_distributions": true,
+    "iq3_layers": 45,
+    "iq4_layers": 2,
+    "production_invocations": 47,
+    "control": "retained exact IQ3 rowbatch8 and IQ4 local128 grouped selected-down bodies",
+    "candidate_timing": "exact IQ3 resident-segment body and exact IQ4 retained body at local32",
+    "warmups_per_arm": 5,
+    "counter_rotated_repetitions": 15,
+    "launches_per_sample": 5,
+    "timing": "HIP-event plus synchronized-wall medians summed across all 47 actual layer weights and routing distributions",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "next_token_id": 2930,
+    "final_position": 511,
+    "four_k_or_longer_run_performed": false
+  },
+  "aggregate_ms": {
+    "retained_event": 567.2737220764161,
+    "candidate_event": 500.176153945923,
+    "event_speedup": 1.1341478749059826,
+    "event_reduction_percent": 11.828076203652282,
+    "retained_wall": 567.0556723605841,
+    "candidate_wall": 500.4477013833821,
+    "wall_speedup": 1.1330967667412166,
+    "wall_reduction_percent": 11.746284222838499,
+    "both_clock_positive_layers": 47,
+    "event_speedup_range": [1.0953141025672846, 3.029786154338997],
+    "wall_speedup_range": [1.0993332033172871, 2.6227387556149946],
+    "frozen_h5i_request_kernel_sum_ms": 2600.260414,
+    "modeled_kernel_sum_after_measured_event_delta_ms": 2533.162845869507,
+    "interpretation": "The exact 47-layer policy saves 67.098 ms from the strong-screen control. The modeled request sum applies only that measured family delta and is not a tok/s forecast."
+  },
+  "quant_families": {
+    "gguf_iq3_xxs": {
+      "layers": 45,
+      "retained_event_ms": 541.1368507385255,
+      "candidate_event_ms": 491.48054122924816,
+      "event_speedup": 1.1010341312497973,
+      "event_reduction_percent": 9.176294211253222,
+      "retained_wall_ms": 542.3980861436576,
+      "candidate_wall_ms": 491.0344773903489,
+      "wall_speedup": 1.1046028560484908,
+      "wall_reduction_percent": 9.469725293187093,
+      "rowbatch8_decode_instances": 33547,
+      "resident_segment_decode_instances": 9844,
+      "decode_instance_reduction_percent": 70.65609443467375,
+      "both_clock_positive_layers": 45
+    },
+    "gguf_iq4_xs": {
+      "layers": 2,
+      "retained_event_ms": 26.136871337890625,
+      "candidate_event_ms": 8.695612716674805,
+      "event_speedup": 3.0057538427131494,
+      "event_reduction_percent": 66.73047586966243,
+      "retained_wall_ms": 24.657586216926575,
+      "candidate_wall_ms": 9.41322399303317,
+      "wall_speedup": 2.6194623898438962,
+      "wall_reduction_percent": 61.824227601924306,
+      "both_clock_positive_layers": 2
+    }
+  },
+  "correctness": {
+    "all_47_actual_layer_outputs_byte_exact": true,
+    "all_47_layers_faster_on_both_clocks": true,
+    "independent_numpy_dequant_oracle_kl": 0.0,
+    "independent_numpy_dequant_oracle_top1": 1.0,
+    "uneven_empty_and_rowbatch_tail_experts_checked": true,
+    "iq4_rounding_boundary_regression_checked": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0
+  },
+  "iq4_rounding_boundary_fix": {
+    "initial_real_layer_screen": "failed closed because both IQ4 candidate outputs were not byte-exact despite approximately 3x event speedup",
+    "minimal_red": "one expert, eight compact rows, N19, deterministic BF16 input seed 258; 1/152 values differed by one BF16 ULP",
+    "fix": "remove the separately compiled constant-K body and launch the retained exact dynamic grouped kernel at local32 through the K1024 registry wrapper",
+    "final_result": "the RED fixture and both complete actual IQ4 layer outputs are byte-exact"
+  },
+  "cached_trace": {
+    "iq3_candidate_symbol": "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_kernel",
+    "iq3_candidate_resources": "local128/VGPR40/SGPR128/LDS512/scratch0",
+    "iq3_fixture_duration_us": 32.12,
+    "iq4_shared_physical_symbol": "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+    "iq4_control_resources": "local128/VGPR64/SGPR128/LDS512/scratch0",
+    "iq4_candidate_resources": "local32/VGPR64/SGPR128/LDS512/scratch0",
+    "iq4_fixture_candidate_duration_us": 36.76,
+    "rounding_red_fixture_candidate_duration_us": 6.56,
+    "no_compiler_under_profile": true
+  },
+  "source_artifacts": {
+    "final_screen_json_sha256": "07eab76624f13b1f68f730d7851fb08854e2b18ea6dc93104f02c784bed537de",
+    "final_screen_harness_sha256": "a1552c50f0a8a2cccc0bdcea5f60d03f73103b3977bc27ae5953253667444572",
+    "final_screen_stdout_sha256": "80d469cc5eb5eef42d14b08fea2b3375a9b13016f63304958c8d0180e8d7811c",
+    "final_screen_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "initial_fail_closed_stdout_sha256": "3873f01c26034450b8f0364eb87fabd1de6141419ec7a2665ac7aec88945b27a",
+    "initial_fail_closed_stderr_sha256": "bafaa09c2618e0c8d309a460a8729a04e601168fe1b88f6e75d082838d2e0b50",
+    "final_trace_csv_sha256": "f1b606a80a63476fc34edcfabf7028165f7fd2fd22fb3b1246b08df426d0fe3c",
+    "final_trace_log_sha256": "cbe230b11c81cb0a49306fece1480e14da71c975a8c10cae9869591bb10c6eb0"
+  },
+  "commands": {
+    "actual_layers": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/laguna_wpfh5j_iq_row_ownership_actual_screen.py",
+    "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_selected_prefill.py tests/test_gfx1151_backend.py::test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5j-final-rocprof -- uv run pytest -q tests/test_gguf_iq_selected_prefill.py::test_h5j_k1024_candidates_match_retained_bits_and_cpu_oracle tests/test_gguf_iq_selected_prefill.py::test_h5j_iq4_wave32_preserves_retained_shared_rounding_boundary"
+  },
+  "promotion_blockers": [
+    "no runtime/package owner selects either candidate key",
+    "complete M512 hidden/logit/KV/KVLiveSpans repeat validation has not run",
+    "cached integrated physical execution has not run",
+    "clean counter-ordered 512/1K/4K timing has not run"
+  ],
+  "decision": {
+    "standalone_candidate_admitted": true,
+    "runtime_default_changed": false,
+    "next_action": "Add one default-off backend-package mapping from the two quant keys to these exact variants, preserve the retained grouped routes on every map/key/shape miss, then require complete M512 state, cached integrated tracing, and clean 512/1K/4K non-regression before promotion."
+  }
+}
