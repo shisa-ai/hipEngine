@@ -5654,6 +5654,30 @@ The remaining attention sequence is:
     retain exact trajectory/state/lifecycle. Evidence:
     [`local512 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-retained.json),
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-production.json).
+72. Raise the retained 32-owner global block from local256 to local512 while
+    freezing its exact denominator tree. **Retained and promoted on gfx1151:**
+    the naive first draft correctly fails byte identity at live513 because
+    spreading denominator terms over sixteen waves changes FP32 association.
+    The retained sibling lets all sixteen waves partition independent QK and
+    value transport, but keeps the original eight-wave softmax issue and
+    denominator ownership.
+
+    The repaired 9x50 leaves improve live513/576/639 by
+    **25.47%/23.44%/30.48%**. Strong 21x100 leaves improve
+    **0.054995 -> 0.040636 ms (-26.11%)**,
+    **0.060632 -> 0.046423 ms (-23.43%)**, and
+    **0.072917 -> 0.050667 ms (-30.51%)**. Every F32 context and gated BF16
+    output is byte-identical. Cache-only tracing names the intended
+    grid32/local512 specialization at **VGPR48/SGPR128/LDS512/scratch0**.
+
+    All seven actual-model p512/d128 pairs improve:
+    **20.581562 -> 20.726022 tok/s (+0.70189%)**, or
+    **48.5872 -> 48.2485 ms/token (-0.33865 ms)**. Median paired saving is
+    **0.34034 ms/token**. Every run preserves the identical generated-token
+    SHA, first/final tokens, position, deterministic state, and allocation
+    lifecycle. local256 remains the exact rollback; peer backends remain
+    unchanged. Evidence:
+    [`global local512 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-retained.json).
 
 Current exact decode checkpoint:
 
@@ -5661,6 +5685,7 @@ Current exact decode checkpoint:
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
 | hipEngine current production | **20.557302 tok/s** | **48.645 ms** | **+79.278%** |
+| hipEngine retained global-local512 A/B | **20.726022 tok/s** | **48.249 ms** | clean publication pending |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **5.815 ms/token** | hipEngine is **11.954%** below Vulkan throughput |
 
@@ -5668,10 +5693,11 @@ The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
 the data, and a block should expose enough independent work to cover the
 machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
-cover one logical token each; larger blocks add no score ownership. The next
-bounded exact screen applies this workgroup-size/launch-bound axis to the
-retained global mixed32 body at live513/576/639 before returning to tensorized
-QK/PV.
+cover one logical token each; larger blocks add no score ownership. Global
+local512 confirms that the same saturation axis transfers when the original
+eight-wave denominator tree is held fixed: the extra waves help only the
+independent QK and value-transport phases. Clean production publication and a
+fresh attention census are next before returning to tensorized QK/PV.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
@@ -5688,8 +5714,8 @@ for a sub-percent leaf gain.
 Scalar ownership is closed around the retained mixed32/mixed40 points: 24, 32,
 36, 40, split pair/triple, and whole-GQA owners have all been measured. Stage
 probability caching and pre-normalization now supply the exact coupling in both
-SWA and global attention. The remaining exact scheduling question is whether
-the global body benefits from more waves at unchanged owner count, as SWA did.
+SWA and global attention. Both saturated retained owners now use local512 at
+unchanged grid breadth, with softmax association frozen where required.
 On the retained global three-term GQA6/K64 sibling,
 left-versus-right component association changes thousands of F32 contexts but
 zero gated BF16 bins, while forward-versus-reverse FP64 split merge changes no

@@ -3895,6 +3895,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans,
         laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
@@ -4181,6 +4182,29 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
             np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            for host, device in (
+                (candidate, candidate_out),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
             control_gated_float = bf16_to_float32(control_gate_bits)
             laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans(
                 *common,
@@ -4404,6 +4428,10 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             gfx1151_cache.global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
             is True
         )
+        assert (
+            gfx1151_cache.global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+            is True
+        )
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
@@ -4473,6 +4501,10 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
 
         gfx1151_cache._resolve = resolve_probe
         gfx1151_cache.position = 256
+        gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = (
+            False
+        )
         gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = (
             False
@@ -4604,6 +4636,14 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         )
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         assert resolved_variants == [
+            (
+                "laguna_attention_decode",
+                (
+                    "global_context_fused_exact_gated_mixed32_local512_"
+                    "exp32_producer_max_dpp_qk_probability_vec4_prenorm_"
+                    "vstage64_vec16_direct_assume_exp_fixedshape_spans"
+                ),
+            ),
             (
                 "laguna_attention_decode",
                 (
