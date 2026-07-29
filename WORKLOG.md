@@ -192100,3 +192100,31 @@ Vulkan local sizes verbatim will close the measured gap.
   exact-attention target. Trace/child SHA-256 values are
   `f3c2b5cb...0c15` / `6469dcf1...a36d`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-local512-wall-reprofile.json`.
+
+## 2026-07-30 06:10 JST — Retain local512 producer-wave V-tail transport
+
+- Revisit the exact producer-value-tail seam only after local512 changes the
+  transport balance. The two tail-probability waves copy the final 64/32
+  staged-V vectors in pair/singleton blocks; the remaining 14/15 waves copy
+  the prefix. QK, softmax, denominator, and PV association are unchanged.
+- The 9x50 leaf improves **0.031528 -> 0.030106 ms (-4.512%)**. The stronger
+  21x100 leaf improves **0.031737 -> 0.030061 ms (-5.282%)**, wins all
+  **21/21** pairs, and is byte-identical for F32 context and gated BF16.
+  Raw hashes are `7c451202...efd` / `4103d418...fa2`.
+- Cache-only tracing names the intended final-`true`, local512 specialization
+  at grid40, **VGPR32/SGPR128/LDS25,600/scratch0**. Trace hash is
+  `0f0b4a7b...aecf`; no compiler runs under profiling. The wrapped/evicted
+  CPU-reference test passes.
+- All seven counterbalanced actual-model p512/d128 pairs improve
+  **20.718104 -> 20.737481 tok/s (+0.09353%)**, or
+  **48.26697 -> 48.22186 ms/token (-0.04510 ms)**. Median paired saving is
+  **0.04288 ms/token**. Every run preserves tokens **2930/74107**, trajectory
+  SHA `94f803f7...bda32`, position 638, deterministic state, and teardown.
+  Raw hash is `3fbec480...ee4a`.
+- Promote a gfx1151-only capability, retain the preceding local512 variant as
+  exact rollback, remove the temporary comparison CLI, and leave peer
+  backends unchanged. The allocator/selector/fallback test passes. The
+  mandatory lineage check remains blocked by the pre-existing missing
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this is an in-tree
+  specialization, not a port. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-retained.json`.
