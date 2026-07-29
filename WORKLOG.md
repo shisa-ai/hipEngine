@@ -190718,3 +190718,29 @@ Vulkan local sizes verbatim will close the measured gap.
   without a materially different cooperative tile or resource profile.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-dpp-qk-runtime-rejected.json`.
+
+## 2026-07-29 21:11 JST — Reject exact SWA dim2 output ownership
+
+- Audited llama.cpp Vulkan `c0bc8591e`
+  `vulkan-shaders/flash_attn.comp`: each lane owns vector4 `Of` accumulators
+  inside a blockwise online-softmax/KV tile. Screened the isolated exact
+  analogue in Laguna: two adjacent value dimensions per lane, local192/six
+  waves instead of local384/twelve, with each dimension's slot-order FMA,
+  divide, gate, and store sequence preserved.
+- RED import failure and GREEN wrap/eviction oracle pass. F32 context and BF16
+  gated output are byte-exact at positions 512..519 with explicit position-200
+  eviction.
+- Cached 9x50 leaf regresses **0.058696 -> 0.090448 ms (+54.10%)** with full
+  sample separation in the wrong direction. Raw SHA-256 is
+  `a044d7dc...b36f7a`.
+- Cache-only trace confirms the intended local192/grid6144 candidate versus
+  local384/grid12288 control. Candidate resources are
+  VGPR120/SGPR128/LDS25088/scratch0 versus VGPR104 for control; trace SHA-256
+  is `3289012b...be68aef`.
+- Skip resident decode, remove the complete candidate/test/harness seam, and
+  keep production **20.105078 tok/s**. The Vulkan vector-output lesson does
+  not transfer independently of its cooperative online tile. Next screen one
+  exact single-launch 36-block pair packing to remove mixed32 idle waves
+  without the rejected pair/triple two-launch boundary.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-dim2-output-rejected.json`.
