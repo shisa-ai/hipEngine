@@ -190414,3 +190414,23 @@ Vulkan local sizes verbatim will close the measured gap.
   sparse exact replay. More decomposition terms and output-derived midpoint
   repair are closed. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-three-term-wmma-rejected.json`.
+
+## 2026-07-29 18:45 JST — Reject exact global producer-owned gates
+
+- Audited the retained global mixed32/exp32 producer-max body after the SWA
+  producer-gate win. Global still evaluates the identical per-head softplus
+  in every output lane, so a separately registered candidate computes it once
+  per owned query and reuses the existing score barrier for publication.
+- RED fails on the absent wrapper. GREEN passes the live513/576/639
+  CPU/control oracle with explicit position-200 eviction; F32 context and
+  gated BF16 output are byte-exact at all three shapes.
+- Nine counterbalanced 50-launch samples reject the transfer:
+  **0.073179 -> 0.075032 ms (+2.53%)** at live513,
+  **0.079882 -> 0.081864 ms (+2.48%)** at live576, and
+  **0.087466 -> 0.089742 ms (+2.60%)** at live639. The candidate loses all
+  **27/27** pairs.
+- Remove the kernel specialization, export, wrapper, registry key, harness
+  mode, and test extension before trace/runtime work. Production remains
+  **20.069608 tok/s**. Global's repeated softplus is hidden better than SWA's;
+  the added LDS publication/dependency dominates. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-gate-rejected.json`.
