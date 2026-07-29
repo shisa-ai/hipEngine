@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T09:03:03+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_global_exp32_decode_wall_reprofile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "5cc67087e9864840ac994c8a0cb582f520a37ea6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-post-global-exp32-wall.HAofgD",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-global-exp32-wall.HAofgD --output-file postglobalexp32 -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-global-exp32-wall.HAofgD/bench.json",
+    "trace_sha256": "819ac6493c1c9afb73c0b06143c298d7fc3cf180680d44c4e407e6606a7c04c0",
+    "bench_sha256": "70220eb64e18814eeea72b2c98bd7914ba1c2653cd1e878ffce0cfe3ecf7ec4e",
+    "segmentation": "Sort the two-queue trace by start timestamp and globally unique Dispatch_Id, close each request at argmax stage 2, discard warmup128 and timed prefill512, and report medians over 127 one-row segments.",
+    "profiler_wall_tok_s": 18.972080123247054,
+    "publication_wall_tok_s": 19.56171466319239,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true,
+    "compiler_invocations_under_profiler": 0
+  },
+  "decode": {
+    "segments": 127,
+    "dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 48.954823,
+    "median_kernel_span_ms_per_token": 51.493134,
+    "attention": {
+      "calls_per_token": 48,
+      "median_ms_per_token": 4.427829
+    },
+    "attention_breakdown": {
+      "swa_mixed32_exp32_calls_per_token": 36,
+      "swa_mixed32_exp32_median_ms_per_token": 3.183455,
+      "global_gqa2_exp32_calls_per_token": 12,
+      "global_gqa2_exp32_median_ms_per_token": 1.244374
+    },
+    "family_medians_ms_per_token": {
+      "source_f16_projection": 24.067334,
+      "selected_q4_gate_up": 8.399406,
+      "selected_q4_q6_down": 4.835679,
+      "dense_shared_quant_projection": 3.714412,
+      "router": 1.058064,
+      "norm_rope_gate": 1.063113,
+      "activation_reduce_residual": 0.230221,
+      "lm_head_argmax": 1.119219
+    }
+  },
+  "comparison": {
+    "prior_post_swa_exp32_profile": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-post-exp32-wall-reprofile.json",
+      "dispatches_per_token": 816,
+      "kernel_sum_ms_per_token": 48.966481,
+      "kernel_span_ms_per_token": 51.519195,
+      "attention_ms_per_token": 4.477845,
+      "swa_attention_ms_per_token": 3.18093,
+      "global_attention_ms_per_token": 1.288661
+    },
+    "changes_percent": {
+      "dispatches": 0.0,
+      "kernel_sum": -0.023808122948443255,
+      "kernel_span": -0.050585029521532654,
+      "attention": -1.1169658619268885,
+      "swa_attention": 0.07937930102202007,
+      "global_attention": -3.4366679832787628
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "wall_ms_per_token": 42.829522098341634,
+      "logged_attention_ms_per_token": 0.909423,
+      "hipengine_attention_gap_ms_per_token": 3.518406,
+      "hipengine_total_wall_gap_ms_per_token": 8.290740987880284,
+      "attention_share_of_remaining_wall_gap": 0.4243777492438056
+    }
+  },
+  "finding": {
+    "priority": "attention remains the largest comparator gap",
+    "reason": "Exact wave-wide global exponential issue transfers its 3.44% leaf-family gain, but exact attention still spends 4.428 ms/token versus Vulkan's 0.909 ms/token.",
+    "next_gate": "Start from a tensorized QK and PV GQA tile and independently gate a bounded high-precision correction; scalar ownership, global score planes, and approximate online split merges remain closed."
+  }
+}
