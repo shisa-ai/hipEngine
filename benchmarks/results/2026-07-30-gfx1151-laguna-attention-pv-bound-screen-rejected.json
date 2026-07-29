@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T03:28:25+09:00",
+  "kind": "hipengine_laguna_gfx1151_attention_pv_reassociation_bound_screen",
+  "status": "rejected_analytical_precondition",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16"
+  },
+  "premise": {
+    "goal": "Certify the three-term cooperative attention result's BF16 rounding bin and replay exact scalar PV only for uncertain output components.",
+    "favorable_assumption": "QK and softmax probabilities are treated as exact and identical between the scalar and cooperative paths. This omits real QK, exponential, normalization, gate, and input-decomposition error, so the screen is a favorable PV-only precondition rather than a complete runtime bound.",
+    "bound": "(gamma_512 + gamma_64 + gamma_8) * sum_i(abs(p_i * v_i)), followed by the positive softplus-gate scale and one F32 multiply-rounding term",
+    "unit_roundoff": 5.960464477539063e-08,
+    "gamma_512": 3.051850947599719e-05,
+    "gamma_64": 3.8147118175957395e-06,
+    "gamma_8": 4.768373855769089e-07,
+    "combined_gamma": 3.481005867916984e-05
+  },
+  "source_fixture": {
+    "generator": "scripts/laguna_global_fixedshape_reduce_leaf.py RNG seed 20260728",
+    "candidate": "wmma-gqa6-k64-three-term-raw-numerator",
+    "visibility": "global spans with explicit position-200 eviction",
+    "live513_npz_sha256": "77b08b6e39c63b09423b5140d65bb2ccd4e0978801bda45f50cf1ca33c8ac296",
+    "live576_npz_sha256": "db203bb76d6b277914e896b89a46f27c7da2401b30c5222f5288dd5f1cae7b55",
+    "live639_npz_sha256": "34920f33d3b1f5f24e06cf0e6f8719f6c026c846f53b74c5502d5c75ab9cae15",
+    "lineage_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-attention-consensus-association-rejected.json"
+  },
+  "rows": [
+    {
+      "live_count": 513,
+      "components": 6144,
+      "uncertain_components": 2846,
+      "uncertain_fraction": 0.4632161458333333,
+      "bound_median": 2.35431868e-06,
+      "bound_p90": 3.14989513e-06,
+      "bound_max": 3.84114063e-06
+    },
+    {
+      "live_count": 576,
+      "components": 6144,
+      "uncertain_components": 3012,
+      "uncertain_fraction": 0.490234375,
+      "bound_median": 2.34967402e-06,
+      "bound_p90": 3.15152978e-06,
+      "bound_max": 3.79753401e-06
+    },
+    {
+      "live_count": 639,
+      "components": 6144,
+      "uncertain_components": 3144,
+      "uncertain_fraction": 0.51171875,
+      "bound_median": 2.34755274e-06,
+      "bound_p90": 3.14336382e-06,
+      "bound_max": 3.81286974e-06
+    }
+  ],
+  "comparison": {
+    "three_term_cooperative_leaf_ms": 0.02109,
+    "retained_exact_leaf_ms": 0.058925,
+    "full_component_repair_leaf_ms": 0.18320789337158203,
+    "full_component_repair_vs_retained_percent": 124.39847522378824,
+    "full_component_repair_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-component-repair-rejected.json"
+  },
+  "decision": {
+    "rebuild_tensor_kernel": false,
+    "reason": "The simplest independently valid PV association envelope already sends roughly half the output components to exact replay under assumptions that omit every other error source. Adding the omitted QK/softmax terms can only widen this particular bound. The measured component-repair topology has no plausible path from that replay density to a win over retained exact attention.",
+    "closed_scope": "Do not rebuild the removed three-term WMMA plus scalar component-replay design around this standard gamma bound.",
+    "reopen_condition": "A materially tighter certified mechanism, such as hardware-supported directed bounds or an error-free transform whose own cost is screened independently, not another output-derived midpoint heuristic.",
+    "production_decode_tok_s": 20.494732
+  }
+}

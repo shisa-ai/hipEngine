@@ -191736,3 +191736,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40-value-tail --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-value-tail-ab.json`
   (load excluded **89.923 s**, raw SHA-256 `d28b5958...a2769`). Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-producer-value-tail-runtime-rejected.json`.
+
+## 2026-07-30 03:28 JST — Reject standard cooperative-PV error-bound repair
+
+- Reuse the reproducible global three-term GQA6/K64 live513/576/639 dumps and
+  their seed-20260728 wrapped/position-200-evicted inputs to screen an
+  independently valid rounding-bin premise before reconstructing the removed
+  SWA tensor kernel.
+- Deliberately assume exact, identical QK and softmax probabilities. Bound
+  only scalar-512 versus K64-partial/eight-way-merge PV reassociation by
+  `(gamma_512 + gamma_64 + gamma_8) * sum(abs(p_i * v_i))`, then propagate
+  through the positive softplus gate and one F32 multiply-rounding term.
+- This favorable PV-only envelope still marks **46.32%/49.02%/51.17%** of
+  6,144 output components uncertain at live513/576/639. Median bounds are
+  about **2.35e-6**. Real QK, exponential, normalization, and decomposition
+  terms would widen this particular bound.
+- The measured full component-replay topology is already **124.40% slower**
+  than retained exact attention. Do not rebuild it around a standard gamma
+  bound; require a materially tighter certified mechanism or cheap
+  error-free transform. Production remains **20.494732 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-attention-pv-bound-screen-rejected.json`.
