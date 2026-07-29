@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T21:35:36+09:00",
+  "kind": "hipengine_laguna_gfx1151_attention_consensus_association_screen",
+  "status": "rejected_without_swa_reconstruction",
+  "performance_claim": false,
+  "source_revision": "59f5117a088a5a3a9715dbff119e5989d58bb38a",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16",
+    "diagnostic_shape": "48Q/8KV/D128 global attention at live513/576/639",
+    "intended_transfer": "72Q/8KV/D128 saturated SWA three-term WMMA"
+  },
+  "premise": {
+    "description": "Use two independently associated high-precision cooperative results as a cheap classifier: accept matching BF16 bins and exact-replay disagreements.",
+    "required_leaf_recall": 1.0,
+    "variant_a": "left-associated three-term QK/PV component sums and forward FP64 K64-split merge",
+    "variant_b": "right-associated three-term QK/PV component sums and forward FP64 K64-split merge",
+    "variant_c": "left-associated three-term QK/PV component sums and reverse FP64 K64-split merge",
+    "reason_for_global_first": "the retained global GQA6/K64 primitive has the same three-term component and split-merge arithmetic and already exposes known exact-output errors without reconstructing the removed SWA candidate"
+  },
+  "leaf": {
+    "outputs_per_shape": 6144,
+    "variant_a_exact_bf16_mismatches": {
+      "live513": 0,
+      "live576": 1,
+      "live639": 2
+    },
+    "a_vs_b": {
+      "f32_context_disagreements": {
+        "live513": 3152,
+        "live576": 3246,
+        "live639": 3285
+      },
+      "maximum_f32_delta": {
+        "live513": 1.3969838619232178e-09,
+        "live576": 1.3969838619232178e-09,
+        "live639": 1.862645149230957e-09
+      },
+      "bf16_gated_disagreements": {
+        "live513": 0,
+        "live576": 0,
+        "live639": 0
+      },
+      "exact_error_recall": "0/3"
+    },
+    "a_vs_c": {
+      "f32_context_disagreements": {
+        "live513": 0,
+        "live576": 0,
+        "live639": 0
+      },
+      "bf16_gated_disagreements": {
+        "live513": 0,
+        "live576": 0,
+        "live639": 0
+      },
+      "exact_error_recall": "0/3"
+    },
+    "known_error_details": [
+      {
+        "live_count": 576,
+        "flat_index": 260,
+        "exact_bf16": "0x36a2",
+        "candidate_bf16": "0x36a3",
+        "a_vs_b_context_delta": 2.382876118645072e-10
+      },
+      {
+        "live_count": 639,
+        "flat_index": 1855,
+        "exact_bf16": "0xbbc2",
+        "candidate_bf16": "0xbbc3",
+        "a_vs_b_context_delta": 0.0
+      },
+      {
+        "live_count": 639,
+        "flat_index": 5445,
+        "exact_bf16": "0x36b5",
+        "candidate_bf16": "0x36b6",
+        "a_vs_b_context_delta": 8.549250196665525e-11
+      }
+    ]
+  },
+  "commands": {
+    "baseline": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-gqa6-k64-three-term-raw-numerator --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --dump-dir /tmp/laguna-global-assoc-a --output /tmp/laguna-global-assoc-a.json",
+    "association_variants": "same command after source-local right-association and reverse-split diagnostic edits; each edit was removed after its output dump"
+  },
+  "raw": {
+    "variant_a_json_sha256": "0a245c2c395fe6e2af5237d01720f0a442a53687d15d6f1de184ad1cfbcc6645",
+    "variant_b_json_sha256": "68390a6cfe0abb9cff61010a4aa7f895c3af4af21d6609a1bf7ddd43403661b2",
+    "variant_c_json_sha256": "21a692b74633f5fb4d2632d6750c0663bf20144580bb000c06f82b40e1205a8f"
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "swa_candidate_reconstructed": false,
+    "production_unchanged_tok_s": 20.1050782292,
+    "reason": "Neither independent association exposes any BF16 disagreement, so both miss every known exact-output error. One exact mismatch also has bit-identical F32 outputs under both component associations. Consensus is not a valid sparse-replay classifier for this arithmetic.",
+    "next": "Keep exact scalar association. Screen per-K64 probability publication piggybacked on the already-required V-stage barrier so four dimension waves share identical exp/denominator work without introducing the three barriers that rejected the earlier P-cache4 design."
+  }
+}

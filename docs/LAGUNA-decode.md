@@ -4830,6 +4830,20 @@ The remaining attention sequence is:
     the retained mixed32 point. Evidence:
     [`rejected exact pair36 owner`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-pair36-rejected.json).
 
+36. Test the proposed cooperative-result consensus guard before reconstructing
+    the removed SWA WMMA body. **Complete and rejected:** the retained global
+    GQA6/K64 three-term primitive supplies the same component and split-merge
+    arithmetic plus known exact-output errors. Right-associating both
+    three-term sums changes **3,152/3,246/3,285** F32 contexts at
+    live513/576/639 but zero gated BF16 bins. Reversing the FP64 K64 merge
+    changes neither F32 nor BF16 output. Both classifiers therefore recall
+    **0/3** known exact BF16 errors; one missed error has bit-identical F32
+    component-association outputs. Remove the source-local dump/association
+    edits, skip SWA reconstruction and resident quality, and keep production
+    at **20.105078 tok/s**. Consensus is not an independently valid error
+    bound. Evidence:
+    [`rejected consensus association`](../benchmarks/results/2026-07-29-gfx1151-laguna-attention-consensus-association-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -4859,13 +4873,17 @@ for a sub-percent leaf gain.
 
 Scalar ownership is now closed around the retained mixed32 point: 24, 32, 36,
 40, split pair/triple, and whole-GQA owners have all been measured. The next
-attention candidate must couple cooperative probability/KV reuse to its
-output tile. The strongest remaining precision seam is a consensus guard:
-compare two fast, independently associated high-precision cooperative
-results, accept only identical BF16 bins, and replay exact scalar work for
-disagreements. It is viable only if the guard catches every reference
-mismatch on the wrapped/evicted leaf and the double-fast path plus replay
-still beats production before any recurrent quality run.
+attention candidate must couple probability/KV reuse to its output tile while
+preserving exact scalar association. The proposed consensus guard is not that
+mechanism. On the retained global three-term GQA6/K64 sibling, left-versus-
+right component association changes thousands of F32 contexts but zero gated
+BF16 bins, while forward-versus-reverse FP64 split merge changes no output.
+Both miss all **3/3** known exact BF16 errors, including one with identical F32
+component-association results. Do not reconstruct the removed SWA WMMA body or
+use approximation agreement as a replay oracle. The next exact transfer
+publishes each K64 stage's identical probabilities during V loading and reuses
+the already-required load barrier, avoiding the three extra barriers that
+rejected the earlier P-cache4 design.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all
