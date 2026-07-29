@@ -4256,11 +4256,23 @@ guard, **1024**, repairs so broadly that the leaf regresses
 harness choice are removed before runtime integration. Evidence:
 [`rejected guarded WMMA repair`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-guarded-repair-rejected.json).
 
+Component-fine repair does not rescue that premise. A second bounded sibling
+compacts ambiguous dimensions per head, shares exact QK/softmax across each
+2/3-head owner, and replays PV only for the compact list. Guards covering
+**50%**, **75%**, and **87.5%** of the BF16 low interval still miss exact
+output changes on the wrap/eviction fixture. Only the complete **32768**
+interval is byte exact, which reduces the candidate to raw WMMA plus complete
+exact replay and regresses **0.081644 -> 0.183208 ms (+124.40%)**. All
+candidate code is removed. Evidence:
+[`rejected component repair`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-component-repair-rejected.json).
+
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
-intrinsically higher precision or a much finer correction unit than a complete
-query owner. Reusing scalar ownership, global score planes, approximate online
-merges, or grouped output-midpoint repair is closed by the measured failures.
+intrinsically higher precision or a cheap independently valid error bound.
+The approximate output itself is not a usable repair oracle. Reusing scalar
+ownership, global score planes, approximate online merges, or output-derived
+midpoint repair at either owner or component granularity is closed by the
+measured failures.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all
@@ -4397,10 +4409,13 @@ and shape/backend fallbacks.
    Grouped BF16-midpoint repair is also removed: the first byte-exact guard
    repairs nearly every owner and regresses **0.081869 -> 0.118805 ms
    (+45.12%)**.
+   Component-fine replay is worse: guards through **28672/32768** still miss
+   BF16 changes; the byte-exact full-interval form regresses
+   **0.081644 -> 0.183208 ms (+124.40%)** and is removed.
    Exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
    and **+0.0479%** complete decode. The next material SWA step requires an
-   intrinsically higher-precision tensor path or component-fine correction.
-   Do not resume scalar ownership, full-score repairs, grouped midpoint repair,
+   intrinsically higher-precision tensor path or an independent error bound.
+   Do not resume scalar ownership, full-score repairs, output-derived repair,
    or approximate split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
