@@ -190966,3 +190966,30 @@ Vulkan local sizes verbatim will close the measured gap.
   mixed owner at **20.270314 tok/s**. The 16/24/32 results now pin the exact
   scalar occupancy seam. Raw SHA-256 is `37cbdf74...6f851`; evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-stage-pcache-rejected.json`.
+
+## 2026-07-29 22:57 JST — Retain idle-wave SWA probability primitive
+
+- Reviewed the same-GGUF llama.cpp Vulkan attention path at
+  `/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e`. Its transferable exact
+  mechanism is keeping probability production tile-local and overlapping it
+  with cooperative V movement; the F16 K/V and lower-precision cooperative
+  arithmetic are not compatible with Laguna's exact BF16 recurrent contract.
+- Implement a new critical-path schedule on the production mixed32 body. The
+  24 pair-owner blocks move exact probability/denominator work from active
+  output waves 0/4 to otherwise-idle waves 8/9, freeing every active output
+  wave to compact the same K64 V loads. Triple-owner blocks are unchanged.
+- RED fails on the absent wrapper. GREEN passes wrapped positions 512-519 plus
+  explicit position-200 eviction with byte-identical F32 context and BF16
+  gated output. The focused oracle/rollback pair reports **2 passed**.
+- The cached 9x50 leaf improves **0.056018 -> 0.055849 ms (-0.303%)**.
+  A stronger 21x100 confirmation improves
+  **0.056164 -> 0.055990 ms (-0.309%)** with **20/21** paired candidate wins.
+  Raw SHA-256 values are `a954f1bf...252c` and `4aba011b...b74`.
+- Cache-only tracing names both control `<...,false>` and candidate
+  `<...,true>` at grid12288/local384, VGPR104, SGPR128, LDS25,600, and
+  scratch0, with no compiler under the profiler. Trace SHA-256 is
+  `b1349ed1...bcd`.
+- Retain the registered primitive and exact oracle/leaf seam. Production
+  remains **20.270314 tok/s** pending seven counterbalanced resident
+  p512/d128 pairs. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json`.

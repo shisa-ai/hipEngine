@@ -1783,6 +1783,18 @@ but regresses **0.056152 -> 0.059231 ms (+5.484%)**. The retained
 probability cache therefore does not move the gfx1151 scalar ownership seam:
 16 and 24 blocks lose, while 32 blocks remains production. Evidence:
 [`rejected GQA3 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-stage-pcache-rejected.json).
+The next mixed32 schedule uses the otherwise-idle waves in each pair-owner
+block as exact probability/denominator producers. That frees all eight active
+output waves to participate in compact K64 V staging while preserving every
+QK, maximum, `expf`, denominator, PV, and BF16 operation; triple-owner blocks
+keep the production schedule. Wrapped/evicted outputs are byte-exact. The
+9x50 leaf improves **0.056018 -> 0.055849 ms (-0.303%)**, and a stronger
+21x100 screen confirms **0.056164 -> 0.055990 ms (-0.309%)** with **20/21**
+paired wins. Cache-only tracing leaves grid32/local384, VGPR104, SGPR128,
+LDS25,600, and scratch0 unchanged. The registered primitive is retained
+pending seven resident p512/d128 pairs; production remains **20.270314
+tok/s**:
+[`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
