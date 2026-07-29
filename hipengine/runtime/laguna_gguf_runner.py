@@ -951,22 +951,29 @@ class LagunaEagerLibraries:
             "gguf_q5_k": self.q6_linear,
             **(
                 {
-                    f"gguf_q5_k:f32_ordered_coltile{col_tile}_"
+                    f"{quant}:f32_ordered_coltile{col_tile}_"
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out": (
                         self.q5_f32_ordered
                     )
-                    for col_tile, row_batch in (
-                        (4, 8),
-                        (8, 4),
-                        (4, 16),
-                        (8, 8),
-                        (16, 4),
-                        (12, 4),
-                        (8, 10),
-                        (16, 5),
-                        (8, 12),
-                        (12, 8),
+                    for quant, geometries in (
+                        (
+                            "gguf_q5_k",
+                            (
+                                (4, 8),
+                                (8, 4),
+                                (4, 16),
+                                (8, 8),
+                                (16, 4),
+                                (12, 4),
+                                (8, 10),
+                                (16, 5),
+                                (8, 12),
+                                (12, 8),
+                            ),
+                        ),
+                        ("gguf_q6_k", ((8, 4), (16, 4), (16, 5))),
                     )
+                    for col_tile, row_batch in geometries
                     for output_dtype in ("bf16", "f32")
                 }
                 if self.q5_f32_ordered is not None
@@ -1623,25 +1630,33 @@ def resolve_laguna_raw_k_prefill_variant(
     return variant
 
 
-def _resolve_laguna_q5_f32_ordered_prefill(backend: str) -> bool:
-    """Resolve the stabilized package-default exact ordered-Q5 route."""
+def _resolve_laguna_f32_ordered_prefill_quants(backend: str) -> frozenset[str]:
+    """Resolve quant-keyed exact ordered-F32 package ownership."""
 
-    selected = bool(
-        backend_package_capability(
-            backend,
-            "GGUF_Q5_F32_ORDERED_PREFILL",
-            False,
-        )
-    )
-    policy = backend_package_capability(
+    raw_quants = backend_package_capability(
         backend,
-        "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(),
+    )
+    policies = backend_package_capability(
+        backend,
+        "GGUF_F32_ORDERED_PREFILL_POLICIES",
         {},
     )
-    if selected and not policy:
+    if not isinstance(raw_quants, (set, frozenset, tuple, list)):
         raise ValueError(
-            f"Laguna Q5 F32 ordered prefill is not supported on {backend!r}"
+            "Laguna F32 ordered prefill quant ownership must be a collection"
         )
+    if not isinstance(policies, Mapping):
+        raise ValueError("Laguna F32 ordered prefill policies must be a mapping")
+    selected = frozenset(str(quant) for quant in raw_quants)
+    for quant in selected:
+        policy = policies.get(quant)
+        if not isinstance(policy, Mapping) or not policy:
+            raise ValueError(
+                "Laguna F32 ordered prefill has no non-empty policy for "
+                f"{quant!r} on {backend!r}"
+            )
     return selected
 
 
@@ -2448,8 +2463,8 @@ class LagunaGGUFResidentSession:
             self.backend,
             "rowbatch" if raw_k_prefill_rowbatch is not None else None,
         )
-        self._q5_f32_ordered_prefill_enabled = (
-            _resolve_laguna_q5_f32_ordered_prefill(self.backend)
+        self._f32_ordered_prefill_quants = (
+            _resolve_laguna_f32_ordered_prefill_quants(self.backend)
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2833,7 +2848,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
-                use_q5_f32_ordered=self._q5_f32_ordered_prefill_enabled,
+                use_q5_f32_ordered=bool(self._f32_ordered_prefill_quants),
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -2859,7 +2874,7 @@ class LagunaGGUFResidentSession:
                 config,
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
-                use_q5_f32_ordered=self._q5_f32_ordered_prefill_enabled,
+                use_q5_f32_ordered=bool(self._f32_ordered_prefill_quants),
             )
             self.prefill_scratch_admission_nbytes = max(
                 DEFAULT_LAGUNA_SCRATCH_BYTES,
@@ -2964,7 +2979,7 @@ class LagunaGGUFResidentSession:
                 max_rows=self.prefill_chunk_size,
                 runtime=self.runtime,
             )
-            if self._q5_f32_ordered_prefill_enabled:
+            if self._f32_ordered_prefill_quants:
                 assert self.libraries.q5_f32_ordered is not None
                 self.q5_f32_ordered_scratch = (
                     LagunaQ5F32OrderedScratch.allocate(

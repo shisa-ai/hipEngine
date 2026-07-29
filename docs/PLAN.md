@@ -1364,9 +1364,12 @@ transient-F32 ordered Q5 at **184.997/172.104/131.496 tok/s** through 4K
 **12.320%/7.515%** by event/wall clocks. H5F adds exact 12x4 only for F32 N48.
 H5G retains exact 8x10/16x5/8x12/12x8 on five roles, cuts the strong H5F subset
 **8.639%/7.479%** by event/wall, and publishes
-**188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. Explicit
-RB32/raw-coltile and unsupported widths remain exact fallbacks; gfx1151 excludes
-the W7900 keys.
+**188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. H5I
+reuses the same plane for four exact-Q6 roles, cuts traced Q6 **177.047 ->
+110.170 ms (-37.774%)**, and publishes **191.713/178.080/134.411 tok/s
+(+1.762%/+1.736%/+1.256%)** over H5G with KL0/byte-exact complete state and no
+new allocation. Explicit RB32/raw-coltile and unsupported widths remain exact
+fallbacks; gfx1151 excludes the W7900 keys.
 
 A same-host direct-M512 refresh now fixes the next external target. Identical
 512 token IDs, context4096 admission, direct M512, FlashAttention, BF16 K/V,
@@ -1485,12 +1488,14 @@ ms**, attention **468.533 ms**, Q6 **177.047 ms**, and all remaining kernels
 exact raw-Q6-to-F32 producer plus ordered consumer clears the all-role leaf:
 strong 146-call event/wall sums move **194.758/189.722 -> 119.751/121.353 ms
 (-38.513%/-36.037%)**. Four roles select `16x5`/`16x4`/`8x4`; both long-K
-roles and the wide-N F32 role remain exact raw coltile. Add only bounded default-off ownership through
-the existing serial plane, then require complete M512 state, cached integrated
-trace, and clean 512/1K/4K non-regression before promotion. If that integration
-closes, return to exact IQ3/IQ4 row ownership. Do not stack rejected H1-H5B
-arithmetic or reopen P6/repair; launch fusion remains deferred at **1.297%**
-request span-minus-sum.
+roles and the wide-N F32 role remain exact raw coltile. Complete M512 state is
+KL0/byte-exact with the unchanged serial plane. Cached tracing records **143+143**
+candidate launches and three fallbacks, cuts Q6 **177.047 -> 110.170 ms**, and
+cuts request kernel sum **2,667.034 -> 2,600.260 ms**. Clean selector-unset
+512/1K/4K promotes **191.713/178.080/134.411 tok/s
+(+1.762%/+1.736%/+1.256%)** over H5G. Return to exact IQ3/IQ4 row ownership. Do
+not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion remains
+deferred at the current **0.993%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

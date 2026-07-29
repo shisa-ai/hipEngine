@@ -151,6 +151,22 @@ GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ("f32", 3072, 6144): "coltile16_rowbatch5",
     ("f32", 3072, 9216): "coltile8_rowbatch10",
 }
+# WPF-H5I reuses the same serial F32 plane and ordered consumer without a
+# quant branch in dispatch. Complete state is KL0/byte-exact, integrated tracing
+# observes all 143 candidate pairs plus three exact fallbacks, and clean
+# 512/1K/4K improves 1.813%/1.932%/1.352%.
+GGUF_Q6_F32_ORDERED_PREFILL = True
+GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {
+    ("bf16", 3072, 1024): "coltile16_rowbatch5",
+    ("bf16", 1024, 3072): "coltile16_rowbatch4",
+    ("f32", 3072, 72): "coltile8_rowbatch4",
+    ("f32", 3072, 1024): "coltile16_rowbatch5",
+}
+GGUF_F32_ORDERED_PREFILL_QUANTS = frozenset(("gguf_q5_k", "gguf_q6_k"))
+GGUF_F32_ORDERED_PREFILL_POLICIES = {
+    "gguf_q5_k": GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
+    "gguf_q6_k": GGUF_Q6_F32_ORDERED_PREFILL_POLICY,
+}
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -212,8 +228,12 @@ __all__ = [
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_F32_ORDERED_PREFILL_POLICIES",
+    "GGUF_F32_ORDERED_PREFILL_QUANTS",
     "GGUF_Q5_F32_ORDERED_PREFILL",
     "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
+    "GGUF_Q6_F32_ORDERED_PREFILL",
+    "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",

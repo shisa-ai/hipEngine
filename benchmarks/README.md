@@ -3,45 +3,27 @@
 Last updated: **2026-07-30**
 
 The canonical clean W7900 Laguna UD-Q2_K_XL prefill packet is now
-[`2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json).
-It retains exact matrix512/attention128, pair16 grouped IQ gate/up/down,
-C256-qualified qrow4 SWA, and the prior raw-Q5/Q6 coltile policy. H5E extends
-the transient raw-Q5-to-F32 path to all eight M512 Q5 roles and selects exact
-8x4/4x16/8x8/16x4 ordered consumers. One **150,994,944-byte** projection-local
-plane is reused and no weight sidecar persists. The final-source role screen
-moves H5D's weighted Q5 stack **1085.630 -> 951.876 ms (-12.320%)** by HIP
-events and **1040.166 -> 961.993 ms (-7.515%)** by synchronized wall; 1x64 and
-2x32 are removed as universal regressions. Three-repeat selector-unset
-publication reaches **184.997/172.104/131.496 tok/s** at 512/1K/4K,
-**+3.166%/+2.941%/+1.944%** over H5D. H5F then retains exact 12x4 only for the
-12-call F32 N48 role after a 15-repeat **1.187% event / 0.496% wall** win. H5G
-retains exact 8x10/16x5/8x12/12x8 on five roles; its strong changed-role gate
-cuts H5F **892.586/896.357 -> 815.474/829.319 ms (-8.639%/-7.479%)** by
-event/wall clocks. Clean H5F -> H5G is **188.393/175.042/132.743 tok/s
-(+2.192%/+2.055%/+1.329%)**. Complete M512 logits, all 48 hidden boundaries,
-active K/V and `KVLiveSpans`, repeat, and lifecycle are byte-exact at KL 0;
-every publication sample is exact and lifecycle-clean. Cached tracing observes
-exactly **235** producers and **235** consumers; 80/96-accumulator bodies are
-VGPR168/200 with LDS1536 and zero scratch. The matched llama.cpp HIP M512 target
-remains **694.184 tok/s**, now a **3.685x** gap. H5H closes larger ordered tiles:
-constant-112 is scratch-free at VGPR232 but loses every role, while constant-128
-hits VGPR256 plus 28–52 B scratch and also loses every role. All candidates are
-removed. Reclassifying the retained package-default request segment gives
-**2,667.034 ms / 1,720 dispatches** in a **2,702.091-ms** kernel span. Physical
-families are Q5 **920.633 ms**, IQ3/IQ4 down **560.642 ms**, IQ2/special-IQ3
-gate/up **470.116 ms**, attention **468.533 ms**, Q6 **177.047 ms**, and all
-remaining kernels **70.063 ms**. Q5 geometry and the prior exact/quality-gated
-attention lanes are closed. WPF-H5I's exact raw-Q6-to-F32 producer plus the
-existing ordered consumer is now byte-exact and role-positive: the strong
-producer-inclusive 146-call policy moves **194.758 -> 119.751 ms (1.626x,
--38.513%)** by events and **189.722 -> 121.353 ms (1.563x, -36.037%)** by
-synchronized wall. Four roles use `16x5`/`16x4`/`8x4`; both long-K roles and
-the wide-N F32 role stay exact raw coltile. This is a standalone leaf pending bounded runtime state,
-integrated tracing, and clean 512/1K/4K qualification; production/topline are
-unchanged ([H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
+[`2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json`](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json).
+It retains exact matrix512/attention128, H5G ordered-Q5, pair16 grouped IQ
+gate/up/down, and C256-qualified qrow4 SWA. WPF-H5I adds exact raw-Q6-to-F32
+expansion plus the same production-ordered consumer on four measured roles;
+both long-K roles and the wide-N F32 role retain raw coltile. Q5 and Q6 reuse
+one serial **150,994,944-byte** plane and one library, so the promotion adds no
+allocation or persistent sidecar. Complete M512 logits, all 48 hidden boundaries,
+active K/V plus every `KVLiveSpans` field, repeat, and lifecycle are byte-exact
+at KL 0. Cached integrated tracing observes exactly **143** Q6 producers, **143**
+ordered consumers, and **3** raw-coltile fallbacks; Q6 falls **177.047 ->
+110.170 ms (-37.774%)** and request kernel sum falls **2,667.034 -> 2,600.260
+ms (-2.504%)**. Three-repeat selector-unset production is
+**191.713/178.080/134.411 tok/s** at 512/1K/4K, improving H5G
+**+1.762%/+1.736%/+1.256%**. The matched llama.cpp HIP M512 target remains
+**694.184 tok/s**, now a **3.621x** gap. H5H still closes larger ordered-Q5
+tiles at the VGPR256 spill boundary; H5I returns the campaign to exact IQ3/IQ4
+selected-down row ownership. Both short rows exceed 150 tok/s and 4K remains
+positive; 16K+ stays closed below the 800/700 stretch gate
+([H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+[H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
 [post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
-Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed
-below the 800/700 stretch gate.
 
 A post-publication exact
 [`role-qualified coltile policy`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)
@@ -209,9 +191,13 @@ all candidate exports are removed ([H5H rejection](results/2026-07-30-gfx1100-la
 consumer now clears its all-role screen: strong event/wall sums fall
 **194.758/189.722 -> 119.751/121.353 ms (-38.513%/-36.037%)** with four
 candidate roles, two exact long-K fallbacks, and one exact wide-N fallback.
-Runtime qualification is next;
-do not reopen rejected arithmetic
-([H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
+Complete state is KL0/byte-exact with one unchanged plane. Integrated tracing
+records **143+143** candidate launches and three exact fallbacks, while clean
+package-default 512/1K/4K reaches **191.713/178.080/134.411 tok/s
+(+1.762%/+1.736%/+1.256%)** over H5G. H5I is promoted; return to exact IQ3/IQ4
+row ownership and do not reopen rejected arithmetic
+([H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+[H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
 [residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
@@ -1473,7 +1459,8 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 direct-T16 MMQ32 natural-shape gate | 2026-07-25 | clean measured `272ee08d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit primitive; LAP-1 leaf gate passed; runtime default unchanged pending repair**: direct T16 reads the existing resident bytes with no layout transpose or sidecar. Producer-pack-inclusive T16 speedups over retained direct are **1.174/1.528/1.662/2.464/2.502/3.959/5.502x**; M128/M256/M512 are only **4.66%/4.05%/3.02%** behind X8. T16/X8 checksums are exact at every shape; focused tests report 31 passes; cached resources are local128/VGPR48/LDS2048B/scratch0 and device ISA contains `v_dot4_i32_iu8`. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json). | Yes for the one-layer natural-routing leaf scope only; no full-model/default claim | Calibrate residual/repair arithmetic, then integrate the sole-resident T16 route and run all-layer performance, category quality, decode, milestone-shape, and lifecycle gates. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 exact X8 decode gate | 2026-07-25 | clean measured `420bf8392`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; c1/c2/c4/c8 producer rows with top-10 | **Rejected sole-resident X8 premise; current T16 residency unchanged**: the optimized local128 X8 fallback is BF16-bit exact at every shape and catches T16 at c4/c8, but c1/c2 T16 -> X8 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate. X8/T16 pair bytes are **905,969,664/931,135,488**; the temporary comparison peaks at **1,837,482,624 bytes** and returns to zero. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json). | Negative layout decision; no runtime/default claim | Superseded by the retained direct-T16 LAP-1 leaf; do not retry dynamic X8-to-T16 reconstruction or add a complete T16 sidecar. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit prefill control; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**. The 2026-07-25 exact-decode row supersedes X8 as a resident candidate but preserves it as the MMQ ceiling. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Direct T16 now passes the same leaf gate; retain X8 only as the arithmetic ceiling while repair and runtime integration proceed. |
-| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact-ordered F32-weight Q5 matrix512/attention128 production prefill | 2026-07-30 | admitted leaf `f4bb33ee7`; package-default state/trace and three-repeat 512/1K/4K publication; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Current retained W7900 production**: one local64 exact raw-Q5-to-F32 producer plus role-qualified local128 8x4/12x4/8x10/16x5/8x12/12x8 consumers owns all eight M512 roles. One **150,994,944-byte** projection-local plane is reused with no sidecar. Complete M512 state is byte-exact at KL0/top-1 100% across all 48 boundaries, logits, K/V, repeat, and teardown. H5G's strong five-role gate cuts H5F **892.586/896.357 -> 815.474/829.319 ms (-8.639%/-7.479%)** by event/wall, and clean publication reaches **188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. Cached tracing observes exactly **235** producers and consumers; new 80/96-accumulator bodies are local128/VGPR168-or-200/LDS1536/scratch0. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json). | Yes, for exact selector-unset 512/1K/4K prefill and declared state/lifecycle scope | Rerun after ordered geometry/policy, workspace ownership, matrix/attention policy, model/quant/KV, ROCm/compiler, or W7900 queue policy; scoped package-policy mutation remains benchmark-only. |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact-ordered F32-weight Q5+Q6 matrix512/attention128 production prefill | 2026-07-30 | Q6 primitive `e1ce203c2`; all-role leaf `b16704bbc`; complete state/cached trace/three-repeat selector-unset 512/1K/4K publication; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Current retained W7900 production**: exact Q5 and four exact-Q6 roles share one **150,994,944-byte** serial F32 plane and library with no added allocation or sidecar; two long-K Q6 roles and wide-N F32 remain raw coltile. M512 state is KL0/byte-exact across all 48 boundaries, logits, complete K/V/`KVLiveSpans`, repeat, and teardown. Cached tracing records **143 Q6 producers + 143 ordered consumers + 3 exact fallbacks**, moving Q6 **177.047 -> 110.170 ms (-37.774%)** and request kernel sum **2,667.034 -> 2,600.260 ms (-2.504%)**. Clean selector-unset 512/1K/4K is **191.713/178.080/134.411 tok/s (+1.762%/+1.736%/+1.256% over H5G)** with every sample exact and lifecycle-clean. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json). | Yes, for exact selector-unset 512/1K/4K prefill and declared state/lifecycle scope | Rerun after ordered quant policy/geometry, workspace ownership, matrix/attention policy, model/quant/KV, ROCm/compiler, or W7900 queue policy; scoped package-policy mutation remains benchmark-only. |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact-ordered F32-weight Q5 matrix512/attention128 production prefill | 2026-07-30 | admitted leaf `f4bb33ee7`; package-default state/trace and three-repeat 512/1K/4K publication; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Superseded by H5I; retained Q5 production provenance**: one local64 exact raw-Q5-to-F32 producer plus role-qualified local128 8x4/12x4/8x10/16x5/8x12/12x8 consumers owns all eight M512 roles. One **150,994,944-byte** projection-local plane is reused with no sidecar. Complete M512 state is byte-exact at KL0/top-1 100% across all 48 boundaries, logits, K/V, repeat, and teardown. H5G's strong five-role gate cuts H5F **892.586/896.357 -> 815.474/829.319 ms (-8.639%/-7.479%)** by event/wall, and clean publication reaches **188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. Cached tracing observes exactly **235** producers and consumers; new 80/96-accumulator bodies are local128/VGPR168-or-200/LDS1536/scratch0. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json). | Yes, for exact selector-unset 512/1K/4K prefill and declared state/lifecycle scope | Rerun after ordered geometry/policy, workspace ownership, matrix/attention policy, model/quant/KV, ROCm/compiler, or W7900 queue policy; scoped package-policy mutation remains benchmark-only. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact Q5/Q6 coltile matrix512/attention128 production prefill | 2026-07-29 | primitive `c48d647c8`; package default `ce6c652b6`; clean publication/attribution `5a0c2fe37`; HIP 7.2.53211 / ROCm 7.2.4; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue; three selector-unset repetitions at 512/1K/4K plus complete M512 state and cached trace | **Superseded exact W7900 production; 150 short gate passed and 4K restored**: reuse each BF16 activation load across four adjacent Q5/Q6 outputs and eight rows while preserving RB32 arithmetic, pair16 grouped IQ gate/up/down, and exact qrow4 SWA. Clean 512/1K moves **131.919/125.960 -> 169.253/159.229 tok/s (+28.301%/+26.412%)**; 4K reaches **123.084 tok/s**. All 48 boundaries, complete K/V/`KVLiveSpans`, routing, IDs/positions, repeats, and lifecycle are exact at KL0/top-1 100% on M512; the 4K packet is deterministic and releases all tracked allocations. Cached tracing cuts dense/shared **38.546%/38.875%** and kernel span **21.893%/20.852%**; coltile is local128/VGPR72/SGPR50/LDS512/private0 with zero spills. [`artifact`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json). | Yes, for the declared exact 512/1K/4K prefill scope | Rerun after matrix/attention/chunk policy, routed-IQ or raw-Q5/Q6 kernels, model/quant/KV, ROCm/compiler, W7900 queue policy, or package selector changes; keep 16K+ closed until 800/700 at 512/4K or an accepted measured roofline. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL matched direct-M512 prefill attribution versus llama.cpp HIP/Vulkan | 2026-07-29 | hipEngine clean `3599cafa8`; llama.cpp `c0bc8591e` plus measurement-only token fixture; HIP 7.2.53211 / ROCm 7.2.4; same model SHA-256 `8fe1170f...2679`; same 512 IDs/context4096/direct M512/FA/last-row projection; BF16 K/V for HIP, native F16 K/V for Vulkan | **Accepted external comparator and campaign input; no production change**: hipEngine is **169.228 tok/s**, llama.cpp HIP **694.184 tok/s (4.102x)**, and llama.cpp Vulkan **56.274 tok/s**; all five runs select token 2930. Cached sums are hipEngine **3.010 s / 1,477 dispatches** and llama.cpp HIP **0.724 s / 2,824 dispatches**. Conservative gap attribution is dense Q5/Q6 **1.353 s**, attention **0.469 s**, IQ3/IQ4 down **0.402 s**, and IQ2 gate/up **0.057 s**; source review identifies Q8_1 128x128/K256 MMQ and 128-query/eight-head WMMA FlashAttention as the material differences. [`artifact`](results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json). | Diagnostic external performance target only; not cross-engine bit-exactness or quality evidence | Rerun after either engine's prefill kernels/runtime, model/tokens/context/KV/FA, source/build patch, ROCm/driver, or W7900 queue policy changes. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact matrix256/attention128/rowbatch32 production prefill | 2026-07-29 | screen `9e2260159`; default `a80a4cfbf`; package-resolved publication `b2dea14c9`; HIP 7.2.53211; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue; rotating M128/M256/M512 at 512/1K only; all-48-boundary/routing/memory gate; cached M256 trace | **Superseded by exact WPF-2 grouped-IQ matrix512; retained as the direct-route rollback**: M128 **85.028/78.672 -> M256 85.855/79.526 tok/s (+0.973%/+1.086%)** at 512/1K. M512 is **+0.939%/+1.062%** but trails M256 aggregate wall by 0.027% and doubles planned row/MoE scratch (**439.0 vs 219.5 MB**). Clean package-resolved publication is **86.239/80.452 (+0.887%/+1.128% over matrix128/RB32)**. Complete logits, all 48 hidden boundaries, active K/V/`KVLiveSpans`, shared-prefix routing, repeats, IDs/positions, and lifecycle are exact. Tracing records RB32 local128/VGPR80/LDS1024B/scratch0 at observed grid Y4/Y8 and selected-IQ grids 1,280/2,560. M128 is explicit fallback; M512 remains the WPF-2 capacity comparator. No 4K run occurs. [`artifact`](results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json). | Yes, for the declared exact 512/1K prefill scope | Rerun after matrix/attention/chunk policy, routed-IQ or raw-Q5/Q6 kernels, model/quant/KV, ROCm/compiler, W7900 queue policy, or package-selector changes; keep 4K closed until both short shapes exceed 150 tok/s. |

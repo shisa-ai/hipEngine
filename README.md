@@ -82,11 +82,14 @@ numbers below.
   reclassifies to **2,667.034 ms / 1,720 dispatches**: Q5 **920.633 ms**, IQ
   down **560.642 ms**, attention **468.533 ms**, and Q6 **177.047 ms**. With Q5
   geometry and prior attention lanes closed, WPF-H5I's exact-Q6 F32 expansion
-  plus ordered consumer now clears the all-role leaf: strong producer-inclusive
-  event/wall timing falls **194.758/189.722 -> 119.751/121.353 ms
-  (-38.513%/-36.037%)** across all 146 calls. Four roles select exact
-  `16x5`/`16x4`/`8x4`; both long-K roles and the wide-N F32 role retain raw
-  coltile. This is standalone evidence pending bounded runtime ownership. Full
+  plus ordered consumer clears the all-role leaf and production gates. Four roles
+  select exact `16x5`/`16x4`/`8x4`; both long-K roles and the wide-N F32 role
+  retain raw coltile. Q5+Q6 reuse one **150,994,944-byte** plane with no new
+  allocation. Integrated tracing records **143+143** candidate launches and
+  three exact fallbacks, moving Q6 **177.047 -> 110.170 ms (-37.774%)** and
+  request kernel sum **2,667.034 -> 2,600.260 ms (-2.504%)**. Clean
+  selector-unset production is **191.713/178.080/134.411 tok/s** at 512/1K/4K,
+  **+1.762%/+1.736%/+1.256%** over H5G and a **3.621x** matched M512 gap. Full
   logits, all 48 hidden
   boundaries, routing prefixes, active K/V, and every `KVLiveSpans` field are
   bit-exact at KL 0 on
@@ -156,12 +159,13 @@ numbers below.
   micro-policy saves another **4.224/1.989 us** per M512 request. H5G retains
   exact 8x10/16x5/8x12/12x8 on five roles; its strong changed-role gate cuts
   H5F **8.639%/7.479%** by event/wall and traces at VGPR168/200 with zero
-  scratch. The package-default route remains KL0/byte-exact across all 48
-  boundaries, logits, K/V, repeats, and lifecycle. Current production is
-  **188.393/175.042/132.743 tok/s** at 512/1K/4K, leaving a **3.685x** matched
-  M512 gap to llama.cpp HIP. H5H removes all larger candidates after universal
-  regressions and the constant-128 spill cliff
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
+  scratch. The H5G package-default route remains KL0/byte-exact across all 48
+  boundaries, logits, K/V, repeats, and lifecycle; H5I reuses that plane for
+  exact Q6 and publishes **191.713/178.080/134.411 tok/s** at 512/1K/4K. H5H
+  removes all larger Q5 candidates after universal regressions and the
+  constant-128 spill cliff
+  ([current H5I production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+  [H5G Q5 production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
   [H5H boundary rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json) ·
   [post-H5G residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json) ·
   [H5I leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·

@@ -47,20 +47,24 @@ should be removed or collapsed.
   chain, and leaf evidence. Exact role-qualified coltile remains production.
   Reopen only with materially different arithmetic and a fresh complete gate.
 
-## Laguna exact-ordered F32 Q5 production selector
+## Laguna exact-ordered F32 Q5/Q6 production selector
 
-- Added 2026-07-30 for WPF-H5D and advanced by H5E. The gfx1100 package owns
-  all eight exact-M512 Q5 roles through one **150,994,944-byte** projection-local
-  F32 weight plane; row/key/backend/shape/capacity misses retain raw coltile.
-  Complete package-default M512 state is byte-exact at KL 0. H5E's clean
-  selector-unset checkpoint publishes **184.997/172.104/131.496 tok/s** through
-  4K, **+3.166%/+2.941%/+1.944%** over H5D. This is retained production, not a
-  rejected experiment.
+- Added 2026-07-30 for WPF-H5D and advanced through H5I. The gfx1100 package
+  owns all eight exact-M512 Q5 roles plus four exact-Q6 roles through one
+  **150,994,944-byte** projection-local F32 weight plane; row/key/backend/shape/
+  capacity misses retain raw coltile. H5I adds no allocation or sidecar. Complete
+  package-default M512 state is byte-exact at KL 0, and clean selector-unset
+  512/1K/4K publishes **191.713/178.080/134.411 tok/s**, improving H5G
+  **+1.762%/+1.736%/+1.256%**. This is retained production, not a rejected
+  experiment.
 - Cleanup completed immediately after the H5E checkpoint: remove the public
   `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=...)` boolean, rename the
   resolver as a private package-only helper, and remove it from `__all__`.
-  Retain the package role map, context-local bounded owner, registered unfused
-  producer/consumer chain, and raw-coltile miss fallback required by policy.
+  Retain the quant-keyed package role maps, context-local bounded owner,
+  registered unfused producer/consumer chains, and raw-coltile miss fallbacks
+  required by policy. Remove the legacy Q5-named internal session/scratch fields
+  after one clean checkpoint confirms no downstream benchmark harness imports
+  them; this is naming cleanup only and must not create a second owner.
   Benchmark harnesses use scoped package-policy mutation for exact A/B control;
   production has no per-session selector surface.
 
