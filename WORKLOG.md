@@ -190378,3 +190378,39 @@ Vulkan local sizes verbatim will close the measured gap.
   **20.069608 tok/s**; peer backends and non-natural shapes remain unchanged.
   The complete affected runner/profile bundle passes **80/80**; Python
   compilation and diff checks pass.
+
+## 2026-07-29 18:37 JST — Reject three-term cooperative SWA attention
+
+- Re-audited llama.cpp Vulkan `c0bc8591e` and implemented its material
+  saturated-SWA topology without copying its F16 numerical contract: GQA9,
+  eight K64 splits, cooperative QK/PV, and one reusable probability tile.
+  Every F32 query/probability is represented as three non-overlapping BF16
+  components with an independent F32 WMMA accumulator; resident BF16 K/V is
+  unchanged. The required lineage command remains blocked by the missing
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas`; the in-tree catalog
+  and local llama.cpp primary source were inspected directly.
+- RED fails on the absent wrapper. GREEN passes the existing CPU-qualified
+  positions 512-519 after ring wrap and explicit position-200 eviction.
+  A first one-block FP64 merge serializes 9,216 outputs and measures
+  **0.364319 ms**. Relaying `(max,denom)` state into each query-head output row
+  permits 72 independent local128 merges and changes the final nine-sample
+  leaf to **0.058925 -> 0.021090 ms (-64.21%)**. Maximum F32 context error is
+  **2.235e-8** with **3/9,216** BF16 mismatches. Cached tracing names the
+  intended local256/VGPR104/LDS16896/scratch0 partial and
+  local128/VGPR24/LDS512/scratch0 merge.
+- The authoritative 18-prompt/576-step saturated-p512 lane rejects recurrent
+  quality: finite **560/576 (97.22%)** top-1, but max KL **1.353728**
+  (**27.07x** the 0.05 ceiling). This improves the prior two-component raw
+  numerator max KL **1.426066** by **5.07%**, but proves operand truncation was
+  not the dominant remaining error.
+- A materially narrower grouped repair screen guards only outputs within 32
+  F32 low-mantissa units of a BF16 midpoint. It still leaves **2** BF16
+  mismatches and regresses the leaf **0.058737 -> 0.090739 ms (+54.48%)**,
+  so wider grouped replay cannot qualify. Remove the candidate kernels,
+  wrappers, registry/runtime selector, oracle extension, and temporary
+  quality/leaf seams. Production remains **20.069608 tok/s**.
+- The next attention premise must preserve the retained F32 association or
+  provide a cheap independent interval proving the BF16 rounding bin before
+  sparse exact replay. More decomposition terms and output-derived midpoint
+  repair are closed. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-three-term-wmma-rejected.json`.

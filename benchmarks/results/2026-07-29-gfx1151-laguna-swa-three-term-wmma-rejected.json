@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_three_term_wmma_screen",
+  "date": "2026-07-29",
+  "status": "rejected_and_removed",
+  "source_revision": "63f5bb1e291a716b15e950d880f778885aa8f852",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 77463095316
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "split_keys": 64,
+    "partial_workgroups": 64,
+    "merge_workgroups": 72
+  },
+  "candidate": {
+    "description": "three-term BF16 decomposition for F32 Q/probability operands, independent F32 WMMA accumulators, raw split numerators, and one query-head-parallel FP64 merge",
+    "llama_cpp_transfer": "GQA9 cooperative QK/PV with reusable probability tiles and eight K64 splits, adapted to resident BF16 KV and hipEngine's quality contract",
+    "change_from_rejected_predecessor": "add a third BF16 operand component and replace the serialized one-block merge with 72 independent query-head merges"
+  },
+  "leaf": {
+    "control_median_ms": 0.058925461769104,
+    "candidate_median_ms": 0.021089839935302734,
+    "latency_change_percent": -64.2092920409482,
+    "context_max_abs_error": 2.2351741790771484e-08,
+    "gated_bf16_mismatches": 3,
+    "gated_max_abs_error": 5.960464477539063e-08,
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50
+  },
+  "trace": {
+    "partial": {
+      "workgroup_size": 256,
+      "grid_size": 16384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 16896,
+      "scratch_bytes": 0
+    },
+    "merge": {
+      "workgroup_size": 128,
+      "grid_size": 9216,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "raw_sha256": "9a58c681bb5dabce7851f8b30dc07ebadf8c69c1dd754aa172865b6a04ee7ebe"
+  },
+  "quality": {
+    "protocol": "18 prompts x 32 teacher-forced transitions at saturated p512",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "steps": 576,
+    "finite": true,
+    "max_kl": 1.3537281672015196,
+    "max_logits_abs": 7.385079860687256,
+    "top1_matches": 560,
+    "top1_agreement": 0.9722222222222222,
+    "required_max_kl": 0.05,
+    "required_minimum_top1": 0.9,
+    "categories": {
+      "code": {
+        "max_kl": 1.3537281672015196,
+        "top1_agreement": 0.9791666666666666
+      },
+      "general_en": {
+        "max_kl": 0.30156827515503865,
+        "top1_agreement": 0.9765625
+      },
+      "general_ja": {
+        "max_kl": 1.0767824335400635,
+        "top1_agreement": 0.9375
+      },
+      "mixed_ja_en": {
+        "max_kl": 0.630678769353862,
+        "top1_agreement": 0.9921875
+      }
+    },
+    "raw_sha256": "639191e31aa4d3d4191a40379a7c2531bbc68c8c9d034d2ddb62803cbbdcdd7b",
+    "tracked_returned_to_baseline": true
+  },
+  "comparison": {
+    "prior_two_component_raw_numerator_max_kl": 1.4260659323775737,
+    "max_kl_change_percent": -5.073944838775855,
+    "finding": "three-term decomposition removes operand truncation as the dominant error, but changed F32 reduction association remains recurrently inadmissible"
+  },
+  "guarded_owner_followup": {
+    "guard_low_bits": 32,
+    "control_median_ms": 0.05873688220977783,
+    "candidate_median_ms": 0.0907394027709961,
+    "latency_change_percent": 54.48454081529519,
+    "gated_bf16_mismatches": 2,
+    "samples": 3,
+    "warmups": 2,
+    "burst": 50,
+    "decision": "rejected at the leaf: the narrow guard still misses two BF16 values and grouped exact replay is already 54.48% slower"
+  },
+  "commands": {
+    "correctness": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate wmma-gqa9-k64-three-term-raw-numerator --samples 9 --warmups 5 --burst 50 --allow-dirty",
+    "quality": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt .venv/bin/python3 -u scripts/laguna_swa_three_term_quality_gate.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-three-term-quality.json",
+    "trace": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-three-term-final-trace.Jxm8OV -o trace -- env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate wmma-gqa9-k64-three-term-raw-numerator --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "all_candidate_code_removed": true,
+    "production_unchanged_tok_s": 20.0696080824,
+    "reason": "max KL is 27.07x the permitted 0.05 despite passing suite/category top-1 thresholds"
+  }
+}
