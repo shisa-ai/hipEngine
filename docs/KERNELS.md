@@ -1821,10 +1821,15 @@ All seven resident p512/d128 candidate samples beat every control, moving
 (+0.4469%, -0.2194 ms/token)** with exact state/lifecycle. gfx1151 promotes
 the qualified gated saturated-SWA capability; shuffle replay remains
 registered exact rollback and peer backends are unchanged. Remove the
-comparison-only profile seam. The preceding clean production value remains
-**20.270314 tok/s** pending selector-unset publication:
+comparison-only profile seam. Tracked-clean selector-unset production is
+**20.351478/20.360810/20.358649 tok/s**, median **20.358649**:
+**+0.4358% / -0.2141 ms/token** over the preceding clean packet and
+**+77.546%** over sprint start. The normal route reports the capability
+active without a comparison selector and preserves exact repeated
+trajectory/state/lifecycle:
 [`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json),
-[`resident retention`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json).
+[`resident retention`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json),
+[`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
