@@ -2149,3 +2149,17 @@ should be boring.
   setter, and the setter-only test after clean publication. The default-on
   gfx1151 capability, fail-closed cache field, registered producer-max
   primitive, and mixed32/exp32 rollback remain.
+
+## Laguna gfx1151 SWA producer-value-tail diagnostic
+
+- Added 2026-07-30 as a separately registered exact mixed40 attention
+  primitive. Finished tail probability-producer waves copy the last 64
+  staged-V vectors on pair owners and the last 32 on singleton owners,
+  balancing the copy loop without changing attention arithmetic.
+- The 21x100 leaf improves **3.270%** at unchanged kernel resources, but seven
+  resident p512/d128 pairs reject standalone ownership at
+  **20.509962 -> 20.507264 tok/s (-0.01316%)**, only **4/7** wins.
+- Keep the symbol only through the current attention campaign for a compounded
+  producer/denominator/PV scheduling screen. Remove it, its wrapper, registry
+  key, leaf selector, and focused test call if no compound candidate uses it;
+  never make it the default independently.

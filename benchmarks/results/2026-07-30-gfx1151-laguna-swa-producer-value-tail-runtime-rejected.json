@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T03:17:15+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_producer_value_tail_runtime_rejected",
+  "status": "retained_diagnostic_runtime_rejected",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "6873bc3132e5793005a4b78e25135b9e73afa1a4",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "resident_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "After publishing exact probabilities, each tail-producer lane copies one final staged-V vector. Pair owners move vectors 960..1023 to producer waves and singleton owners move 992..1023, removing the final iteration from the other loaders.",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "ownership_changed": "transport-only V-copy ownership",
+    "abi_changed": false
+  },
+  "correctness": {
+    "red": "focused test failed importing the intentionally absent diagnostic wrapper",
+    "green": "focused wrapped/explicitly-evicted SWA oracle passed",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "resident_next_token_exact": true,
+    "resident_final_token_exact": true,
+    "resident_generated_trajectory_exact": true,
+    "resident_positions_exact": true,
+    "resident_repeat_deterministic": true,
+    "resident_allocation_lifecycle_exact": true
+  },
+  "leaf": {
+    "nine_by_fifty": {
+      "control_median_ms": 0.03669899940490723,
+      "candidate_median_ms": 0.03563545942306519,
+      "latency_change_percent": -2.898008117626849,
+      "raw_sha256": "03fe11f503960059f5f9a9c001a6948d659ca5fbbb464a8699ed8805096d660b"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.03757513046264648,
+      "candidate_median_ms": 0.03634648084640503,
+      "latency_change_percent": -3.2698479050201956,
+      "raw_sha256": "7624e881eaf3abf5c0098cdf868ef6e1ec6d439fd51ed4b00f9ebb3541209496"
+    }
+  },
+  "trace": {
+    "cache_only": true,
+    "compiler_ran_under_profiler": false,
+    "control": {
+      "grid_x": 15360,
+      "workgroup_x": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25600,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid_x": 15360,
+      "workgroup_x": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25600,
+      "scratch_bytes": 0
+    },
+    "raw_sha256": "54379cfe95c4ca434dfc94ac545489356a9e15aff2d82feec50d282699c8fb59",
+    "child_sha256": "09a1306e029cb4a3a37091e00424adcb34433e9766e344f16e2bb954280515e4"
+  },
+  "resident": {
+    "model": "Poolside Laguna S 2.1",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "protocol": "seven counterbalanced p512/d128 eager-c1 pairs; load excluded",
+    "control_median_tok_s": 20.509962236970324,
+    "candidate_median_tok_s": 20.507264076874932,
+    "throughput_change_percent": -0.013155363545858112,
+    "control_median_ms_per_token": 48.756793817857236,
+    "candidate_median_ms_per_token": 48.76320879525087,
+    "paired_change_percent": [
+      0.07296895955164473,
+      0.03843503100879886,
+      -0.17362135562981607,
+      -0.013155363545858112,
+      0.027476659066794085,
+      -0.027934452598421533,
+      0.00032007013326396105
+    ],
+    "median_paired_change_percent": 0.00032007013326396105,
+    "wins": 4,
+    "pairs": 7,
+    "load_seconds_excluded": 89.92300291801803,
+    "raw_sha256": "d28b5958a04a1e3bc9af6d24a8c13c395dc9aa55b9cbad23e54a60dab55a2769"
+  },
+  "decision": {
+    "retain_primitive": true,
+    "promote_runtime": false,
+    "runtime_selector_removed": true,
+    "production_tok_s": 20.49473174761836,
+    "reason": "The exact 3.27% leaf gain does not survive complete-model composition: median resident throughput regresses 0.0132%, median paired change is effectively zero, and only four of seven pairs improve.",
+    "next": "Keep the primitive only for a future compounded wave-scheduling change; do not default it independently."
+  }
+}

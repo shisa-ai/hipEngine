@@ -2016,6 +2016,15 @@ bytes but regresses the paired 9x50 leaf
 **0.037081 -> 0.045278 ms (+22.106%)**. The diagnostic source is removed;
 do not increase staged-V source-prefetch depth:
 [`value-prefetch2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-value-prefetch2-rejected.json).
+An exact transport-ownership sibling remains registered diagnostic-only.
+Finished pair/singleton tail probability producers copy the final 64/32
+staged-V vectors, eliminating the longest ordinary-loader iteration. The
+21x100 leaf improves **0.037575 -> 0.036346 ms (-3.270%)** at unchanged
+grid15,360/local384/VGPR104/LDS25,600/scratch0, but seven actual-model pairs
+move median decode **20.509962 -> 20.507264 tok/s (-0.01316%)** with only
+**4/7** wins. Do not select it independently; the benchmark-only registry
+swap is removed:
+[`producer-value-tail runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-producer-value-tail-runtime-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

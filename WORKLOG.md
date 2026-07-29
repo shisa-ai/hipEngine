@@ -191711,3 +191711,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 9 --warmups 3 --burst 50 --candidate mixed40-exp32-producer-max-gate-stage-pcache-tail-producer-value-prefetch2-idle-vec4-denom-probability-vstage64-vec16-direct-assume-exp --allow-dirty --output /tmp/laguna-swa-value-prefetch2-9x50.json`
   (raw SHA-256 `8f9d3451...24f8`). Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-value-prefetch2-rejected.json`.
+
+## 2026-07-30 03:17 JST — Retain producer-value-tail primitive; reject runtime
+
+- Establish RED on the absent wrapper, then add an exact mixed40 transport
+  sibling. After probability publication, pair-owner tail producers copy
+  vectors 960..1023 and the singleton producer copies 992..1023. Other
+  loaders lose their final iteration. All staged bytes, barriers, QK,
+  softmax, denominator, PV association, and stores are unchanged.
+- GREEN passes the wrapped/explicitly-evicted oracle with byte-exact F32
+  context and gated BF16 output. The cached 9x50/21x100 leaves improve
+  **2.898%/3.270%**. Cache-only tracing names the distinct template with
+  grid15,360/local384/VGPR104/SGPR128/LDS25,600/scratch0, identical to
+  control resources.
+- Add a temporary benchmark-only registry swap and run seven counterbalanced
+  actual-model p512/d128 pairs. Median decode moves
+  **20.509962 -> 20.507264 tok/s (-0.01316%, +0.00642 ms/token)**; median
+  paired change is only **+0.00032%**, and **4/7** pairs improve. Every
+  trajectory, position, repeated result, and allocation lifecycle is exact.
+- Remove the benchmark-only registry swap. Retain the separately registered
+  exact primitive for one possible compounded scheduling screen, tracked in
+  `docs/REFACTOR.md`; production remains **20.494732 tok/s**.
+- Resident command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40-value-tail --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-value-tail-ab.json`
+  (load excluded **89.923 s**, raw SHA-256 `d28b5958...a2769`). Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-producer-value-tail-runtime-rejected.json`.
