@@ -2025,6 +2025,14 @@ Tracked-clean selector-unset production is
 **+0.06821% / -0.03290 ms/token** over the preceding clean packet and
 **+80.799%** over sprint start, with exact repeated trajectory/state/lifecycle:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-production.json).
+Compounding the retained local512/value-tail body with four-vector
+denominator prefetch is removed after the resident gate. The byte-exact
+21x100 leaf improves **0.031099 -> 0.030302 ms (-2.563%)** with all 21 pairs
+positive, but seven p512/d128 pairs move **20.734191 -> 20.731204 tok/s
+(-0.01440%, +0.00695 ms/token)** with only **3/7** wins. Remove the kernel,
+capability, runtime selector, and comparison CLI; production remains
+**20.731612 tok/s**:
+[`runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-denom-prefetch4-runtime-rejected.json).
 The exact double-buffer successor is removed at the leaf stop. It reduces
 staged-loop barriers **16 -> 9** but adds **17,152 B** dynamic LDS and narrows
 pair-block next-stage loading to four waves; the byte-exact 9x50 leaf
