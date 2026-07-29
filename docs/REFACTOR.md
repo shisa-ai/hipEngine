@@ -2171,3 +2171,9 @@ should be boring.
   generated state and lifecycle. The gfx1151 capability now defaults true;
   remove the comparison-only constructor override, setter, and CLI lane after
   clean selector-unset production plus cached symbol tracing.
+- Clean publication passed at **20.069608 tok/s**. Cached tracing records all
+  **5,969** selected-down calls on the parallel specializations, zero serial
+  tail calls, unchanged resources, and **4.798765 ms/token** for the family.
+  The comparison-only constructor override, setter, CLI lane, and setter test
+  can now be removed; retain the capability-selected session field and serial
+  registered rollback.
