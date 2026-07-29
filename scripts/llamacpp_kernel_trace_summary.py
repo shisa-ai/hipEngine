@@ -108,31 +108,31 @@ def read_marker_trace(path: Path) -> list[MarkerRange]:
 
 def classify_kernel(name: str) -> str:
     lower = name.lower()
-    mmvq_quant_types = {
+    quant_types = {
         "(ggml_type)8,": "q8_0",
         "(ggml_type)12,": "q4_k",
         "(ggml_type)13,": "q5_k",
         "(ggml_type)14,": "q6_k",
+        "(ggml_type)16,": "iq2_xxs",
+        "(ggml_type)17,": "iq2_xs",
+        "(ggml_type)18,": "iq3_xxs",
+        "(ggml_type)19,": "iq1_s",
+        "(ggml_type)20,": "iq4_nl",
+        "(ggml_type)21,": "iq3_s",
+        "(ggml_type)22,": "iq2_s",
+        "(ggml_type)23,": "iq4_xs",
     }
     if "mul_mat_vec_q_moe" in lower:
-        quant = next((quant for signature, quant in mmvq_quant_types.items() if signature in lower), None)
+        quant = next((quant for signature, quant in quant_types.items() if signature in lower), None)
         return f"llama_mmvq_moe_{quant}" if quant is not None else "llama_mmvq_moe"
     if "mul_mat_vec_q" in lower:
-        quant = next((quant for signature, quant in mmvq_quant_types.items() if signature in lower), None)
+        quant = next((quant for signature, quant in quant_types.items() if signature in lower), None)
         return f"llama_mmvq_{quant}" if quant is not None else "llama_mmvq"
     if "mul_mat_vec_f" in lower or "mul_mat_f" in lower:
         return "llama_mmvf"
     if "mul_mat_q<" in lower:
-        quant_type_buckets = {
-            "(ggml_type)12,": "llama_mmq_q4_k",
-            "(ggml_type)13,": "llama_mmq_q5_k",
-            "(ggml_type)8,": "llama_mmq_q8_0",
-            "(ggml_type)14,": "llama_mmq_q6_k",
-        }
-        return next(
-            (bucket for signature, bucket in quant_type_buckets.items() if signature in lower),
-            "llama_mmq_other",
-        )
+        quant = next((quant for signature, quant in quant_types.items() if signature in lower), None)
+        return f"llama_mmq_{quant}" if quant is not None else "llama_mmq_other"
     if "quantize_q8_1" in lower or "quantize_mmq_q8_1" in lower:
         return "llama_quantize_q8_1"
     if "mm_ids_helper" in lower:
