@@ -1466,6 +1466,19 @@ on the fully separated seven-pair A/B and positive leaf/trace. Production is
 **+70.327%** over sprint start and all state remains exact. Evidence:
 [`clean mixed32 exp32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-exp32-production.json).
 
+The exact producer-maximum sibling is now separately registered. Each of the
+twelve score-producing waves accumulates a partial maximum per owned query
+while producing its existing score slice, then publishes those values through
+the already-required score-to-softmax barrier. Each output owner reduces
+twelve partials instead of rescanning all 512 scores; QK, score storage,
+exp32, ordered denominator, scalar PV FMA order, gate, and stores are
+unchanged. The wrapped/evicted oracle is F32/BF16 byte-exact and the
+nine-sample leaf improves **0.081790 -> 0.059101 ms (-27.74%)**. Cached
+tracing names the candidate at grid32/local384, VGPR104/SGPR128/scratch0, with
+LDS **24,576 -> 25,088 bytes**. The primitive is retained but not yet a
+runtime default; it requires a matched resident p512/d128 gate. Evidence:
+[`producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json).
+
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
 **4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4

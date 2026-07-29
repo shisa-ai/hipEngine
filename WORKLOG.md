@@ -189569,3 +189569,30 @@ Vulkan local sizes verbatim will close the measured gap.
   match `05965d534` byte for byte. Production remains **19.667705 tok/s**.
   Raw SHA-256 is `1f87bce0...c7cbd`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wave64-shared-softmax-rejected.json`.
+
+## 2026-07-29 13:24 JST — Retain exact SWA producer-maximum primitive
+
+- RED required a missing producer-max wrapper. GREEN covers positions
+  512-519 after ring wrap plus explicit position-200 eviction; F32 context
+  and gated BF16 output are byte-exact to the current mixed32/exp32 path.
+- Each of twelve score waves now accumulates one maximum per owned query while
+  producing its existing score slice and publishes 36 partials before the
+  already-required phase barrier. Four output-dimension waves reduce twelve
+  values instead of independently rescanning all 512 scores. QK, score
+  storage, exp32 issue, denominator/PV association, gate, stores, grid, and
+  barrier count are unchanged.
+- Nine 50-launch samples improve the saturated leaf
+  **0.081790 -> 0.059101 ms (-27.74%)**. Raw SHA-256 is
+  `18d45ac3...7806`.
+- Cached `rocprofv3` tracing names control `<...,true,false>` and candidate
+  `<...,true,true>` at grid32/local384. VGPR104/SGPR128/scratch0 are
+  unchanged; LDS rises **24,576 -> 25,088 bytes**. Trace SHA-256 is
+  `1e6fd7af...daea`; profiled timing is attribution-only.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is
+  environment-blocked because the read-only external Atlas checkout is
+  absent at `/home/lhl/amd-gpu-tuning/reference/atlas`; this in-tree exact
+  transform copies no external source.
+- Retain the separately registered primitive and leaf harness. Production
+  remains **19.667705 tok/s** until a session-scoped gfx1151 selector passes
+  matched resident p512/d128 state/lifecycle/performance gates. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json`.

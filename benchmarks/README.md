@@ -206,6 +206,17 @@ denominator across its adjacent 32-dimension halves without LDS or barriers
 and remains byte-exact, but the saturated leaf regresses
 **0.081713 -> 0.085229 ms (+4.30%)**. Cross-half permutation costs more than
 the duplicated scalar work; all candidate code is removed.
+The next exact single-launch screen succeeds. Each of the twelve score waves
+accumulates a partial maximum while it already produces its owned scores, then
+publishes 36 values through the existing phase barrier. The four output
+dimension waves now reduce twelve partials instead of each rescanning all 512
+scores. Wrapped/evicted F32 context and BF16 gated output remain byte-exact,
+and the nine-sample saturated leaf improves
+**0.081790 -> 0.059101 ms (-27.74%)**. Cached tracing confirms the intended
+32-block/local384 candidate at unchanged VGPR104/SGPR128/scratch0; LDS rises
+only **24,576 -> 25,088 bytes**. The primitive is retained and registered,
+while production remains **19.667705 tok/s** pending a matched resident
+p512/d128 runtime gate.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
