@@ -523,15 +523,18 @@ the same K-major 144-byte DS4 record: four FP16 `(scale, pre-quantization sum)`
 pairs and 128 signed bytes. Its maximum actual M512/K9216 workspace is
 **5,308,416 bytes**. The consumer uses local256 I128/J128/K256 ownership,
 eight RDNA3 integer-WMMA waves, one raw-Q5 expansion per K256 slab, separate
-dot/min terms, and a 57,856-byte dynamic-LDS launch class; no weight sidecar or
-runtime owner exists yet. CPU byte oracles pass at 127/128/129-row producer
-tails, and BF16/F32 output fixtures pass the repository KL/top-1 gate at
-M17/N72, M127/N128, and M129/N128. Cached W7900 tracing names the producer at
-local256/VGPR24/scratch0 and both consumers at local256/VGPR184/scratch0 with
-plausible **78.760-88.920 us** tiny-fixture durations; rocprof reports dynamic
-LDS separately from its zero static-LDS field. gfx1151 is explicitly excluded.
-This is primitive admission only: all-eight-role inclusive timing, model
-quality, runtime integration, and production promotion remain pending.
+dot/min terms, and a 57,856-byte dynamic-LDS launch class; no weight sidecar.
+CPU byte oracles pass at 127/128/129-row producer tails, and BF16/F32 output
+fixtures pass at M17/N72, M127/N128, and M129/N128. Final aligned resources are
+producer local256/VGPR24/scratch0 and consumer local `(32,8)`/VGPR192/scratch0.
+The eight-role/235-call M512 leaf improves **1,562.932 -> 97.110 ms (16.094x)**,
+but the complete 18-prompt/576-step gate rejects runtime ownership at maximum
+KL **4.162014** with **561/576** top-1 despite **1.348x** natural-prompt prefill.
+The temporary constructor switch, activation scopes, workspace owner, package
+capability, and dispatch policy are removed; gfx1151 remains excluded and the
+qualified primitive stays explicit evidence only. Evidence:
+[`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json) ·
+[`complete rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-rejected.json).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

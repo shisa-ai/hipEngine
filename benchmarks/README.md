@@ -47,16 +47,19 @@ more dispatches (**2,824 vs 1,477**) but only **0.724 vs 3.010 s** of summed
 kernel time. This is an external performance target and source audit, not a
 cross-engine logits/quality proof or a production-default change.
 
-The first [`WPF-H1 source-Q5 MMQ candidate`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json)
-measures every actual M512 Q5 role and all 235 production invocations. A strict
-DS4 producer plus isolated fast-math aligned I128/J128/K256 consumer moves the
-weighted exact leaf **1,562.932 -> 97.110 ms (16.094x, -93.786%)**; N48/N72
-remain exact. Fixtures pass at maximum mean KL **6.793e-6** and minimum top-1
-**98.242%**; cached aligned resources are local `(32,8)`, VGPR192, 57,856-byte
-dynamic LDS, and scratch0. The candidate remains **1.647x** llama.cpp's
-matched **58.951-ms** Q5 trace and is not production: runtime reuse, complete
-quality, clean 512/1K state/timing, and an all-family trace are pending. The
-canonical clean headline above is unchanged.
+The [`WPF-H1 source-Q5 MMQ`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-rejected.json)
+is **rejected for production** despite a qualified leaf. Its strict DS4 producer
+plus isolated fast-math I128/J128/K256 consumer moves all 235 actual M512 Q5
+calls **1,562.932 -> 97.110 ms (16.094x)**, and complete-suite natural-prompt
+prefill improves **151.252 -> 203.862 tok/s (1.348x)** with every category and
+h16/h32 E2E positive. The binding 18-prompt/576-step gate nevertheless reaches
+maximum KL **4.162014 > 0.05** at **561/576 (97.396%)** top-1. Poolside passes,
+repeats are deterministic, and lifecycle recovers, but high top-1 cannot waive
+the KL ceiling. The default-off runtime owner/workspace is removed; only the
+separately registered primitive and its
+[`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json)
+remain. Production and the canonical clean headline above are unchanged; WPF-H2
+full-M512 attention is next.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

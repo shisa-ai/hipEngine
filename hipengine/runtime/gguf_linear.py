@@ -37,9 +37,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
-    Q5SourceMMQPrefillPolicy,
-    gguf_q8_1_ds4_quantize_bf16_kmajor,
-    q8_1_ds4_kmajor_nbytes,
     register_gguf_k_mmq_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
@@ -205,87 +202,6 @@ _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
 )
 
 
-@dataclass(frozen=True)
-class _Q5SourceMMQPrefillSession:
-    workspace_ptr: int
-    workspace_nbytes: int
-    producer_library: ctypes.CDLL | None
-    consumer_library: ctypes.CDLL | None
-    policy: Q5SourceMMQPrefillPolicy
-
-
-@dataclass
-class _Q5SourceMMQActivation:
-    x_ptr: int
-    rows: int
-    hidden: int
-    quantized: bool = False
-    stream: int | None = None
-
-
-_q5_source_mmq_prefill_session: ContextVar[_Q5SourceMMQPrefillSession | None] = (
-    ContextVar("q5_source_mmq_prefill_session", default=None)
-)
-_q5_source_mmq_activation: ContextVar[_Q5SourceMMQActivation | None] = ContextVar(
-    "q5_source_mmq_activation",
-    default=None,
-)
-
-
-@contextlib.contextmanager
-def q5_source_mmq_prefill_session(
-    *,
-    workspace_ptr: int,
-    workspace_nbytes: int,
-    policy: Q5SourceMMQPrefillPolicy | None,
-    producer_library: ctypes.CDLL | None = None,
-    consumer_library: ctypes.CDLL | None = None,
-) -> Iterator[None]:
-    """Expose one bounded DS4 workspace to an execution owner."""
-
-    if policy is None:
-        selected = None
-    else:
-        if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= 0:
-            raise ValueError("Q5 source MMQ requires a non-empty DS4 workspace")
-        selected = _Q5SourceMMQPrefillSession(
-            workspace_ptr=int(workspace_ptr),
-            workspace_nbytes=int(workspace_nbytes),
-            producer_library=producer_library,
-            consumer_library=consumer_library,
-            policy=policy,
-        )
-    token = _q5_source_mmq_prefill_session.set(selected)
-    try:
-        yield
-    finally:
-        _q5_source_mmq_prefill_session.reset(token)
-
-
-@contextlib.contextmanager
-def q5_source_mmq_activation_session(
-    x_ptr: int,
-    rows: int,
-    hidden: int,
-) -> Iterator[None]:
-    """Bound DS4 reuse to one activation lifetime, not a reusable address."""
-
-    selected = None
-    if _q5_source_mmq_prefill_session.get() is not None:
-        if int(x_ptr) <= 0 or int(rows) <= 0 or int(hidden) <= 0:
-            raise ValueError("Q5 source MMQ activation dimensions must be positive")
-        selected = _Q5SourceMMQActivation(
-            x_ptr=int(x_ptr),
-            rows=int(rows),
-            hidden=int(hidden),
-        )
-    token = _q5_source_mmq_activation.set(selected)
-    try:
-        yield
-    finally:
-        _q5_source_mmq_activation.reset(token)
-
-
 @contextlib.contextmanager
 def q8_mmq_prefill_session(
     *,
@@ -324,21 +240,6 @@ def q8_mmq_prefill_session(
         yield
     finally:
         _q8_mmq_prefill_session.reset(token)
-
-
-def resolve_q5_source_mmq_prefill_policy(
-    backend: str = "hip_gfx1100",
-) -> Q5SourceMMQPrefillPolicy | None:
-    """Resolve the source-Q5 aligned policy on the four-axis registry."""
-
-    register_gguf_k_mmq_prefill_kernels()
-    return resolve(
-        backend=backend,
-        layer="linear_prefill_policy",
-        quant="gguf_q5_k",
-        variant="source_q8_1_ds4",
-        missing="none",
-    )
 
 
 def resolve_q8_mmq_prefill_policy(
@@ -969,8 +870,6 @@ def launch_gguf_linear(
     raw_k_rowbatch = raw_k_prefill_rowbatch()
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
-    q5_mmq_session = _q5_source_mmq_prefill_session.get()
-    q5_mmq_activation = _q5_source_mmq_activation.get()
     cache_key = (
         generation(),
         weight.spec.layout,
@@ -990,8 +889,6 @@ def launch_gguf_linear(
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
-        None if q5_mmq_session is None else id(q5_mmq_session),
-        None if q5_mmq_activation is None else id(q5_mmq_activation),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -1028,12 +925,6 @@ def launch_gguf_linear(
         dispatch = _exact_q8_prefill_dispatch(
             dispatch,
             rows=rows,
-            out_features=out_features,
-        )
-        dispatch = _q5_source_mmq_prefill_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
             out_features=out_features,
         )
         dispatch = _rowtile_dispatch(
@@ -1865,74 +1756,6 @@ def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_feat
     )
 
 
-def _launch_raw_q5_source_mmq(
-    fn,
-    weight,
-    x_ptr,
-    out_ptr,
-    rows,
-    in_features,
-    out_features,
-    kwargs,
-) -> None:
-    session = _q5_source_mmq_prefill_session.get()
-    activation = _q5_source_mmq_activation.get()
-    if session is None or activation is None:
-        raise RuntimeError("Q5 source MMQ launch escaped its activation scope")
-    activation_key = (int(x_ptr), int(rows), int(in_features))
-    if activation_key != (activation.x_ptr, activation.rows, activation.hidden):
-        raise RuntimeError("Q5 source MMQ launch does not match its activation owner")
-
-    required = q8_1_ds4_kmajor_nbytes(rows, in_features)
-    if required > session.workspace_nbytes:
-        raise ValueError(
-            "Q5 source MMQ DS4 workspace is too small: "
-            f"required={required}, available={session.workspace_nbytes}"
-        )
-    input_nbytes = int(rows) * int(in_features) * 2
-    output_nbytes = int(rows) * int(out_features) * 4
-    for label, ptr, nbytes in (
-        ("BF16 activation input", int(x_ptr), input_nbytes),
-        ("output", int(out_ptr), output_nbytes),
-    ):
-        if max(session.workspace_ptr, ptr) < min(
-            session.workspace_ptr + session.workspace_nbytes,
-            ptr + nbytes,
-        ):
-            raise ValueError(f"Q5 source MMQ DS4 workspace overlaps {label}")
-
-    stream = int(kwargs.get("stream", 0))
-    if activation.stream is None:
-        activation.stream = stream
-    elif activation.stream != stream:
-        raise ValueError("Q5 source MMQ activation reuse must stay on one stream")
-    runtime = kwargs.get("runtime") or get_hip_runtime()
-    if not activation.quantized:
-        gguf_q8_1_ds4_quantize_bf16_kmajor(
-            x_ptr,
-            session.workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-            library=session.producer_library,
-        )
-        activation.quantized = True
-
-    consumer_kwargs = dict(kwargs)
-    consumer_kwargs["runtime"] = runtime
-    consumer_kwargs["library"] = session.consumer_library
-    fn(
-        session.workspace_ptr,
-        weight.allocation("raw").tensor.ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        **consumer_kwargs,
-    )
-
-
 def _pack8_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -1992,51 +1815,6 @@ def _q8_mmq_prefill_dispatch(
             "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
         ),
         "raw_mmq_d4x3",
-    )
-
-
-def _q5_source_mmq_prefill_dispatch(
-    dispatch: GGUFLinearDispatch,
-    *,
-    rows: int,
-    in_features: int,
-    out_features: int,
-) -> GGUFLinearDispatch:
-    """Select source Q5 MMQ only inside one aligned activation scope."""
-
-    session = _q5_source_mmq_prefill_session.get()
-    activation = _q5_source_mmq_activation.get()
-    if session is None or activation is None:
-        return dispatch
-    if (activation.rows, activation.hidden) != (int(rows), int(in_features)):
-        return dispatch
-    if not session.policy(rows, in_features, out_features):
-        return dispatch
-    if not (
-        dispatch.abi == "raw"
-        and dispatch.key.quant == "gguf_q5_k"
-        and dispatch.key.variant
-        in {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
-    ):
-        return dispatch
-    required = q8_1_ds4_kmajor_nbytes(rows, in_features)
-    if required > session.workspace_nbytes:
-        raise ValueError(
-            "Q5 source MMQ DS4 workspace is too small: "
-            f"required={required}, available={session.workspace_nbytes}"
-        )
-    output_dtype = (
-        "bf16" if dispatch.key.variant.endswith("bf16_out") else "f32"
-    )
-    return GGUFLinearDispatch(
-        KernelKey(
-            dispatch.key.backend,
-            dispatch.key.layer,
-            dispatch.key.quant,
-            "mmq_i128_j128_k256_q8_1_ds4_"
-            f"bf16_{output_dtype}_out",
-        ),
-        "raw_q5_source_mmq",
     )
 
 
@@ -2385,7 +2163,6 @@ _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
-    "raw_q5_source_mmq": _launch_raw_q5_source_mmq,
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
@@ -2405,15 +2182,12 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
-    "q5_source_mmq_activation_session",
-    "q5_source_mmq_prefill_session",
     "q8_mmq_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",
     "raw_k_prefill_variant",
     "raw_k_prefill_variant_session",
     "resolve_gguf_linear_dispatch",
-    "resolve_q5_source_mmq_prefill_policy",
     "resolve_q8_mmq_prefill_policy",
     "set_wmma_prefill_enabled",
     "wmma_prefill_session",
