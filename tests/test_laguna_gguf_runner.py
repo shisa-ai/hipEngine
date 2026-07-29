@@ -158,6 +158,24 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
         ]
         is q5_f32_ordered
     )
+    assert (
+        libraries.linear[
+            "gguf_q6_k:f32_ordered_coltile8_rowbatch4_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q6_k:f32_ordered_coltile16_rowbatch4_bf16_bf16_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q6_k:f32_ordered_coltile16_rowbatch5_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
     assert libraries.moe["grouped_iq_prefill"] is iq_grouped_prefill
 
 
@@ -1163,14 +1181,20 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
 
 
-def test_laguna_q5_f32_ordered_prefill_is_default_on_gfx1100_only() -> None:
-    policy = backend_package_capability(
+def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
+    q5_policy = backend_package_capability(
         "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_POLICY", None
+    )
+    q6_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q6_F32_ORDERED_PREFILL_POLICY", None
     )
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL", None
     ) is True
-    assert policy == {
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_Q6_F32_ORDERED_PREFILL", None
+    ) is True
+    assert q5_policy == {
         ("bf16", 3072, 1024): "coltile8_rowbatch4",
         ("bf16", 3072, 12288): "coltile8_rowbatch12",
         ("bf16", 6144, 3072): "coltile16_rowbatch5",
@@ -1180,12 +1204,56 @@ def test_laguna_q5_f32_ordered_prefill_is_default_on_gfx1100_only() -> None:
         ("f32", 3072, 6144): "coltile16_rowbatch5",
         ("f32", 3072, 9216): "coltile8_rowbatch10",
     }
-    assert runner_module._resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100")
-    assert not runner_module._resolve_laguna_q5_f32_ordered_prefill("hip_gfx1151")
-    assert "resolve_laguna_q5_f32_ordered_prefill" not in runner_module.__all__
+    assert q6_policy == {
+        ("bf16", 3072, 1024): "coltile16_rowbatch5",
+        ("bf16", 1024, 3072): "coltile16_rowbatch4",
+        ("f32", 3072, 72): "coltile8_rowbatch4",
+        ("f32", 3072, 1024): "coltile16_rowbatch5",
+    }
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_F32_ORDERED_PREFILL_QUANTS", None
+    ) == frozenset(("gguf_q5_k", "gguf_q6_k"))
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_F32_ORDERED_PREFILL_POLICIES", None
+    ) == {"gguf_q5_k": q5_policy, "gguf_q6_k": q6_policy}
+    assert runner_module._resolve_laguna_f32_ordered_prefill_quants(
+        "hip_gfx1100"
+    ) == frozenset(("gguf_q5_k", "gguf_q6_k"))
+    assert not runner_module._resolve_laguna_f32_ordered_prefill_quants(
+        "hip_gfx1151"
+    )
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_F32_ORDERED_PREFILL_QUANTS", None
+    ) == frozenset()
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_F32_ORDERED_PREFILL_POLICIES", None
+    ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_Q6_F32_ORDERED_PREFILL", None
+    ) is False
+    assert "resolve_laguna_f32_ordered_prefill_quants" not in runner_module.__all__
     assert "use_q5_f32_ordered_prefill" not in signature(
         runner_module.LagunaGGUFResidentSession
     ).parameters
+
+
+def test_laguna_raw_k_f32_ordered_prefill_rejects_malformed_package_policy(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100 as package
+
+    monkeypatch.setattr(
+        package,
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(("gguf_q6_k",)),
+    )
+    monkeypatch.setattr(package, "GGUF_F32_ORDERED_PREFILL_POLICIES", {})
+    with pytest.raises(ValueError, match="no non-empty policy"):
+        runner_module._resolve_laguna_f32_ordered_prefill_quants("hip_gfx1100")
+
+    monkeypatch.setattr(package, "GGUF_F32_ORDERED_PREFILL_QUANTS", 17)
+    with pytest.raises(ValueError, match="must be a collection"):
+        runner_module._resolve_laguna_f32_ordered_prefill_quants("hip_gfx1100")
 
 
 def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:

@@ -386,7 +386,10 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
     )
 
 
-def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
+def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100 as package
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
         register_gguf_q5_k_f32_rocblas_prefill_kernels,
     )
@@ -394,23 +397,28 @@ def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch,
         Q5F32OrderedPrefillSession,
-        _q5_f32_ordered_prefill_dispatch,
+        _raw_k_f32_ordered_prefill_dispatch,
         q5_f32_ordered_prefill_session,
     )
 
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
-    base_by_output = {
-        output_dtype: GGUFLinearDispatch(
+    monkeypatch.setattr(
+        package,
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(("gguf_q5_k",)),
+    )
+
+    def base(quant: str, output_dtype: str) -> GGUFLinearDispatch:
+        return GGUFLinearDispatch(
             KernelKey(
                 "hip_gfx1100",
                 "linear",
-                "gguf_q5_k",
+                quant,
                 f"prefill_bf16_{output_dtype}_out",
             ),
             "raw",
         )
-        for output_dtype in ("bf16", "f32")
-    }
+
     session = Q5F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
@@ -418,7 +426,7 @@ def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
         weight_f32_nbytes=150_994_944,
         library="ordered-library",
     )
-    qualified = {
+    q5_qualified = {
         ("bf16", 3072, 1024): "coltile8_rowbatch4",
         ("bf16", 3072, 12288): "coltile8_rowbatch12",
         ("bf16", 6144, 3072): "coltile16_rowbatch5",
@@ -428,23 +436,29 @@ def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
         ("f32", 3072, 6144): "coltile16_rowbatch5",
         ("f32", 3072, 9216): "coltile8_rowbatch10",
     }
-    for output_dtype, in_features, out_features in qualified:
-        base = base_by_output[output_dtype]
+    q6_qualified = {
+        ("bf16", 3072, 1024): "coltile16_rowbatch5",
+        ("bf16", 1024, 3072): "coltile16_rowbatch4",
+        ("f32", 3072, 72): "coltile8_rowbatch4",
+        ("f32", 3072, 1024): "coltile16_rowbatch5",
+    }
+    for output_dtype, in_features, out_features in q5_qualified:
+        dispatch = base("gguf_q5_k", output_dtype)
         assert (
-            _q5_f32_ordered_prefill_dispatch(
-                base,
+            _raw_k_f32_ordered_prefill_dispatch(
+                dispatch,
                 rows=512,
                 in_features=in_features,
                 out_features=out_features,
             )
-            is base
+            is dispatch
         )
 
     with q5_f32_ordered_prefill_session(session):
-        for role, geometry in qualified.items():
+        for role, geometry in q5_qualified.items():
             output_dtype, in_features, out_features = role
-            selected = _q5_f32_ordered_prefill_dispatch(
-                base_by_output[output_dtype],
+            selected = _raw_k_f32_ordered_prefill_dispatch(
+                base("gguf_q5_k", output_dtype),
                 rows=512,
                 in_features=in_features,
                 out_features=out_features,
@@ -456,36 +470,75 @@ def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
                     "gguf_q5_k",
                     f"f32_ordered_{geometry}_bf16_{output_dtype}_out",
                 ),
-                "raw_q5_f32_ordered",
+                "raw_k_f32_ordered",
             )
 
-        for rows, output_dtype, in_features, out_features in (
-            (511, "bf16", 3072, 1024),
-            (512, "bf16", 9216, 4096),
-            (512, "bf16", 3328, 1024),
-            (512, "f32", 3072, 96),
-        ):
-            base = base_by_output[output_dtype]
+        for output_dtype, in_features, out_features in q6_qualified:
+            dispatch = base("gguf_q6_k", output_dtype)
             assert (
-                _q5_f32_ordered_prefill_dispatch(
-                    base,
+                _raw_k_f32_ordered_prefill_dispatch(
+                    dispatch,
+                    rows=512,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+                is dispatch
+            )
+
+        monkeypatch.setattr(
+            package,
+            "GGUF_F32_ORDERED_PREFILL_QUANTS",
+            frozenset(("gguf_q5_k", "gguf_q6_k")),
+        )
+        for role, geometry in q6_qualified.items():
+            output_dtype, in_features, out_features = role
+            selected = _raw_k_f32_ordered_prefill_dispatch(
+                base("gguf_q6_k", output_dtype),
+                rows=512,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            assert selected == GGUFLinearDispatch(
+                KernelKey(
+                    "hip_gfx1100",
+                    "linear",
+                    "gguf_q6_k",
+                    f"f32_ordered_{geometry}_bf16_{output_dtype}_out",
+                ),
+                "raw_k_f32_ordered",
+            )
+
+        for quant, rows, output_dtype, in_features, out_features in (
+            ("gguf_q5_k", 511, "bf16", 3072, 1024),
+            ("gguf_q5_k", 512, "bf16", 9216, 4096),
+            ("gguf_q5_k", 512, "bf16", 3328, 1024),
+            ("gguf_q5_k", 512, "f32", 3072, 96),
+            ("gguf_q6_k", 511, "bf16", 3072, 1024),
+            ("gguf_q6_k", 512, "bf16", 9216, 3072),
+            ("gguf_q6_k", 512, "bf16", 12288, 3072),
+            ("gguf_q6_k", 512, "f32", 3072, 9216),
+        ):
+            dispatch = base(quant, output_dtype)
+            assert (
+                _raw_k_f32_ordered_prefill_dispatch(
+                    dispatch,
                     rows=rows,
                     in_features=in_features,
                     out_features=out_features,
                 )
-                is base
+                is dispatch
             )
         unsupported = GGUFLinearDispatch(
             KernelKey(
                 "hip_gfx1151",
                 "linear",
-                "gguf_q5_k",
+                "gguf_q6_k",
                 "prefill_bf16_f32_out",
             ),
             "raw",
         )
         assert (
-            _q5_f32_ordered_prefill_dispatch(
+            _raw_k_f32_ordered_prefill_dispatch(
                 unsupported,
                 rows=512,
                 in_features=3072,
@@ -504,9 +557,14 @@ def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
         )
 
 
-def test_launch_gguf_linear_honors_q5_f32_ordered_prefill_session() -> None:
+@pytest.mark.parametrize("quant", ["gguf_q5_k", "gguf_q6_k"])
+def test_launch_gguf_linear_honors_raw_k_f32_ordered_prefill_session(
+    quant: str,
+    monkeypatch,
+) -> None:
     from types import SimpleNamespace
 
+    from hipengine.kernels import hip_gfx1100 as package
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
         register_gguf_q5_k_f32_rocblas_prefill_kernels,
     )
@@ -519,10 +577,15 @@ def test_launch_gguf_linear_honors_q5_f32_ordered_prefill_session() -> None:
         q5_f32_ordered_prefill_session,
     )
 
+    monkeypatch.setattr(
+        package,
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(("gguf_q5_k", "gguf_q6_k")),
+    )
     key = KernelKey(
         "hip_gfx1100",
         "linear",
-        "gguf_q5_k",
+        quant,
         "f32_ordered_coltile8_rowbatch4_bf16_f32_out",
     )
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
@@ -540,7 +603,7 @@ def test_launch_gguf_linear_honors_q5_f32_ordered_prefill_session() -> None:
     raw = SimpleNamespace(tensor=SimpleNamespace(ptr=200))
     weight = SimpleNamespace(
         backend="hip_gfx1100",
-        spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k"),
+        spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key=quant),
         allocation=lambda name: raw,
     )
     session = Q5F32OrderedPrefillSession(

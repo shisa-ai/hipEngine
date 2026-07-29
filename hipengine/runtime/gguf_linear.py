@@ -208,7 +208,7 @@ _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
 
 @dataclass(frozen=True)
 class Q5F32OrderedPrefillSession:
-    """Caller-owned exact F32 weight plane for one ordered Q5 projection."""
+    """Caller-owned exact F32 weight plane for one ordered raw-K projection."""
 
     max_rows: int
     weight_f32_ptr: int
@@ -236,7 +236,7 @@ _q5_f32_ordered_prefill_session: ContextVar[
 def q5_f32_ordered_prefill_session(
     session: Q5F32OrderedPrefillSession | None,
 ) -> Iterator[None]:
-    """Expose one bounded exact-value Q5 plane during an owner row pass."""
+    """Expose one bounded exact-value raw-K plane during an owner row pass."""
 
     token = _q5_f32_ordered_prefill_session.set(session)
     try:
@@ -750,14 +750,14 @@ def _rowtile_dispatch(
     )
 
 
-def _q5_f32_ordered_prefill_dispatch(
+def _raw_k_f32_ordered_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Select the exact ordered Q5 route only inside its bounded owner."""
+    """Select an exact ordered raw-K route only inside its bounded owner."""
 
     session = _q5_f32_ordered_prefill_session.get()
     if (
@@ -771,17 +771,27 @@ def _q5_f32_ordered_prefill_dispatch(
         "prefill_bf16_f32_out": "f32",
     }
     output_dtype = output_variants.get(dispatch.key.variant)
-    if (
-        output_dtype is None
-        or dispatch.abi != "raw"
-        or dispatch.key.quant != "gguf_q5_k"
-    ):
+    if output_dtype is None or dispatch.abi != "raw":
         return dispatch
-    policy = backend_package_capability(
+    enabled_quants = backend_package_capability(
         dispatch.key.backend,
-        "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(),
+    )
+    if not isinstance(enabled_quants, (set, frozenset, tuple, list)):
+        return dispatch
+    if dispatch.key.quant not in enabled_quants:
+        return dispatch
+    policies = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_F32_ORDERED_PREFILL_POLICIES",
         {},
     )
+    if not isinstance(policies, Mapping):
+        return dispatch
+    policy = policies.get(dispatch.key.quant, {})
+    if not isinstance(policy, Mapping):
+        return dispatch
     geometry = policy.get((output_dtype, int(in_features), int(out_features)))
     if geometry is None:
         return dispatch
@@ -802,7 +812,7 @@ def _q5_f32_ordered_prefill_dispatch(
     )
     if not is_registered(key):
         return dispatch
-    return GGUFLinearDispatch(key, "raw_q5_f32_ordered")
+    return GGUFLinearDispatch(key, "raw_k_f32_ordered")
 
 
 def _raw_k_prefill_rowbatch_dispatch(
@@ -1037,7 +1047,7 @@ def launch_gguf_linear(
             in_features=in_features,
             use_rowtile=f_rowtile,
         )
-        dispatch = _q5_f32_ordered_prefill_dispatch(
+        dispatch = _raw_k_f32_ordered_prefill_dispatch(
             dispatch,
             rows=rows,
             in_features=in_features,
@@ -2224,7 +2234,7 @@ def _q4_pack8_wmma_dispatch(
     return GGUFLinearDispatch(key, abi)
 
 
-def _launch_raw_q5_f32_ordered(
+def _launch_raw_k_f32_ordered(
     fn,
     weight,
     x_ptr,
@@ -2236,7 +2246,7 @@ def _launch_raw_q5_f32_ordered(
 ) -> None:
     session = _q5_f32_ordered_prefill_session.get()
     if session is None:
-        raise RuntimeError("Q5 F32 ordered dispatch escaped its owner session")
+        raise RuntimeError("raw-K F32 ordered dispatch escaped its owner session")
     fn(
         x_ptr,
         weight.allocation("raw").tensor.ptr,
@@ -2301,7 +2311,7 @@ _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
-    "raw_q5_f32_ordered": _launch_raw_q5_f32_ordered,
+    "raw_k_f32_ordered": _launch_raw_k_f32_ordered,
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
