@@ -190583,3 +190583,36 @@ Vulkan local sizes verbatim will close the measured gap.
   preserve each head's scalar QK sequence plus current maximum/exp32/PV order.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-rejected.json`.
+
+## 2026-07-29 20:24 JST — Retarget exact attention after counters and F32-boundary rejection
+
+- Audited llama.cpp Vulkan `c0bc8591e` at the actual Laguna decode topology.
+  Its global path is GQA6/Br16 with eight K64 splits and local256/four-wave64
+  cooperative QK+softmax+PV; its numerical contract uses F16 Q,
+  probabilities, and KV. The reusable advantage is tile-local ownership, not
+  the Vulkan API or a separable QK producer.
+- Profiled the cached retained exact global owner at live513/576/639 with one
+  `rocprofv3` process per counter. It is local256/VGPR48/SGPR128/LDS512/
+  scratch0. ISA already has Q/V `global_load_b128` and K
+  `global_load_b64`; memory-unit busy is only **18.66-26.18%**, versus roughly
+  **1.67-2.09M VALU** and **0.41-0.52M LDS** instructions. Explicit packing is
+  not the next lever. `ALUStalledByLDS` and `OccupancyPercent` returned zero
+  and are recorded as unreliable rather than interpreted.
+- Tested a materially different numerical seam: keep the exact attention
+  gate and existing Q5 O projection in F32, then round to BF16 after the
+  projection. The authoritative saturated-p512 18-prompt/576-step gate is
+  finite with exact state/lifecycle recovery and reaches **563/576 (97.74%)**
+  top-1, but max KL is **1.162237**, **23.24x** the ceiling. Category maxima
+  are code/general-en/general-ja/mixed
+  **0.578151/0.527422/0.724141/1.162237**; raw SHA-256 is
+  `981817ff...eaa65`.
+- The first complete measurement printed the same result but failed at report
+  finalization because the temporary harness referenced a nonexistent
+  `runtime.device_properties`; the repeat was solely to persist a valid
+  artifact. Removed the temporary session capability, helper, focused test,
+  and harness. Production remains byte-clean at **20.069608 tok/s**.
+- Corrected the stale plan: attention K is BF16, so “K64 nibble reuse” was
+  inapplicable. Next screen the in-tree exact `permlanex16` plus DPP reduction
+  pattern against the retained +16,+8,+4,+2,+1 scalar QK association.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-exact-attention-core-audit.json`.

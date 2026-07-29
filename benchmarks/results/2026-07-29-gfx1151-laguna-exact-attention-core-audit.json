@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T20:24:00+09:00",
+  "kind": "hipengine_laguna_exact_attention_core_audit",
+  "status": "rejected_candidate_and_retargeted_plan",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "production_checkpoint": {
+    "decode_tok_s": 20.0696080824,
+    "wall_ms_per_token": 49.826583,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llamacpp_vulkan_wall_ms_per_token": 42.829522,
+    "production_changed": false
+  },
+  "llamacpp_vulkan_audit": {
+    "revision": "c0bc8591e",
+    "actual_decode_topology": {
+      "global": "GQA6, Br16 query tile, eight K64 splits over 512 keys",
+      "swa": "GQA9",
+      "workgroup": "local256, four wave64",
+      "operation": "cooperative QK plus softmax plus PV with a bounded-state merge",
+      "numerical_contract": "F16 Q/probability/KV operands"
+    },
+    "conclusion": "The reusable advantage is cooperative tile-local ownership; the Vulkan API and a separable QK producer are not the source of the speed."
+  },
+  "retained_exact_global_profile": {
+    "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2,64,true,true,true,true,true,true,false>",
+    "shape": "live513/576/639, grid32, local256",
+    "resources": {
+      "vgpr": 48,
+      "sgpr": 128,
+      "static_lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "steady_observations": {
+      "mem_unit_busy_percent_range": [18.661172, 26.18],
+      "l2_cache_hit_percent_range": [55.31, 59.73],
+      "fetch_size_observed": [2081.5, 2333.875, 2586.375],
+      "sq_insts_valu_observed": [1674336, 1901024, 2088256],
+      "sq_insts_lds_observed": [410848, 468832, 515424]
+    },
+    "unreliable_counters": {
+      "ALUStalledByLDS": "returned zero",
+      "OccupancyPercent": "returned zero"
+    },
+    "isa": {
+      "sha256": "c7d6e6b053852aa5000f66c8fe3d6f0cbcb219be11e5d8d9dcd825dc2fe9c783",
+      "bytes": 153466,
+      "loads": [
+        "Q global_load_b128",
+        "K global_load_b64",
+        "V global_load_b128"
+      ],
+      "reduction": "scalar FMA plus ds_bpermute shuffle tree"
+    },
+    "raw_counter_csv_sha256": {
+      "MemUnitBusy": "01508a250d6afc823a1a9ec9f0d36c2b8d534031a73fa886c6db3961efa25fbd",
+      "L2CacheHit": "f354dec78e5aa070f693d2d5405bb4f21f185379f5c37ef67eecb7e31185e71e",
+      "FETCH_SIZE": "c2b5b68bd7c751294991d3412641f617807a30d9421b667f40a141a074f96ade",
+      "SQ_INSTS_VALU": "fea2210196f73adfd4b0f1b4c4f91c7f4318b7948917957f07775e3835a1cbd7",
+      "SQ_INSTS_LDS": "0d249ff782f46ae086aed80e1cb324e2bbc38b32bf3305c2bfc0657fbcd784a0",
+      "SQ_WAVE_CYCLES": "73e95028b592e23d42f9164cdd6bde1375491d81e5074aee050a65d2c43bd0c0"
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --pmc <METRIC> --kernel-include-regex 'laguna_global_attention_fused_exact_gated_fixedshape_kernel<2, 64, true, true, true, true, true, true, false>' -- .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --samples 1 --warmups 1 --burst 4 --candidate fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty"
+  },
+  "f32_attention_boundary_candidate": {
+    "control": "retained exact attention, BF16 gated-context boundary, retained Q5 O projection",
+    "candidate": "retained exact attention, F32 softplus gate and F32-input/F32-output Q5 O projection, BF16 round after projection",
+    "protocol": {
+      "prompts": 18,
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "prompt_tokens": 512,
+      "teacher_policy": "control_argmax",
+      "steps_per_prompt": 32,
+      "total_steps": 576
+    },
+    "result": {
+      "finite": true,
+      "top1_matches": 563,
+      "top1_agreement": 0.9774305555555556,
+      "max_kl_divergence": 1.162236909548931,
+      "max_abs_logits_delta": 7.785852432250977,
+      "kl_limit": 0.05,
+      "kl_limit_multiple": 23.24473819097862,
+      "lifecycle_returned_to_baseline": true
+    },
+    "category_results": {
+      "code": {
+        "top1": "189/192",
+        "max_kl_divergence": 0.5781512987988507
+      },
+      "general_en": {
+        "top1": "127/128",
+        "max_kl_divergence": 0.5274216954391245
+      },
+      "general_ja": {
+        "top1": "123/128",
+        "max_kl_divergence": 0.7241407257210467
+      },
+      "mixed_ja_en": {
+        "top1": "124/128",
+        "max_kl_divergence": 1.162236909548931
+      }
+    },
+    "raw_sha256": "981817ff02bf26b8a22be66c89879b7a2219416237201e2a5c46b7e5a13eaa65",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_attention_f32_boundary_quality.py --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-attention-f32-boundary-quality.json",
+    "rerun_disclosure": "The first complete measurement printed the same result but failed while serializing a nonexistent runtime.device_properties field. The harness was repaired and repeated solely to persist a valid artifact.",
+    "decision": "Reject and remove the session selector, helper, test, and harness. The retained BF16 attention-output boundary is part of the admitted recurrent numerical contract; do not combine WMMA QK with this F32 boundary."
+  },
+  "conclusion": {
+    "retire": [
+      "Explicit K packing as the next global-attention screen",
+      "The erroneous K64 nibble-reuse item; attention K is BF16",
+      "F32 gated-context through O projection as a repair for approximate QK"
+    ],
+    "next": "Screen an exact DPP QK reduction that preserves the current +16,+8,+4,+2,+1 F32 tree while replacing ds_bpermute shuffles."
+  }
+}
