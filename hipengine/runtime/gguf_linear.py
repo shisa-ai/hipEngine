@@ -30,6 +30,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     register_gguf_q4_k_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+    q5_k_f32_ordered_workspace_nbytes,
+    register_gguf_q5_k_f32_rocblas_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     register_gguf_q6_k_pack8_gemv_kernels,
 )
@@ -200,6 +204,45 @@ _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
     "q8_mmq_prefill_session",
     default=None,
 )
+
+
+@dataclass(frozen=True)
+class Q5F32OrderedPrefillSession:
+    """Caller-owned exact F32 weight plane for one ordered Q5 projection."""
+
+    max_rows: int
+    weight_f32_ptr: int
+    weight_f32_nbytes: int
+    library: object
+    min_rows: int = 512
+
+    def __post_init__(self) -> None:
+        if not 0 < int(self.min_rows) <= int(self.max_rows):
+            raise ValueError(
+                "Q5 F32 ordered min_rows must be positive and fit max_rows"
+            )
+        if int(self.weight_f32_ptr) <= 0 or int(self.weight_f32_nbytes) <= 0:
+            raise ValueError(
+                "Q5 F32 ordered weight plane must be a non-empty device buffer"
+            )
+
+
+_q5_f32_ordered_prefill_session: ContextVar[
+    Q5F32OrderedPrefillSession | None
+] = ContextVar("q5_f32_ordered_prefill_session", default=None)
+
+
+@contextlib.contextmanager
+def q5_f32_ordered_prefill_session(
+    session: Q5F32OrderedPrefillSession | None,
+) -> Iterator[None]:
+    """Expose one bounded exact-value Q5 plane during an owner row pass."""
+
+    token = _q5_f32_ordered_prefill_session.set(session)
+    try:
+        yield
+    finally:
+        _q5_f32_ordered_prefill_session.reset(token)
 
 
 @contextlib.contextmanager
@@ -707,6 +750,61 @@ def _rowtile_dispatch(
     )
 
 
+def _q5_f32_ordered_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select the exact ordered Q5 route only inside its bounded owner."""
+
+    session = _q5_f32_ordered_prefill_session.get()
+    if (
+        session is None
+        or int(rows) < int(session.min_rows)
+        or int(rows) > int(session.max_rows)
+    ):
+        return dispatch
+    output_variants = {
+        "prefill_bf16_bf16_out": "bf16",
+        "prefill_bf16_f32_out": "f32",
+    }
+    output_dtype = output_variants.get(dispatch.key.variant)
+    if (
+        output_dtype is None
+        or dispatch.abi != "raw"
+        or dispatch.key.quant != "gguf_q5_k"
+    ):
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
+        {},
+    )
+    geometry = policy.get((output_dtype, int(in_features), int(out_features)))
+    if geometry is None:
+        return dispatch
+    try:
+        required = q5_k_f32_ordered_workspace_nbytes(
+            in_features,
+            out_features,
+        )
+    except ValueError:
+        return dispatch
+    if required > int(session.weight_f32_nbytes):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        f"f32_ordered_{geometry}_bf16_{output_dtype}_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, "raw_q5_f32_ordered")
+
+
 def _raw_k_prefill_rowbatch_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -870,6 +968,7 @@ def launch_gguf_linear(
     raw_k_rowbatch = raw_k_prefill_rowbatch()
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
+    q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
     cache_key = (
         generation(),
         weight.spec.layout,
@@ -889,6 +988,11 @@ def launch_gguf_linear(
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
+        (
+            None
+            if q5_f32_ordered_session is None
+            else id(q5_f32_ordered_session)
+        ),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -932,6 +1036,12 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_rowtile=f_rowtile,
+        )
+        dispatch = _q5_f32_ordered_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         dispatch = _raw_k_prefill_rowbatch_dispatch(
             dispatch,
@@ -2114,6 +2224,33 @@ def _q4_pack8_wmma_dispatch(
     return GGUFLinearDispatch(key, abi)
 
 
+def _launch_raw_q5_f32_ordered(
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    session = _q5_f32_ordered_prefill_session.get()
+    if session is None:
+        raise RuntimeError("Q5 F32 ordered dispatch escaped its owner session")
+    fn(
+        x_ptr,
+        weight.allocation("raw").tensor.ptr,
+        out_ptr,
+        session.weight_f32_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=kwargs.get("stream", 0),
+        library=session.library,
+        runtime=kwargs.get("runtime"),
+    )
+
+
 def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     # The WMMA prefill wrapper has the same (x, qweight, out, rows, in_f, out_f)
     # raw-pointer signature as _launch_raw, but accepts (tile_m, tile_n, stream)
@@ -2148,6 +2285,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
+    register_gguf_q5_k_f32_rocblas_prefill_kernels()
     register_gguf_q6_k_pack8_gemv_kernels()
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_mmq_prefill_kernels()
@@ -2163,6 +2301,7 @@ _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
+    "raw_q5_f32_ordered": _launch_raw_q5_f32_ordered,
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
@@ -2175,6 +2314,7 @@ __all__ = [
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
+    "Q5F32OrderedPrefillSession",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
@@ -2182,6 +2322,7 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
+    "q5_f32_ordered_prefill_session",
     "q8_mmq_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",

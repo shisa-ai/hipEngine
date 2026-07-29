@@ -38,6 +38,9 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
     laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import lm_head_argmax_stage1_blocks
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+    q5_k_f32_ordered_workspace_nbytes,
+)
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf import (
@@ -65,8 +68,10 @@ from hipengine.loading.laguna_gguf_materialize import (
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
+    Q5F32OrderedPrefillSession,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    q5_f32_ordered_prefill_session,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
 )
@@ -622,6 +627,59 @@ class LagunaRowsScratch:
             free(buffer, runtime=runtime)
 
 
+@dataclass
+class LagunaQ5F32OrderedScratch:
+    """One projection-local exact F32 weight plane for ordered Q5 prefill."""
+
+    max_rows: int
+    buffer: DeviceBuffer
+    _closed: bool = False
+
+    _MAX_WEIGHT_IN_FEATURES = 3_072
+    _MAX_WEIGHT_OUT_FEATURES = 12_288
+
+    @classmethod
+    def planned_nbytes(cls, *, max_rows: int) -> int:
+        rows = int(max_rows)
+        if rows <= 0:
+            raise ValueError("Q5 F32 ordered max_rows must be positive")
+        return q5_k_f32_ordered_workspace_nbytes(
+            cls._MAX_WEIGHT_IN_FEATURES,
+            cls._MAX_WEIGHT_OUT_FEATURES,
+        )
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        max_rows: int,
+        runtime: HipRuntime | None = None,
+    ) -> "LagunaQ5F32OrderedScratch":
+        rows = int(max_rows)
+        return cls(
+            max_rows=rows,
+            buffer=malloc(cls.planned_nbytes(max_rows=rows), runtime=runtime),
+        )
+
+    @property
+    def weight_f32_ptr(self) -> int:
+        return self.buffer.ptr
+
+    @property
+    def weight_f32_nbytes(self) -> int:
+        return self.buffer.nbytes
+
+    @property
+    def nbytes(self) -> int:
+        return self.buffer.nbytes
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        free(self.buffer, runtime=runtime)
+
+
 @dataclass(frozen=True)
 class LagunaPrefillScratchPlan:
     """Exact bounded row-scratch bytes covered by UMA memory admission."""
@@ -630,6 +688,7 @@ class LagunaPrefillScratchPlan:
     attention_rows: int
     rows_nbytes: int
     moe_nbytes: int
+    q5_f32_ordered_nbytes: int = 0
 
     @classmethod
     def build(
@@ -638,6 +697,7 @@ class LagunaPrefillScratchPlan:
         moe_plan: LagunaMoEKernelPlan,
         *,
         policy: LagunaPrefillChunkPolicy,
+        use_q5_f32_ordered: bool = False,
     ) -> "LagunaPrefillScratchPlan":
         rows_nbytes = LagunaRowsScratch.planned_nbytes(
             config,
@@ -647,16 +707,22 @@ class LagunaPrefillScratchPlan:
             moe_plan,
             max_rows=policy.matrix_rows,
         )
+        q5_f32_ordered_nbytes = (
+            LagunaQ5F32OrderedScratch.planned_nbytes(max_rows=512)
+            if use_q5_f32_ordered
+            else 0
+        )
         return cls(
             matrix_rows=policy.matrix_rows,
             attention_rows=policy.attention_rows,
             rows_nbytes=rows_nbytes,
             moe_nbytes=moe_nbytes,
+            q5_f32_ordered_nbytes=q5_f32_ordered_nbytes,
         )
 
     @property
     def total_nbytes(self) -> int:
-        return self.rows_nbytes + self.moe_nbytes
+        return self.rows_nbytes + self.moe_nbytes + self.q5_f32_ordered_nbytes
 
 
 @dataclass
@@ -844,6 +910,7 @@ class LagunaEagerLibraries:
     q6_linear: object
     q6_decode_linear: object
     q6_t16_linear: object
+    q5_f32_ordered: object | None
     q8_decode_linear: object
     router_logits: object
     router_select: object
@@ -882,6 +949,18 @@ class LagunaEagerLibraries:
                 self.q4_decode_linear
             ),
             "gguf_q5_k": self.q6_linear,
+            **(
+                {
+                    f"gguf_q5_k:f32_ordered_coltile{col_tile}_"
+                    f"rowbatch{row_batch}_bf16_{output_dtype}_out": (
+                        self.q5_f32_ordered
+                    )
+                    for col_tile, row_batch in ((4, 8), (8, 4))
+                    for output_dtype in ("bf16", "f32")
+                }
+                if self.q5_f32_ordered is not None
+                else {}
+            ),
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,
@@ -1533,6 +1612,33 @@ def resolve_laguna_raw_k_prefill_variant(
     return variant
 
 
+def resolve_laguna_q5_f32_ordered_prefill(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the package-default exact ordered-Q5 route or reject a policy miss."""
+
+    selected = bool(
+        backend_package_capability(
+            backend,
+            "GGUF_Q5_F32_ORDERED_PREFILL",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    policy = backend_package_capability(
+        backend,
+        "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
+        {},
+    )
+    if selected and not policy:
+        raise ValueError(
+            f"Laguna Q5 F32 ordered prefill is not supported on {backend!r}"
+        )
+    return selected
+
+
 def resolve_laguna_head_kv_fusion(
     backend: str,
     requested: bool | None = None,
@@ -2012,6 +2118,7 @@ def load_laguna_eager_libraries(
     backend: str,
     compiler_version: str | None = None,
     require_cached: bool = False,
+    use_q5_f32_ordered: bool = False,
 ) -> LagunaEagerLibraries:
     """Build/load every library used by one eager session exactly once."""
 
@@ -2052,6 +2159,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
         build_gguf_q4_k_q8_1_selected_prefill,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+        build_gguf_q5_k_f32_rocblas_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
         build_gguf_q6_k_embedding,
     )
@@ -2090,6 +2200,11 @@ def load_laguna_eager_libraries(
             q6_linear=build_gguf_k_gemv(**kwargs),
             q6_decode_linear=build_gguf_q6_k_pack8_gemv(**kwargs),
             q6_t16_linear=build_gguf_q6_k_t16_gemv(**kwargs),
+            q5_f32_ordered=(
+                build_gguf_q5_k_f32_rocblas_prefill(**kwargs)
+                if use_q5_f32_ordered
+                else None
+            ),
             q8_decode_linear=build_gguf_q8_0_pack8_gemv(**kwargs),
             router_logits=build_qwen35_router(**kwargs),
             router_select=build_laguna_router(**kwargs),
@@ -2175,6 +2290,7 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
+        use_q5_f32_ordered_prefill: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2326,6 +2442,12 @@ class LagunaGGUFResidentSession:
         self.raw_k_prefill_variant = resolve_laguna_raw_k_prefill_variant(
             self.backend,
             "rowbatch" if raw_k_prefill_rowbatch is not None else None,
+        )
+        self.use_q5_f32_ordered_prefill = (
+            resolve_laguna_q5_f32_ordered_prefill(
+                self.backend,
+                use_q5_f32_ordered_prefill,
+            )
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2648,6 +2770,8 @@ class LagunaGGUFResidentSession:
         self.moe_scratch: LagunaMoEScratch | None = None
         self.rows_scratch: LagunaRowsScratch | None = None
         self.rows_moe_scratch: LagunaMoEScratch | None = None
+        self.q5_f32_ordered_scratch: LagunaQ5F32OrderedScratch | None = None
+        self.q5_f32_ordered_dispatch: Q5F32OrderedPrefillSession | None = None
         self.verifier_scratch: LagunaVerifierScratch | None = None
         self.full_rope: LagunaDeviceRoPETables | None = None
         self.swa_rope: LagunaDeviceRoPETables | None = None
@@ -2707,6 +2831,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
+                use_q5_f32_ordered=self.use_q5_f32_ordered_prefill,
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -2732,6 +2857,7 @@ class LagunaGGUFResidentSession:
                 config,
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
+                use_q5_f32_ordered=self.use_q5_f32_ordered_prefill,
             )
             self.prefill_scratch_admission_nbytes = max(
                 DEFAULT_LAGUNA_SCRATCH_BYTES,
@@ -2836,6 +2962,22 @@ class LagunaGGUFResidentSession:
                 max_rows=self.prefill_chunk_size,
                 runtime=self.runtime,
             )
+            if self.use_q5_f32_ordered_prefill:
+                assert self.libraries.q5_f32_ordered is not None
+                self.q5_f32_ordered_scratch = (
+                    LagunaQ5F32OrderedScratch.allocate(
+                        max_rows=512,
+                        runtime=self.runtime,
+                    )
+                )
+                q5_scratch = self.q5_f32_ordered_scratch
+                self.q5_f32_ordered_dispatch = Q5F32OrderedPrefillSession(
+                    min_rows=512,
+                    max_rows=q5_scratch.max_rows,
+                    weight_f32_ptr=q5_scratch.weight_f32_ptr,
+                    weight_f32_nbytes=q5_scratch.weight_f32_nbytes,
+                    library=self.libraries.q5_f32_ordered,
+                )
             if self.moe_branch_concurrency:
                 if self.moe_shared_low_priority:
                     priority_range = self.runtime.stream_priority_range()
@@ -3670,6 +3812,9 @@ class LagunaGGUFResidentSession:
             with (
                 raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch),
                 raw_k_prefill_variant_session(self.raw_k_prefill_variant),
+                q5_f32_ordered_prefill_session(
+                    self.q5_f32_ordered_dispatch
+                ),
             ):
                 for layer_id in range(config.block_count):
                     self._run_layer_rows(
@@ -5188,6 +5333,11 @@ class LagunaGGUFResidentSession:
             route = self.swa_attention_hipblaslt
             self.swa_attention_hipblaslt = None
             release(route.close)
+        self.q5_f32_ordered_dispatch = None
+        if self.q5_f32_ordered_scratch is not None:
+            scratch = self.q5_f32_ordered_scratch
+            self.q5_f32_ordered_scratch = None
+            release(lambda: scratch.free(runtime=self.runtime))
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch
             self.verifier_scratch = None
@@ -5472,6 +5622,7 @@ __all__ = [
     "LagunaEagerTokenResult",
     "LagunaGGUFResidentSession",
     "LagunaHiddenCaptureTargets",
+    "LagunaQ5F32OrderedScratch",
     "LagunaRowsScratch",
     "LagunaVerifierRowsResult",
     "LagunaVerifierScratch",
@@ -5486,6 +5637,7 @@ __all__ = [
     "resolve_laguna_mixed_attention_projections",
     "resolve_laguna_mixed_local32_fixed_meta_attention",
     "resolve_laguna_mixed_q6_fixed_meta_attention",
+    "resolve_laguna_q5_f32_ordered_prefill",
     "resolve_laguna_raw_k_prefill_rowbatch",
     "resolve_laguna_raw_k_prefill_variant",
     "resolve_laguna_q4_lm_head_local32_fixed_meta",

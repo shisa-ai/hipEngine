@@ -70,18 +70,20 @@ numbers below.
   runtime and benchmark paths.
 - The same Laguna family is supported on W7900/gfx1100 with the
   `UD-Q2_K_XL` GGUF. Its exact matrix512/attention128 prefill default combines
-  role-qualified Q5/Q6 output tiling, pair16 grouped IQ gate/up/down, and
-  adjacent-row qrow4 SWA after a measured C256 crossover. Four measured
-  `(quant, output, K, N)` keys use two-output/sixteen-row geometry; every other
-  eligible key keeps four-output/eight-row geometry. Clean
-  package-resolved throughput is **169.253/159.229/123.084 tok/s** at
-  512/1K/4K; the short rows improve **+28.301%/+26.412%** over the preceding
-  exact packet. Full logits, all 48 hidden boundaries, routing prefixes,
-  active K/V, and every `KVLiveSpans` field are bit-exact at KL 0 on the deep
-  M512 gate; 4K IDs, positions, repeats, and lifecycle are deterministic. The
-  150-tok/s short gate and restored 4K gate pass, while 16K+ stays closed below
-  the 800/700 512/4K stretch target
-  ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
+  role-qualified Q5/Q6 output tiling, pair16 grouped IQ gate/up/down,
+  adjacent-row qrow4 SWA after a measured C256 crossover, and H5D's transient
+  exact-F32 Q5 expansion plus production-ordered reduction on seven roles.
+  BF16 K9216/N3072 and every policy miss retain raw coltile; no dequantized
+  weight persists. Clean package-default throughput is now
+  **179.320/167.188/128.988 tok/s** at 512/1K/4K, improving the preceding
+  canonical **169.253/159.229/123.084** packet by
+  **+5.948%/+4.998%/+4.797%**. Full logits, all 48 hidden boundaries, routing
+  prefixes, active K/V, and every `KVLiveSpans` field are bit-exact at KL 0 on
+  the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
+  deterministic, and lifecycle-clean. The 150-tok/s short gate and restored 4K
+  gate pass, while 16K+ stays closed below the 800/700 512/4K stretch target
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
+  [preceding coltile production](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
   [role policy](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)).
   A separately registered WPF-H2 F16-WMMA FlashAttention leaf keeps BF16 K/V
   and complete `KVLiveSpans` while moving the standalone 12-global/36-SWA M512
@@ -133,14 +135,19 @@ numbers below.
   (97.917%)** top-1, deterministic repeats, lifecycle recovery, and diagnostic
   prefill **165.555 -> 190.103 tok/s (1.148x)** with every category positive.
   The gfx1100 capability/map/owner seam is removed; exact production remains.
-  H5C then returns to exact Q5 arithmetic: a transient exact-value weight
+  H5C/H5D then returns to exact Q5 arithmetic: a transient exact-value weight
   expansion feeds local128 ordered **8x4/4x8** consumers that preserve coltile
   K/FMA/wave/store order byte-for-byte. The actual 235-call M512 policy keeps
   BF16 K9216/N3072 on raw coltile and improves the remaining seven roles on both
   clocks, moving weighted event/wall **1,323.267 -> 1,012.380 ms (1.307x)** and
-  **1,250.095 -> 988.526 ms (1.265x)** with no persistent sidecar. This is
-  standalone leaf evidence pending bounded runtime ownership and complete state
-  ([H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
+  **1,250.095 -> 988.526 ms (1.265x)** with one bounded 150,994,944-byte plane
+  and no persistent sidecar. The package-default route is KL0/byte-exact across
+  all 48 boundaries, logits, K/V, repeats, and lifecycle. Five-repeat admission
+  improves M512/M1024 **+7.235%/+6.519%**; selector-unset production publishes
+  **179.320/167.188/128.988 tok/s** at 512/1K/4K, leaving a **3.871x** matched
+  M512 gap to llama.cpp HIP
+  ([H5D production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
+  [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
   [H5B rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json) ·

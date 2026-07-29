@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_q5_k_exact_value_f32_ordered_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_candidate_admitted_runtime_owner_pending",
+  "status": "standalone_exact_candidate_promoted_by_runtime_artifact",
   "performance_claim": true,
   "hardware": {
     "device": "AMD Radeon Pro W7900",
@@ -197,11 +197,13 @@
     "current_allocated_bytes_after": 0,
     "returned_to_baseline": true
   },
-  "promotion_blockers": [
-    "no resident runtime owner or role policy exists yet",
-    "complete M512 hidden/logit/KV repeat validation has not run",
-    "clean counter-ordered 512/1K end-to-end timing has not run"
-  ],
+  "promotion_blockers": [],
+  "promotion": {
+    "status": "resolved",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json",
+    "complete_m512_state": "byte exact at KL 0 across all 48 boundaries, logits, K/V, repeat, and lifecycle",
+    "clean_512_1k_speedup": [1.0723545114489719, 1.0651880160153564]
+  },
   "source_artifacts": {
     "actual_role_json_sha256": "618212a79140a0a2ede318e1e067ec588aea6d3a932fd47ad7b4dbe36296ba38",
     "actual_role_harness_sha256": "66015193ea81a7aa7f8673119e0754b4c0e6f4d4735d9169366b217bf65eb4b9",
@@ -217,7 +219,7 @@
   },
   "decision": {
     "standalone_candidate_admitted": true,
-    "runtime_default_changed": false,
-    "next_action": "Add a bounded default-off resident owner for the seven exact role keys, preserve BF16 K9216/N3072 and all unsupported shapes on raw coltile, then run complete M512 state and clean 512/1K gates."
+    "runtime_default_changed": true,
+    "next_action": "Use the production artifact for runtime evidence; next screen exact larger-row ordered consumers while retaining the seven-role policy and all fallbacks."
   }
 }

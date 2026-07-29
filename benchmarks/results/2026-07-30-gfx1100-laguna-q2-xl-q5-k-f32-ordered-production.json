@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_exact_value_f32_ordered_production",
+  "date": "2026-07-30",
+  "status": "production_default_retained",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "f4bb33ee7",
+    "leaf_evidence": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json",
+    "source": "net-new in-tree exact owner over the admitted raw-Q5-to-F32 producer and production-ordered F32-weight consumers",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "af96b73b5e37d3dbca89a9b30e6ba0b6b7950a82cd7cfea2032bff6409b294de",
+      "hipengine/runtime/gguf_linear.py": "f4377151b68917a94c06af419faaa24a0fc08e870f85682c9c173ffa18243c7a",
+      "hipengine/runtime/laguna_gguf_runner.py": "8378205b6bffd349eac01bf2b5f3f910a738244f5bdba98fb448effcf4e597d6",
+      "tests/test_gguf_k_rowtile_gemv.py": "235e5822b601e10e1f671dbeb4a0b4df332c2551555ba96baf9d7172f14382b7",
+      "tests/test_laguna_gguf_runner.py": "bb23d9d0050216c057f895d58230fb95819008806665685e66da0df060703529"
+    }
+  },
+  "production_policy": {
+    "package_default": true,
+    "matrix_rows": 512,
+    "min_rows": 512,
+    "max_rows": 512,
+    "selected_roles": {
+      "bf16,K3072,N1024": "ordered_8x4",
+      "bf16,K3072,N12288": "ordered_4x8",
+      "bf16,K6144,N3072": "ordered_8x4",
+      "f32,K3072,N48": "ordered_8x4",
+      "f32,K3072,N72": "ordered_8x4",
+      "f32,K3072,N6144": "ordered_8x4",
+      "f32,K3072,N9216": "ordered_4x8"
+    },
+    "explicit_fallback_role": "bf16,K9216,N3072",
+    "other_fallbacks": "all row/key/backend/shape/capacity misses",
+    "rollback": "LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=False)",
+    "gfx1151_fail_closed": true
+  },
+  "memory": {
+    "owner": "one projection-local F32 weight plane reused serially",
+    "workspace_bytes": 150994944,
+    "persistent_weight_sidecar_bytes": 0,
+    "tracked_returned_to_baseline": true
+  },
+  "correctness": {
+    "package_default_m512": {
+      "kl_mean": 0.0,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "next_token": 2930,
+      "all_48_hidden_boundaries_exact": true,
+      "final_hidden_exact": true,
+      "post_layer_hidden_exact": true,
+      "full_logits_exact": true,
+      "kv_and_live_spans_exact": true,
+      "repeat_exact": true,
+      "lifecycle_recovered": true
+    },
+    "publication_all_repetitions": {
+      "lengths": [512, 1024, 4096],
+      "full_outputs_byte_exact": true,
+      "finite": true,
+      "lifecycle_recovered": true
+    }
+  },
+  "admission_ab": {
+    "protocol": "same resident weights; one warmup per mode/length; five counter-rotated repetitions; fresh request session per sample; explicit False versus explicit True; M512 matrix and M128 attention; model load excluded",
+    "results": {
+      "512": {
+        "control_median_tok_s": 167.63630445503284,
+        "candidate_median_tok_s": 179.76554736498784,
+        "speedup": 1.0723545114489719,
+        "improvement_percent": 7.23545114489719
+      },
+      "1024": {
+        "control_median_tok_s": 157.23685367923204,
+        "candidate_median_tok_s": 167.48681221507806,
+        "speedup": 1.0651880160153564,
+        "improvement_percent": 6.51880160153564
+      }
+    }
+  },
+  "package_publication": {
+    "protocol": "same resident weights; one warmup per mode/length; three counter-rotated repetitions; fresh request session per sample; explicit False versus package default None; M512 matrix and M128 attention; model load excluded",
+    "results": {
+      "512": {
+        "control_median_tok_s": 167.15195483255147,
+        "package_median_tok_s": 179.32025311288535,
+        "same_session_speedup": 1.0727978221524468,
+        "prior_canonical_tok_s": 169.253,
+        "prior_canonical_improvement_percent": 5.948050027405927
+      },
+      "1024": {
+        "control_median_tok_s": 156.84519254201228,
+        "package_median_tok_s": 167.18759057048405,
+        "same_session_speedup": 1.0659401659741752,
+        "prior_canonical_tok_s": 159.229,
+        "prior_canonical_improvement_percent": 4.998204203055989
+      },
+      "4096": {
+        "control_median_tok_s": 123.20418307646271,
+        "package_median_tok_s": 128.98783669519148,
+        "same_session_speedup": 1.0469436465086523,
+        "prior_canonical_tok_s": 123.084,
+        "prior_canonical_improvement_percent": 4.796591510831205
+      }
+    }
+  },
+  "cached_trace": {
+    "qualified_projection_calls": 200,
+    "exact_producer_dispatches": 200,
+    "ordered_consumer_dispatches": 200,
+    "ordered_8x4_bf16_dispatches": 104,
+    "ordered_8x4_f32_dispatches": 59,
+    "ordered_4x8_bf16_dispatches": 2,
+    "ordered_4x8_f32_dispatches": 35,
+    "producer_resources": "local64/VGPR16/SGPR128/LDS0/scratch0",
+    "ordered_resources": "local128/VGPR72/SGPR128/LDS512/scratch0",
+    "no_compiler_under_profile": true
+  },
+  "external_comparator": {
+    "engine": "llama.cpp HIP c0bc8591e",
+    "matched_m512_tok_s": 694.184,
+    "hipengine_package_m512_tok_s": 179.32025311288535,
+    "remaining_required_speedup": 3.871196855622318,
+    "matched_axes": "same model bytes, 512 token IDs, context4096, direct M512, one GPU/queue, FlashAttention, BF16 K/V, and one last-row projection"
+  },
+  "source_artifacts": {
+    "admission_ab_json_sha256": "72aef6aa8fa77575fd0e30b18e396e8c98a1d53e9b93e409ffdb39dbf77243a3",
+    "admission_ab_harness_sha256": "77d1f1128e434b6bc76f584e8c12ecb156f696502dfecc1ba667843208775c5a",
+    "package_state_json_sha256": "2183c35afcfb069744b087d5baab3fecfce2e3b9c40d2ad886aab138a62a1dc6",
+    "package_state_harness_sha256": "6727d11e53ba5f01e70e7806dda3536a7921bd4154fb897efe0e522b4e39404c",
+    "package_publication_json_sha256": "d9e260e915118ad1a79518323a0ca6577284d7470a83faf1024ef04135888a96",
+    "package_publication_harness_sha256": "53d77938c9b6362ee9e6a4e8a7642319abc5cbc2adc13280642a3ef5c8c14251",
+    "trace_csv_sha256": "c38b7aa4348bbb90288f4ab97b1ca6f90aee21d736c369d534d45a70bd046e49",
+    "trace_harness_sha256": "1729a4a4ccf6667e34aa5df1f4e4b90b72bae54a1151a7332a15b4ede22f92b4"
+  },
+  "commands": {
+    "package_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5d_q5_ordered_package_full_state.py",
+    "admission_ab": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5d_q5_ordered_clean_ab.py",
+    "package_publication": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5d_q5_ordered_package_publication.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5d-q5-ordered-runtime-trace -- uv run python -u /tmp/laguna_wpfh5d_q5_ordered_trace_integrated.py"
+  },
+  "decision": {
+    "production_default_changed": true,
+    "exact_fallback_retained": true,
+    "next_target": "Screen exact larger-row ordered F32-weight tiles (8x8/4x16/2x32) to reduce repeated weight-plane reads while preserving each output's K/FMA/reduction/store order."
+  }
+}
