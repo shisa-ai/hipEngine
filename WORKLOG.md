@@ -191429,3 +191429,24 @@ Vulkan local sizes verbatim will close the measured gap.
   the remaining gap is **5.989 ms/token** and hipEngine is **12.269%** below
   comparator throughput. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-production.json`.
+
+## 2026-07-30 01:27 JST — Re-profile the post-mixed40 decode wall
+
+- Trace tracked-clean `1679ea690` for 127 p512/d128 decode transitions with
+  cached kernels and two queues. The trace has **721 compute
+  dispatches/token** and no compiler invocation. Exact tokens, trajectory,
+  state, and allocation lifecycle pass; profiler wall is attribution-only.
+- Mixed40 transfers materially: SWA falls
+  **2.017783 -> 1.757218 ms/token (-12.913%)**, total attention
+  **3.023432 -> 2.761582 ms/token (-8.661%)**, kernel sum
+  **47.174209 -> 46.893051 ms/token (-0.596%)**, and kernel span
+  **50.598383 -> 49.116885 ms/token (-2.928%)**. Global attention and the
+  principal projection families remain flat.
+- Same-GGUF Vulkan attention is **0.909423 ms/token**. hipEngine's exact
+  attention gap is now **1.852159 ms/token**, **30.92%** of the remaining
+  **5.989-ms/token** production wall gap, and attention is **3.04x** the
+  comparator. Keep the 40-block geometry; next overlap probability
+  generation and denominator replay on separate otherwise-idle tail waves.
+  Raw trace/child SHA-256 values are `40129b6a...8e5` /
+  `12f7c01f...2732`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json`.
