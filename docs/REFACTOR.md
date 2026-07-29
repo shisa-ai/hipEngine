@@ -14,6 +14,24 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna default-off Q6 F16/rocBLAS selector
+
+- Added 2026-07-29 for WPF-H4. `LagunaGGUFResidentSession(...,
+  use_q6_f16_rocblas=True)` owns one context-local, contiguous
+  **97,517,568-byte** three-plane workspace plus one rocBLAS handle. It selects
+  only six package-declared M512 Q6 shapes; disabled, row, shape, key, capacity,
+  and backend misses retain exact coltile. No dequantized weight survives a
+  projection and gfx1151 is explicitly unsupported.
+- The natural-M512 state gate passes at KL **0.000721933**, top-1 **100%**,
+  deterministic complete state, and exact teardown; cached tracing names all
+  144 expected source stacks. Remove the constructor seam, context-local ABI,
+  conditional eager library, rocBLAS handle, workspace owner, backend
+  capabilities, and focused runtime tests if the binding 18-prompt/576-step
+  quality lane fails. If complete quality and clean 512/1K timing pass, promote
+  the package default and retain the boolean only through one publication/
+  reprofile rollback window; then collapse it while preserving the registered
+  unfused numerical fallback.
+
 ## Laguna raw-Q5/Q6 prefill rowbatch selector
 
 - Added 2026-07-28 as the default-off WPF-1 runtime admission seam, promoted

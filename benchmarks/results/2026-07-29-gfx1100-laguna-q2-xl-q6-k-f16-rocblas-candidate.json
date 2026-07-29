@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_q6_k_f16_rocblas_candidate",
   "date": "2026-07-29",
-  "status": "candidate_admitted_pending_runtime_and_complete_quality_gates",
+  "status": "candidate_runtime_integrated_default_off_pending_complete_quality_and_timing_gates",
   "hardware": {
     "device": "AMD Radeon Pro W7900",
     "architecture": "gfx1100",
@@ -110,6 +110,48 @@
     "fused_improvement_vs_unfused_gemm_ex_percent": 4.0211733241981,
     "rejected_vec4_reason": "Four-element cast loops reduced workgroup count but exposed serial per-thread work and regressed the weighted stack 4.988%; all vec4 candidate code was removed."
   },
+  "runtime_integration": {
+    "base_revision": "941158ba3",
+    "selector": "LagunaGGUFResidentSession(use_q6_f16_rocblas=True)",
+    "default": false,
+    "backend": "hip_gfx1100",
+    "qualified_rows": 512,
+    "qualified_shapes": 6,
+    "workspace_allocations": 1,
+    "workspace_bytes": 97517568,
+    "fallback": "retained exact raw-Q6 coltile policy on disabled/session/key/backend/row/shape/capacity miss",
+    "natural_m512_state": {
+      "finite": true,
+      "mean_kl": 0.0007219330673774047,
+      "top1_agreement": 1.0,
+      "next_token": 2930,
+      "candidate_repeat_exact": true,
+      "all_48_hidden_boundaries_repeat_exact": true,
+      "complete_kv_and_kvlivespans_repeat_exact": true,
+      "tracked_returned_to_baseline": true
+    },
+    "integrated_trace": {
+      "total_dispatches": 2311,
+      "candidate_producers": 144,
+      "candidate_rocblas": 144,
+      "candidate_bf16_output_casts": 48,
+      "candidate_f32_output_casts": 96,
+      "candidate_kernel_sum_ms": 13.20585,
+      "producer_resources": "local64/VGPR16/SGPR128/LDS0/scratch0"
+    },
+    "implementation_sha256": {
+      "hipengine/runtime/gguf_linear.py": "8bd1e602b1e01eeecc3de0e18ecc99fe827a480df71b2f092870c4f85a15c5cb",
+      "hipengine/runtime/laguna_gguf_runner.py": "721628a1d58ba9a3a262215e6feba9095d2bd4339c2f521384a196ef6582e4f9",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "043ec22f103daf6426d4fd792005e8a76136069a2a09b446e222c60b895b329a",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "759c35e48cc80074a99637283b3407980c65ff9b97c82591afc9c5d3730ebc20"
+    },
+    "source_artifacts": {
+      "full_state_json_sha256": "be85f8ae0c82deae3b3497733eafcb22329b8cdfb493f361cbad4156e8ba7aa2",
+      "full_state_harness_sha256": "2a7f2145ea85de375c3d2e70e2d1823c7098b129d57347838a325ffed36b8c89",
+      "integrated_trace_sha256": "750e0d238e41b6e0ca3b21de3ad853290643225155830ed90e21d59bfc738b46",
+      "integrated_trace_harness_sha256": "07b119788d45ad43a70f92602ef27b86385d0061d51aade18d0cedc749637179"
+    }
+  },
   "lifecycle": {
     "peak_tracked_bytes": 141066240,
     "peak_allocations": 7,
@@ -123,6 +165,7 @@
     "ruff": "passed",
     "py_compile": "passed",
     "gfx1151_alias_exclusion": "passed",
+    "runtime_integration_tests": "223 passed across runner/dispatch/backend/registry/GPU/profile/build bundles",
     "cached_profile_dispatches": 108,
     "cached_profile_expected_chain_only": true
   },
@@ -139,8 +182,6 @@
     "rocprof_harness_sha256": "d4e244b4b67fde2de1f46f4b30d93f47c4b7a9daa62f7efe5c0759a89899c8aa"
   },
   "promotion_blockers": [
-    "runtime ownership must allocate one bounded three-plane workspace and fail closed to exact coltile",
-    "complete M512 state and deterministic repeat gates are pending",
     "complete 18-prompt/576-step train+heldout and category-heldout quality gates are pending",
     "clean counter-ordered 512/1K timing and all-family reprofile are pending"
   ]
