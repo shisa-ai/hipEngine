@@ -191508,3 +191508,22 @@ Vulkan local sizes verbatim will close the measured gap.
   the remaining gap is **5.964 ms/token** and hipEngine is **12.222%** below
   comparator throughput. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-production.json`.
+
+## 2026-07-30 01:47 JST — Reject exact mixed40 double buffering
+
+- Add an exact diagnostic that double-buffers each K64 probability/V stage:
+  idle waves prepare stage *k+1* while active waves execute ordered PV for
+  stage *k*. Staged-loop barriers fall **16 -> 9**; QK, exponent inputs,
+  denominator order, every PV FMA, gate, and store remain unchanged.
+- RED fails importing the absent wrapper. GREEN passes the wrapped/explicitly
+  evicted oracle with byte-identical F32 context and gated BF16 output.
+- The second stage costs **17,152 B** dynamic LDS and pair blocks load it with
+  four non-output waves. The 9x50 leaf regresses
+  **0.037106 -> 0.040897 ms (+10.219%)**, losing all nine pairs; raw SHA-256
+  is `ecfdf466...6d34`.
+- Remove the wrapper, template branch, leaf selector, and test call. Skip
+  tracing and resident integration. The retained body is not barrier-bound
+  enough to repay a second full LDS stage; retry only with a materially
+  different loader/overlap mechanism. Production remains
+  **20.494732 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-double-buffer-rejected.json`.

@@ -5243,6 +5243,22 @@ The remaining attention sequence is:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-production.json).
+52. Pipeline K64 V/probability staging across ordered PV. **Rejected and
+    removed at the leaf stop:** the exact double-buffer candidate lets idle
+    waves prepare stage *k+1* while active waves execute stage *k*, reducing
+    the staged-loop barriers **16 -> 9** without changing QK, exponent,
+    denominator, or PV order. It adds **17,152 bytes** of dynamic LDS for the
+    second probability/V stage and narrows next-stage V loading to the four
+    non-output waves on pair-owner blocks.
+
+    The wrapped/evicted oracle is F32/BF16 byte-exact, but the 9x50 leaf
+    regresses **0.037106 -> 0.040897 ms (+10.219%)**, losing all nine pairs.
+    Skip tracing and resident integration; remove the wrapper, template
+    branch, leaf selector, and test call. The retained kernel is not
+    barrier-bound enough for a second full LDS stage. Do not retry without a
+    materially different loader/overlap mechanism. Production remains
+    **20.494732 tok/s**. Evidence:
+    [`double-buffer rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-double-buffer-rejected.json).
 
 Current exact decode checkpoint:
 

@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T01:47:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_double_buffer_rejected",
+  "status": "rejected_at_leaf",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "8f85938e936d845e095e928ca6921c5994d61e4e",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "Double-buffer K64 probability and V stages so idle waves prepare stage k+1 while active waves execute ordered PV for stage k.",
+    "control": "retained mixed40 tail-producer schedule with two barriers per K64 stage",
+    "arithmetic_changed": false,
+    "stage_barriers_control": 16,
+    "stage_barriers_candidate": 9,
+    "stage_barriers_saved": 7,
+    "extra_dynamic_lds_bytes": 17152,
+    "dispatch_count_changed": false
+  },
+  "correctness": {
+    "red": "focused wrap/eviction test failed importing the absent double-buffer wrapper",
+    "green": "focused wrap/eviction test passed after implementation",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "protocol": "9 samples, 10 warmups, 50 launches per sample",
+    "control_median_ms": 0.03710553884506226,
+    "candidate_median_ms": 0.040897459983825685,
+    "latency_change_percent": 10.219286006320939,
+    "candidate_losses": 9,
+    "paired_samples": 9,
+    "raw_sha256": "ecfdf46649f913faf091e025eccd460c9f1064a808a13f5867042c23a9826d34"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "resident_gate_skipped": true,
+    "production_tok_s": 20.49473174761836,
+    "reason": "Seven fewer barriers do not repay the added LDS footprint and narrowed four-wave next-stage V loader; the exact leaf regresses 10.219%.",
+    "retry_condition": "Only revisit with a materially different loader or overlap mechanism that does not add a second full V stage in LDS."
+  }
+}
