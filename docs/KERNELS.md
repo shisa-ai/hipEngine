@@ -1536,6 +1536,15 @@ Constraining the fully unrolled loops worsens it to **0.173172 ms
 cooperative-matrix parallelism; scalar ownership underfills the device:
 [`rejected scalar GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-shared-scalar-rejected.json).
 
+Producer-side SWA score scaling is closed too. Although it removes four
+repeated `dot * scale` evaluations per query/token, production fuses
+`dot * scale - max`; storing the scaled score rounds before the subtraction.
+F32 context changes by up to **2.79e-9**, gated BF16 happens to match the leaf
+fixture, and timing is neutral at
+**0.059183 -> 0.059172 ms (-0.018%)**. No model-quality run is warranted and
+all candidate code is removed:
+[`rejected producer-scaled scores`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-scaled-scores-rejected.json).
+
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
 **4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4

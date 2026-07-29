@@ -4473,6 +4473,14 @@ The remaining attention sequence is:
     cooperative-matrix parallelism; scalar traffic reuse underfills and
     serializes gfx1151. Evidence:
     [`rejected scalar GQA9`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-shared-scalar-rejected.json).
+16. Hoist score scaling into the producer. **Complete and rejected:** this
+    removes four repeated `dot * scale` evaluations per query/token, but
+    production fuses `dot * scale - max`; materializing the scaled score
+    rounds before subtraction. F32 context differs by up to **2.79e-9** while
+    the leaf is neutral at
+    **0.059183 -> 0.059172 ms (-0.018%)**. The non-exact result does not
+    justify a model-quality run, and all candidate code is removed. Evidence:
+    [`rejected producer-scaled scores`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-scaled-scores-rejected.json).
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
