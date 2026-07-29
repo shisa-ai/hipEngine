@@ -1815,10 +1815,16 @@ compute PV. Wrapped/evicted F32/BF16 output is byte-exact. The 9x50 and
 21x100 leaves improve **19.443%/19.445%**, with complete 21-sample separation.
 Cache-only tracing keeps grid32/local384, VGPR104, SGPR128, LDS25,600, and
 scratch0 unchanged. Retain
-`swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_vstage64_vec16_direct_assume_exp_fixed512_spans`
-as a registered primitive pending seven resident pairs; production remains
-**20.270314 tok/s**:
-[`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json).
+`swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_vstage64_vec16_direct_assume_exp_fixed512_spans`.
+All seven resident p512/d128 candidate samples beat every control, moving
+**20.277561 -> 20.368173 tok/s
+(+0.4469%, -0.2194 ms/token)** with exact state/lifecycle. gfx1151 promotes
+the qualified gated saturated-SWA capability; shuffle replay remains
+registered exact rollback and peer backends are unchanged. Remove the
+comparison-only profile seam. The preceding clean production value remains
+**20.270314 tok/s** pending selector-unset publication:
+[`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json),
+[`resident retention`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

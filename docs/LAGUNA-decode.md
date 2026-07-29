@@ -4997,8 +4997,8 @@ The remaining attention sequence is:
     denominator replay without a parallel exact prefix or materially
     different producer ownership. Evidence:
     [`post-barrier denominator rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json).
-44. Vectorize the published-probability denominator replay. **Primitive
-    retained pending resident gate:** the scalar LDS screen established the
+44. Vectorize the published-probability denominator replay. **Retained and
+    promoted:** the scalar LDS screen established the
     right schedule with the wrong load form. The successor reads the aligned
     K64 probability tile as sixteen `float4` vectors on producer lane zero,
     then issues the same 64 ordered denominator adds while the other waves
@@ -5011,10 +5011,18 @@ The remaining attention sequence is:
     confirmation improves **0.056116 -> 0.045204 ms (-19.445%)**, with all
     21 candidate samples faster than every control. Cache-only tracing
     confirms unchanged grid32/local384, VGPR104, SGPR128, LDS25,600, and
-    scratch0. Retain the registered primitive and leaf/oracle seam. Production
-    remains **20.270314 tok/s** pending seven counterbalanced resident
-    p512/d128 pairs. Evidence:
-    [`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json).
+    scratch0. All seven resident p512/d128 candidate samples beat every
+    control, moving median decode
+    **20.277561 -> 20.368173 tok/s
+    (+0.4469%, -0.2194 ms/token)** with identical tokens, 128-token
+    trajectory, positions, repeat state, and allocation lifecycle. Promote the
+    qualified gated 72Q/8KV/D128/SWA512 gfx1151 capability; the shuffle
+    denominator stage cache remains registered exact rollback and peer
+    backends are unchanged. Remove the comparison-only profile/routing seam.
+    The preceding clean production value remains **20.270314 tok/s** pending a
+    selector-unset publication. Evidence:
+    [`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json) ·
+    [`resident retention`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json).
 
 Current exact decode checkpoint:
 
