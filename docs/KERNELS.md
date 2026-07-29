@@ -1830,6 +1830,15 @@ trajectory/state/lifecycle:
 [`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json),
 [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-production.json).
+The clean 127-transition census confirms SWA
+**2.237644 -> 2.018186 ms/token (-9.808%)**, total attention
+**3.353534 -> 3.135648 ms/token (-6.497%)**, and kernel sum
+**47.554087 -> 47.296538 ms/token (-0.542%)**. Global attention remains
+effectively flat at **1.110485 ms/token**. Attention is still
+**2.226225 ms/token** slower than same-GGUF Vulkan and **35.40%** of the
+remaining production wall gap. Next vectorize exact contiguous probability
+reads inside the retained SWA PV chain without changing its 64-FMA order:
+[`post-vector-denominator census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vec4-denom-wall-reprofile.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
