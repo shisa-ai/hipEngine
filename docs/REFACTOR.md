@@ -2149,3 +2149,20 @@ should be boring.
   setter, and the setter-only test after clean publication. The default-on
   gfx1151 capability, fail-closed cache field, registered producer-max
   primitive, and mixed32/exp32 rollback remain.
+
+## Laguna gfx1151 selected-down parallel-tail selector
+
+- Added 2026-07-29 as the default-off
+  `LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE` capability,
+  `LagunaGGUFResidentSession.set_selected_down_natural_parallel_decode(...)`,
+  and `--compare-selected-down-natural-parallel-decode`. False restores the
+  retained exact natural selected-down owner; gate/up and peer backends are
+  unchanged.
+- The exact actual-weight leaves improve Q4 **3.125%** and planar-Q6
+  **0.940%** with unchanged resources and zero BF16 mismatches. Promote only
+  if seven counterbalanced resident p512/d128 pairs preserve generated
+  trajectory/state/lifecycle and pass the all-positive wall gate.
+- On promotion, default the gfx1151 capability true and remove the comparison
+  flag and setter after clean selector-unset publication. On rejection,
+  remove the capability, session field/setter, plan route, and comparison
+  lane while retaining the separately registered primitive for diagnostics.
