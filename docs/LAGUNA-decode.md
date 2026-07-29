@@ -5126,6 +5126,27 @@ The remaining attention sequence is:
     cooperative QK/PV arithmetic already rejected by the recurrent-state
     gate. Evidence:
     [`post-global-probability census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json).
+48. Overlap the exact SWA denominator replay with PV on pair-owner blocks.
+    **Retained as a registered primitive pending the resident gate:** the
+    existing mixed32 launch has 24 pair-owner blocks whose waves 8/9 are idle
+    during PV. Those waves now perform the unchanged vectorized 64-term
+    denominator replay while all eight active output waves execute their
+    unchanged PV chains. The eight triple-owner blocks retain the production
+    schedule. Probability generation, compact V loading, barriers, denominator
+    add order, and every output FMA remain unchanged.
+
+    RED fails on the absent wrapper. GREEN passes the existing wrap and
+    explicit-eviction oracle with byte-identical F32 context and gated BF16
+    output. The 9x50 leaf moves **0.045257 -> 0.045117 ms (-0.310%)**. The
+    stronger 21x100 screen moves **0.045329 -> 0.045182 ms (-0.324%)** with
+    **21/21** paired wins, although the distributions do not completely
+    separate. Cache-only tracing names the distinct specialization at
+    grid12288/local384, VGPR104, SGPR128, LDS25,600, and scratch0; the
+    compiler does not run under profiling. Retain this exact primitive, but
+    keep production at **20.414792 tok/s** until seven counterbalanced
+    p512/d128 resident pairs prove a measurable whole-model benefit.
+    Evidence:
+    [`idle-wave vector denominator primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json).
 
 Current exact decode checkpoint:
 

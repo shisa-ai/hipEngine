@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T00:47:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_idle_vector_denominator_primitive",
+  "status": "accepted_primitive_pending_runtime_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "57ca69d8c21b4d054555ceda5c027d2ee42b79a0",
+    "lineage_check": "blocked before reports because /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "external_source_copied": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 32,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "Keep active-wave probability generation and compact V loading unchanged; on the 24 pair-owner blocks, replay each exact 64-term vectorized denominator on otherwise-idle waves 8/9 while all eight output waves execute PV. Triple-owner blocks retain the production schedule.",
+    "control": "retained stage probability cache with active-wave vec4 denominator and vec4 probability replay",
+    "arithmetic_changed": false,
+    "barriers_changed": false,
+    "loads_changed": false,
+    "pair_owner_critical_path_changed": "denominator plus PV serial -> denominator overlapped with PV"
+  },
+  "correctness": {
+    "red": "focused wrap/eviction test failed importing the absent candidate wrapper",
+    "green": "focused wrap/eviction test passed after implementation",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_mismatches": 0,
+    "context_sha256": "53d9bb47fc552029b4131e22ce11468d415590a5ca77a7dcc47ac09b908a2cde",
+    "gated_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction"
+  },
+  "performance": {
+    "strong_protocol": "21 samples x 100 launches after 10 warmups",
+    "control_median_ms": 0.04532905101776123,
+    "candidate_median_ms": 0.045181961059570314,
+    "latency_change_percent": -0.3244937956748406,
+    "paired_candidate_wins": 21,
+    "paired_trials": 21,
+    "complete_cross_sample_separation": false,
+    "directional_protocol": "9 samples x 50 launches after 5 warmups",
+    "directional_control_median_ms": 0.04525747776031494,
+    "directional_candidate_median_ms": 0.04511722087860107,
+    "directional_latency_change_percent": -0.30990874581361405,
+    "raw_9x50_sha256": "aa1551c4ab45b70807ea19864d142bac4c075a1d75d8c975265155d98ddaec8d",
+    "raw_21x100_sha256": "0f82b195f6e78951579a6221796a89d2be335ddf87f47beb98579954c2a54d43"
+  },
+  "trace": {
+    "control_template_tail": "false",
+    "candidate_template_tail": "true",
+    "grid_size_x": 12288,
+    "workgroup_size_x": 384,
+    "vgpr_count": 104,
+    "sgpr_count": 128,
+    "lds_bytes": 25600,
+    "scratch_bytes": 0,
+    "compiler_invocations_under_profiler": 0,
+    "raw_sha256": "79a6b68f67e4c0bd63eb5efa766d32aad3d8943f0840ecd422514bde15536ea0",
+    "child_sha256": "a061d6645ecb265dfea737a155baea212c21a7a14ab099789a3e3faaab810603"
+  },
+  "selection": {
+    "registered_variant": "swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans",
+    "production_changed": false,
+    "production_tok_s": 20.414791501507366,
+    "next_gate": "Seven counterbalanced resident p512/d128 pairs with exact generated state and allocation lifecycle."
+  }
+}
