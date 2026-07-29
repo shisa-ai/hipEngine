@@ -190744,3 +190744,28 @@ Vulkan local sizes verbatim will close the measured gap.
   without the rejected pair/triple two-launch boundary.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-dim2-output-rejected.json`.
+
+## 2026-07-29 21:21 JST — Reject exact single-launch SWA pair36 ownership
+
+- Built one local256 launch pairing all 72 query heads into 36 fully active
+  blocks. Thirty-two blocks share one KV head; four GQA-boundary blocks
+  process two KV heads sequentially. This removes all 96 idle output waves
+  from mixed32 while preserving every query's exact scalar association.
+- RED import failure and GREEN positions-512..519 wrap/position-200 eviction
+  pass; F32 context and gated BF16 output are byte-exact.
+- Cached 9x50 leaf regresses **0.058748 -> 0.103936 ms (+76.92%)**. Raw
+  SHA-256 is `adb74362...ab7ba7c`.
+- Cache-only trace confirms grid9216/local256 and unchanged
+  VGPR104/SGPR128/LDS25088/scratch0 versus the local384 control; trace
+  SHA-256 is `66c125a8...30ab1d`. The loss is not a resource-allocation
+  accident.
+- Preventing explicit two-phase loop unrolling remains
+  **0.058756 -> 0.103731 ms (+76.55%)**, SHA-256
+  `cb1cf0ca...2069062`. Skip resident decode and remove the complete
+  candidate/test/harness seam.
+- Production remains **20.105078 tok/s**. Along with measured 24/32/40,
+  split pair/triple, and whole-GQA points, this closes scalar ownership around
+  mixed32. The next cooperative attempt needs a precision mechanism coupled
+  to probability/KV reuse rather than another scalar remap.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-pair36-rejected.json`.
