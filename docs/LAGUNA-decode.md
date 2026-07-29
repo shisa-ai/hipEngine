@@ -4265,9 +4265,12 @@ cache-only trace records **5,969 shared + 127 dense** dual launches at
 local32/VGPR96/SGPR128/LDS512/scratch0, removes exactly **48 compute
 launches/token (816 -> 768)**, and cuts the complete Q4 family
 **3.018303 -> 2.836943 ms/token (-6.01%)**. Two singleton launches remain the
-registered backend/shape/layout fallback. A clean selector-unset production
-publication follows the implementation commit. Evidence:
-[`retained exact Q4 pack8 dual decode`](../benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-retained.json).
+registered backend/shape/layout fallback. Three tracked-clean selector-unset
+runs publish **19.620780/19.630076/19.639015 tok/s**, median
+**19.630076**: **+0.3495% / -0.1780 ms/token** over the preceding clean
+19.561715 packet and **+71.192%** over the 11.466687 sprint start. Evidence:
+[`retained exact Q4 pack8 dual decode`](../benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-retained.json) ·
+[`clean Q4 pack8 dual production`](../benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-production.json).
 
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten

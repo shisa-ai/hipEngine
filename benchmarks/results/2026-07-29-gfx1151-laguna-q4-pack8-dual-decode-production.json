@@ -1,0 +1,95 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "created_at": "2026-07-29T10:14:00+09:00",
+  "status": "accepted",
+  "decision": "publish",
+  "scope": "tracked-clean selector-unset gfx1151 Laguna S 2.1 p512/d128 eager c=1 production",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "repo": {
+    "revision": "8b3dc6ff0d04f9c940311a542b781ca153059c52",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q4-dual-clean-publication.json",
+  "protocol": {
+    "prompt_tokens": 512,
+    "output_tokens_including_first": 128,
+    "timed_decode_calls": 127,
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "warmup_rows": 128,
+    "repetitions": 3,
+    "build": "require-cached",
+    "load_seconds_excluded": 94.90667512291111
+  },
+  "decode": {
+    "samples_tok_s": [
+      19.62077975639659,
+      19.630076464224754,
+      19.639015248236102
+    ],
+    "samples_seconds": [
+      6.472729502944276,
+      6.469664050033316,
+      6.4667193540371954
+    ],
+    "median_tok_s": 19.630076464224754,
+    "median_seconds": 6.469664050033316,
+    "prior_clean_tok_s": 19.561715,
+    "delta_percent": 0.34946559759587714,
+    "saved_ms_per_token": 0.1780255916133469,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_delta_percent": 71.1922237366796
+  },
+  "prefill_context": {
+    "samples_tok_s": [
+      618.6426194944491,
+      650.9138537320628,
+      654.3936642817067
+    ],
+    "median_tok_s": 650.9138537320628,
+    "performance_claim": false
+  },
+  "correctness": {
+    "next_token_ids": [
+      2930,
+      2930,
+      2930
+    ],
+    "final_token_ids": [
+      74107,
+      74107,
+      74107
+    ],
+    "trajectory_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "final_position": 638,
+    "tracked_returned_to_baseline": true,
+    "current_allocated_bytes_after": 0,
+    "active_allocations_after": 0
+  },
+  "comparator": {
+    "name": "same-GGUF llama.cpp Vulkan c0bc8591e",
+    "decode_tok_s": 23.348381,
+    "hipengine_remaining_percent": 18.941874946599157,
+    "wall_gap_ms_per_token": 8.112714516093925
+  },
+  "raw_artifact": {
+    "path": "/tmp/laguna-q4-dual-clean-publication.json",
+    "sha256": "d87e92f7af997facab771018fb32fab1ad8c75674a82b14d979ac4b4aed975d3"
+  },
+  "implementation_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-retained.json"
+}
