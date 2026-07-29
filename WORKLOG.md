@@ -189612,3 +189612,22 @@ Vulkan local sizes verbatim will close the measured gap.
   Next run matched resident Poolside Laguna S 2.1 p512/d128 pairs with two HIP
   queues and cached builds, retaining only on exact state/lifecycle plus
   positive throughput.
+
+## 2026-07-29 13:33 JST — Promote exact SWA producer maxima
+
+- Clean tracked source at `d46836db3`, cached builds, and two HIP queues
+  counterbalance seven resident p512/d128 pairs. Every candidate sample beats
+  every control sample; decode moves
+  **19.684442 -> 19.996117 tok/s (+1.583%, -0.792 ms/token)**.
+- All arms select next token 2930 and final token 74107. The complete 128-token
+  trajectory hash is `94f803f7...da32`, final position is 638, repeats are
+  deterministic, control/candidate state matches, and tracked allocations
+  return to zero.
+- Raw A/B SHA-256 is `400bf5f7...96f1`. Promote
+  `LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512`
+  for gfx1151 only; exact mixed32/exp32 remains rollback and peer/non-natural
+  routes are unchanged.
+- Next commit the promotion, then run a tracked-clean selector-unset
+  three-repetition p512/d128 publication before re-profiling attention.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json`.

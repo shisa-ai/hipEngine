@@ -215,8 +215,12 @@ and the nine-sample saturated leaf improves
 **0.081790 -> 0.059101 ms (-27.74%)**. Cached tracing confirms the intended
 32-block/local384 candidate at unchanged VGPR104/SGPR128/scratch0; LDS rises
 only **24,576 -> 25,088 bytes**. The primitive is retained and registered,
-while production remains **19.667705 tok/s** pending a matched resident
-p512/d128 runtime gate.
+and the matched resident p512/d128 gate promotes it: all seven candidate
+samples beat every control, moving **19.684442 -> 19.996117 tok/s
+(+1.583%, -0.792 ms/token)** with exact trajectories, positions, tokens, and
+allocation teardown. gfx1151 now selects producer maxima only for the
+saturated natural SWA shape; mixed32/exp32 remains the exact rollback. A
+tracked-clean selector-unset publication is next.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

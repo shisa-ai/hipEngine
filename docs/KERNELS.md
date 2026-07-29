@@ -1475,9 +1475,14 @@ exp32, ordered denominator, scalar PV FMA order, gate, and stores are
 unchanged. The wrapped/evicted oracle is F32/BF16 byte-exact and the
 nine-sample leaf improves **0.081790 -> 0.059101 ms (-27.74%)**. Cached
 tracing names the candidate at grid32/local384, VGPR104/SGPR128/scratch0, with
-LDS **24,576 -> 25,088 bytes**. The primitive is retained but not yet a
-runtime default; it requires a matched resident p512/d128 gate. Evidence:
+LDS **24,576 -> 25,088 bytes**. The matched resident gate improves all seven
+p512/d128 pairs **19.684442 -> 19.996117 tok/s
+(+1.583%, -0.792 ms/token)** with complete sample separation and exact
+trajectories/state/lifecycle. gfx1151 therefore selects producer maxima at the
+saturated natural SWA shape; mixed32/exp32 remains the exact rollback.
+Evidence:
 [`producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json).
+[`producer-max retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is

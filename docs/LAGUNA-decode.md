@@ -4402,14 +4402,15 @@ The remaining attention sequence is:
    F32/BF16 byte-exact; the leaf improves
    **0.081790 -> 0.059101 ms (-27.74%)**. Cached tracing keeps
    local384/VGPR104/SGPR128/scratch0 and raises LDS only
-   **24,576 -> 25,088 bytes**. Production remains **19.667705 tok/s** until
-   the session-scoped resident p512/d128 gate passes. Evidence:
+   **24,576 -> 25,088 bytes**. The resident gate then improves all seven
+   p512/d128 pairs **19.684442 -> 19.996117 tok/s
+   (+1.583%, -0.792 ms/token)** with exact trajectories/state/lifecycle and
+   complete sample separation. gfx1151 promotes the candidate only for the
+   saturated natural SWA shape; mixed32/exp32 remains rollback. Evidence:
    [`retained producer-max primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json).
-10. Wire the producer-max primitive behind an explicit gfx1151 session
-    capability and run matched resident p512/d128 pairs. Promote only if
-    complete trajectories, runtime state, lifecycle, and throughput all pass;
-    otherwise remove the runtime owner while retaining the exact diagnostic
-    primitive.
+   [`retained producer-max runtime`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-retained.json).
+10. Publish a tracked-clean selector-unset three-run p512/d128 result, then
+    re-profile the attention wall against llama.cpp Vulkan.
 11. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
     precision-design problem: retain its compact GQA9/K64 ownership and
     tensorized QK/PV throughput, but establish an independently valid

@@ -25,6 +25,10 @@ should be removed or collapsed.
   promote the architecture capability, publish a clean selector-unset result,
   then remove the dedicated comparison switch after one later attention
   re-profile. Keep the prior mixed32/exp32 kernel as the exact rollback.
+- **Promotion gate passed 2026-07-29:** all seven resident pairs improve
+  **19.684442 -> 19.996117 tok/s (+1.583%)** with exact state/lifecycle.
+  Keep the comparison switch through the pending clean publication and
+  post-promotion attention census, then remove it.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
