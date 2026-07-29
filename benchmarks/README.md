@@ -18,10 +18,15 @@ ms (-2.504%)**. Three-repeat selector-unset production is
 **191.713/178.080/134.411 tok/s** at 512/1K/4K, improving H5G
 **+1.762%/+1.736%/+1.256%**. The matched llama.cpp HIP M512 target remains
 **694.184 tok/s**, now a **3.621x** gap. H5H still closes larger ordered-Q5
-tiles at the VGPR256 spill boundary; H5I returns the campaign to exact IQ3/IQ4
-selected-down row ownership. Both short rows exceed 150 tok/s and 4K remains
-positive; 16K+ stays closed below the 800/700 stretch gate
+tiles at the VGPR256 spill boundary. Post-H5I tracing attributes **556.749 ms**
+to exact IQ3/IQ4 selected down; 45 K1024 IQ3 calls own **530.864 ms**. A natural
+M512 routing capture finds **9,844** active IQ3 expert instances but **33,547**
+rowbatch8 weight reconstructions, selecting H5J's exact decode-once
+resident-segment owner plus a K1024 IQ4 one-wave sibling. Both short rows exceed
+150 tok/s and 4K remains positive; 16K+ stays closed below the 800/700 stretch
+gate
 ([H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+[post-H5I residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
 [H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
 [post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
@@ -194,11 +199,18 @@ candidate roles, two exact long-K fallbacks, and one exact wide-N fallback.
 Complete state is KL0/byte-exact with one unchanged plane. Integrated tracing
 records **143+143** candidate launches and three exact fallbacks, while clean
 package-default 512/1K/4K reaches **191.713/178.080/134.411 tok/s
-(+1.762%/+1.736%/+1.256%)** over H5G. H5I is promoted; return to exact IQ3/IQ4
-row ownership and do not reopen rejected arithmetic
+(+1.762%/+1.736%/+1.256%)** over H5G. H5I is promoted. Its reconciled request
+contains Q5 **922.619 ms**, IQ down **556.749**, attention **471.150**, Q6
+**110.170**, gate/up **469.311**, and remaining **70.261 ms**. H5J selects exact
+K1024 IQ3 resident-segment ownership: preserve every rowbatch8 reduction but
+move fixed segment reconstruction outside the complete active-row loop,
+eliminating a modeled **70.656%** of reconstruction instances. A separate exact
+K1024 IQ4 wave32 sibling removes three idle waves. Do not reopen rejected
+rowbatch16, output-tile, or source-MMQ arithmetic
 ([H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+[post-H5I residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
 [H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
-[residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
+[post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

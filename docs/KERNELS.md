@@ -711,6 +711,23 @@ public per-session selector; gfx1151 remains fail-closed
 ([H5I production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
 [H5I candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json)).
 
+Post-H5I physical attribution reconciles **2,600.260 ms** exactly: Q5
+**922.619 ms**, exact IQ3/IQ4 selected down **556.749 ms**, attention **471.150
+ms**, gate/up **469.311 ms**, Q6 **110.170 ms**, and remaining **70.261 ms**.
+The IQ family is 45 K1024/N3072 rowbatch8 calls at **530.864 ms** plus two
+K1024/N3072 IQ4 calls at **25.886 ms**. A natural M512 routing capture counts
+**230,400** IQ3 lanes, **9,844** active `(layer,expert)` instances, and
+**33,547** rowbatch8 reconstruction batches. WPF-H5J therefore specializes the
+existing exact body rather than changing arithmetic: retain one decoded IQ3
+segment across the complete expert row range while replaying the unchanged
+8-row accumulator/reduction/store phases, and right-size IQ4's sole populated
+wave to local32. This differs from the removed rowbatch16
+(VGPR256/40-byte scratch), rejected output tile 2 (~50% slower), and rejected
+source-MMQ association. No sidecar/allocation or runtime default is admitted
+before every **45+2** actual layer wins both event and synchronized-wall clocks
+at exact bytes
+([post-H5I residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
