@@ -3152,15 +3152,6 @@ class LagunaGGUFResidentSession:
             bool(enabled)
         )
 
-    def set_decode_global_dpp_qk(self, enabled: bool) -> None:
-        """Select exact DPP transport for the global scalar QK tree."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.global_mixed32_exp32_producer_max_dpp_qk_vstage64_vec16_direct_assume_exp_fixedshape = (
-            bool(enabled)
-        )
-
     @property
     def resident_nbytes(self) -> int:
         self._check_open()

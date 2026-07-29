@@ -4761,19 +4761,23 @@ The remaining attention sequence is:
     **20.088665 -> 20.114355 tok/s (+0.128%, -0.064 ms/token)**.
     gfx1151 now defaults DPP transport on the qualified producer-max route;
     the registered shuffle sibling remains exact rollback and peer backends
-    are unchanged. Next run the tracked-clean selector-unset production
-    checkpoint and remove the comparison-only selector. Evidence:
+    are unchanged. Tracked-clean selector-unset production measures
+    **20.088017/20.105078/20.116745 tok/s**, median **20.105078**:
+    **+0.1767% / -0.0879 ms/token** over the preceding production packet.
+    Exact repeat state/lifecycle passes, and the comparison-only selector is
+    removed. Evidence:
     [`global DPP-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-primitive.json) ·
-    [`global DPP-QK retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json).
+    [`global DPP-QK retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json) ·
+    [`global DPP-QK production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.069608 tok/s** | **49.827 ms** | **+75.025%** |
+| hipEngine current production | **20.105078 tok/s** | **49.739 ms** | **+75.335%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **6.997 ms/token** | hipEngine is **14.04%** below Vulkan throughput |
+| Remaining wall gap | — | **6.909 ms/token** | hipEngine is **13.89%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
