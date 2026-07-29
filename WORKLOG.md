@@ -190152,3 +190152,30 @@ Vulkan local sizes verbatim will close the measured gap.
   exact fused route, and registered parallel tile8 plus standalone SiLU
   rollback. Qualified gfx1151 production remains capability-selected;
   non-natural shapes and peer backends remain unchanged.
+
+## 2026-07-29 16:33 JST — Retain SWA gated-only primitive; reject global
+
+- The same-GGUF llama.cpp Vulkan audit at read-only `c0bc8591e` confirms its
+  fused-attention shader writes only the graph output. Laguna's fused gated
+  decode runner consumes only `gated_context`, making the parallel F32
+  `context` store dead on this route.
+- RED required missing gated-only wrappers. The SWA GREEN fixture covers
+  positions 512-519 after ring wrap plus explicit position-200 eviction,
+  leaves a `-123.5` F32 sentinel untouched, and produces byte-identical gated
+  BF16 output. Nine paired 50-launch samples all improve
+  **0.058948 -> 0.058681 ms (-0.453%)**. Cached tracing names the final-false
+  template at unchanged grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0;
+  raw leaf/trace SHA-256 values are `e85230cb...1761` and
+  `2ad5ad9e...1296`.
+- The global sibling is exact but loses every natural median:
+  live513/576/639 regress **0.068%/0.045%/0.043%**, with only 3/2/1 of nine
+  paired wins. Remove all global candidate code and keep the retained
+  producer-max path unchanged. Raw SHA-256 is `60bf594e...e8ec`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
+  environment-blocked because the read-only external Atlas checkout is
+  absent at `/home/lhl/amd-gpu-tuning/reference/atlas`; this in-tree exact
+  specialization copies no external source. Production remains
+  **20.056756 tok/s**. Next add an SWA-only session-scoped selector and run
+  matched resident p512/d128 state/lifecycle/performance gates. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json` and
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json`.

@@ -3198,7 +3198,8 @@ template <
     bool kSoftmaxExp16 = false,
     bool kSoftmaxExp32 = false,
     bool kProducerMax = false,
-    bool kProducerGate = false>
+    bool kProducerGate = false,
+    bool kStoreContext = true>
 __global__ __launch_bounds__(384)
 void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float* query,
@@ -3540,7 +3541,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float context_value =
         output_acc / fmaxf(wave_denom, 1.0e-20f);
     const int output_idx = q_offset + dim;
-    out[output_idx] = context_value;
+    if constexpr (kStoreContext) {
+      out[output_idx] = context_value;
+    }
     gated_out[output_idx] = laguna_float_to_bf16_bits(
         context_value *
         (kProducerGate
@@ -8782,6 +8785,73 @@ hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_m
           true,
           true,
           true>),
+      dim3(32),
+      dim3(384),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      token_positions,
+      evict_mask,
+      row_positions,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 512 ||
+      sliding_window != 512 || scratch_stride != 512 ||
+      scan_slots != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
+          64,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          true,
+          true,
+          true,
+          false>),
       dim3(32),
       dim3(384),
       0,
