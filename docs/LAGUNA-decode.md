@@ -4224,6 +4224,16 @@ priority. Evidence:
 [`post-global-exp32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-exp32-wall-reprofile.json).
 
 Exact scalar issue/ownership work is now closed for both attention families.
+The last untested exact reuse permutation is also closed. A 32-workgroup
+GQA9/D32 owner keeps full grid breadth and removes the split-softmax merge by
+recomputing exact QK in each of four dimension shards, reducing staged V
+traffic about fourfold. It is byte-exact through wrap and eviction, but
+regresses the retained mixed32 exp32 leaf
+**0.081902 -> 0.138907 ms (+69.60%)**. Redundant QK and nine-head
+register/serial pressure dominate the V saving, so the candidate is removed.
+Evidence:
+[`rejected GQA9/D32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-dim32-rejected.json).
+
 The next material SWA gate must start from llama.cpp's actual advantage:
 tensorized QK and PV inside one GQA tile, with a separately budgeted
 high-precision correction strategy. Reusing scalar ownership, global score
@@ -4334,7 +4344,10 @@ and shape/backend fallbacks.
    exact GQA4+5/local512 successor is byte-exact but regresses the leaf
    **5.44%** because 16 ordinary-grid blocks underfill gfx1151, so it is
    removed. The 24-block GQA3 exp32 screen is likewise exact but **3.34%**
-   slower, closing scalar ordinary-grid SWA ownership below 32 blocks. Apply
+   slower, closing scalar ordinary-grid SWA ownership below 32 blocks. The
+   final 32-block GQA9/D32 dimension-sharded screen is exact but **69.60%**
+   slower: fourfold lower V traffic cannot repay fourfold redundant QK and
+   nine-head issue pressure. Apply
    exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
    and **+0.0479%** complete decode. The next material SWA step requires an
    independently gated tensorized high-precision repair. Do not resume

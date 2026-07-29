@@ -189150,3 +189150,22 @@ Vulkan local sizes verbatim will close the measured gap.
   comparator gap. Trace/bench SHA-256 values are
   `819ac649...c04c0` / `70220eb6...ec4e`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-exp32-wall-reprofile.json`.
+
+## 2026-07-29 09:16 JST — Reject exact GQA9/D32 SWA ownership
+
+- Implemented the remaining no-merge exact GQA-reuse permutation: 32
+  workgroups, four D32 output owners per KV head, all nine query heads per
+  owner, full exact QK recomputed per owner, and only each owner's D32 V shard
+  staged in LDS. This preserves grid breadth and per-output arithmetic order
+  while reducing V traffic about fourfold.
+- RED was the absent wrapper. GREEN passes positions 512-519 after ring wrap
+  plus explicit position-200 eviction with byte-identical F32 context and BF16
+  gated output.
+- Nine 50-launch leaf samples regress retained mixed32 exp32
+  **0.081902 -> 0.138907 ms (+69.60%)**. Fourfold redundant QK and nine-head
+  register/serial issue dominate the V saving.
+- Removed kernel, wrapper, registry, oracle call, and harness choice before
+  tracing or runtime integration. Production remains **19.561715 tok/s**.
+  Scalar exact ownership/reuse is closed; the next material attention premise
+  must tensorize QK/PV with a separately gated precision strategy. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-dim32-rejected.json`.
