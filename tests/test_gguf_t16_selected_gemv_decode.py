@@ -20,6 +20,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -691,6 +692,7 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
             "selected_dual_t16_natural_tile8_parallel_gemv_decode_bf16_bf16_out",
+            "selected_dual_t16_natural_tile8_parallel_silu_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_grouped_smallm_bf16_bf16_out",
             "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_q8_1_dp4a_gemv_decode_bf16_bf16_out",
@@ -892,6 +894,23 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     )
     np.testing.assert_array_equal(gate_tile8_parallel[0], gate_tile8[0])
     np.testing.assert_array_equal(gate_tile8_parallel[1], gate_tile8[1])
+    gate_tile8_parallel_silu = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_a,
+        gate_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    gate_f32 = _bf16_u16_to_f32(gate_tile8_parallel[0])
+    up_f32 = _bf16_u16_to_f32(gate_tile8_parallel[1])
+    with np.errstate(over="ignore"):
+        expected_silu = _f32_to_bf16_u16(
+            gate_f32 * (1.0 / (1.0 + np.exp(-gate_f32))) * up_f32
+        )
+    np.testing.assert_array_equal(gate_tile8_parallel_silu, expected_silu)
 
     down_in, down_out = 1024, 3072
     down_x = _f32_to_bf16_u16(

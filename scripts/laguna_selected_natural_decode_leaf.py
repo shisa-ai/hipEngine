@@ -33,10 +33,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    build_paro_silu,
+    silu_mul_separate_out_bf16,
 )
 from hipengine.quant.gguf_t16 import (
     convert_gguf_q6_k_tile16_to_qmicro_planar,
@@ -65,7 +70,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260728)
     parser.add_argument(
         "--gate-candidate",
-        choices=("natural", "tile8", "tile8-parallel"),
+        choices=(
+            "natural",
+            "tile8",
+            "tile8-parallel",
+            "tile8-parallel-silu",
+        ),
         default="natural",
     )
     parser.add_argument("--gate-only", action="store_true")
@@ -275,6 +285,132 @@ def _screen_pair(
     }
 
 
+def _screen_pair_silu(
+    *,
+    runtime,
+    library,
+    silu_library,
+    x: np.ndarray,
+    selected: np.ndarray,
+    tiles_a: np.ndarray,
+    tiles_b: np.ndarray,
+    in_features: int,
+    out_features: int,
+    warmups: int,
+    samples: int,
+    burst: int,
+) -> dict:
+    buffers = []
+    try:
+        x_dev = _upload(runtime, x)
+        selected_dev = _upload(runtime, selected)
+        tiles_a_dev = _upload(runtime, tiles_a)
+        tiles_b_dev = _upload(runtime, tiles_b)
+        control_gate_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        control_up_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        control_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        candidate_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        buffers.extend(
+            (
+                x_dev,
+                selected_dev,
+                tiles_a_dev,
+                tiles_b_dev,
+                control_gate_dev,
+                control_up_dev,
+                control_out_dev,
+                candidate_out_dev,
+            )
+        )
+
+        def control() -> None:
+            gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out(
+                x_dev.ptr,
+                selected_dev.ptr,
+                tiles_a_dev.ptr,
+                tiles_b_dev.ptr,
+                control_gate_dev.ptr,
+                control_up_dev.ptr,
+                int(x.shape[0]),
+                TOP_K,
+                EXPERTS,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+            silu_mul_separate_out_bf16(
+                control_gate_dev.ptr,
+                control_up_dev.ptr,
+                control_out_dev.ptr,
+                TOP_K,
+                out_features,
+                library=silu_library,
+                runtime=runtime,
+            )
+
+        def candidate() -> None:
+            gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out(
+                x_dev.ptr,
+                selected_dev.ptr,
+                tiles_a_dev.ptr,
+                tiles_b_dev.ptr,
+                candidate_out_dev.ptr,
+                int(x.shape[0]),
+                TOP_K,
+                EXPERTS,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+
+        launchers = {"control": control, "candidate": candidate}
+        for _ in range(warmups):
+            control()
+            candidate()
+        runtime.device_synchronize()
+        timings = {"control": [], "candidate": []}
+        for sample in range(samples):
+            order = (
+                ("control", "candidate")
+                if sample % 2 == 0
+                else ("candidate", "control")
+            )
+            for name in order:
+                timings[name].append(
+                    _event_ms(runtime, launchers[name], burst=burst)
+                )
+        control()
+        candidate()
+        runtime.device_synchronize()
+        control_out = _read_bf16(
+            runtime, control_out_dev, (TOP_K, out_features)
+        )
+        candidate_out = _read_bf16(
+            runtime, candidate_out_dev, (TOP_K, out_features)
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    medians = {
+        name: statistics.median(values) for name, values in timings.items()
+    }
+    ratio = medians["candidate"] / medians["control"]
+    return {
+        "samples_ms": timings,
+        "median_ms": medians,
+        "candidate_over_control": ratio,
+        "candidate_delta_percent": (ratio - 1.0) * 100.0,
+        "bf16_mismatch": int(
+            np.count_nonzero(candidate_out != control_out)
+        ),
+        "control_launches": 2,
+        "candidate_launches": 1,
+    }
+
+
 def _screen_single(
     *,
     runtime,
@@ -447,6 +583,14 @@ def main() -> int:
         load=True,
         require_cached=args.require_cached_build,
     )
+    silu_library = (
+        build_paro_silu(
+            load=True,
+            require_cached=args.require_cached_build,
+        )
+        if args.gate_candidate == "tile8-parallel-silu"
+        else None
+    )
     reset_memory_stats()
     common = {
         "runtime": runtime,
@@ -472,9 +616,25 @@ def main() -> int:
             ),
         ),
     }
-    gate_control, gate_candidate = gate_modes[args.gate_candidate]
-    results = {
-        "q4_gate_up": _screen_pair(
+    if args.gate_candidate == "tile8-parallel-silu":
+        assert silu_library is not None
+        gate_result = _screen_pair_silu(
+            runtime=runtime,
+            library=library,
+            silu_library=silu_library,
+            x=x_gate,
+            selected=selected,
+            tiles_a=gate,
+            tiles_b=up,
+            in_features=3072,
+            out_features=1024,
+            warmups=args.warmups,
+            samples=args.samples,
+            burst=args.burst,
+        )
+    else:
+        gate_control, gate_candidate = gate_modes[args.gate_candidate]
+        gate_result = _screen_pair(
             control=gate_control,
             candidate=gate_candidate,
             x=x_gate,
@@ -483,7 +643,9 @@ def main() -> int:
             in_features=3072,
             out_features=1024,
             **common,
-        ),
+        )
+    results = {
+        "q4_gate_up": gate_result,
     }
     if not args.gate_only:
         results.update(
