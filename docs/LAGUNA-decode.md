@@ -5697,6 +5697,24 @@ The remaining attention sequence is:
     with no scratch. Evidence:
     [`post-local512 wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-local512-wall-reprofile.json).
 
+73. Revisit producer-wave V-tail transport only after local512 changes its
+    loader balance. **Retained and promoted on gfx1151:** the two exact
+    tail-probability waves copy the final 64/32 staged-V vectors in pair and
+    singleton blocks, while the other 14/15 waves copy the prefix. This keeps
+    QK, softmax, denominator, PV, gate, and store association unchanged.
+
+    The 9x50 leaf improves **0.031528 -> 0.030106 ms (-4.512%)**. The stronger
+    21x100 leaf improves **0.031737 -> 0.030061 ms (-5.282%)**, wins all 21
+    pairs, and is byte-identical in both F32 context and gated BF16. Native
+    tracing confirms grid40/local512, **VGPR32/SGPR128/LDS25,600/scratch0**.
+    All seven counterbalanced actual-model p512/d128 pairs improve
+    **20.718104 -> 20.737481 tok/s (+0.09353%, -0.04510 ms/token)** with
+    exact trajectory/state/lifecycle. The previous local512 route remains
+    exact rollback, peer backends remain unchanged, and the temporary
+    comparison selector is removed. Clean selector-unset publication is next.
+    Evidence:
+    [`local512 value-tail retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

@@ -162,6 +162,7 @@ class LagunaKVCache:
         swa_mixed40_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         swa_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
+        swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         runtime: HipRuntime,
     ) -> None:
         self.layers = layers
@@ -283,6 +284,11 @@ class LagunaKVCache:
         self.swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512 = (
             bool(
                 swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
+            )
+        )
+        self.swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512 = (
+            bool(
+                swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
             )
         )
         self.runtime = runtime
@@ -949,6 +955,21 @@ class LagunaKVCache:
                     "global_context_fused_exact_gated_mixed32_local512_exp32_"
                     "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_"
                     "vec16_direct_assume_exp_fixedshape_spans"
+                )
+            if (
+                state.attention_type == SLIDING_ATTENTION
+                and use_gated
+                and self.swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
+                and self.swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
+                and live_count == 512
+                and state.capacity == 512
+                and state.q_heads == 72
+            ):
+                variant = (
+                    "swa_context_fused_exact_gated_mixed40_local512_exp32_"
+                    "producer_max_gate_stage_pcache_tail_producer_value_tail_"
+                    "idle_vec4_denom_probability_vstage64_vec16_direct_assume_"
+                    "exp_fixed512_spans"
                 )
             fn = self._resolve("laguna_attention_decode", variant)
             gated_args = (
@@ -1861,6 +1882,14 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512 = bool(
+        selected_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
+        and backend_package_capability(
+            backend,
+            "LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+            False,
+        )
+    )
     selected_global_split_fixedshape_reduce = bool(
         selected_split_gate_fusion
         and backend_package_capability(
@@ -2068,6 +2097,9 @@ def allocate_laguna_kv_cache(
         ),
         swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512=(
             selected_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
+        ),
+        swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512=(
+            selected_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
         ),
     )
     buffers: list[DeviceBuffer] = []
@@ -2377,6 +2409,10 @@ def allocate_laguna_kv_cache(
                 selected_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
                 and split_enabled
             ),
+            swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512=(
+                selected_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
+                and split_enabled
+            ),
             runtime=runtime,
         )
     except Exception:
@@ -2428,6 +2464,7 @@ def _validate_split_backend(
     swa_mixed40_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
     swa_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
     swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
+    swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
 ) -> None:
     if all(
         threshold is None
@@ -2814,6 +2851,18 @@ def _validate_split_backend(
                     "exp32_producer_max_gate_stage_pcache_tail_producer_"
                     "idle_vec4_denom_probability_vstage64_vec16_direct_"
                     "assume_exp_fixed512_spans"
+                ),
+            )
+        )
+    if swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512:
+        requested.append(
+            (
+                swa_tile16_threshold,
+                (
+                    "swa_context_fused_exact_gated_mixed40_local512_exp32_"
+                    "producer_max_gate_stage_pcache_tail_producer_value_tail_"
+                    "idle_vec4_denom_probability_vstage64_vec16_direct_assume_"
+                    "exp_fixed512_spans"
                 ),
             )
         )

@@ -2007,6 +2007,19 @@ Tracked-clean selector-unset production is
 **+0.29510% / -0.14355 ms/token** over the preceding clean packet and
 **+79.278%** over sprint start, with exact repeated trajectory/state/lifecycle:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-local512-production.json).
+The exact local512 producer-value-tail successor reopens only the transport
+ownership seam that failed at local384. Its two tail-probability waves copy
+the final 64/32 staged-V vectors in pair/singleton blocks while the unchanged
+14/15 loader waves copy the prefix. QK, softmax, denominator, and PV
+association are unchanged. The strong 21x100 leaf improves
+**0.031737 -> 0.030061 ms (-5.282%)** with all 21 pairs positive and
+byte-identical F32/BF16 output. Native tracing remains grid40/local512,
+**VGPR32/SGPR128/LDS25,600/scratch0**. All seven actual-model p512/d128
+pairs improve **20.718104 -> 20.737481 tok/s (+0.09353%,
+-0.04510 ms/token)** with exact state/lifecycle. gfx1151 promotes the
+capability, the preceding local512 route remains exact rollback, and peer
+backends are unchanged:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-retained.json).
 The exact double-buffer successor is removed at the leaf stop. It reduces
 staged-loop barriers **16 -> 9** but adds **17,152 B** dynamic LDS and narrows
 pair-block next-stage loading to four waves; the byte-exact 9x50 leaf

@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T06:10:00+09:00",
+  "kind": "hipengine_laguna_swa_local512_value_tail_retention",
+  "status": "retained",
+  "performance_claim": true,
+  "source_revision": "deb0c1682043a43db3ce065bb34ce50d59688615",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "scope": "36 saturated SWA decode layers",
+    "control": "mixed40 local512 with two tail probability producers excluded from staged-V transport",
+    "candidate": "the same two probability-producer waves copy the final 64/32 staged-V vectors in pair/singleton owner blocks",
+    "arithmetic": "unchanged scalar-F32 QK, softmax, denominator, and PV association",
+    "grid_workgroups": 40,
+    "workgroup_threads": 512
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "nine_by_fifty": {
+      "control_median_ms": 0.03152849912643432,
+      "candidate_median_ms": 0.03010580062866211,
+      "latency_change_percent": -4.512420626389357,
+      "raw_sha256": "7c45120262e377b1a9651e35ab1d76e6fc1ece912ac305ebf652628de7d02efd"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.031737430095672606,
+      "candidate_median_ms": 0.030061089992523195,
+      "latency_change_percent": -5.281902466885557,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "median_paired_saving_ms": 0.001685159206390379,
+      "raw_sha256": "4103d4181bb9e181a734817328fbc3e3cca06b31b562fabe882d3890312d6fa2"
+    }
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions_per_mode": 7,
+    "order": "AB/BA counterbalanced",
+    "control_median_seconds": 6.1299045940395445,
+    "candidate_median_seconds": 6.124176800018176,
+    "control_median_tok_s": 20.718103854909803,
+    "candidate_median_tok_s": 20.7374809949352,
+    "throughput_change_percent": 0.09352757453624516,
+    "control_ms_per_token": 48.26696530739799,
+    "candidate_ms_per_token": 48.22186456707225,
+    "saving_ms_per_token": 0.04510074032573641,
+    "paired_candidate_wins": 7,
+    "paired_samples": 7,
+    "median_paired_saving_ms_per_token": 0.04288496075594139,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-local512-value-tail --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-swa-local512-value-tail-ab.json",
+    "raw_sha256": "3fbec480ac002e58d288e8f87cb42b72ffec6a1067a0a7686e2e43a10a0cee4a"
+  },
+  "correctness": {
+    "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "cpu_reference_result": "1 passed",
+    "candidate_control_context_f32_byte_exact": true,
+    "candidate_control_gated_bf16_byte_exact": true,
+    "candidate_control_kl": 0.0,
+    "candidate_control_top1_agreement_percent": 100.0,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-local512-value-tail-trace.MyUYkl --output-file leaf -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-tail-producer-value-tail-idle-vec4-denom-probability-vstage64-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-local512-value-tail-trace.MyUYkl/leaf.json",
+    "candidate_calls": 2,
+    "grid_threads": 20480,
+    "workgroup_threads": 512,
+    "vgpr": 32,
+    "sgpr": 128,
+    "lds_bytes": 25600,
+    "scratch_bytes": 0,
+    "candidate_median_duration_ns": 137138,
+    "control_median_duration_ns": 138019,
+    "compiler_ran_under_profiler": false,
+    "kernel_trace_sha256": "0f0b4a7be2ec71a5d291605b5f4d376f18b76b097d8cf90e7be31ef11c74aecf",
+    "child_sha256": "43944670ed12db6a7c9c4d86c07f2ed8cf63201695d5c8e11afc114175b186a0"
+  },
+  "integration": {
+    "capability": "hip_gfx1151.LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "production_default_changed": true,
+    "fallback": "swa_context_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans",
+    "temporary_comparison_cli_removed": true,
+    "other_backends_unchanged": true
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_by_missing_external_reference",
+    "detail": "/home/lhl/amd-gpu-tuning/reference/atlas is absent; this change is an in-tree specialization, not an external port"
+  },
+  "decision": "Promote exact producer-wave V-tail transport only in the retained gfx1151 mixed40/local512 SWA body. The combination preserves arithmetic and resources, wins every strong leaf and resident pair, and retains the prior local512 route as exact rollback."
+}
