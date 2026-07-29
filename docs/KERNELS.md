@@ -1890,6 +1890,17 @@ runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and
 **2.017783 ms/token**. Attention is still **2.114009 ms/token** above
 same-GGUF Vulkan and **34.35%** of the remaining production wall gap:
 [`post-global-probability census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json).
+The separately registered exact
+`swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans`
+primitive moves the unchanged vectorized denominator replay onto otherwise-idle
+waves 8/9 in the 24 pair-owner blocks while all eight active output waves
+execute the unchanged PV chains; triple-owner blocks retain the production
+schedule. The wrap/eviction oracle is F32/BF16 byte-exact. The stronger 21x100
+leaf improves **0.045329 -> 0.045182 ms (-0.324%)** with **21/21** paired
+wins at unchanged grid12288/local384, VGPR104, SGPR128, LDS25,600, and
+scratch0. Retain the primitive pending a seven-pair resident p512/d128 gate;
+production remains **20.414792 tok/s**:
+[`idle-wave vector denominator primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

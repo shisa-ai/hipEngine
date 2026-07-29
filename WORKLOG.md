@@ -191291,3 +191291,32 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw trace SHA-256 is `3e02fde0...f4c3`; child SHA-256 is
   `ef6974ac...c63b`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json`.
+
+## 2026-07-30 00:47 JST — Retain SWA idle-wave vector denominator primitive
+
+- The required kernel-lineage check cannot start because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external source was
+  copied; this is an in-tree scheduling change to the retained Laguna SWA
+  body.
+- RED first fails importing the absent candidate wrapper. GREEN passes the
+  focused wrap/explicit-eviction oracle after implementation; F32 context and
+  gated BF16 output are byte-identical to production.
+- On the 24 pair-owner blocks, waves 8/9 now replay each unchanged vectorized
+  64-term denominator while all eight active output waves execute their
+  unchanged PV chains. The eight triple-owner blocks keep the production
+  schedule. Probability generation, V staging, barriers, denominator order,
+  and every output FMA remain unchanged.
+- Cached 9x50 leaf medians improve
+  **0.045257 -> 0.045117 ms (-0.310%)**. The stronger 21x100 screen improves
+  **0.045329 -> 0.045182 ms (-0.324%)** with **21/21** paired wins, without
+  complete sample separation. Raw SHA-256 values are
+  `aa1551c4...ec8d` and `0f82b195...d43`.
+- Cache-only tracing names the candidate at grid12,288/local384, VGPR104,
+  SGPR128, LDS25,600, scratch0; the control has identical resources. No
+  compiler runs under profiling. Raw trace/child SHA-256 values are
+  `79a6b68f...ea0` / `a061d664...603`.
+- Retain the registered exact primitive but keep production at
+  **20.414792 tok/s**. Next add a temporary default-off runtime route and
+  require seven exact counterbalanced p512/d128 resident pairs before
+  promotion. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json`.

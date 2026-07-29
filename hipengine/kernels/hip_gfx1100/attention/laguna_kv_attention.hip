@@ -3714,7 +3714,8 @@ template <
     bool kStageProbabilityCache = false,
     bool kIdleProbabilityProducer = false,
     bool kVectorDenomReplay = false,
-    bool kVectorProbabilityReplay = false>
+    bool kVectorProbabilityReplay = false,
+    bool kIdleVectorDenomReplay = false>
 __global__ __launch_bounds__(384)
 void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float* query,
@@ -3746,6 +3747,12 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
       !kVectorProbabilityReplay ||
           (kStageProbabilityCache && kVectorDenomReplay),
       "vector probability replay requires vector denominator stage cache");
+  static_assert(
+      !kIdleVectorDenomReplay ||
+          (kStageProbabilityCache && kVectorDenomReplay &&
+           !kIdleProbabilityProducer),
+      "idle vector denominator replay requires the active-producer vector "
+      "denominator stage cache");
   __shared__ float shared_scores[kOwnedQueries][kScanSlots];
   __shared__ int32_t shared_physical[kScanSlots];
   __shared__ float shared_wave_max[kOwnedQueries][kScoreWaves];
@@ -3908,6 +3915,11 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
       wave >= 8 && wave < 8 + owned_queries;
   const int probability_q_local =
       idle_probability_producer ? wave - 8 : q_local;
+  const bool idle_vector_denom_replay =
+      kIdleVectorDenomReplay && owned_queries < kOwnedQueries &&
+      wave >= 8 && wave < 8 + owned_queries;
+  const int denominator_q_local =
+      idle_vector_denom_replay ? wave - 8 : probability_q_local;
   float probability_max = wave_max;
   if (idle_probability_producer) {
     probability_max = -3.4028234663852886e38f;
@@ -3932,6 +3944,10 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
           (kIdleProbabilityProducer && owned_queries < kOwnedQueries
                ? idle_probability_producer
                : active_output && (wave & 3) == 0);
+      const bool stage_denom_producer =
+          kIdleVectorDenomReplay && owned_queries < kOwnedQueries
+              ? idle_vector_denom_replay
+              : stage_probability_producer;
       if constexpr (kStageProbabilityCache) {
         if (stage_probability_producer) {
 #pragma unroll
@@ -4054,10 +4070,10 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
       }
       __syncthreads();
       if constexpr (kStageProbabilityCache && kVectorDenomReplay) {
-        if (stage_probability_producer && lane == 0) {
+        if (stage_denom_producer && lane == 0) {
           const auto* probability_vectors =
               reinterpret_cast<const float4*>(
-                  shared_probability[probability_q_local]);
+                  shared_probability[denominator_q_local]);
 #pragma unroll
           for (int item = 0; item < kValueStage / 4; ++item) {
             const float4 weights = probability_vectors[item];
@@ -4066,7 +4082,7 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
             wave_denom = laguna_ordered_add_f32(wave_denom, weights.z);
             wave_denom = laguna_ordered_add_f32(wave_denom, weights.w);
           }
-          shared_denom[probability_q_local] = wave_denom;
+          shared_denom[denominator_q_local] = wave_denom;
         }
       }
       if constexpr (kStageProbabilityCache) {
@@ -10074,6 +10090,79 @@ hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_m
           false,
           true,
           false,
+          true,
+          true>),
+      dim3(32),
+      dim3(384),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      token_positions,
+      evict_mask,
+      row_positions,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 512 ||
+      sliding_window != 512 || scratch_stride != 512 ||
+      scan_slots != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
+          64,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          true,
           true,
           true>),
       dim3(32),
