@@ -155,6 +155,15 @@ should be removed or collapsed.
   base/rowbatch4/adaptive/auto and IQ4 dual independently own Qwen3.5 GGUF's
   exact default-on grouped-prefill route and remain covered. P6 and WPF-1R
   remain closed.
+- WPF-H5J adds the package-only `LAGUNA_GROUPED_IQ_DOWN_VARIANTS` map, initially
+  empty on both gfx1100 and gfx1151. It can replace each registered IQ3/IQ4 key
+  independently only for the exact K1024/N3072 Laguna role; map, shape,
+  registration, and backend misses retain the preceding rowbatch8/IQ4-auto
+  routes. There is no public/session selector, allocation, or sidecar. If the
+  complete-state or clean 512/1K/4K gate fails, remove this map/resolver and its
+  runtime-policy tests while retaining the standalone leaves. If it passes,
+  promote the two gfx1100 entries and retain the baseline map-miss fallback for
+  other shapes/backends.
 
 ## Laguna exact qrow4 SWA prefill selector
 
