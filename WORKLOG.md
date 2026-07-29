@@ -190832,3 +190832,25 @@ Vulkan local sizes verbatim will close the measured gap.
   copied.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json`.
+
+## 2026-07-29 22:06 JST — Publish clean SWA stage probability cache
+
+- Commit `a2c8f0d28` promotes the exact stage-probability-cache capability and
+  removes the comparison-only profile route. The tracked worktree is clean;
+  unrelated untracked shared-tree artifacts remain excluded.
+- Three selector-unset Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 runs
+  measure **20.260703/20.278430/20.270314 tok/s**, median
+  **20.270314 tok/s / 49.333 ms/token**. This is **+0.8219% /
+  -0.4055 ms/token** over clean 20.105078 and **+76.776%** over the
+  11.466687 sprint start.
+- All runs produce next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, deterministic repeated state, and
+  zero tracked bytes/allocations after teardown. The artifact records the new
+  capability active without a selector.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s / 42.830 ms/token**.
+  The remaining gap is **6.504 ms/token** or **13.18%** throughput. Run the
+  cached post-promotion census next, then screen the same exact
+  probability/V-stage schedule on the 12 global layers before considering
+  any approximate cooperative-matrix result.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-production.json`.

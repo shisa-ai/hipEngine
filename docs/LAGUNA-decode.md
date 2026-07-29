@@ -4868,18 +4868,23 @@ The remaining attention sequence is:
     72Q/8KV/D128/SWA512; the producer-max/gate owner remains the exact
     rollback and peer backends are unchanged. This is the first direct
     transfer of llama.cpp's probability-tile reuse that preserves Laguna's
-    recurrent arithmetic contract. Tracked-clean selector-unset publication
-    is the next gate. Evidence:
-    [`retained stage probability cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json).
+    recurrent arithmetic contract. Tracked-clean selector-unset production is
+    **20.260703/20.278430/20.270314 tok/s**, median **20.270314**:
+    **+0.8219% / -0.4055 ms/token** over the preceding clean packet and
+    **+76.776%** over sprint start. The capability is active without a
+    comparison selector and all repeated state/lifecycle checks pass.
+    Evidence:
+    [`retained stage probability cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json) ·
+    [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.105078 tok/s** | **49.739 ms** | **+75.335%** |
+| hipEngine current production | **20.270314 tok/s** | **49.333 ms** | **+76.776%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **6.909 ms/token** | hipEngine is **13.89%** below Vulkan throughput |
+| Remaining wall gap | — | **6.504 ms/token** | hipEngine is **13.18%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
@@ -4899,19 +4904,18 @@ measured failures. Packed-BF16 QK dot2 is also closed: its compensated path is
 slower and its one-term path spends far more than the complete quality budget
 for a sub-percent leaf gain.
 
-Scalar ownership is now closed around the retained mixed32 point: 24, 32, 36,
-40, split pair/triple, and whole-GQA owners have all been measured. The next
-attention candidate must couple probability/KV reuse to its output tile while
-preserving exact scalar association. The proposed consensus guard is not that
-mechanism. On the retained global three-term GQA6/K64 sibling, left-versus-
-right component association changes thousands of F32 contexts but zero gated
-BF16 bins, while forward-versus-reverse FP64 split merge changes no output.
-Both miss all **3/3** known exact BF16 errors, including one with identical F32
-component-association results. Do not reconstruct the removed SWA WMMA body or
-use approximation agreement as a replay oracle. The next exact transfer
-publishes each K64 stage's identical probabilities during V loading and reuses
-the already-required load barrier, avoiding the three extra barriers that
-rejected the earlier P-cache4 design.
+Scalar ownership is closed around the retained mixed32 point: 24, 32, 36, 40,
+split pair/triple, and whole-GQA owners have all been measured. Stage
+probability caching now supplies the missing exact coupling: each K64 tile's
+identical probabilities are produced concurrently with V loading and reused
+through the already-required barrier, avoiding the three extra barriers that
+rejected P-cache4. The next bounded attention screen transfers that exact
+schedule to the 12 global layers before revisiting any lower-precision
+cooperative-matrix result. On the retained global three-term GQA6/K64 sibling,
+left-versus-right component association changes thousands of F32 contexts but
+zero gated BF16 bins, while forward-versus-reverse FP64 split merge changes no
+output; both miss all **3/3** known exact BF16 errors. Do not reconstruct the
+removed SWA WMMA body or use approximation agreement as a replay oracle.
 
 LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
 geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all
