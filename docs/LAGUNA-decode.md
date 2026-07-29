@@ -4384,7 +4384,15 @@ The remaining attention sequence is:
    therefore inseparable from its wave64-native Br16 x Bc64 cooperative tile;
    physical wave64 alone does not transfer. Evidence:
    [`rejected physical wave64 mixed32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-wave64-rejected.json).
-8. The next material design must raise arithmetic per K/V ownership/load
+8. Sharing softmax across the two width-32 halves of each physical wave64 is
+   **complete and rejected**. Native `ds_bpermute` makes the maximum, exp32
+   weights, denominator, F32 context, and gated BF16 result byte-exact without
+   LDS or barriers, but the leaf regresses
+   **0.081713 -> 0.085229 ms (+4.30%)**. Cross-half permutation and wave64
+   issue overhead cost more than the duplicated softmax work. All candidate
+   code is removed. Evidence:
+   [`rejected wave64 shared softmax`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wave64-shared-softmax-rejected.json).
+9. The next material design must raise arithmetic per K/V ownership/load
    event, not merely alter synchronization. Revisit llama.cpp's cooperative
    matrix GQA tile as a precision-design problem: retain its compact
    GQA9/K64 ownership and tensorized QK/PV throughput, but establish an
