@@ -4723,16 +4723,39 @@ The remaining attention sequence is:
     Evidence:
     [`single-launch WMMA-QK rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-rejected.json).
 
-31. Preserve the retained QK association and attack exact ownership overhead.
-    **Next:** profile the current mixed owner at instruction/memory-stall
-    granularity, then screen one source-order-preserving exact candidate at a
-    time: packed K loads shared across the six query heads, K64 nibble/row
-    reuse without changing each head's scalar FMA sequence, and wider
-    per-workgroup head ownership only while the current maximum/exp32/PV order
-    remains byte-identical. The first gate is BF16-bit equality at the
-    live513/576/639 eviction shapes plus a positive cached leaf result. Only
-    an exact leaf winner advances to trace and the 576-step recurrent gate.
-    Do not add another approximate QK/PV route or a global score round-trip.
+31. Profile the retained exact global owner and test the F32 output-boundary
+    repair hypothesis. **Complete; repair rejected:** the actual gfx1151
+    kernel is local256 with VGPR48/SGPR128/LDS512/scratch0. Its ISA already
+    emits 128-bit Q/V and 64-bit K loads. Across live513/576/639, measured
+    memory-unit busy is only about **18.66-26.18%** while the kernel executes
+    about **1.67-2.09M VALU** and **0.41-0.52M LDS** instructions. This is not
+    a missing-vector-load or saturated-DRAM problem; exact scalar arithmetic,
+    cross-lane reduction, and staged PV are the material work. The previous
+    “K64 nibble reuse” item was also factually wrong because attention K is
+    BF16, not Q4.
+
+    A separate exact-attention candidate preserved the gate and Q5 O
+    projection in F32 and rounded only after projection, testing whether the
+    retained BF16 boundary amplified the otherwise tiny WMMA-QK context
+    error. The authoritative 18-prompt/576-step gate remains finite and
+    reaches **563/576 (97.74%)** top-1, but max KL is **1.162237**, or
+    **23.24x** the `0.05` ceiling. The temporary helper, selector, test, and
+    harness are removed. The BF16 attention-output boundary is part of the
+    admitted recurrent contract, not a repair seam for approximate QK.
+    Evidence:
+    [`exact attention core audit`](../benchmarks/results/2026-07-29-gfx1151-laguna-exact-attention-core-audit.json).
+
+32. Preserve the retained QK association and reduce exact cross-lane cost.
+    **Next:** screen the in-tree exact DPP reduction pattern on only the global
+    scalar QK tree. It must preserve the current
+    **+16,+8,+4,+2,+1** F32 association while replacing the five
+    `ds_bpermute` shuffles with `permlanex16` plus DPP moves. The first gate is
+    BF16-bit equality at live513/576/639 with explicit eviction, followed by
+    a positive cached leaf result at every shape. Only an exact leaf winner
+    advances to cache-only trace and the 576-step recurrent gate. If DPP is
+    neutral or negative, the next material screen is a broader exact
+    cooperative owner—not explicit K packing, another approximate QK/PV
+    route, or a global score round-trip.
 
 Current exact decode checkpoint:
 
