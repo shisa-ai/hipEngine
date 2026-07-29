@@ -191058,3 +191058,22 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **20.270314 tok/s** pending seven counterbalanced resident
   p512/d128 pairs. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json`.
+
+## 2026-07-29 23:36 JST — Promote vectorized SWA denominator replay
+
+- Add a comparison-only cache field, profile switch, and routing-test seam.
+  The focused routing/profile bundle passes **36** tests.
+- Seven counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128
+  candidate samples beat every control. Median decode moves
+  **20.277561 -> 20.368173 tok/s
+  (+0.446857%, -0.219390 ms/token)**. Raw SHA-256 is
+  `5389aacb...db179df`.
+- Every row preserves next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown.
+- Promote
+  `LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512`
+  on gfx1151. Keep shuffle denominator replay as exact registered rollback and
+  peer backends unchanged. Remove the dedicated comparison flag; selector-
+  unset publication remains next. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json`.

@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T23:36:12+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_vec4_denom_retained",
+  "status": "retained_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "ea43e17a015f53792594bfe239db0f801d57dcd8",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_id": "mixed_ja_en_review",
+    "prefill_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_size": 2048,
+    "attention_rows": 128,
+    "mode": "eager c=1"
+  },
+  "control": {
+    "description": "production stage probability cache with wave-shuffle denominator replay",
+    "decode_median_tok_s": 20.27756124736483,
+    "decode_samples_tok_s": [
+      20.263249744688242,
+      20.273981574947538,
+      20.279572319136506,
+      20.27140871348926,
+      20.279164793030116,
+      20.280947669314916,
+      20.27756124736483
+    ]
+  },
+  "candidate": {
+    "description": "aligned float4 LDS replay of the exact published probability denominator",
+    "decode_median_tok_s": 20.36817285690542,
+    "decode_samples_tok_s": [
+      20.352982861980813,
+      20.36817285690542,
+      20.363751429123607,
+      20.36784842014097,
+      20.371478997798665,
+      20.374929427599156,
+      20.37063312507911
+    ]
+  },
+  "result": {
+    "throughput_change_percent": 0.4468565447058648,
+    "saving_ms_per_token": 0.21938960742586744,
+    "paired_candidate_wins": 7,
+    "paired_samples": 7,
+    "complete_sample_separation": true
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-vec4-denom --allow-dirty --output /tmp/laguna-p512-d128-swa-vec4-denom-ab.json",
+    "raw_sha256": "5389aacbebe733dd9494375f630751eb467a550f5c5eca009ed39d5ebdb179df",
+    "timed_order": "AB/BA counterbalanced by repetition",
+    "comparison_plumbing_tests": "36 passed"
+  },
+  "decision": {
+    "retain": true,
+    "promote_gfx1151": true,
+    "capability": "LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "qualified_shape": "gated 72Q/8KV/D128/SWA512 exact BF16-KV decode",
+    "rollback": "registered stage probability cache with wave-shuffle denominator replay",
+    "comparison_seam_removed": true,
+    "production_topline_pending_clean_publication": true
+  }
+}
