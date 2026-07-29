@@ -4791,11 +4791,26 @@ and shape/backend fallbacks.
    Component-fine replay is worse: guards through **28672/32768** still miss
    BF16 changes; the byte-exact full-interval form regresses
    **0.081644 -> 0.183208 ms (+124.40%)** and is removed.
+   The higher-precision cooperative follow-up is also closed. Three
+   non-overlapping BF16 components for every F32 query and probability,
+   independent F32 WMMA accumulators, raw K64 split numerators, and a
+   query-head-parallel FP64 merge reduce the current production leaf
+   **0.058925 -> 0.021090 ms (-64.21%)**. The primitive is pointwise
+   close—maximum F32 context error **2.24e-8** and only **3/9,216** BF16
+   mismatches—but the complete saturated-p512 18-prompt/576-step lane reaches
+   max KL **1.353728** at **560/576 (97.22%)** top-1, still **27.07x** over
+   budget. A low-32-bit-bin grouped exact replay still leaves two BF16
+   mismatches and already regresses the leaf **0.058737 -> 0.090739 ms
+   (+54.48%)**. The kernel, runtime selector, oracle extension, and harness
+   seams are removed. This isolates changed F32 reduction association—not
+   BF16 operand truncation, split normalization, or serialized merge—as the
+   remaining tensor-core blocker.
    Exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
    and **+0.0479%** complete decode. The next material SWA step requires an
-   intrinsically higher-precision tensor path or an independent error bound.
-   Do not resume scalar ownership, full-score repairs, output-derived repair,
-   or approximate split softmax/PV.
+   exact-association cooperative path or a cheap independently valid interval
+   bound that proves the retained BF16 rounding bin before sparse replay. Do
+   not resume more BF16 decomposition terms, scalar ownership, full-score
+   repairs, output-derived midpoint repair, or approximate split softmax/PV.
 2. **LD-2 — exact fixed-K F16 GEMV. Complete.** Compile-time
    K3072/K6144/K9216 preserves the proven local256/eight-wave/one-output
    geometry and every arithmetic operation. The weighted family reaches
