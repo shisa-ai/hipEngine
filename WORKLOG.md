@@ -189425,3 +189425,27 @@ Vulkan local sizes verbatim will close the measured gap.
   Leaf/quality SHA-256 values are `ab7f6951...00680`,
   `de298902...a6e7`, and `50ef17fa...74b`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-qkdot2-rejected.json`.
+
+## 2026-07-29 12:17 JST — Reject current-template exact GQA2 exp32 SWA
+
+- The llama.cpp audit motivated one bounded retry of 40-block ordinary GQA2
+  using the *current* direct-V/exp32 body under the retained local384 launch
+  bound. RED required the absent wrapper; GREEN is F32/BF16 byte identity at
+  positions 512-519 after ring wrap plus explicit position-200 eviction.
+- Nine 50-launch samples regress retained mixed32 exp32
+  **0.081815 -> 0.086925 ms (+6.25%)**, failing the predeclared >=5% leaf-win
+  gate in the opposite direction. A cached trace confirms that the constrained
+  current body fixes the predecessor's register defect:
+  **176 -> 104 VGPR**, SGPR128, LDS22528, scratch0, grid40/local256 versus
+  retained VGPR104/LDS24576/grid32/local384.
+- The result isolates topology: filling all 40 CUs does not repay the fifth
+  K/V owner even after register pressure is fixed. No resident-model run was
+  made. Removed the template generalization, HIP/Python wrappers, registry
+  entry, oracle extension, and leaf-harness choice; production remains
+  **19.667705 tok/s** and the four touched source/test files match
+  `12ec73715` byte-for-byte.
+- Leaf/trace SHA-256 values are `e51ff579...0e64` and
+  `b22cb7bd...25da`. Next retain mixed32 ownership and test exact
+  double-buffered V staging to remove the overwrite-only post-consume barrier.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-exp32-current-template-rejected.json`.
