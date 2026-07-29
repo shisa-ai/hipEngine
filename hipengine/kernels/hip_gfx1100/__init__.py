@@ -1,7 +1,5 @@
 """gfx1100 / RDNA3 backend capabilities."""
 
-from types import MappingProxyType
-
 # Clean W7900 context/category gates retain the exact token4 score-parallel SWA
 # decode default. The wider token8 screen failed the every-category h16 gate and
 # was removed; other backends retain the separately registered baseline.
@@ -107,24 +105,6 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
-# WPF-H5B qualifies the existing packed F32 dense-initial attention route on
-# W7900 without promoting it before complete multi-prompt quality. The route is
-# explicitly default-off, while its component policy and architecture-local
-# zero-workspace hipBLASLt heuristic indices are published for qualification.
-# Start 0 and all unsafe KVLiveSpans shapes retain exact attention fallbacks.
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT = False
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES = True
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER = True
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX = True
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE = True
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_ALGORITHM_INDICES = MappingProxyType(
-    {
-        (heads, context, operation): index
-        for heads in (48, 72)
-        for context, qk_index in ((256, 2), (384, 1), (512, 3))
-        for operation, index in (("qk", qk_index), ("pv", 2))
-    }
-)
 # WPF-2b's exact expert-major IQ2 gate/up route compounds grouped IQ3/IQ4 down
 # at M512 with both attention capacities fixed at 128. Complete state is KL0 and
 # dirty paired 512/1K admission improves 19.65%/18.01%. Explicit grouped_exact
@@ -186,12 +166,6 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
-    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT",
-    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_ALGORITHM_INDICES",
-    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
-    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
-    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
-    "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",

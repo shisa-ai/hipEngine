@@ -123,16 +123,22 @@ numbers below.
   **564/576 (97.917%)** top-1 and diagnostic prefill **152.359 -> 202.707 tok/s
   (1.330x)**. The owner/workspace/selector are removed and exact production is
   unchanged. H5B's existing packed F32 dense-initial hipBLASLt attention route
-  now clears its W7900 transfer screen: tuned selected-context leaf timing is
+  clears its W7900 transfer screen: tuned selected-context leaf timing is
   **109.897 -> 62.655 ms (1.754x)**, natural M512 passes KL **0.000429** / top-1
   **100%**, and cached request tracing cuts attention **488.304 -> 60.669 ms
   (8.049x)** plus complete kernel sum **3,001.692 -> 2,603.520 ms (-13.265%)**.
-  The W7900 heuristic map and packed/wave components are now integrated behind
-  a default-false package capability, with package-resolved M512 state/repeat
-  gates green. Production remains exact pending a multi-prompt changed-association gate
+  The binding extension preserves all 18 natural prompts as M512 suffixes and
+  observes all **10,512** expected package-mapped candidate launches. It rejects
+  QK/PV reassociation at maximum KL **0.444675 > 0.05** despite **564/576
+  (97.917%)** top-1, deterministic repeats, lifecycle recovery, and diagnostic
+  prefill **165.555 -> 190.103 tok/s (1.148x)** with every category positive.
+  The gfx1100 capability/map/owner seam is removed; exact production remains.
+  H5C returns to exact Q5 arithmetic with transient exact-value expansion plus a
+  custom reduction preserving coltile K/FMA/reduction order
   ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
-  [H5B candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)).
+  [H5B rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json) ·
+  [H5B leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted

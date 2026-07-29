@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_wpfh5b_f32_hipblaslt_attention_rejection",
+  "created_at": "2026-07-30",
+  "status": "rejected_complete_quality_gate",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "BF16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "standalone_candidate_revision": "7a6f01f3b",
+    "runtime_integration_revision": "44e6e6340a6230726ebed4f09d3e91341d9633b1",
+    "quality_revision": "44e6e6340a6230726ebed4f09d3e91341d9633b1",
+    "source": "existing in-tree gfx11 dense-initial BF16-cache-to-F32 hipBLASLt route; no external kernel port",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompt_tokens": 512,
+    "prompt_extension": "deterministic split-local rotation/repetition of other committed formatted prompts; selected natural prompt preserved in full as the final suffix; train and heldout fillers never cross",
+    "candidate_conditioned_extension": false,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "teacher_forced_steps_per_prompt": 32,
+    "teacher_forced_steps": 576,
+    "free_running_horizons": [
+      16,
+      32
+    ],
+    "free_running_repetitions": 3,
+    "timed_order": "alternating exact_attention/packed_f32_hipblaslt_attention per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "candidate_scope": "complete preappended M128 dense-initial tiles at starts 128/256/384 use exact BF16-cache widening, package-mapped packed F32 hipBLASLt QK/PV, wave32 causal softmax, direct packed queries, and packed output; start0 and unsafe routes remain exact",
+    "clean_512_1k_promotion_run_performed": false,
+    "four_k_or_longer_run_performed": false
+  },
+  "changed_association_observation": {
+    "candidate_prefills": 73,
+    "expected_launches": 10512,
+    "observed_launches": 10512,
+    "pass": true,
+    "query_is_packed_values": [
+      true
+    ],
+    "unpack_output_values": [
+      false
+    ],
+    "by_shape": {
+      "h48_c256": 876,
+      "h48_c384": 876,
+      "h48_c512": 876,
+      "h72_c256": 2628,
+      "h72_c384": 2628,
+      "h72_c512": 2628
+    },
+    "algorithm_indices": {
+      "h48_c256": {"qk": 2, "pv": 2},
+      "h48_c384": {"qk": 1, "pv": 2},
+      "h48_c512": {"qk": 3, "pv": 2},
+      "h72_c256": {"qk": 2, "pv": 2},
+      "h72_c384": {"qk": 1, "pv": 2},
+      "h72_c512": {"qk": 3, "pv": 2}
+    }
+  },
+  "performance": {
+    "exact_prefill_tok_s": 165.55535969309233,
+    "candidate_prefill_tok_s": 190.10303647853615,
+    "prefill_speedup": 1.148274733182607,
+    "ttft_speedup": 1.14801956150316,
+    "h16_e2e_speedup": 1.1305142984330567,
+    "h32_e2e_speedup": 1.1154717812516568,
+    "decode_speedup_h16": 1.0007775828898213,
+    "decode_speedup_h32": 0.9996917624695599,
+    "category_prefill_speedup": {
+      "code": 1.1485053512680754,
+      "general_en": 1.1483915592721077,
+      "general_ja": 1.1483287160529871,
+      "mixed_ja_en": 1.14775973693328
+    },
+    "standalone_attention": {
+      "exact_qrow4_weighted_ms": 109.89722883701326,
+      "candidate_weighted_ms": 62.654672265052795,
+      "leaf_speedup": 1.7540149020667877,
+      "frozen_exact_request_attention_ms": 488.304264,
+      "candidate_request_attention_ms": 60.669338,
+      "request_attention_speedup": 8.048616980129237,
+      "frozen_exact_kernel_sum_ms": 3001.69225,
+      "candidate_kernel_sum_ms": 2603.51998,
+      "kernel_sum_reduction_percent": 13.264926476056965
+    },
+    "claim_valid": false,
+    "reason": "The mandatory complete quality gate failed; runtime speed and standalone attention timing are diagnostic only."
+  },
+  "complete_quality_gate": {
+    "pass": false,
+    "finite": true,
+    "max_kl_divergence": 0.44467493014488957,
+    "kl_threshold": 0.05,
+    "top1_matches": 564,
+    "steps": 576,
+    "top1_agreement": 0.9791666666666666,
+    "top1_threshold": 0.9,
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "categories": {
+      "code": {
+        "steps": 192,
+        "max_kl_divergence": 0.2423252753349059,
+        "top1_matches": 190,
+        "top1_agreement": 0.9895833333333334
+      },
+      "general_en": {
+        "steps": 128,
+        "max_kl_divergence": 0.1795910982998801,
+        "top1_matches": 122,
+        "top1_agreement": 0.953125
+      },
+      "general_ja": {
+        "steps": 128,
+        "max_kl_divergence": 0.44467493014488957,
+        "top1_matches": 126,
+        "top1_agreement": 0.984375
+      },
+      "mixed_ja_en": {
+        "steps": 128,
+        "max_kl_divergence": 0.24917492254370505,
+        "top1_matches": 126,
+        "top1_agreement": 0.984375
+      }
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "changed_association_exercised": false,
+      "reason": "the pinned Poolside oracle prompt is shorter than a complete M512 candidate request",
+      "kl_divergence": 0.00015682291693663912,
+      "candidate_top1": 94557,
+      "reference_top1": 94557
+    },
+    "free_running": {
+      "pairs": 54,
+      "h16_exact_pairs": 36,
+      "h32_exact_pairs": 30,
+      "same_mode_repeat_deterministic": true
+    },
+    "all_prompts_exercised_changed_association": true
+  },
+  "deep_state_screen": {
+    "rows": 512,
+    "pass": true,
+    "kl_divergence": 0.00042897662269381044,
+    "top1_agreement": 1.0,
+    "next_token_id": 2930,
+    "candidate_repeat_exact": true,
+    "all_hidden_boundaries_checked": 48,
+    "complete_kv_and_live_spans_checked": true,
+    "tracked_returned_to_baseline": true,
+    "first_pair_exact_tok_s": 170.6723118238559,
+    "first_pair_candidate_tok_s": 186.91402546160637
+  },
+  "memory": {
+    "peak_tracked_bytes": 41884199676,
+    "peak_allocations": 1877,
+    "total_allocated_bytes": 149037085264,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "decision": {
+    "pass": false,
+    "reason": "The packed F32 attention route is fast and deterministic but QK/PV reassociation reaches maximum KL 0.444675, above the mandatory 0.05 ceiling.",
+    "runtime_default_changed": false,
+    "production": "retain exact qrow4/M128 attention and the clean 169.253/159.229/123.084 tok/s 512/1K/4K packet",
+    "cleanup": "Remove the default-off gfx1100 package capability, packed component policy, architecture-local hipBLASLt algorithm map, owner propagation, generic map seam, and focused integration tests; retain the existing separately usable leaf and standalone transfer evidence.",
+    "next_action": "Return to exact arithmetic: screen transient exact-value Q5 expansion followed by a custom F32-weight reduction that preserves production coltile K ownership, FMA order, and wave/cross-wave tree; do not stack rejected H1-H5B arithmetic."
+  },
+  "source_artifacts": {
+    "raw_quality_sha256": "5e49d00e4776f1234b1738d1ae8bc57dada4877da5ccbd988ae3036464628115",
+    "quality_harness_sha256": "97b254f91f8322e688075180abf1be836d728f9dd7e8c25b96ba2b25e7175896",
+    "stderr_sha256": "7c8564526cfedab8175e96f05e93874aff3a15a654bbe0fbf532c4e95c01f9e1",
+    "candidate_leaf_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5b_attention_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpfh5b_f32_hipblaslt_attention --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpfh5b-attention-quality-m512.json"
+}

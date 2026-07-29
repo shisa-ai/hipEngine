@@ -14,6 +14,24 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna default-off F32 hipBLASLt attention selector
+
+- WPF-H5B's temporary gfx1100 policy/map/owner seam is removed. The complete
+  18-prompt/576-step gate deterministically extends every natural prompt within
+  its train/heldout split to M512 and observes all **10,512** expected changed-
+  association launches, but reaches maximum KL **0.444675 > 0.05** despite
+  **564/576 (97.917%)** top-1, deterministic repeats, lifecycle recovery, and
+  diagnostic prefill **165.555 -> 190.103 tok/s (1.148x)** with every category
+  positive. Natural M512 passed at KL **0.000429**, but cannot waive the complete
+  gate.
+- Remove the gfx1100 top-level/component capabilities, architecture-local
+  hipBLASLt algorithm map, generic map normalization/selection seam, resident
+  propagation, and focused runtime tests. Retain the existing backend-neutral
+  leaf implementation and standalone W7900 evidence because gfx1151 owns its
+  independently quality-admitted route. Exact gfx1100 qrow4/M128 attention
+  remains production. Reopen only with materially different arithmetic and a
+  fresh complete quality gate.
+
 ## Laguna default-off Q5 exact-value F32/rocBLAS selector
 
 - WPF-H5A's temporary selector and owner are removed. The complete changed-

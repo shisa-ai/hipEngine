@@ -136,7 +136,7 @@ owner, workspace, capabilities, and tests are removed; exact production and the
 canonical headline remain unchanged. See the
 [rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json).
 
-The next [`WPF-H5B gfx1100 F32 dense-initial attention candidate`](results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)
+The [`WPF-H5B gfx1100 F32 dense-initial attention leaf`](results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)
 reuses the in-tree complete-`KVLiveSpans` route rather than porting a new body.
 On W7900, the basic eight-QK/eight-PV composition regresses and is rejected;
 packed two-call QK/PV plus wave32 softmax with contexts 256/384/512 QK
@@ -147,13 +147,19 @@ same-resident natural-M512 owner passes at KL **0.000429**, token **2930**,
 deterministic complete state/KV/`KVLiveSpans`, and exact teardown. Cached tracing
 observes exactly **144** widen/QK/softmax/PV stacks, retains all 48 start-0 exact
 calls, and moves attention **488.304 -> 60.669 ms (8.049x)** plus complete kernel
-sum **3,001.692 -> 2,603.520 ms (-13.265%)**. gfx1100 now publishes all six
-validated shape indices plus the packed/wave component policy behind an explicit
-default-false top-level capability. A package-resolved M512 rerun selects those
-indices, repeats exactly, and measures a diagnostic first pair **170.672 ->
-186.914 tok/s (1.095x)**. This is default-off candidate attribution, not a
-production claim: multi-prompt changed-association quality and clean 512/1K
-publication remain pending.
+sum **3,001.692 -> 2,603.520 ms (-13.265%)**.
+
+Runtime promotion is rejected by the
+[`complete M512 changed-association gate`](results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json).
+All 18 train/heldout prompts are preserved as natural suffixes after deterministic
+split-local extension to M512, and instrumentation observes every one of the
+expected **10,512** package-mapped candidate launches. Maximum KL reaches
+**0.444675 > 0.05** despite **564/576 (97.917%)** top-1, deterministic repeats,
+lifecycle recovery, and diagnostic prefill **165.555 -> 190.103 tok/s
+(1.148x)** with each category at **1.1478-1.1485x**. Remove the gfx1100
+capability/component policy, heuristic map, owner propagation, and generic map
+seam; retain exact qrow4/M128 production and the standalone leaf. Clean 512/1K
+promotion timing does not run after the quality failure.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
