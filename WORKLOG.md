@@ -191122,3 +191122,30 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw trace SHA-256 is `02e28c94...b04c15`; child SHA-256 is
   `24541341...56140`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-vec4-denom-wall-reprofile.json`.
+
+## 2026-07-29 23:52 JST — Retain vectorized SWA probability primitive
+
+- Add an exact successor to the retained vectorized-denominator stage cache.
+  Each output lane reads the published contiguous K64 probability row as
+  sixteen aligned `float4` values, then issues x/y/z/w FMAs in the original
+  slot 0..63 order. BF16 KV, QK, maximum, `expf`, denominator, PV association,
+  divide, gate, and stores are unchanged.
+- RED fails on the absent Python wrapper. GREEN passes the existing
+  wrapped/evicted HIP oracle with byte-identical F32 context and gated BF16
+  output. Python compilation passes.
+- The cached 9x50 leaf improves
+  **0.045426 -> 0.045278 ms (-0.325%)**, all **9/9** pairs winning. The
+  stronger 21x100 screen improves
+  **0.045306 -> 0.045174 ms (-0.290%)**, all **21/21** pairs winning.
+  Raw SHA-256 values are `f50691b9...5be92` and
+  `6187aaea...9cb17`.
+- Cache-only `rocprofv3` names the distinct candidate at
+  grid12,288/local384, VGPR104, SGPR128, LDS25,600, scratch0, with no
+  compiler under profiling. Trace SHA-256 is `a18962c6...aebcf`.
+- Retain the registered primitive and leaf/oracle seam under the
+  first-class micro-win policy. Production remains **20.358649 tok/s**
+  pending seven counterbalanced resident p512/d128 pairs. The lineage checker
+  cannot complete because the read-only Atlas checkout is absent at
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json`.

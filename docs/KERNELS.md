@@ -1839,6 +1839,16 @@ effectively flat at **1.110485 ms/token**. Attention is still
 remaining production wall gap. Next vectorize exact contiguous probability
 reads inside the retained SWA PV chain without changing its 64-FMA order:
 [`post-vector-denominator census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vec4-denom-wall-reprofile.json).
+Retain the registered exact
+`swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans`
+primitive pending a resident gate. It reads the contiguous K64 probability
+row as sixteen aligned `float4` values, then issues x/y/z/w FMAs in the
+original slot 0..63 order. Wrapped/evicted F32/BF16 output is byte-exact.
+The 9x50 and 21x100 leaves improve **0.325%/0.290%**, with **21/21** paired
+wins in the stronger screen. Trace resources remain grid32/local384,
+VGPR104, SGPR128, LDS25,600, scratch0. Production stays
+**20.358649 tok/s** pending seven resident pairs:
+[`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
