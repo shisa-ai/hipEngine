@@ -5500,6 +5500,25 @@ The remaining attention sequence is:
     positive inclusive owner. Production remains **20.494732 tok/s**.
     Evidence:
     [`selected Q8 decode rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-decode-rejected.json).
+65. Remove staged V only from mixed40's singleton-query tail owners.
+    **Rejected and removed at the leaf stop:** eight of the 40 SWA blocks own
+    one query each, so they have no cross-query V reuse. The diagnostic
+    computes the singleton's complete FP32 probability plane once, preserves
+    its exact denominator and PV order, and then reads V directly, avoiding
+    all eight K64 V-stage copies and sixteen staged-loop barriers in those
+    blocks.
+
+    The wrapped/evicted oracle is F32-context and gated-BF16 byte-exact, but
+    the 9x50 leaf regresses
+    **0.036936 -> 0.202381 ms (+447.929%)**. The staged path's aligned
+    16-byte cooperative loads are essential: direct replay turns them into
+    four output waves' strided scalar V loads, and that memory-layout loss
+    dwarfs the saved synchronization.
+
+    Remove the template branch, export, wrapper, and leaf selector; skip
+    tracing and resident integration. Keep coalesced staged-V transport even
+    for singleton owners. Production remains **20.494732 tok/s**. Evidence:
+    [`singleton direct-PV rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-singleton-direct-pv-rejected.json).
 
 Current exact decode checkpoint:
 

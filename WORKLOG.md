@@ -191814,3 +191814,24 @@ Vulkan local sizes verbatim will close the measured gap.
   /tmp/laguna-selected-q8-decode-directional-d16.json`
   (raw SHA-256 `1d276b62...e50a`). Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-decode-rejected.json`.
+
+## 2026-07-30 03:58 JST — Reject singleton-owner direct PV replay
+
+- The current mixed40 score phase already loads each BF16 key once per score
+  wave and reuses it across every query owned by that block. The remaining
+  superficially redundant transport is mixed40's eight singleton-query tail
+  blocks: they still perform eight coalesced K64 V stages and sixteen
+  staged-loop barriers despite having no cross-query V reuse.
+- Add a temporary exact diagnostic that precomputes each singleton's complete
+  FP32 probability plane once, replays the denominator and PV in the unchanged
+  logical-slot order, and reads V directly. The wrapped/evicted oracle is
+  F32-context and gated-BF16 byte-exact.
+- The paired 9x50 leaf rejects it decisively:
+  **0.036936 -> 0.202381 ms (+447.929%)**. Removing LDS exposes four output
+  waves' strided scalar V loads in place of the retained aligned 16-byte
+  cooperative copies; the lost coalescing overwhelms all saved barriers.
+- Remove the template branch, export, Python wrapper, and leaf selector.
+  Production code is byte-clean, resident integration is skipped, and
+  production remains **20.494732 tok/s**. Raw SHA-256 is
+  `06a3b960...95f527`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-singleton-direct-pv-rejected.json`.
