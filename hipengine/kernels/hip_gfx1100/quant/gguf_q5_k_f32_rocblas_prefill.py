@@ -30,6 +30,10 @@ _ORDERED_GEOMETRIES = (
     (8, 8),
     (16, 4),
     (12, 4),
+    (8, 10),
+    (16, 5),
+    (8, 12),
+    (12, 8),
 )
 _ORDERED_SYMBOL = (
     "hipengine_gguf_q5_k_f32_weight_ordered_coltile{col_tile}_"
@@ -248,10 +252,12 @@ def _launch_q5_f32_weight_ordered(
     hidden = _check_in_features(in_features)
     outputs = _check_out_features(out_features)
     if (
-        col_tile * row_batch not in {32, 48, 64}
+        col_tile * row_batch not in {32, 48, 64, 80, 96}
         or (col_tile, row_batch) not in _ORDERED_GEOMETRIES
     ):
-        raise ValueError("ordered Q5 geometry must keep 32, 48, or 64 accumulators")
+        raise ValueError(
+            "ordered Q5 geometry must keep 32, 48, 64, 80, or 96 accumulators"
+        )
     if outputs % col_tile != 0:
         raise ValueError(f"out_features must be divisible by {col_tile}")
     if output_dtype not in {"bf16", "f32"}:

@@ -1361,10 +1361,12 @@ gate reaches **123.084 tok/s** with deterministic IDs/positions/lifecycle and
 full allocation recovery. H5E now supersedes that canonical row with exact
 transient-F32 ordered Q5 at **184.997/172.104/131.496 tok/s** through 4K
 (**+3.166%/+2.941%/+1.944%** over H5D). The final-source 235-call Q5 stack falls
-**12.320%/7.515%** by event/wall clocks. H5F adds exact 12x4 only for F32 N48,
-saving **4.224/1.989 us** per M512 request; current clean throughput is
-aggregate-flat **185.019/172.076/131.147 tok/s**. Explicit RB32/raw-coltile and
-unsupported widths remain exact fallbacks; gfx1151 excludes the W7900 keys.
+**12.320%/7.515%** by event/wall clocks. H5F adds exact 12x4 only for F32 N48.
+H5G retains exact 8x10/16x5/8x12/12x8 on five roles, cuts the strong H5F subset
+**8.639%/7.479%** by event/wall, and publishes
+**188.393/175.042/132.743 tok/s (+2.192%/+2.055%/+1.329%)** over H5F. Explicit
+RB32/raw-coltile and unsupported widths remain exact fallbacks; gfx1151 excludes
+the W7900 keys.
 
 A same-host direct-M512 refresh now fixes the next external target. Identical
 512 token IDs, context4096 admission, direct M512, FlashAttention, BF16 K/V,
@@ -1471,10 +1473,11 @@ moves H5D **1,085.630 -> 951.876 ms (1.141x)** by events and **1,040.166 ->
 plane adds no sidecar. Package-default M512 is KL0/byte-exact across all 48
 boundaries/logits/KV/repeat/lifecycle, and selector-unset production publishes
 **184.997/172.104/131.496 tok/s** through 4K. H5F's constant-48 screen retains
-only 12x4 for F32 N48 at **1.187%/0.496%** event/wall; complete state remains
-KL0 and current clean throughput is aggregate-flat **185.019/172.076/131.147**.
-H5G next screens constant-80/96 geometries before spill-prone constant-128
-tiles. Do not stack rejected H1-H5B arithmetic or reopen P6/repair; launch
+only 12x4 for F32 N48. H5G's exact constant-80/96 tiles own five roles, trace at
+VGPR168/200 with zero scratch, and publish **188.393/175.042/132.743 tok/s**.
+H5H next screens constant-112, attempting constant-128 only if the register
+boundary stays scratch-free. Do not stack rejected H1-H5B arithmetic or reopen
+P6/repair; launch
 fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

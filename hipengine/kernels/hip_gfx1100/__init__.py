@@ -137,18 +137,19 @@ GGUF_RAW_K_PREFILL_VARIANT = "coltile"
 # H5E doubles output ownership on six role-qualified geometries, reducing the
 # producer-inclusive weighted Q5 family another 12.32% by events / 7.52% by
 # synchronized wall while remaining byte-exact. H5F's exact 12x4 N48 role saves
-# another 4.224/1.989 us per M512 request by event/wall clocks. Every miss
-# retains raw coltile; benchmark A/B uses scoped package-policy mutation.
+# another 4.224/1.989 us per M512 request. H5G's exact constant-80/96 tiles
+# improve clean 512/1K/4K another 2.192%/2.055%/1.329% on five roles. Every
+# miss retains raw coltile; benchmark A/B uses scoped package-policy mutation.
 GGUF_Q5_F32_ORDERED_PREFILL = True
 GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ("bf16", 3072, 1024): "coltile8_rowbatch4",
-    ("bf16", 3072, 12288): "coltile4_rowbatch16",
-    ("bf16", 6144, 3072): "coltile16_rowbatch4",
-    ("bf16", 9216, 3072): "coltile8_rowbatch8",
+    ("bf16", 3072, 12288): "coltile8_rowbatch12",
+    ("bf16", 6144, 3072): "coltile16_rowbatch5",
+    ("bf16", 9216, 3072): "coltile12_rowbatch8",
     ("f32", 3072, 48): "coltile12_rowbatch4",
     ("f32", 3072, 72): "coltile8_rowbatch4",
-    ("f32", 3072, 6144): "coltile16_rowbatch4",
-    ("f32", 3072, 9216): "coltile4_rowbatch16",
+    ("f32", 3072, 6144): "coltile16_rowbatch5",
+    ("f32", 3072, 9216): "coltile8_rowbatch10",
 }
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger

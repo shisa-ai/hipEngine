@@ -568,6 +568,10 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 8),
                 (16, 4),
                 (12, 4),
+                (8, 10),
+                (16, 5),
+                (8, 12),
+                (12, 8),
             )
             for output_dtype in ("bf16", "f32")
         ),

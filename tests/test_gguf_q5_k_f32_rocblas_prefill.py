@@ -43,6 +43,10 @@ _ORDERED_GEOMETRIES = (
     (8, 8),
     (16, 4),
     (12, 4),
+    (8, 10),
+    (16, 5),
+    (8, 12),
+    (12, 8),
 )
 
 
@@ -221,6 +225,8 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert "COL_TILE * ROW_BATCH == 32" in source
     assert "COL_TILE * ROW_BATCH == 48" in source
     assert "COL_TILE * ROW_BATCH == 64" in source
+    assert "COL_TILE * ROW_BATCH == 80" in source
+    assert "COL_TILE * ROW_BATCH == 96" in source
 
 
 def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> None:
