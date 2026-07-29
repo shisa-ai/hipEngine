@@ -1358,9 +1358,10 @@ tok/s (+28.561%/+25.987%)**. Clean selector-unset publication remains
 cached dense/shared projection and kernel span fall **38.546%/38.875%** and
 **21.893%/20.852%**. Both short rows clear 150 tok/s, and the restored clean 4K
 gate reaches **123.084 tok/s** with deterministic IDs/positions/lifecycle and
-full allocation recovery. H5D now supersedes that canonical row with exact
-transient-F32 ordered Q5 at **179.320/167.188/128.988 tok/s** through 4K
-(**+5.948%/+4.998%/+4.797%** over WPF-1T). Explicit RB32/raw-coltile and
+full allocation recovery. H5E now supersedes that canonical row with exact
+transient-F32 ordered Q5 at **184.997/172.104/131.496 tok/s** through 4K
+(**+3.166%/+2.941%/+1.944%** over H5D). The final-source 235-call Q5 stack falls
+**12.320%/7.515%** by event/wall clocks. Explicit RB32/raw-coltile and
 unsupported widths remain exact fallbacks; gfx1151 excludes the W7900 keys.
 
 A same-host direct-M512 refresh now fixes the next external target. Identical
@@ -1460,17 +1461,17 @@ top-1 and diagnostic prefill **165.555 -> 190.103 tok/s (1.148x)** with every
 category positive. Remove the gfx1100 capability/component policy, heuristic
 map, generic map seam, owner propagation, and tests; retain exact qrow4/M128
 production plus standalone leaf evidence. H5C/H5D returns to exact Q5
-arithmetic: transient exact-value expansion plus local128 ordered 8x4/4x8
-consumers preserves production bytes and moves the actual 235-call role policy
-**1,323.267 -> 1,012.380 ms (1.307x)** by events and **1,250.095 -> 988.526 ms
-(1.265x)** by wall. One BF16 K9216/N3072 role stays raw coltile; one bounded
-**150,994,944-byte** projection-local plane adds no sidecar. Package-default
-M512 is KL0/byte-exact across all 48 boundaries/logits/KV/repeat/lifecycle;
-five-repeat admission improves 512/1K **+7.235%/+6.519%**, and selector-unset
-production publishes **179.320/167.188/128.988 tok/s** through 4K. H5E next
-screens exact 8x8/4x16/2x32 row reuse to reduce repeated F32-weight reads. Do
-not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion remains
-deferred at 0.500%.
+arithmetic with transient exact-value expansion plus local128 ordered 8x4/4x8
+consumers. H5E extends the identical per-output K/FMA/wave/store sequence to
+4x16/8x8/16x4 and removes regressive 1x64/2x32. The final-source 235-call policy
+moves H5D **1,085.630 -> 951.876 ms (1.141x)** by events and **1,040.166 ->
+961.993 ms (1.081x)** by wall. One bounded **150,994,944-byte** projection-local
+plane adds no sidecar. Package-default M512 is KL0/byte-exact across all 48
+boundaries/logits/KV/repeat/lifecycle, and selector-unset production publishes
+**184.997/172.104/131.496 tok/s** through 4K. H5F next screens constant-48-
+accumulator 12x4/8x6/6x8/4x12/3x16 geometries before spill-prone constant-128
+tiles. Do not stack rejected H1-H5B arithmetic or reopen P6/repair; launch
+fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

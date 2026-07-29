@@ -49,19 +49,20 @@ should be removed or collapsed.
 
 ## Laguna exact-ordered F32 Q5 production selector
 
-- Added 2026-07-30 for WPF-H5D. The gfx1100 package owns seven exact-M512 Q5
-  roles through one **150,994,944-byte** projection-local F32 weight plane;
-  BF16 K9216/N3072 and all row/key/backend/shape/capacity misses retain raw
-  coltile. Complete package-default M512 state is byte-exact at KL 0, five-
-  repeat 512/1K admission improves **+7.235%/+6.519%**, and selector-unset
-  production publishes **179.320/167.188/128.988 tok/s** through 4K. This is
-  retained production, not a rejected experiment.
-- Keep `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=False)` only while
-  H5E screens larger exact row tiles and one subsequent clean production
-  checkpoint still needs an immediate rollback. After the winning geometry is
-  stable, remove the public constructor boolean and explicit resolver override;
-  retain the package role map, context-local bounded owner, registered unfused
-  producer/consumer chain, and raw-coltile miss fallback required by policy.
+- Added 2026-07-30 for WPF-H5D and advanced by H5E. The gfx1100 package owns
+  all eight exact-M512 Q5 roles through one **150,994,944-byte** projection-local
+  F32 weight plane; row/key/backend/shape/capacity misses retain raw coltile.
+  Complete package-default M512 state is byte-exact at KL 0. H5E's clean
+  selector-unset checkpoint publishes **184.997/172.104/131.496 tok/s** through
+  4K, **+3.166%/+2.941%/+1.944%** over H5D. This is retained production, not a
+  rejected experiment.
+- H5E satisfies the named rollback checkpoint. In the next separate cleanup
+  unit, remove the public
+  `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=...)` boolean and
+  explicit resolver override. Retain the package role map, context-local bounded
+  owner, registered unfused producer/consumer chain, and raw-coltile miss
+  fallback required by policy. Use explicit package-policy mutation only in
+  benchmark harnesses that still require an exact A/B control.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 

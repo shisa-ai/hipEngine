@@ -36,7 +36,13 @@ _SOURCE = (
     / "quant"
     / "gguf_q5_k_f32_rocblas_prefill.hip"
 )
-_ORDERED_GEOMETRIES = ((4, 8), (8, 4))
+_ORDERED_GEOMETRIES = (
+    (4, 8),
+    (8, 4),
+    (4, 16),
+    (8, 8),
+    (16, 4),
+)
 
 
 def _hip_available() -> bool:
@@ -212,6 +218,7 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert "__global__ void gguf_q5_k_dequantize_f32_exact_kernel" in source
     assert "gguf_q5_k_f32_weight_ordered_coltile_kernel" in source
     assert "COL_TILE * ROW_BATCH == 32" in source
+    assert "COL_TILE * ROW_BATCH == 64" in source
 
 
 def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> None:

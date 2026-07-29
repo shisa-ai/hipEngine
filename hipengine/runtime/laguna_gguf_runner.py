@@ -955,7 +955,13 @@ class LagunaEagerLibraries:
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out": (
                         self.q5_f32_ordered
                     )
-                    for col_tile, row_batch in ((4, 8), (8, 4))
+                    for col_tile, row_batch in (
+                        (4, 8),
+                        (8, 4),
+                        (4, 16),
+                        (8, 8),
+                        (16, 4),
+                    )
                     for output_dtype in ("bf16", "f32")
                 }
                 if self.q5_f32_ordered is not None

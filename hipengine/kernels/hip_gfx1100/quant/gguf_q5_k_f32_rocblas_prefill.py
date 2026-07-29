@@ -23,7 +23,13 @@ _FUSED_PRODUCER_SYMBOL = (
 _DEQUANT_VARIANT = "raw_f32_exact_local64"
 _FUSED_PRODUCER_VARIANT = "raw_f32_bf16_input_exact_local64"
 _LINEAR_VARIANT = "f32_rocblas_exact_values_bf16_{output_dtype}_out"
-_ORDERED_GEOMETRIES = ((4, 8), (8, 4))
+_ORDERED_GEOMETRIES = (
+    (4, 8),
+    (8, 4),
+    (4, 16),
+    (8, 8),
+    (16, 4),
+)
 _ORDERED_SYMBOL = (
     "hipengine_gguf_q5_k_f32_weight_ordered_coltile{col_tile}_"
     "rowbatch{row_batch}_bf16_{output_dtype}_out"
@@ -240,8 +246,11 @@ def _launch_q5_f32_weight_ordered(
     parsed_rows = _check_rows(rows)
     hidden = _check_in_features(in_features)
     outputs = _check_out_features(out_features)
-    if col_tile * row_batch != 32 or (col_tile, row_batch) not in _ORDERED_GEOMETRIES:
-        raise ValueError("ordered Q5 geometry must keep 32 accumulators")
+    if (
+        col_tile * row_batch not in {32, 64}
+        or (col_tile, row_batch) not in _ORDERED_GEOMETRIES
+    ):
+        raise ValueError("ordered Q5 geometry must keep 32 or 64 accumulators")
     if outputs % col_tile != 0:
         raise ValueError(f"out_features must be divisible by {col_tile}")
     if output_dtype not in {"bf16", "f32"}:
