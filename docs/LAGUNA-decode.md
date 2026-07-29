@@ -5829,6 +5829,28 @@ The remaining attention sequence is:
     candidate must reduce weight/address traffic or fuse useful cross-output
     work without multiplying instruction footprint:
     [`selected gate/up unroll12 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-gate-up-unroll12-rejected.json).
+79. Transfer SWA's wider exact value staging back to the retained global
+    local512 owner. **Rejected and removed:** V-stage128 halves the staged-V
+    iterations and barrier pairs while preserving every QK, maximum, `expf`,
+    denominator, probability pre-normalization, PV, gate, conversion, and
+    store association. The wrapped/evicted oracle is F32/BF16 byte-exact.
+
+    Cache-hot 9x50 leaves improve **1.522%/1.164%/1.233%** at
+    live513/576/639. Native tracing confirms the intended
+    grid32/local512 specializations at unchanged allocated
+    **VGPR48/SGPR128/scratch0**; candidate dynamic LDS remains bounded at
+    **38,960/39,680/40,448 bytes**.
+
+    The complete p512/d128 gate is flat and fails retention:
+    **20.736505 -> 20.737910 tok/s (+0.00678%, -0.00327 ms/token)**,
+    with only **3/7** paired wins and a **-0.00540%** median paired change.
+    Every trajectory, position, and allocation lifecycle remains exact.
+    Remove the kernel, wrapper, registry route, oracle addition, leaf selector,
+    runtime selector, and comparison CLI. Production remains
+    **20.744351 tok/s**. Exact attention stage-width micro-tuning is now
+    closed on both SWA and global; move to the traced
+    **2.234-ms/token** dense/shared dual-Q4 owner:
+    [`global V-stage128 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-local512-vstage128-rejected.json).
 
 Current exact decode checkpoint:
 
@@ -5855,10 +5877,12 @@ V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
 grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
 address/K-loop contraction is now closed: full K3072 unrolling wins the
 isolated leaf but loses all seven resident pairs while expanding code 5.06x.
-The next bounded work must instead reduce actual weight/address traffic or
-fuse useful cross-output work without multiplying instruction footprint;
-return to attention only for a materially new exact-association or
-quality-safe cooperative premise.
+The next bounded work is the traced **2.234-ms/token** dense/shared dual-Q4
+owner. It must reduce actual weight/address traffic or fuse useful cross-output
+work without multiplying instruction footprint. Return to attention only for
+a materially new exact-association or quality-safe cooperative premise:
+both SWA and global stage-width successors win isolated leaves but fail to
+produce a reliable complete-model improvement.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
