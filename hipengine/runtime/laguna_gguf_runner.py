@@ -853,6 +853,7 @@ class LagunaEagerLibraries:
     iq_grouped_prefill: object
     moe_group: object
     routed_sum: object
+    source_flash_attention: object | None = None
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -1466,6 +1467,32 @@ def resolve_laguna_iq2_grid64(
     return bool(backend_package_capability(backend, "LAGUNA_IQ2_GRID64", False))
 
 
+def resolve_laguna_source_flash_attention(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the gfx1100-only source FlashAttention candidate."""
+
+    selected = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_SOURCE_FLASH_ATTENTION",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    if selected and not backend_package_capability(
+        backend,
+        "LAGUNA_SOURCE_FLASH_ATTENTION_SUPPORTED",
+        False,
+    ):
+        raise ValueError(
+            f"Laguna source FlashAttention is not supported on {backend!r}"
+        )
+    return selected
+
+
 def resolve_laguna_raw_k_prefill_rowbatch(
     backend: str,
     requested: int | None = None,
@@ -2012,9 +2039,13 @@ def load_laguna_eager_libraries(
     backend: str,
     compiler_version: str | None = None,
     require_cached: bool = False,
+    source_flash_attention: bool = False,
 ) -> LagunaEagerLibraries:
     """Build/load every library used by one eager session exactly once."""
 
+    from hipengine.kernels.hip_gfx1100.attention.laguna_flash_attention_prefill import (
+        build_laguna_flash_attention_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
     )
@@ -2099,6 +2130,11 @@ def load_laguna_eager_libraries(
             iq_grouped_prefill=build_gguf_iq_selected_prefill(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
+            source_flash_attention=(
+                build_laguna_flash_attention_prefill(**kwargs)
+                if source_flash_attention
+                else None
+            ),
         )
 
 
@@ -2174,6 +2210,7 @@ class LagunaGGUFResidentSession:
         iq3_selected_down_tile: int = 1,
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
+        use_source_flash_attention: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -2318,6 +2355,12 @@ class LagunaGGUFResidentSession:
         self.use_iq2_grid64 = resolve_laguna_iq2_grid64(
             self.backend,
             use_iq2_grid64,
+        )
+        self.use_source_flash_attention = (
+            resolve_laguna_source_flash_attention(
+                self.backend,
+                use_source_flash_attention,
+            )
         )
         self.raw_k_prefill_rowbatch = resolve_laguna_raw_k_prefill_rowbatch(
             self.backend,
@@ -2707,6 +2750,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
+                source_flash_attention=self.use_source_flash_attention,
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -4058,8 +4102,18 @@ class LagunaGGUFResidentSession:
 
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
+        use_source_flash_attention = bool(
+            self.use_source_flash_attention
+            and not stage_verifier_kv
+            and self.kv_cache.can_source_flash_attention_prefill(
+                layer_id,
+                rows,
+            )
+        )
         attention_limit = (
-            self.prefill_global_attention_chunk_size
+            rows
+            if use_source_flash_attention
+            else self.prefill_global_attention_chunk_size
             if (
                 layer.attention_type == FULL_ATTENTION
                 and rows >= self.prefill_global_attention_chunk_size
@@ -4153,13 +4207,16 @@ class LagunaGGUFResidentSession:
                 if sliced
                 else {}
             )
-            preappend = (
-                self.prefill_kv_preappend
-                and not stage_verifier_kv
-                and self.kv_cache.can_preappend_prefill(
-                    layer_id,
-                    attention_rows,
-                    row_offset=row_offset,
+            preappend = bool(
+                use_source_flash_attention
+                or (
+                    self.prefill_kv_preappend
+                    and not stage_verifier_kv
+                    and self.kv_cache.can_preappend_prefill(
+                        layer_id,
+                        attention_rows,
+                        row_offset=row_offset,
+                    )
                 )
             )
             query_is_packed = row_offset in packed_query_offsets
@@ -4184,7 +4241,8 @@ class LagunaGGUFResidentSession:
                 use_attention_hipblaslt = False
                 use_long_attention_hipblaslt = False
                 if (
-                    self.prefill_attention_hipblaslt
+                    not use_source_flash_attention
+                    and self.prefill_attention_hipblaslt
                     and self.kv_cache.can_dense_initial_prefill(
                         layer_id,
                         attention_rows,
@@ -4282,6 +4340,15 @@ class LagunaGGUFResidentSession:
                                 "packed attention output tiles must be contiguous"
                             )
                         packed_output_end = row_offset + attention_rows
+                elif use_source_flash_attention:
+                    self.kv_cache.attend_prefill_source_flash_attention(
+                        layer_id,
+                        scratch.query_rotated.ptr + q_offset,
+                        scratch.context.ptr + q_offset,
+                        attention_rows,
+                        stream=stream,
+                        library=self.libraries.source_flash_attention,
+                    )
                 else:
                     self.kv_cache.attend_prefill_cached(
                         layer_id,
@@ -5491,4 +5558,5 @@ __all__ = [
     "resolve_laguna_q4_lm_head_local32_fixed_meta",
     "resolve_laguna_q5_shared_fixed_meta",
     "resolve_laguna_q5_wave32x2_variants",
+    "resolve_laguna_source_flash_attention",
 ]

@@ -111,6 +111,10 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 # gate/up preserves the preceding route-major rollback; direct/M128/M256 remain
 # exact fallbacks for unsupported quant/shape keys.
 LAGUNA_PREFILL_MATRIX_ROWS = 512
+# WPF-H2's source-faithful F16-WMMA attention body is available only on
+# independently gated gfx1100. Keep it explicit until complete model quality.
+LAGUNA_SOURCE_FLASH_ATTENTION_SUPPORTED = True
+LAGUNA_SOURCE_FLASH_ATTENTION = False
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
@@ -172,6 +176,8 @@ __all__ = [
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
+    "LAGUNA_SOURCE_FLASH_ATTENTION",
+    "LAGUNA_SOURCE_FLASH_ATTENTION_SUPPORTED",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SPLIT_GATE_FUSION",

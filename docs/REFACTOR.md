@@ -105,6 +105,19 @@ should be removed or collapsed.
   owns them. Do not reopen changed-association gfx1100 SWA without a materially
   different arithmetic premise and a new complete quality gate.
 
+## Laguna source FlashAttention selector
+
+- Added 2026-07-29 as the default-off WPF-H2 runtime admission seam.
+  `LagunaGGUFResidentSession(..., use_source_flash_attention=True|False)` routes
+  only one complete initial dense fill with at least 16 rows through the
+  gfx1100-only source F16-WMMA primitive; verifier, continuation, wrapped,
+  partial, and unsupported shapes retain the exact qrow4/M128 chain.
+- Remove the explicit positive selector after the complete 18-prompt/576-step
+  quality gate, same-resident state/timing, clean 512/1K/4K publication, and a
+  cached trace prove the package default. If any binding gate fails, remove the
+  runtime owner/capabilities entirely and retain only the standalone primitive.
+  The exact registered fallback remains required in either outcome.
+
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
 - The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte
