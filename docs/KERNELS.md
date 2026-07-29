@@ -1497,6 +1497,13 @@ The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
 [`rejected global mixed40 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json).
+The exact two-launch split32 successor is removed as well. Sixteen pair-owner
+local256 blocks plus sixteen singleton-owner local128 blocks preserve four
+K/V owners and byte-exact output, but regress live513/576/639
+**142.26%/154.39%/154.66%**. Extra-launch and exact virtual-wave costs exceed
+the saved singleton PV work. Production source is restored byte-for-byte;
+future global ownership work must remain single-launch. Evidence:
+[`rejected global split32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-split32-exp32-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

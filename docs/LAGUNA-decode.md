@@ -4305,12 +4305,24 @@ live576/live639 points: **+0.21%/+0.11%**. The candidate is removed before
 trace/runtime integration. Evidence:
 [`rejected global mixed40 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json).
 
+Keeping four K/V owners but separating pair and singleton work is also
+decisively rejected. The two-launch split32 candidate uses 16 pair-owner
+local256 blocks plus 16 singleton-owner local128 blocks; the latter emulate
+the exact eight-wave score reduction on four physical waves and remove idle
+singleton PV waves. F32 context and gated BF16 output remain byte-exact at
+evicted live513/576/639, but leaf latency regresses
+**0.076609 -> 0.185596 ms (+142.26%)**,
+**0.083784 -> 0.213137 ms (+154.39%)**, and
+**0.091793 -> 0.233758 ms (+154.66%)**. The second launch and virtual-wave
+replay overwhelm the saved output work. All candidate code is removed and the
+production source is restored byte-for-byte. Evidence:
+[`rejected global split32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-split32-exp32-rejected.json).
+
 The remaining exact global-attention sequence is:
 
-1. Keep mixed32's four K/V owners, but split pair and singleton owners:
-   16 paired-head local256 blocks plus 16 singleton-head local128 blocks.
-   Admit the extra launch only if leaves and whole-model wall both improve.
-2. Re-profile the clean attention wall after that decision.
+1. Re-profile the clean retained-mixed32 attention wall.
+2. Use that census to select one single-launch seam; ordinary 40-block
+   ownership and pair/singleton split launches are closed.
 3. Only then decide whether the residual gap justifies a new tensorized kernel
    or a larger architectural change.
 

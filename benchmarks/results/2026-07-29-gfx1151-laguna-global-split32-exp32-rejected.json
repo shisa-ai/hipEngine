@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_global_split32_exp32_rejected",
+  "date": "2026-07-29",
+  "status": "rejected_removed",
+  "source_revision": "b05c2110a5b48d2206094afcde592da14b7c61d0",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "change": {
+    "control": "retained exact single-launch 32-workgroup 2+2+1+1 global mixed owner",
+    "candidate": "two-launch exact split32: 16 pair-owner local256 blocks plus 16 singleton-owner local128 blocks",
+    "tradeoff": "keeps four K/V owners per KV head and removes singleton PV idle waves, but adds a launch and emulates the exact eight-wave score reduction on four physical waves",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": 0
+  },
+  "correctness": {
+    "cpu_oracle_live_counts": [
+      513,
+      576,
+      639
+    ],
+    "explicit_eviction": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "leaf": {
+    "protocol": "9 samples, 5 warmups, 50 launches/sample",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.07660898208618164,
+        "candidate_median_ms": 0.18559646606445312,
+        "latency_change_percent": 142.26462878160356
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.08378352165222168,
+        "candidate_median_ms": 0.21313728332519533,
+        "latency_change_percent": 154.3904566460099
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.09179306030273438,
+        "candidate_median_ms": 0.23375774383544923,
+        "latency_change_percent": 154.6573162116112
+      }
+    ],
+    "raw_sha256": "1be7e45ab9f14858b9bd6fdc7d91dcdeb95214b986c1cd810727b29d535ca066"
+  },
+  "gate": {
+    "require_positive_every_natural_shape": true,
+    "pass": false,
+    "stop_stage": "leaf",
+    "production_ab_run": false,
+    "trace_run": false
+  },
+  "decision": {
+    "candidate_code_removed": true,
+    "production_source_restored_byte_for_byte": true,
+    "production_unchanged_tok_s": 19.66770537724997,
+    "conclusion": "The second launch and exact four-physical/eight-virtual-wave reduction cost far more than eliminating singleton PV idle waves.",
+    "next": "Re-profile clean retained mixed32 production, then restrict the next attention screen to a single launch."
+  }
+}
