@@ -42,6 +42,7 @@ _ORDERED_GEOMETRIES = (
     (4, 16),
     (8, 8),
     (16, 4),
+    (12, 4),
 )
 
 
@@ -218,6 +219,7 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert "__global__ void gguf_q5_k_dequantize_f32_exact_kernel" in source
     assert "gguf_q5_k_f32_weight_ordered_coltile_kernel" in source
     assert "COL_TILE * ROW_BATCH == 32" in source
+    assert "COL_TILE * ROW_BATCH == 48" in source
     assert "COL_TILE * ROW_BATCH == 64" in source
 
 

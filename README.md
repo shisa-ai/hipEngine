@@ -74,8 +74,10 @@ numbers below.
   adjacent-row qrow4 SWA after a measured C256 crossover, and H5E's transient
   exact-F32 Q5 expansion plus production-ordered 8x4/4x16/8x8/16x4 reduction
   on all eight roles. No dequantized weight persists. Clean package-default
-  throughput is now **184.997/172.104/131.496 tok/s** at 512/1K/4K, improving
-  H5D by **+3.166%/+2.941%/+1.944%**. Full logits, all 48 hidden boundaries,
+  H5E throughput is **184.997/172.104/131.496 tok/s** at 512/1K/4K, improving
+  H5D by **+3.166%/+2.941%/+1.944%**. H5F retains exact 12x4 only for F32 N48
+  at **+1.187%/+0.496%** event/wall; the current package is aggregate-flat at
+  **185.019/172.076/131.147 tok/s**. Full logits, all 48 hidden boundaries,
   routing
   prefixes, active K/V, and every `KVLiveSpans` field are bit-exact at KL 0 on
   the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
@@ -140,10 +142,13 @@ numbers below.
   **4x16/8x8/16x4**, owns all eight roles, and removes universally regressive
   1x64/2x32. The final-source 235-call gate moves H5D weighted event/wall
   **1,085.630/1,040.166 -> 951.876/961.993 ms (-12.320%/-7.515%)** with the same
-  bounded 150,994,944-byte plane and no persistent sidecar. The package-default
+  bounded 150,994,944-byte plane and no persistent sidecar. H5F's 12x4 N48
+  micro-policy saves another **4.224/1.989 us** by event/wall per M512 request;
+  the other constant-48 geometries are removed. The package-default
   route is KL0/byte-exact across all 48 boundaries, logits, K/V, repeats, and
-  lifecycle. Selector-unset production publishes **184.997/172.104/131.496
-  tok/s** at 512/1K/4K, leaving a **3.752x** matched M512 gap to llama.cpp HIP
+  lifecycle. Current package production is **185.019/172.076/131.147 tok/s** at
+  512/1K/4K (aggregate-flat versus H5E), leaving a **3.752x** matched M512 gap
+  to llama.cpp HIP
   ([H5E production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
   [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·

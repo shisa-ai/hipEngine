@@ -5,7 +5,7 @@ Last updated: 2026-07-30
 ## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
 Status: **WPF-H1 through WPF-H5B changed-arithmetic runtimes are rejected;
-exact H5E ordered-Q5 row reuse is production, H5F occupancy-preserving ordered
+exact H5F ordered-Q5 N48 micro-policy is production, H5G constant-80/96 ordered
 geometry is next, and 16K+ remains deferred**. This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -19,14 +19,17 @@ each output's K/FMA/wave/store sequence. The final-source role gate moves H5D
 weighted event/wall **1,085.630/1,040.166 -> 951.876/961.993 ms
 (-12.320%/-7.515%)**; 1x64/2x32 are removed as universal regressions. Clean
 selector-unset production is **184.997/172.104/131.496 tok/s** at 512/1K/4K,
-improving H5D by **+3.166%/+2.941%/+1.944%**. All 48 hidden boundaries, logits,
+improving H5D by **+3.166%/+2.941%/+1.944%**. H5F retains 12x4 only for F32
+N48 after a 15-repeat **1.187% event / 0.496% wall** win; its current clean
+checkpoint is aggregate-flat **185.019/172.076/131.147 tok/s**. All 48 hidden
+boundaries, logits,
 K/V/live spans, repeats, and lifecycle are byte-exact at KL 0; every publication
 row is exact.
 
 The apples-to-apples external target remains same-model, same-512-ID,
 context4096, direct-M512, FlashAttention, BF16-K/V, one-queue llama.cpp HIP at
-**694.184 tok/s** and token **2930**. The retained H5E package reaches
-**184.997 tok/s**, token **2930**, exact position 511, and full allocation
+**694.184 tok/s** and token **2930**. The retained H5F package reaches
+**185.019 tok/s**, token **2930**, exact position 511, and full allocation
 recovery: a current **3.752x** gap. The clean post-H4 **169.516 tok/s** row
 remains the frozen attribution control. Same-revision Vulkan
 native F16 is **56.274 tok/s**, and llama.cpp HIP server-native is a secondary
@@ -98,9 +101,12 @@ confirms 16x4 at **1.075x/1.122x**. The runtime still owns one projection-local
 **150,994,944-byte** plane with no sidecar. Package-default M512 is KL0 and
 byte-exact across all 48 boundaries, logits, K/V, repeat, and teardown. Cached
 tracing observes exactly **235** producers and 235 consumers; the retained new
-bodies are local128/VGPR136/SGPR128/LDS1024/scratch0. Clean production reaches
-**184.997/172.104/131.496 tok/s**. H5F next screens constant-48-accumulator
-geometries to reduce reads while retaining two-workgroup occupancy.
+bodies are local128/VGPR136/SGPR128/LDS1024/scratch0. H5F's constant-48 screen
+compiles at VGPR104/LDS1024/scratch0 and rejects every broad role, but a stronger
+borderline gate retains 12x4 for F32 N48 at **1.187%/0.496%** event/wall, saving
+**4.224/1.989 us** per M512 request. Complete state remains KL0 and current
+package throughput is aggregate-flat **185.019/172.076/131.147 tok/s**. H5G
+next screens constant-80/96 geometries before spill-prone constant-128 tiles.
 
 ### Matched M512 kernel/module gap ledger
 
@@ -247,9 +253,10 @@ The revised execution order is:
    and moves H5D's final-source 235-call policy **1,085.630 -> 951.876 ms
    (1.141x)** by events and **1,040.166 -> 961.993 ms (1.081x)** by wall. The
    bounded owner remains KL0/byte-exact through complete state; selector-unset
-   production reaches **184.997/172.104/131.496 tok/s** through 4K. H5F screens
-   constant-48 tiles before spill-prone constant-128 ownership; do not stack
-   H1-H5B or reopen P6.
+   production reaches **184.997/172.104/131.496 tok/s** through 4K. H5F retains
+   only N48 12x4 at **1.187%/0.496%** event/wall and is aggregate-flat at
+   **185.019/172.076/131.147**. H5G screens constant-80/96 before spill-prone
+   constant-128 ownership; do not stack H1-H5B or reopen P6.
 6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
@@ -287,8 +294,8 @@ result proves that 150 was only an intermediate gate, not a credible endpoint.
 | WPF-3 exact qrow4 SWA default | One wave retains one head and four causal rows; the C256 policy uses exact wave32 below crossover. Four M128 slices improve **21.059 -> 9.389 ms (2.243x)** with zero F32-bit mismatches. The package-default M512 gate matches all 48 boundaries/KV spans at KL0. Clean 512/1K improves **118.705/107.804 -> 131.919/125.960 tok/s (+11.131%/+16.842%)**; traced SWA falls **55.411%/59.449%**. |
 | Rejected WPF-3 online qrow4 SWA | The complete 18-prompt/576-step M512 lane improves natural-prompt prefill **117.170 -> 118.335 tok/s (+0.995%)** and h16/h32 E2E **+0.764%/+0.609%**, but fails at maximum KL **0.394600** despite **564/576 (97.917%)** top-1. Poolside, repeat determinism, and lifecycle pass; exact qrow4-C256 remains default. |
 | WPF-1T exact Q5/Q6 coltile default | All 15 actual M512 configurations are exact/faster; the 381-invocation weighted `(4,8)` leaf sum is **2699.147 -> 1828.710 ms (1.476x)**. Four role keys select `(2,16)`, saving another **36.773 ms (2.011%)** from that family. The frozen same-resident gate improves **+0.545%/+0.459%** at 512/1K; a package repeat is exact/positive at **+0.382%/+0.242%** but misses its repeated 1K magnitude threshold. Complete state is KL0. Clean all-`(4,8)` publication remains **169.253/159.229 tok/s**; dense/shared falls **38.546%/38.875%**. |
-| Current canonical clean selector-unset | **184.997/172.104/131.496 tok/s** at 512/1K/4K, matrix512/attention128/H5E exact-ordered-Q5/pair16-grouped-gate/grouped-down/qrow4-C256-SWA. M512 full state is KL0/byte-exact, all publication rows match the explicit fallback, and lifecycle recovers. |
-| Matched external M512 targets | Same 512 IDs/context4096/direct M512/first token 2930: current hipEngine BF16 **184.997**, llama.cpp HIP BF16 **694.184 (3.752x)**, llama.cpp Vulkan native F16 **56.274 tok/s**. HIP server-native is **649.321 tok/s**. Direct HIP parity is the active external target; 800 remains stretch. |
+| Current canonical clean selector-unset | **185.019/172.076/131.147 tok/s** at 512/1K/4K, matrix512/attention128/H5F exact-ordered-Q5/pair16-grouped-gate/grouped-down/qrow4-C256-SWA. The delta from H5E is aggregate-flat; the retained N48 sub-window is **+1.187%/+0.496%** event/wall. M512 full state is KL0/byte-exact and lifecycle recovers. |
+| Matched external M512 targets | Same 512 IDs/context4096/direct M512/first token 2930: current hipEngine BF16 **185.019**, llama.cpp HIP BF16 **694.184 (3.752x)**, llama.cpp Vulkan native F16 **56.274 tok/s**. HIP server-native is **649.321 tok/s**. Direct HIP parity is the active external target; 800 remains stretch. |
 | Rejected WPF-H1 Q5 source-MMQ runtime | All eight actual M512 roles and 235 calls: exact coltile **1,562.932 ms** -> aligned DS4/WMMA policy **97.110 ms (16.094x)**, with N48/N72 exact. Complete quality nevertheless reaches max KL **4.162014** at **561/576** top-1 despite **1.348x** diagnostic natural-prompt prefill. Runtime ownership is removed; retain only the explicit primitive. |
 | Rejected WPF-H3 IQ3/IQ4 source-MMQ runtime | All **45 IQ3 + 2 IQ4** actual M512 selected-down layers move exact grouped **565.437 -> 115.951 ms (4.877x)** and runtime natural-prompt prefill improves **152.276 -> 181.556 tok/s (1.192x)**, but complete quality reaches max KL **0.373028** at **567/576** top-1. An IQ3-source/IQ4-exact followup still reaches **0.372917**. Runtime ownership is removed; retain exact grouped production plus the explicit leaf. |
 | Rejected WPF-1B screens | D4 **129.572/116.116 tok/s**, max KL **0.624304**; D8 **129.083/115.802**, max KL **0.400292**; D8R8 **123.466/111.324**, max KL **0.964321** at 512/1K |
@@ -688,10 +695,10 @@ heldouts before any clean publication.
 | **WPF-H4 source-faithful Q6_K F16/rocBLAS** | **Rejected; runtime owner removed** | The standalone local64/F16-compute leaf moves the actual six-shape/144-call M512 inventory **174.351 -> 14.349 ms (12.151x)**, **3.825% below** matched llama.cpp. Runtime natural-prompt prefill improves **151.784 -> 158.205 tok/s (1.042x)** with every category positive, but complete changed-arithmetic quality reaches max KL **0.338657** at **567/576** top-1. Remove runtime ownership, rocBLAS handle, 97,517,568-byte workspace, capabilities, and tests; retain exact coltile plus the registered leaf. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json) · [`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json). |
 | **WPF-H5A exact-value Q5 F32/SGEMM** | **Rejected; runtime owner removed** | Clean exact M512 is **169.516 tok/s** versus matched llama.cpp HIP **694.184 (4.095x)**, with Q5 at **1,270.458 ms / 42.325%**. The bounded no-sidecar leaf selects exact N48 fallback and moves the actual 235-call role policy **1,256.936 -> 221.137 ms (5.684x)** by events, corroborated by **5.273x** wall. Raw operand values are exact; max mean/max-row KL is **1.59e-9/5.79e-8** and top-1 **100%**. The default-off owner passes natural M512 at KL **0.0003742**, but complete quality reaches max KL **1.143627** at **564/576** top-1 despite **1.330x** diagnostic prefill. Remove runtime ownership/workspace/capabilities/tests; retain exact coltile plus the registered leaf. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json). |
 | **WPF-H5B packed F32 dense-initial attention transfer** | **Rejected; runtime owner/map removed** | Reuses the existing complete-`KVLiveSpans` route; no kernel is ported. The tuned packed two-call QK/PV plus wave32 leaf moves **109.897 -> 62.655 ms (1.754x)**, natural M512 passes KL **0.000429**, and tracing moves attention **488.304 -> 60.669 ms (8.049x)**. The binding split-local M512 extension observes all **10,512** expected candidate launches but reaches max KL **0.444675** at **564/576** top-1 despite **165.555 -> 190.103 tok/s (1.148x)** diagnostic prefill. Remove gfx1100 runtime policy/map/propagation/tests; retain exact qrow4/M128 plus the standalone leaf. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json). |
-| **WPF-H5C/H5D/H5E exact-ordered F32-weight Q5** | **Complete; retained gfx1100 production through 4K** | Reuses H5A's bit-exact transient producer but replaces SGEMM with local128 ordered consumers. Rows17/33 and all roles are byte-exact. H5E adds 4x16/8x8/16x4 and moves H5D's final-source 235-call family **1,085.630 -> 951.876 ms (1.141x)** events / **1,040.166 -> 961.993 ms (1.081x)** wall. One **150,994,944-byte** plane is bounded/no-sidecar. Package-default M512 is KL0 across all 48 boundaries/logits/KV/repeat/teardown; selector-unset publishes **184.997/172.104/131.496 tok/s** through 4K. Trace names 235 producers + 235 consumers; new bodies are VGPR136/LDS1024/scratch0. H5F screens occupancy-preserving constant-48 tiles. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json). |
+| **WPF-H5C/H5D/H5E/H5F exact-ordered F32-weight Q5** | **Complete; retained gfx1100 production through 4K** | Reuses H5A's bit-exact transient producer but replaces SGEMM with local128 ordered consumers. Rows17/33 and all roles are byte-exact. H5E adds 4x16/8x8/16x4 and moves H5D's final-source 235-call family **1,085.630 -> 951.876 ms (1.141x)** events / **1,040.166 -> 961.993 ms (1.081x)** wall. One **150,994,944-byte** plane is bounded/no-sidecar. Package-default M512 is KL0 across all 48 boundaries/logits/KV/repeat/teardown; selector-unset publishes **184.997/172.104/131.496 tok/s** through 4K. Trace names 235 producers + 235 consumers. H5F retains 12x4/VGPR104 only for N48 at **1.187%/0.496%** event/wall; current package is aggregate-flat **185.019/172.076/131.147**. H5G screens constant-80/96 tiles. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh post-H4 M512 span-minus-sum is only **15.087 ms / 0.500%**, and llama.cpp is faster despite **2,824 vs 1,477** dispatches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
-| WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H5E 4K is **131.496 tok/s**. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
+| WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H5F 4K is **131.147 tok/s** (flat versus H5E **131.496**). First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
 
 ### Admission and stop rules
 

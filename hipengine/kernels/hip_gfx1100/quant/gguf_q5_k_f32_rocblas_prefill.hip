@@ -137,8 +137,9 @@ __global__ void gguf_q5_k_f32_weight_ordered_coltile_kernel(
     int out_features) {
   static_assert(
       COL_TILE * ROW_BATCH == 32 ||
+          COL_TILE * ROW_BATCH == 48 ||
           COL_TILE * ROW_BATCH == 64,
-      "ordered F32 Q5 screens only constant-32/64-accumulator output tiles");
+      "ordered F32 Q5 screens only constant-32/48/64-accumulator output tiles");
   const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
   const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
   const int tid = static_cast<int>(threadIdx.x);
@@ -319,6 +320,7 @@ HIPENGINE_Q5_F32_ORDERED_EXPORTS(8, 4)
 HIPENGINE_Q5_F32_ORDERED_EXPORTS(4, 16)
 HIPENGINE_Q5_F32_ORDERED_EXPORTS(8, 8)
 HIPENGINE_Q5_F32_ORDERED_EXPORTS(16, 4)
+HIPENGINE_Q5_F32_ORDERED_EXPORTS(12, 4)
 
 #undef HIPENGINE_Q5_F32_ORDERED_EXPORTS
 
