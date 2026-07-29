@@ -191320,3 +191320,27 @@ Vulkan local sizes verbatim will close the measured gap.
   require seven exact counterbalanced p512/d128 resident pairs before
   promotion. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json`.
+
+## 2026-07-30 00:55 JST — Promote SWA idle-wave vector denominator replay
+
+- Add a default-off cache/profile comparison route, then run seven
+  counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1
+  resident pairs. Every candidate beats every control with complete sample
+  separation. Median decode moves
+  **20.411948 -> 20.430138 tok/s
+  (+0.08912%, -0.04362 ms/token)**; paired changes span
+  **+0.07165% to +0.13883%**.
+- Every row preserves next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown. Raw output SHA-256 is
+  `ba7aae91...08ca`; model load **88.770 s** is excluded.
+- The focused production-route/profile checks pass **2** tests. The broader
+  same-file run establishes **57 passed** and one unrelated stale assertion:
+  it expects 243 allocations while the current production owner and canonical
+  test establish 245; this candidate adds no allocation.
+- Promote
+  `LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512`
+  on gfx1151. Active-wave vector denominator replay remains exact rollback,
+  peer backends stay unchanged, and comparison-only cache/profile plumbing is
+  removed. Clean selector-unset production remains next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json`.

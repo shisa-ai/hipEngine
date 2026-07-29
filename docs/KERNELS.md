@@ -1898,9 +1898,14 @@ execute the unchanged PV chains; triple-owner blocks retain the production
 schedule. The wrap/eviction oracle is F32/BF16 byte-exact. The stronger 21x100
 leaf improves **0.045329 -> 0.045182 ms (-0.324%)** with **21/21** paired
 wins at unchanged grid12288/local384, VGPR104, SGPR128, LDS25,600, and
-scratch0. Retain the primitive pending a seven-pair resident p512/d128 gate;
-production remains **20.414792 tok/s**:
-[`idle-wave vector denominator primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json).
+scratch0. All seven resident p512/d128 candidates beat every control with
+complete separation, moving **20.411948 -> 20.430138 tok/s
+(+0.08912%, -0.04362 ms/token)** with exact state/lifecycle. gfx1151
+promotes the qualified capability, active-wave replay remains exact rollback,
+comparison plumbing is removed, and peer backends are unchanged. Clean
+selector-unset publication remains next:
+[`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json),
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
