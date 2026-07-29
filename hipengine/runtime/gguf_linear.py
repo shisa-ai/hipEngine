@@ -223,10 +223,13 @@ class Q6F16RocblasPrefillSession:
     dequant_library: object
     cast_library: object
     rocblas: Rocblas
+    min_rows: int = 512
 
     def __post_init__(self) -> None:
-        if int(self.max_rows) <= 0:
-            raise ValueError("Q6 F16 rocBLAS max_rows must be positive")
+        if not 0 < int(self.min_rows) <= int(self.max_rows):
+            raise ValueError(
+                "Q6 F16 rocBLAS min_rows must be positive and fit max_rows"
+            )
         planes = (
             (self.weight_f16_ptr, self.weight_f16_nbytes),
             (self.x_f16_ptr, self.x_f16_nbytes),
@@ -766,10 +769,14 @@ def _q6_f16_rocblas_prefill_dispatch(
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Select the bounded source-Q6 route only for package-qualified M512 shapes."""
+    """Select source Q6 for package shapes inside the owner-qualified row range."""
 
     session = _q6_f16_rocblas_prefill_session.get()
-    if session is None or int(rows) != 512 or int(rows) > int(session.max_rows):
+    if (
+        session is None
+        or int(rows) < int(session.min_rows)
+        or int(rows) > int(session.max_rows)
+    ):
         return dispatch
     output_variants = {
         "prefill_bf16_bf16_out": "bf16",

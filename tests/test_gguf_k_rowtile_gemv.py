@@ -412,6 +412,7 @@ def test_q6_f16_rocblas_prefill_dispatch_is_session_and_shape_scoped() -> None:
         for output_dtype in ("bf16", "f32")
     }
     session = Q6F16RocblasPrefillSession(
+        min_rows=16,
         max_rows=512,
         weight_f16_ptr=1000,
         weight_f16_nbytes=75_497_472,
@@ -444,25 +445,27 @@ def test_q6_f16_rocblas_prefill_dispatch_is_session_and_shape_scoped() -> None:
         )
 
     with q6_f16_rocblas_prefill_session(session):
-        for output_dtype, in_features, out_features in qualified:
-            selected = _q6_f16_rocblas_prefill_dispatch(
-                base_by_output[output_dtype],
-                rows=512,
-                in_features=in_features,
-                out_features=out_features,
-            )
-            assert selected == GGUFLinearDispatch(
-                KernelKey(
-                    "hip_gfx1100",
-                    "linear",
-                    "gguf_q6_k",
-                    f"f16_rocblas_source_bf16_{output_dtype}_out",
-                ),
-                "raw_q6_f16_rocblas",
-            )
+        for rows in (16, 97, 511, 512):
+            for output_dtype, in_features, out_features in qualified:
+                selected = _q6_f16_rocblas_prefill_dispatch(
+                    base_by_output[output_dtype],
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+                assert selected == GGUFLinearDispatch(
+                    KernelKey(
+                        "hip_gfx1100",
+                        "linear",
+                        "gguf_q6_k",
+                        f"f16_rocblas_source_bf16_{output_dtype}_out",
+                    ),
+                    "raw_q6_f16_rocblas",
+                )
 
         for rows, in_features, out_features in (
-            (511, 3072, 1024),
+            (1, 3072, 1024),
+            (15, 3072, 1024),
             (512, 3072, 3072),
             (512, 3328, 1024),
         ):
