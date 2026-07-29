@@ -239,6 +239,12 @@ production is **19.982796/19.988868/19.986371 tok/s**, median
 **19.986371**, aggregate-flat-to-positive at **+0.0138%** over the prior
 packet and **+74.299%** over sprint start. Exact trajectories/state/lifecycle
 and zero-allocation teardown remain unchanged.
+The clean 127-transition follow-up keeps **768 compute dispatches/token** and
+measures **3.658 ms/token attention = 2.497 SWA + 1.149 global**. Global
+falls **2.50%**, total attention **0.80%**, kernel sum **0.07%**, and span
+**0.06%** versus the pre-global-max census. Attention remains
+**2.749 ms/token** behind same-GGUF Vulkan and explains **38.2%** of the
+complete wall gap.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
