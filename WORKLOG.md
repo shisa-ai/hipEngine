@@ -189333,3 +189333,23 @@ Vulkan local sizes verbatim will close the measured gap.
   an **8.015-ms/token** wall gap. Raw artifact SHA-256 is
   `7cddfc4a...383296`; clean load time **87.889 s** is excluded. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json`.
+
+## 2026-07-29 11:28 JST — Reject exact global mixed40 exp32
+
+- RED required the absent mixed40 wrapper. The exact candidate partitioned
+  each six-query GQA group as **2+1+1+1+1**, raising global ownership
+  **32 -> 40 local256 blocks** while preserving all active-head arithmetic.
+  GREEN is F32 context and gated BF16 byte identity at evicted
+  live513/576/639.
+- Nine 50-launch samples improve live513
+  **0.076805 -> 0.073259 ms (-4.62%)**, but regress the representative
+  live576/live639 points **0.083815 -> 0.083992 ms (+0.21%)** and
+  **0.091817 -> 0.091920 ms (+0.11%)**. The candidate fails the all-natural-
+  shapes gate; production A/B and trace are skipped.
+- Removed the kernel specialization, wrapper, registry entry, oracle
+  extension, and harness choice. Production remains clean mixed32 at
+  **19.667705 tok/s**. The fifth K/V stream closes the ordinary-grid
+  ownership sweep; next test four owners with separate local256 pair and
+  local128 singleton launches. Raw leaf SHA-256 is
+  `d7cb899c...0f977d`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json`.

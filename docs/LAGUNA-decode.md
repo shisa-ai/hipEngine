@@ -4298,18 +4298,21 @@ final position, determinism, and zero tracked allocations after teardown.
 Evidence:
 [`clean global mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json).
 
-This reopens one bounded exact global-attention sweep before returning to
-approximate tensor arithmetic:
+The bounded **40-block 2+1+1+1+1** continuation is rejected. It is F32/BF16
+byte-exact and improves live513 **0.076805 -> 0.073259 ms (-4.62%)**, but the
+extra fifth K/V owner crosses the reuse/occupancy seam at the representative
+live576/live639 points: **+0.21%/+0.11%**. The candidate is removed before
+trace/runtime integration. Evidence:
+[`rejected global mixed40 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json).
 
-1. Screen a **40-block 2+1+1+1+1** owner against mixed32 at live513/576/639.
-   It tests whether another occupancy step repays the loss of one paired head.
-2. If 40 blocks wins all natural leaves, run the same seven-pair p512/d128
-   gate and trace. Otherwise remove it at the leaf stop.
-3. Compare the winning ordinary-grid owner against a split-launch form:
-   16 paired-head local256 blocks plus 32 singleton local128 blocks. Admit the
-   extra launch only if whole-model wall improves.
-4. Re-profile the clean attention wall. Only then decide whether the residual
-   gap justifies a new tensorized kernel or a larger architectural change.
+The remaining exact global-attention sequence is:
+
+1. Keep mixed32's four K/V owners, but split pair and singleton owners:
+   16 paired-head local256 blocks plus 16 singleton-head local128 blocks.
+   Admit the extra launch only if leaves and whole-model wall both improve.
+2. Re-profile the clean attention wall after that decision.
+3. Only then decide whether the residual gap justifies a new tensorized kernel
+   or a larger architectural change.
 
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
