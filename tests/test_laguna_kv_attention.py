@@ -3903,7 +3903,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         )
         assert (
             gfx1151_cache.global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape
-            is False
+            is True
         )
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores

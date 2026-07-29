@@ -189717,3 +189717,23 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next run seven resident Poolside Laguna S 2.1 p512/d128 pairs with two HIP
   queues and cached builds. Retain only on exact trajectory/state/lifecycle
   and positive counterbalanced throughput.
+
+## 2026-07-29 14:06 JST — Promote exact global producer maxima
+
+- Tracked-clean `30d546ba0`, cached builds, two HIP queues, and seven
+  counterbalanced resident p512/d128 pairs move
+  **19.978296 -> 19.993586 tok/s (+0.0765%, -0.0383 ms/token)**.
+- Every candidate sample beats every control sample: control spans
+  **19.968187-19.984729 tok/s** and candidate spans
+  **19.985356-19.997825 tok/s**. This is complete sample separation in both
+  process orders, consistent with the 4.50-4.89% global leaf reduction.
+- All arms select next token 2930 and final token 74107, share the complete
+  128-token trajectory SHA `94f803f7...ebda32`, finish at position 638, are
+  repeat-deterministic, and return tracked allocations to zero.
+- Raw A/B SHA-256 is `a83d2a6f...23635`; the 90.716-s load is excluded.
+  Promote
+  `LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE`
+  for gfx1151 only. Mixed32/exp32 remains exact rollback.
+- Next run tracked-clean selector-unset three-repetition p512/d128 production,
+  then remove the comparison-only session setter/flag. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-retained.json`.
