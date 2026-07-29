@@ -398,6 +398,19 @@ should be removed or collapsed.
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
 
+## gfx1100 Laguna H5B packed-attention qualification selector
+
+- Added 2026-07-30 as the explicit default-false gfx1100
+  `LAGUNA_PREFILL_ATTENTION_HIPBLASLT` package capability. The package also
+  owns its measured QK **2/1/3** and PV **2** heuristic map plus packed-query,
+  direct-producer, wave-softmax, and packed-output component policy. gfx1151
+  retains its independent built-in map and production defaults.
+- Remove the gfx1100 capability/components/map and owner-propagation tests if
+  the complete multi-prompt changed-association gate fails. If quality and
+  clean 512/1K timing pass, promote the top-level capability and retain one
+  explicit whole-route rollback only through the next production checkpoint;
+  unsafe `KVLiveSpans` shapes always keep their exact fallback independently.
+
 ## Laguna packed-query F32 hipBLASLt attention selector
 
 - Added 2026-07-27 for the quality-gated two-call dense-initial attention

@@ -144,13 +144,16 @@ algorithms 2/1/3 and PV algorithm 2 improves the selected-context 48-layer leaf
 **109.897 -> 62.655 ms (1.754x)**. All selected shapes win, output is finite at
 max-row KL **1.10e-15**, top-1 **100%**, and max abs **4.84e-8**. An explicit
 same-resident natural-M512 owner passes at KL **0.000429**, token **2930**,
-deterministic complete state/KV/`KVLiveSpans`, and exact teardown; its first
-pair improves **170.271 -> 187.333 tok/s (1.100x)**. Cached tracing observes
-exactly **144** widen/QK/softmax/PV stacks, retains all 48 start-0 exact calls,
-and moves attention **488.304 -> 60.669 ms (8.049x)** plus complete kernel sum
-**3,001.692 -> 2,603.520 ms (-13.265%)**. This is transfer-candidate attribution,
-not a production claim: gfx1100 capability/algorithm ownership, multi-prompt
-changed-association quality, and clean 512/1K publication remain pending.
+deterministic complete state/KV/`KVLiveSpans`, and exact teardown. Cached tracing
+observes exactly **144** widen/QK/softmax/PV stacks, retains all 48 start-0 exact
+calls, and moves attention **488.304 -> 60.669 ms (8.049x)** plus complete kernel
+sum **3,001.692 -> 2,603.520 ms (-13.265%)**. gfx1100 now publishes all six
+validated shape indices plus the packed/wave component policy behind an explicit
+default-false top-level capability. A package-resolved M512 rerun selects those
+indices, repeats exactly, and measures a diagnostic first pair **170.672 ->
+186.914 tok/s (1.095x)**. This is default-off candidate attribution, not a
+production claim: multi-prompt changed-association quality and clean 512/1K
+publication remain pending.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

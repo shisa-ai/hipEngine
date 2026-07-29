@@ -356,9 +356,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None
+        )
+        is False
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -367,11 +370,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
+            None,
+        )
+        is True
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -380,11 +386,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
+            None,
+        )
+        is True
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -393,11 +402,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
+            None,
+        )
+        is True
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -406,9 +418,28 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
+            None,
+        )
+        is True
+    )
+    gfx1100_algorithm_indices = backend_package_capability(
         "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
+        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_ALGORITHM_INDICES",
+        None,
+    )
+    assert dict(gfx1100_algorithm_indices) == {
+        (heads, context, operation): index
+        for heads in (48, 72)
+        for context, qk_index in ((256, 2), (384, 1), (512, 3))
+        for operation, index in (("qk", qk_index), ("pv", 2))
+    }
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_ALGORITHM_INDICES",
         None,
     ) is None
     assert (

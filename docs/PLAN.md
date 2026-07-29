@@ -1451,9 +1451,12 @@ existing complete-`KVLiveSpans` F32 dense-initial hipBLASLt route now passes the
 W7900 transfer screen: tuned packed/wave leaf **109.897 -> 62.655 ms (1.754x)**,
 natural M512 KL **0.000429** / top-1 **100%** with deterministic complete state,
 and cached attention **488.304 -> 60.669 ms (8.049x)** while full kernel sum
-falls **3,001.692 -> 2,603.520 ms (-13.265%)**. Add only architecture-local
-algorithm/capability ownership next, then require multi-prompt changed-association
-quality before clean timing. Do not stack rejected H1-H5A arithmetic or reopen
+falls **3,001.692 -> 2,603.520 ms (-13.265%)**. A default-off gfx1100 package
+now owns the validated **2/1/3 + PV2** heuristic map and all packed/wave
+components without changing exact production; the package-resolved M512 rerun
+preserves KL **0.000429**, top-1 **100%**, deterministic state, and teardown.
+Require multi-prompt changed-association quality before clean timing. Do not
+stack rejected H1-H5A arithmetic or reopen
 P6/repair; launch fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
