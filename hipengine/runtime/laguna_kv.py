@@ -37,7 +37,6 @@ _DENSE_INITIAL_GLOBAL_PREFILL_VARIANT = (
 _DENSE_INITIAL_GLOBAL_QROW6_PREFILL_VARIANT = (
     "global_context_rows_qrow6_dense_initial_online_spans"
 )
-_SOURCE_FLASH_ATTENTION_PREFILL_VARIANT = "source_f16_wmma_q8_gqa8_spans"
 _GLOBAL_PREFILL_VARIANTS = frozenset(
     {
         _BASELINE_GLOBAL_PREFILL_VARIANT,
@@ -540,79 +539,6 @@ class LagunaKVCache:
                 runtime=self.runtime,
             )
 
-    def can_source_flash_attention_prefill(
-        self,
-        layer_id: int,
-        rows: int,
-        *,
-        row_offset: int = 0,
-    ) -> bool:
-        """Return whether one complete initial fill can use source F16 WMMA."""
-
-        state = self.layer(layer_id)
-        offset = int(row_offset)
-        count = int(rows)
-        return (
-            self._dense_initial_metadata_valid
-            and bool(self._pending_positions)
-            and offset == 0
-            and count >= 16
-            and count == len(self._pending_positions)
-            and count <= state.capacity
-            and state.q_heads in {48, 72}
-            and self._pending_positions == tuple(range(count))
-        )
-
-    def attend_prefill_source_flash_attention(
-        self,
-        layer_id: int,
-        query_ptr: int,
-        out_ptr: int,
-        rows: int,
-        *,
-        row_positions_ptr: int | None = None,
-        scale: float = _LAGUNA_HEAD_DIM**-0.5,
-        stream: int = 0,
-        library=None,
-    ) -> None:
-        """Run the source F16-WMMA body after a complete initial KV append."""
-
-        if not self.can_source_flash_attention_prefill(layer_id, rows):
-            raise ValueError(
-                "source FlashAttention requires one complete initial fill"
-            )
-        state = self.layer(layer_id)
-        spans = self._bulk_slice_spans(
-            state.spans,
-            row_offset=0,
-            rows=rows,
-            row_positions_ptr=row_positions_ptr,
-        )
-        fn = self._resolve(
-            "laguna_attention_prefill",
-            _SOURCE_FLASH_ATTENTION_PREFILL_VARIANT,
-        )
-        fn(
-            query_ptr,
-            state.key_cache.ptr,
-            state.value_cache.ptr,
-            out_ptr,
-            spans,
-            int(rows),
-            state.q_heads,
-            _LAGUNA_KV_HEADS,
-            _LAGUNA_HEAD_DIM,
-            scale,
-            sliding_window=(
-                self.sliding_window
-                if state.attention_type == SLIDING_ATTENTION
-                else 0
-            ),
-            stream=stream,
-            library=library,
-            runtime=self.runtime,
-        )
-
     def can_preappend_prefill(
         self,
         layer_id: int,
@@ -903,15 +829,11 @@ class LagunaKVCache:
             missing="none",
         )
         if fn is None:
-            from hipengine.kernels.hip_gfx1100.attention.laguna_flash_attention_prefill import (
-                register_laguna_flash_attention_prefill_kernels,
-            )
             from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
                 register_laguna_kv_attention_kernels,
             )
 
             register_laguna_kv_attention_kernels()
-            register_laguna_flash_attention_prefill_kernels()
             load_backend_kernel_package(self.backend)
             fn = resolve(
                 backend=self.backend,

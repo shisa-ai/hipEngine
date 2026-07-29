@@ -83,13 +83,15 @@ numbers below.
   the 800/700 512/4K stretch target
   ([production evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
   [role policy](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)).
-  A separately registered WPF-H2 F16-WMMA FlashAttention candidate keeps BF16
-  K/V and complete `KVLiveSpans` while moving the standalone 12-global/36-SWA
-  M512 family **490.919 -> 21.719 ms (22.603x)**, nominally matching
-  llama.cpp's **21.725-ms** trace. Its fixtures pass; the slower non-finite
-  stream-K seam is removed. Production remains exact pending the complete
-  runtime/model-quality gates
-  ([candidate evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)).
+  A separately registered WPF-H2 F16-WMMA FlashAttention leaf keeps BF16 K/V
+  and complete `KVLiveSpans` while moving the standalone 12-global/36-SWA M512
+  family **490.919 -> 21.719 ms (22.603x)**, nominally matching llama.cpp's
+  **21.725-ms** trace. Runtime promotion is rejected: the complete
+  18-prompt/576-step gate reaches max KL **1.804860 > 0.05** despite **564/576**
+  top-1 and **1.027x** diagnostic prefill. The temporary runtime path is removed
+  and production stays exact
+  ([rejection](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-rejected.json) ·
+  [leaf evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted

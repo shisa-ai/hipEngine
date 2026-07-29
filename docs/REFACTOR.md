@@ -107,16 +107,17 @@ should be removed or collapsed.
 
 ## Laguna source FlashAttention selector
 
-- Added 2026-07-29 as the default-off WPF-H2 runtime admission seam.
-  `LagunaGGUFResidentSession(..., use_source_flash_attention=True|False)` routes
-  only one complete initial dense fill with at least 16 rows through the
-  gfx1100-only source F16-WMMA primitive; verifier, continuation, wrapped,
-  partial, and unsupported shapes retain the exact qrow4/M128 chain.
-- Remove the explicit positive selector after the complete 18-prompt/576-step
-  quality gate, same-resident state/timing, clean 512/1K/4K publication, and a
-  cached trace prove the package default. If any binding gate fails, remove the
-  runtime owner/capabilities entirely and retain only the standalone primitive.
-  The exact registered fallback remains required in either outcome.
+- WPF-H2's temporary default-off runtime seam is removed. The complete
+  18-prompt/576-step lane rejects all-layer source-F16 attention at maximum KL
+  **1.804860 > 0.05** despite **564/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **1.027x** faster. F32 PV,
+  full-attention-only, and SWA-only heldout screens also fail at maximum KL
+  **1.687078/0.589071/0.859783**.
+- No constructor switch, package capability, eager library owner, or KV/runtime
+  dispatch branch remains. Keep only the separately registered standalone
+  primitive and its leaf-parity evidence; the exact qrow4/M128 production chain
+  remains the required runtime path. Reopen only with materially different QK
+  arithmetic and a fresh complete quality gate, not another layer subset.
 
 ## Laguna P6 IQ2 MMQ32 diagnostic
 

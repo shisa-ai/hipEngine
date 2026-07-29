@@ -1388,26 +1388,25 @@ The temporary runtime owner/workspace/switch is removed; production remains the
 exact role-qualified coltile path and the source-Q5 primitive stays explicit
 ceiling evidence only.
 
-WPF-H2 now has a qualified standalone source-faithful F16-WMMA body. It keeps
-BF16 resident K/V and complete `KVLiveSpans`, but reproduces llama.cpp's D128,
-eight-query/eight-GQA-head F16 WMMA ownership. The 12-global/36-SWA M512 family
-moves **490.919 -> 21.719 ms (22.603x)** and reaches nominal parity with the
-matched llama.cpp **21.725-ms** main+fixup trace; a separate sustained
-counter-ordered median is **20.971 ms**. Global/sliding fixtures pass the quality
-gate, and cached tracing reports local `(32,4)`, VGPR208, LDS18,432, scratch0.
-The attempted 144-block stream-K/fixup route is removed because it is **1.751x
-slower** and non-finite; whole-tile ownership is the only candidate surface.
-Runtime integration, complete 18-prompt/576-step quality, state/timing, and
-reprofile gates remain before promotion.
+WPF-H2's standalone source-faithful F16-WMMA body reaches leaf parity but is
+rejected for runtime use. It keeps BF16 resident K/V and complete
+`KVLiveSpans`, and the 12-global/36-SWA M512 family moves **490.919 -> 21.719 ms
+(22.603x)** versus llama.cpp's matched **21.725-ms** main+fixup trace. The
+binding 18-prompt/576-step lane nevertheless reaches maximum KL **1.804860 >
+0.05** at **564/576** top-1 despite deterministic repeats, lifecycle recovery,
+and diagnostic natural-prompt prefill **152.087 -> 156.219 tok/s (1.027x)**.
+F32 PV, full-attention-only, and SWA-only followups also fail. Remove the runtime
+owner/selector and retain only the separately registered corrected primitive as
+ceiling evidence; exact qrow4/M128 remains production.
 
-The remaining W7900 order finishes WPF-H2 qualification, then proceeds to WPF-H3
-source-faithful Q8_1 IQ3/IQ4 selected-down MMQ and WPF-H4 source-faithful Q6_K
-F16 dequantize-plus-rocBLAS. These audited llama.cpp routes are the primary
-performance candidates, not fallbacks delayed behind a new exact-only tiling
-campaign. Keep source commit/path attribution, the four-axis registry,
-raw-pointer kernel ABI, `KVLiveSpans`, and registered exact fallbacks. Prior H1
-source-Q5, P6, WPF-1R, D4/D8/D8R8, online-SWA, and H2 stream-K rejections remain
-closed; H5/IQ2 and WPF-4 are deferred until retained H2-H4 routes are stacked
+The remaining W7900 order proceeds to WPF-H3 source-faithful Q8_1 IQ3/IQ4
+selected-down MMQ and WPF-H4 source-faithful Q6_K F16
+dequantize-plus-rocBLAS. These audited llama.cpp routes are primary performance
+candidates, not fallbacks delayed behind a new exact-only tiling campaign. Keep
+source commit/path attribution, the four-axis registry, raw-pointer kernel ABI,
+`KVLiveSpans`, and registered exact fallbacks. Prior H1 source-Q5, H2 source
+attention/stream-K, P6, WPF-1R, D4/D8/D8R8, and online-SWA rejections remain
+closed; H5/IQ2 and WPF-4 are deferred until retained H3-H4 routes are stacked
 and reprofiled.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

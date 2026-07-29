@@ -60,19 +60,19 @@ separately registered primitive and its
 [`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json)
 remain. Production and the canonical clean headline above are unchanged.
 
-The new [`WPF-H2 source FlashAttention candidate`](results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)
-ports llama.cpp's D128/V128, eight-query/eight-GQA-head F16-WMMA body while
-retaining BF16 cache storage and complete `KVLiveSpans` addressing. Against the
-matched **490.919-ms** exact qrow4/M128 family, the standalone 12-global/36-SWA
-weighted body reaches **21.719 ms (22.603x)**, nominally matching llama.cpp's
-**21.725-ms** main+fixup trace; a separate nine-sample counter-ordered sustained
-family has median **20.971 ms**. Global and sliding-ring fixtures pass at maximum
-mean KL **2.53e-10**, minimum top-1 **94.12%**, and maximum absolute error
-**2.21e-4**. The attempted 144-block stream-K seam is removed because it is
-**1.751x slower** and produces non-finite output. This is leaf evidence only:
-runtime integration, the complete 18-prompt/576-step quality lane, state/timing,
-and reprofile gates remain pending, so production and the canonical clean
-headline above are unchanged.
+The [`WPF-H2 source FlashAttention runtime`](results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-rejected.json)
+is **rejected for production** despite a parity-class standalone leaf. The
+separately registered D128/V128, eight-query/eight-GQA-head F16-WMMA primitive
+retains BF16 cache storage and complete `KVLiveSpans`; it moves the matched
+12-global/36-SWA attention family **490.919 -> 21.719 ms (22.603x)**, nominally
+matching llama.cpp's **21.725-ms** main+fixup trace. Runtime natural-prompt
+prefill improves **152.087 -> 156.219 tok/s (1.027x)** with every category
+positive, but the binding 18-prompt/576-step lane reaches maximum KL
+**1.804860 > 0.05** at **564/576 (97.917%)** top-1. F32 PV, global-only, and
+SWA-only followups also fail. The temporary runtime owner/selector is removed;
+only the corrected standalone
+[`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json)
+remains, and the canonical exact production headline above is unchanged.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
