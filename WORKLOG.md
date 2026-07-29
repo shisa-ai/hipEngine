@@ -191471,3 +191471,22 @@ Vulkan local sizes verbatim will close the measured gap.
 - Retain the exact primitive pending seven counterbalanced p512/d128 resident
   pairs. Production remains **20.483884 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json`.
+
+## 2026-07-30 01:39 JST — Promote exact mixed40 tail producers
+
+- Run seven counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV
+  p512/d128 eager c=1 resident pairs. Median decode moves
+  **20.502555 -> 20.508345 tok/s
+  (+0.02824%, -0.01377 ms/token)**. Six pairs improve; the median paired
+  change is **+0.01542%**, and the sole loss is **-0.00998%**, smaller than
+  that median gain.
+- All 14 rows preserve next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown. Model load **89.601 s** is excluded;
+  raw output SHA-256 is `b1c1ded5...bce3`.
+- Promote the qualified gfx1151 capability, retain the preceding mixed40
+  schedule as exact rollback, remove the comparison-only cache/profile seam,
+  and leave peer backends unchanged. Focused production-route/profile
+  validation passes **2** tests. Clean selector-unset publication remains
+  next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json`.

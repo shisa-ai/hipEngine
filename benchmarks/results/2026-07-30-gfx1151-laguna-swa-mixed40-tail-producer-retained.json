@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T01:39:20+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_tail_producer_retained",
+  "status": "accepted_runtime_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "10754972194bace40372f8b1d26e0bfff9ce9bc1",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_id": "mixed_ja_en_review",
+    "prefill_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_size": 2048,
+    "attention_rows": 128,
+    "mode": "eager c=1",
+    "load_excluded": true
+  },
+  "comparison": {
+    "control": "retained mixed40 with active-output-wave exponent generation",
+    "candidate": "mixed40 with separate tail-wave exponent generation",
+    "control_decode_median_tok_s": 20.50255524682991,
+    "candidate_decode_median_tok_s": 20.508344666327734,
+    "throughput_change_percent": 0.02823755101803993,
+    "saving_ms_per_token": 0.013768810441533219,
+    "paired_changes_percent": [
+      0.04149888702107418,
+      0.013021594630457933,
+      0.02976112839949696,
+      -0.009983415546965801,
+      0.015418115567933377,
+      0.09922957279611122,
+      0.009280303772940535
+    ],
+    "paired_candidate_wins": 6,
+    "paired_samples": 7,
+    "median_paired_change_percent": 0.015418115567933377,
+    "maximum_losing_pair_magnitude_percent": 0.009983415546965801,
+    "complete_sample_separation": false
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "route": {
+    "gfx1151_capability_promoted": true,
+    "comparison_selector_removed": true,
+    "production_control_retained": true,
+    "peer_backends_unchanged": true,
+    "focused_route_profile_tests_passed": 2
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40-tail-producer --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-tail-producer-ab.json",
+    "raw_sha256": "b1c1ded572f434efd98f69a5526d6be844cd33ed45c382c7f83e36471c18bce3",
+    "load_seconds_excluded": 89.60145464004017
+  },
+  "decision": {
+    "promote": true,
+    "reason": "Six of seven pairs improve, the median paired gain is positive, and the sole losing magnitude is smaller than that median gain under exact state and lifecycle.",
+    "clean_selector_unset_production_next": true,
+    "previous_production_tok_s": 20.48388399494212
+  }
+}

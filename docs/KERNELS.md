@@ -1938,8 +1938,14 @@ ordered denominator replay to waves 8/9, and ordered PV to waves 0-7 without
 changing geometry or arithmetic. Wrapped/evicted output is F32/BF16
 byte-exact; the strong 21x100 leaf improves
 **0.037001 -> 0.036896 ms (-0.285%)** with **20/21** paired wins and
-unchanged resources. Retain pending the resident wall gate:
-[`tail-producer primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json).
+unchanged resources. Six of seven resident p512/d128 pairs improve and median
+decode moves **20.502555 -> 20.508345 tok/s
+(+0.02824%, -0.01377 ms/token)**; the sole losing-pair magnitude is smaller
+than the median paired gain. gfx1151 promotes the capability, the prior
+mixed40 schedule remains exact rollback, and comparison plumbing is removed.
+Clean selector-unset publication remains next:
+[`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json),
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

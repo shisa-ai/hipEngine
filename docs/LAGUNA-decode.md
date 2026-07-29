@@ -5212,8 +5212,8 @@ The remaining attention sequence is:
     8/9 retain denominator replay; this preserves the complete arithmetic
     sequence while removing producer work from the PV-owner waves. Evidence:
     [`post-mixed40 census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json).
-51. Separate mixed40 exponent, denominator, and PV roles. **Retained as an
-    exact primitive pending the resident gate:** pair-owner waves 10/11 now
+51. Separate mixed40 exponent, denominator, and PV roles. **Retained and
+    promoted on gfx1151:** pair-owner waves 10/11 now
     generate the two probability rows while waves 8/9 replay their ordered
     denominators and waves 0-7 retain ordered PV; singleton blocks use wave
     11, wave 8, and waves 0-3 respectively. QK, exponent inputs, denominator
@@ -5227,9 +5227,17 @@ The remaining attention sequence is:
     **0.037001 -> 0.036896 ms (-0.285%)** with **20/21** paired wins.
     Cache-only tracing records unchanged grid15,360/local384, VGPR104,
     SGPR128, LDS25,600, and scratch0; no compiler runs under profiling.
-    Retain the primitive but require seven exact counterbalanced p512/d128
-    resident pairs before any promotion. Evidence:
-    [`mixed40 tail-producer primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json).
+    The seven exact counterbalanced p512/d128 resident pairs move median
+    decode **20.502555 -> 20.508345 tok/s
+    (+0.02824%, -0.01377 ms/token)**. Six pairs improve; the median paired
+    gain is **+0.01542%**, and the sole **-0.00998%** loss is smaller. Every
+    row preserves tokens, trajectory, positions, repeat determinism, and
+    allocation lifecycle. Promote the qualified gfx1151 capability, retain
+    the preceding mixed40 schedule as exact rollback, remove comparison-only
+    plumbing, and leave peer backends unchanged. Clean selector-unset
+    publication remains next. Evidence:
+    [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json) ·
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json).
 
 Current exact decode checkpoint:
 
