@@ -1938,23 +1938,6 @@ should be boring.
   natural tile16 and generic registered owners for unsupported
   shapes/backends.
 
-## Laguna selected natural tile8 parallel-tail selector
-
-- Added 2026-07-29 as
-  `LagunaGGUFResidentSession(..., use_selected_natural_tile8_parallel_decode=False)`
-  plus `set_selected_natural_tile8_parallel_decode(...)` and
-  `--compare-selected-natural-tile8-parallel-decode`. False restores the
-  retained exact serial tile8 tail; non-natural shapes and peer backends retain
-  their registered fallbacks.
-- Remove the selector and comparison plumbing after one of two outcomes:
-  promote the parallel tail when every matched p512/d128 resident pair is
-  exact and positive, retaining serial tile8 only as the registered rollback;
-  or remove the candidate and selector if the full-cycle gate regresses.
-- The promotion trigger is satisfied: all seven resident p512/d128 pairs are
-  exact and positive at **19.998518 -> 20.007478 tok/s (+0.0448%)**. Keep the
-  serial tile8 rollback and comparison seam through one decode checkpoint,
-  then collapse qualified gfx1151 selection to the parallel tail.
-
 ## Laguna gfx1151 SWA exponential decode selector
 
 - Added 2026-07-29 as a default-off resident and category measurement seam for

@@ -190033,3 +190033,14 @@ Vulkan local sizes verbatim will close the measured gap.
 - Trace/child SHA-256 values are `55cc85a5...38de` and
   `44674f0f...9cc2`; no compiler ran under the profiler. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-production.json`.
+
+## 2026-07-29 15:47 JST — Close parallel-tail comparison seam
+
+- The required selector-unset production checkpoint and cached symbol trace
+  are complete. Remove the temporary
+  `--compare-selected-natural-tile8-parallel-decode` profile switch, session
+  setter, setter-only test, and closed `docs/REFACTOR.md` entry.
+- Retain the architecture capability, resolved session field, constructor
+  rollback, parallel registered primitive, and serial tile8 registered owner.
+  Qualified gfx1151 production remains capability-selected and peer
+  backends/non-natural shapes remain unchanged.
