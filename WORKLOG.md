@@ -191782,3 +191782,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `q8-dp4a-silu` and `q8-f32-scale-dp4a-silu`. Raw SHA-256:
   `e9584b89...e5caf` / `eb6c82c6...78ed`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-f32-scale-rejected.json`.
+
+## 2026-07-30 03:48 JST — Reject compact Q8_1 selected c=1 decode
+
+- Establish RED on the absent c=1 registry-plan route, then add a temporary
+  explicit/default-off owner: compact BF16-to-Q8_1 quantization once per
+  hidden row followed by the existing selected Q4_K T16 dp4a fused-SiLU
+  gate/up consumer in all 47 sparse layers. Existing resident MMQ scratch is
+  large enough, so the diagnostic adds no allocation. Exact prefill and
+  production defaults remain unchanged.
+- GREEN passes the plan contract, the production H3072/F1024/top-10 runtime
+  quality fixture, and the standalone CPU-quality/fused-rounding Q8 leaves.
+- The first full recurrent gate rejects the route after exact p512:
+  16 teacher-forced transitions produce mean/max KL
+  **0.080358/0.595202**, top-1 **15/16 (93.75%)**, and the first miss at
+  step 4 changes reference token **268** to **26**. Max KL is **11.90x**
+  the `0.05` ceiling. One explicitly non-claiming directional timing also
+  regresses **50.6409 -> 50.8302 ms/token (+0.374%)**.
+- Stop before d128/profile/residual work and remove the entire temporary
+  registry/plan/session/runtime/test/harness route. Blanket compact Q8_1
+  selected gate/up is now closed for both prefill and decode; a successor
+  must change the approximation itself and first show a positive inclusive
+  owner. Production remains **20.494732 tok/s**.
+- Exact command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u
+  scripts/laguna_selected_q8_decode_gate.py --decode-tokens 16
+  --compiler-version-file /tmp/laguna_hipcc_version.txt
+  --require-cached-build --allow-dirty --output
+  /tmp/laguna-selected-q8-decode-directional-d16.json`
+  (raw SHA-256 `1d276b62...e50a`). Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-selected-q8-decode-rejected.json`.
