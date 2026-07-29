@@ -192383,3 +192383,21 @@ Vulkan local sizes verbatim will close the measured gap.
   in isolation; this change is Q4-only. Next publish a tracked-clean default
   packet:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json`.
+
+## 2026-07-30 08:25 JST — Publish exact dual-Q4 plus SiLU production
+
+- Commit `4c4aed86d` is the tracked-clean, selector-unset default. Three
+  p512/d128 eager c=1 runs measure
+  **20.785471/20.803189/20.804183 tok/s**, median
+  **20.803189 tok/s (48.06955 ms/token)**.
+- This is **+0.28363% / -0.13634 ms/token** over the preceding clean
+  **20.744351 tok/s** packet and **+81.423%** over the
+  **11.466687 tok/s** sprint start. The same-GGUF llama.cpp Vulkan comparator
+  is **23.348381 tok/s (42.82952 ms/token)**, leaving
+  **5.24003 ms/token**; hipEngine is **10.901%** below its throughput.
+- All runs preserve next/final tokens **2930/74107**, generated trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, and allocation
+  teardown. The cached build was required and no selector was set. The raw
+  artifact hash is `fe79e8ac...173a89`.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-production.json`.

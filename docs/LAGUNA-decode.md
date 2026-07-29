@@ -5889,17 +5889,23 @@ The remaining attention sequence is:
     **48.17692 -> 48.05376 ms/token (-0.12315 ms)**. Median paired speedup is
     **+0.26088%**; tokens, trajectory, position, and allocation lifecycle are
     exact. The default removes **48 launches/token** plus 483,328 bytes/token
-    of temporary gate/up write-read traffic:
-    [`dual-Q4 plus SiLU retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json).
+    of temporary gate/up write-read traffic. Three tracked-clean,
+    selector-unset production runs measure
+    **20.785471/20.803189/20.804183 tok/s**, median
+    **20.803189 tok/s (48.06955 ms/token)**. This is **+0.28363% /
+    -0.13634 ms/token** over the preceding clean packet and **+81.423%** over
+    sprint start, with exact repeated trajectory/state/lifecycle:
+    [`dual-Q4 plus SiLU retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json),
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.744351 tok/s** | **48.206 ms** | **+80.910%** |
+| hipEngine current production | **20.803189 tok/s** | **48.070 ms** | **+81.423%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.376 ms/token** | hipEngine is **11.153%** below Vulkan throughput |
+| Remaining wall gap | — | **5.240 ms/token** | hipEngine is **10.901%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -5918,10 +5924,10 @@ grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
 address/K-loop contraction is now closed: full K3072 unrolling wins the
 isolated leaf but loses all seven resident pairs while expanding code 5.06x.
 The traced dense/shared dual-Q4 owner now consumes its SiLU boundary in-kernel,
-removing 48 launches/token and exact temporary BF16 traffic. Quad-local
-metadata broadcast remains closed by decisive natural-shape regressions.
-Publish the tracked-clean default, then reprofile the residual wall before
-choosing the next family. Return to attention only for
+removing 48 launches/token and exact temporary BF16 traffic; tracked-clean
+production confirms the complete-model win. Quad-local metadata broadcast
+remains closed by decisive natural-shape regressions. Reprofile the residual
+wall before choosing the next family. Return to attention only for
 a materially new exact-association or quality-safe cooperative premise:
 both SWA and global stage-width successors win isolated leaves but fail to
 produce a reliable complete-model improvement.
