@@ -31,6 +31,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
@@ -61,6 +63,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=21)
     parser.add_argument("--burst", type=int, default=20)
     parser.add_argument("--seed", type=int, default=20260728)
+    parser.add_argument(
+        "--gate-candidate",
+        choices=("natural", "tile8", "tile8-parallel"),
+        default="natural",
+    )
+    parser.add_argument("--gate-only", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -448,12 +456,27 @@ def main() -> int:
         "samples": args.samples,
         "burst": args.burst,
     }
+    gate_modes = {
+        "natural": (
+            gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+            gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
+        ),
+        "tile8": (
+            gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
+            gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
+        ),
+        "tile8-parallel": (
+            gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
+            (
+                gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out
+            ),
+        ),
+    }
+    gate_control, gate_candidate = gate_modes[args.gate_candidate]
     results = {
         "q4_gate_up": _screen_pair(
-            control=gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
-            candidate=(
-                gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out
-            ),
+            control=gate_control,
+            candidate=gate_candidate,
             x=x_gate,
             tiles_a=gate,
             tiles_b=up,
@@ -461,28 +484,35 @@ def main() -> int:
             out_features=1024,
             **common,
         ),
-        "q4_down": _screen_single(
-            control=gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
-            candidate=gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
-            x=x_down,
-            tiles=q4_down,
-            in_features=1024,
-            out_features=3072,
-            **common,
-        ),
-        "q6_down": _screen_single(
-            control=gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
-            candidate=(
-                gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
-            ),
-            x=x_down,
-            tiles=q6_down,
-            in_features=1024,
-            out_features=3072,
-            control_kwargs={"qmicro": True, "qmicro_planar": True},
-            **common,
-        ),
     }
+    if not args.gate_only:
+        results.update(
+            {
+                "q4_down": _screen_single(
+                    control=gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+                    candidate=(
+                        gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out
+                    ),
+                    x=x_down,
+                    tiles=q4_down,
+                    in_features=1024,
+                    out_features=3072,
+                    **common,
+                ),
+                "q6_down": _screen_single(
+                    control=gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+                    candidate=(
+                        gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
+                    ),
+                    x=x_down,
+                    tiles=q6_down,
+                    in_features=1024,
+                    out_features=3072,
+                    control_kwargs={"qmicro": True, "qmicro_planar": True},
+                    **common,
+                ),
+            }
+        )
     exact = all(
         item.get("bf16_mismatch", 0) == 0
         and item.get("bf16_mismatch_a", 0) == 0
@@ -519,6 +549,7 @@ def main() -> int:
             "gate_up": {
                 "layer": args.gate_layer,
                 "shape": "K3072/N1024/Q4T16 dual",
+                "candidate": args.gate_candidate,
             },
             "q4_down": {
                 "layer": args.q4_down_layer,

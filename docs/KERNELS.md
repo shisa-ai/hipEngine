@@ -427,6 +427,18 @@ gate/up shape; peers/non-natural shapes retain registered exact fallbacks.
 Evidence:
 [`retained selected tile8 decode`](../benchmarks/results/2026-07-28-gfx1151-laguna-selected-natural-tile8-retained.json).
 
+The exact tile8 parallel-tail sibling assigns the eight independent ordered
+four-wave reductions and BF16 stores to lanes 0..7 instead of serializing all
+columns on thread 0. It leaves the resident bytes, grid/local128 geometry,
+K/FMA ownership, wave32 shuffle trees, and wave0..3 additions unchanged. On
+actual layer-1 K3072/N1024 gate/up weights, all 21 counterbalanced pairs improve
+**0.130259 -> 0.128862 ms (-1.072%)** with zero BF16 mismatches. It remains a
+registered default-off candidate pending the resident p512/d128 state and
+throughput gate. Cached tracing names the `true` specialization at
+local128/VGPR96/SGPR128/LDS512/scratch0 with a plausible 104.996-us fixture
+duration. Evidence:
+[`tile8 parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
