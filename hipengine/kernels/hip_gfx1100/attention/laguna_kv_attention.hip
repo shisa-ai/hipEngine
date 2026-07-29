@@ -1336,7 +1336,8 @@ template <
     bool kProducerMax = false,
     bool kWmmaThreeTermQk = false,
     bool kDppQkReduction = false,
-    bool kVectorProbabilityReplay = false>
+    bool kVectorProbabilityReplay = false,
+    bool kPreNormalizeProbability = false>
 __global__ __launch_bounds__(256)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1360,6 +1361,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   static_assert(
       !kWmmaThreeTermQk || kProducerMax,
       "three-term WMMA QK requires producer-owned maxima");
+  static_assert(
+      !kPreNormalizeProbability || kVectorProbabilityReplay,
+      "probability pre-normalization requires the vector probability plane");
   constexpr int kOwnersPerKv =
       kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries;
   constexpr int kNumWarps = 8;
@@ -1695,6 +1699,20 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   }
   __syncthreads();
 
+  if constexpr (kPreNormalizeProbability) {
+#pragma unroll
+    for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+      if (q_local >= owned_queries) continue;
+      const float inverse_sum = warp_buf[q_local][0];
+      for (int token = tid; token < context_len;
+           token += static_cast<int>(blockDim.x)) {
+        const int score_idx = q_local * score_stride + token;
+        shared_scores[score_idx] *= inverse_sum;
+      }
+    }
+    __syncthreads();
+  }
+
   const int q_local = wave >> 2;
   const bool active_output = q_local < owned_queries;
   const int dim = (wave & 3) * 32 + lane;
@@ -1775,10 +1793,18 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
             const float4 probabilities =
                 probability_vectors[(stage_base + stage_token) >> 2];
             const float weights[4] = {
-                probabilities.x * warp_buf[q_local][0],
-                probabilities.y * warp_buf[q_local][0],
-                probabilities.z * warp_buf[q_local][0],
-                probabilities.w * warp_buf[q_local][0],
+                kPreNormalizeProbability
+                    ? probabilities.x
+                    : probabilities.x * warp_buf[q_local][0],
+                kPreNormalizeProbability
+                    ? probabilities.y
+                    : probabilities.y * warp_buf[q_local][0],
+                kPreNormalizeProbability
+                    ? probabilities.z
+                    : probabilities.z * warp_buf[q_local][0],
+                kPreNormalizeProbability
+                    ? probabilities.w
+                    : probabilities.w * warp_buf[q_local][0],
             };
 #pragma unroll
             for (int item = 0; item < 4; ++item) {
@@ -1792,8 +1818,10 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
           for (; stage_token < stage_count; ++stage_token) {
             const int token = stage_base + stage_token;
             const float weight =
-                shared_scores[q_local * score_stride + token] *
-                warp_buf[q_local][0];
+                kPreNormalizeProbability
+                    ? shared_scores[q_local * score_stride + token]
+                    : shared_scores[q_local * score_stride + token] *
+                          warp_buf[q_local][0];
             if (!(weight > 0.0f)) continue;
             acc += weight * laguna_bf16_bits_to_float(
                 shared_value[stage_token * kHeadDim + dim]);
@@ -7687,6 +7715,88 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_produce
           true,
           true,
           false,
+          true,
+          true>),
+      dim3(32),
+      dim3(256),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  const int64_t score_stride = (scan_slots + 3) & ~int64_t{3};
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * score_stride) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
           true,
           true>),
       dim3(32),
