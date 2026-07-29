@@ -92,6 +92,45 @@ class Rocblas:
             "rocblas_hgemm",
         )
 
+    def sgemm_rowmajor_nt(
+        self,
+        x_ptr: int,
+        weight_ptr: int,
+        out_ptr: int,
+        *,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        stream: int = 0,
+    ) -> None:
+        """Compute row-major F32 ``x @ weight.T`` through column-major SGEMM."""
+
+        _check_shape(
+            rows=rows, in_features=in_features, out_features=out_features
+        )
+        self.set_stream(stream)
+        alpha = ctypes.c_float(1.0)
+        beta = ctypes.c_float(0.0)
+        _check(
+            self.library.rocblas_sgemm(
+                ctypes.c_void_p(self.handle),
+                ctypes.c_int(ROCBLAS_OPERATION_TRANSPOSE),
+                ctypes.c_int(ROCBLAS_OPERATION_NONE),
+                ctypes.c_int(out_features),
+                ctypes.c_int(rows),
+                ctypes.c_int(in_features),
+                ctypes.byref(alpha),
+                ctypes.c_void_p(weight_ptr),
+                ctypes.c_int(in_features),
+                ctypes.c_void_p(x_ptr),
+                ctypes.c_int(in_features),
+                ctypes.byref(beta),
+                ctypes.c_void_p(out_ptr),
+                ctypes.c_int(out_features),
+            ),
+            "rocblas_sgemm",
+        )
+
     def gemm_ex_rowmajor_nt_fp16_compute_f16(
         self,
         x_ptr: int,
@@ -263,6 +302,29 @@ def rocblas_hgemm_rowmajor_nt_fp16(
     )
 
 
+def rocblas_sgemm_rowmajor_nt_f32(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int = 0,
+    handle: Rocblas | None = None,
+) -> None:
+    blas = handle or get_rocblas()
+    blas.sgemm_rowmajor_nt(
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        stream=stream,
+    )
+
+
 def rocblas_gemm_ex_rowmajor_nt_fp16_compute_f16(
     x_ptr: int,
     weight_ptr: int,
@@ -356,6 +418,23 @@ def _configure(library: ctypes.CDLL) -> None:
         ctypes.c_int,
     ]
     library.rocblas_hgemm.restype = ctypes.c_int
+    library.rocblas_sgemm.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    library.rocblas_sgemm.restype = ctypes.c_int
     library.rocblas_gemm_ex.argtypes = [
         ctypes.c_void_p,
         ctypes.c_int,
