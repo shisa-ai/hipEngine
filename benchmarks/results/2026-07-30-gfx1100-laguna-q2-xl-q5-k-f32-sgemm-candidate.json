@@ -1,0 +1,318 @@
+{
+  "aggregate_ms": {
+    "candidate_selected_configurations_faster": true,
+    "event_reduction_percent": 82.40669892941904,
+    "event_speedup": 5.683981624529652,
+    "exact_coltile_weighted_event": 1256.9361335515975,
+    "exact_coltile_weighted_wall": 1223.2627801131457,
+    "exact_fallback_configurations": 1,
+    "fresh_trace_exact_q5_ms": 1270.457977,
+    "interpretation": "The role-qualified stack is 5.684x faster than exact coltile but remains 3.751x the matched llama.cpp Q5 trace. The complete-kernel-sum substitution is attribution only, not a wall/tok-s forecast.",
+    "matched_llamacpp_q5_mmq_ms": 58.95103,
+    "modeled_complete_kernel_sum_ms": 1952.370831240652,
+    "selected_ratio_to_matched_llamacpp": 3.7511907466358445,
+    "selected_weighted_event": 221.13655824065208,
+    "selected_weighted_wall": 231.9661949761212,
+    "shape_matched_gap_closed_percent": 86.46180760012541,
+    "wall_reduction_percent": 81.0370920502735,
+    "wall_speedup": 5.273452798754015
+  },
+  "correctness": {
+    "all_finite": true,
+    "all_role_quality_gates_passed": true,
+    "bf16_to_f32_input_bytes_exact": true,
+    "complete_18_prompt_576_step_gate": "pending",
+    "fused_and_unfused_producers_byte_exact": true,
+    "max_abs": 0.0078125,
+    "max_mean_kl": 1.5896215272679752e-09,
+    "max_row_kl": 5.7861340068615446e-08,
+    "min_top1_agreement": 1.0,
+    "raw_q5_to_f32_bytes_exact": true
+  },
+  "date": "2026-07-30",
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_q5_k_exact_value_f32_sgemm_candidate",
+  "lifecycle": {
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "peak_allocations": 7,
+    "peak_tracked_bytes": 236716032,
+    "returned_to_baseline": true,
+    "total_allocated_bytes": 914398720
+  },
+  "lineage": {
+    "base_revision": "15126dcee",
+    "implementation_sha256": {
+      "hipengine/core/rocblas.py": "af71ad35cc1f9f7274125adb1abcecdd6b2a999039c8c30bb144779c482b0a06",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "2dc78614dd633fdcab6a67f50b6d6f2444265c6ed55dbf952a127ab0ea8dd2a1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "198d9856afed7eeefa416636640f58fa6b1839c2294ccf6f139f660b507be6d6",
+      "tests/test_gguf_q5_k_f32_rocblas_prefill.py": "1a07468edec0191de77147300ac46e37d5581325c1bd52638072baaa9fd993d2",
+      "tests/test_rocblas.py": "2e6d0466b13f1315f9b3f6cb2b672a9a5c88a501679d66c2f0bb80acadcb2414"
+    },
+    "source": "net-new in-tree exact-value route using the established raw-Q5 F32 reconstruction contract; no external device body copied"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "promotion_blockers": [
+    "default-off runtime ownership and complete natural-M512 deterministic state are not yet implemented",
+    "the binding complete 18-prompt/576-step train+heldout and category-heldout quality gate has not run",
+    "clean counter-ordered 512/1K end-to-end timing and all-family tracing have not run"
+  ],
+  "protocol": {
+    "candidate": "one fused exact-value raw-Q5/BF16-to-F32 producer, one F32 rocBLAS SGEMM, and one F32-to-BF16 result cast for BF16 output",
+    "claim_scope": "actual-M512 Q5_K primitive family only; not end-to-end throughput or a production-default claim",
+    "control": "retained exact Q5_K role-qualified coltile policy",
+    "counterbalanced_repetitions": 15,
+    "four_k_or_longer_run_performed": false,
+    "launches_per_sample": 5,
+    "persistent_weight_sidecar_bytes": 0,
+    "production_invocations": 235,
+    "rows": 512,
+    "selected_policy": "candidate for seven shapes; exact coltile fallback for the regressive F32 K3072/N48 attention-gate shape",
+    "timing": "HIP-event and synchronized-wall medians summed across the actual eight-shape/235-call production inventory",
+    "unique_configurations": 8,
+    "warmups_per_arm": 5,
+    "workspace_session_bound_bytes": 195035136
+  },
+  "resources": {
+    "fused_producer": {
+      "kernel": "gguf_q5_k_dequantize_bf16_to_f32_exact_fused_kernel",
+      "lds_bytes": 0,
+      "local": [
+        64,
+        1,
+        1
+      ],
+      "scratch_bytes": 0,
+      "sgpr_reported": 128,
+      "traced_duration_us_min_max": [
+        8.16,
+        2260.809
+      ],
+      "vgpr": 16
+    },
+    "output_casts": {
+      "dispatches_in_trace": 8,
+      "lds_bytes": 0,
+      "local": [
+        256,
+        1,
+        1
+      ],
+      "scratch_bytes": 0,
+      "sgpr_reported": 128,
+      "vgpr": 8
+    },
+    "rocblas": {
+      "dispatches_in_trace": 16,
+      "traced_duration_us_min_median_max": [
+        59.28,
+        699.0625,
+        3338.574
+      ]
+    }
+  },
+  "roles": [
+    {
+      "calls": 92,
+      "candidate_event_ms": 0.263225793838501,
+      "candidate_wall_ms": 0.2641736064106226,
+      "event_speedup": 4.739991431539723,
+      "exact_event_ms": 1.2476880073547363,
+      "exact_geometry": "coltile4_rowbatch8",
+      "exact_wall_ms": 1.267739199101925,
+      "max_abs": 0.00390625,
+      "max_row_kl": 1.4782140064574044e-08,
+      "mean_kl": 9.797356908853951e-11,
+      "output_dtype": "bf16",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        1024,
+        3072
+      ],
+      "tensor": "blk.1.ffn_gate_shexp.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 4.798886672771517,
+      "workspace_bytes": 20971520
+    },
+    {
+      "calls": 2,
+      "candidate_event_ms": 1.7254972457885742,
+      "candidate_wall_ms": 1.8374450039118528,
+      "event_speedup": 9.434804221487138,
+      "exact_event_ms": 16.27972869873047,
+      "exact_geometry": "coltile2_rowbatch16",
+      "exact_wall_ms": 16.025717370212078,
+      "max_abs": 0.0078125,
+      "max_row_kl": 7.302272509394923e-09,
+      "mean_kl": 1.3231019850559823e-10,
+      "output_dtype": "bf16",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        12288,
+        3072
+      ],
+      "tensor": "blk.0.ffn_gate.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 8.721739881244835,
+      "workspace_bytes": 182452224
+    },
+    {
+      "calls": 12,
+      "candidate_event_ms": 0.931394386291504,
+      "candidate_wall_ms": 0.9623030200600624,
+      "event_speedup": 9.368407407536345,
+      "exact_event_ms": 8.725682067871094,
+      "exact_geometry": "coltile4_rowbatch8",
+      "exact_wall_ms": 8.435584604740143,
+      "max_abs": 0.0078125,
+      "max_row_kl": 5.7861340068615446e-08,
+      "mean_kl": 6.031020900762609e-10,
+      "output_dtype": "bf16",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        3072,
+        6144
+      ],
+      "tensor": "blk.0.attn_output.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 8.766037754109545,
+      "workspace_bytes": 94371840
+    },
+    {
+      "calls": 35,
+      "candidate_event_ms": 1.4708337783813477,
+      "candidate_wall_ms": 1.5470230020582676,
+      "event_speedup": 8.873893149173206,
+      "exact_event_ms": 13.052021789550782,
+      "exact_geometry": "coltile4_rowbatch8",
+      "exact_wall_ms": 12.597790965810418,
+      "max_abs": 0.0078125,
+      "max_row_kl": 4.226207591396736e-08,
+      "mean_kl": 1.5896215272679752e-09,
+      "output_dtype": "bf16",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        3072,
+        9216
+      ],
+      "tensor": "blk.1.attn_output.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 8.143247352527684,
+      "workspace_bytes": 138412032
+    },
+    {
+      "calls": 12,
+      "candidate_event_ms": 0.07741659879684448,
+      "candidate_wall_ms": 0.08096718229353428,
+      "event_speedup": 0.8404450911778633,
+      "exact_event_ms": 0.06506440043449402,
+      "exact_geometry": "coltile4_rowbatch8",
+      "exact_wall_ms": 0.069089001044631,
+      "max_abs": 4.172325134277344e-06,
+      "max_row_kl": 4.969420716578847e-13,
+      "mean_kl": 1.1377891496577949e-13,
+      "output_dtype": "f32",
+      "selected_route": "exact_coltile",
+      "shape_n_k": [
+        48,
+        3072
+      ],
+      "tensor": "blk.0.attn_gate.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 0.8532963490585516,
+      "workspace_bytes": 6979584
+    },
+    {
+      "calls": 35,
+      "candidate_event_ms": 0.08902660012245178,
+      "candidate_wall_ms": 0.09273537434637547,
+      "event_speedup": 1.301462722910837,
+      "exact_event_ms": 0.11586480140686035,
+      "exact_geometry": "coltile4_rowbatch8",
+      "exact_wall_ms": 0.11850562877953053,
+      "max_abs": 4.410743713378906e-06,
+      "max_row_kl": 6.424833613228596e-13,
+      "mean_kl": 9.452663734149079e-14,
+      "output_dtype": "f32",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        72,
+        3072
+      ],
+      "tensor": "blk.1.attn_gate.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 1.277890229211786,
+      "workspace_bytes": 7323648
+    },
+    {
+      "calls": 12,
+      "candidate_event_ms": 1.0326390266418457,
+      "candidate_wall_ms": 1.0703584179282188,
+      "event_speedup": 8.357703565892331,
+      "exact_event_ms": 8.63049087524414,
+      "exact_geometry": "coltile2_rowbatch16",
+      "exact_wall_ms": 8.32370100542903,
+      "max_abs": 4.887580871582031e-06,
+      "max_row_kl": 5.217480462623145e-14,
+      "mean_kl": 4.313134403623439e-14,
+      "output_dtype": "f32",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        6144,
+        3072
+      ],
+      "tensor": "blk.0.attn_q.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 7.776554905356235,
+      "workspace_bytes": 94371840
+    },
+    {
+      "calls": 35,
+      "candidate_event_ms": 3.272128677368164,
+      "candidate_wall_ms": 3.4678509924560785,
+      "event_speedup": 3.8389906652013144,
+      "exact_event_ms": 12.561671447753906,
+      "exact_geometry": "coltile2_rowbatch16",
+      "exact_wall_ms": 12.216241797432303,
+      "max_abs": 6.556510925292969e-06,
+      "max_row_kl": 7.180793815903666e-14,
+      "mean_kl": 5.490178274889882e-14,
+      "output_dtype": "f32",
+      "selected_route": "exact_value_f32_sgemm",
+      "shape_n_k": [
+        9216,
+        3072
+      ],
+      "tensor": "blk.1.attn_q.weight",
+      "top1_agreement": 1.0,
+      "wall_speedup": 3.5227124302651323,
+      "workspace_bytes": 138412032
+    }
+  ],
+  "schema": 1,
+  "source_artifacts": {
+    "harness_sha256": "b793121461225e60fed95021d9d0dfca147758eb02aac9a1c82fbf733e53c724",
+    "raw_json_sha256": "a4a126622fc3e71cb0d084553429fbd4df8c0448ff930d1393f0da7be047b802",
+    "rocprof_harness_sha256": "25470c9272ced6399a203ead3b3ed0d6ad1838def0205a38f52dd435438d734d",
+    "rocprof_trace_sha256": "27f80823ebd93271603bb6a86ca753a1c5932b078552b569477a39639d4f7cf4",
+    "stdout_sha256": "d2df8b287dc2450e96e3b6b4c547cde2ba16fd7fc8a0ddd5f71e7cfa22505ed0"
+  },
+  "status": "standalone_leaf_admitted_runtime_pending_complete_quality_gate",
+  "validation": {
+    "cached_profile_dispatches": 40,
+    "cached_profile_expected_chain_only": true,
+    "focused_gpu_and_host_tests": "37 passed across rocBLAS/Q5 GPU/registry/gfx1151 coverage plus 8 build tests",
+    "gfx1151_alias_exclusion": "passed",
+    "py_compile": "passed",
+    "ruff": "passed"
+  }
+}

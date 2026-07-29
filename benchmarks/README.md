@@ -115,6 +115,20 @@ raw-Q5-to-F32 expansion plus BF16-to-F32 widening and F32 SGEMM, with no
 resident sidecar and the complete quality lane binding for reassociation. This
 is an attribution baseline and target decision, not a production speedup.
 
+The separately registered
+[`WPF-H5A exact-value F32 Q5/SGEMM leaf`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json)
+clears the next primitive gate. With only the regressive F32 K3072/N48 role left
+on exact coltile, the actual eight-shape/235-call inventory moves **1,256.936 ->
+221.137 ms (5.684x, -82.407%)** by HIP events; synchronized wall corroborates
+**1,223.263 -> 231.966 ms (5.273x)**. All eight candidate outputs are finite,
+max mean/max-row KL is **1.59e-9/5.79e-8**, top-1 is **100%**, raw-Q5 F32 values
+and BF16 widening are bit-exact, and **236,716,032 peak tracked bytes** return
+to zero. The selected stack remains **3.751x** llama.cpp's matched Q5 trace and
+the modeled complete kernel sum is **1,952.371 ms**; both are attribution, not
+end-to-end forecasts. Exact production and the canonical headline remain
+unchanged pending default-off ownership, complete state, and the binding
+18-prompt/576-step quality lane.
+
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen
