@@ -189930,3 +189930,32 @@ Vulkan local sizes verbatim will close the measured gap.
   next material work is higher-precision cooperative attention or the exact
   selected-Q4 comparative gap. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-gate-wall-reprofile.json`.
+
+## 2026-07-29 15:16 JST — Retain exact selected-Q4 tile8 parallel-tail leaf
+
+- Audited llama.cpp Vulkan `c0bc8591e` routed Q4_K decode. Its comparative
+  advantage is a packed-Q8_1, cooperative integer-dot MMQ-ID medium kernel,
+  while hipEngine's exact resident-T16 owner launches 1,280 local128 tile8
+  workgroups/layer and preserves BF16/F32 accumulation. The algorithms are not
+  arithmetic-equivalent, so no Vulkan body was copied.
+- The required lineage command remains environment-blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. This candidate is an
+  in-tree ownership change only.
+- The retained tile8 tail serializes all eight independent ordered four-wave
+  reductions and BF16 stores on thread 0. Add a separately registered sibling
+  that assigns one column to each of lanes 0..7 while preserving resident
+  bytes, grid/local128 geometry, every K/FMA owner, wave32 tree, ordered
+  wave0..3 sum, and store boundary.
+- The focused production-shape synthetic fixture is BF16-byte exact. An actual
+  layer-1 K3072/N1024 gate/up leaf with 5 warmups, 21 counterbalanced samples,
+  and 50 launches/sample improves **0.130259 -> 0.128862 ms (-1.072%)**.
+  Every one of 21 pairs wins; both outputs have zero mismatches and tracked
+  ownership returns to zero.
+- The complete changed HIP test file passes **87/87**. Cached rocprof tracing
+  names the `true` specialization at grid16384x10/local128,
+  VGPR96/SGPR128/LDS512/scratch0 and 104.996 us on the fixture; trace SHA-256
+  is `a52f6390...4cff`. No compiler ran under the profiler.
+- Raw SHA-256 is `a80f5a0a...0065`. Production remains **20.003064 tok/s**;
+  next wire the candidate behind a session-scoped gfx1151 selector and run the
+  matched resident p512/d128 state/lifecycle/performance gate. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json`.

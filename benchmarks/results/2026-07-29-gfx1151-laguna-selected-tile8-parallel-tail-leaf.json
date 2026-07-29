@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T15:16:13+09:00",
+  "kind": "hipengine_laguna_selected_tile8_parallel_tail_leaf",
+  "status": "candidate",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "workload": {
+    "layer": 1,
+    "shape": "c1/top10 selected Q4_K T16 dual gate/up, K3072/N1024",
+    "selected_experts": [17, 3, 91, 42, 7, 128, 201, 55, 240, 12],
+    "resident_input_bytes": 931223632
+  },
+  "candidate": {
+    "control": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<uint16_t,false>",
+    "candidate": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<uint16_t,true>",
+    "change": "Assign the eight independent ordered four-wave reductions and BF16 stores to lanes 0..7 instead of serializing all columns on thread 0.",
+    "preserved": "Resident T16 bytes, workgroup grid, local128 geometry, K/FMA ownership, wave32 shuffle trees, ordered wave0..3 sums, and BF16 stores."
+  },
+  "protocol": {
+    "warmups": 5,
+    "samples": 21,
+    "burst": 50,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel --gate-only --warmups 5 --samples 21 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-tile8-parallel-tail-leaf.json",
+    "raw_sha256": "a80f5a0a177a7dce00f3731fd92dbe6304965f9e0040da3bcef0040419a60065"
+  },
+  "results": {
+    "control_median_ms": 0.1302594757080078,
+    "candidate_median_ms": 0.1288624572753906,
+    "candidate_delta_percent": -1.0724889110937164,
+    "paired_wins": 21,
+    "paired_samples": 21,
+    "gate_bf16_mismatches": 0,
+    "up_bf16_mismatches": 0,
+    "memory_after_bytes": 0
+  },
+  "validation": {
+    "focused_test": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/pytest -q tests/test_gguf_t16_selected_gemv_decode.py",
+    "focused_result": "87 passed",
+    "rocprof_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-tile8-parallel-trace.cyLv8H --output-file tile8parallel -- .venv/bin/pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "rocprof_trace_sha256": "a52f6390209d3d207eb188e726bb0ac9f2c9ce7e7cdf73ea905c7ba0ea544cff",
+    "rocprof_candidate_duration_us": 104.996,
+    "resources": {
+      "grid_size_x": 16384,
+      "grid_size_y": 10,
+      "workgroup_size_x": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat remains environment-blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; this is an in-tree exact ownership change and ports no external source."
+  },
+  "decision": {
+    "action": "Retain as a registered default-off primitive and proceed to a same-session resident p512/d128 A/B.",
+    "production_changed": false,
+    "production_baseline_tok_s": 20.0030641632
+  }
+}

@@ -28,6 +28,10 @@ _Q4_DUAL_NATURAL_TILE8_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_gemv_"
     "bf16_bf16_out"
 )
+_Q4_DUAL_NATURAL_TILE8_PARALLEL_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_"
+    "bf16_bf16_out"
+)
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
 _Q4_DUAL_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
@@ -250,6 +254,53 @@ def gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out(
     )
     _launch_dual_direct(
         _Q4_DUAL_NATURAL_TILE8_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact tile8 Laguna gate/up with an eight-lane reduction tail."""
+
+    _check_laguna_natural_selected_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_features,
+        expected_x_rows=1,
+        expected_in=3072,
+        expected_out=1024,
+    )
+    _launch_dual_direct(
+        _Q4_DUAL_NATURAL_TILE8_PARALLEL_BF16,
         x_ptr,
         selected_ptr,
         tiles_a_ptr,
@@ -1851,6 +1902,10 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
         ),
         (
+            "selected_dual_t16_natural_tile8_parallel_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
+        ),
+        (
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
             gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
         ),
@@ -2021,6 +2076,7 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
