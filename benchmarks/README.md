@@ -200,6 +200,12 @@ non-profiled leaf screens **3.81%/3.56%** and raises VGPR allocation
 **104 -> 112** at unchanged local384/LDS24576/scratch0. llama.cpp's wave64
 benefit comes from its wave64-native cooperative tile, not physical issue
 width in isolation; the candidate is removed.
+Using physical wave64 to halve exact softmax duplication is also rejected.
+Native `ds_bpermute` shares each query's maximum, exp32 weights, and ordered
+denominator across its adjacent 32-dimension halves without LDS or barriers
+and remains byte-exact, but the saturated leaf regresses
+**0.081713 -> 0.085229 ms (+4.30%)**. Cross-half permutation costs more than
+the duplicated scalar work; all candidate code is removed.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

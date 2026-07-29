@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_wave64_shared_softmax_screen",
+  "status": "rejected_and_removed",
+  "created_at": "2026-07-29T13:17:01+09:00",
+  "source_revision": "05965d534feb34b1182236485e14594b0bddcddd",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "physical-wave64 mixed32/exp32 body where the lower width-32 half computes each query's maximum, exact exp32 weights, and ordered denominator once and broadcasts them to the adjacent dimension half with ds_bpermute",
+    "preserved_math": "unchanged width-32 QK tree, identical maximum and exponential values, identical token-order denominator additions, identical per-dimension scalar PV FMA order, divide, gate, and stores",
+    "control_median_ms": 0.0817131233215332,
+    "candidate_median_ms": 0.08522851943969727,
+    "latency_change_percent": 4.302119384583203,
+    "raw_sha256": "1f87bce0bd565c3ff68dbdff3d02f127599ab22a99a016e92b3c12ff43dc7cbd"
+  },
+  "correctness": {
+    "red": "missing physical-wave64 shared-softmax wrapper",
+    "first_green_attempt": "HIP __shfl width 64 remained segmented and left the upper dimension half unpopulated; the oracle rejected 4376/9216 elements",
+    "repair": "replace only the three cross-half broadcasts with native ds_bpermute",
+    "green": "positions 512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "result": "1 passed"
+  },
+  "commands": {
+    "correctness": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-wave64-shared-softmax-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-mixed32-exp32-wave64-shared-softmax-leaf.json"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "production_screen_run": false,
+    "trace_run": false,
+    "all_candidate_code_removed": true,
+    "production_unchanged_tok_s": 19.667705,
+    "reason": "Halving duplicated maximum/exp32/denominator work does not repay physical-wave64 and native cross-half permutation overhead; the exact leaf regresses 4.30% and fails before resource or production gates.",
+    "next": "Keep physical wave32. Screen producer-side partial maxima that reuse the existing score-publication barrier and require no cross-wave permutation."
+  }
+}

@@ -189546,3 +189546,26 @@ Vulkan local sizes verbatim will close the measured gap.
   Leaf/confirmation/trace SHA-256 values are `30b3ac54...b2b5f2`,
   `2ca7a311...12b0`, and `a34bd6dd...26ea`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-wave64-rejected.json`.
+
+## 2026-07-29 13:17 JST — Reject exact wave64 half-wave softmax sharing
+
+- RED required a physical-wave64 shared-softmax wrapper. The first
+  implementation proved that HIP `__shfl(..., width=64)` remains segmented on
+  this path: the wrap/eviction oracle rejected 4,376/9,216 context elements
+  because the upper dimension half received zero weights. Replacing only the
+  three cross-half broadcasts with native `ds_bpermute` makes the F32 context
+  and gated BF16 output byte-exact through positions 512-519 plus explicit
+  position-200 eviction.
+- The repaired candidate lets the lower 32 lanes compute each physical
+  wave's maximum, exp32 weights, and ordered denominator once, then shares
+  them with the adjacent 32-dimension half. QK, per-dimension PV FMA order,
+  divide, gate, ownership, local384, grid32, and all stores remain unchanged.
+- Nine 50-launch samples regress the saturated leaf
+  **0.081713 -> 0.085229 ms (+4.30%)**. Physical-wave64 and cross-half
+  permutation overhead cost more than eliminating half of the duplicated
+  softmax work, so the candidate fails before resource or production gates.
+- Removed the helper, template mode, HIP/Python wrapper, alternate build
+  route, oracle extension, and leaf-harness choice. The four touched files
+  match `05965d534` byte for byte. Production remains **19.667705 tok/s**.
+  Raw SHA-256 is `1f87bce0...c7cbd`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wave64-shared-softmax-rejected.json`.
