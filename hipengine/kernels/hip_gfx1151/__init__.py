@@ -484,6 +484,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         ),
         # WPF-H1 copies the gfx1100/RDNA3 source geometry and remains excluded
         # until gfx1151 receives an independent resource/correctness gate.
+        (
+            "linear_prefill_policy",
+            "gguf_q5_k",
+            "source_q8_1_ds4",
+        ),
         ("activation_quant", "q8_1_ds4", "bf16_kmajor"),
         (
             "linear",

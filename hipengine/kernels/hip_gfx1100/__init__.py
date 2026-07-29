@@ -132,6 +132,9 @@ GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset(
     }
 )
 GGUF_RAW_K_PREFILL_VARIANT = "coltile"
+# WPF-H1's source-faithful Q5 Q8_1/WMMA path is integrated behind an explicit
+# candidate switch until the complete quality/state/timing lanes pass.
+LAGUNA_Q5_SOURCE_MMQ = False
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -170,6 +173,7 @@ __all__ = [
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
+    "LAGUNA_Q5_SOURCE_MMQ",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SELECTED_DOWN_MODE",
