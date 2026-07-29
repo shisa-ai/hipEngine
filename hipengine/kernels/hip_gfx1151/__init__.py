@@ -502,6 +502,16 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k",
             "mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
         ),
+        # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
+        # consumers. Both remain gfx1100-only pending a gfx1151 gate.
+        *(
+            (
+                "moe_linear",
+                quant,
+                "selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
+            )
+            for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),
