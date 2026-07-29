@@ -1755,6 +1755,18 @@ exact drop-in for the BF16 recurrent contract. The next exact port is the
 same probability/V-stage publication schedule on the 12 global layers.
 Evidence:
 [`post-stage-cache census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-stage-pcache-wall-reprofile.json).
+The proposed global stage-cache copy is closed by source audit: global
+mixed32 already caches every probability once, normalizes before PV, and
+shares that plane across four output waves. SWA's unnormalized-numerator then
+divide schedule would change its FP32 association. The useful exact
+continuation is instead the combined SWA stage-cache plus DPP-QK primitive.
+It keeps every QK product and the **+16,+8,+4,+2,+1** F32 tree while replacing
+only lane transport. The wrapped/evicted oracle is byte-exact and the cached
+9x50 leaf improves **0.056299 -> 0.052299 ms (-7.105%)** with complete
+separation. Tracing is unchanged at grid32/local384, VGPR104, SGPR128,
+LDS25,600, and scratch0. The registered primitive awaits a seven-pair
+resident p512/d128 gate:
+[`combined stage-cache/DPP primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

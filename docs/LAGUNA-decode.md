@@ -4900,6 +4900,26 @@ The remaining attention sequence is:
     the **12 global layers** next. Evidence:
     [`post-stage-cache census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-stage-pcache-wall-reprofile.json).
 
+39. Audit the proposed global probability-cache transfer and combine the two
+    positive exact SWA mechanisms. **Global transfer closed by source audit;
+    combined SWA primitive retained:** the global mixed32 kernel already
+    computes each `expf` probability once, stores the complete probability
+    plane in LDS, normalizes it before PV, and reuses it across all four output
+    waves. Replacing that with SWA's staged unnormalized numerator followed by
+    divide changes the FP32 association; a literal cache port is redundant or
+    non-exact.
+
+    The non-redundant exact candidate instead combines the retained stage
+    cache with the previously positive DPP QK transport. It preserves every
+    QK product and the **+16,+8,+4,+2,+1** tree while changing only lane
+    transport. The wrapped/explicit-eviction oracle is F32-context and gated
+    BF16 byte-exact. The cached 9x50 leaf improves
+    **0.056299 -> 0.052299 ms (-7.105%)**, with complete sample separation.
+    Cache-only tracing keeps grid32/local384, VGPR104, SGPR128, LDS25,600, and
+    scratch0. Retain the registered primitive and run a seven-pair resident
+    p512/d128 gate before promotion. Evidence:
+    [`combined stage-cache/DPP primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
