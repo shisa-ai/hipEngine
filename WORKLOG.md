@@ -190907,3 +190907,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json`.
+
+## 2026-07-29 22:31 JST — Reject combined SWA stage-cache/DPP runtime
+
+- Added a default-off gfx1151 capability and comparison-only cache/profile
+  route, then ran seven counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV
+  p512/d128 pairs under the production two-queue policy.
+- Every paired candidate loses. Median decode moves
+  **20.276057 -> 20.260314 tok/s
+  (-0.077639%, +0.038321 ms/token)**. The raw JSON SHA-256 is
+  `f0778174...b6be`.
+- All samples preserve next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, deterministic repeat state, and
+  zero tracked allocations after teardown.
+- Remove the gfx1151 capability, `LagunaKVCache` field/dispatch route, profile
+  CLI, and routing-test seam. Keep the registered primitive, leaf harness
+  choice, and wrap/eviction oracle for diagnostics. Production remains
+  **20.270314 tok/s** on the retained stage cache with shuffle QK transport.
+  Do not retry DPP-only transport on this local384 body without a
+  scheduler-visible geometry or resource change. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-runtime-rejected.json`.
