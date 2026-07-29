@@ -136,15 +136,16 @@ GGUF_RAW_K_PREFILL_VARIANT = "coltile"
 # byte-identical complete state, and clean +7.235%/+6.519% M512/M1024 gates.
 # H5E doubles output ownership on six role-qualified geometries, reducing the
 # producer-inclusive weighted Q5 family another 12.32% by events / 7.52% by
-# synchronized wall while remaining byte-exact. Every key/backend/row/capacity
-# miss retains raw coltile; benchmark A/B uses scoped package-policy mutation.
+# synchronized wall while remaining byte-exact. H5F's exact 12x4 N48 role saves
+# another 4.224/1.989 us per M512 request by event/wall clocks. Every miss
+# retains raw coltile; benchmark A/B uses scoped package-policy mutation.
 GGUF_Q5_F32_ORDERED_PREFILL = True
 GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ("bf16", 3072, 1024): "coltile8_rowbatch4",
     ("bf16", 3072, 12288): "coltile4_rowbatch16",
     ("bf16", 6144, 3072): "coltile16_rowbatch4",
     ("bf16", 9216, 3072): "coltile8_rowbatch8",
-    ("f32", 3072, 48): "coltile16_rowbatch4",
+    ("f32", 3072, 48): "coltile12_rowbatch4",
     ("f32", 3072, 72): "coltile8_rowbatch4",
     ("f32", 3072, 6144): "coltile16_rowbatch4",
     ("f32", 3072, 9216): "coltile4_rowbatch16",

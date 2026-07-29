@@ -423,7 +423,7 @@ def test_q5_f32_ordered_prefill_dispatch_is_owner_and_role_scoped() -> None:
         ("bf16", 3072, 12288): "coltile4_rowbatch16",
         ("bf16", 6144, 3072): "coltile16_rowbatch4",
         ("bf16", 9216, 3072): "coltile8_rowbatch8",
-        ("f32", 3072, 48): "coltile16_rowbatch4",
+        ("f32", 3072, 48): "coltile12_rowbatch4",
         ("f32", 3072, 72): "coltile8_rowbatch4",
         ("f32", 3072, 6144): "coltile16_rowbatch4",
         ("f32", 3072, 9216): "coltile4_rowbatch16",
