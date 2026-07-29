@@ -192245,3 +192245,24 @@ Vulkan local sizes verbatim will close the measured gap.
   and test addition. Tracked production code returns exactly to `33e43fe77`;
   production remains **20.744351 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage128-bounded16-rejected.json`.
+
+## 2026-07-30 07:15 JST — Correct the V128 resource interpretation
+
+- Extract the retained gfx1151 device bundle and inspect AMDGPU code-object
+  metadata plus exact-symbol ISA for V64/V128. The authoritative metadata is
+  **32/35 logical VGPR**, **32/32 SGPR**, zero spills/private segment, and
+  **25,564/42,716 B LDS**. The trace's V128 `VGPR_Count=176` is an allocation
+  reporting value, not 176 live logical VGPR.
+- gfx1151 has 40 CUs and the retained dispatch has exactly 40 local512
+  workgroups, or 16 wave32s per workgroup. V128 LDS prevents a second resident
+  workgroup, but the launch provides no second workgroup per CU. This removes
+  register/occupancy repair as the explanation for limited end-to-end transfer.
+- V64/V128 code sizes are **5,792/7,872 B**. ISA and metadata hashes are
+  `68724976...dd95`, `47f1b9da...1aa`, and `53cce157...43bd`.
+  Applying the full **6.717%** leaf change to the pre-V128
+  **1.565501-ms/token** SWA census yields only an optimistic
+  **0.1052 ms/token / 0.219%** complete-decode ceiling.
+- Reprioritize the larger selected-MoE comparator gap. Require a materially
+  new exact-association/traffic or quality-safe cooperative premise before
+  more SWA work. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage-codeobject-audit.json`.

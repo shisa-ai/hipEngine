@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T07:15:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_vstage_codeobject_audit",
+  "status": "accepted_diagnostic",
+  "performance_claim": false,
+  "source_revision": "33e43fe77ae990129b90f25802f15d8988bdc7a6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "compute_units": 40,
+    "wavefront_size": 32,
+    "max_waves_per_cu": 32,
+    "group_segment_bytes": 65536
+  },
+  "source": {
+    "library": "/home/lhl/.cache/hipengine/build/laguna_kv_attention-af35be49a15b42eb/laguna_kv_attention.so",
+    "cache_key": "af35be49a15b42eb733bce2d4707b7bf61210144a4d6b45a5312c95801d3dd49",
+    "compiler": "TheRock HIP 7.15 AMD clang 23",
+    "command": "hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode --offload-arch=gfx1151 hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "code_object_metadata": {
+    "vstage64": {
+      "vgpr_count": 32,
+      "sgpr_count": 32,
+      "group_segment_fixed_size": 25564,
+      "private_segment_fixed_size": 0,
+      "vgpr_spill_count": 0,
+      "sgpr_spill_count": 0,
+      "code_bytes": 5792
+    },
+    "vstage128": {
+      "vgpr_count": 35,
+      "sgpr_count": 32,
+      "group_segment_fixed_size": 42716,
+      "private_segment_fixed_size": 0,
+      "vgpr_spill_count": 0,
+      "sgpr_spill_count": 0,
+      "code_bytes": 7872
+    }
+  },
+  "isa": {
+    "vstage64_sha256": "68724976c7592c7e2d5b4585d69bd71e2ae6aae915174e02023b1be123dfdd95",
+    "vstage128_sha256": "47f1b9da163a43e55eb1dc90e588e973c8eed3816e1058babc764f539b6081aa",
+    "metadata_sha256": "53cce1575ed72dd1ccc737687e040a281af7a0b7bb5ef9ca7e261147f64843bd",
+    "observation": "The larger static V128 body reflects a wider unrolled stage, but the authoritative code-object metadata grows by only three VGPR and has no spills."
+  },
+  "dispatch_interpretation": {
+    "workgroups": 40,
+    "threads_per_workgroup": 512,
+    "waves_per_workgroup": 16,
+    "finding": "The dispatch grid has one workgroup per physical CU. V128's LDS allocation prevents a second resident workgroup, but this grid has no second workgroup per CU to schedule. The profiler VGPR_Count value 176 must not be interpreted as 176 live logical VGPR; the code object declares 35."
+  },
+  "roofline": {
+    "current_production_ms_per_token": 48.20589476272347,
+    "pre_v128_swa_ms_per_token": 1.565501,
+    "v128_leaf_change_percent": -6.716746897073611,
+    "modeled_v128_swa_saving_ms_per_token": 0.10515458951037015,
+    "modeled_whole_decode_gain_percent": 0.21862850384795074,
+    "qualification": "This is an upper-bound transfer model using the pre-V128 SWA family census, not a measured new production claim."
+  },
+  "decision": "Do not chase a nonexistent 176-live-VGPR cliff. Exact V128 staging already captures the bounded barrier win; require a materially new arithmetic or traffic premise before more SWA micro-tuning. Reprioritize the larger selected-MoE comparator gap."
+}

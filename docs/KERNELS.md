@@ -2043,6 +2043,13 @@ Tracked-clean selector-unset production is
 **20.744351 tok/s (48.20589 ms/token)**, **+0.06145% / -0.02962 ms/token**
 over the preceding clean packet and **+80.910%** over sprint start:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-production.json).
+Post-retention code-object inspection qualifies the profiler resource fields:
+the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
+zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace
+`VGPR_Count=176` is not 176 live logical registers. Its grid40 also exactly
+matches the device's 40 CUs, so the larger LDS allocation does not strand a
+second wave of workgroups in this launch:
+[`code-object audit`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage-codeobject-audit.json).
 Limiting V128's 32-item probability/PV loop to unroll factor 16 is removed.
 The byte-exact 21x100 leaf improves **0.030667 -> 0.029348 ms (-4.302%)**,
 but native tracing leaves both variants at **VGPR176/SGPR128/LDS43,008** and
