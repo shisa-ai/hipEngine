@@ -1475,9 +1475,10 @@ boundaries/logits/KV/repeat/lifecycle, and selector-unset production publishes
 **184.997/172.104/131.496 tok/s** through 4K. H5F's constant-48 screen retains
 only 12x4 for F32 N48. H5G's exact constant-80/96 tiles own five roles, trace at
 VGPR168/200 with zero scratch, and publish **188.393/175.042/132.743 tok/s**.
-H5H next screens constant-112, attempting constant-128 only if the register
-boundary stays scratch-free. Do not stack rejected H1-H5B arithmetic or reopen
-P6/repair; launch
+H5H closes larger exact tiles: constant-112 is scratch-free at VGPR232 but loses
+every role; constant-128 reaches VGPR256/28–52 B scratch and also loses every
+role. All candidates are removed. Reprofile post-H5G before selecting the next
+family. Do not stack rejected H1-H5B arithmetic or reopen P6/repair; launch
 fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
