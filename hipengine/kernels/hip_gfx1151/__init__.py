@@ -334,9 +334,9 @@ LAGUNA_SWA_MIXED32_EXP16_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # wave32 lane. Resident decode decides whether this becomes the final owner.
 LAGUNA_SWA_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Exact score-producer partial maxima remove four redundant 512-score scans
-# per query. Keep default-off until its resident p512/d128 gate passes.
+# per query. Seven exact resident p512/d128 pairs admit the specialization.
 LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    False
+    True
 )
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.

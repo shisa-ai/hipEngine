@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T13:33:24+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_producer_max_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "d46836db340a18922b21bcb916babb59453dbefc",
+    "candidate_uncommitted": true,
+    "kernel_commit": "8e38260d2",
+    "runtime_gate_commit": "d46836db3",
+    "leaf_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "geometry": "32 local384 workgroups; four owners per KV head partition nine queries as 2+2+2+3",
+    "mechanism": "Twelve score-producing waves publish per-query partial maxima through the existing phase barrier; each of four output-dimension waves reduces twelve partials instead of rescanning 512 scores.",
+    "arithmetic": "Exact retained QK tree, score plane, compiler expf issue, logical-slot denominator order, per-dimension scalar PV FMA order, divide, softplus gate, and stores."
+  },
+  "correctness": {
+    "leaf_wrap_eviction_context_f32_byte_exact": true,
+    "leaf_wrap_eviction_gated_bf16_byte_exact": true,
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_returned_to_baseline": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "leaf": {
+    "control_median_ms": 0.0817899227142334,
+    "candidate_median_ms": 0.059100918769836426,
+    "latency_change_percent": -27.740586115566213,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "trace": {
+    "candidate_grid_blocks": 32,
+    "candidate_workgroup_size": 384,
+    "candidate_allocated_vgpr": 104,
+    "candidate_allocated_sgpr": 128,
+    "candidate_lds_bytes": 25088,
+    "candidate_scratch_bytes": 0,
+    "control_lds_bytes": 24576
+  },
+  "production_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-producer-max --output /tmp/laguna-p512-d128-swa-producer-max-ab.json",
+    "raw_sha256": "400bf5f78924176bfa537bd3b68311cf040320a71c0577b96f4684f267f796f1",
+    "control_decode_tok_s": 19.68444190144532,
+    "candidate_decode_tok_s": 19.996117126085874,
+    "throughput_change_percent": 1.5833581983224487,
+    "saving_ms_per_token": 0.7918328285129306,
+    "all_seven_candidate_samples_faster_than_all_controls": true,
+    "control_samples_tok_s": [
+      19.67674698862127,
+      19.671139470105075,
+      19.667982861017634,
+      19.69114835422018,
+      19.68756962105304,
+      19.68444190144532,
+      19.693543659275726
+    ],
+    "candidate_samples_tok_s": [
+      19.994737362649172,
+      19.99977550215344,
+      19.98997632078544,
+      19.995080917579212,
+      20.00418185081869,
+      19.996545567177844,
+      19.996117126085874
+    ]
+  },
+  "validation": {
+    "focused_command": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_gguf_runner.py::test_laguna_swa_producer_max_switch_is_session_scoped tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback tests/test_laguna_long_context_profile.py",
+    "focused_result": "35 passed"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_capability_default": true,
+    "qualified_scope": "gated saturated natural-shape 72Q/8KV/D128/SWA512 decode",
+    "rollback": "exact mixed32 exp32 V-stage64 vec16-direct assumed-domain owner",
+    "peer_backends_unchanged": true,
+    "next_gate": "Tracked-clean selector-unset three-run p512/d128 production publication."
+  }
+}
