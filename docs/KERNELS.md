@@ -1962,7 +1962,8 @@ but the 9x50 and 21x100 leaves regress **0.017%/0.041%** with only **4/9** and
 **9/21** paired wins. Do not retry unless a compounded change also reduces
 VGPR pressure or changes occupancy:
 [`compact2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-compact2-storage-rejected.json).
-The next exact mixed40 sibling is retained as a primitive. Current-body
+The next exact mixed40 sibling is retained only as a diagnostic primitive.
+Current-body
 counters show a mixed latency/instruction workload: **51.264% memory-unit
 busy**, **49.742% L2 hit**, **2,091.125 KiB fetched**, **1.764M VALU**,
 **0.482M LDS**, and **0.641M SALU** instructions over 480 waves. ISA-directed
@@ -1970,9 +1971,13 @@ four-vector denominator prefetch issues four `ds_load_b128` operations before
 the unchanged 16 ordered adds instead of one load/`lgkmcnt(0)` chain at a
 time. The 9x50/21x100 leaves improve **0.410%/0.101%** byte-exactly with
 **9/9** and **19/21 + one tie** wins. Trace resources remain
-grid15,360/local384/VGPR104/LDS25,600/scratch0. Retain pending seven resident
-p512/d128 pairs:
-[`denominator-prefetch4 primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json).
+grid15,360/local384/VGPR104/LDS25,600/scratch0. Seven exact resident p512/d128
+pairs then reject runtime ownership: median decode moves
+**20.497384 -> 20.497114 tok/s (-0.00132%)**, median paired change is
+**-0.00919%**, and only **3/7** pairs improve. Remove the comparison/runtime
+route and retain production unchanged:
+[`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json),
+[`runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-runtime-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

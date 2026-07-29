@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T02:18:11+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_denom_prefetch4_runtime_rejected",
+  "status": "rejected_at_resident_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "c4fd4c6551343aa2e72c92e9ce7280dd89afdbb3",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_id": "mixed_ja_en_review",
+    "prefill_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_size": 2048,
+    "attention_rows": 128,
+    "mode": "eager c=1",
+    "load_excluded": true
+  },
+  "comparison": {
+    "control": "retained mixed40 tail-producer denominator schedule",
+    "candidate": "exact four-vector denominator prefetch before ordered scalar replay",
+    "control_decode_median_tok_s": 20.497383685986673,
+    "candidate_decode_median_tok_s": 20.49711357421742,
+    "throughput_change_percent": -0.001317786569210444,
+    "saving_ms_per_token": -0.0006429132396803539,
+    "paired_changes_percent": [
+      0.03164451924595468,
+      -0.009909158718945932,
+      0.012061611875102685,
+      -0.021635296093280854,
+      -0.01651435395415568,
+      -0.009190899567002031,
+      0.005262266742933619
+    ],
+    "paired_candidate_wins": 3,
+    "paired_candidate_losses": 4,
+    "paired_samples": 7,
+    "median_paired_change_percent": -0.009190899567002031,
+    "complete_sample_separation": false
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "route": {
+    "comparison_selector_removed": true,
+    "runtime_candidate_removed": true,
+    "production_control_retained": true,
+    "registered_primitive_retained": true,
+    "peer_backends_unchanged": true,
+    "focused_owner_profile_tests_passed": 36
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40-denom-prefetch4 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-denom-prefetch4-ab.json",
+    "raw_sha256": "06330c0d5f8a54854dcb8664dc76f450b41af78cf6c5d32ba168a81aab1d598d",
+    "load_seconds_excluded": 88.23820480308495
+  },
+  "decision": {
+    "retain_primitive": true,
+    "promote_runtime": false,
+    "production_tok_s": 20.49473174761836,
+    "reason": "The leaf improvement does not compose into resident decode: median throughput regresses slightly, the median paired change is negative, and only three of seven pairs improve.",
+    "retry_condition": "Do not promote this schedule unchanged; reuse the ISA lesson only inside a materially larger denominator or wave-scheduling change."
+  }
+}

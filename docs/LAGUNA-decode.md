@@ -5276,8 +5276,8 @@ The remaining attention sequence is:
     retained 104-VGPR schedule or buy useful occupancy. Production remains
     **20.494732 tok/s**. Evidence:
     [`compact2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-compact2-storage-rejected.json).
-54. Overlap the exact idle-wave denominator's LDS reads. **Primitive retained
-    pending the resident gate:** a fresh counter census of the current
+54. Overlap the exact idle-wave denominator's LDS reads. **Primitive retained,
+    runtime rejected and removed:** a fresh counter census of the current
     mixed40 body measures median **51.264% memory-unit busy**, **49.742% L2
     hit**, **2,091.125 KiB fetched**, **1.764M VALU**, **0.482M LDS**, and
     **0.641M SALU** instructions across exactly **480 waves**. Together with
@@ -5296,10 +5296,18 @@ The remaining attention sequence is:
     **0.037188 -> 0.037036 ms (-0.410%, 9/9 wins)**; the stronger 21x100
     screen improves **0.037597 -> 0.037559 ms (-0.101%)** with **19 wins,
     one tie, and one loss**. Cache-only tracing confirms unchanged
-    grid15,360/local384, VGPR104, SGPR128, LDS25,600, and scratch0. Retain the
-    registered primitive; production remains **20.494732 tok/s** until seven
-    exact counterbalanced p512/d128 resident pairs pass. Evidence:
-    [`denominator-prefetch4 primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json).
+    grid15,360/local384, VGPR104, SGPR128, LDS25,600, and scratch0.
+
+    The seven exact counterbalanced p512/d128 resident pairs do not retain the
+    leaf result: median decode moves **20.497384 -> 20.497114 tok/s
+    (-0.00132%, +0.00064 ms/token)**, the median paired change is
+    **-0.00919%**, and only **3/7** pairs improve. Tokens, complete generated
+    trajectory, positions, repeat determinism, and allocation lifecycle all
+    remain exact. Remove the comparison/runtime route and keep only the
+    registered diagnostic primitive. Production remains **20.494732 tok/s**.
+    Evidence:
+    [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json) ·
+    [`runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-runtime-rejected.json).
 
 Current exact decode checkpoint:
 
