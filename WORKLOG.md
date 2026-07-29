@@ -192065,3 +192065,20 @@ Vulkan local sizes verbatim will close the measured gap.
   the temporary comparison CLI, and leave peer backends unchanged. Clean
   selector-unset publication is next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-retained.json`.
+
+## 2026-07-30 05:49 JST — Publish clean global mixed32 local512 production
+
+- Commit `96a19bc81` is tracked-clean and the comparison selector is absent.
+  Three selector-unset require-cached p512/d128 runs measure
+  **20.705514/20.727439/20.717479 tok/s**, median
+  **20.717479 tok/s (48.268 ms/token)**.
+- This is **+0.77917% / -0.37609 ms/token** over the preceding clean
+  **20.557302** packet and **+80.675%** over the 11.466687 sprint start.
+  The same-GGUF llama.cpp Vulkan comparison remains
+  **23.348381 tok/s / 42.830 ms/token**; the unprofiled wall gap is now
+  **5.439 ms/token**, or **11.268%** in throughput.
+- All runs report global and SWA local512 capabilities active, preserve first
+  and final tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, final
+  position 638, determinism, and zero tracked bytes after teardown. Raw hash
+  is `6c65e72f...eb32`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-production.json`.
