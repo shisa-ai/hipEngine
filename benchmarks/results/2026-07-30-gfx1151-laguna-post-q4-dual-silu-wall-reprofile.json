@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T08:31:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_q4_dual_silu_decode_wall_reprofile",
+  "status": "accepted_attribution_checkpoint",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "0c13256bc24c290a3ebd513bc42d7b23fb9cd5d8",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-post-q4-silu.b996d5",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-q4-silu.b996d5 --output-file postq4silu -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-q4-silu.b996d5/bench.json",
+    "trace_sha256": "7024d6112cac82a6215c3334c5169212b66e7b2cf631f070bc6901b13a9d903f",
+    "bench_sha256": "7145a07023e98ff0693bb9bebf816d65470698cfa98b2eaece55c0a213299c32",
+    "segmentation": "Sort the two-queue trace by start timestamp and globally unique Dispatch_Id, close each request at argmax stage 2, discard warmup128 and timed prefill512, and report medians over 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 20.210852477794084,
+    "publication_wall_tok_s": 20.80318909615844,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true,
+    "compiler_invocations_under_profiler": 0
+  },
+  "decode": {
+    "segments": 127,
+    "compute_dispatches_per_token": 673,
+    "median_kernel_sum_ms_per_token": 46.24417,
+    "median_kernel_span_ms_per_token": 48.30088,
+    "attention": {
+      "calls_per_token": 48,
+      "median_ms_per_token": 2.129354
+    },
+    "attention_breakdown": {
+      "swa_local512_calls_per_token": 36,
+      "swa_local512_median_ms_per_token": 1.468158,
+      "global_local512_calls_per_token": 12,
+      "global_local512_median_ms_per_token": 0.657957
+    },
+    "principal_family_medians_ms_per_token": {
+      "source_f16_projection": 24.050752,
+      "selected_q4_gate_up": 8.379805,
+      "selected_q4_q6_down": 4.795561,
+      "dense_shared_quant_projection": 3.514956,
+      "router": 1.065969,
+      "lm_head_argmax": 1.11846,
+      "norm_rope_gate": 1.056147,
+      "activation_reduce_residual": 0.125315
+    },
+    "fused_boundary": {
+      "calls_per_token": 48,
+      "prior_dual_plus_silu_ms_per_token": 2.286671,
+      "current_fused_ms_per_token": 2.216017,
+      "change_percent": -3.0898192175437655,
+      "saving_ms_per_token": 0.07065400000000022
+    }
+  },
+  "comparison": {
+    "prior_post_local512_profile": {
+      "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-post-local512-wall-reprofile.json",
+      "kernel_sum_ms_per_token": 46.404232,
+      "kernel_span_ms_per_token": 48.563428,
+      "compute_dispatches_per_token": 721,
+      "attention_ms_per_token": 2.228985
+    },
+    "changes_percent": {
+      "kernel_sum": -0.3449297469248158,
+      "kernel_span": -0.5406290511452361,
+      "compute_dispatches": -6.657420249653256
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "wall_ms_per_token": 42.829522098341635,
+      "logged_source_f16_ms_per_token": 24.758568,
+      "logged_attention_ms_per_token": 0.909423,
+      "logged_selected_q4_gate_up_ms_per_token": 7.46409,
+      "logged_selected_q4_q6_down_ms_per_token": 4.52509,
+      "hipengine_source_f16_delta_ms_per_token": -0.707816,
+      "hipengine_attention_gap_ms_per_token": 1.219931,
+      "hipengine_selected_gate_up_gap_ms_per_token": 0.915715,
+      "hipengine_selected_down_gap_ms_per_token": 0.270471,
+      "hipengine_total_wall_gap_ms_per_token": 5.240030861913965,
+      "attention_share_of_remaining_wall_gap": 0.23280988836665178,
+      "hipengine_attention_multiple": 2.3414340741327195
+    }
+  },
+  "correctness": {
+    "next_token": 2930,
+    "final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "tracked_allocations_recovered": true,
+    "pass": true
+  },
+  "finding": {
+    "result": "The retained fusion removes exactly 48 compute dispatches per token. Its direct dual-plus-SiLU window falls 2.286671 -> 2.216017 ms/token (-3.090%), while total median kernel span falls 48.563428 -> 48.300880 ms/token (-0.541%).",
+    "comparator": "Source-F16 is the largest absolute family but is already 0.707816 ms/token faster than the perturbed Vulkan logger row. The remaining named Vulkan gaps are attention 1.219931 ms/token, selected gate/up 0.915715, and selected down 0.270471.",
+    "next_gate": "Do not reopen source-F16 unchanged-byte geometry or closed attention stage-width tuning. Screen an exact T16 selected-down plus routing-weight reduction composite, transferring the in-tree IQ3 boundary fusion while preserving every per-route BF16 projection and slot-order FMA."
+  }
+}

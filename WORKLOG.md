@@ -192401,3 +192401,30 @@ Vulkan local sizes verbatim will close the measured gap.
   artifact hash is `fe79e8ac...173a89`.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-production.json`.
+
+## 2026-07-30 08:31 JST — Re-profile the post-Q4-SiLU decode wall
+
+- On tracked-clean `0c13256bc`, run one cached-only `rocprofv3 --kernel-trace`
+  around warmup128, p512, and 127 eager c=1 transitions. Segmentation finds
+  exactly 127 decode rows and **673 compute dispatches/token**, down from
+  **721** before dual-Q4 plus SiLU fusion.
+- The exact fused boundary moves
+  **2.286671 -> 2.216017 ms/token (-3.090%, -0.070654 ms)**. Median total
+  kernel sum moves **46.404232 -> 46.244170 ms (-0.345%)** and dispatch span
+  moves **48.563428 -> 48.300880 ms (-0.541%)**. Profiler wall is attribution
+  only; the clean publication remains **20.803189 tok/s**.
+- Current principal medians are source-F16 **24.050752 ms**, selected gate/up
+  **8.379805**, selected down **4.795561**, dense/shared **3.514956**,
+  attention **2.129354**, LM-head/argmax **1.118460**, router **1.065969**,
+  and norm/RoPE/gate **1.056147**.
+- The llama.cpp review changes the priority: source-F16 is largest in
+  isolation but is already **0.707816 ms/token faster** than Vulkan's
+  perturbed logger row. Remaining named comparator gaps are attention
+  **1.219931 ms**, selected gate/up **0.915715**, and selected down
+  **0.270471**. Exact attention stage-width tuning is closed. Next transfer
+  the existing in-tree IQ3 selected-down/routing-weight boundary fusion to
+  natural T16 Q4/Q6 while preserving all ten BF16 route boundaries and
+  slot-order FMAs.
+- Trace/child hashes are `7024d611...d903f` / `7145a070...299c`; no compiler
+  ran under the profiler. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-q4-dual-silu-wall-reprofile.json`.

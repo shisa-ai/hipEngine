@@ -5897,6 +5897,22 @@ The remaining attention sequence is:
     sprint start, with exact repeated trajectory/state/lifecycle:
     [`dual-Q4 plus SiLU retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json),
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-production.json).
+82. Re-profile the tracked-clean post-fusion wall. **Accepted attribution
+    checkpoint:** compute dispatches fall exactly **721 -> 673/token**. The
+    direct dual-plus-SiLU window falls
+    **2.286671 -> 2.216017 ms/token (-3.090%)**; total median kernel sum and
+    span fall **46.404232 -> 46.244170 ms (-0.345%)** and
+    **48.563428 -> 48.300880 ms (-0.541%)**.
+
+    Source-F16 remains the largest absolute family at **24.050752 ms/token**,
+    but it is already **0.707816 ms/token faster** than Vulkan's perturbed
+    logger row. The remaining named comparator gaps are attention
+    **1.219931 ms/token**, selected gate/up **0.915715**, and selected down
+    **0.270471**. Do not re-rank source-F16 merely by absolute time. The next
+    bounded boundary is exact T16 selected down plus slot-ordered routing
+    weighting, transferring the existing in-tree IQ3 composite without
+    changing the ten per-route BF16 projection boundaries:
+    [`post-fusion wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-q4-dual-silu-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
@@ -5914,11 +5930,12 @@ machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
 cover one logical token each; larger blocks add no score ownership. Global
 local512 confirms that the same saturation axis transfers when the original
 eight-wave denominator tree is held fixed: the extra waves help only the
-independent QK and value-transport phases. The fresh census leaves SWA as the
-dominant exact-attention family at **1.565501 ms/token**. Total attention
-remains **2.451x** llama.cpp Vulkan's logged **0.909423 ms/token**, a
-**1.319562-ms/token** gap representing **24.26%** of the complete remaining
-wall gap. Device-code inspection now closes pragma-only register/stage tuning:
+independent QK and value-transport phases. The post-fusion census leaves SWA
+as the dominant exact-attention family at **1.468158 ms/token**. Total
+attention is **2.129354 ms/token**, or **2.341x** llama.cpp Vulkan's logged
+**0.909423 ms/token**, a **1.219931-ms/token** gap representing **23.28%** of
+the complete remaining wall gap. Device-code inspection now closes
+pragma-only register/stage tuning:
 V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
 grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
 address/K-loop contraction is now closed: full K3072 unrolling wins the
@@ -5926,8 +5943,8 @@ isolated leaf but loses all seven resident pairs while expanding code 5.06x.
 The traced dense/shared dual-Q4 owner now consumes its SiLU boundary in-kernel,
 removing 48 launches/token and exact temporary BF16 traffic; tracked-clean
 production confirms the complete-model win. Quad-local metadata broadcast
-remains closed by decisive natural-shape regressions. Reprofile the residual
-wall before choosing the next family. Return to attention only for
+remains closed by decisive natural-shape regressions. The next exact boundary
+screen is T16 selected down plus routing weighting. Return to attention only for
 a materially new exact-association or quality-safe cooperative premise:
 both SWA and global stage-width successors win isolated leaves but fail to
 produce a reliable complete-model improvement.
