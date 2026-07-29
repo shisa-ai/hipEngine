@@ -91,18 +91,23 @@ numbers below.
   selector-unset production is **191.713/178.080/134.411 tok/s** at 512/1K/4K,
   **+1.762%/+1.736%/+1.256%** over H5G and a **3.621x** matched M512 gap. The
   reconciled H5I trace is led by Q5 **922.619 ms**, IQ down **556.749 ms**,
-  attention **471.150 ms**, and Q6 **110.170 ms**. H5J targets exact IQ down:
-  45 K1024 IQ3 calls account for **530.864 ms**, and actual routing shows only
-  **9,844** active expert instances versus **33,547** rowbatch8 weight-decode
-  batches. A strict resident-segment specialization can eliminate **70.656%**
-  of those reconstructions without changing any eight-row dot/reduction phase;
-  two K1024 IQ4 calls separately admit an exact one-wave geometry screen. Full
+  attention **471.150 ms**, and Q6 **110.170 ms**. H5J's exact IQ-down leaf now
+  wins all **45 IQ3 + 2 IQ4** actual M512 layers on both clocks. IQ3 resident
+  segments cut **541.137 -> 491.481 ms (-9.176%)** by events; launching the
+  retained exact IQ4 body at local32 cuts **26.137 -> 8.696 ms (-66.730%)**.
+  Combined, selected down moves **567.274 -> 500.176 ms (-11.828%)**, with
+  synchronized wall corroborating **-11.746%**, byte-exact outputs, and full
+  lifecycle recovery. A generated RED caught and fixed a one-BF16-ULP IQ4
+  compiler boundary by reusing the physical exact body instead of duplicating
+  constant-K math. No runtime/package default changes until complete state,
+  integrated tracing, and clean 512/1K/4K gates pass. Full
   logits, all 48 hidden boundaries, routing prefixes, active K/V, and every
   `KVLiveSpans` field are bit-exact at KL 0 on the deep M512 gate; every
   512/1K/4K publication sample is byte-exact, deterministic, and
   lifecycle-clean. The 150-tok/s short gate and restored 4K gate pass, while
   16K+ stays closed below the 800/700 512/4K stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+  [H5J leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
   [post-H5I residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
   [preceding coltile production](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
   [role policy](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)).

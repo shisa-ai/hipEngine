@@ -19,13 +19,18 @@ ms (-2.504%)**. Three-repeat selector-unset production is
 **+1.762%/+1.736%/+1.256%**. The matched llama.cpp HIP M512 target remains
 **694.184 tok/s**, now a **3.621x** gap. H5H still closes larger ordered-Q5
 tiles at the VGPR256 spill boundary. Post-H5I tracing attributes **556.749 ms**
-to exact IQ3/IQ4 selected down; 45 K1024 IQ3 calls own **530.864 ms**. A natural
-M512 routing capture finds **9,844** active IQ3 expert instances but **33,547**
-rowbatch8 weight reconstructions, selecting H5J's exact decode-once
-resident-segment owner plus a K1024 IQ4 one-wave sibling. Both short rows exceed
-150 tok/s and 4K remains positive; 16K+ stays closed below the 800/700 stretch
-gate
+to exact IQ3/IQ4 selected down. H5J's exact standalone leaf wins every **45 IQ3
++ 2 IQ4** actual M512 layer on both clocks: IQ3 falls **541.137 -> 491.481 ms
+(-9.176%)**, IQ4 **26.137 -> 8.696 ms (-66.730%)**, and the combined family
+**567.274 -> 500.176 ms (-11.828%)** by events. Synchronized wall corroborates
+**-11.746%**; every output byte and allocation lifecycle matches. A generated
+one-ULP RED required the IQ4 local32 wrapper to reuse the retained physical exact
+body rather than duplicate constant-K math. Runtime/default ownership remains
+absent pending complete state, integrated tracing, and clean 512/1K/4K gates.
+Both short production rows exceed 150 tok/s and 4K remains positive; 16K+ stays
+closed below the 800/700 stretch gate
 ([H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+[H5J leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
 [post-H5I residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
 [H5I leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
 [post-H5G residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
