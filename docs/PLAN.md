@@ -1377,25 +1377,28 @@ F32-to-Q8_1 256-thread 128x128/K256 WMMA MMQ for Q5/IQ families, bounded Q6
 dequantization/casts plus F16 rocBLAS at M512, device expert compaction, and
 `flash_attn_ext_f16<128,128,8,8>` plus stream-K fixup.
 
-WPF-H1's primitive is now admitted: the strict byte-exact DS4 producer plus
-isolated fast-math aligned I128/J128/K256 consumer moves the actual eight-role,
-235-call weighted M512 leaf **1,562.932 -> 97.110 ms (16.094x)** while N48/N72
-remain exact. Fixture quality reaches maximum mean KL **6.793e-6** and minimum
-top-1 **98.242%**; cached resources are local `(32,8)`, VGPR192,
-57,856-byte dynamic LDS, and scratch0. It remains **1.647x** llama.cpp's matched
-**58.951-ms** Q5 trace, so runtime producer reuse, complete quality, clean
-512/1K, state/lifecycle, and all-family tracing are the active H1 blockers.
+WPF-H1's primitive is admitted but its runtime route is rejected. The strict
+byte-exact DS4 producer plus isolated fast-math I128/J128/K256 consumer moves
+the actual eight-role/235-call M512 leaf **1,562.932 -> 97.110 ms (16.094x)**
+and complete-suite natural-prompt prefill **151.252 -> 203.862 tok/s (1.348x)**.
+The mandatory 18-prompt/576-step lane nevertheless reaches maximum KL
+**4.162014 > 0.05** at **561/576 (97.396%)** top-1. Poolside, deterministic
+repeats, every performance clause, and lifecycle pass, but cannot waive KL.
+The temporary runtime owner/workspace/switch is removed; production remains the
+exact role-qualified coltile path and the source-Q5 primitive stays explicit
+ceiling evidence only.
 
-The remaining W7900 order is WPF-H1 runtime/quality integration, WPF-H2
-source-faithful full-M512 F16-WMMA FlashAttention/stream-K, WPF-H3
+The remaining W7900 order starts with WPF-H2 source-faithful full-M512 F16-WMMA
+FlashAttention/stream-K, followed by WPF-H3
 source-faithful Q8_1 IQ3/IQ4 selected-down MMQ, and WPF-H4 source-faithful Q6_K
 F16 dequantize-plus-rocBLAS. These audited llama.cpp routes are the primary
 performance candidates, not fallbacks delayed behind a new exact-only tiling
 campaign. Port them in-tree with source commit/path attribution, preserve the
 four-axis registry, raw-pointer kernel ABI, `KVLiveSpans`, and registered exact
 fallbacks, and require the complete train+heldout quality lane before promotion
-or composition. Prior P6, WPF-1R, D4/D8/D8R8, and online-SWA rejections remain
-closed; H5/IQ2 and WPF-4 are deferred until H1-H4 are stacked and reprofiled.
+or composition. Prior H1 source-Q5, P6, WPF-1R, D4/D8/D8R8, and online-SWA
+rejections remain closed; H5/IQ2 and WPF-4 are deferred until the independently
+retained H2-H4 routes are stacked and reprofiled.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

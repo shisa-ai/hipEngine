@@ -125,28 +125,6 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
     with pytest.raises(ValueError, match="multiple of 128"):
         mmq.q8_1_ds4_kmajor_nbytes(17, 192)
 
-    policy_key = KernelKey(
-        "hip_gfx1100",
-        "linear_prefill_policy",
-        "gguf_q5_k",
-        "source_q8_1_ds4",
-    )
-    policy = resolve(
-        backend=policy_key.backend,
-        layer=policy_key.layer,
-        quant=policy_key.quant,
-        variant=policy_key.variant,
-    )
-    assert policy(512, 9_216, 3_072)
-    assert policy(128, 3_072, 1_024)
-    assert policy(511, 9_216, 3_072)
-    assert policy(17, 3_072, 1_024)
-    assert not policy(15, 3_072, 1_024)
-    assert not policy(512, 3_072, 72)
-    assert not is_registered(
-        KernelKey("hip_gfx1151", policy_key.layer, policy_key.quant, policy_key.variant)
-    )
-
     producer_key = KernelKey(
         "hip_gfx1100", "activation_quant", "q8_1_ds4", "bf16_kmajor"
     )

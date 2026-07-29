@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -35,24 +34,6 @@ _SOURCE_MMQ_FLAGS = (
     "-ffast-math",
     "-fno-finite-math-only",
 )
-
-
-@dataclass(frozen=True)
-class Q5SourceMMQPrefillPolicy:
-    """Aligned source-MMQ admission for one caller-owned activation scope."""
-
-    min_rows: int = 16
-    output_tile: int = 128
-    k_tile: int = 256
-
-    def __call__(self, rows: int, hidden: int, out_features: int) -> bool:
-        return bool(
-            int(rows) >= self.min_rows
-            and int(hidden) > 0
-            and int(hidden) % self.k_tile == 0
-            and int(out_features) > 0
-            and int(out_features) % self.output_tile == 0
-        )
 
 
 def plan_gguf_k_mmq_prefill_build(
@@ -477,16 +458,6 @@ def gguf_q6_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out(*args, **kwargs) -> None:
 
 def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
-        KernelKey(
-            "hip_gfx1100",
-            "linear_prefill_policy",
-            "gguf_q5_k",
-            "source_q8_1_ds4",
-        ),
-        Q5SourceMMQPrefillPolicy(),
-        replace=replace,
-    )
-    register(
         KernelKey("hip_gfx1100", "activation_quant", "q8_1_ds4", "bf16_kmajor"),
         gguf_q8_1_ds4_quantize_bf16_kmajor,
         replace=replace,
@@ -592,7 +563,6 @@ register_gguf_k_mmq_prefill_kernels()
 
 
 __all__ = [
-    "Q5SourceMMQPrefillPolicy",
     "build_gguf_k_mmq_prefill",
     "build_gguf_q5_k_source_mmq_prefill",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out",

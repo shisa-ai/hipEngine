@@ -34,7 +34,6 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_moe_branch_concurrency,
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
-    resolve_laguna_q5_source_mmq,
     resolve_laguna_q5_wave32x2_variants,
 )
 from hipengine.kernels.backends import backend_package_capability
@@ -257,19 +256,9 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
 
     assert plan.rows_nbytes == 334_651_392
     assert plan.moe_nbytes == 104_370_208
-    assert plan.q5_source_mmq_nbytes == 0
     assert plan.total_nbytes == 439_021_600
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
-
-    q5_source_plan = LagunaPrefillScratchPlan.build(
-        config,
-        moe_plan,
-        policy=policy,
-        q5_source_mmq=True,
-    )
-    assert q5_source_plan.q5_source_mmq_nbytes == 5_308_416
-    assert q5_source_plan.total_nbytes == 444_330_016
 
     wide_policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -283,20 +272,9 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     )
     assert wide_plan.rows_nbytes == 1_338_605_568
     assert wide_plan.moe_nbytes == 417_456_160
-    assert wide_plan.q5_source_mmq_nbytes == 0
     assert wide_plan.total_nbytes == 1_756_061_728
     assert wide_plan.matrix_rows == 2_048
     assert wide_plan.attention_rows == 128
-
-    wide_q5_source_plan = LagunaPrefillScratchPlan.build(
-        config,
-        moe_plan,
-        policy=wide_policy,
-        q5_source_mmq=True,
-    )
-    assert wide_q5_source_plan.q5_source_mmq_nbytes == 21_233_664
-    assert wide_q5_source_plan.total_nbytes == 1_777_295_392
-
 
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
     runtime = _FakeRuntime()
@@ -1172,18 +1150,6 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     assert not hasattr(LagunaGGUFResidentSession, "set_raw_k_prefill_variant")
     assert "raw_k_prefill_variant" not in signature(
         LagunaGGUFResidentSession.__init__
-    ).parameters
-
-
-def test_laguna_q5_source_mmq_is_explicit_gfx1100_candidate_only() -> None:
-    assert not resolve_laguna_q5_source_mmq("hip_gfx1100")
-    assert resolve_laguna_q5_source_mmq("hip_gfx1100", True)
-    assert not resolve_laguna_q5_source_mmq("hip_gfx1100", False)
-    assert not resolve_laguna_q5_source_mmq("hip_gfx1151")
-    with pytest.raises(ValueError, match="not supported"):
-        resolve_laguna_q5_source_mmq("hip_gfx1151", True)
-    assert "use_q5_source_mmq" in signature(
-        runner_module.LagunaGGUFResidentSession.__init__
     ).parameters
 
 

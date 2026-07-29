@@ -1941,18 +1941,16 @@ should be boring.
   comparisons/configurations, and focused tests are removed. Production
   remains model-declared top-10 for prefill and decode.
 
-## WPF-H1 source-Q5 MMQ candidate switch
+## WPF-H1 source-Q5 MMQ candidate cleanup — complete
 
-- Added 2026-07-29 as the explicit gfx1100 constructor switch
-  `use_q5_source_mmq`. It owns one bounded K-major DS4 workspace, resolves the
-  source-Q5 policy through the four-axis registry, and retains exact
-  coltile/rowbatch for c=1/small-M, N tails, unsupported roles, and gfx1151.
-- The first natural M512 deep-state gate passes at KL **0.0002241**, top-1
-  **100%**, deterministic candidate repeat, finite state, and complete tracked
-  allocation recovery. This is integration admission, not default promotion.
-- Keep the explicit switch through the complete 18-prompt/576-step plus
-  category-heldout quality lane, counter-ordered 512/1K timing, and clean
-  all-family trace. If all gates pass, promote the package capability and keep
-  explicit `False` only through WPF-H2 stacking/bisection; then collapse the
-  positive selector into the gfx1100 role policy. If any quality gate fails,
-  remove runtime ownership/workspace and retain only the qualified leaf.
+- The temporary gfx1100 `use_q5_source_mmq` constructor switch, context-local
+  activation scopes, bounded DS4 runtime workspace, package capability, and
+  dispatch policy were added only for complete qualification. A natural M512
+  deep-state screen passed at KL **0.0002241** with deterministic repeat and
+  lifecycle recovery.
+- The binding 18-prompt/576-step lane rejects promotion at maximum KL
+  **4.162014** despite **561/576** top-1 and **1.348x** aggregate prefill. The
+  removal trigger is satisfied in the same decision unit: all temporary runtime
+  ownership and focused integration tests are removed. Keep only the separately
+  registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
+  production remains exact and H2 must not stack H1 arithmetic.
