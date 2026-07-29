@@ -1468,6 +1468,69 @@ def test_wmma_prefill_pair_still_fuses_q4_k_pack8_dual_prefill() -> None:
     assert len(pair_calls) == 1
 
 
+def test_gfx1151_q4_k_pack8_decode_pair_uses_registered_dual_owner() -> None:
+    """Laguna c=1 gate/up may reuse the exact local32 dual pack8 body."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    weight_b = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair",
+        "gguf_q4_k",
+        "pack8_dual_decode_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=pair_key.backend,
+        layer=pair_key.layer,
+        quant=pair_key.quant,
+        variant=pair_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(pair_key, fake_pair, replace=True)
+    try:
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            backend="hip_gfx1151",
+            stream=7,
+            runtime="runtime-sentinel",
+            registered_decode_only=True,
+        )
+        assert not launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            backend="hip_gfx1100",
+        )
+    finally:
+        register(pair_key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 11, 12, 13, 11, 12, 13, 200, 300, 1, 3072, 1024),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
 def test_registered_q5_decode_pair_is_exact_scope_and_falls_back() -> None:
     weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
     weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")

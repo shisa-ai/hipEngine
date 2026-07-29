@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import ctypes
+
 import numpy as np
 import pytest
 
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.kernels.cpu_reference import gguf_q4_k_gemv, gguf_q4_k_pack8_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
@@ -10,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_gemv_bf16_f32_out,
     gguf_q4_k_gemv_f32_f32_out,
     gguf_q4_k_gemv_fp16_f32_out,
+    gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_f32_out,
     gguf_q4_k_pack8_gemv_f32_f32_out,
@@ -22,6 +32,17 @@ from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
 
 QK_K = 256
 Q4_K_BLOCK_BYTES = 144
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+HIP_AVAILABLE = _hip_available()
 
 
 def make_q4_k_weight(out_features: int, in_features: int) -> np.ndarray:
@@ -191,3 +212,99 @@ def test_gguf_q4_k_wrapper_validates_kernel_contract() -> None:
         gguf_q4_k_pack8_gemv_f32_f32_out(
             1, 2, 3, 4, 5, rows=1, in_features=256, out_features=8, threads=256
         )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_laguna_pack8_dual_decode_is_bf16_exact_to_two_local32_owners() -> None:
+    """The c=1 dual owner must preserve both retained projection boundaries."""
+
+    rows, in_features, out_features = 1, 1024, 64
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, 17, axis=0).copy()
+    packed_a = repack_gguf_q4_k_pack8(raw_a)
+    packed_b = repack_gguf_q4_k_pack8(raw_b)
+    x_f32 = (
+        (np.arange(in_features, dtype=np.float32) % 29.0) - 14.0
+    ).reshape(1, in_features) / 32.0
+    x_u32 = x_f32.view(np.uint32).copy()
+    x_u32 += 0x7FFF + ((x_u32 >> 16) & 1)
+    x_bf16 = (x_u32 >> 16).astype(np.uint16)
+    control_a = np.empty((rows, out_features), dtype=np.uint16)
+    control_b = np.empty_like(control_a)
+    candidate_a = np.empty_like(control_a)
+    candidate_b = np.empty_like(control_a)
+    library = build_gguf_q4_k_gemv(load=True)
+
+    host_arrays = (
+        x_bf16,
+        packed_a.qweight,
+        packed_a.scales,
+        packed_a.mins,
+        packed_b.qweight,
+        packed_b.scales,
+        packed_b.mins,
+    )
+    device_inputs = [malloc(array.nbytes) for array in host_arrays]
+    device_outputs = [
+        malloc(control_a.nbytes),
+        malloc(control_b.nbytes),
+        malloc(candidate_a.nbytes),
+        malloc(candidate_b.nbytes),
+    ]
+    try:
+        for array, allocation in zip(host_arrays, device_inputs, strict=True):
+            copy_host_to_device(allocation, host_array_ptr(array), array.nbytes)
+        x_buf, qwa, sa, ma, qwb, sb, mb = device_inputs
+        ca, cb, da, db = device_outputs
+        gguf_q4_k_pack8_gemv_bf16_bf16_out(
+            x_buf.ptr,
+            qwa.ptr,
+            sa.ptr,
+            ma.ptr,
+            ca.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=32,
+            library=library,
+        )
+        gguf_q4_k_pack8_gemv_bf16_bf16_out(
+            x_buf.ptr,
+            qwb.ptr,
+            sb.ptr,
+            mb.ptr,
+            cb.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=32,
+            library=library,
+        )
+        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
+            x_buf.ptr,
+            qwa.ptr,
+            sa.ptr,
+            ma.ptr,
+            qwb.ptr,
+            sb.ptr,
+            mb.ptr,
+            da.ptr,
+            db.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=32,
+            library=library,
+        )
+        for host, allocation in zip(
+            (control_a, control_b, candidate_a, candidate_b),
+            device_outputs,
+            strict=True,
+        ):
+            copy_device_to_host(host_array_ptr(host), allocation, host.nbytes)
+    finally:
+        for allocation in (*device_outputs, *device_inputs):
+            free(allocation)
+
+    np.testing.assert_array_equal(candidate_a, control_a)
+    np.testing.assert_array_equal(candidate_b, control_b)

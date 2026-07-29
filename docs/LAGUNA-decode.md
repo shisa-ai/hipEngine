@@ -4251,6 +4251,24 @@ tensorized QK and PV inside one GQA tile, with a separately budgeted
 high-precision correction strategy. Reusing scalar ownership, global score
 planes, or approximate online merges is closed by the measured failures.
 
+LD-4 meanwhile transfers an exact gfx1100 structural lesson without changing
+geometry. The existing local32 Q4 pack8 dual body now owns c=1 gate/up for all
+**47 shared layers plus the leading dense layer**. Each projection preserves
+the singleton K partition, FMA/reduction tree, and BF16 store. Direct leaves
+improve **20.25-24.81%** at the shared shapes and **12.48%** at dense
+K3072/N12288, with byte-identical outputs.
+
+All seven wired p512/d128 pairs improve
+**19.556271 -> 19.645185 tok/s (+0.4547%, -0.2314 ms/token)** with exact
+tokens, trajectory hash, positions, determinism, and lifecycle. The required
+cache-only trace records **5,969 shared + 127 dense** dual launches at
+local32/VGPR96/SGPR128/LDS512/scratch0, removes exactly **48 compute
+launches/token (816 -> 768)**, and cuts the complete Q4 family
+**3.018303 -> 2.836943 ms/token (-6.01%)**. Two singleton launches remain the
+registered backend/shape/layout fallback. A clean selector-unset production
+publication follows the implementation commit. Evidence:
+[`retained exact Q4 pack8 dual decode`](../benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-retained.json).
+
 LD-4's first exact seam is now retained. The gate/up sibling fixes
 `x_rows=1, rows=10, K3072, N1024`; the Q4 and planar-Q6 down siblings fix ten
 distinct intermediate rows at `K1024, N3072`. They retain the full local128
@@ -4392,10 +4410,14 @@ and shape/backend fallbacks.
    profiled selected family from about **13.711 to 13.307 ms/token**. The
    exact tile8 successor then reaches **17.007001 tok/s**, lowers the family
    to about **13.224 ms/token**, and halves gate/up VGPR **200 -> 96**.
-   Continue with compile-time expert/tile strides, paired Q4 gate/up metadata
-   decode, and bounded address/loop contraction. Tile4 and projection-split
-   ownership are closed. Any new ownership or reduction geometry must re-enter
-   the full quality gate.
+   The exact local32 dense/shared Q4 gate/up pair is now retained as well:
+   seven pairs improve **19.556271 -> 19.645185 tok/s (+0.4547%)**, remove
+   **48 launches/token**, and lower the complete Q4 pack8 family **6.01%**
+   with byte-identical leaves and exact generated state. Continue with a
+   paired-output+SiLU boundary or bounded address/loop contraction; plain
+   paired metadata decode is complete. Tile4 and projection-split ownership
+   are closed. Any new ownership or reduction geometry must re-enter the full
+   quality gate.
 5. **LD-5 — replay and residual fusion.** Launch/submission work is bounded to
    roughly 2.18 ms/token. It follows attention and F16; launch-count reduction
    alone is not a promotion gate.

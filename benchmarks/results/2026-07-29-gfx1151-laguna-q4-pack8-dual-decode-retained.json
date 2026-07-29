@@ -1,0 +1,133 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "created_at": "2026-07-29T10:10:00+09:00",
+  "status": "accepted",
+  "decision": "retain",
+  "scope": "gfx1151 Laguna S 2.1 eager c=1 Q4_K pack8 dense/shared gate+up decode",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "change": {
+    "summary": "Use the existing exact local32 dual pack8 owner for c=1 dense/shared Q4 gate+up pairs.",
+    "arithmetic": "Each projection retains the singleton local32 K ownership, FMA sequence, wave reduction and BF16 store boundary.",
+    "runtime_scope": [
+      "47 shared-MoE gate/up pairs per decode token",
+      "1 leading dense gate/up pair per decode token"
+    ],
+    "fallback": "Two singleton launches remain for registry, backend, shape or layout miss."
+  },
+  "red_green": {
+    "red": "The gfx1151 linear_pair/gguf_q4_k/pack8_dual_decode_bf16_bf16_out key was absent; registered-only shared dispatch also returned before considering Q4 pack8.",
+    "green": [
+      "tests/test_gguf_linear_dispatch.py::test_gfx1151_q4_k_pack8_decode_pair_uses_registered_dual_owner",
+      "tests/test_gguf_q4_k_gemv.py::test_laguna_pack8_dual_decode_is_bf16_exact_to_two_local32_owners"
+    ]
+  },
+  "leaf": {
+    "protocol": "HIP-event medians, two singleton local32 launches versus one dual local32 launch; BF16 outputs byte-exact",
+    "rows": [
+      {
+        "shape": "M1 K3072 N1024+1024",
+        "control_ms": 0.01532774,
+        "candidate_ms": 0.01222329,
+        "delta_percent": -20.2538
+      },
+      {
+        "shape": "M1 K1024 N3072+3072",
+        "control_ms": 0.01502848,
+        "candidate_ms": 0.01129998,
+        "delta_percent": -24.8095
+      },
+      {
+        "shape": "M1 K3072 N12288+12288",
+        "control_ms": 0.53953685,
+        "candidate_ms": 0.4722055,
+        "delta_percent": -12.4795
+      }
+    ]
+  },
+  "production_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-q4-pack8-dual-decode --allow-dirty --output /tmp/laguna-q4-pack8-dual-decode-wired-7pair.json",
+    "control_median_seconds": 6.494080431992188,
+    "candidate_median_seconds": 6.464688433101401,
+    "control_tok_s": 19.556271489,
+    "candidate_tok_s": 19.645184964,
+    "delta_tok_s": 0.088913475,
+    "delta_percent": 0.4546545,
+    "saved_ms_per_token": 0.231433,
+    "pair_wins": "7/7",
+    "raw_sha256": "58c61509eb71da1e427df3148196bb9a690488a94df4e8267c420211d06270a3"
+  },
+  "correctness": {
+    "bf16_leaf_mismatches": 0,
+    "control_candidate_next_tokens_match": true,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "first_token": 2930,
+    "final_token": 74107,
+    "trajectory_sha256": "94f803f7cdb39f47a379395ac897e7bf8a51ec9f9e21e9f0c7814355ebda32"
+  },
+  "trace": {
+    "protocol": "rocprofv3 --kernel-trace, require-cached, 127 p512/d128 transitions",
+    "raw_csv": "/tmp/laguna-q4-pack8-dual-decode-trace/q4dual_kernel_trace.csv",
+    "raw_csv_sha256": "f636847c685dac6bc8d3a104f84913cf1bf49c030428654ed48c3d5da4cb54cd",
+    "child_sha256": "a1d5b327a064509b5b28f8a2a1ed72cd3182fb0862e19f81028b29dd3d62383a",
+    "compute_dispatches_per_token": {
+      "control": 816,
+      "candidate": 768,
+      "delta": -48
+    },
+    "families": [
+      {
+        "name": "shared Q4 gate/up dual",
+        "launches": 5969,
+        "launches_per_token": 47,
+        "ms_per_token": 1.741362,
+        "median_us": 37.03
+      },
+      {
+        "name": "leading dense Q4 gate/up dual",
+        "launches": 127,
+        "launches_per_token": 1,
+        "ms_per_token": 0.493633,
+        "median_us": 493.205
+      },
+      {
+        "name": "remaining Q4 down singleton",
+        "launches": 3048,
+        "launches_per_token": 24,
+        "ms_per_token": 0.601947,
+        "median_us": 24.967
+      }
+    ],
+    "q4_family_ms_per_token": {
+      "control": 3.018303,
+      "candidate": 2.836943,
+      "delta": -0.18136,
+      "delta_percent": -6.01
+    },
+    "dual_kernel_resources": {
+      "workgroup_size": 32,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "notes": [
+    "The benchmark-only counterbalanced selector was removed after admission; production now resolves the gfx1151 registry key directly.",
+    "A clean selector-unset production publication follows the implementation commit.",
+    "scripts/check_lineage.py --kind kernel --diff stat could not complete because the manifest references missing read-only peer /home/lhl/amd-gpu-tuning/reference/atlas."
+  ]
+}

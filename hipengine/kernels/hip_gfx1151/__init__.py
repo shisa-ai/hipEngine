@@ -28,6 +28,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
+)
 from hipengine.kernels.registry import (
     KernelKey,
     is_registered,
@@ -640,6 +643,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         register(
             target_key,
             _GFX1151_OVERRIDES.get((key.layer, key.quant, key.variant), source_fn),
+            replace=replace,
+        )
+    q4_pack8_decode_pair_key = KernelKey(
+        BACKEND,
+        "linear_pair",
+        "gguf_q4_k",
+        "pack8_dual_decode_bf16_bf16_out",
+    )
+    if replace or not is_registered(q4_pack8_decode_pair_key):
+        register(
+            q4_pack8_decode_pair_key,
+            gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
             replace=replace,
         )
 
