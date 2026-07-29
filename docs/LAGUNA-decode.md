@@ -5308,6 +5308,20 @@ The remaining attention sequence is:
     Evidence:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-primitive.json) ·
     [`runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-runtime-rejected.json).
+55. Pack staged BF16 V reads without reducing output-wave breadth.
+    **Rejected and removed at the leaf stop:** all eight active PV waves and
+    one accumulator per lane remain unchanged. Each even lane instead issues
+    one aligned 32-bit LDS load for a BF16 value pair and delivers the packed
+    word to its odd neighbor with row-shift DPP. Every probability, BF16
+    conversion, FMA, denominator, divide, gate, and store is unchanged.
+
+    The wrapped/evicted oracle is F32/BF16 byte-exact, but the 9x50 leaf
+    regresses **0.036950 -> 0.045846 ms (+24.075%)**. Cross-lane delivery
+    costs much more than the avoided per-lane 16-bit LDS read. Remove the
+    helper, template branch, export, wrapper, registry key, leaf selector, and
+    test call; skip tracing and resident integration. Production remains
+    **20.494732 tok/s**. Evidence:
+    [`packed-V-DPP rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-dpp-rejected.json).
 
 Current exact decode checkpoint:
 

@@ -191599,3 +191599,19 @@ Vulkan local sizes verbatim will close the measured gap.
   `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40-denom-prefetch4 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-denom-prefetch4-ab.json`
   (raw SHA-256 `06330c0d...d598d`, load excluded **88.238 s**). Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-denom-prefetch4-runtime-rejected.json`.
+
+## 2026-07-30 02:26 JST — Reject packed-V DPP replay
+
+- Screen a distinct exact staged-V replay that keeps all eight active PV waves
+  and one accumulator per lane. One even lane loads an aligned 32-bit BF16
+  pair from LDS and delivers it to its odd neighbor with row-shift DPP; every
+  probability, conversion, FMA, denominator, divide, gate, and store remains
+  unchanged.
+- RED fails importing the absent wrapper. GREEN passes the wrapped/explicitly
+  evicted oracle with byte-identical F32 context and gated BF16 output.
+- The 9x50 leaf regresses **0.036950 -> 0.045846 ms (+24.075%)**; raw
+  SHA-256 is `629bab30...c86e`. Remove the helper, template branch, export,
+  wrapper, registry key, leaf selector, and test call. Skip tracing and
+  resident integration. DPP delivery costs more than the avoided per-lane
+  16-bit LDS read. Production remains **20.494732 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-dpp-rejected.json`.
