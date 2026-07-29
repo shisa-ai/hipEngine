@@ -191190,3 +191190,38 @@ Vulkan local sizes verbatim will close the measured gap.
   throughput. Next audit the global exact probability cache/PV loop for the
   same contiguous vector-read opportunity. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json`.
+
+## 2026-07-30 00:13 JST — Retain global vector probability primitive
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before reports because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+  No external source is copied. The screen transfers only llama.cpp Vulkan's
+  tile-local probability-reuse mechanism from
+  `llama.cpp-vulkan@c0bc8591e` `flash_attn_cm1.comp`, not its lower-precision
+  cooperative QK/PV arithmetic.
+- The retained global kernel already stores complete normalized probability
+  planes in LDS but loads one scalar per PV token. Add a separately registered
+  exact successor that pads each plane to a four-float stride—keeping the
+  second plane aligned at live513/live639—and loads one `float4` per four
+  original PV iterations. Normalization, positivity tests, BF16 V conversion,
+  and accumulation order remain unchanged.
+- RED: the focused eviction test fails importing the absent wrapper. GREEN:
+  the live513/576/639 position-200 eviction oracle passes with byte-identical
+  F32 context and gated BF16 output. Python compilation passes.
+- Strong 21x100 leaves improve
+  **0.063256 -> 0.055029 ms (-13.006%)**,
+  **0.074390 -> 0.061559 ms (-17.248%)**, and
+  **0.081525 -> 0.073051 ms (-10.395%)**. Every shape has **21/21** paired
+  wins and complete sample separation. Raw 9x50/21x100 SHA-256 values are
+  `8875cfe8...57916e` / `3891d503...745c9`.
+- Cache-only tracing names
+  `<2,64,true,true,true,true,true,true,false,true,true>` at grid8192/
+  local256, VGPR48, SGPR128, static-LDS512, scratch0; no compiler runs under
+  profiling. Steady traced control/candidate medians are
+  **72.336 -> 63.419 us**. Trace/child SHA-256 values are
+  `76aa856b...95db4b` / `b45c9040...15d82b`.
+- Retain the primitive and leaf/oracle seam only. Production remains
+  **20.349871 tok/s**. Next add a default-off global-only selector and require
+  exact generated state plus a positive actual 12-layer p512/d128 result.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json`.

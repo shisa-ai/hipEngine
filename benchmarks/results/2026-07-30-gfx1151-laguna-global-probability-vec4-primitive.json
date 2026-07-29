@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T00:13:35+09:00",
+  "kind": "hipengine_laguna_global_probability_vec4_primitive",
+  "status": "primitive_admitted",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_context": {
+    "model": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "global_topology": "48Q/8KV/D128, GQA6, capacity 4096"
+  },
+  "source": {
+    "base_revision": "fe6c0d5aea2bdbde2a27fc6268617d54382a1b54",
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "comparator": "/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_check_result": "blocked before reports because /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "external_source_copied": false
+  },
+  "candidate": {
+    "name": "fused-mixed32-exp32-producer-max-dpp-qk-probability-vec4-vstage64-vec16-direct-assume-exp",
+    "change": "Pad each shared score/probability plane to a four-float stride and load four contiguous probabilities per PV iteration.",
+    "association": "Probability normalization, positive test, BF16 V conversion, and PV accumulation remain in original token order.",
+    "production_default_changed": false
+  },
+  "red_green": {
+    "red": "Focused eviction test failed importing the absent probability-vec4 wrapper.",
+    "green": "Focused live513/576/639 eviction test passes with byte-identical F32 context and gated BF16 output after adding the separately registered primitive.",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction"
+  },
+  "leaf": {
+    "protocol": {
+      "warmups": 10,
+      "samples": 21,
+      "burst": 100,
+      "explicit_eviction_position": 200
+    },
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.06325644016265869,
+        "candidate_median_ms": 0.05502933979034424,
+        "latency_change_percent": -13.005949040380937,
+        "paired_candidate_wins": 21,
+        "complete_sample_separation": true,
+        "context_f32_byte_exact": true,
+        "gated_bf16_byte_exact": true
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.07439021110534667,
+        "candidate_median_ms": 0.06155932903289795,
+        "latency_change_percent": -17.248078586950697,
+        "paired_candidate_wins": 21,
+        "complete_sample_separation": true,
+        "context_f32_byte_exact": true,
+        "gated_bf16_byte_exact": true
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.08152519226074219,
+        "candidate_median_ms": 0.07305091857910156,
+        "latency_change_percent": -10.394668747958713,
+        "paired_candidate_wins": 21,
+        "complete_sample_separation": true,
+        "context_f32_byte_exact": true,
+        "gated_bf16_byte_exact": true
+      }
+    ],
+    "raw_9x50_sha256": "8875cfe8fa829908c7fbdbce67bb3c518c3e26769cf9f8bd724dec477b57916e",
+    "raw_21x100_sha256": "3891d503ccec3216f4f32280417a36663e32085247dd93d95c9aa8789ea745c9",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-exp32-producer-max-dpp-qk-probability-vec4-vstage64-vec16-direct-assume-exp --samples 21 --warmups 10 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-dpp-probability-vec4-leaf-21x100.json"
+  },
+  "trace": {
+    "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2,64,true,true,true,true,true,true,false,true,true>",
+    "grid_threads": 8192,
+    "workgroup_threads": 256,
+    "vgpr": 48,
+    "sgpr": 128,
+    "static_lds_bytes": 512,
+    "scratch_bytes": 0,
+    "steady_control_median_us": 72.3355,
+    "steady_candidate_median_us": 63.419,
+    "kernel_trace_csv_sha256": "76aa856be76a0404922ed42d6ae9dd6dde78b49ce5da4b9731b32dbefc95db4b",
+    "child_sha256": "b45c90401dbc7b49797dce9022a405bdc91394b55829dce73ec49467ae15d82b",
+    "compiler_ran_under_profiler": false
+  },
+  "decision": "Retain the exact primitive and advance it to a default-off full-model selector. Production remains 20.349871 tok/s until the 12-global-layer gate passes."
+}
