@@ -189169,3 +189169,27 @@ Vulkan local sizes verbatim will close the measured gap.
   Scalar exact ownership/reuse is closed; the next material attention premise
   must tensorize QK/PV with a separately gated precision strategy. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-dim32-rejected.json`.
+
+## 2026-07-29 09:32 JST — Reject raw-numerator compensated-WMMA SWA
+
+- Recovered only the comparator-shaped tensorized GQA9/K64 premise and changed
+  its split state materially: each tile emits an unnormalized PV numerator
+  plus `(max, denominator)`, and the FP64 merge performs the only division.
+  This removes the rejected predecessor's local divide/global multiply
+  round trip without changing the 64 local256 workgroups or compensated-BF16
+  QK/PV.
+- RED was the absent wrapper. GREEN passes positions 512-519 after wrap and
+  eviction against the CPU oracle. The primitive differs from production by
+  at most **3.66e-8** in F32 context and 20 BF16 gate values.
+- Nine 50-launch samples retain the tensorized gain:
+  **0.081649 -> 0.034335 ms (-57.95%)**. The complete one-load
+  18-prompt/576-step quality gate is nevertheless rejected at max KL
+  **1.426066** with **555/576 (96.35%)** top-1; each category passes top-1 and
+  fails KL. Single normalization improves the prior compensated-WMMA max KL
+  **1.754897 -> 1.426066 (-18.73%)**, but remains **28.52x** over budget.
+- Removed kernel, wrapper, registry, runtime diagnostic flag, oracle call, and
+  temporary quality/leaf harness seams. Production remains exact at
+  **19.561715 tok/s**. This isolates compensated tensorized QK/PV error as the
+  remaining numerical blocker; split normalization was real but secondary.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-raw-numerator-rejected.json`.
