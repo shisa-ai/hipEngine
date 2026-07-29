@@ -5553,6 +5553,36 @@ The remaining attention sequence is:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json),
     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json),
     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-production.json).
+67. Re-profile the clean post-pre-normalization wall and re-anchor the llama
+    gap. **Complete:** the cached 127-transition p512/d128 trace measures
+    **46.910112 ms/token** kernel sum and **49.119568 ms/token** dispatch
+    span. Attention is **2.746352 ms/token**:
+    **1.754009 ms** across 36 SWA calls plus **0.992343 ms** across 12 global
+    calls. Against the post-mixed40 census, global falls
+    **1.004364 -> 0.992343 ms/token (-1.197%)** and SWA remains flat.
+
+    Same-GGUF llama.cpp Vulkan logs **0.909423 ms/token** attention. The
+    remaining **1.836929-ms** attention deficit is **30.83%** of the complete
+    **5.958544-ms/token** production wall gap. Source-F16 projection remains
+    the largest absolute family at **24.037891 ms/token**, but it is already
+    ahead of the comparator; the largest identified comparator-relative gap
+    remains attention. Evidence:
+    [`post-pre-normalization wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-prenorm-wall-reprofile.json).
+68. Amortize final SWA normalization through one reciprocal per query.
+    **Rejected and removed:** the existing final K64 denominator producer
+    computes one reciprocal per query and publishes it before the already
+    required barrier, replacing **9,216 output-lane divisions with 72
+    divisions plus multiplies** without a new launch or barrier.
+
+    The 9x50 leaf moves only
+    **0.037304 -> 0.037159 ms (-0.391%)**, an estimated
+    **0.00525 ms/token** across all 36 SWA layers. F32 context changes by at
+    most **1.86e-9** while this fixture's gated BF16 output remains identical,
+    but the gain is far below the material gate for a new numerical surface.
+    Stop before tracing, resident integration, or recurrent quality testing
+    and remove the diagnostic. Scalar final division is not the llama gap;
+    cooperative QK/PV remains the target. Evidence:
+    [`reciprocal-normalization rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-reciprocal-normalize-rejected.json).
 
 Current exact decode checkpoint:
 

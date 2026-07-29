@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T04:35:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_post_global_prenorm_decode_wall_reprofile",
+  "status": "accepted_attribution_checkpoint",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "df3f6cfd81e640e1e9ca0dc79d67058639f1d4b1",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls": 127,
+    "trace_directory": "/tmp/laguna-prenorm-wall.rj7xo9",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-prenorm-wall.rj7xo9 --output-file prenorm -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-prenorm-wall.rj7xo9/bench.json",
+    "trace_sha256": "21bb9e8f782d3a183aff7ea753be7d532151d8869fa7d52e8090e0c7ff93f9be",
+    "bench_sha256": "5a99cb1927b8c2833d3f98ed0f73faaaf1e47c183c8553b0336dd83773d8e914",
+    "segmentation": "Sort the two-queue trace by start timestamp and globally unique Dispatch_Id, close each request at argmax stage 2, discard warmup128 and timed prefill512, and report medians over 127 one-row embedding-through-argmax segments.",
+    "profiler_wall_tok_s": 19.804456,
+    "publication_wall_tok_s": 20.496815665674815,
+    "profiler_wall_is_attribution_only": true,
+    "tracked_clean": true,
+    "compiler_invocations_under_profiler": 0
+  },
+  "decode": {
+    "segments": 127,
+    "compute_dispatches_per_token": 816,
+    "median_kernel_sum_ms_per_token": 46.910112,
+    "median_kernel_span_ms_per_token": 49.119568,
+    "attention": {
+      "calls_per_token": 48,
+      "median_ms_per_token": 2.746352
+    },
+    "attention_breakdown": {
+      "swa_mixed40_calls_per_token": 36,
+      "swa_mixed40_median_ms_per_token": 1.754009,
+      "global_prenorm_calls_per_token": 12,
+      "global_prenorm_median_ms_per_token": 0.992343
+    },
+    "principal_family_medians_ms_per_token": {
+      "source_f16_projection": 24.037891,
+      "selected_q4_gate_up": 8.371274,
+      "selected_q4_q6_down": 4.795802,
+      "dense_shared_quant_projection": 3.521736,
+      "router": 1.064277,
+      "lm_head_argmax": 1.118941,
+      "norm_rope_gate": 1.057707,
+      "activation_reduce_residual": 0.177928
+    }
+  },
+  "comparison": {
+    "prior_post_mixed40_profile": {
+      "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-post-mixed40-wall-reprofile.json",
+      "kernel_sum_ms_per_token": 46.893051,
+      "kernel_span_ms_per_token": 49.116885,
+      "attention_ms_per_token": 2.761582,
+      "swa_attention_ms_per_token": 1.757218,
+      "global_attention_ms_per_token": 1.004364
+    },
+    "changes_percent": {
+      "kernel_sum": 0.036383,
+      "kernel_span": 0.005463,
+      "attention": -0.551492,
+      "swa_attention": -0.182619,
+      "global_attention": -1.196916
+    },
+    "llamacpp_vulkan_c0bc8591e": {
+      "wall_tok_s": 23.348381,
+      "wall_ms_per_token": 42.829522098341634,
+      "logged_attention_ms_per_token": 0.909423,
+      "hipengine_attention_gap_ms_per_token": 1.836929,
+      "hipengine_total_wall_gap_ms_per_token": 5.958544,
+      "attention_share_of_remaining_wall_gap": 0.308285,
+      "hipengine_attention_multiple": 3.019884
+    }
+  },
+  "finding": {
+    "result": "The promoted global probability pre-normalization transfers to the complete trace: global attention falls 1.004364 -> 0.992343 ms/token (-1.197%) while SWA remains flat.",
+    "priority": "Attention remains the largest identified same-GGUF comparator gap: 2.746352 versus 0.909423 ms/token, or 1.836929 ms/token and 30.83% of the remaining production wall gap.",
+    "llamacpp_mechanism": "Vulkan collapses grouped queries into Br16/Bc64 cooperative-matrix tiles, keeps online softmax state tile-local, splits K into 64 main workgroups at SWA512, and computes QK/PV with F16 cooperative arithmetic. hipEngine now shares exact probabilities, but its scalar F32 QK/PV association remains the main cost.",
+    "next_gate": "A material attention candidate must reduce cooperative QK/PV work or instruction latency. Scalar ownership, cache packing, denominator replay, and lower-precision WMMA without a new accuracy strategy are already closed."
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T04:37:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_reciprocal_normalize_rejected",
+  "status": "rejected_removed",
+  "pass": false,
+  "performance_claim": false,
+  "source": {
+    "base_revision": "df3f6cfd81e640e1e9ca0dc79d67058639f1d4b1",
+    "external_source_copied": false,
+    "llamacpp_comparison": "llama.cpp amortizes normalization inside its cooperative online-softmax tile; this diagnostic tests only the transferable final-normalization part."
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "On the final K64 stage, have the existing denominator-producer lane compute one reciprocal per query and publish it through LDS before the existing barrier; replace every output lane's final divide with a multiply.",
+    "divisions_per_launch_control": 9216,
+    "divisions_per_launch_candidate": 72,
+    "barrier_count_changed": false,
+    "dispatch_count_changed": false,
+    "resident_bytes_changed": 0,
+    "arithmetic_changed": true
+  },
+  "correctness": {
+    "context_f32_byte_exact": false,
+    "context_max_abs_error": 1.862645149230957e-09,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_max_abs_error": 0.0
+  },
+  "leaf": {
+    "protocol": "nine counterbalanced samples, five warmups, 50 launches per timed burst",
+    "control_median_ms": 0.037304399013519285,
+    "candidate_median_ms": 0.03715853929519653,
+    "latency_change_percent": -0.39099870840940687,
+    "estimated_saving_across_36_swa_layers_ms_per_token": 0.005251,
+    "raw_sha256": "769a313b8394de77ef4300f01b5c18bb2ea9b29c8e09da8a5c931ec98c9c456c",
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-exp32-producer-max-gate-stage-pcache-tail-producer-idle-vec4-denom-probability-reciprocal-normalize-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-reciprocal-normalize-leaf-9x50.json"
+  },
+  "decision": {
+    "result": "Reject before trace, resident integration, or recurrent quality testing. A 0.391% leaf gain is too small to justify changing the F32 attention contract and is below the material runtime gate.",
+    "production_changed": false,
+    "candidate_code_removed": true,
+    "production_tok_s": 20.496815665674815,
+    "next": "Do not revisit scalar final normalization. The remaining llama.cpp gap is cooperative QK/PV work, not division."
+  }
+}
