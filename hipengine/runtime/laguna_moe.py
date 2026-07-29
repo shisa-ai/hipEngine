@@ -47,6 +47,9 @@ _SELECTED_DUAL_NATURAL_TILE8_VARIANT = (
 _SELECTED_DUAL_NATURAL_TILE8_PARALLEL_VARIANT = (
     "selected_dual_t16_natural_tile8_parallel_gemv_decode_bf16_bf16_out"
 )
+_SELECTED_DUAL_NATURAL_TILE8_PARALLEL_SILU_VARIANT = (
+    "selected_dual_t16_natural_tile8_parallel_silu_gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DUAL_MMQ32_D4X3_VARIANT = (
     "selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -386,6 +389,12 @@ class LagunaMoEKernelPlan:
     natural_tile8_parallel_selected_gate_up_routes: Mapping[
         str, LagunaMoESelectedRoute
     ]
+    natural_tile8_parallel_silu_selected_gate_up_keys: Mapping[
+        str, KernelKey
+    ]
+    natural_tile8_parallel_silu_selected_gate_up_routes: Mapping[
+        str, LagunaMoESelectedRoute
+    ]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -468,6 +477,9 @@ class LagunaMoEKernelPlan:
             *tuple(self.natural_tile8_selected_gate_up_keys.values()),
             *tuple(
                 self.natural_tile8_parallel_selected_gate_up_keys.values()
+            ),
+            *tuple(
+                self.natural_tile8_parallel_silu_selected_gate_up_keys.values()
             ),
             self.selected_silu_key,
             self.selected_dual_silu_key,
@@ -1025,6 +1037,30 @@ def resolve_laguna_moe_plan(
             )
         }
     )
+    natural_tile8_parallel_silu_selected_gate_up_keys = MappingProxyType(
+        {
+            "gguf_q4_k_t16_v1": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_q4_k_t16_v1",
+                _SELECTED_DUAL_NATURAL_TILE8_PARALLEL_SILU_VARIANT,
+            )
+        }
+    )
+    natural_tile8_parallel_silu_selected_gate_up_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="t16_dual_silu",
+                allocation_name="tiles",
+                library_key="selected_gate_up",
+            )
+            for quant, key in (
+                natural_tile8_parallel_silu_selected_gate_up_keys.items()
+            )
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1176,6 +1212,12 @@ def resolve_laguna_moe_plan(
         ),
         natural_tile8_parallel_selected_gate_up_routes=(
             natural_tile8_parallel_selected_gate_up_routes
+        ),
+        natural_tile8_parallel_silu_selected_gate_up_keys=(
+            natural_tile8_parallel_silu_selected_gate_up_keys
+        ),
+        natural_tile8_parallel_silu_selected_gate_up_routes=(
+            natural_tile8_parallel_silu_selected_gate_up_routes
         ),
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
@@ -1535,6 +1577,41 @@ def _launch_selected_gate_up_t16(
     )
 
 
+def _launch_selected_gate_up_t16_silu(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    gate_ptr: int,
+    up_ptr: int,
+    hidden_ptr: int,
+    selected_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    x_rows: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        hidden_ptr,
+        selected_ptr,
+        gate_ptr,
+        up_ptr,
+        scratch.expert_intermediate.ptr,
+        x_rows,
+        lanes,
+        plan.expert_count,
+        plan.hidden_size,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
 def _launch_selected_gate_up_iq(
     route: LagunaMoESelectedRoute,
     plan: LagunaMoEKernelPlan,
@@ -1568,6 +1645,7 @@ def _launch_selected_gate_up_iq(
 _SELECTED_GATE_UP_ABIS = MappingProxyType(
     {
         "t16_dual": _launch_selected_gate_up_t16,
+        "t16_dual_silu": _launch_selected_gate_up_t16_silu,
         "raw_iq_dual_silu": _launch_selected_gate_up_iq,
     }
 )
@@ -1586,6 +1664,7 @@ def _launch_selected_gate_up(
     use_natural: bool = False,
     use_natural_tile8: bool = False,
     use_natural_tile8_parallel: bool = False,
+    use_natural_tile8_parallel_silu: bool = False,
 ) -> None:
     plan = scratch.plan
     gate = layer.weight("ffn_gate_exps")
@@ -1593,7 +1672,18 @@ def _launch_selected_gate_up(
     try:
         retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
         route = (
-            plan.natural_tile8_parallel_selected_gate_up_routes.get(
+            plan.natural_tile8_parallel_silu_selected_gate_up_routes.get(
+                gate.spec.quant_key,
+                retained_route,
+            )
+            if (
+                use_natural
+                and use_natural_tile8
+                and use_natural_tile8_parallel
+                and use_natural_tile8_parallel_silu
+                and x_rows == 1
+            )
+            else plan.natural_tile8_parallel_selected_gate_up_routes.get(
                 gate.spec.quant_key,
                 retained_route,
             )
@@ -2371,6 +2461,7 @@ def run_laguna_moe_c1_components(
     use_selected_natural_decode: bool = False,
     use_selected_natural_tile8_decode: bool = False,
     use_selected_natural_tile8_parallel_decode: bool = False,
+    use_selected_natural_tile8_parallel_silu_decode: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -2423,6 +2514,9 @@ def run_laguna_moe_c1_components(
         use_natural_tile8=use_selected_natural_tile8_decode,
         use_natural_tile8_parallel=(
             use_selected_natural_tile8_parallel_decode
+        ),
+        use_natural_tile8_parallel_silu=(
+            use_selected_natural_tile8_parallel_silu_decode
         ),
     )
     routed_down_weighted = _launch_weighted_selected_down(

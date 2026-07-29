@@ -153,6 +153,18 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         ].variant
         == "selected_dual_t16_natural_tile8_parallel_gemv_decode_bf16_bf16_out"
     )
+    assert (
+        plan.natural_tile8_parallel_silu_selected_gate_up_keys[
+            "gguf_q4_k_t16_v1"
+        ].variant
+        == "selected_dual_t16_natural_tile8_parallel_silu_gemv_decode_bf16_bf16_out"
+    )
+    assert (
+        plan.natural_tile8_parallel_silu_selected_gate_up_routes[
+            "gguf_q4_k_t16_v1"
+        ].abi
+        == "t16_dual_silu"
+    )
     assert {
         quant: route.key.variant
         for quant, route in plan.natural_selected_down_routes.items()

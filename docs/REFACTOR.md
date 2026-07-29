@@ -1938,6 +1938,18 @@ should be boring.
   natural tile16 and generic registered owners for unsupported
   shapes/backends.
 
+## Laguna selected tile8 parallel-tail SiLU selector
+
+- Added 2026-07-29 as
+  `LagunaGGUFResidentSession(..., use_selected_natural_tile8_parallel_silu_decode=False)`
+  plus `set_selected_natural_tile8_parallel_silu_decode(...)` and
+  `--compare-selected-tile8-parallel-silu-decode`. False keeps the retained
+  parallel tile8 gate/up plus standalone SiLU chain.
+- Promote only if every matched resident p512/d128 pair is exact and positive.
+  Then retain the two-launch chain as registered rollback through one clean
+  production/symbol checkpoint before removing the temporary setter/profile
+  seam. Remove the fused route and selector if the resident gate regresses.
+
 ## Laguna gfx1151 SWA exponential decode selector
 
 - Added 2026-07-29 as a default-off resident and category measurement seam for
