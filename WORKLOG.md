@@ -192169,3 +192169,38 @@ Vulkan local sizes verbatim will close the measured gap.
   comparison CLI, and test additions. The tracked code returns exactly to
   production `cb202f57c`; production remains **20.731612 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-denom-prefetch4-runtime-rejected.json`.
+
+## 2026-07-30 06:49 JST — Retain exact local512 V-stage128 replay
+
+- Reopen the wider-stage seam only after local512, shared probability replay,
+  tail probability producers, and producer-wave V-tail transport change the
+  synchronization balance. V128 preserves every QK, softmax, denominator, PV,
+  gate, conversion, and store association while reducing fixed-512 replay
+  from eight stages/sixteen workgroup barriers to four/eight. The old
+  local384 V128 rejection does not cover this body.
+- RED is the focused wrapped/evicted oracle importing the absent V128 wrapper.
+  GREEN passes after implementation. F32 context and gated BF16 are
+  byte-identical. The 9x50 leaf improves
+  **0.031164 -> 0.028979 ms (-7.011%)**; the stronger 21x100 leaf improves
+  **0.031216 -> 0.029120 ms (-6.717%)** and wins **21/21** pairs. Raw hashes
+  are `a97f586f...7897` / `04838b33...3a0`.
+- Cache-only native tracing names the intended `<128,...,512>` specialization
+  at grid40/local512, **VGPR176/SGPR128/LDS43,008/scratch0**. No compiler runs
+  under profiling. Trace hash is `7a5ee067...b80`.
+- Seven counterbalanced actual-model p512/d128 pairs move
+  **20.736052 -> 20.745421 tok/s (+0.04518%)**, or
+  **48.22519 -> 48.20341 ms/token (-0.02178 ms)**. Median paired change is
+  **+0.04193%** with **6/7** wins. Every run preserves tokens **2930/74107**,
+  trajectory SHA `94f803f7...bda32`, position 638, determinism, and teardown.
+  Raw hash is `b74c87ff...cf2d`.
+- Promote V128 at the already-qualified gfx1151 saturated natural shape,
+  retain the V64 wrapper/registry entry as exact rollback, remove the
+  temporary production comparison selector, and leave peer backend selection
+  unchanged. The wrapped/evicted GPU oracle, route/fallback test, and 35
+  profile-harness tests pass. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-retained.json`.
+- The mandatory lineage check
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before diff inspection by the pre-existing absent read-only checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this is an in-tree specialization,
+  not an external kernel port.
