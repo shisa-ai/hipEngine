@@ -5072,6 +5072,30 @@ The remaining attention sequence is:
     [`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json).
+46. Transfer vector probability replay to global attention. **Primitive
+    retained; runtime gate next:** unlike SWA, the retained global kernel
+    already stores its complete normalized probability plane in LDS, but PV
+    still consumes one scalar probability per token. The exact successor pads
+    each score/probability plane to a four-float stride, preserving alignment
+    at live513/live639, and consumes one `float4` per four original PV
+    iterations. Normalization, positivity test, BF16 V conversion, and
+    accumulation order remain unchanged.
+
+    RED fails on the absent wrapper. GREEN passes the explicit position-200
+    eviction oracle at live513/576/639 with byte-identical F32 context and
+    gated BF16 output. The stronger 21x100 leaf moves
+    **0.063256 -> 0.055029 ms (-13.006%)**,
+    **0.074390 -> 0.061559 ms (-17.248%)**, and
+    **0.081525 -> 0.073051 ms (-10.395%)**, with **21/21** paired wins and
+    complete sample separation at every shape. Cache-only tracing names the
+    distinct `<...,true>` specialization at grid8192/local256, VGPR48,
+    SGPR128, static-LDS512, scratch0; no compiler runs under profiling.
+    Retain the separately registered primitive. Production remains
+    **20.349871 tok/s** pending a default-off 12-global-layer resident gate.
+    This is the directly transferable part of llama.cpp Vulkan's tile-local
+    probability reuse; its cooperative lower-precision QK/PV arithmetic
+    remains outside the exact BF16 recurrent contract. Evidence:
+    [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json).
 
 Current exact decode checkpoint:
 

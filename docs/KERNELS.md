@@ -1859,6 +1859,20 @@ trajectory/state/lifecycle:
 [`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json).
+The same scalar-consumption seam is larger in global attention. Its retained
+kernel already stores complete normalized probability planes in LDS, but PV
+loads one scalar per token. Retain the separately registered exact
+`global_context_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape_spans`
+primitive. It pads each probability plane to a four-float stride so both
+query planes remain 16-byte aligned at live513/live639, then consumes one
+`float4` per four original PV iterations without changing normalization,
+positive tests, BF16 V conversion, or accumulation order. The explicit
+eviction oracle is F32/BF16 byte-exact. Strong 21x100 leaves improve
+live513/576/639 **13.006%/17.248%/10.395%**, with complete separation at
+every shape. Cache-only tracing names grid8192/local256, VGPR48, SGPR128,
+static-LDS512, scratch0 and no compiler. Retain the primitive pending a
+default-off 12-global-layer gate; production remains **20.349871 tok/s**:
+[`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
