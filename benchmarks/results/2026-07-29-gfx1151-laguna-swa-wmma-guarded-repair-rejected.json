@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_swa_wmma_guarded_repair_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "created_at": "2026-07-29T10:39:25+09:00",
+  "source_revision": "2961060f586d1769634b0e61064bc04b1713db47",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "compensated-BF16 WMMA GQA9/K64 raw-numerator attention followed by exact mixed32 owner repair when any approximate gated component is within 1024 F32 low-mantissa units of a BF16 midpoint",
+    "midpoint_guard_low_bits": 1024,
+    "control_median_ms": 0.08186909675598145,
+    "candidate_median_ms": 0.11880468368530274,
+    "latency_change_percent": 45.115420094851274,
+    "control_samples_ms": [
+      0.08363532066345215,
+      0.08186909675598145,
+      0.0816022777557373,
+      0.0819084358215332,
+      0.08359098434448242,
+      0.08182204246520997,
+      0.08116321563720703,
+      0.08180525779724121,
+      0.08422818183898925
+    ],
+    "candidate_samples_ms": [
+      0.12201778411865234,
+      0.11880778312683106,
+      0.11875740051269532,
+      0.11880468368530274,
+      0.11862378120422364,
+      0.11845146179199219,
+      0.12112290382385255,
+      0.12197649955749512,
+      0.11844508171081543
+    ]
+  },
+  "correctness": {
+    "red": "missing guarded-repair wrapper",
+    "green": "positions 512-519 after ring wrap plus explicit position-200 eviction",
+    "leaf_context_f32_byte_exact": true,
+    "leaf_gated_bf16_byte_exact": true,
+    "leaf_gated_bf16_mismatches": 0
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate wmma-gqa9-k64-guarded-repair --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-wmma-guarded-repair-leaf.json",
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50,
+    "raw_sha256": "fbef057cb410149a011204ee33732baf2aa5eee0dea2bc303e7cba25cb46ee3b"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "reason": "The 1024-low-bit guard needed for byte-exact BF16 output activates exact owner repair so broadly that the fast path plus repair is 45.12% slower than retained exact mixed32 exp32. Narrower 64/128/256/512 guards leave 9/4/2/1 BF16 mismatches on the wrap fixture.",
+    "production_decode_tok_s": 19.630076,
+    "next": "Improve the tensorized arithmetic itself before another quality gate; do not retry output-midpoint repair at grouped-owner granularity."
+  }
+}
