@@ -132,6 +132,20 @@ GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset(
     }
 )
 GGUF_RAW_K_PREFILL_VARIANT = "coltile"
+# WPF-H5D promotes the exact H5C producer/ordered-consumer chain after KL0,
+# byte-identical complete state, and clean +7.235%/+6.519% M512/M1024 gates.
+# Package policy owns only the seven qualified roles; BF16 K9216/N3072 and every
+# key/backend/row/capacity miss retain raw coltile. Explicit False is rollback.
+GGUF_Q5_F32_ORDERED_PREFILL = True
+GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
+    ("bf16", 3072, 1024): "coltile8_rowbatch4",
+    ("bf16", 3072, 12288): "coltile4_rowbatch8",
+    ("bf16", 6144, 3072): "coltile8_rowbatch4",
+    ("f32", 3072, 48): "coltile8_rowbatch4",
+    ("f32", 3072, 72): "coltile8_rowbatch4",
+    ("f32", 3072, 6144): "coltile8_rowbatch4",
+    ("f32", 3072, 9216): "coltile4_rowbatch8",
+}
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -193,6 +207,8 @@ __all__ = [
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_Q5_F32_ORDERED_PREFILL",
+    "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
