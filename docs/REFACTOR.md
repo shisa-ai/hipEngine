@@ -2110,3 +2110,8 @@ should be boring.
   After clean selector-unset publication, remove the comparison flag and
   session setter while retaining the architecture capability and registered
   mixed32/exp32 rollback.
+- Promotion gate passed 2026-07-29: all seven pairs improve
+  **19.978296 -> 19.993586 tok/s (+0.0765%, -0.0383 ms/token)** with complete
+  sample separation and exact state/lifecycle. The gfx1151 capability is now
+  default-on; clean selector-unset publication remains before selector
+  cleanup.
