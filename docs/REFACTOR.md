@@ -26,6 +26,10 @@ should be removed or collapsed.
   publish a clean selector-unset result, then remove the dedicated comparison
   switch after the next attention census. Keep producer-max without
   producer-gate as the exact rollback.
+- **Promotion gate passed 2026-07-29:** all seven exact resident pairs improve
+  **19.992650 -> 20.012052 tok/s (+0.097%)**. The gfx1151 architecture
+  capability is promoted. Keep the comparison switch through the pending clean
+  publication and post-promotion attention census, then remove it.
 
 ## Laguna exact SWA producer-maximum selector
 

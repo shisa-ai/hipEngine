@@ -1553,6 +1553,12 @@ wrap/eviction oracle is F32/BF16 byte-exact and the leaf improves
 **0.059058 -> 0.058680 ms (-0.641%)** at
 grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0:
 [`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json).
+All seven counterbalanced resident p512/d128 pairs improve, with exact
+generated state and lifecycle: median decode is
+**19.992650 -> 20.012052 tok/s (+0.097%)**. gfx1151 therefore promotes the
+producer-gate specialization while preserving producer-max as its exact
+rollback:
+[`producer-gate retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is

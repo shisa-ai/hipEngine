@@ -189874,3 +189874,22 @@ Vulkan local sizes verbatim will close the measured gap.
 - `docs/REFACTOR.md` records removal/promotion triggers. Next: seven matched
   resident Poolside Laguna S 2.1 p512/d128 control/candidate pairs with exact
   state and lifecycle checks.
+
+## 2026-07-29 14:53 JST — Promote exact SWA producer-gate owner
+
+- Seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M p512/d128
+  eager-c1 pairs all favor producer-gate. Median decode improves
+  **19.992650 -> 20.012052 tok/s (+0.097%)**; paired gains span
+  **+0.066% to +0.181%**.
+- Control/candidate generated IDs, next tokens, final positions, repeat
+  determinism, and allocation lifecycle are exact. The model is the bound
+  75,173,103,200-byte GGUF with SHA-256 `7da520c5...c5753f`; resident bytes
+  are 78,807,922,708.
+- Promote
+  `LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512`
+  on gfx1151. Producer-max without the producer-gate remains the exact
+  rollback.
+- Raw A/B SHA-256 is `cdd1bb22...e2fa`. Production's previously published
+  **19.986371 tok/s** remains the topline until a clean selector-unset
+  publication. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json`.

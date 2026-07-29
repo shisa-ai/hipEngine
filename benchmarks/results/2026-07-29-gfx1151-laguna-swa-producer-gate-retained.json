@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T14:53:42+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_producer_gate_resident_gate",
+  "status": "retained_promoted",
+  "performance_claim": true,
+  "source": {
+    "revision": "04e3b97a12ca90d8e2ebf609fc7570e37aa59aa1",
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "leaf_evidence": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "shape": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk_rows": 2048,
+    "attention_rows": 128,
+    "decode_forward_calls_per_sample": 127,
+    "warmup_rows": 128,
+    "repetitions": 7,
+    "timed_order": "control/candidate order alternates by repetition",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-producer-gate --output /tmp/laguna-p512-d128-swa-producer-gate-ab.json",
+    "raw_sha256": "cdd1bb224a401c1dd8002e2957d4abb47b3ab33c040bc47a8b5bd61062c2e2fa"
+  },
+  "timings": {
+    "control_median_decode_seconds": 6.352334568044171,
+    "control_median_decode_tok_s": 19.99264973209719,
+    "candidate_median_decode_seconds": 6.3461757868062705,
+    "candidate_median_decode_tok_s": 20.012052024155018,
+    "median_throughput_change_percent": 0.09704712640805635,
+    "paired_throughput_change_percent": [
+      0.18086771247121103,
+      0.10801174568420002,
+      0.08441137890957684,
+      0.09636702989661572,
+      0.09064675959584712,
+      0.06593751752619337,
+      0.09704712640805635
+    ],
+    "positive_pairs": 7,
+    "total_pairs": 7
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "pass": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_capability_promoted": true,
+    "rollback": "Disable LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 to restore the retained producer-max owner.",
+    "next_gate": "Run a clean selector-unset p512/d128 production publication, then remove the temporary comparison seam after the next attention census.",
+    "production_before_tok_s": 19.9863710167,
+    "production_after_tok_s": null
+  }
+}

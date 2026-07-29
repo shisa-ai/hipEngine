@@ -248,8 +248,10 @@ complete wall gap.
 An exact registered SWA successor now computes each per-head softplus gate
 once in the score phase and publishes it through the existing barrier. The
 wrap/eviction leaf improves **0.059058 -> 0.058680 ms (-0.641%)** with
-unchanged grid32/local384/VGPR104/LDS25,088/scratch0; production remains
-**19.986371 tok/s** pending its resident gate.
+unchanged grid32/local384/VGPR104/LDS25,088/scratch0. All seven exact resident
+p512/d128 pairs improve, moving median decode
+**19.992650 -> 20.012052 tok/s (+0.097%)**; gfx1151 promotes the
+specialization, pending a clean selector-unset publication.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention

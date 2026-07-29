@@ -341,10 +341,10 @@ LAGUNA_SWA_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
     True
 )
-# Compute each owned query's softplus gate once. Keep default-off until the
-# byte-exact registered primitive passes the resident p512/d128 wall gate.
+# Compute each owned query's softplus gate once. All seven byte-exact resident
+# p512/d128 pairs improve, so gfx1151 promotes the specialization.
 LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    False
+    True
 )
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
