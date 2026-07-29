@@ -5161,8 +5161,8 @@ The remaining attention sequence is:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json).
-49. Fill the device with a one-launch mixed40 SWA owner. **Retained as a
-    registered primitive pending the resident gate:** partition each KV
+49. Fill the device with a one-launch mixed40 SWA owner. **Retained and
+    promoted on gfx1151:** partition each KV
     head's nine queries as **2+2+2+2+1** instead of **2+2+2+3**. The grid
     grows **32 -> 40 blocks**, matching gfx1151's 40 CUs and removing the
     eight triple-query critical blocks. This spends 25% more K/V-owner
@@ -5178,9 +5178,17 @@ The remaining attention sequence is:
     scratch0; no compiler runs under profiling. This is the same transferable
     scheduling principle behind llama.cpp Vulkan's K-split breadth: keep
     enough independent cooperative tiles resident to fill the machine.
-    Production remains **20.425412 tok/s** pending seven exact
-    counterbalanced p512/d128 resident pairs. Evidence:
-    [`mixed40 primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json).
+
+    All seven counterbalanced p512/d128 resident candidates beat every
+    control with complete separation, moving median decode
+    **20.433014 -> 20.501083 tok/s
+    (+0.33313%, -0.16249 ms/token)**. Every row preserves tokens, trajectory,
+    final position, repeat determinism, and allocation lifecycle. Promote the
+    qualified gfx1151 capability, retain mixed32 as exact rollback, remove the
+    comparison-only CLI/cache seam, and leave peer backends unchanged. Clean
+    selector-unset publication remains next. Evidence:
+    [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json) ·
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json).
 
 Current exact decode checkpoint:
 

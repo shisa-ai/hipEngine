@@ -191390,3 +191390,24 @@ Vulkan local sizes verbatim will close the measured gap.
   **20.425412 tok/s**. Next run seven exact counterbalanced p512/d128
   resident pairs. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json`.
+
+## 2026-07-30 01:18 JST — Promote exact SWA mixed40 ownership
+
+- Add a default-off cache/profile comparison route and run seven
+  counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1
+  resident pairs. Every candidate beats every control with complete sample
+  separation. Median decode moves
+  **20.433014 -> 20.501083 tok/s
+  (+0.33313%, -0.16249 ms/token)**; paired changes span
+  **+0.31636% to +0.40935%**.
+- Every row preserves next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown. Raw output SHA-256 is
+  `944e2f75...b8fa`; model load **89.189 s** is excluded.
+- Promote
+  `LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512`
+  on gfx1151. Mixed32 remains exact rollback, peer backends stay unchanged,
+  and comparison-only cache/profile plumbing is removed. Focused
+  production-route/profile validation passes **2** tests. Clean
+  selector-unset production remains next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json`.
