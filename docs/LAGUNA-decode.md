@@ -5040,8 +5040,8 @@ The remaining attention sequence is:
     from the already-published contiguous K64 probability row inside PV while
     preserving every output dimension's 64-FMA order. Evidence:
     [`post-vector-denominator census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vec4-denom-wall-reprofile.json).
-45. Vectorize the published probability reads inside PV. **Retained primitive,
-    resident gate pending:** the output waves already consume one contiguous
+45. Vectorize the published probability reads inside PV. **Retained and
+    promoted:** the output waves already consume one contiguous
     K64 probability row, but the source expresses 64 scalar LDS reads per
     output dimension. The successor loads sixteen aligned `float4` values and
     issues x/y/z/w FMAs in the identical slot 0..63 sequence. This transfers
@@ -5054,10 +5054,17 @@ The remaining attention sequence is:
     screen improves **0.045306 -> 0.045174 ms (-0.290%)** with **21/21**
     paired wins. Cache-only tracing keeps grid32/local384, VGPR104, SGPR128,
     LDS25,600, and scratch0 unchanged and names the distinct candidate with no
-    compiler under profiling. Retain the registered primitive under the
-    first-class micro-win rule, but keep production at **20.358649 tok/s**
-    until seven counterbalanced resident pairs pass. Evidence:
-    [`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json).
+    compiler under profiling. All seven counterbalanced resident candidate
+    runs beat their paired controls, moving median decode
+    **20.366610 -> 20.379415 tok/s
+    (+0.06287%, -0.03085 ms/token)**. Every row preserves tokens, the exact
+    128-token trajectory, positions, repeat state, and allocation lifecycle.
+    Promote the qualified gfx1151 capability, retain scalar PV probability
+    reads as exact rollback, and remove the comparison-only CLI/session seam.
+    The preceding clean production value remains **20.358649 tok/s** pending
+    selector-unset publication. Evidence:
+    [`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json) ·
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json).
 
 Current exact decode checkpoint:
 
