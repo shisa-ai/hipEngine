@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T18:45:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_producer_gate_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "ace76785e6a31237ddad3a076034f1822a8ecce6",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "48Q/8KV/D128/global4096"
+  },
+  "candidate": {
+    "description": "Compute each query head's exact softplus gate once during the score phase, publish it through the existing score barrier, and reuse it across the 128 output dimensions.",
+    "premise": "Transfer the retained SWA producer-gate ownership pattern to the qualified global mixed32/exp32 producer-max body without changing QK, softmax, PV, output, or launch geometry."
+  },
+  "correctness": {
+    "red": "The focused global live513/576/639 eviction oracle failed before implementation because the producer-max-gate wrapper did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "green_result": "1 passed",
+    "explicit_eviction_position": 200,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true
+  },
+  "leaf": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.07317853927612304,
+        "candidate_median_ms": 0.07503159999847413,
+        "latency_change_percent": 2.5322461211735536,
+        "paired_wins": 0,
+        "paired_samples": 9
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.07988249778747558,
+        "candidate_median_ms": 0.08186373710632325,
+        "latency_change_percent": 2.480191999151904,
+        "paired_wins": 0,
+        "paired_samples": 9
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.08746642112731934,
+        "candidate_median_ms": 0.08974187850952148,
+        "latency_change_percent": 2.6015210784603893,
+        "paired_wins": 0,
+        "paired_samples": 9
+      }
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "trace_run": false,
+    "runtime_gate_run": false,
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "reason": "The exact candidate regresses every live-count median by 2.48-2.60%, with complete sample separation against it. Publishing the gate through LDS costs more than the per-output softplus operations in this global schedule.",
+    "next_gate": "Keep the retained global producer-max owner unchanged. Do not infer global producer ownership wins from the saturated-SWA body without a direct leaf screen."
+  }
+}

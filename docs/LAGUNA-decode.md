@@ -4625,6 +4625,22 @@ The remaining attention sequence is:
     [`selected-down parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json) ·
     [`selected-down parallel-tail retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-retained.json) ·
     [`selected-down parallel-tail production`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-production.json).
+26. Transfer producer-owned softplus gates from SWA to global attention.
+    **Complete and rejected:** one thread per owned query computes the same
+    FP32 softplus once before the score loop and publishes it through the
+    existing score barrier. The live513/576/639 oracle with an explicit
+    position-200 eviction remains F32/BF16 byte-exact, but all **27/27**
+    paired leaf samples regress. Medians move
+    **0.073179 -> 0.075032 ms (+2.53%)**,
+    **0.079882 -> 0.081864 ms (+2.48%)**, and
+    **0.087466 -> 0.089742 ms (+2.60%)**. The global schedule already hides
+    the repeated softplus well enough that the LDS publication/dependency
+    costs more than it removes. Remove the specialization, wrapper, registry
+    key, harness seam, and test extension before trace or runtime work.
+    Production remains **20.069608 tok/s**. Do not transfer SWA producer
+    ownership wins to global attention without a direct leaf screen.
+    Evidence:
+    [`rejected global producer gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-gate-rejected.json).
 
 Current exact decode checkpoint:
 
