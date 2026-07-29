@@ -1446,10 +1446,15 @@ M512 at KL **0.0003742**, top-1 **100%**, deterministic complete state, and exac
 teardown, but the binding 18-prompt/576-step lane rejects SGEMM reassociation at
 maximum KL **1.143627 > 0.05** despite **564/576 (97.917%)** top-1 and diagnostic
 prefill **152.359 -> 202.707 tok/s (1.330x)**. Remove the owner, workspace,
-capabilities, and tests; retain exact production plus the standalone leaf. H5B
-next qualifies the existing exact BF16-cache-to-F32 dense-initial hipBLASLt
-attention premise on gfx1100 behind complete `KVLiveSpans`. Do not stack rejected
-H1-H5A arithmetic or reopen P6/repair; launch fusion remains deferred at 0.500%.
+capabilities, and tests; retain exact production plus the standalone leaf. H5B's
+existing complete-`KVLiveSpans` F32 dense-initial hipBLASLt route now passes the
+W7900 transfer screen: tuned packed/wave leaf **109.897 -> 62.655 ms (1.754x)**,
+natural M512 KL **0.000429** / top-1 **100%** with deterministic complete state,
+and cached attention **488.304 -> 60.669 ms (8.049x)** while full kernel sum
+falls **3,001.692 -> 2,603.520 ms (-13.265%)**. Add only architecture-local
+algorithm/capability ownership next, then require multi-prompt changed-association
+quality before clean timing. Do not stack rejected H1-H5A arithmetic or reopen
+P6/repair; launch fusion remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

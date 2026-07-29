@@ -196,6 +196,24 @@ tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged
 **2,417** dispatches. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-{candidate,production}.json`.
 
+WPF-H5B independently qualifies the complete packed route on gfx1100/W7900 for
+Laguna Q2 XL. No device body is ported: the transfer reuses exact BF16-cache
+widening, complete `KVLiveSpans`, packed two-call F32 hipBLASLt QK/PV, wave32
+causal softmax, direct packed-query production, and the packed output gate.
+Start 0, partial, wrapped, evicted, verifier, decode, and unsupported routes stay
+exact. The basic eight-QK/eight-PV composition regresses. Screening all four
+available gfx1100 heuristics selects QK indices **2/1/3** at contexts
+**256/384/512** and PV index **2** for both 48/72 heads. The selected-context
+48-layer leaf improves **109.897 -> 62.655 ms (1.754x)** with max-row KL
+**1.10e-15**, top-1 **100%**, and max abs **4.84e-8**. An explicit natural-M512
+owner passes KL **0.000429**, token **2930**, deterministic complete state/KV,
+and lifecycle. Cached tracing names exactly **144** widen/QK/softmax/PV stacks,
+keeps **48** start-0 exact calls, and moves attention **488.304 -> 60.669 ms
+(8.049x)** while complete kernel sum falls **3,001.692 -> 2,603.520 ms
+(-13.265%)**. This admits a standalone transfer candidate only; gfx1100 package
+capability and multi-prompt changed-association quality remain pending. Evidence:
+`benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json`.
+
 The long-context successor extends that packed-query/library design without
 allocating a full-prefix score plane. Three separately registered dense-initial
 primitives widen one logical BF16 K/V block to F32, update per-row online
