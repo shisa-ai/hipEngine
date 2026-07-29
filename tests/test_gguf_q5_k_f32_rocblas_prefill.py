@@ -20,6 +20,7 @@ from hipengine.core.memory import (
 from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.cpu_reference import gguf_q5_k_gemv
 from hipengine.kernels.hip_gfx1100.convert.cast import build_cast
+from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as q5_raw
 from hipengine.kernels.hip_gfx1100.quant import gguf_q5_k_f32_rocblas_prefill as q5_f32
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
@@ -35,6 +36,7 @@ _SOURCE = (
     / "quant"
     / "gguf_q5_k_f32_rocblas_prefill.hip"
 )
+_ORDERED_GEOMETRIES = ((4, 8), (8, 4))
 
 
 def _hip_available() -> bool:
@@ -110,6 +112,7 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert q5_f32.q5_k_f32_rocblas_workspace_nbytes(17, 256, 72) == (
         (17 * 256 + 256 * 72 + 17 * 72) * 4
     )
+    assert q5_f32.q5_k_f32_ordered_workspace_nbytes(256, 72) == 256 * 72 * 4
 
     dequant_key = KernelKey(
         "hip_gfx1100", "dequant", "gguf_q5_k", "raw_f32_exact_local64"
@@ -166,6 +169,36 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
             KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
         )
 
+    for col_tile, row_batch in _ORDERED_GEOMETRIES:
+        for output_dtype in ("bf16", "f32"):
+            suffix = (
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            )
+            primitive = getattr(
+                q5_f32, f"gguf_q5_k_f32_weight_ordered_{suffix}"
+            )
+            composite = getattr(q5_f32, f"gguf_q5_k_f32_ordered_{suffix}")
+            primitive_key = KernelKey(
+                "hip_gfx1100", "linear", "f32_weight", f"ordered_{suffix}"
+            )
+            composite_key = KernelKey(
+                "hip_gfx1100", "linear", "gguf_q5_k", f"f32_ordered_{suffix}"
+            )
+            for key, function in (
+                (primitive_key, primitive),
+                (composite_key, composite),
+            ):
+                assert resolve(
+                    backend=key.backend,
+                    layer=key.layer,
+                    quant=key.quant,
+                    variant=key.variant,
+                ) is function
+                assert not is_registered(
+                    KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
+                )
+
     artifact = q5_f32.plan_gguf_q5_k_f32_rocblas_prefill_build(
         compiler_version="test"
     )
@@ -177,6 +210,8 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     source = _SOURCE.read_text()
     assert "torch::Tensor" not in source
     assert "__global__ void gguf_q5_k_dequantize_f32_exact_kernel" in source
+    assert "gguf_q5_k_f32_weight_ordered_coltile_kernel" in source
+    assert "COL_TILE * ROW_BATCH == 32" in source
 
 
 def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> None:
@@ -193,6 +228,14 @@ def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> Non
     with pytest.raises(ValueError, match="multiple of 256"):
         q5_f32.gguf_q5_k_f32_rocblas_bf16_f32_out(
             1, 2, 3, 4, 5, 6, 17, 384, 64
+        )
+    with pytest.raises(ValueError, match="multiple of 256"):
+        q5_f32.gguf_q5_k_f32_ordered_coltile4_rowbatch8_bf16_f32_out(
+            1, 2, 3, 4, 17, 384, 64
+        )
+    with pytest.raises(ValueError, match="divisible by 4"):
+        q5_f32.gguf_q5_k_f32_ordered_coltile4_rowbatch8_bf16_bf16_out(
+            1, 2, 3, 4, 17, 512, 66
         )
 
 
@@ -353,6 +396,94 @@ def _run_candidate(
     assert after["active_allocations"] == before["active_allocations"]
     actual = _bf16_to_f32(actual_raw) if output_dtype == "bf16" else actual_raw
     return actual, reference, x_f32_host
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+@pytest.mark.parametrize("rows", [17, 33])
+def test_q5_f32_ordered_geometries_match_raw_coltile_bytes(rows: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    in_features, out_features = 512, 48
+    rng = np.random.default_rng(20260730 + rows)
+    x_bf16 = _bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    qweight = _edge_q5_weight(out_features, in_features)
+    runtime = get_hip_runtime()
+    raw_library = q5_raw.build_gguf_k_gemv(load=True)
+    ordered_library = q5_f32.build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        x_dev = _device(x_bf16, runtime)
+        weight_dev = _device(qweight, runtime)
+        weight_f32_dev = malloc(
+            q5_f32.q5_k_f32_ordered_workspace_nbytes(
+                in_features, out_features
+            ),
+            runtime=runtime,
+        )
+        buffers.extend((x_dev, weight_dev, weight_f32_dev))
+        for output_dtype in ("bf16", "f32"):
+            host_dtype = np.uint16 if output_dtype == "bf16" else np.float32
+            expected = np.empty((rows, out_features), dtype=host_dtype)
+            actual = np.empty_like(expected)
+            expected_dev = malloc(expected.nbytes, runtime=runtime)
+            actual_dev = malloc(actual.nbytes, runtime=runtime)
+            buffers.extend((expected_dev, actual_dev))
+            control = getattr(
+                q5_raw,
+                f"gguf_q5_k_gemv_coltile4_rowbatch8_bf16_"
+                f"{output_dtype}_out",
+            )
+            control(
+                x_dev.ptr,
+                weight_dev.ptr,
+                expected_dev.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=raw_library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(expected),
+                expected_dev,
+                expected.nbytes,
+                runtime=runtime,
+            )
+            for col_tile, row_batch in _ORDERED_GEOMETRIES:
+                candidate = getattr(
+                    q5_f32,
+                    f"gguf_q5_k_f32_ordered_coltile{col_tile}_"
+                    f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                )
+                candidate(
+                    x_dev.ptr,
+                    weight_dev.ptr,
+                    actual_dev.ptr,
+                    weight_f32_dev.ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    library=ordered_library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                copy_device_to_host(
+                    host_array_ptr(actual),
+                    actual_dev,
+                    actual.nbytes,
+                    runtime=runtime,
+                )
+                np.testing.assert_array_equal(actual, expected)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    after = memory_stats()
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
