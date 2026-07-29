@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T23:26:51+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_vec4_denom_primitive",
+  "status": "retained_primitive_pending_resident_gate",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "cache-hot saturated-SWA leaf only; production remains unchanged pending seven resident p512/d128 pairs",
+  "source_revision": "e518b7d2bc047ca1be2eebae61c84ff8ac3b3d0e",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "family": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 32,
+    "threads_per_block": 384
+  },
+  "change": {
+    "description": "After the existing K64 probability/V publication barrier, producer lane zero reads the 64 aligned probabilities as sixteen float4 LDS vectors and replays the exact denominator in slot order while other waves perform PV.",
+    "arithmetic": "The QK products/tree, maxima, expf inputs/results, visible probabilities, 64 ordered denominator adds, per-dimension PV FMA/divide, F32 context, and RNE BF16 gated output are unchanged. Adding published zero probabilities for invisible slots leaves the positive denominator bit-identical.",
+    "resources": "Grid32/local384, VGPR104, SGPR128, LDS25,600, and scratch0 are unchanged.",
+    "production_changed": false,
+    "rollback": "The current stage-probability-cache specialization with wave-shuffle denominator replay remains production."
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed to import the absent vec4-denominator wrapper before implementation.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "wrapped_positions": [512, 513, 514, 515, 516, 517, 518, 519],
+    "explicit_eviction_position": 200,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-stage-pcache-vec4-denom-vstage64-vec16-direct-assume-exp --samples 21 --warmups 7 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-stage-pcache-vec4-denom-leaf-21x100.json",
+    "raw_sha256": "d8620972f8b406e54c994b214d9e492db0f07fd84b6799db1370178492123599",
+    "control": "production stage probability cache with wave-shuffle denominator replay",
+    "candidate": "stage probability cache with aligned float4 LDS denominator replay",
+    "control_median_ms": 0.0561161994934082,
+    "candidate_median_ms": 0.04520429134368897,
+    "latency_change_percent": -19.445201649839138,
+    "complete_sample_separation": true,
+    "paired_candidate_wins": 21,
+    "paired_samples": 21,
+    "confirmation_9x50": {
+      "control_median_ms": 0.05628131866455078,
+      "candidate_median_ms": 0.04533842086791992,
+      "latency_change_percent": -19.443215006835523,
+      "raw_sha256": "90d5168797accf8609d164021ea8add5cfe2ce8334c8eb8bfdeff49765c81d7c"
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-vec4-denom-trace.m6wkX5 --output-file vec4denom -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 1 --warmups 0 --burst 1 --candidate mixed32-exp32-producer-max-gate-stage-pcache-vec4-denom-vstage64-vec16-direct-assume-exp --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-vec4-denom-trace.m6wkX5/leaf.json",
+    "trace_sha256": "ea9bc2e789855d1c638999b985e215256c0300178686bfb2cf0a64d08db7ec83",
+    "leaf_sha256": "08cea24af0ca4e07de6e6781b520e64e9b86b71eda53e2a90ebc49de9fa7166e",
+    "compiler_invocations_under_profiler": 0,
+    "control_and_candidate_grid_size_x": 12288,
+    "control_and_candidate_workgroup_size_x": 384,
+    "control_and_candidate_vgpr_count": 104,
+    "control_and_candidate_sgpr_count": 128,
+    "control_and_candidate_lds_bytes": 25600,
+    "control_and_candidate_scratch_bytes": 0
+  },
+  "lineage": {
+    "external_source_copied": false,
+    "llamacpp_reference": "/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e",
+    "transferred_mechanism": "keep probability state tile-local and reuse the published tile instead of replaying cross-lane transport",
+    "literal_port": false
+  },
+  "decision": {
+    "retain": true,
+    "promote": false,
+    "reason": "The exact candidate improves two leaf screens by 19.44-19.45%, has complete sample separation, and preserves the production resource envelope.",
+    "next_gate": "Add a comparison-only gfx1151 route and run seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 pairs. Promote only on an exact positive resident result.",
+    "production_unchanged_tok_s": 20.270314
+  }
+}

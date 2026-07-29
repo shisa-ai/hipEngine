@@ -191034,3 +191034,27 @@ Vulkan local sizes verbatim will close the measured gap.
   parallel exact prefix/reduction or changed producer ownership. Raw SHA-256
   is `bfcf2f38...015f9f34`; evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json`.
+
+## 2026-07-29 23:26 JST — Retain vectorized SWA denominator primitive
+
+- Revisit the published-probability replay with aligned vector loads rather
+  than 64 scalar LDS reads. Producer lane zero loads sixteen `float4`
+  probability vectors after the existing publication barrier and performs
+  the same 64 ordered adds while other waves execute PV. Invisible slots
+  publish positive zero, so consuming them keeps denominator bits unchanged.
+- RED fails on the absent wrapper. GREEN passes the wrapped positions
+  512-519 plus explicit position-200 eviction with byte-identical F32 context
+  and BF16 gated output.
+- The cached 9x50 leaf improves
+  **0.056281 -> 0.045338 ms (-19.443%)**. The stronger 21x100 screen improves
+  **0.056116 -> 0.045204 ms (-19.445%)**, and all 21 candidate samples beat
+  every control. Raw SHA-256 values are `90d51687...65c81d7c` and
+  `d8620972...123599`.
+- Cache-only tracing names the control `<...,false>` and candidate
+  `<...,true>` at grid12288/local384, VGPR104, SGPR128, LDS25,600, and
+  scratch0. No compiler runs under the profiler; trace SHA-256 is
+  `ea9bc2e7...b7ec83`.
+- Retain the registered primitive and exact oracle/leaf seam. Production
+  remains **20.270314 tok/s** pending seven counterbalanced resident
+  p512/d128 pairs. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json`.
