@@ -4345,12 +4345,23 @@ The remaining attention sequence is:
    production; ordinary 40-block GQA2 is closed independently of register
    pressure. Evidence:
    [`rejected current-template GQA2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-exp32-current-template-rejected.json).
-4. Keep the retained **32-block 2+2+2+3** ownership and attack synchronization
-   instead. Ping-pong two 64-slot V buffers so the next buffer can be filled
-   after consuming the current one without an overwrite hazard. This preserves
-   every QK/softmax/PV operation while reducing staged-V block barriers
-   **16 -> 8**. Require at least a **5%** leaf reduction before full-model
-   integration; sub-percent instruction substitutions are closed.
+4. The exact synchronization screen is **complete and rejected**. Two
+   ping-pong 64-slot V buffers preserve every QK/softmax/PV operation and
+   reduce staged-V block barriers **16 -> 8**, but improve the leaf only
+   **0.081569 -> 0.081210 ms (-0.44%)**. Static LDS rises
+   **24,576 -> 40,960 bytes** and clang allocates **104 -> 224 VGPRs** under
+   both before-consume and after-consume copy schedules. It fails the
+   predeclared >=5% gate; all candidate code is removed before production.
+   Evidence:
+   [`rejected V-stage64 ping-pong`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-vstage64-pingpong-rejected.json).
+5. The next material design must raise arithmetic per K/V ownership/load
+   event, not merely alter synchronization. Revisit llama.cpp's cooperative
+   matrix GQA tile as a precision-design problem: retain its compact
+   GQA9/K64 ownership and tensorized QK/PV throughput, but establish an
+   independently valid score/numerator error bound or a higher-precision
+   cooperative accumulation before any whole-model quality run. The measured
+   scalar split merge, global score plane, output-derived repair, packed-BF16
+   dot2, and synchronization-only variants remain closed.
 
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with

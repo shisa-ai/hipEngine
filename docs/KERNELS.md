@@ -1522,9 +1522,15 @@ The first audit screen also closes a fresh current-template GQA2 rebuild.
 Keeping the local384 launch bound fixes the old **176 -> 104 VGPR** footprint,
 but 40 local256 blocks and five K/V owners regress the exact leaf
 **0.081815 -> 0.086925 ms (+6.25%)**. All code is removed before production.
-The next exact single-launch screen keeps mixed32 and ping-pongs two 64-slot V
-buffers, targeting the overwrite-only post-consume barrier:
+Ordinary 40-block GQA2 is closed independently of register pressure:
 [`rejected current-template GQA2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa2-exp32-current-template-rejected.json).
+The follow-up exact ping-pong screen is also closed. Two 64-slot V buffers
+halve staged-V barriers **16 -> 8**, but improve the leaf only
+**0.081569 -> 0.081210 ms (-0.44%)**. Static LDS rises
+**24,576 -> 40,960 bytes** and clang allocates **104 -> 224 VGPRs** under
+both before-consume and after-consume copy schedules. All code is removed
+before production:
+[`rejected V-stage64 ping-pong`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-vstage64-pingpong-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
