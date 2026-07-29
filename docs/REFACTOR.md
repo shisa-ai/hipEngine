@@ -2113,5 +2113,9 @@ should be boring.
 - Promotion gate passed 2026-07-29: all seven pairs improve
   **19.978296 -> 19.993586 tok/s (+0.0765%, -0.0383 ms/token)** with complete
   sample separation and exact state/lifecycle. The gfx1151 capability is now
-  default-on; clean selector-unset publication remains before selector
-  cleanup.
+  default-on.
+- Clean selector-unset publication passes at **19.986371 tok/s**, with exact
+  repeated state and the capability active. Remove the comparison CLI flag
+  and session setter at the next attention-census commit; retain the
+  architecture capability, cache field, and registered mixed32/exp32
+  rollback.

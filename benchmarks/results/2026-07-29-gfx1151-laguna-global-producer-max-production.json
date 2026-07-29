@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T14:10:06+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_producer_max_production",
+  "status": "retained_production",
+  "performance_claim": true,
+  "source": {
+    "revision": "bf21b6b84edc98730c17861d0a437a0a253f620a",
+    "tracked_clean": true,
+    "comparison_selector_set": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk": 2048,
+    "attention_chunk": 2048,
+    "swa_attention_chunk": 128,
+    "warmup_rows": 128,
+    "repetitions": 3,
+    "decode_forward_calls_per_run": 127,
+    "load_seconds_excluded": 89.16205145791173,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-producer-max-production.json",
+    "raw_sha256": "10494aab299d34e8ba509417737ae1a75b998694cbe03327b3fa69849493ac6d"
+  },
+  "selection": {
+    "capability": "LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE",
+    "capability_active": true,
+    "mixed32_exp32_parent_active": true,
+    "compare_global_producer_max": false
+  },
+  "performance": {
+    "decode_samples_tok_s": [
+      19.982796282218853,
+      19.988868067355465,
+      19.986371016716387
+    ],
+    "decode_median_tok_s": 19.986371016716387,
+    "prior_clean_median_tok_s": 19.9836104,
+    "change_vs_prior_clean_percent": 0.013814404209888664,
+    "ms_per_token_change_vs_prior_clean": -0.006911912221752914,
+    "paired_gate_control_tok_s": 19.978296393946355,
+    "paired_gate_candidate_tok_s": 19.993586110782825,
+    "paired_gate_change_percent": 0.07653163480496605,
+    "paired_gate_complete_sample_separation": true,
+    "sprint_start_tok_s": 11.466687,
+    "change_vs_sprint_start_percent": 74.29943816131362
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_position": 638,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_after_bytes": 0,
+    "tracked_after_allocations": 0
+  },
+  "comparator": {
+    "engine": "llama.cpp Vulkan",
+    "same_gguf_tok_s": 23.348381,
+    "vulkan_ahead_percent": 16.821512922339245,
+    "wall_gap_ms_per_token": 7.2045735943486875
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "interpretation": "The tracked-clean publication is aggregate-flat-to-positive; retention is supported by the positive leaf/resource trace and fully separated seven-pair resident A/B.",
+    "next_step": "Remove the comparison-only session setter and CLI flag, then re-profile the clean attention wall."
+  }
+}
