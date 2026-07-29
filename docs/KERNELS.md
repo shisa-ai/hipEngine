@@ -1949,6 +1949,12 @@ Tracked-clean selector-unset production is **20.494732 tok/s**,
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-tail-producer-production.json).
+The exact double-buffer successor is removed at the leaf stop. It reduces
+staged-loop barriers **16 -> 9** but adds **17,152 B** dynamic LDS and narrows
+pair-block next-stage loading to four waves; the byte-exact 9x50 leaf
+regresses **0.037106 -> 0.040897 ms (+10.219%)**. Do not retry without a
+different loader/overlap mechanism:
+[`double-buffer rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-double-buffer-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
