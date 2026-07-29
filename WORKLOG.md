@@ -192428,3 +192428,28 @@ Vulkan local sizes verbatim will close the measured gap.
 - Trace/child hashes are `7024d611...d903f` / `7145a070...299c`; no compiler
   ran under the profiler. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-q4-dual-silu-wall-reprofile.json`.
+
+## 2026-07-30 08:49 JST — Reject natural T16 selected-down weighting fusion
+
+- Implement a temporary exact Q4/planar-Q6 natural selected-down composite:
+  one local128 workgroup owns a 16-column output tile across ten routes,
+  preserves every route's four-wave reduction and BF16 projection boundary,
+  then executes the registered slot-order FP32 `fmaf` routing chain. RED fails
+  on the absent symbols; GREEN matches parallel natural projection plus
+  registered weighted sum with zero BF16 mismatches.
+- The strong actual-weight 21x100 leaf is mixed. Q4 regresses
+  **0.061010 -> 0.061287 ms (+0.455%)**; planar Q6 improves
+  **0.076066 -> 0.074024 ms (-2.685%)**. This is not sufficient to promote
+  from a cache-hot leaf.
+- A temporary Q6-only owner passes exact next/final tokens **2930/74107**,
+  trajectory SHA `94f803f7...bda32`, positions, determinism, and allocation
+  teardown, but fails all three complete p512/d128 pairs. Medians regress
+  **20.806487 -> 20.632451 tok/s (-0.8364%)**, or
+  **48.06193 -> 48.46734 ms/token (+0.40540 ms)**.
+- Root cause: serializing ten independent weight streams inside each output
+  tile loses route-level memory parallelism; removing one launch and 61,440
+  scratch bytes per Q6 layer cannot repay it. Remove the kernel, wrappers,
+  registry/runtime route, comparison CLI, harness seam, and oracle extension
+  before commit. Production remains **20.803189 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q6-natural-weighted-decode-rejected.json`.

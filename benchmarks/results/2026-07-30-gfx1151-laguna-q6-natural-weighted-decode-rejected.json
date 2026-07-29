@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T23:48:59.968933+00:00",
+  "kind": "hipengine_laguna_q6_natural_weighted_decode_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "scope": "Poolside Laguna S 2.1 Q4_K_M gfx1151 eager c=1 decode",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "7.15.0-0000000"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "description": "One local128 workgroup per T16 output tile serializes ten selected routes, preserves each projection's BF16 boundary, and applies routing weights through the unchanged slot-order FP32 fmaf chain.",
+    "removed_per_qualified_layer": {
+      "compute_launches": 1,
+      "expert_down_scratch_write_read_bytes": 61440
+    },
+    "retained_code": false
+  },
+  "leaf": {
+    "command": "uv run python scripts/laguna_selected_natural_decode_leaf.py --down-candidate weighted --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-natural-weighted-down-screen-strong.json",
+    "correctness": {
+      "q4_bf16_mismatches": 0,
+      "q6_bf16_mismatches": 0
+    },
+    "q4": {
+      "control_ms": 0.061010,
+      "candidate_ms": 0.061287,
+      "delta_percent": 0.455
+    },
+    "q6": {
+      "control_ms": 0.076066,
+      "candidate_ms": 0.074024,
+      "delta_percent": -2.685
+    }
+  },
+  "production_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compare-selected-down-natural-weighted-decode --allow-dirty --output /tmp/laguna-p512-d128-q6-natural-weighted-ab3.json",
+    "prompt_tokens": 512,
+    "decode_forward_calls": 127,
+    "control_tok_s": [
+      20.789954693555647,
+      20.806486528014485,
+      20.810382853896844
+    ],
+    "candidate_tok_s": [
+      20.63473298500982,
+      20.62607446738972,
+      20.632450978022597
+    ],
+    "control_median_tok_s": 20.806486528014485,
+    "candidate_median_tok_s": 20.632450978022597,
+    "delta_percent": -0.8364485265571431,
+    "control_ms_per_token": 48.06193485159398,
+    "candidate_ms_per_token": 48.467339196161724,
+    "delta_ms_per_token": 0.40540434456775437,
+    "correctness": {
+      "next_token_id": 2930,
+      "final_token_id": 74107,
+      "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+      "control_candidate_match": true,
+      "positions_exact": true,
+      "allocation_lifecycle_exact": true
+    }
+  },
+  "decision": {
+    "retained": false,
+    "reason": "Serializing ten route bodies inside each output-tile workgroup loses memory-level parallelism. The isolated Q6 leaf win does not survive the complete-model schedule and the production gate regresses by 0.836%.",
+    "cleanup": "Kernel, wrappers, registry route, runtime selector, comparison CLI, leaf extension, and test extension removed before commit.",
+    "next": "Return to attention only with a materially new exact-association or independently quality-safe cooperative design."
+  },
+  "repo": {
+    "base_revision": "aa7510489b09d1a1fab431b708eef7917e49af49",
+    "tracked_clean_after_cleanup": true
+  }
+}

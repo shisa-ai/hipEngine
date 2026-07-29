@@ -5913,6 +5913,29 @@ The remaining attention sequence is:
     weighting, transferring the existing in-tree IQ3 composite without
     changing the ten per-route BF16 projection boundaries:
     [`post-fusion wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-q4-dual-silu-wall-reprofile.json).
+83. Fuse natural T16 selected down with slot-ordered routing weights.
+    **Complete, rejected, and removed:** one local128 workgroup owns each
+    16-column output tile across all ten routes. Every route keeps the retained
+    K/FMA tree, ordered four-wave sum, and BF16 projection boundary before the
+    unchanged FP32 `fmaf` routing chain. Q4 and planar-Q6 focused oracles are
+    bit-exact.
+
+    The strong 21x100 actual-weight leaf is mixed: Q4 moves
+    **0.061010 -> 0.061287 ms (+0.455%)**, while Q6 moves
+    **0.076066 -> 0.074024 ms (-2.685%)**. A Q6-only temporary runtime owner
+    then fails the complete three-pair p512/d128 gate:
+    **20.806487 -> 20.632451 tok/s (-0.8364%)**, or
+    **48.06193 -> 48.46734 ms/token (+0.40540 ms)**. All next/final tokens,
+    the 128-token trajectory hash, positions, and allocation lifecycle remain
+    exact.
+
+    Serial route ownership removes one launch and 61,440 scratch bytes per Q6
+    layer but destroys too much route-level memory parallelism. Remove the
+    kernel, wrappers, key, runtime selector, comparison CLI, harness seam, and
+    oracle extension. Production stays **20.803189 tok/s**. Do not retry
+    serial top-10 ownership for natural T16; a viable weighted fusion must
+    retain route-parallel weight streaming:
+    [`Q6 natural-weighted rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q6-natural-weighted-decode-rejected.json).
 
 Current exact decode checkpoint:
 
@@ -5943,9 +5966,11 @@ isolated leaf but loses all seven resident pairs while expanding code 5.06x.
 The traced dense/shared dual-Q4 owner now consumes its SiLU boundary in-kernel,
 removing 48 launches/token and exact temporary BF16 traffic; tracked-clean
 production confirms the complete-model win. Quad-local metadata broadcast
-remains closed by decisive natural-shape regressions. The next exact boundary
-screen is T16 selected down plus routing weighting. Return to attention only for
-a materially new exact-association or quality-safe cooperative premise:
+remains closed by decisive natural-shape regressions. Exact T16 selected down
+plus routing weighting is also closed: serial top-10 ownership regresses
+complete decode by **0.8364%** despite an isolated planar-Q6 leaf win. Return
+to attention only for a materially new exact-association or quality-safe
+cooperative premise:
 both SWA and global stage-width successors win isolated leaves but fail to
 produce a reliable complete-model improvement.
 The comparator audit confirms why direct copying fails: the same-GGUF
