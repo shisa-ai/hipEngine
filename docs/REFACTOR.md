@@ -1945,8 +1945,8 @@ should be boring.
 
 - Added 2026-07-29 as the explicit gfx1100 constructor switch
   `use_q5_source_mmq`. It owns one bounded K-major DS4 workspace, resolves the
-  aligned Q5 policy through the four-axis registry, and retains exact
-  coltile/rowbatch for decode, M/N tails, unsupported roles, and gfx1151.
+  source-Q5 policy through the four-axis registry, and retains exact
+  coltile/rowbatch for c=1/small-M, N tails, unsupported roles, and gfx1151.
 - The first natural M512 deep-state gate passes at KL **0.0002241**, top-1
   **100%**, deterministic candidate repeat, finite state, and complete tracked
   allocation recovery. This is integration admission, not default promotion.
