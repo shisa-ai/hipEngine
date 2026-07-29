@@ -5687,6 +5687,16 @@ The remaining attention sequence is:
     trajectory/state/lifecycle. Evidence:
     [`clean global local512 production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-production.json).
 
+    A tracked-clean 127-transition cache-only census confirms the cumulative
+    local512 gains in the complete decode graph. Global attention falls
+    **0.992343 -> 0.659276 ms/token (-33.564%)**, SWA falls
+    **1.754009 -> 1.565501 ms/token (-10.747%)**, and total attention falls
+    **2.746352 -> 2.228985 ms/token (-18.838%)**. Median kernel sum/span are
+    now **46.404/48.563 ms/token**. The trace names exactly 12
+    grid32/local512 global calls and 36 grid40/local512 SWA calls per token,
+    with no scratch. Evidence:
+    [`post-local512 wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-local512-wall-reprofile.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -5703,8 +5713,12 @@ machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
 cover one logical token each; larger blocks add no score ownership. Global
 local512 confirms that the same saturation axis transfers when the original
 eight-wave denominator tree is held fixed: the extra waves help only the
-independent QK and value-transport phases. Clean production publication and a
-fresh attention census are next before returning to tensorized QK/PV.
+independent QK and value-transport phases. The fresh census leaves SWA as the
+dominant exact-attention family at **1.565501 ms/token**. Total attention
+remains **2.451x** llama.cpp Vulkan's logged **0.909423 ms/token**, a
+**1.319562-ms/token** gap representing **24.26%** of the complete remaining
+wall gap. The next bounded work is therefore another exact SWA scheduling or
+transport screen before returning to tensorized QK/PV.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects

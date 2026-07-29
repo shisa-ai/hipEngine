@@ -192082,3 +192082,21 @@ Vulkan local sizes verbatim will close the measured gap.
   position 638, determinism, and zero tracked bytes after teardown. Raw hash
   is `6c65e72f...eb32`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed32-local512-production.json`.
+
+## 2026-07-30 05:55 JST — Re-profile post-local512 decode
+
+- From tracked-clean `b91a660f1`, run one require-cached two-queue
+  `rocprofv3 --kernel-trace` p512/d128 process. No compiler runs under the
+  profiler; all 127 decode transitions preserve token **2930 -> 74107**,
+  trajectory SHA `94f803f7...bda32`, final position 638, and teardown.
+- Median kernel sum/span are **46.404232/48.563428 ms/token**. The cumulative
+  exact local512 promotions reduce global attention
+  **0.992343 -> 0.659276 ms/token (-33.564%)**, SWA
+  **1.754009 -> 1.565501 (-10.747%)**, and total attention
+  **2.746352 -> 2.228985 (-18.838%)**.
+- Same-GGUF llama.cpp Vulkan logs **0.909423 ms/token** attention. hipEngine's
+  remaining attention gap is **1.319562 ms/token**, or **24.26%** of the
+  complete **5.438898-ms/token** production wall gap. SWA is now the dominant
+  exact-attention target. Trace/child SHA-256 values are
+  `f3c2b5cb...0c15` / `6469dcf1...a36d`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-local512-wall-reprofile.json`.
