@@ -191615,3 +191615,18 @@ Vulkan local sizes verbatim will close the measured gap.
   resident integration. DPP delivery costs more than the avoided per-lane
   16-bit LDS read. Production remains **20.494732 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-dpp-rejected.json`.
+
+## 2026-07-30 02:30 JST — Reject packed-V LDS broadcast
+
+- Remove cross-lane delivery from the packed staged-V premise. Both lanes in
+  each pair read the same aligned 32-bit LDS word and select their own BF16
+  half, retaining eight output waves, one accumulator per lane, and every
+  arithmetic operation.
+- RED fails importing the absent wrapper. GREEN passes the wrapped/explicitly
+  evicted oracle with byte-identical F32 context and gated BF16 output.
+- The 9x50 leaf regresses **0.037053 -> 0.037558 ms (+1.363%)**; raw SHA-256
+  is `1a374735...116b33`. Remove the helper, template branch, export, wrapper,
+  registry key, leaf selector, and test call; skip tracing and resident
+  integration. Close staged-V word packing and retain the compiler's faster
+  16-bit LDS replay. Production remains **20.494732 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-broadcast-rejected.json`.
