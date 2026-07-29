@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T07:31:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_selected_gate_up_unroll12_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "30ce236336b41d2d6e801c489011021b90c1f7ee",
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15 AMD clang 23",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 for resident comparison"
+  },
+  "candidate": {
+    "scope": "exact fused selected gate/up at x_rows=1, rows=10, K=3072, N=1024",
+    "change": "fully unroll the fixed 12-block Q4_K T16 K loop while preserving K traversal, FMA order, wave reduction, BF16 boundaries, and fused SiLU",
+    "removed": true,
+    "production_unchanged": true
+  },
+  "correctness": {
+    "red": "the focused test first failed collection on the absent candidate wrapper",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "green_result": "1 passed",
+    "bf16_mismatches": 0,
+    "resident_next_token_id": 2930,
+    "resident_final_token_id": 74107,
+    "resident_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "resident_state_and_lifecycle_exact": true
+  },
+  "leaf": {
+    "directional_command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-unroll12 --gate-only --warmups 5 --samples 9 --burst 50 --allow-dirty --output /tmp/laguna-gate-unroll12-9x50.json",
+    "directional_control_ms": 0.13468274116516113,
+    "directional_candidate_ms": 0.13344362258911133,
+    "directional_delta_percent": -0.9200277372809595,
+    "directional_pair_wins": 7,
+    "directional_pairs": 9,
+    "strong_command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-unroll12 --gate-only --warmups 7 --samples 21 --burst 100 --require-cached-build --allow-dirty --output /tmp/laguna-gate-unroll12-21x100.json",
+    "strong_control_ms": 0.13417128562927247,
+    "strong_candidate_ms": 0.1327225971221924,
+    "strong_delta_percent": -1.0797306594221179,
+    "strong_pair_wins": 18,
+    "strong_pairs": 21,
+    "directional_raw_sha256": "436029cbac906f4054d6c15365268e9099989fede967a042bdb52dd4ec28e358",
+    "strong_raw_sha256": "641980bf3c8b4c8242f115f06690134a22b0fb8fc548d9164b7683a8eed93b30"
+  },
+  "code_object": {
+    "control": {
+      "logical_vgpr": 96,
+      "logical_sgpr": 34,
+      "group_segment_fixed_bytes": 256,
+      "private_segment_fixed_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0,
+      "code_bytes": 3400
+    },
+    "candidate": {
+      "logical_vgpr": 94,
+      "logical_sgpr": 31,
+      "group_segment_fixed_bytes": 256,
+      "private_segment_fixed_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0,
+      "code_bytes": 17220
+    },
+    "trace": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --stats --output-format csv --output-directory /tmp/laguna-gate-unroll12-trace --output-file trace -- .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-unroll12 --gate-only --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-gate-unroll12-trace-child.json",
+      "grid_x": 16384,
+      "grid_y": 10,
+      "local_x": 128,
+      "allocated_vgpr_control_candidate": [
+        96,
+        96
+      ],
+      "allocated_sgpr_control_candidate": [
+        128,
+        128
+      ],
+      "reported_lds_bytes": 512,
+      "scratch_bytes": 0,
+      "trace_sha256": "822f1db57ce005508fa8c7f6c84519506d141635a936986362184cef5cd50ee2",
+      "metadata_sha256": "67a625f18b9a38ba66c0416419873c73db084296f8ada8910ac13ae7ac5d8007",
+      "isa_sha256": "18cdf7784607607b4392508e4c4d892101b29389f9db92b2a4724d3863d9f8a2"
+    }
+  },
+  "resident": {
+    "protocol": "Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1, matrix chunk 2048, attention rows 128, seven counterbalanced pairs",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-natural-tile8-parallel-silu-unroll12-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-gate-unroll12-ab.json",
+    "control_median_tok_s": 20.743596694303616,
+    "candidate_median_tok_s": 20.68904244972507,
+    "throughput_delta_percent": -0.2629931799316587,
+    "control_median_ms_per_token": 48.20764762914087,
+    "candidate_median_ms_per_token": 48.334764764006216,
+    "delta_ms_per_token": 0.12711713486534404,
+    "median_paired_delta_percent": -0.27973851770695113,
+    "candidate_pair_wins": 0,
+    "pairs": 7,
+    "raw_sha256": "dec7a48345db8a5a72acf303e59542e8373f1038930251275dd2c0b60eaad7a4"
+  },
+  "decision": "Reject and remove the kernel, wrapper, registry route, exact-oracle addition, leaf selector, runtime route, and comparison CLI. The hot-cache leaf gain does not survive recurrent whole-model execution, while full unrolling expands the kernel text by 5.06x. Production remains 20.744351 tok/s."
+}

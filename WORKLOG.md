@@ -192266,3 +192266,36 @@ Vulkan local sizes verbatim will close the measured gap.
   new exact-association/traffic or quality-safe cooperative premise before
   more SWA work. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage-codeobject-audit.json`.
+
+## 2026-07-30 07:31 JST — Reject selected gate/up K3072 unroll12
+
+- Test the first post-attention selected-MoE address/K-loop contraction by
+  fully unrolling the fixed twelve-block K3072 loop in the exact fused tile8
+  gate/up owner. The candidate preserves K traversal, FMA/reduction order,
+  BF16 gate/up boundaries, SiLU arithmetic, and output storage.
+- RED is the focused natural selected-decode oracle importing the absent
+  wrapper; GREEN passes after implementation with zero BF16 mismatches. The
+  actual-weight 9x50 leaf improves **0.134683 -> 0.133444 ms (-0.920%)** with
+  **7/9** wins; the stronger 21x100 leaf improves
+  **0.134171 -> 0.132723 ms (-1.080%)** with **18/21** wins.
+- Cache-only native tracing names the intended control/candidate
+  specializations at grid16384x10/local128, allocated
+  VGPR96/SGPR128/LDS512/scratch0. Authoritative code-object metadata improves
+  logical VGPR **96 -> 94** and SGPR **34 -> 31**, with zero spills/private
+  segment and unchanged 256-byte fixed LDS, but text expands
+  **3,400 -> 17,220 B (5.06x)**. Trace/metadata/ISA hashes are
+  `822f1db5...950ee2` / `67a625f1...5d8007` /
+  `18cdf778...9f8a2`.
+- Seven counterbalanced actual-model p512/d128 pairs reverse the isolated
+  result: **20.743597 -> 20.689042 tok/s (-0.2630%)**, or
+  **48.20765 -> 48.33476 ms/token (+0.12712 ms)**. Production wins
+  **7/7** pairs and median paired change is **-0.27974%**. Every run preserves
+  tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, position 638,
+  determinism, and teardown. Raw hash is `dec7a483...ad7a4`.
+- Remove the kernel, wrapper, registry route, exact-oracle addition, leaf
+  selector, runtime route, and comparison CLI. Production returns byte-for-
+  byte to `30ce23633` at **20.744351 tok/s**. Fixed-K full unrolling is closed;
+  the next selected-MoE candidate must reduce actual traffic/address work or
+  fuse useful cross-output work without multiplying instruction footprint.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-selected-gate-up-unroll12-rejected.json`.
