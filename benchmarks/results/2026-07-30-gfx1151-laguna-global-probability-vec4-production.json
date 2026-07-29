@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T00:31:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_probability_vec4_production",
+  "status": "accepted_production",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "production_revision": "3029051e7bbe558dba46e9814b4e52213ff996dc",
+    "tracked_clean": true,
+    "comparison_selector_active": false,
+    "retained_artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "context_length": 4096,
+    "matrix_chunk": 2048,
+    "swa_attention_chunk": 128,
+    "warmup_rows": 128,
+    "repetitions": 3,
+    "decode_forward_calls_per_run": 127,
+    "load_seconds_excluded": 89.78791190311313,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-global-probability-vec4-production.json",
+    "raw_sha256": "e673d668dab17b712a7d7d5206c6aabc385def82da802333000e19e3869f58ba"
+  },
+  "performance": {
+    "samples_tok_s": [
+      20.403939994308722,
+      20.414791501507366,
+      20.418871228704017
+    ],
+    "median_tok_s": 20.414791501507366,
+    "median_ms_per_token": 48.98409077158521,
+    "prior_production_tok_s": 20.349870813039814,
+    "prior_production_ms_per_token": 49.14036109552198,
+    "absolute_checkpoint_change_percent": 0.3190226065872266,
+    "absolute_checkpoint_ms_per_token_change": -0.15627032393676932,
+    "paired_control_tok_s": 20.37340613916375,
+    "paired_candidate_tok_s": 20.40954390919103,
+    "paired_throughput_change_percent": 0.17737716403645187,
+    "paired_ms_per_token_change": -0.08690893085395146,
+    "paired_candidate_wins": 7,
+    "paired_trials": 7,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_change_percent": 78.0356566941037,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llamacpp_vulkan_ms_per_token": 42.829522098341634,
+    "remaining_wall_gap_ms_per_token": 6.154568673243577,
+    "remaining_throughput_gap_percent": 12.564423625315321
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_position": 638,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_after_bytes": 0,
+    "tracked_after_allocations": 0
+  },
+  "selection": {
+    "backend": "hip_gfx1151",
+    "capability": "LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE",
+    "active_without_selector": true,
+    "comparison_only_profile_route_removed": true,
+    "rollback": "registered exact producer-max DPP-QK global kernel with scalar probability replay",
+    "peer_backends_unchanged": true
+  },
+  "interpretation": "The tracked-clean selector-unset checkpoint confirms the retained global probability replay default. It improves 0.3190% over the preceding clean packet, agrees with the stronger seven-pair gate, and preserves the exact recurrent state and allocation lifecycle.",
+  "next": "Reprofile the complete 127-transition decode wall and attack the largest remaining post-change family."
+}
