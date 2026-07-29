@@ -189501,3 +189501,24 @@ Vulkan local sizes verbatim will close the measured gap.
   one-third structural scope; arbitrary layer-ID subsets would be benchmark
   gaming, not a repair. Raw SHA-256 is `004d2d45...6159a`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-tensorized-pv-role-rejected.json`.
+
+## 2026-07-29 12:59 JST — Reject exact mixed32 pair/triple launch split
+
+- RED required the absent pair/triple wrapper. GREEN covers positions 512-519
+  after ring wrap plus explicit position-200 eviction; both F32 context and
+  gated BF16 output are byte-exact.
+- The candidate keeps the retained QK reduction, exp32 issue, denominator
+  order, scalar PV association, gate, and stores. It replaces one 32-block
+  local384 dispatch with 24 local256 two-query blocks followed by eight
+  local384 three-query blocks on the same stream.
+- Nine 50-launch samples regress the saturated leaf
+  **0.081796 -> 0.178297 ms (+117.98%)**. The result fails the predeclared
+  >=5% leaf-win gate decisively, so no resource trace or resident-model run is
+  warranted. Two sequential underfilled grids erase the work/launch
+  amortization before reduced pair-owner idle waves can help.
+- Removed the template generalization, HIP/Python wrapper, registry entry,
+  oracle extension, and leaf-harness route. `git diff --exit-code` confirms
+  all four touched production/test/harness files match `b8ac51084` byte for
+  byte. Production remains **19.667705 tok/s**. Raw SHA-256 is
+  `bfb19b6b...8fe`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pair-triple-rejected.json`.

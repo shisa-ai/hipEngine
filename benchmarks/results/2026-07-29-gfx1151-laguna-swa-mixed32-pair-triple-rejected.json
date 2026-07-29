@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_mixed32_pair_triple_screen",
+  "status": "rejected_and_removed",
+  "created_at": "2026-07-29T12:58:37+09:00",
+  "source_revision": "b8ac51084dd738eff965ccabbebc599f5e2c72da",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "split the retained exact mixed32 owner into 24 local256 two-query blocks followed by eight local384 three-query blocks on the same stream",
+    "control_geometry": "one dispatch: 32 local384 blocks; 2+2+2+3 query partition per KV head",
+    "candidate_geometry": "two sequential dispatches: 24 local256 pair blocks plus eight local384 triple blocks",
+    "preserved_math": "same ordered QK reduction, exp32 issue, denominator order, scalar PV FMA association, gate, and stores",
+    "control_median_ms": 0.08179579734802246,
+    "candidate_median_ms": 0.1782967948913574,
+    "latency_change_percent": 117.97794100929808,
+    "raw_sha256": "bfb19b6bc6f68ae8068f593eb3f6fd7048dcf13eb104d7725a83313ee9ef08fe"
+  },
+  "correctness": {
+    "red": "missing pair/triple mixed32 wrapper",
+    "green": "positions 512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "result": "1 passed"
+  },
+  "commands": {
+    "correctness": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-pair-triple-exp32-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-mixed32-pair-triple-leaf.json"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "production_screen_run": false,
+    "trace_run": false,
+    "all_candidate_code_removed": true,
+    "production_unchanged_tok_s": 19.667705,
+    "reason": "The exact split regresses the leaf by 117.98%, far beyond the predeclared >=5% win gate. Sequential underfilled grids lose the single-dispatch K/V and launch amortization; a resource trace cannot rescue the failed wall-time gate.",
+    "next": "Keep one mixed32 dispatch. Pursue a single-launch cooperative body that increases arithmetic per K/V load without changing exact scalar PV association, or shift to the next measured non-attention wall family."
+  }
+}

@@ -4366,7 +4366,17 @@ The remaining attention sequence is:
    This closes tensorized PV even on an architecture-defined one-third SWA
    scope. Do not bisect arbitrary layer IDs. Evidence:
    [`rejected structural-role tensorized PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-tensorized-pv-role-rejected.json).
-6. The next material design must raise arithmetic per K/V ownership/load
+6. Separating the retained mixed owner by its natural query counts is
+   **complete and rejected**. The candidate preserves every arithmetic
+   operation but replaces one 32-block local384 dispatch with 24 local256
+   pair owners followed by eight local384 triple owners. The wrap/eviction
+   oracle is F32/BF16 byte-exact, yet the leaf regresses
+   **0.081796 -> 0.178297 ms (+117.98%)**. Eliminating four inactive output
+   waves from each pair owner cannot repay two sequential underfilled grids.
+   All candidate code is removed; do not retry mixed32 as separate launches.
+   Evidence:
+   [`rejected mixed32 pair/triple split`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pair-triple-rejected.json).
+7. The next material design must raise arithmetic per K/V ownership/load
    event, not merely alter synchronization. Revisit llama.cpp's cooperative
    matrix GQA tile as a precision-design problem: retain its compact
    GQA9/K64 ownership and tensorized QK/PV throughput, but establish an

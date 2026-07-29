@@ -186,6 +186,13 @@ No historical candidate code is ported. Tensorized PV is closed even for a
 principled one-third-depth scope; production remains **19.667705 tok/s** and
 future attention work must preserve scalar PV association or prove a
 higher-precision cooperative result.
+The exact mixed32 pair/triple launch split is also closed. Replacing one
+32-block local384 dispatch with 24 local256 pair blocks followed by eight
+local384 triple blocks preserves F32/BF16 output byte-for-byte, but regresses
+the saturated leaf **0.081796 -> 0.178297 ms (+117.98%)**. Two sequential
+underfilled grids cost far more than eliminating inactive pair-owner output
+waves; all candidate code is removed and production remains
+**19.667705 tok/s**.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
