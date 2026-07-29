@@ -1743,6 +1743,18 @@ Tracked-clean selector-unset production is
 **+76.776%** over sprint start. The new capability is active without a
 comparison route and exact repeated state/lifecycle passes:
 [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-production.json).
+The clean sorted two-queue census contains 127 one-token decode segments at
+**721 dispatches/token**, **47.554 ms** kernel sum, and **49.825 ms** span.
+Attention is **3.354 ms/token = 2.238 SWA + 1.107 global**, down
+**0.304 ms / 8.31%** from the post-producer-gate census but still
+**2.444 ms/token** behind same-GGUF llama.cpp Vulkan attention. The comparator
+gets there by collapsing grouped queries into a cooperative tile, retaining
+online-softmax state tile-locally, and reusing one published probability tile
+for PV; its F16 K/V and lower-precision cooperative arithmetic are not an
+exact drop-in for the BF16 recurrent contract. The next exact port is the
+same probability/V-stage publication schedule on the 12 global layers.
+Evidence:
+[`post-stage-cache census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-stage-pcache-wall-reprofile.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
