@@ -72,13 +72,6 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
         _parse_decode_output_tokens("32")
 
 
-def test_lpf5_parallel_tail_flag_enters_shared_comparison_contract() -> None:
-    values = {name: False for name in COMPARISON_ARGUMENTS}
-    values["compare_selected_natural_tile8_parallel_decode"] = True
-
-    assert _active_comparison_count(argparse.Namespace(**values)) == 1
-
-
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
     summary = _summarize_samples(
         [

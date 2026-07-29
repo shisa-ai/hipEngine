@@ -3051,11 +3051,6 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_tile8_decode = bool(enabled)
 
-    def set_selected_natural_tile8_parallel_decode(self, enabled: bool) -> None:
-        """Select the exact eight-lane reduction tail for natural tile8."""
-
-        self.use_selected_natural_tile8_parallel_decode = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 
