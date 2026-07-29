@@ -4554,9 +4554,15 @@ The remaining attention sequence is:
     grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0. Do not generalize the
     result: the otherwise identical global specialization regresses all
     live513/576/639 medians by **0.043-0.068%** and wins only 3/2/1 of nine
-    pairs, so it is removed. Production remains **20.056756 tok/s** until the
-    SWA-only primitive passes a resident p512/d128 gate. Evidence:
+    pairs, so it is removed. The SWA resident gate is also complete and
+    rejected: median decode changes
+    **20.060575 -> 20.063738 tok/s (+0.0158%)**, but only 6/7 pairs improve
+    and one loses **0.0713%**, larger than the projected saving. Remove the
+    capability, cache field, session setter, and profile comparison switch;
+    keep only the registered exact primitive for diagnostics. Production
+    remains **20.056756 tok/s**. Evidence:
     [`SWA gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json),
+    [`SWA runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-runtime-rejected.json),
     [`global rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json).
 
 Current exact decode checkpoint:
