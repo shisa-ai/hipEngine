@@ -139,7 +139,9 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
     )
     assert policy(512, 9_216, 3_072)
     assert policy(128, 3_072, 1_024)
-    assert not policy(511, 9_216, 3_072)
+    assert policy(511, 9_216, 3_072)
+    assert policy(17, 3_072, 1_024)
+    assert not policy(15, 3_072, 1_024)
     assert not policy(512, 3_072, 72)
     assert not is_registered(
         KernelKey("hip_gfx1151", policy_key.layer, policy_key.quant, policy_key.variant)

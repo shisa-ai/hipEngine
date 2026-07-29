@@ -677,14 +677,25 @@ def test_q5_source_mmq_activation_scope_packs_once_and_falls_back_exact(
                     runtime="runtime-sentinel",
                     stream=9,
                 )
-            # M tails are exact fallback too; the admitted runtime path is the
-            # aligned I128/J128 specialization measured at M512.
+            # Natural prompt tails use the source fallback specialization so
+            # the complete category quality lane exercises changed arithmetic.
             with q5_source_mmq_activation_session(100, 511, 3_072):
                 launch_gguf_linear(
                     weight,
                     x_ptr=100,
                     out_ptr=60_000_000,
                     rows=511,
+                    in_features=3_072,
+                    out_features=1_024,
+                    runtime="runtime-sentinel",
+                )
+            # Small verifier/decode-shaped rows retain the exact registered path.
+            with q5_source_mmq_activation_session(100, 15, 3_072):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=100,
+                    out_ptr=70_000_000,
+                    rows=15,
                     in_features=3_072,
                     out_features=1_024,
                     runtime="runtime-sentinel",
@@ -699,6 +710,8 @@ def test_q5_source_mmq_activation_scope_packs_once_and_falls_back_exact(
         "candidate",
         "candidate",
         "fallback",
+        "producer",
+        "candidate",
         "producer",
         "candidate",
         "fallback",

@@ -41,14 +41,13 @@ _SOURCE_MMQ_FLAGS = (
 class Q5SourceMMQPrefillPolicy:
     """Aligned source-MMQ admission for one caller-owned activation scope."""
 
-    row_tile: int = 128
+    min_rows: int = 16
     output_tile: int = 128
     k_tile: int = 256
 
     def __call__(self, rows: int, hidden: int, out_features: int) -> bool:
         return bool(
-            int(rows) >= self.row_tile
-            and int(rows) % self.row_tile == 0
+            int(rows) >= self.min_rows
             and int(hidden) > 0
             and int(hidden) % self.k_tile == 0
             and int(out_features) > 0
