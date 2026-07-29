@@ -90,6 +90,7 @@ COMPARISON_ARGUMENTS = (
     "compare_global_mixed32",
     "compare_selected_natural_decode",
     "compare_selected_natural_tile8_decode",
+    "compare_selected_tile8_parallel_silu_decode",
 )
 
 
@@ -344,6 +345,11 @@ def _parse_args() -> argparse.Namespace:
         "--compare-selected-natural-tile8-decode",
         action="store_true",
         help="counterbalance natural selected gate/up against exact tile8",
+    )
+    parser.add_argument(
+        "--compare-selected-tile8-parallel-silu-decode",
+        action="store_true",
+        help="counterbalance separate and fused SiLU on exact parallel tile8",
     )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
@@ -608,6 +614,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_selected_natural_tile8_decode
                 else None
             ),
+            use_selected_natural_tile8_parallel_silu_decode=(
+                False
+                if args.compare_selected_tile8_parallel_silu_decode
+                else None
+            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -812,6 +823,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_selected_natural_tile8_decode:
                         owner.set_selected_natural_tile8_decode(
+                            mode == "candidate"
+                        )
+                    if args.compare_selected_tile8_parallel_silu_decode:
+                        owner.set_selected_natural_tile8_parallel_silu_decode(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -1065,6 +1080,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_selected_natural_tile8_decode": (
                 args.compare_selected_natural_tile8_decode
+            ),
+            "compare_selected_tile8_parallel_silu_decode": (
+                args.compare_selected_tile8_parallel_silu_decode
             ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,

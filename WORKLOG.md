@@ -190067,3 +190067,25 @@ Vulkan local sizes verbatim will close the measured gap.
   **20.007890 tok/s**; next add a session-scoped default-off route and run a
   matched resident p512/d128 gate. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json`.
+
+## 2026-07-29 16:00 JST — Add default-off tile8 SiLU resident screen
+
+- RED first fails on the absent gfx1151 capability and names the missing plan
+  route, session setter, and shared comparison-contract entry. GREEN adds a
+  separately resolved `t16_dual_silu` route, default-off architecture
+  capability, constructor/session field, c1 dispatch flag, and
+  `--compare-selected-tile8-parallel-silu-decode`.
+- Control and candidate retain natural tile8 plus the promoted parallel tail;
+  only standalone versus tail-fused SiLU changes. Non-natural shapes and peer
+  backends remain on registered exact fallbacks.
+- Python compilation passes. The combined backend/plan/session/profile/MoE
+  run passes every affected check except one pre-existing Q6 rows64-versus-Q4
+  direct-down assertion. The same node fails identically at clean baseline
+  `301bcf624` in a detached temporary worktree, proving it is unrelated to
+  this gate/up/SiLU change. Preserve the broad passing evidence and baseline
+  reproduction per the focused-repair rule.
+- The complete backend, runner, profile-harness, and new plan-node bundle
+  passes **106/106** after that baseline audit.
+- `docs/REFACTOR.md` records the promotion/removal trigger. Production remains
+  **20.007890 tok/s**; next commit this default-off screen and run seven
+  counterbalanced resident p512/d128 pairs.
