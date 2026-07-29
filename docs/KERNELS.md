@@ -1892,9 +1892,13 @@ repeating that multiply. The eviction oracle is F32/BF16 byte-exact.
 Strong 21x100 live513/576/639 leaves improve **1.640%/1.503%/0.128%** with
 **21/21, 21/21, and 19/21** paired wins. Cache-only tracing names the distinct
 final-`true` specialization at grid8192/local256, VGPR48, SGPR128,
-static-LDS512, and scratch0. The primitive is pending its 12-global-layer
-resident gate:
-[`global probability pre-normalization primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json).
+static-LDS512, and scratch0. Seven counterbalanced p512/d128 resident pairs
+preserve exact state and move decode **20.501353 -> 20.503954 tok/s
+(+0.01269%)**, with **5/7** paired wins. gfx1151 selects the exact sibling by
+capability; the preceding probability-vec4 key remains fallback and other
+backends do not inherit it:
+[`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json),
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json).
 The following clean 127-transition census measures **721 compute + 5
 runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and
 **3.023432 ms/token** attention. Global falls
