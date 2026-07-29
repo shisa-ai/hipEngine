@@ -1707,6 +1707,18 @@ Tracked-clean selector-unset production is
 **+75.335%** over sprint start. The comparison-only session/profile seam is
 removed; the capability selects the registered sibling directly:
 [`global DPP-QK production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-production.json).
+Applying the same exact transport substitution to the saturated SWA owner is
+closed at the resident gate. Its wrap/eviction oracle is F32/BF16 byte-exact,
+and the cached 9x50 leaf improves
+**0.058897 -> 0.055084 ms (-6.47%)** at unchanged grid12288/local384,
+VGPR104/SGPR128/LDS25088/scratch0. However, all seven resident p512/d128
+pairs regress, with median decode
+**20.103985 -> 20.093891 tok/s (-0.0502%, +0.0250 ms/token)**. The temporary
+runtime selector is removed, production remains **20.105078 tok/s**, and the
+registered DPP sibling remains diagnostic only. This local384 body needs a
+materially different cooperative tile or resource profile, not another
+lane-transport-only retry. Evidence:
+[`rejected SWA DPP-QK runtime`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-dpp-qk-runtime-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

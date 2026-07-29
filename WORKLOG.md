@@ -190688,3 +190688,33 @@ Vulkan local sizes verbatim will close the measured gap.
   gap is now **6.909 ms/token**.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-production.json`.
+
+## 2026-07-29 20:58 JST — Reject exact SWA DPP-QK at resident gate
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before reports because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+  This screen applies the already in-tree exact DPP reduction idiom to the
+  retained saturated SWA owner; it does not copy an external parent.
+- RED: the focused wrap/eviction test failed importing the absent DPP wrapper.
+  GREEN: add a separately registered sibling that preserves the exact
+  128-term product/addition tree while replacing only its
+  **+16,+8,+4,+2,+1** lane transport. F32 context and BF16 gated output are
+  byte-exact through ring wrap and explicit position-200 eviction.
+- Cached 9x50 leaves improve
+  **0.058897 -> 0.055084 ms (-6.47%)** with complete leaf sample separation.
+  Cache-only tracing names the intended
+  `<64,true,true,true,true,false,false,false,true,true,true,true,true>`
+  specialization at grid12288/local384,
+  VGPR104/SGPR128/LDS25088/scratch0. Leaf and trace SHA-256 values are
+  `d0386071...f6f93c2` and `b834de8f...b8285`.
+- The seven-pair resident p512/d128 gate reverses the leaf:
+  **20.103985 -> 20.093891 tok/s (-0.0502%, +0.0250 ms/token)**, and every
+  paired candidate sample is slower. Generated token trajectory
+  `94f803f7...bda32`, final position 638, repeat determinism, and allocation
+  lifecycle remain exact. Raw SHA-256 is `a558709a...07668d`.
+- Remove the temporary runtime/session/profile comparison path. Retain only
+  the registered diagnostic primitive and leaf harness; production remains
+  **20.105078 tok/s**. Do not repeat DPP-only transport on the local384 body
+  without a materially different cooperative tile or resource profile.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-dpp-qk-runtime-rejected.json`.

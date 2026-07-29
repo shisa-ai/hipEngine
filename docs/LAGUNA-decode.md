@@ -4770,6 +4770,24 @@ The remaining attention sequence is:
     [`global DPP-QK retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-retained.json) ·
     [`global DPP-QK production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-dpp-qk-production.json).
 
+33. Apply exact DPP QK transport to the higher-volume saturated SWA owner.
+    **Primitive retained; runtime rejected:** the separate local384 sibling
+    preserves the 128-term product/addition tree exactly and replaces only
+    its **+16,+8,+4,+2,+1** lane transport. The wrapped, explicitly evicted
+    CPU/rollback oracle is F32/BF16 byte-exact. Cached 9x50 leaves improve
+    **0.058897 -> 0.055084 ms (-6.47%)**, and tracing confirms the expected
+    grid12288/local384 specialization at unchanged
+    VGPR104/SGPR128/LDS25088/scratch0.
+
+    The complete resident result reverses the leaf: every one of seven
+    p512/d128 candidate pairs is slower, with median decode
+    **20.103985 -> 20.093891 tok/s (-0.0502%, +0.0250 ms/token)**. Remove the
+    comparison-only runtime/session/profile route, retain only the registered
+    diagnostic primitive, and leave production at **20.105078 tok/s**. Do
+    not repeat a DPP-only substitution on this 384-thread body without
+    changing its cooperative tile or resource profile. Evidence:
+    [`SWA DPP-QK runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-dpp-qk-runtime-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
