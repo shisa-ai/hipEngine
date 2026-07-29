@@ -5871,6 +5871,26 @@ The remaining attention sequence is:
     fuse the dense/shared dual-Q4 gate/up result with its SiLU-product consumer
     to remove intermediate BF16 traffic and one launch per layer:
     [`dual-Q4 quad-metadata rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-quadmeta-rejected.json).
+81. Fuse the retained dual-Q4 gate/up owner with its immediate BF16
+    SiLU-product consumer. **Retained/default:** gate and up preserve their
+    independent BF16 rounding points in registers; the kernel widens those
+    exact values, performs the existing sigmoid and product expression, and
+    writes the same BF16 intermediate. Capability/registry/layout/shape/quant
+    misses retain the unfused pair-plus-SiLU chain.
+
+    Actual-weight 21x100 leaves improve shared M1 K3072 N1024
+    **0.014770 -> 0.012433 ms (-15.824%, 21/21 wins)** and dense M1 K3072
+    N12288 **0.474136 -> 0.469647 ms (-0.947%, 19/21 wins)** with zero BF16
+    mismatches. Cache-only tracing names the intended `true` specialization at
+    grid4096/grid49152, local32, **VGPR96/SGPR128/LDS512/scratch0**.
+
+    All seven actual-model p512/d128 pairs improve
+    **20.756829 -> 20.810024 tok/s (+0.2563%)**, or
+    **48.17692 -> 48.05376 ms/token (-0.12315 ms)**. Median paired speedup is
+    **+0.26088%**; tokens, trajectory, position, and allocation lifecycle are
+    exact. The default removes **48 launches/token** plus 483,328 bytes/token
+    of temporary gate/up write-read traffic:
+    [`dual-Q4 plus SiLU retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json).
 
 Current exact decode checkpoint:
 
@@ -5897,12 +5917,11 @@ V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
 grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
 address/K-loop contraction is now closed: full K3072 unrolling wins the
 isolated leaf but loses all seven resident pairs while expanding code 5.06x.
-The traced **2.234-ms/token** dense/shared dual-Q4 owner remains the next
-bounded family, but quad-local metadata broadcast is now closed by decisive
-natural-shape regressions. The next candidate is an exact dual-Q4 plus
-SiLU-product boundary fusion: preserve the current BF16 gate/up rounding
-points, then consume them in-kernel to remove temporary output traffic and a
-launch per layer. Return to attention only for
+The traced dense/shared dual-Q4 owner now consumes its SiLU boundary in-kernel,
+removing 48 launches/token and exact temporary BF16 traffic. Quad-local
+metadata broadcast remains closed by decisive natural-shape regressions.
+Publish the tracked-clean default, then reprofile the residual wall before
+choosing the next family. Return to attention only for
 a materially new exact-association or quality-safe cooperative premise:
 both SWA and global stage-width successors win isolated leaves but fail to
 produce a reliable complete-model improvement.

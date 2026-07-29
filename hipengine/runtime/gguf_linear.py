@@ -1161,6 +1161,82 @@ def launch_gguf_linear_pair(
     return False
 
 
+def launch_gguf_linear_pair_silu(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    use_gemv_decode: bool | None = None,
+) -> bool:
+    """Launch an exact registered gate/up pair plus SiLU, or return False."""
+
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
+    if rows != 1 or not _resolve_use_gemv_decode(use_gemv_decode):
+        return False
+    dispatch_a = resolve_gguf_linear_dispatch(
+        weight_a,
+        backend=resolved_backend,
+        rows=rows,
+    )
+    dispatch_b = resolve_gguf_linear_dispatch(
+        weight_b,
+        backend=resolved_backend,
+        rows=rows,
+    )
+    q4_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q4_k",
+        "pack8_bf16_bf16_out",
+    )
+    fused_key = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_decode_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(fused_key)
+    if (
+        dispatch_a.key != q4_decode
+        or dispatch_b.key != q4_decode
+        or not is_registered(fused_key)
+    ):
+        return False
+    fn = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    kwargs = {"stream": stream, "runtime": runtime}
+    library = None if libraries is None else libraries.get(fused_key.quant)
+    if library is not None:
+        kwargs["library"] = library
+    fn(
+        x_ptr,
+        weight_a.allocation("qweight").tensor.ptr,
+        weight_a.allocation("scales").tensor.ptr,
+        weight_a.allocation("mins").tensor.ptr,
+        weight_b.allocation("qweight").tensor.ptr,
+        weight_b.allocation("scales").tensor.ptr,
+        weight_b.allocation("mins").tensor.ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+    return True
+
+
 def _resolve_gguf_linear_pair_kind(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -2076,6 +2152,7 @@ __all__ = [
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
+    "launch_gguf_linear_pair_silu",
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",

@@ -75,6 +75,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_BOUNDARY_FUSION,
     LAGUNA_F16_DECODE_FIXEDK,
     LAGUNA_F16_DECODE_ONEBARRIER,
+    LAGUNA_Q4_PACK8_DUAL_SILU_DECODE,
     LAGUNA_SELECTED_NATURAL_DECODE,
     LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE,
     LAGUNA_SELECTED_NATURAL_TILE8_DECODE,
@@ -263,7 +264,13 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "linear_pair",
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
-        )
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "pack8_dual_decode_bf16_bf16_out",
+        ),
     ]
 
 
@@ -279,6 +286,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_BOUNDARY_FUSION is True
     assert LAGUNA_F16_DECODE_FIXEDK is True
     assert LAGUNA_F16_DECODE_ONEBARRIER is True
+    assert LAGUNA_Q4_PACK8_DUAL_SILU_DECODE is True
     assert LAGUNA_SELECTED_NATURAL_DECODE is True
     assert LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE is True
     assert LAGUNA_SELECTED_NATURAL_TILE8_DECODE is True

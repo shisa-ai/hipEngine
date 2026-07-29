@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
+    gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
 )
 from hipengine.kernels.registry import (
     KernelKey,
@@ -75,6 +76,10 @@ LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE = True
 # Promoted exact fusion: the qualified parallel tile8 owner materializes the
 # BF16 SiLU intermediate directly; all seven resident pairs are positive.
 LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = True
+# Exact dense/shared Q4 pair fusion preserves the two BF16 projection
+# boundaries in registers before applying the existing SiLU-product
+# expression. Seven resident p512/d128 pairs are exact and all positive.
+LAGUNA_Q4_PACK8_DUAL_SILU_DECODE = True
 # Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
 # 2048-row projection/MoE transactions while attention and physical KV writes
 # remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
@@ -743,6 +748,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
             replace=replace,
         )
+    q4_pack8_decode_pair_silu_key = KernelKey(
+        BACKEND,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_decode_bf16_bf16_out",
+    )
+    if replace or not is_registered(q4_pack8_decode_pair_silu_key):
+        register(
+            q4_pack8_decode_pair_silu_key,
+            gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
+            replace=replace,
+        )
 
 
 register_gfx1151_kernels()
@@ -779,6 +796,7 @@ __all__ = [
     "LAGUNA_F16_BOUNDARY_FUSION",
     "LAGUNA_F16_DECODE_FIXEDK",
     "LAGUNA_F16_DECODE_ONEBARRIER",
+    "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",
     "LAGUNA_SELECTED_NATURAL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",

@@ -70,6 +70,21 @@ trajectories and lifecycle. Cache-only tracing names
 reduces compute dispatches **816 -> 768/token**, and cuts the complete Q4
 pack8 family **3.018303 -> 2.836943 ms/token (-6.01%)**.
 
+The exact gfx1151 `linear_pair_silu/gguf_q4_k` successor retains both
+independent BF16 projection boundaries in registers, consumes them with the
+same SiLU-product expression, and writes only the BF16 intermediate. It owns
+the same **47 shared plus one leading-dense chains/token**, removes another
+**48 launches/token** and **483,328 bytes/token** of temporary gate/up
+write-read traffic, and retains the pair-plus-SiLU chain as the unfused
+fallback. Actual-weight 21x100 leaves improve shared
+**0.014770 -> 0.012433 ms (-15.824%)** and dense
+**0.474136 -> 0.469647 ms (-0.947%)** with zero BF16 mismatches. All seven
+resident p512/d128 pairs improve **20.756829 -> 20.810024 tok/s (+0.2563%,
+-0.12315 ms/token)** with exact trajectory/state/lifecycle. Native tracing
+names the `true` specialization at local32/VGPR96/SGPR128/LDS512/scratch0.
+Evidence:
+[`dual-Q4 plus SiLU retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json).
+
 ### Laguna gfx1151 exact cached-only qrow4 prefill
 
 The global/SWA `laguna_attention_prefill` family now registers cached-only

@@ -67,6 +67,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    launch_gguf_linear_pair_silu,
 )
 from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear,
@@ -2105,6 +2106,7 @@ class LagunaGGUFResidentSession:
         use_selected_natural_tile8_parallel_decode: bool | None = None,
         use_selected_natural_tile8_parallel_silu_decode: bool | None = None,
         use_selected_down_natural_parallel_decode: bool | None = None,
+        use_q4_pack8_dual_silu_decode: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2293,6 +2295,15 @@ class LagunaGGUFResidentSession:
             )
             if use_selected_down_natural_parallel_decode is None
             else use_selected_down_natural_parallel_decode
+        )
+        self.use_q4_pack8_dual_silu_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",
+                False,
+            )
+            if use_q4_pack8_dual_silu_decode is None
+            else use_q4_pack8_dual_silu_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -4937,52 +4948,69 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         scratch = self.scratch
         linear_libraries = self.libraries.linear
-        dense_pair = launch_gguf_linear_pair(
-            layer.weight("ffn_gate"),
-            layer.weight("ffn_up"),
-            scratch.norm.ptr,
-            scratch.dense_gate.ptr,
-            scratch.dense_up.ptr,
-            1,
-            config.hidden_size,
-            config.feed_forward_length,
-            backend=self.backend,
-            stream=stream,
-            libraries=linear_libraries,
-            runtime=self.runtime,
-            use_wmma_prefill=False,
-            use_gemv_decode=True,
-            registered_decode_only=True,
-        )
-        if not dense_pair:
-            for slot, output in (
-                ("ffn_gate", scratch.dense_gate),
-                ("ffn_up", scratch.dense_up),
-            ):
-                launch_gguf_linear(
-                    layer.weight(slot),
-                    scratch.norm.ptr,
-                    output.ptr,
-                    1,
-                    config.hidden_size,
-                    config.feed_forward_length,
-                    backend=self.backend,
-                    stream=stream,
-                    libraries=linear_libraries,
-                    runtime=self.runtime,
-                    use_wmma_prefill=False,
-                    use_gemv_decode=True,
-                )
-        self.kernel_plan.dense_silu(
-            scratch.dense_gate.ptr,
-            scratch.dense_up.ptr,
-            scratch.dense_intermediate.ptr,
-            1,
-            config.feed_forward_length,
-            stream=stream,
-            library=self.libraries.dense_silu,
-            runtime=self.runtime,
-        )
+        dense_silu_fused = False
+        if self.use_q4_pack8_dual_silu_decode:
+            dense_silu_fused = launch_gguf_linear_pair_silu(
+                layer.weight("ffn_gate"),
+                layer.weight("ffn_up"),
+                scratch.norm.ptr,
+                scratch.dense_intermediate.ptr,
+                1,
+                config.hidden_size,
+                config.feed_forward_length,
+                backend=self.backend,
+                stream=stream,
+                libraries=linear_libraries,
+                runtime=self.runtime,
+                use_gemv_decode=True,
+            )
+        if not dense_silu_fused:
+            dense_pair = launch_gguf_linear_pair(
+                layer.weight("ffn_gate"),
+                layer.weight("ffn_up"),
+                scratch.norm.ptr,
+                scratch.dense_gate.ptr,
+                scratch.dense_up.ptr,
+                1,
+                config.hidden_size,
+                config.feed_forward_length,
+                backend=self.backend,
+                stream=stream,
+                libraries=linear_libraries,
+                runtime=self.runtime,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+                registered_decode_only=True,
+            )
+            if not dense_pair:
+                for slot, output in (
+                    ("ffn_gate", scratch.dense_gate),
+                    ("ffn_up", scratch.dense_up),
+                ):
+                    launch_gguf_linear(
+                        layer.weight(slot),
+                        scratch.norm.ptr,
+                        output.ptr,
+                        1,
+                        config.hidden_size,
+                        config.feed_forward_length,
+                        backend=self.backend,
+                        stream=stream,
+                        libraries=linear_libraries,
+                        runtime=self.runtime,
+                        use_wmma_prefill=False,
+                        use_gemv_decode=True,
+                    )
+            self.kernel_plan.dense_silu(
+                scratch.dense_gate.ptr,
+                scratch.dense_up.ptr,
+                scratch.dense_intermediate.ptr,
+                1,
+                config.feed_forward_length,
+                stream=stream,
+                library=self.libraries.dense_silu,
+                runtime=self.runtime,
+            )
         launch_gguf_linear(
             layer.weight("ffn_down"),
             scratch.dense_intermediate.ptr,
@@ -5039,6 +5067,9 @@ class LagunaGGUFResidentSession:
             ),
             use_selected_down_natural_parallel_decode=(
                 self.use_selected_down_natural_parallel_decode
+            ),
+            use_q4_pack8_dual_silu_decode=(
+                self.use_q4_pack8_dual_silu_decode
             ),
         )
         config = self.weights.config

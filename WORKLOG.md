@@ -192350,3 +192350,36 @@ Vulkan local sizes verbatim will close the measured gap.
   `c4491c4ed` at **20.744351 tok/s**. Next screen exact dual-Q4 plus SiLU
   consumer-boundary fusion:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-quadmeta-rejected.json`.
+
+## 2026-07-30 08:18 JST — Retain exact dual-Q4 plus SiLU decode
+
+- Trace the retained 47 shared plus one leading-dense Q4 gate/up pairs to their
+  immediate `silu_mul_separate` consumer. Add a separately registered gfx1151
+  fused owner that rounds gate and up to BF16 in registers at the exact
+  production boundaries, widens those values, executes the existing sigmoid
+  and product expression, and writes only the BF16 intermediate. Registry,
+  layout, shape, quant, or capability miss keeps the unfused chain.
+- RED is the focused boundary test importing the absent wrapper; GREEN is
+  byte-exact against the retained dual owner plus standalone SiLU. The
+  registered route and gfx1151 scope test also pass.
+- Actual-weight 21x100 leaves improve shared M1 K3072 N1024
+  **0.014770 -> 0.012433 ms (-15.824%, 21/21 wins)** and dense M1 K3072
+  N12288 **0.474136 -> 0.469647 ms (-0.947%, 19/21 wins)** with zero BF16
+  mismatches. Raw hash is `09b0461c...9c16`.
+- Cache-only native tracing names
+  `gguf_q4_k_pack8_dual_prefill_out_kernel<unsigned short,true>` at
+  grid4096/grid49152, local32, **VGPR96/SGPR128/LDS512/scratch0**; no compiler
+  runs under the profiler. Trace hash is `e358b2ae...c584`.
+- All seven actual-model p512/d128 pairs improve
+  **20.756829 -> 20.810024 tok/s (+0.2563%)**, or
+  **48.17692 -> 48.05376 ms/token (-0.12315 ms)**. Median paired speedup is
+  **+0.26088%**. Every run preserves tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, position 638, determinism, and allocation teardown. Raw
+  hash is `f9e2f44d...e073`.
+- Promote the gfx1151 capability by default, removing **48 launches/token**
+  and 483,328 bytes/token of temporary gate/up write-read traffic. The focused
+  route/runner/profile bundle passes. A broader MoE file records 17 pass,
+  2 skip, and one independent Q6 production-shape oracle failure reproduced
+  in isolation; this change is Q4-only. Next publish a tracked-clean default
+  packet:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-silu-retained.json`.

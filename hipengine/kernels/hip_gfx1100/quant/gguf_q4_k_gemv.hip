@@ -947,7 +947,7 @@ __global__ void gguf_q4_k_pack8_prefill_out_kernel(
   }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool kFuseSilu>
 __launch_bounds__(128, 2)
 __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
     const scalar_t* __restrict__ x,
@@ -959,6 +959,7 @@ __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
     const float* __restrict__ mins_b,
     scalar_t* __restrict__ out_a,
     scalar_t* __restrict__ out_b,
+    scalar_t* __restrict__ out_silu,
     int rows,
     int in_features,
     int out_features,
@@ -976,6 +977,8 @@ __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
   float a4 = 0.0f, a5 = 0.0f, a6 = 0.0f, a7 = 0.0f;
   float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f, b3 = 0.0f;
   float b4 = 0.0f, b5 = 0.0f, b6 = 0.0f, b7 = 0.0f;
+  uint16_t gate0 = 0, gate1 = 0, gate2 = 0, gate3 = 0;
+  uint16_t gate4 = 0, gate5 = 0, gate6 = 0, gate7 = 0;
 
   const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
   const int64_t main_end = (in_features / vec_stride) * vec_stride;
@@ -1056,11 +1059,18 @@ __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
   {
     GGUF_Q4K_PACK8_REDUCE(a0, a1, a2, a3, a4, a5, a6, a7, ar0, ar1, ar2, ar3, ar4, ar5, ar6, ar7);
     if (tid == 0) {
-      const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
-      store_output<scalar_t>(out_a, out_base + 0, ar0); store_output<scalar_t>(out_a, out_base + 1, ar1);
-      store_output<scalar_t>(out_a, out_base + 2, ar2); store_output<scalar_t>(out_a, out_base + 3, ar3);
-      store_output<scalar_t>(out_a, out_base + 4, ar4); store_output<scalar_t>(out_a, out_base + 5, ar5);
-      store_output<scalar_t>(out_a, out_base + 6, ar6); store_output<scalar_t>(out_a, out_base + 7, ar7);
+      if constexpr (kFuseSilu) {
+        gate0 = float_to_bf16_bits(ar0); gate1 = float_to_bf16_bits(ar1);
+        gate2 = float_to_bf16_bits(ar2); gate3 = float_to_bf16_bits(ar3);
+        gate4 = float_to_bf16_bits(ar4); gate5 = float_to_bf16_bits(ar5);
+        gate6 = float_to_bf16_bits(ar6); gate7 = float_to_bf16_bits(ar7);
+      } else {
+        const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
+        store_output<scalar_t>(out_a, out_base + 0, ar0); store_output<scalar_t>(out_a, out_base + 1, ar1);
+        store_output<scalar_t>(out_a, out_base + 2, ar2); store_output<scalar_t>(out_a, out_base + 3, ar3);
+        store_output<scalar_t>(out_a, out_base + 4, ar4); store_output<scalar_t>(out_a, out_base + 5, ar5);
+        store_output<scalar_t>(out_a, out_base + 6, ar6); store_output<scalar_t>(out_a, out_base + 7, ar7);
+      }
     }
   }
   __syncthreads();
@@ -1068,15 +1078,42 @@ __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
     GGUF_Q4K_PACK8_REDUCE(b0, b1, b2, b3, b4, b5, b6, b7, br0, br1, br2, br3, br4, br5, br6, br7);
     if (tid == 0) {
       const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
-      store_output<scalar_t>(out_b, out_base + 0, br0); store_output<scalar_t>(out_b, out_base + 1, br1);
-      store_output<scalar_t>(out_b, out_base + 2, br2); store_output<scalar_t>(out_b, out_base + 3, br3);
-      store_output<scalar_t>(out_b, out_base + 4, br4); store_output<scalar_t>(out_b, out_base + 5, br5);
-      store_output<scalar_t>(out_b, out_base + 6, br6); store_output<scalar_t>(out_b, out_base + 7, br7);
+      if constexpr (kFuseSilu) {
+        const float g0 = bf16_bits_to_float(gate0), u0 = bf16_bits_to_float(float_to_bf16_bits(br0));
+        const float g1 = bf16_bits_to_float(gate1), u1 = bf16_bits_to_float(float_to_bf16_bits(br1));
+        const float g2 = bf16_bits_to_float(gate2), u2 = bf16_bits_to_float(float_to_bf16_bits(br2));
+        const float g3 = bf16_bits_to_float(gate3), u3 = bf16_bits_to_float(float_to_bf16_bits(br3));
+        const float g4 = bf16_bits_to_float(gate4), u4 = bf16_bits_to_float(float_to_bf16_bits(br4));
+        const float g5 = bf16_bits_to_float(gate5), u5 = bf16_bits_to_float(float_to_bf16_bits(br5));
+        const float g6 = bf16_bits_to_float(gate6), u6 = bf16_bits_to_float(float_to_bf16_bits(br6));
+        const float g7 = bf16_bits_to_float(gate7), u7 = bf16_bits_to_float(float_to_bf16_bits(br7));
+        const float sig0 = 1.0f / (1.0f + expf(-g0));
+        const float sig1 = 1.0f / (1.0f + expf(-g1));
+        const float sig2 = 1.0f / (1.0f + expf(-g2));
+        const float sig3 = 1.0f / (1.0f + expf(-g3));
+        const float sig4 = 1.0f / (1.0f + expf(-g4));
+        const float sig5 = 1.0f / (1.0f + expf(-g5));
+        const float sig6 = 1.0f / (1.0f + expf(-g6));
+        const float sig7 = 1.0f / (1.0f + expf(-g7));
+        store_output<scalar_t>(out_silu, out_base + 0, g0 * sig0 * u0);
+        store_output<scalar_t>(out_silu, out_base + 1, g1 * sig1 * u1);
+        store_output<scalar_t>(out_silu, out_base + 2, g2 * sig2 * u2);
+        store_output<scalar_t>(out_silu, out_base + 3, g3 * sig3 * u3);
+        store_output<scalar_t>(out_silu, out_base + 4, g4 * sig4 * u4);
+        store_output<scalar_t>(out_silu, out_base + 5, g5 * sig5 * u5);
+        store_output<scalar_t>(out_silu, out_base + 6, g6 * sig6 * u6);
+        store_output<scalar_t>(out_silu, out_base + 7, g7 * sig7 * u7);
+      } else {
+        store_output<scalar_t>(out_b, out_base + 0, br0); store_output<scalar_t>(out_b, out_base + 1, br1);
+        store_output<scalar_t>(out_b, out_base + 2, br2); store_output<scalar_t>(out_b, out_base + 3, br3);
+        store_output<scalar_t>(out_b, out_base + 4, br4); store_output<scalar_t>(out_b, out_base + 5, br5);
+        store_output<scalar_t>(out_b, out_base + 6, br6); store_output<scalar_t>(out_b, out_base + 7, br7);
+      }
     }
   }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool kFuseSilu>
 int launch_gguf_q4_k_pack8_dual_gemv_out(
     const scalar_t* x,
     const int32_t* qweight_a,
@@ -1087,13 +1124,15 @@ int launch_gguf_q4_k_pack8_dual_gemv_out(
     const float* mins_b,
     scalar_t* out_a,
     scalar_t* out_b,
+    scalar_t* out_silu,
     int64_t rows,
     int64_t in_features,
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
   if (x == nullptr || qweight_a == nullptr || scales_a == nullptr || mins_a == nullptr ||
-      qweight_b == nullptr || scales_b == nullptr || mins_b == nullptr || out_a == nullptr || out_b == nullptr ||
+      qweight_b == nullptr || scales_b == nullptr || mins_b == nullptr ||
+      (kFuseSilu ? out_silu == nullptr : (out_a == nullptr || out_b == nullptr)) ||
       rows <= 0 || in_features <= 0 || out_features <= 0 || (in_features % QK_K) != 0 ||
       (out_features % 8) != 0 || (threads != 32 && threads != 64 && threads != 128)) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -1101,8 +1140,8 @@ int launch_gguf_q4_k_pack8_dual_gemv_out(
   const int64_t out_packed = out_features >> 3;
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows));
-  gguf_q4_k_pack8_dual_prefill_out_kernel<scalar_t><<<grid, block, 0, stream>>>(
-      x, qweight_a, scales_a, mins_a, qweight_b, scales_b, mins_b, out_a, out_b,
+  gguf_q4_k_pack8_dual_prefill_out_kernel<scalar_t, kFuseSilu><<<grid, block, 0, stream>>>(
+      x, qweight_a, scales_a, mins_a, qweight_b, scales_b, mins_b, out_a, out_b, out_silu,
       static_cast<int>(rows), static_cast<int>(in_features), static_cast<int>(out_features), static_cast<int>(out_packed));
   return static_cast<int>(hipGetLastError());
 }
@@ -1449,7 +1488,7 @@ extern "C" int hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf16_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_pack8_dual_gemv_out<uint16_t>(
+  return launch_gguf_q4_k_pack8_dual_gemv_out<uint16_t, false>(
       x,
       qweight_a,
       scales_a,
@@ -1459,6 +1498,39 @@ extern "C" int hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf16_out(
       mins_b,
       out_a,
       out_b,
+      nullptr,
+      rows,
+      in_features,
+      out_features,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_dual_silu_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_pack8_dual_gemv_out<uint16_t, true>(
+      x,
+      qweight_a,
+      scales_a,
+      mins_a,
+      qweight_b,
+      scales_b,
+      mins_b,
+      nullptr,
+      nullptr,
+      out,
       rows,
       in_features,
       out_features,
