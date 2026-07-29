@@ -189834,3 +189834,24 @@ Vulkan local sizes verbatim will close the measured gap.
   18-prompt/576-step quality gate. Remove every candidate line and keep
   production at **19.986371 tok/s**. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-scaled-scores-rejected.json`.
+
+## 2026-07-29 14:39 JST — Retain exact SWA producer-gate primitive
+
+- RED required the missing producer-gate wrapper. GREEN passes the existing
+  position-512-519 wrap plus explicit position-200 eviction oracle; F32
+  context and gated BF16 output are byte-exact.
+- One score-phase thread per owned query computes the identical softplus once
+  and publishes it through the already-required score-to-output barrier.
+  QK, scores, producer maxima, exp32, ordered denominator/PV, final multiply,
+  rounding, stores, grid, and barriers remain unchanged.
+- Nine 50-launch samples improve the leaf
+  **0.059058 -> 0.058680 ms (-0.641%)**. Raw SHA-256 is
+  `5fe1798a...5c96`.
+- Cached tracing names control `<...,true,true,false>` and candidate
+  `<...,true,true,true>` at grid32/local384. Both use
+  VGPR104/SGPR128/LDS25,088/scratch0. Trace SHA-256 is
+  `e847df37...6e80`; profiled timing is attribution-only.
+- Retain the registered primitive. Production remains **19.986371 tok/s**
+  until a session-scoped gfx1151 selector passes matched resident
+  p512/d128 state/lifecycle/performance gates. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json`.

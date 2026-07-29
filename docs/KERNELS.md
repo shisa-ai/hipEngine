@@ -1545,6 +1545,15 @@ fixture, and timing is neutral at
 all candidate code is removed:
 [`rejected producer-scaled scores`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-scaled-scores-rejected.json).
 
+The separately registered exact producer-gate successor computes each owned
+query's softplus once in the score phase and publishes it through the existing
+barrier. QK, scores, producer maxima, exp32, denominator/PV order, final gate
+multiply, BF16 rounding, grid, and resources remain unchanged. The
+wrap/eviction oracle is F32/BF16 byte-exact and the leaf improves
+**0.059058 -> 0.058680 ms (-0.641%)** at
+grid32/local384/VGPR104/SGPR128/LDS25,088/scratch0:
+[`producer-gate leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json).
+
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
 **4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4
