@@ -4289,6 +4289,15 @@ capacity-4096/live<=4000 GQA2-exp32 route; the 24-block owner remains exact
 rollback. Evidence:
 [`retained global mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-retained.json).
 
+Three tracked-clean selector-unset runs on `ab2ea899c` measure
+**19.660256/19.667705/19.670663 tok/s**, median **19.667705**. That is
+**+0.1917% / -0.0975 ms/token** versus clean Q4-dual production and
+**+71.520%** over the 11.466687 sprint start. Mixed32 is active without a
+comparison selector; all three runs preserve tokens 2930/74107, trajectory,
+final position, determinism, and zero tracked allocations after teardown.
+Evidence:
+[`clean global mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json).
+
 This reopens one bounded exact global-attention sweep before returning to
 approximate tensor arithmetic:
 

@@ -2061,6 +2061,8 @@ should be boring.
   grid8192/local256/VGPR56/scratch0 specialization, and all seven resident
   pairs improve **19.641357 -> 19.668893 tok/s (+0.1402%, -0.0713
   ms/token)** with byte-exact attention and exact generated state.
+- Clean selector-unset production is **19.667705 tok/s**, **+0.1917% /
+  -0.0975 ms/token** over the preceding packet, with exact repeated state.
 - Keep the explicit false rollback through the bounded 32/40/split-launch
   ownership sweep and the next clean attention census. Then collapse positive
   selector semantics while retaining the 24-block GQA2 exp32 primitive as the

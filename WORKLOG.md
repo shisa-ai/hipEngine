@@ -189317,3 +189317,19 @@ Vulkan local sizes verbatim will close the measured gap.
   oracle/dispatch, runner selector, profile harness, and gfx1151 backend.
   The next bounded exact screen is a 40-block **2+1+1+1+1** owner, followed
   only on a positive leaf by the same production gate.
+
+## 2026-07-29 11:20 JST — Publish clean global mixed32 production
+
+- Three tracked-clean, selector-unset, require-cached p512/d128 runs on
+  `ab2ea899c` measure **19.660256/19.667705/19.670663 tok/s**, median
+  **19.667705**. This improves clean Q4-dual production
+  **19.630076 -> 19.667705 tok/s (+0.1917%, -0.0975 ms/token)**.
+- The artifact records the mixed32 capability active without a comparison
+  selector. All runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown.
+- Cumulative decode is **+71.520%** over the 11.466687 sprint start.
+  Same-GGUF llama.cpp Vulkan at 23.348381 tok/s remains **18.714%** ahead,
+  an **8.015-ms/token** wall gap. Raw artifact SHA-256 is
+  `7cddfc4a...383296`; clean load time **87.889 s** is excluded. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json`.
