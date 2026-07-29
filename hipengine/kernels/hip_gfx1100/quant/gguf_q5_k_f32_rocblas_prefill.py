@@ -1,4 +1,4 @@
-"""Transient exact-value Q5_K F32 expansion plus rocBLAS SGEMM prefill."""
+"""Transient exact-value Q5_K/Q6_K F32 expansion and ordered prefill."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q5_k_f32_rocblas_prefill.hip")
 _OUTPUT_NAME = "gguf_q5_k_f32_rocblas_prefill.so"
 _DEQUANT_SYMBOL = "hipengine_gguf_q5_k_dequantize_f32_exact"
+_Q6_DEQUANT_SYMBOL = "hipengine_gguf_q6_k_dequantize_f32_exact"
 _FUSED_PRODUCER_SYMBOL = (
     "hipengine_gguf_q5_k_dequantize_bf16_to_f32_exact_fused"
 )
@@ -134,6 +135,13 @@ def q5_k_f32_ordered_workspace_nbytes(
     return q5_k_f32_weight_nbytes(in_features, out_features)
 
 
+def q6_k_f32_ordered_workspace_nbytes(
+    in_features: int,
+    out_features: int,
+) -> int:
+    return q5_k_f32_weight_nbytes(in_features, out_features)
+
+
 def q5_k_f32_rocblas_workspace_nbytes(
     rows: int,
     in_features: int,
@@ -170,6 +178,40 @@ def gguf_q5_k_dequantize_f32_exact(
     library = library or build_gguf_q5_k_f32_rocblas_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     function = getattr(library, _DEQUANT_SYMBOL)
+    function.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    function.restype = ctypes.c_int
+    error = function(
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(outputs),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def gguf_q6_k_dequantize_f32_exact(
+    qweight_ptr: int,
+    out_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    hidden = _check_in_features(in_features)
+    outputs = _check_out_features(out_features)
+    library = library or build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    function = getattr(library, _Q6_DEQUANT_SYMBOL)
     function.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -324,8 +366,9 @@ def _make_q5_f32_weight_ordered(
     return launch
 
 
-def _make_q5_f32_ordered_composite(
+def _make_q_f32_ordered_composite(
     primitive,
+    dequantize,
     *,
     col_tile: int,
 ):
@@ -348,7 +391,7 @@ def _make_q5_f32_ordered_composite(
         if outputs % col_tile != 0:
             raise ValueError(f"out_features must be divisible by {col_tile}")
         runtime = runtime or get_hip_runtime()
-        gguf_q5_k_dequantize_f32_exact(
+        dequantize(
             qweight_ptr,
             weight_f32_ptr,
             hidden,
@@ -374,6 +417,7 @@ def _make_q5_f32_ordered_composite(
 
 _ORDERED_PRIMITIVES = {}
 _ORDERED_COMPOSITES = {}
+_Q6_ORDERED_COMPOSITES = {}
 _ORDERED_EXPORT_NAMES = []
 for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
     for _output_dtype in ("bf16", "f32"):
@@ -386,25 +430,40 @@ for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
         _composite_name = (
             f"gguf_q5_k_{_ORDERED_COMPOSITE_VARIANT.format(variant=_variant)}"
         )
+        _q6_composite_name = (
+            f"gguf_q6_k_{_ORDERED_COMPOSITE_VARIANT.format(variant=_variant)}"
+        )
         _primitive = _make_q5_f32_weight_ordered(
             _col_tile,
             _row_batch,
             _output_dtype,
         )
         _primitive.__name__ = _primitive_name
-        _composite = _make_q5_f32_ordered_composite(
+        _composite = _make_q_f32_ordered_composite(
             _primitive,
+            gguf_q5_k_dequantize_f32_exact,
             col_tile=_col_tile,
         )
         _composite.__name__ = _composite_name
+        _q6_composite = _make_q_f32_ordered_composite(
+            _primitive,
+            gguf_q6_k_dequantize_f32_exact,
+            col_tile=_col_tile,
+        )
+        _q6_composite.__name__ = _q6_composite_name
         globals()[_primitive_name] = _primitive
         globals()[_composite_name] = _composite
+        globals()[_q6_composite_name] = _q6_composite
         _key = (_col_tile, _row_batch, _output_dtype)
         _ORDERED_PRIMITIVES[_key] = _primitive
         _ORDERED_COMPOSITES[_key] = _composite
-        _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
+        _Q6_ORDERED_COMPOSITES[_key] = _q6_composite
+        _ORDERED_EXPORT_NAMES.extend(
+            (_primitive_name, _composite_name, _q6_composite_name)
+        )
 del _col_tile, _row_batch, _output_dtype, _variant
-del _primitive_name, _composite_name, _primitive, _composite, _key
+del _primitive_name, _composite_name, _q6_composite_name
+del _primitive, _composite, _q6_composite, _key
 
 
 def _launch_q5_f32_rocblas(
@@ -503,6 +562,11 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dequant", "gguf_q6_k", _DEQUANT_VARIANT),
+        gguf_q6_k_dequantize_f32_exact,
+        replace=replace,
+    )
+    register(
         KernelKey(
             "hip_gfx1100",
             "dequant_cast",
@@ -530,6 +594,9 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
         _ORDERED_PRIMITIVES.items()
     ):
         composite = _ORDERED_COMPOSITES[(col_tile, row_batch, output_dtype)]
+        q6_composite = _Q6_ORDERED_COMPOSITES[
+            (col_tile, row_batch, output_dtype)
+        ]
         variant = _ORDERED_PRIMITIVE_VARIANT.format(
             col_tile=col_tile,
             row_batch=row_batch,
@@ -550,6 +617,16 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
             composite,
             replace=replace,
         )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q6_k",
+                _ORDERED_COMPOSITE_VARIANT.format(variant=variant),
+            ),
+            q6_composite,
+            replace=replace,
+        )
 
 
 register_gguf_q5_k_f32_rocblas_prefill_kernels()
@@ -559,6 +636,7 @@ __all__ = [
     "build_gguf_q5_k_f32_rocblas_prefill",
     "gguf_q5_k_dequantize_bf16_to_f32_exact_fused",
     "gguf_q5_k_dequantize_f32_exact",
+    "gguf_q6_k_dequantize_f32_exact",
     "gguf_q5_k_f32_rocblas_bf16_bf16_out",
     "gguf_q5_k_f32_rocblas_bf16_f32_out",
     "plan_gguf_q5_k_f32_rocblas_prefill_build",
@@ -568,6 +646,7 @@ __all__ = [
     "q5_k_f32_rocblas_session_nbytes",
     "q5_k_f32_rocblas_workspace_nbytes",
     "q5_k_f32_weight_nbytes",
+    "q6_k_f32_ordered_workspace_nbytes",
     "register_gguf_q5_k_f32_rocblas_prefill_kernels",
     *_ORDERED_EXPORT_NAMES,
 ]
