@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T13:54:46+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_producer_max_leaf",
+  "status": "retained_registered_candidate",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "05f0ebb166db759b3642230a1e5e8e8ef96a5fc9",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "48Q/8KV/D128/global capacity4096/live513-639",
+    "geometry": "32 local256 workgroups; four owners per KV head partition six queries as 2+2+1+1"
+  },
+  "change": {
+    "mechanism": "Each of the eight score-producing waves accumulates one maximum per owned query while producing its existing strided score sequence, publishes the partial through the existing score barrier, and retains the existing wave-order final maximum reduction.",
+    "removed_work": "The kernel no longer rereads every materialized score to reconstruct the same eight partial maxima, and one workgroup barrier is removed.",
+    "unchanged": [
+      "QK multiplication, scale, and wave32 reduction tree",
+      "score and physical-slot materialization",
+      "eight-wave token partition and final maximum reduction order",
+      "compiler expf issue and ordered denominator reduction",
+      "per-dimension scalar PV FMA order",
+      "division, softplus gate, and stores",
+      "one-dispatch 32-block/local256 ownership"
+    ],
+    "extra_storage": "None; the candidate reuses the existing 2x8 F32 warp buffer."
+  },
+  "correctness": {
+    "red": "The focused live513/576/639 eviction oracle failed before implementation because the producer-max wrapper did not exist.",
+    "green_command": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "green_result": "1 passed",
+    "positions": "live513/576/639 with explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0,
+    "context_sha256_by_live": {
+      "513": "18102e2b363d3b80a24b56a8e7681adca2f91e0303220dd4b971098761fd951b",
+      "576": "3c940d7e4c514ec00df89e3c40c67f8d5e127d2cd45ca471e23c185de77b21ce",
+      "639": "a7cf7046bc3872a446594f13326227ff3af19f09f04e09b0d7461d7c77956730"
+    },
+    "gated_sha256_by_live": {
+      "513": "16e5d660f8b3c6012c1ac23bbedba6a55dd8ea85d7f36386cc82aa4c0afd3e33",
+      "576": "22355fb5b80b3a8bfdfcb31c6c8c0dd7fcf412b252d3b3625f0b1dc9c70d15cb",
+      "639": "9eb76a374547e21ecf1653c5b97afef52ff8512041fbe034096469a5213f9f68"
+    }
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-producer-max-leaf-pinned.json",
+    "raw_sha256": "6debc2b35ab44c31130f9c87bde4e0bd086fd50d3b94a4cb9e3459305ed90805",
+    "samples": 9,
+    "warmups": 5,
+    "launches_per_sample": 50,
+    "rows": {
+      "513": {
+        "control_median_ms": 0.07657939910888673,
+        "candidate_median_ms": 0.0731352186203003,
+        "latency_change_percent": -4.497528746196111
+      },
+      "576": {
+        "control_median_ms": 0.0839790153503418,
+        "candidate_median_ms": 0.0798729419708252,
+        "latency_change_percent": -4.889404052175383
+      },
+      "639": {
+        "control_median_ms": 0.09184257507324219,
+        "candidate_median_ms": 0.08736218452453613,
+        "latency_change_percent": -4.878337247331155
+      }
+    }
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-global-producer-max-trace.tBrD6v -o global-producer-max -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp --samples 1 --warmups 1 --burst 5 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-producer-max-trace.tBrD6v/leaf.json",
+    "raw_sha256": "1e603a029e050d182333f274a4cd2c073b6e28f97e5b9e6ebb1211a7820fa3f7",
+    "expected_control_template_observed": true,
+    "expected_candidate_template_observed": true,
+    "control": {
+      "grid_threads": 8192,
+      "workgroup_size": 256,
+      "allocated_vgpr": 56,
+      "allocated_sgpr": 128,
+      "static_lds_bytes": 512,
+      "scratch_bytes": 0,
+      "pooled_median_us": 78.146
+    },
+    "candidate": {
+      "grid_threads": 8192,
+      "workgroup_size": 256,
+      "allocated_vgpr": 48,
+      "allocated_sgpr": 128,
+      "static_lds_bytes": 512,
+      "scratch_bytes": 0,
+      "pooled_median_us": 74.299
+    },
+    "timing_use": "Resource and symbol attribution only; the non-profiled nine-sample leaf is the performance evidence."
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "environment_blocked",
+    "reason": "The checker cannot open the absent read-only external checkout /home/lhl/amd-gpu-tuning/reference/atlas; no source-lineage copy was used for this in-tree exact transformation."
+  },
+  "decision": {
+    "retained": true,
+    "runtime_default_changed": false,
+    "next_gate": "Add a session-scoped gfx1151 capability and run matched resident Poolside Laguna S 2.1 p512/d128 control/candidate pairs before promotion.",
+    "production_before_tok_s": 19.9836104,
+    "production_status": "unchanged"
+  }
+}

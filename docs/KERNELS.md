@@ -1495,6 +1495,19 @@ kernel sum **1.46%**. The residual attention gap to same-GGUF Vulkan is
 **2.778 ms/token**, **38.5%** of the complete wall gap:
 [`post-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-max-wall-reprofile.json).
 
+The same ownership rule now has a separately registered exact global
+candidate. Each of the eight score waves accumulates the maximum over its
+existing strided token sequence and publishes into the existing 2x8 F32 warp
+buffer before the score barrier. The final wave-order maximum reduction,
+scores, exp32, denominator, scalar PV, gate, and stores are unchanged; the
+materialized-score reread and one workgroup barrier disappear. The
+live513/576/639 eviction oracle is F32/BF16 byte-exact, and nine-sample leaves
+improve **4.50%/4.89%/4.88%**. Cached tracing keeps
+grid8192/local256/SGPR128/LDS512/scratch0 while VGPR falls **56 -> 48**.
+Retain the primitive for a matched resident p512/d128 gate; production remains
+**19.983610 tok/s** until that gate passes:
+[`global producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-leaf.json).
+
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
 **4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4

@@ -4426,7 +4426,17 @@ The remaining attention sequence is:
     **2.778-ms/token** attention gap is **38.5%** of the complete wall gap.
     Evidence:
     [`post-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-max-wall-reprofile.json).
-12. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
+12. Transfer score-producer maxima to global attention. **Primitive
+    complete; runtime gate pending:** the eight existing score waves now
+    publish their already-ordered partial maxima through the score barrier.
+    This removes the materialized-score reread and one barrier without new
+    LDS. The live513/576/639 eviction oracle is F32/BF16 byte-exact and leaves
+    improve **4.50%/4.89%/4.88%**; tracing keeps
+    grid8192/local256/LDS512/scratch0 and lowers VGPR **56 -> 48**. Next add a
+    session-scoped gfx1151 capability and run seven matched resident
+    p512/d128 pairs before promotion. Evidence:
+    [`global producer-max leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-leaf.json).
+13. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
     precision-design problem: retain its compact GQA9/K64 ownership and
     tensorized QK/PV throughput, but establish an independently valid
     score/numerator error bound or a higher-precision cooperative

@@ -189671,3 +189671,32 @@ Vulkan local sizes verbatim will close the measured gap.
   `--compare-swa-producer-max` and its session setter, retain the gfx1151
   architecture capability and registered mixed32/exp32 rollback. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-max-wall-reprofile.json`.
+
+## 2026-07-29 13:55 JST — Retain exact global producer maxima primitive
+
+- RED required the missing global producer-max wrapper. GREEN extends the
+  existing live513/576/639 fixture with explicit position-200 eviction; F32
+  context and gated BF16 output are byte-exact to the retained global
+  mixed32/exp32 route.
+- Each of eight score waves accumulates the maximum over the same strided
+  token sequence later used by the removed max pass, publishes into the
+  existing 2x8 F32 warp buffer before the score barrier, and preserves the
+  final wave-order reduction. This removes the score reread and one barrier;
+  QK, scores, exp32, denominator, scalar PV, gate, stores, and launch geometry
+  are unchanged.
+- Nine 50-launch samples improve live513/576/639
+  **0.076579 -> 0.073135 ms (-4.50%)**,
+  **0.083979 -> 0.079873 ms (-4.89%)**, and
+  **0.091843 -> 0.087362 ms (-4.88%)**. Raw SHA-256 is
+  `6debc2b3...90805`.
+- Cached tracing names control `<...,true,false>` and candidate
+  `<...,true,true>` at grid8192/local256. VGPR falls **56 -> 48**;
+  SGPR128/LDS512/scratch0 are unchanged. Trace SHA-256 is
+  `1e603a02...a3f7`; profiled timing is attribution-only.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
+  environment-blocked because the read-only Atlas checkout is absent at
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
+- Retain the registered primitive and leaf harness. Production remains
+  **19.983610 tok/s** until a session-scoped gfx1151 selector passes matched
+  resident p512/d128 state/lifecycle/performance gates. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-leaf.json`.
