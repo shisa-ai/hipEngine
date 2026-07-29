@@ -189284,3 +189284,36 @@ Vulkan local sizes verbatim will close the measured gap.
   intrinsically or provide an independently valid cheap error bound.
   Raw SHA-256 is `1d96afe...f496b`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-component-repair-rejected.json`.
+
+## 2026-07-29 11:15 JST — Retain exact global mixed32 exp32 decode
+
+- Re-audited llama.cpp Vulkan attention and corrected the working premise:
+  production already selected the 24-block GQA2/exp32 path, so the useful
+  exact seam was 24 versus 32 resident cooperative blocks, not 48 versus 32.
+  Added a global mixed owner that partitions each six-query group as
+  **2+2+1+1**. Singleton idle waves remain active through every V-stage
+  barrier; active heads preserve QK, softmax, PV, gate, and store association.
+- RED was the absent mixed32 wrapper in
+  `test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction`. GREEN is F32
+  context and gated BF16 byte identity at live513/576/639 after explicit
+  position-200 eviction. This implies fixture KL 0 and 100% top-1 versus the
+  exact CPU-qualified control.
+- Nine 50-launch leaf samples improve production GQA2 exp32 by
+  **5.19%/8.39%/8.39%** at live513/576/639. Raw SHA-256 is
+  `9e97da24...9647ae`.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_global_attention_fused_exact_gated_fixedshape_kernel<2,64,true,true,true,true,true>`
+  at grid8192/local256, VGPR56/SGPR128/static-LDS512/scratch0, with timed
+  candidate dispatches **72.456/78.588/85.561 us** at the three live points.
+  Trace SHA-256 is `903b81e0...27b0c9`.
+- All seven counterbalanced p512/d128 resident pairs improve
+  **19.641357 -> 19.668893 tok/s (+0.1402%, -0.0713 ms/token)**. Every pair
+  wins; tokens **2930/74107**, trajectory SHA `94f803f7...ebda32`, positions,
+  determinism, and allocation lifecycle are exact. Raw A/B SHA-256 is
+  `23c14226...fd7b`.
+- gfx1151 now defaults mixed32 inside the qualified natural
+  capacity-4096/live<=4000 GQA2-exp32 route. The 24-block primitive remains
+  exact rollback. Focused validation passes **59 tests** across the GPU
+  oracle/dispatch, runner selector, profile harness, and gfx1151 backend.
+  The next bounded exact screen is a 40-block **2+1+1+1+1** owner, followed
+  only on a positive leaf by the same production gate.

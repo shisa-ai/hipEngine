@@ -4266,6 +4266,42 @@ exact replay and regresses **0.081644 -> 0.183208 ms (+124.40%)**. All
 candidate code is removed. Evidence:
 [`rejected component repair`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-component-repair-rejected.json).
 
+The llama.cpp review exposes one exact scheduling opportunity that the prior
+global ownership conclusion missed. Production already used the 24-block GQA2
+exp32 path; the relevant comparison was therefore not the old 48-block GQA1
+kernel, but **24 versus 32 resident cooperative blocks**. A new global
+mixed32 owner partitions each six-query GQA group as **2+2+1+1**. Pair and
+singleton blocks preserve the same QK products, eight-wave maximum and
+denominator association, ordered PV chain, gate, and stores. Singleton idle
+waves still participate in every staged-V barrier.
+
+The live513/576/639 eviction fixture is byte-exact in both F32 context and
+gated BF16 output. Nine-sample leaves improve
+**0.080514 -> 0.076339 ms (-5.19%)**,
+**0.091570 -> 0.083888 ms (-8.39%)**, and
+**0.100351 -> 0.091928 ms (-8.39%)**. Cached tracing names the intended
+32-block/local256 specialization at VGPR56/SGPR128/static-LDS512/scratch0.
+All seven resident p512/d128 pairs win
+**19.641357 -> 19.668893 tok/s (+0.1402%, -0.0713 ms/token)** with tokens
+2930/74107, trajectory SHA `94f803f7...ebda32`, positions, determinism, and
+lifecycle exact. gfx1151 now selects mixed32 only inside the qualified
+capacity-4096/live<=4000 GQA2-exp32 route; the 24-block owner remains exact
+rollback. Evidence:
+[`retained global mixed32 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-retained.json).
+
+This reopens one bounded exact global-attention sweep before returning to
+approximate tensor arithmetic:
+
+1. Screen a **40-block 2+1+1+1+1** owner against mixed32 at live513/576/639.
+   It tests whether another occupancy step repays the loss of one paired head.
+2. If 40 blocks wins all natural leaves, run the same seven-pair p512/d128
+   gate and trace. Otherwise remove it at the leaf stop.
+3. Compare the winning ordinary-grid owner against a split-launch form:
+   16 paired-head local256 blocks plus 32 singleton local128 blocks. Admit the
+   extra launch only if whole-model wall improves.
+4. Re-profile the clean attention wall. Only then decide whether the residual
+   gap justifies a new tensorized kernel or a larger architectural change.
+
 The next material SWA gate must improve llama.cpp's actual advantage rather
 than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
 intrinsically higher precision or a cheap independently valid error bound.

@@ -2048,3 +2048,20 @@ should be boring.
   pairs improve **19.547209 -> 19.556569 tok/s (+0.0479%)** with exact state.
 - After the decode campaign, collapse positive selector semantics while
   retaining the serial-issue primitive as the compiler/codegen rollback.
+
+## Laguna gfx1151 exact global mixed32 selector
+
+- Added 2026-07-29 as the session-scoped
+  `LagunaKVCache.global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape`
+  field, `LagunaGGUFResidentSession.set_decode_global_mixed32(...)`, and
+  `--compare-global-mixed32`. False restores the retained 24-block GQA2
+  exp32 owner.
+- Promotion gate satisfied: live513/576/639 leaves improve
+  **5.19%/8.39%/8.39%**, the cached trace names the intended
+  grid8192/local256/VGPR56/scratch0 specialization, and all seven resident
+  pairs improve **19.641357 -> 19.668893 tok/s (+0.1402%, -0.0713
+  ms/token)** with byte-exact attention and exact generated state.
+- Keep the explicit false rollback through the bounded 32/40/split-launch
+  ownership sweep and the next clean attention census. Then collapse positive
+  selector semantics while retaining the 24-block GQA2 exp32 primitive as the
+  exact compiler/occupancy rollback.
