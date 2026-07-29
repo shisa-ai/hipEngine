@@ -11,6 +11,7 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_k_mmq_prefill.hip")
 _OUTPUT_NAME = "gguf_k_mmq_prefill.so"
+_SOURCE_OUTPUT_NAME = "gguf_q5_k_source_mmq_prefill.so"
 _QUANT_DS4_KMAJOR_SYMBOL = "hipengine_gguf_q8_1_ds4_quantize_bf16_kmajor"
 _QUANT_SYMBOL = "hipengine_gguf_q8_1_d4s4_f32_quantize_bf16"
 _QUANT_D8_SYMBOL = "hipengine_gguf_q8_1_d8s8_f32_quantize_bf16"
@@ -28,6 +29,11 @@ _Q8_DS4_BLOCK_BYTES = 144
 _Q8_BLOCK_BYTES = 160
 _Q8_D8_BLOCK_BYTES = 192
 _Q8_D8R8_BLOCK_BYTES = 352
+_SOURCE_MMQ_FLAGS = (
+    "-funsafe-math-optimizations",
+    "-ffast-math",
+    "-fno-finite-math-only",
+)
 
 
 def plan_gguf_k_mmq_prefill_build(
@@ -62,6 +68,48 @@ def build_gguf_k_mmq_prefill(
         cache_root=cache_root,
         compiler_version=compiler_version,
         output_name=_OUTPUT_NAME,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
+def plan_gguf_q5_k_source_mmq_prefill_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "baseline",
+) -> BuildArtifact:
+    return plan_hip_build(
+        sources=[_SOURCE],
+        family="gguf_q5_k_source_mmq_prefill",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        extra_flags=_SOURCE_MMQ_FLAGS,
+        output_name=_SOURCE_OUTPUT_NAME,
+    )
+
+
+def build_gguf_q5_k_source_mmq_prefill(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "baseline",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    """Build the source Q5 consumer with llama.cpp's MMQ math flags."""
+
+    return build_hip(
+        sources=[_SOURCE],
+        family="gguf_q5_k_source_mmq_prefill",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        extra_flags=_SOURCE_MMQ_FLAGS,
+        output_name=_SOURCE_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
@@ -318,7 +366,7 @@ def _launch_q5_source_mmq(
         raise ValueError("hidden must be a positive multiple of 256")
     if out_features <= 0:
         raise ValueError("out_features must be positive")
-    library = library or build_gguf_k_mmq_prefill(load=True)
+    library = library or build_gguf_q5_k_source_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
         "hipengine_gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_"
@@ -516,6 +564,7 @@ register_gguf_k_mmq_prefill_kernels()
 
 __all__ = [
     "build_gguf_k_mmq_prefill",
+    "build_gguf_q5_k_source_mmq_prefill",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
@@ -535,6 +584,7 @@ __all__ = [
     "gguf_q8_1_d8r8s8_f32_quantize_bf16",
     "gguf_q8_1_d8s8_f32_quantize_bf16",
     "plan_gguf_k_mmq_prefill_build",
+    "plan_gguf_q5_k_source_mmq_prefill_build",
     "q8_1_d4s4_f32_nbytes",
     "q8_1_ds4_kmajor_nbytes",
     "q8_1_d8r8s8_f32_nbytes",
