@@ -5322,6 +5322,18 @@ The remaining attention sequence is:
     test call; skip tracing and resident integration. Production remains
     **20.494732 tok/s**. Evidence:
     [`packed-V-DPP rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-dpp-rejected.json).
+56. Remove DPP and rely on same-address packed LDS broadcast. **Rejected and
+    removed at the leaf stop:** both lanes in each pair read the same aligned
+    32-bit word and select their own BF16 half. This retains all eight output
+    waves, one accumulator per lane, and every arithmetic operation without a
+    cross-lane instruction.
+
+    The wrapped/evicted oracle remains byte-exact, but the 9x50 leaf regresses
+    **0.037053 -> 0.037558 ms (+1.363%)**. The compiler's existing 16-bit LDS
+    value replay is faster than same-address dword loads plus half selection.
+    Remove the candidate before tracing or resident integration and close
+    staged-V word packing. Production remains **20.494732 tok/s**. Evidence:
+    [`packed-V-broadcast rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-packed-v-broadcast-rejected.json).
 
 Current exact decode checkpoint:
 
