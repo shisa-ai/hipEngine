@@ -5424,6 +5424,33 @@ The remaining attention sequence is:
     for a compounded wave-scheduling experiment where its strong leaf gain
     may become compositional. Evidence:
     [`producer-value-tail runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-producer-value-tail-runtime-rejected.json).
+62. Screen an independently valid cooperative-PV rounding bound before
+    rebuilding the removed tensor kernel.
+    **Rejected at the analytical precondition:** use the saved global
+    three-term GQA6/K64 outputs and their reproducible wrapped/evicted input
+    fixture to evaluate a deliberately favorable bound. Assume QK and
+    softmax probabilities are already exact and identical, then bound only
+    the difference between the retained 512-term scalar F32 PV chain and the
+    cooperative K64 partials plus eight-way merge:
+    `(gamma_512 + gamma_64 + gamma_8) * sum(abs(p_i * v_i))`. Scale that
+    interval through the positive softplus gate and include the final F32
+    multiply-rounding term.
+
+    Even before adding the omitted QK, exponential, normalization, and
+    decomposition errors, the bound marks **2,846/6,144 (46.32%)**,
+    **3,012/6,144 (49.02%)**, and **3,144/6,144 (51.17%)** components
+    uncertain at live513/576/639. Median bounded gated-context error is about
+    **2.35e-6**. The prior component-replay implementation is already
+    **124.40% slower** than retained exact attention when replay is complete;
+    this roughly half-dense best-case bound cannot make that topology
+    competitive.
+
+    Do not reconstruct the three-term WMMA plus scalar component-replay path
+    around a standard gamma bound. Reopen only for a materially tighter
+    certified mechanism—hardware directed bounds or a separately cheap
+    error-free transform—not another output-derived midpoint or consensus
+    heuristic. Production remains **20.494732 tok/s**. Evidence:
+    [`PV-bound precondition rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-attention-pv-bound-screen-rejected.json).
 
 Current exact decode checkpoint:
 
