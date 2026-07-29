@@ -4593,6 +4593,18 @@ The remaining attention sequence is:
     pivot the next decode candidate to the measured selected-Q4 gate/up and
     down excess. Evidence:
     [`rejected terminal V barrier`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-final-vbarrier-rejected.json).
+24. Replay the selected-Q4 tile8 body in one physical wave. **Complete and
+    rejected:** one local32 wave reconstructs the production local128 body's
+    four logical wave32 K/FMA chains and reductions in their original order,
+    preserving the BF16 gate/up round trips, SiLU, and output boundary while
+    removing 512 B of LDS and the block barrier. The production-shape fixture
+    is byte-exact, but the actual layer-1 K3072/N1024 leaf regresses
+    **0.126660 -> 0.188025 ms (+48.45%)** and wins none of nine paired
+    samples. Remove the body, export, wrapper, key, harness mode, and test
+    extension before trace/runtime work. Four-wave physical concurrency is
+    mandatory for this tile; do not retry local32 logical-wave replay.
+    Production remains **20.056756 tok/s**. Evidence:
+    [`rejected wave32 replay`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json).
 
 Current exact decode checkpoint:
 

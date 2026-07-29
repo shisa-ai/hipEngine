@@ -190262,3 +190262,24 @@ Vulkan local sizes verbatim will close the measured gap.
   pivot the next decode work to the measured selected-Q4 gate/up and down
   excess. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-final-vbarrier-rejected.json`.
+
+## 2026-07-29 17:18 JST — Reject selected-Q4 tile8 wave32 replay
+
+- The required lineage command remains blocked by the absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; the candidate is an in-tree
+  ownership screen. RED fails collection on the absent wrapper.
+- GREEN replaces each local128/four-wave tile8+SiLU workgroup with one local32
+  wave that serially reconstructs logical threads `lane + {0,32,64,96}`.
+  Every K/FMA chain, wave reduction, ordered wave0..3 merge, BF16 gate/up
+  round trip, SiLU, and output boundary remain exact while 512 B of LDS and
+  the block barrier disappear. The production-shape fixture passes and has
+  zero BF16 mismatches.
+- The actual layer-1 K3072/N1024 gate/up leaf rejects the schedule:
+  nine counterbalanced 50-launch samples regress
+  **0.126660 -> 0.188025 ms (+48.45%)**, with 0/9 paired wins. Raw SHA-256 is
+  `93372efb...fb50f5ac`.
+- Remove the body/export, wrapper/key, harness mode, and test extension before
+  trace/runtime work. Production remains **20.056756 tok/s**. Four physical
+  waves are required to hide the selected-Q4 memory/decode work; do not retry
+  local32 logical-wave replay. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json`.

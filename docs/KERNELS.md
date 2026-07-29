@@ -457,6 +457,15 @@ launches/token**, so gfx1151 promotes the fused route. Evidence:
 [`tile8 parallel-tail SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json),
 [`retained resident gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json).
 
+An exact local32 replay is rejected and removed. One physical wave
+reconstructed the retained local128 tile8 body's four logical wave32 K/FMA
+chains and reductions in order, deleting 512 B of LDS and the block barrier
+without changing BF16 output. On actual layer-1 K3072/N1024 weights it
+regressed **0.126660 -> 0.188025 ms (+48.45%)** and won 0/9 pairs. The four
+physical waves are required to hide this memory/decode work; do not retry
+local32 logical-wave replay:
+[`rejected wave32 replay`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
