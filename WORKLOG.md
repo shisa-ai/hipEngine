@@ -191944,3 +191944,21 @@ Vulkan local sizes verbatim will close the measured gap.
   kernel, symbol, wrapper, registry, and harness selector. Raw SHA-256 is
   `769a313b...c456c`. Production remains **20.496816 tok/s**. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-reciprocal-normalize-rejected.json`.
+
+## 2026-07-30 04:44 JST — Reject FP16 scaled SWA score storage
+
+- Test the narrowest remaining part of llama.cpp's low-precision attention
+  contract without changing dot or value accumulation: keep scalar F32 QK,
+  round only each completed scaled score into an FP16 LDS plane, then retain
+  producer max, exp32, ordered denominator, scalar F32 PV, gate, and stores.
+- The first compile identifies the missing explicit `hip_fp16.h` include.
+  After that scoped repair, the 9x50 leaf is flat:
+  **0.037107 -> 0.037111 ms (+0.011%)**. Halving score storage
+  **6,144 -> 3,072 B** and removing score-scale replay therefore do not attack
+  a current bottleneck.
+- F32 context max error is **6.29e-8** and **30** gated BF16 values differ.
+  Stop before trace/resident/recurrent-quality work and remove the header,
+  template branch, kernel, symbol, wrapper, registry, and harness selector.
+  Raw SHA-256 is `aa2f3176...c19dbb`; production remains
+  **20.496816 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-fp16-scaled-scores-rejected.json`.

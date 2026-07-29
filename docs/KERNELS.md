@@ -1917,6 +1917,12 @@ not that gap: removing **9,144** output-lane divisions improves the leaf only
 **0.00525 ms/token** across 36 layers. It is removed before resident or
 quality gating:
 [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-reciprocal-normalize-rejected.json).
+An FP16 scaled-score-plane sibling isolates another narrow part of Vulkan's
+low-precision tile while retaining scalar F32 QK/PV. Halving score-plane LDS
+bytes **6,144 -> 3,072** and removing score-scale replay is performance-flat
+(**+0.011%**) and changes 30 gated BF16 values, so it is removed before
+resident/quality work:
+[`score-storage rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-fp16-scaled-scores-rejected.json).
 The preceding post-vector-probability 127-transition census measured
 **721 compute + 5
 runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and

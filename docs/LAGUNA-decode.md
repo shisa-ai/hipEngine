@@ -5583,6 +5583,21 @@ The remaining attention sequence is:
     and remove the diagnostic. Scalar final division is not the llama gap;
     cooperative QK/PV remains the target. Evidence:
     [`reciprocal-normalization rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-reciprocal-normalize-rejected.json).
+69. Store scaled SWA scores in FP16 while retaining scalar F32 QK and PV.
+    **Rejected and removed:** the diagnostic keeps the complete F32 QK
+    reduction, rounds each final scaled score once into FP16, and uses that
+    value for producer maximum and softmax. This halves the three-query score
+    plane **6,144 -> 3,072 bytes** and removes replayed score-scale
+    multiplications without changing QK accumulation or scalar PV order.
+
+    The 9x50 leaf is flat/regressive:
+    **0.037107 -> 0.037111 ms (+0.011%)**. It also changes **30** gated BF16
+    values on the fixture, with F32 context max error **6.29e-8**. Stop before
+    trace, resident integration, or recurrent quality testing and remove the
+    diagnostic. The performance side of llama.cpp's F16 contract is not score
+    storage alone; its cooperative QK/PV execution is the material mechanism.
+    Evidence:
+    [`FP16 scaled-score rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-fp16-scaled-scores-rejected.json).
 
 Current exact decode checkpoint:
 
