@@ -1447,17 +1447,21 @@ teardown, but the binding 18-prompt/576-step lane rejects SGEMM reassociation at
 maximum KL **1.143627 > 0.05** despite **564/576 (97.917%)** top-1 and diagnostic
 prefill **152.359 -> 202.707 tok/s (1.330x)**. Remove the owner, workspace,
 capabilities, and tests; retain exact production plus the standalone leaf. H5B's
-existing complete-`KVLiveSpans` F32 dense-initial hipBLASLt route now passes the
+existing complete-`KVLiveSpans` F32 dense-initial hipBLASLt route passes the
 W7900 transfer screen: tuned packed/wave leaf **109.897 -> 62.655 ms (1.754x)**,
 natural M512 KL **0.000429** / top-1 **100%** with deterministic complete state,
 and cached attention **488.304 -> 60.669 ms (8.049x)** while full kernel sum
-falls **3,001.692 -> 2,603.520 ms (-13.265%)**. A default-off gfx1100 package
-now owns the validated **2/1/3 + PV2** heuristic map and all packed/wave
-components without changing exact production; the package-resolved M512 rerun
-preserves KL **0.000429**, top-1 **100%**, deterministic state, and teardown.
-Require multi-prompt changed-association quality before clean timing. Do not
-stack rejected H1-H5A arithmetic or reopen
-P6/repair; launch fusion remains deferred at 0.500%.
+falls **3,001.692 -> 2,603.520 ms (-13.265%)**. The binding extended-prompt lane
+observes all **10,512** expected package-mapped launches, but rejects QK/PV
+reassociation at maximum KL **0.444675 > 0.05** despite **564/576 (97.917%)**
+top-1 and diagnostic prefill **165.555 -> 190.103 tok/s (1.148x)** with every
+category positive. Remove the gfx1100 capability/component policy, heuristic
+map, generic map seam, owner propagation, and tests; retain exact qrow4/M128
+production plus standalone leaf evidence. H5C returns to exact Q5 arithmetic:
+transient exact-value expansion followed by a custom F32-weight reduction must
+preserve production coltile K ownership, FMA order, and wave/cross-wave tree.
+Do not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion
+remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

@@ -101,38 +101,6 @@ def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
 
 
-def test_laguna_attention_owner_propagates_package_algorithm_indices(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    package_indices = backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_ALGORITHM_INDICES",
-        None,
-    )
-    assert package_indices is not None
-    captured: dict[str, object] = {}
-
-    class Route:
-        def __init__(self, **kwargs) -> None:
-            captured.update(kwargs)
-
-    monkeypatch.setattr(runner_module, "LagunaAttentionHipblasLt", Route)
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.runtime = object()
-    session.attention_hipblaslt = None
-    session.prefill_attention_hipblaslt_packed_queries = True
-    session.prefill_attention_hipblaslt_wave_rows_softmax = True
-    session.prefill_attention_hipblaslt_algorithm_indices = package_indices
-
-    route = session._ensure_attention_hipblaslt()
-
-    assert route is session.attention_hipblaslt
-    assert captured["runtime"] is session.runtime
-    assert captured["packed_queries"] is True
-    assert captured["wave_rows_softmax"] is True
-    assert captured["algorithm_indices"] is package_indices
-
-
 def test_laguna_context_admission_uses_the_model_declared_limit() -> None:
     assert _validate_laguna_context_length(
         131_072,

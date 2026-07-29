@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_f32_hipblaslt_dense_initial_attention_candidate",
   "date": "2026-07-30",
-  "status": "default_off_runtime_candidate_integrated_quality_pending",
+  "status": "standalone_candidate_admitted_runtime_rejected",
   "performance_claim": false,
   "hardware": {
     "device": "AMD Radeon Pro W7900",
@@ -48,7 +48,8 @@
       "wave_rows_softmax": true,
       "packed_output_gate": true
     },
-    "package_algorithm_map_validated_and_owner_propagated": true,
+    "package_algorithm_map_validated_and_owner_propagated_before_quality": true,
+    "runtime_policy_removed_after_quality_failure": true,
     "gfx1100_algorithm_policy": {
       "context_256": {"qk": 2, "pv": 2},
       "context_384": {"qk": 1, "pv": 2},
@@ -108,6 +109,21 @@
         "h72_c384": {"qk": 1, "pv": 2},
         "h72_c512": {"qk": 3, "pv": 2}
       }
+    },
+    "complete_m512_changed_association_gate": {
+      "pass": false,
+      "finite": true,
+      "max_kl_divergence": 0.44467493014488957,
+      "kl_threshold": 0.05,
+      "top1_matches": 564,
+      "steps": 576,
+      "top1_agreement": 0.9791666666666666,
+      "all_10512_expected_candidate_launches_observed": true,
+      "same_mode_repeat_deterministic": true,
+      "tracked_returned_to_baseline": true,
+      "diagnostic_exact_prefill_tok_s": 165.55535969309233,
+      "diagnostic_candidate_prefill_tok_s": 190.10303647853615,
+      "diagnostic_prefill_speedup": 1.148274733182607
     }
   },
   "integrated_cached_trace": {
@@ -146,11 +162,13 @@
     "focused_map_cpu_reference_result": "9 passed",
     "ruff_pycompile_diff_check": true,
     "gfx1151_does_not_inherit_gfx1100_algorithm_map": true,
-    "default_production_route_unchanged": true
+    "default_production_route_unchanged": true,
+    "runtime_policy_removed_after_quality_failure": true,
+    "cleanup_matches_preintegration_revision": "7a6f01f3b"
   },
   "promotion_blockers": [
-    "the structurally valid multi-prompt changed-association quality gate has not run",
-    "clean counter-ordered 512/1K timing and a committed all-family trace have not run"
+    "the complete 18-prompt/576-step M512 changed-association gate reaches maximum KL 0.444675 above the mandatory 0.05 ceiling",
+    "runtime ownership was removed and clean 512/1K promotion timing was not run after the quality failure"
   ],
   "source_artifacts": {
     "leaf_json_sha256": "21194aa89a9f8ab9e1029afd3bc19da96ef73cb79529da86dde6d305e5057e15",
@@ -161,17 +179,25 @@
     "preintegration_full_state_stdout_sha256": "e99590dce51a38ddd8f4675c73f18b349f67274e694512d90b4082dbc008c17e",
     "trace_csv_sha256": "4c547ea36ce5dd6a44481ec0ed4315509d11ba8cfd7e5473379dff91afb09355",
     "trace_harness_sha256": "bee8c3e6b28f67563ddf75dc4040c14de865ae571e1a9af4f1def0e48963e705",
-    "trace_stdout_sha256": "93c530cd0c772980161704e632554d9aca23d7b06304ff55d349aeb10d4027a0"
+    "trace_stdout_sha256": "93c530cd0c772980161704e632554d9aca23d7b06304ff55d349aeb10d4027a0",
+    "quality_raw_sha256": "5e49d00e4776f1234b1738d1ae8bc57dada4877da5ccbd988ae3036464628115",
+    "quality_harness_sha256": "97b254f91f8322e688075180abf1be836d728f9dd7e8c25b96ba2b25e7175896",
+    "quality_stderr_sha256": "7c8564526cfedab8175e96f05e93874aff3a15a654bbe0fbf532c4e95c01f9e1",
+    "rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json"
   },
   "commands": {
     "leaf": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5b_attention_leaf.py",
     "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5b_attention_full_state.py",
-    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5b-attention-trace -- uv run python -u /tmp/laguna_wpfh5b_attention_trace.py"
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5b-attention-trace -- uv run python -u /tmp/laguna_wpfh5b_attention_trace.py",
+    "quality": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5b_attention_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpfh5b_f32_hipblaslt_attention --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpfh5b-attention-quality-m512.json"
   },
   "decision": {
     "standalone_candidate_admitted": true,
-    "default_off_runtime_candidate_integrated": true,
+    "default_off_runtime_candidate_integrated_before_quality": true,
+    "runtime_candidate_rejected": true,
+    "runtime_policy_removed": true,
     "production_changed": false,
-    "next_action": "Run the structurally valid multi-prompt changed-association quality gate through complete M512 tiles before clean timing."
+    "reason": "QK/PV reassociation reaches maximum KL 0.444675 above the mandatory 0.05 ceiling despite 1.148x diagnostic prefill and 97.917% top-1.",
+    "next_action": "Return to exact arithmetic and screen transient exact-value Q5 expansion followed by a custom reduction preserving production coltile order."
   }
 }

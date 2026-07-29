@@ -196,7 +196,7 @@ tracing cuts pp512 attention **73.330 -> 69.983 ms (-4.56%)** at unchanged
 **2,417** dispatches. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-attention-wave-softmax-{candidate,production}.json`.
 
-WPF-H5B independently qualifies the complete packed route on gfx1100/W7900 for
+WPF-H5B independently screens the complete packed route on gfx1100/W7900 for
 Laguna Q2 XL. No device body is ported: the transfer reuses exact BF16-cache
 widening, complete `KVLiveSpans`, packed two-call F32 hipBLASLt QK/PV, wave32
 causal softmax, direct packed-query production, and the packed output gate.
@@ -210,13 +210,18 @@ owner passes KL **0.000429**, token **2930**, deterministic complete state/KV,
 and lifecycle. Cached tracing names exactly **144** widen/QK/softmax/PV stacks,
 keeps **48** start-0 exact calls, and moves attention **488.304 -> 60.669 ms
 (8.049x)** while complete kernel sum falls **3,001.692 -> 2,603.520 ms
-(-13.265%)**. gfx1100 now publishes the validated heuristic map plus packed/wave
-component policy behind an explicit default-false top-level capability. A
-package-resolved exact/candidate/repeat M512 rerun selects all six intended
-shape indices and preserves KL **0.000429**, top-1 **100%**, deterministic
-complete state, and teardown. Multi-prompt changed-association quality remains
-pending before promotion. Evidence:
-`benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json`.
+(-13.265%)**.
+
+Runtime qualification fails. The deterministic split-local M512 extension keeps
+all 18 committed natural prompts as suffixes, and instrumentation observes all
+**10,512** expected candidate launches with the six measured algorithm pairs.
+The complete 576-step gate reaches maximum KL **0.444675 > 0.05** at **564/576
+(97.917%)** top-1 despite **1.148x** diagnostic prefill, deterministic repeats,
+and exact lifecycle. Remove the gfx1100 package policy/map, generic map seam,
+and resident propagation; do not add these changed-association routes to the
+catalog's production path. The existing leaf remains separately usable and
+exact qrow4/M128 remains production. Evidence:
+`benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-{candidate,rejected}.json`.
 
 The long-context successor extends that packed-query/library design without
 allocating a full-prefix score plane. Three separately registered dense-initial

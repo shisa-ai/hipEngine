@@ -2409,13 +2409,6 @@ class LagunaGGUFResidentSession:
             if prefill_attention_hipblaslt_packed_output_gate is None
             else prefill_attention_hipblaslt_packed_output_gate
         )
-        self.prefill_attention_hipblaslt_algorithm_indices = (
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_ALGORITHM_INDICES",
-                None,
-            )
-        )
         self.prefill_long_attention_hipblaslt = bool(
             backend_package_capability(
                 self.backend,
@@ -3777,9 +3770,6 @@ class LagunaGGUFResidentSession:
                 ),
                 wave_rows_softmax=(
                     self.prefill_attention_hipblaslt_wave_rows_softmax
-                ),
-                algorithm_indices=(
-                    self.prefill_attention_hipblaslt_algorithm_indices
                 ),
             )
             self.attention_hipblaslt = route
