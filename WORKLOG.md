@@ -189261,3 +189261,26 @@ Vulkan local sizes verbatim will close the measured gap.
   tensor attempt must improve the fast arithmetic itself or correct at a
   materially finer unit. Raw leaf SHA-256 is `fbef057c...ee3b`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-guarded-repair-rejected.json`.
+
+## 2026-07-29 10:56 JST — Reject component-fine WMMA SWA repair
+
+- RED required a missing component-repair wrapper. The bounded candidate
+  recovered the same raw-numerator GQA9/K64 WMMA path, compacted ambiguous
+  output dimensions per head, shared exact QK/softmax across each 2/3-head
+  owner, and replayed exact direct-cache PV only for the compact list.
+- The approximate gated result is not a selective ambiguity oracle. Guards
+  **1024/16384/24576/28672** leave **8/3/1/1** BF16 mismatches at the first
+  failing wrap/eviction positions **512/512/514/516**. Only the complete
+  **32768** interval makes F32 context and BF16 gated output byte exact over
+  positions 512-519 after explicit position-200 eviction.
+- Full-interval repair is raw WMMA plus complete exact replay. Nine
+  counterbalanced 50-launch samples regress retained mixed32 exp32
+  **0.081644 -> 0.183208 ms (+124.40%)**. The full quality and runtime gates
+  are skipped under the leaf stop rule.
+- Removed the tensor path, component compaction/replay, wrappers, registry,
+  RED extension, and leaf-harness choice. Production remains
+  **19.630076 tok/s**. Output-derived repair is now closed at both owner and
+  component granularity; future tensor work must reduce arithmetic error
+  intrinsically or provide an independently valid cheap error bound.
+  Raw SHA-256 is `1d96afe...f496b`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-component-repair-rejected.json`.
