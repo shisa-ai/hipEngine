@@ -5161,6 +5161,26 @@ The remaining attention sequence is:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json) ·
     [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json).
+49. Fill the device with a one-launch mixed40 SWA owner. **Retained as a
+    registered primitive pending the resident gate:** partition each KV
+    head's nine queries as **2+2+2+2+1** instead of **2+2+2+3**. The grid
+    grows **32 -> 40 blocks**, matching gfx1151's 40 CUs and removing the
+    eight triple-query critical blocks. This spends 25% more K/V-owner
+    traffic but keeps one launch, every arithmetic operation, idle-wave
+    denominator replay, and all output stores unchanged.
+
+    RED fails on the absent wrapper. GREEN passes the wrap and explicit
+    eviction oracle with byte-identical F32 context and gated BF16 output.
+    The 9x50 leaf moves **0.045322 -> 0.037665 ms (-16.894%)**. The stronger
+    21x100 screen moves **0.045322 -> 0.037599 ms (-17.039%)**, with
+    **21/21** paired wins and complete sample separation. Cache-only tracing
+    names grid15360/local384 at unchanged VGPR104, SGPR128, LDS25,600, and
+    scratch0; no compiler runs under profiling. This is the same transferable
+    scheduling principle behind llama.cpp Vulkan's K-split breadth: keep
+    enough independent cooperative tiles resident to fill the machine.
+    Production remains **20.425412 tok/s** pending seven exact
+    counterbalanced p512/d128 resident pairs. Evidence:
+    [`mixed40 primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json).
 
 Current exact decode checkpoint:
 

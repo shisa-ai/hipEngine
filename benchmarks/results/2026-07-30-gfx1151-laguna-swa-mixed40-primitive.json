@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T01:13:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_primitive",
+  "status": "accepted_primitive_pending_runtime_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "2caa69b437b741fd25b59d19545144258fecda19",
+    "lineage_check": "blocked before reports because /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "external_source_copied": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "control_owner_blocks": 32,
+    "candidate_owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "candidate": {
+    "description": "Replace each KV head's 2+2+2+3 ownership with 2+2+2+2+1 in one launch, filling 40 gfx1151 CUs and removing triple-query critical blocks while retaining idle-wave vector denominator replay.",
+    "control": "retained mixed32 2+2+2+3 owner with idle-wave vector denominator replay",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": 0,
+    "dispatch_count_changed": false,
+    "kv_owner_traffic_change_percent": 25.0
+  },
+  "correctness": {
+    "red": "focused wrap/eviction test failed importing the absent mixed40 wrapper",
+    "green": "focused wrap/eviction test passed after implementation",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "screen_9x50": {
+      "control_median_ms": 0.04532169818878174,
+      "candidate_median_ms": 0.0376649808883667,
+      "latency_change_percent": -16.894153587365512,
+      "paired_candidate_wins": 9,
+      "paired_samples": 9,
+      "raw_sha256": "ca9206d61dcdf6365b7235f5867fa0e4d61c3f95d150208ac8b9bb1ca32cb334"
+    },
+    "screen_21x100": {
+      "control_median_ms": 0.04532173156738281,
+      "candidate_median_ms": 0.037599260807037356,
+      "latency_change_percent": -17.0392226714991,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "complete_sample_separation": true,
+      "raw_sha256": "c4999706ad127fadc9ce7ed509f745c8b91a51b7bf5038adfdf8f1d83429b14d"
+    }
+  },
+  "trace": {
+    "cache_only": true,
+    "compiler_ran_under_profiler": false,
+    "control": {
+      "grid_x": 12288,
+      "workgroup_x": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25600,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid_x": 15360,
+      "workgroup_x": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25600,
+      "scratch_bytes": 0
+    },
+    "raw_sha256": "eaeee8d9e6544d80c748e9ede89b356b2b84fe122e7fad278522acebcc539f9a",
+    "child_sha256": "c7e44a22acdc100e0b927e60cde36ad36be51697abefb65e97ad1188cbfdb751"
+  },
+  "decision": {
+    "retain_registered_primitive": true,
+    "production_changed": false,
+    "production_tok_s": 20.425412258061833,
+    "next_gate": "seven counterbalanced exact p512/d128 resident pairs",
+    "interpretation": "The llama.cpp-style breadth principle transfers: enough independent cooperative tiles to fill the device beats maximum per-owner K/V reuse at this shape."
+  }
+}

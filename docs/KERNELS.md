@@ -1910,6 +1910,17 @@ capability active and preserves exact repeated state/lifecycle:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json).
+The separately registered exact
+`swa_context_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans`
+primitive replaces each KV head's **2+2+2+3** query ownership with
+**2+2+2+2+1** in one launch. The grid grows 32 -> 40 blocks, matching the 40
+gfx1151 CUs and removing triple-query critical blocks at the cost of 25% more
+K/V-owner traffic. The wrap/eviction oracle is F32/BF16 byte-exact. Strong
+21x100 leaves improve **0.045322 -> 0.037599 ms (-17.039%)** with complete
+separation at unchanged local384/VGPR104/SGPR128/LDS25,600/scratch0.
+Retain pending seven resident p512/d128 pairs; production remains
+**20.425412 tok/s**:
+[`mixed40 primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
