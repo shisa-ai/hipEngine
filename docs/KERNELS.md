@@ -1883,6 +1883,18 @@ capability active and preserves exact repeated trajectory/state/lifecycle:
 [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json).
+The exact registered
+`global_context_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_spans`
+diagnostic removes another source of repeated work: once the reciprocal is
+known, one cooperative pass writes each `exp * reciprocal` FP32 result back
+to LDS, so all 128 output lanes consume identical normalized bits instead of
+repeating that multiply. The eviction oracle is F32/BF16 byte-exact.
+Strong 21x100 live513/576/639 leaves improve **1.640%/1.503%/0.128%** with
+**21/21, 21/21, and 19/21** paired wins. Cache-only tracing names the distinct
+final-`true` specialization at grid8192/local256, VGPR48, SGPR128,
+static-LDS512, and scratch0. The primitive is pending its 12-global-layer
+resident gate:
+[`global probability pre-normalization primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json).
 The following clean 127-transition census measures **721 compute + 5
 runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and
 **3.023432 ms/token** attention. Global falls

@@ -191849,3 +191849,28 @@ Vulkan local sizes verbatim will close the measured gap.
   PV waves cannot replace twelve waves of aligned 16-byte cooperative V
   staging. Candidate code remains fully removed. Raw SHA-256 is
   `2c5ab47f...27326d`; the rejection artifact now carries both screens.
+
+## 2026-07-30 04:08 JST — Admit exact global probability pre-normalization
+
+- Audit the retained global probability-vec4 body against llama.cpp's
+  cooperative probability reuse. hipEngine stores exponentials plus one
+  reciprocal, but each of 128 output lanes repeats the identical FP32
+  `exp * reciprocal` multiplication. Add a registered exact sibling that
+  writes each normalized probability once after the reciprocal is available,
+  then adds one block barrier before unchanged PV.
+- The existing live513/576/639 position-200 eviction test now includes the
+  candidate and passes with byte-identical F32 context and gated BF16 output
+  (**1 passed**). Strong 21x100 leaves improve
+  **0.055454 -> 0.054545 ms (-1.640%)**,
+  **0.061477 -> 0.060553 ms (-1.503%)**, and
+  **0.073041 -> 0.072948 ms (-0.128%)**, with **21/21, 21/21, 19/21**
+  paired wins. Raw 9x50/21x100 SHA-256 values are
+  `97051709...3a70` / `50943057...db8`.
+- Cache-only `rocprofv3 --kernel-trace` names
+  `<2,64,true,true,true,true,true,true,false,true,true,true>` at
+  grid8192/local256, VGPR48/SGPR128/static-LDS512/scratch0. Trace SHA-256 is
+  `cedcaec5...460d`; no compiler ran under profiling.
+- Retain the exact primitive and proceed to a temporary default-off
+  12-global-layer p512/d128 gate. Production remains
+  **20.494732 tok/s** pending that result. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json`.

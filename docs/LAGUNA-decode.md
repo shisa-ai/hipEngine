@@ -5522,6 +5522,26 @@ The remaining attention sequence is:
     tracing and resident integration. Keep coalesced staged-V transport even
     for singleton owners. Production remains **20.494732 tok/s**. Evidence:
     [`singleton direct-PV rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-singleton-direct-pv-rejected.json).
+66. Normalize each global probability once before its 128-lane PV replay.
+    **Exact primitive admitted; resident gate pending:** the retained global
+    path stores each exponential plus one reciprocal, then all 128 output
+    lanes repeat the same FP32 multiplication. The new registered sibling
+    performs that identical multiply once per probability in LDS and adds one
+    block barrier before PV. The positive test, BF16 V conversion, and every
+    per-dimension PV addition retain their original order and bits.
+
+    The live513/576/639 position-200 eviction oracle is F32-context and
+    gated-BF16 byte-exact. Strong 21x100 leaves improve
+    **1.640%/1.503%/0.128%**, with **21/21, 21/21, and 19/21** paired wins.
+    Cache-only tracing names the distinct final-`true` specialization at
+    grid8192/local256, VGPR48, SGPR128, static-LDS512, and scratch0; no
+    compiler runs under profiling.
+
+    Retain the separately registered primitive and next gate only the 12
+    global decode layers in seven counterbalanced actual-model p512/d128
+    pairs. Production remains **20.494732 tok/s** until that gate passes.
+    Evidence:
+    [`global probability pre-normalization primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json).
 
 Current exact decode checkpoint:
 
