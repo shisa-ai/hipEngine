@@ -432,12 +432,15 @@ four-wave reductions and BF16 stores to lanes 0..7 instead of serializing all
 columns on thread 0. It leaves the resident bytes, grid/local128 geometry,
 K/FMA ownership, wave32 shuffle trees, and wave0..3 additions unchanged. On
 actual layer-1 K3072/N1024 gate/up weights, all 21 counterbalanced pairs improve
-**0.130259 -> 0.128862 ms (-1.072%)** with zero BF16 mismatches. It remains a
-registered default-off candidate pending the resident p512/d128 state and
-throughput gate. Cached tracing names the `true` specialization at
+**0.130259 -> 0.128862 ms (-1.072%)** with zero BF16 mismatches. Seven
+same-session resident p512/d128 pairs all improve
+**19.998518 -> 20.007478 tok/s (+0.0448%)** with exact generated state and
+lifecycle, so gfx1151 selects the parallel tail by default. Cached tracing names
+the `true` specialization at
 local128/VGPR96/SGPR128/LDS512/scratch0 with a plausible 104.996-us fixture
 duration. Evidence:
-[`tile8 parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json).
+[`tile8 parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json),
+[`retained resident gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-retained.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 

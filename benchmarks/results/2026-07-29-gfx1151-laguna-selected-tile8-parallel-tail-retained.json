@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T15:33:09+09:00",
+  "kind": "hipengine_laguna_selected_tile8_parallel_tail_retained",
+  "status": "retained",
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_count": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_bytes": 78807922708
+  },
+  "workload": {
+    "prefill_tokens": 512,
+    "matrix_chunk_rows": 2048,
+    "attention_chunk_rows": 128,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096
+  },
+  "candidate": {
+    "control": "retained exact natural tile8 serial reduction/store tail",
+    "candidate": "exact natural tile8 eight-lane reduction/store tail",
+    "scope": "gfx1151 c1/top10 selected Q4_K T16 dual gate/up K3072/N1024",
+    "rollback": "registered serial tile8 owner"
+  },
+  "protocol": {
+    "repetitions": 7,
+    "order": "counterbalanced within one resident model session",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-selected-natural-tile8-parallel-decode --output /tmp/laguna-p512-d128-tile8-parallel-tail-ab-v2.json",
+    "raw_sha256": "b13b77332151fa81b965b4fe7bfbf882bce2963ab35abf757bc6b903e76e53ae"
+  },
+  "results": {
+    "control_median_tok_s": 19.998517873739303,
+    "candidate_median_tok_s": 20.007478495696382,
+    "relative_change_percent": 0.04480643022475306,
+    "control_ms_per_token": 50.00370559025937,
+    "candidate_ms_per_token": 49.98131074913315,
+    "ms_per_token_change": -0.022394841126221365,
+    "paired_change_percent": [
+      0.17287925357567513,
+      0.11901944694383548,
+      0.03134586439248466,
+      0.04369578599097146,
+      0.05732626031607069,
+      0.03134804052875584,
+      0.054650972239866924
+    ],
+    "paired_wins": 7,
+    "paired_samples": 7
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_deterministic": true,
+    "tracked_returned_to_zero": true
+  },
+  "decision": {
+    "action": "Promote LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE on gfx1151.",
+    "production_topline_pending": "Run a tracked-clean selector-unset p512/d128 publication and cached symbol trace.",
+    "peer_backends_changed": false
+  }
+}
