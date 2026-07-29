@@ -190179,3 +190179,23 @@ Vulkan local sizes verbatim will close the measured gap.
   matched resident p512/d128 state/lifecycle/performance gates. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-leaf.json` and
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json`.
+
+## 2026-07-29 16:39 JST — Add default-off SWA gated-only resident screen
+
+- RED first fails on the absent session method and KV-cache capability field.
+  GREEN adds a default-off gfx1151 capability chained behind the promoted
+  mixed32/exp32 producer-max/producer-gate route, fail-closed registered-key
+  validation, highest-priority saturated-SWA selection, and the exact
+  context-writing producer-gate fallback.
+- Add the session-scoped `set_decode_swa_gated_only(...)` control and
+  `--compare-swa-gated-only` counterbalanced profile route. Peer backends,
+  global attention, shorter/non-natural SWA shapes, allocations, launch
+  count, and production defaults remain unchanged.
+- The focused RED/GREEN nodes pass **3/3** after implementation; Python
+  compilation and diff checks pass. The broader affected bundle establishes
+  **89 passing nodes**; its sole failure is the pre-existing allocation-count
+  assertion `243 != 245`, reproduced identically at clean `ec6aa9d33`.
+  Per the focused-repair rule, the unchanged failing node is not rerun again.
+  `docs/REFACTOR.md` records the promotion/removal trigger. Production
+  remains **20.056756 tok/s**; next commit the screen and run seven matched
+  resident p512/d128 pairs.

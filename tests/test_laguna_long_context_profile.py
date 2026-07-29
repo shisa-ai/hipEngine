@@ -32,6 +32,7 @@ from scripts.laguna_long_context_trace_summary import (
 
 
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
+    assert "compare_swa_gated_only" in COMPARISON_ARGUMENTS
     assert LAP0_LENGTHS == (128, 512, 1024, 4096)
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert ATTACK_LENGTHS == (4096, 16384, 65536, 131072)
