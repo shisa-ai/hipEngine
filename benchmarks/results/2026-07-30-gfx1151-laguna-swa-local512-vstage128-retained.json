@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T06:49:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_local512_vstage128_retention",
+  "status": "retained_exact_default",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "ff30fe1834187afebc819eca6a5d6a9e613bf9be",
+    "candidate_uncommitted": true,
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "candidate": {
+    "description": "Double the retained exact local512 mixed40 staged-V/probability tile from 64 to 128 slots, preserving every QK, softmax, denominator, PV, gate, conversion, and store association.",
+    "changed_work": "The fixed 512-slot replay loop falls from eight V stages and sixteen workgroup barriers to four stages and eight barriers.",
+    "llamacpp_transfer": "Amortize synchronization across a wider key/value tile, analogous to the comparator's cooperative Bc64 tiled attention, without importing its F16 cooperative arithmetic.",
+    "prior_rejection_qualification": "The 2026-07-29 V128 rejection measured the old local384 body before shared probability replay, tail producers, local512, and producer-wave V-tail transport; it does not screen this kernel."
+  },
+  "leaf": {
+    "screen_9x50": {
+      "control_median_ms": 0.031163959503173827,
+      "candidate_median_ms": 0.028979060649871827,
+      "latency_change_percent": -7.0109796320313,
+      "candidate_wins": 9,
+      "pairs": 9,
+      "raw_sha256": "a97f586f711d2cd9efacfe34f5968ef7e5370d42d8f78cd3bdcda786ed267897"
+    },
+    "screen_21x100": {
+      "control_median_ms": 0.031216440200805665,
+      "candidate_median_ms": 0.02911971092224121,
+      "latency_change_percent": -6.716746897073611,
+      "candidate_wins": 21,
+      "pairs": 21,
+      "raw_sha256": "04838b334e6a1ea82567ee09fd7af4e18ac147361d2284046cb58815e14733a0"
+    }
+  },
+  "trace": {
+    "kernel_template_prefix": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<128",
+    "grid_threads": 20480,
+    "workgroup_threads": 512,
+    "workgroups": 40,
+    "vgpr": 176,
+    "sgpr": 128,
+    "lds_bytes": 43008,
+    "scratch_bytes": 0,
+    "compiler_spawned_under_profiler": false,
+    "raw_sha256": "7a5ee0675c5137bc7ee4dec552346cbdb2701219af1ef071141e30e7d0027b80"
+  },
+  "resident_gate": {
+    "shape": "p512/d128 eager c=1; 127 synchronized forward_token calls per run",
+    "pairs": 7,
+    "control_median_tok_s": 20.736052117190052,
+    "candidate_median_tok_s": 20.74542124538586,
+    "throughput_change_percent": 0.045182796333920194,
+    "control_median_ms_per_token": 48.225187434352875,
+    "candidate_median_ms_per_token": 48.203407786786556,
+    "saving_ms_per_token": 0.021779647566319227,
+    "median_paired_change_percent": 0.041925847079871126,
+    "candidate_wins": 6,
+    "pair_count": 7,
+    "raw_sha256": "b74c87ff6848877c0c9c377c34be5c261263da426a22e90f3ac113b0b3d4cf2d"
+  },
+  "correctness": {
+    "red": "focused wrapped/evicted oracle failed importing the absent V128 wrapper",
+    "green": "focused wrapped/evicted CPU-reference oracle passes",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "first_token": 2930,
+    "final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_recovered": true,
+    "pass": true
+  },
+  "commands": {
+    "correctness": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-tail-producer-value-tail-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-local512-vstage128-21x100.json",
+    "trace": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-vstage128-trace.iJfikb -o trace -- env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-tail-producer-value-tail-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build",
+    "resident": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-local512-vstage128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-local512-vstage128-resident-7pairs.json"
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_diff_inspection",
+    "reason": "Pre-existing absent read-only checkout /home/lhl/amd-gpu-tuning/reference/atlas",
+    "qualification": "This is an in-tree specialization of the retained Laguna kernel, not an external kernel port."
+  },
+  "decision": {
+    "retained": true,
+    "promoted_gfx1151_default": true,
+    "old_vstage64_registered_rollback": true,
+    "peer_backends_changed": false,
+    "temporary_comparison_selector_removed": true,
+    "reason": "The changed local512/probability-cache body makes wider staging repeatably faster in the leaf and positive in the complete resident graph while remaining bit-exact."
+  }
+}

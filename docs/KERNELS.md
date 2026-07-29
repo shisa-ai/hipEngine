@@ -2025,6 +2025,20 @@ Tracked-clean selector-unset production is
 **+0.06821% / -0.03290 ms/token** over the preceding clean packet and
 **+80.799%** over sprint start, with exact repeated trajectory/state/lifecycle:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-value-tail-production.json).
+The exact V-stage128 successor reopens the wider-stage seam only after
+local512, shared probability replay, tail probability producers, and
+producer-wave V-tail transport changed the synchronization balance. It keeps
+all arithmetic associations and the 40-owner/local512 grid, but cuts the fixed
+512-slot replay from eight stages/sixteen barriers to four stages/eight
+barriers. The byte-exact 21x100 leaf improves
+**0.031216 -> 0.029120 ms (-6.717%)** with all 21 pairs positive. Native
+tracing records grid40/local512, **VGPR176/SGPR128/LDS43,008/scratch0**.
+Seven resident p512/d128 pairs move **20.736052 -> 20.745421 tok/s
+(+0.04518%, -0.02178 ms/token)**, median paired **+0.04193%**, with **6/7**
+wins and exact state/lifecycle. gfx1151 promotes V128 for the saturated
+natural shape; the preceding V64 symbol remains registered rollback and peer
+backend selection is unchanged:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-retained.json).
 Compounding the retained local512/value-tail body with four-vector
 denominator prefetch is removed after the resident gate. The byte-exact
 21x100 leaf improves **0.031099 -> 0.030302 ms (-2.563%)** with all 21 pairs

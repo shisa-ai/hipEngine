@@ -5740,6 +5740,29 @@ The remaining attention sequence is:
     Remove the kernel, capability, runtime selector, and comparison CLI.
     Production remains **20.731612 tok/s**. Evidence:
     [`local512 denominator-prefetch4 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-denom-prefetch4-runtime-rejected.json).
+75. Re-screen V-stage128 only after local512, shared probability replay, tail
+    producers, and producer-wave V-tail transport change the synchronization
+    balance. **Retained and promoted on gfx1151:** the exact successor keeps
+    the 40-owner/local512 grid and every QK, softmax, denominator, PV, gate,
+    conversion, and store association, while the fixed 512-slot replay falls
+    from eight stages/sixteen barriers to four stages/eight barriers.
+
+    The 9x50 and stronger 21x100 leaves improve
+    **0.031164 -> 0.028979 ms (-7.011%)** and
+    **0.031216 -> 0.029120 ms (-6.717%)**. Every candidate leaf sample wins,
+    and both F32 context and gated BF16 output are byte-identical. Cache-only
+    tracing names grid40/local512 at
+    **VGPR176/SGPR128/LDS43,008/scratch0**.
+
+    Seven counterbalanced actual-model p512/d128 pairs move
+    **20.736052 -> 20.745421 tok/s (+0.04518%, -0.02178 ms/token)**;
+    median paired change is **+0.04193%** with **6/7** wins. Every run
+    preserves tokens **2930/74107**, trajectory SHA `94f803f7...bda32`,
+    position 638, determinism, and allocation recovery. Promote V128 at the
+    already qualified gfx1151 natural shape, retain the V64 symbol as exact
+    rollback, remove the temporary comparison selector, and leave peer
+    backends unchanged. Evidence:
+    [`local512 V-stage128 retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-retained.json).
 
 Current exact decode checkpoint:
 
