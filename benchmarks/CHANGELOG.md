@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-30
 
+- [accepted gfx1151 Laguna exact SWA vectorized probability production] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 / tracked-clean selector-unset production is **20.335685/20.349871/20.352342 tok/s**, median **20.349871**; the **-0.0431%** absolute movement versus the preceding clean packet is shared-APU variance while the stronger retained gate wins **7/7** pairs by **+0.06287%**, and exact repeated trajectory/state/lifecycle passes; `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json`.
 - [retained gfx1151 Laguna exact SWA vectorized probability runtime] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 / all seven exact resident candidate runs beat their paired controls and median decode moves **20.366610 -> 20.379415 tok/s (+0.06287%, -0.03085 ms/token)**; promote the qualified gfx1151 capability, remove comparison plumbing, and retain scalar PV probability reads as rollback; `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json`.
 
 ## 2026-07-29
