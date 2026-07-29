@@ -26,7 +26,11 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
-from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
+from hipengine.runtime.gguf_linear import (
+    launch_gguf_linear,
+    launch_gguf_linear_pair,
+    launch_gguf_linear_pair_silu,
+)
 
 _QK_K = 256
 _Q8_1_MMQ_BLOCK = 128
@@ -2505,6 +2509,7 @@ def run_laguna_moe_c1_components(
     use_selected_natural_tile8_parallel_decode: bool = False,
     use_selected_natural_tile8_parallel_silu_decode: bool = False,
     use_selected_down_natural_parallel_decode: bool = False,
+    use_q4_pack8_dual_silu_decode: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -2595,61 +2600,80 @@ def run_laguna_moe_c1_components(
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
-    shared_pair = launch_gguf_linear_pair(
-        shared_gate,
-        shared_up,
-        hidden_bf16_ptr,
-        scratch.shared_gate.ptr,
-        scratch.shared_up.ptr,
-        1,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        libraries=libraries,
-        runtime=runtime,
-        use_wmma_prefill=False,
-        use_gemv_decode=True,
-        registered_decode_only=True,
-        registered_decode_variant=shared_pair_decode_variant,
-    )
-    if not shared_pair:
-        launch_gguf_linear(
+    shared_silu_fused = False
+    if use_q4_pack8_dual_silu_decode:
+        shared_silu_fused = launch_gguf_linear_pair_silu(
             shared_gate,
+            shared_up,
             hidden_bf16_ptr,
-            scratch.shared_gate.ptr,
+            scratch.shared_intermediate.ptr,
             1,
             h,
             sf,
             backend=plan.backend,
             stream=stream,
-            runtime=runtime,
             libraries=libraries,
-            use_wmma_prefill=False,
+            runtime=runtime,
             use_gemv_decode=True,
         )
-        launch_gguf_linear(
+    if not shared_silu_fused:
+        shared_pair = launch_gguf_linear_pair(
+            shared_gate,
             shared_up,
             hidden_bf16_ptr,
+            scratch.shared_gate.ptr,
             scratch.shared_up.ptr,
             1,
             h,
             sf,
             backend=plan.backend,
             stream=stream,
-            runtime=runtime,
             libraries=libraries,
+            runtime=runtime,
             use_wmma_prefill=False,
             use_gemv_decode=True,
+            registered_decode_only=True,
+            registered_decode_variant=shared_pair_decode_variant,
         )
-    plan.shared_silu(
-        scratch.shared_gate.ptr,
-        scratch.shared_up.ptr,
-        scratch.shared_intermediate.ptr,
-        1,
-        sf,
-        **_stage_kwargs("shared_silu", libraries, stream=stream, runtime=runtime),
-    )
+        if not shared_pair:
+            launch_gguf_linear(
+                shared_gate,
+                hidden_bf16_ptr,
+                scratch.shared_gate.ptr,
+                1,
+                h,
+                sf,
+                backend=plan.backend,
+                stream=stream,
+                runtime=runtime,
+                libraries=libraries,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+            )
+            launch_gguf_linear(
+                shared_up,
+                hidden_bf16_ptr,
+                scratch.shared_up.ptr,
+                1,
+                h,
+                sf,
+                backend=plan.backend,
+                stream=stream,
+                runtime=runtime,
+                libraries=libraries,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+            )
+        plan.shared_silu(
+            scratch.shared_gate.ptr,
+            scratch.shared_up.ptr,
+            scratch.shared_intermediate.ptr,
+            1,
+            sf,
+            **_stage_kwargs(
+                "shared_silu", libraries, stream=stream, runtime=runtime
+            ),
+        )
     launch_gguf_linear(
         shared_down,
         scratch.shared_intermediate.ptr,
@@ -2677,6 +2701,7 @@ def run_laguna_moe_c1(
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
     use_selected_natural_decode: bool = False,
+    use_q4_pack8_dual_silu_decode: bool = False,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -2689,6 +2714,7 @@ def run_laguna_moe_c1(
         libraries=libraries,
         shared_pair_decode_variant=shared_pair_decode_variant,
         use_selected_natural_decode=use_selected_natural_decode,
+        use_q4_pack8_dual_silu_decode=use_q4_pack8_dual_silu_decode,
     )
     scratch.plan.add(
         routed.ptr,

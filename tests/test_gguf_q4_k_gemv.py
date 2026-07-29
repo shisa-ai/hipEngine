@@ -13,6 +13,10 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_q4_k_gemv, gguf_q4_k_pack8_gemv
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    build_paro_silu,
+    silu_mul_separate_out_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_gemv_bf16_bf16_out,
@@ -20,6 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_gemv_f32_f32_out,
     gguf_q4_k_gemv_fp16_f32_out,
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
+    gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_f32_out,
     gguf_q4_k_pack8_gemv_f32_f32_out,
@@ -308,3 +313,98 @@ def test_laguna_pack8_dual_decode_is_bf16_exact_to_two_local32_owners() -> None:
 
     np.testing.assert_array_equal(candidate_a, control_a)
     np.testing.assert_array_equal(candidate_b, control_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_laguna_pack8_dual_silu_preserves_the_unfused_bf16_boundaries() -> None:
+    """The fused owner must equal dual BF16 outputs followed by BF16 SiLU."""
+
+    rows, in_features, out_features = 1, 1024, 64
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, 17, axis=0).copy()
+    packed_a = repack_gguf_q4_k_pack8(raw_a)
+    packed_b = repack_gguf_q4_k_pack8(raw_b)
+    x_f32 = (
+        (np.arange(in_features, dtype=np.float32) % 29.0) - 14.0
+    ).reshape(1, in_features) / 32.0
+    x_u32 = x_f32.view(np.uint32).copy()
+    x_u32 += 0x7FFF + ((x_u32 >> 16) & 1)
+    x_bf16 = (x_u32 >> 16).astype(np.uint16)
+    control_gate = np.empty((rows, out_features), dtype=np.uint16)
+    control_up = np.empty_like(control_gate)
+    control = np.empty_like(control_gate)
+    candidate = np.empty_like(control_gate)
+    q4_library = build_gguf_q4_k_gemv(load=True)
+    silu_library = build_paro_silu(load=True)
+
+    host_arrays = (
+        x_bf16,
+        packed_a.qweight,
+        packed_a.scales,
+        packed_a.mins,
+        packed_b.qweight,
+        packed_b.scales,
+        packed_b.mins,
+    )
+    device_inputs = [malloc(array.nbytes) for array in host_arrays]
+    device_outputs = [
+        malloc(control_gate.nbytes),
+        malloc(control_up.nbytes),
+        malloc(control.nbytes),
+        malloc(candidate.nbytes),
+    ]
+    try:
+        for array, allocation in zip(host_arrays, device_inputs, strict=True):
+            copy_host_to_device(allocation, host_array_ptr(array), array.nbytes)
+        x_buf, qwa, sa, ma, qwb, sb, mb = device_inputs
+        gate_buf, up_buf, control_buf, candidate_buf = device_outputs
+        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
+            x_buf.ptr,
+            qwa.ptr,
+            sa.ptr,
+            ma.ptr,
+            qwb.ptr,
+            sb.ptr,
+            mb.ptr,
+            gate_buf.ptr,
+            up_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=32,
+            library=q4_library,
+        )
+        silu_mul_separate_out_bf16(
+            gate_buf.ptr,
+            up_buf.ptr,
+            control_buf.ptr,
+            rows,
+            out_features,
+            library=silu_library,
+        )
+        gguf_q4_k_pack8_dual_silu_bf16_bf16_out(
+            x_buf.ptr,
+            qwa.ptr,
+            sa.ptr,
+            ma.ptr,
+            qwb.ptr,
+            sb.ptr,
+            mb.ptr,
+            candidate_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=32,
+            library=q4_library,
+        )
+        for host, allocation in zip(
+            (control_gate, control_up, control, candidate),
+            device_outputs,
+            strict=True,
+        ):
+            copy_device_to_host(host_array_ptr(host), allocation, host.nbytes)
+    finally:
+        for allocation in (*device_outputs, *device_inputs):
+            free(allocation)
+
+    np.testing.assert_array_equal(candidate, control)
