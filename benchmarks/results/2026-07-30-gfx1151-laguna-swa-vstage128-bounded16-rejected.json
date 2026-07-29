@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T07:07:00+09:00",
+  "kind": "hipengine_laguna_swa_vstage128_bounded16_rejection",
+  "status": "rejected_removed",
+  "performance_claim": true,
+  "source_revision": "33e43fe77ae990129b90f25802f15d8988bdc7a6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "control": "retained exact local512 V-stage128 replay",
+    "candidate": "cap the 32-iteration vector probability/PV loop at unroll factor 16",
+    "arithmetic": "unchanged scalar-F32 QK, softmax, denominator, and PV operation order",
+    "hypothesis": "shorten compiler live ranges and reduce the retained kernel's 176-VGPR allocation"
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "nine_by_fifty": {
+      "control_median_ms": 0.030454421043395997,
+      "candidate_median_ms": 0.0290830397605896,
+      "latency_change_percent": -4.503061413816567,
+      "raw_sha256": "ac2d1b3f10748e354768d577c560f9d63af28d3d64489ddf9f06febd59209bc6"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.030667428970336915,
+      "candidate_median_ms": 0.029348180294036866,
+      "latency_change_percent": -4.301790924749815,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "raw_sha256": "2a10b561b45e42e57762db817ad39da2ee803c8d9f3b2aafaea9fef37b555500"
+    },
+    "correctness": {
+      "context_f32_byte_exact": true,
+      "gated_bf16_byte_exact": true,
+      "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+      "cpu_reference_result": "1 passed"
+    }
+  },
+  "trace": {
+    "control_vgpr": 176,
+    "candidate_vgpr": 176,
+    "control_sgpr": 128,
+    "candidate_sgpr": 128,
+    "control_lds_bytes": 43008,
+    "candidate_lds_bytes": 43008,
+    "scratch_bytes": 0,
+    "workgroups": 40,
+    "workgroup_threads": 512,
+    "compiler_spawned_under_profiler": false,
+    "raw_sha256": "d7e2879e1cc110b5844b32dd7f0db6877d433532df57b11d6a58893fa337bebb"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions_per_mode": 7,
+    "order": "AB/BA counterbalanced",
+    "control_median_tok_s": 20.752041041627635,
+    "candidate_median_tok_s": 20.751526632064106,
+    "throughput_change_percent": -0.002478838406771988,
+    "control_ms_per_token": 48.18803114325219,
+    "candidate_ms_per_token": 48.18922567628618,
+    "regression_ms_per_token": 0.0011945330339884208,
+    "paired_candidate_wins": 5,
+    "paired_samples": 7,
+    "median_paired_change_percent": 0.0055437184033113596,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-vstage128-bounded16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-vstage128-bounded16-resident-7pairs.json",
+    "raw_sha256": "2f37238982930058276d5fd2c7e44d833e7499e6238b8c39dd88a6de11b3d615"
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true,
+    "profile_harness_tests": "35 passed"
+  },
+  "cleanup": {
+    "kernel_removed": true,
+    "wrapper_removed": true,
+    "registry_entry_removed": true,
+    "runtime_route_removed": true,
+    "comparison_cli_removed": true,
+    "production_tok_s": 20.744350974546737
+  },
+  "decision": "Reject and remove. Bounded unrolling changes instruction scheduling and wins the isolated leaf, but it does not reduce VGPR allocation and the complete-model independent median regresses. Do not revisit pragma-only unroll changes without a structural live-range split."
+}

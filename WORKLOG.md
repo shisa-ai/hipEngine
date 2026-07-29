@@ -192218,3 +192218,30 @@ Vulkan local sizes verbatim will close the measured gap.
   position 638, determinism, and allocation recovery. Raw hash is
   `4becc88a...8ebd`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-production.json`.
+
+## 2026-07-30 07:07 JST — Reject V-stage128 bounded16 unroll
+
+- Test whether limiting the retained V128 vector probability/PV loop from full
+  32-way unrolling to factor 16 shortens compiler live ranges without changing
+  arithmetic order. RED-first is not informative for a symbol-only scheduling
+  candidate; extend the existing wrapped/evicted CPU-reference oracle. It
+  passes with byte-identical F32 context and gated BF16 output.
+- The 9x50 leaf improves **0.030454 -> 0.029083 ms (-4.503%)**. The stronger
+  21x100 leaf improves **0.030667 -> 0.029348 ms (-4.302%)** with **21/21**
+  candidate wins. Raw hashes are `ac2d1b3f...09bc6` and
+  `2a10b561...5500`.
+- Cache-only native tracing rejects the resource hypothesis: both control and
+  candidate remain grid40/local512 at
+  **VGPR176/SGPR128/LDS43,008/scratch0**. Trace hash is
+  `d7e2879e...bebb`.
+- Seven counterbalanced actual-model p512/d128 pairs move
+  **20.752041 -> 20.751527 tok/s (-0.00248%)**, or
+  **48.18803 -> 48.18923 ms/token (+0.00119 ms)**. Median paired change is
+  **+0.00554%** with **5/7** wins, but the independent median regresses.
+  Every run preserves tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, position 638, determinism, and teardown. Raw hash is
+  `2f372389...d615`.
+- Remove the kernel, wrapper, registry entry, runtime route, comparison CLI,
+  and test addition. Tracked production code returns exactly to `33e43fe77`;
+  production remains **20.744351 tok/s**. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage128-bounded16-rejected.json`.
