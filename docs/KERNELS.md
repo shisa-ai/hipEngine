@@ -1493,6 +1493,10 @@ Tracked-clean selector-unset production on `ab2ea899c` measures
 **+0.1917% / -0.0975 ms/token** over the preceding clean packet and
 **+71.520%** over sprint start, with exact repeated state. Evidence:
 [`clean global mixed32 production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed32-exp32-production.json).
+The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
+improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
+the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
+[`rejected global mixed40 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

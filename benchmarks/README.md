@@ -147,6 +147,9 @@ attention output and exact generated state. Cached tracing names the intended
 Three tracked-clean selector-unset samples are
 **19.660256/19.667705/19.670663 tok/s**, median **19.667705**, confirming
 **+0.1917% / -0.0975 ms/token** over the preceding clean Q4-dual packet.
+The next 40-block **2+1+1+1+1** point is rejected: it improves live513
+**4.62%** but regresses live576/live639 **0.21%/0.11%**, so mixed32 remains
+the occupancy/reuse crossover and all mixed40 code is removed.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
