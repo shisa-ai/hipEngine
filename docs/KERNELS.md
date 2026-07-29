@@ -466,6 +466,14 @@ physical waves are required to hide this memory/decode work; do not retry
 local32 logical-wave replay:
 [`rejected wave32 replay`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-wave32-replay-rejected.json).
 
+The separately registered natural selected-down parallel-tail siblings retain
+all four physical waves and assign the 16 independent ordered wave0..3 sums
+and BF16 stores to lanes 0..15. Actual Q4 and planar-Q6 down leaves are
+byte-exact and improve **3.125%/0.940%**, with 20/21 and 21/21 paired wins.
+Cached tracing preserves local128/LDS512/scratch0 and VGPR **104/80**.
+Production selection is pending the resident gate:
+[`selected-down parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

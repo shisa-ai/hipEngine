@@ -36,7 +36,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
@@ -79,6 +81,11 @@ def _parse_args() -> argparse.Namespace:
         default="natural",
     )
     parser.add_argument("--gate-only", action="store_true")
+    parser.add_argument(
+        "--down-candidate",
+        choices=("natural", "parallel-tail"),
+        default="natural",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -648,13 +655,35 @@ def main() -> int:
         "q4_gate_up": gate_result,
     }
     if not args.gate_only:
+        if args.down_candidate == "parallel-tail":
+            q4_down_control = (
+                gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out
+            )
+            q4_down_candidate = (
+                gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out
+            )
+            q6_down_control = (
+                gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
+            )
+            q6_down_candidate = (
+                gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out
+            )
+            q6_control_kwargs = None
+        else:
+            q4_down_control = gguf_q4_k_t16_selected_gemv_bf16_bf16_out
+            q4_down_candidate = (
+                gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out
+            )
+            q6_down_control = gguf_q6_k_t16_selected_gemv_bf16_bf16_out
+            q6_down_candidate = (
+                gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
+            )
+            q6_control_kwargs = {"qmicro": True, "qmicro_planar": True}
         results.update(
             {
                 "q4_down": _screen_single(
-                    control=gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
-                    candidate=(
-                        gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out
-                    ),
+                    control=q4_down_control,
+                    candidate=q4_down_candidate,
                     x=x_down,
                     tiles=q4_down,
                     in_features=1024,
@@ -662,15 +691,13 @@ def main() -> int:
                     **common,
                 ),
                 "q6_down": _screen_single(
-                    control=gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
-                    candidate=(
-                        gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
-                    ),
+                    control=q6_down_control,
+                    candidate=q6_down_candidate,
                     x=x_down,
                     tiles=q6_down,
                     in_features=1024,
                     out_features=3072,
-                    control_kwargs={"qmicro": True, "qmicro_planar": True},
+                    control_kwargs=q6_control_kwargs,
                     **common,
                 ),
             }
@@ -713,6 +740,7 @@ def main() -> int:
                 "shape": "K3072/N1024/Q4T16 dual",
                 "candidate": args.gate_candidate,
             },
+            "down_candidate": args.down_candidate,
             "q4_down": {
                 "layer": args.q4_down_layer,
                 "shape": "K1024/N3072/Q4T16",
