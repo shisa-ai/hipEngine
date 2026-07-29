@@ -1575,6 +1575,18 @@ remains **20.056756 tok/s**. Evidence:
 [`rejected SWA runtime`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gated-only-runtime-rejected.json),
 [`rejected global gated-only leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-gated-only-rejected.json).
 
+Plain FP64 PV substitution is also closed. A temporary mixed32
+producer-max/producer-gate sibling preserves the exact QK, maximum, compiler
+`expf`, ordered F32 denominator, ownership, divide, gate, and stores, while
+accumulating each dimension's 512 PV terms in serial FP64 before one F32
+round. The wrapped/evicted oracle stays close but changes **5/9,216** gated
+BF16 values, and the leaf regresses
+**0.058978 -> 0.165942 ms (+181.36%)**. The specialization, wrapper, key, and
+harness seam are removed before trace or model-quality work. Higher
+mathematical precision does not reproduce the recurrent scalar-F32 boundary
+and is not a throughput bridge to cooperative PV:
+[`rejected FP64 PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fp64-pv-rejected.json).
+
 The exact scalar form of llama.cpp-style whole-GQA ownership is closed.
 One local384 block per KV head stages all nine queries and reuses each K/V
 tile and exp32 weight while preserving the production denominator and scalar
