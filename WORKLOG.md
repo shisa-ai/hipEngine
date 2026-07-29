@@ -190530,3 +190530,29 @@ Vulkan local sizes verbatim will close the measured gap.
   pay global score/slot scratch plus a second exact reducer dispatch; the next
   screen must keep exact scalar PV in the same launch. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-wmma-qk-exact-reduce-rejected.json`.
+
+## 2026-07-29 19:41 JST — Admit single-launch global WMMA-QK primitive
+
+- Audited llama.cpp Vulkan `c0bc8591e` at the actual decode route. GQA6 makes
+  one Br16 query tile, 512 keys become eight K64 splits, and 64
+  local256/four-wave64 cooperative QK+PV workgroups feed one bounded-state
+  merge. Its advantage is tile-local QK/softmax/PV ownership, not a separable
+  QK producer.
+- RED fails on the absent wrapper. GREEN adds a separately registered
+  single-launch hybrid to the 32-block mixed **2+2+1+1** owner: only QK uses
+  three-term BF16 WMMA; producer maxima, exp32 ordered softmax, 64-slot staged
+  scalar F32 PV, gate, and stores remain in the existing workgroup.
+- The live513/576/639 eviction oracle passes with maximum F32 context error
+  **5.59e-9** and gated BF16 mismatches **1/1/0**. Cached 9x50 leaves improve
+  **0.073108 -> 0.058893 ms (-19.44%)**,
+  **0.079791 -> 0.063105 ms (-20.91%)**, and
+  **0.087345 -> 0.073427 ms (-15.93%)**. Raw SHA-256 is
+  `f6f240b3...42146b`.
+- Cache-only tracing names the intended `<...,true>` candidate at 32
+  local256 blocks, VGPR104/SGPR128/static-LDS512/scratch0; no compiler ran
+  under profiling. Trace SHA-256 is `15524d2f...ffd7e`.
+- Retain only the diagnostic primitive now. Production remains
+  **20.069608 tok/s**. Next add a temporary global-only selector and run the
+  authoritative 18-prompt/576-step recurrent quality gate before any
+  production timing or promotion. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-primitive.json`.

@@ -4698,6 +4698,23 @@ The remaining attention sequence is:
     PV ownership inside one dispatch and eliminate global score scratch.
     Evidence:
     [`rejected WMMA QK plus exact reducer`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-wmma-qk-exact-reduce-rejected.json).
+30. Keep cooperative QK and ordered scalar PV in one launch. **Primitive
+    admitted; recurrent quality pending:** the 32-block mixed
+    **2+2+1+1** owner replaces only scalar QK with the proven three-term BF16
+    WMMA producer. Producer maxima, exp32 ordered softmax, 64-slot staged
+    scalar F32 PV, gate, and stores stay inside the same workgroup and
+    dispatch. This transfers llama.cpp's tile-local ownership without copying
+    its F16 PV contract or paying the rejected global score/reducer boundary.
+    The evicted live513/576/639 oracle has maximum F32 context error
+    **5.59e-9** and gated BF16 mismatches **1/1/0**. Cached 9x50 medians
+    improve **0.073108 -> 0.058893 ms (-19.44%)**,
+    **0.079791 -> 0.063105 ms (-20.91%)**, and
+    **0.087345 -> 0.073427 ms (-15.93%)**. A cache-only trace names
+    32 local256 blocks at VGPR104/SGPR128/LDS512/scratch0. Production remains
+    **20.069608 tok/s** pending the authoritative 18-prompt/576-step recurrent
+    quality gate.
+    Evidence:
+    [`single-launch WMMA-QK primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-single-launch-wmma-qk-primitive.json).
 
 Current exact decode checkpoint:
 

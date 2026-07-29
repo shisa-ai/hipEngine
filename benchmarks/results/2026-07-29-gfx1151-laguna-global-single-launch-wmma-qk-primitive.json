@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T19:41:11+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_single_launch_wmma_qk_primitive",
+  "status": "diagnostic_primitive",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "641f7c7d4cb3aea1ea55530c92730bae25a64d90",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_file": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "48Q/8KV/D128/global4096"
+  },
+  "candidate": {
+    "variant": "global_context_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_spans",
+    "description": "Retain the 32-block mixed 2+2+1+1 owner and replace only scalar QK score production with three-term BF16 WMMA. Producer maxima, exp32 ordered softmax, 64-slot staged scalar F32 PV, gate, and output stores remain in the same workgroup and dispatch.",
+    "llamacpp_lesson": "The comparator keeps cooperative QK, softmax, and PV tile-local. This hybrid eliminates the rejected global score round-trip and second reducer launch while preserving hipEngine's scalar PV association."
+  },
+  "correctness": {
+    "red": "The focused global live513/576/639 eviction oracle failed before implementation because the single-launch hybrid wrapper did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "green_result": "1 passed",
+    "explicit_eviction_position": 200,
+    "max_context_f32_abs": 5.587935447692871e-09,
+    "gated_bf16_mismatches": [
+      1,
+      1,
+      0
+    ]
+  },
+  "leaf": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-qk-three-term-mixed32-exact-pv --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-wmma-qk-mixed32-exact-pv-leaf.json",
+    "raw_sha256": "f6f240b3c8f8d19985d14039e8aa897fbf944048a972ac57924c44183e42146b",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.07310823917388916,
+        "candidate_median_ms": 0.058892741203308105,
+        "latency_change_percent": -19.444454046785697
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.07979050159454346,
+        "candidate_median_ms": 0.06310472011566162,
+        "latency_change_percent": -20.91198970482836
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.08734461784362793,
+        "candidate_median_ms": 0.0734273386001587,
+        "latency_change_percent": -15.93375709581234
+      }
+    ]
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-global-wmma-qk-exact-pv-trace.I6yo3W -o wmma_qk_exact_pv -- env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-qk-three-term-mixed32-exact-pv --samples 1 --warmups 1 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build",
+    "raw_sha256": "15524d2f095433c99a511e18d9a07a5f7cfe08bc4395135515044561573ffd7e",
+    "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2,64,true,true,true,true,true,true,true>",
+    "grid_blocks": 32,
+    "workgroup_size": 256,
+    "vgpr_count": 104,
+    "sgpr_count": 128,
+    "static_lds_bytes": 512,
+    "scratch_bytes": 0,
+    "compiler_ran_under_profiler": false
+  },
+  "decision": {
+    "primitive_retained": true,
+    "runtime_default_changed": false,
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "next_gate": "Add a temporary gfx1151 global-only selector and run the authoritative 18-prompt, 576-step recurrent quality gate before any production timing or promotion."
+  }
+}
