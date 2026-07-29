@@ -5029,6 +5029,18 @@ The remaining attention sequence is:
     [`resident retention`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-production.json).
 
+    The clean 127-transition census attributes the production win directly:
+    SWA falls **2.237644 -> 2.018186 ms/token (-9.808%)**, total attention
+    falls **3.353534 -> 3.135648 ms/token (-6.497%)**, kernel sum falls
+    **47.554087 -> 47.296538 ms/token (-0.542%)**, and span falls
+    **49.824983 -> 49.510853 ms/token (-0.630%)**. Global attention is
+    effectively flat at **1.110485 ms/token**. Attention remains
+    **2.226225 ms/token** above same-GGUF Vulkan, or **35.40%** of the
+    remaining production wall gap. The next exact screen vectorizes reads
+    from the already-published contiguous K64 probability row inside PV while
+    preserving every output dimension's 64-FMA order. Evidence:
+    [`post-vector-denominator census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-vec4-denom-wall-reprofile.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

@@ -191097,3 +191097,28 @@ Vulkan local sizes verbatim will close the measured gap.
   127-transition wall census, then screen exact vectorized probability replay
   inside the retained SWA PV loop. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-production.json`.
+
+## 2026-07-29 23:46 JST — Re-profile vectorized SWA denominator wall
+
+- Run one tracked-clean, require-cached `rocprofv3 --kernel-trace` process at
+  revision `62be9f631`. The trace contains warmup128, timed prefill512, and
+  the expected **127** one-token decode segments. It names the promoted SWA
+  specialization at grid12,288/local384, VGPR104, SGPR128, LDS25,600,
+  scratch0; no compiler runs under profiling.
+- Median decode is **721 compute dispatches**, **47.296538 ms/token** kernel
+  sum, and **49.510853 ms/token** span. Attention is
+  **3.135648 ms/token = 2.018186 SWA + 1.110485 global**.
+- Against the post-stage-cache census, SWA falls
+  **2.237644 -> 2.018186 ms/token (-9.808%)**, total attention falls
+  **6.497%**, kernel sum falls **0.542%**, and span falls **0.630%**. The
+  vectorized denominator therefore accounts for essentially the complete
+  measured production saving; global and the 24.028-ms source-F16 family are
+  stable.
+- Same-GGUF llama.cpp Vulkan attention remains **0.909423 ms/token**.
+  hipEngine's attention gap is now **2.226225 ms/token**, or **35.40%** of
+  the remaining **6.290-ms/token** production wall gap. Next screen exact
+  `float4` reads from the already-published contiguous probability row inside
+  PV while preserving each dimension's 64-FMA order.
+- Raw trace SHA-256 is `02e28c94...b04c15`; child SHA-256 is
+  `24541341...56140`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-vec4-denom-wall-reprofile.json`.
