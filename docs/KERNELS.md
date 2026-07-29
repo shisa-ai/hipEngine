@@ -1510,9 +1510,14 @@ span. Attention is **4.365 ms/token = 3.183 SWA + 1.182 global**; global is
 **5.00%** below the prior GQA2-exp32 census while SWA is flat. The remaining
 **3.456-ms/token** attention gap is **43.1%** of the complete same-GGUF Vulkan
 publication-wall gap. Next attention work targets saturated SWA in one launch,
-starting with packed BF16 dot2 plus two-term F32 input decomposition rather
-than a split merge or output-derived repair. Evidence:
-[`post-global-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json).
+but packed BF16 dot2 is now closed: its compensated form regresses the leaf
+**1.05%**, while its one-term form improves only **0.17%** and fails the
+18-prompt/576-step gate at max KL **1.265727** (**25.31x** the ceiling).
+All candidate code is removed. The next screen must be an exact structural
+single-launch design informed by the llama.cpp audit, not another approximate
+instruction substitution, split merge, or output-derived repair. Evidence:
+[`post-global-mixed32 wall census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json),
+[`rejected QK dot2`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-qkdot2-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

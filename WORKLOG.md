@@ -189402,3 +189402,26 @@ Vulkan local sizes verbatim will close the measured gap.
   avoiding rejected WMMA split merges and output-derived repair. Trace/bench
   SHA-256 values are `a9837ba0...bca41d` / `30c8c58f...9bdb8`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-mixed32-wall-reprofile.json`.
+
+## 2026-07-29 12:05 JST — Reject packed-BF16 SWA QK dot2
+
+- RED required two absent saturated mixed32-exp32 wrappers. GREEN covers
+  positions 512-519 after ring wrap plus explicit position-200 eviction.
+  The compensated rounded-query-plus-residual QK dot2 path is nearly exact
+  but regresses **0.081695 -> 0.082554 ms (+1.05%)**.
+- The one-term QK dot2 path improves the leaf only
+  **0.081601 -> 0.081465 ms (-0.17%)**, with **160** gated BF16 mismatches
+  capped at one BF16 ULP. It therefore advanced only to the canonical
+  saturated-p512 quality gate; PV remained exact scalar.
+- The same 18-prompt suite and repeat-without-leading-BOS p512 protocol as the
+  earlier WMMA screen compares **576** teacher-forced full-logit transitions.
+  It is finite and reaches **564/576 = 97.92%** top-1, but max KL is
+  **1.265727**, **25.31x** the required **0.05**. Every category exceeds the
+  KL ceiling. The candidate fails quality before any production A/B or trace.
+- Removed both HIP bodies, wrappers, registry entries, runtime selector,
+  oracle extensions, and temporary quality/leaf harness routes. `git diff
+  --exit-code` confirms all five touched production/test/harness files match
+  `71ae41ffa` byte-for-byte. Production remains **19.667705 tok/s**.
+  Leaf/quality SHA-256 values are `ab7f6951...00680`,
+  `de298902...a6e7`, and `50ef17fa...74b`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-qkdot2-rejected.json`.
