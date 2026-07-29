@@ -1183,7 +1183,10 @@ void q4_k_t16_selected_dual_natural_gemv_kernel(
 // across two workgroups. Each output column retains the natural kernel's
 // thread K ownership, FMA order, wave tree, wave-0..3 reduction, and BF16
 // store while halving the live gate/up accumulator set per workgroup.
-template <typename scalar_t, bool parallel_tail = false>
+template <
+    typename scalar_t,
+    bool parallel_tail = false,
+    bool fuse_silu = false>
 __global__ __launch_bounds__(128, 4)
 void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -1269,8 +1272,9 @@ void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
       const int local_col = tid;
       scalar_t* __restrict__ out_row_a =
           out_a + row * kOutFeatures + out_group * kTileCols;
-      scalar_t* __restrict__ out_row_b =
-          out_b + row * kOutFeatures + out_group * kTileCols;
+      scalar_t* __restrict__ out_row_b = fuse_silu
+          ? nullptr
+          : out_b + row * kOutFeatures + out_group * kTileCols;
       float total_a = 0.0f;
       float total_b = 0.0f;
 #pragma unroll
@@ -1278,8 +1282,19 @@ void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
         total_a += xchg_a[g * kTileCols + local_col];
         total_b += xchg_b[g * kTileCols + local_col];
       }
-      out_row_a[local_col] = float_to_scalar<scalar_t>(total_a);
-      out_row_b[local_col] = float_to_scalar<scalar_t>(total_b);
+      if constexpr (fuse_silu) {
+        // Match the separate dual-GEMV -> BF16 store/load -> SiLU chain:
+        // round gate and up independently before evaluating the same
+        // g * sigmoid(g) * u expression and materializing BF16.
+        const float gate = round_trip_scalar_to_float<scalar_t>(total_a);
+        const float up = round_trip_scalar_to_float<scalar_t>(total_b);
+        const float sig = 1.0f / (1.0f + expf(-gate));
+        out_row_a[local_col] =
+            float_to_scalar<scalar_t>(gate * sig * up);
+      } else {
+        out_row_a[local_col] = float_to_scalar<scalar_t>(total_a);
+        out_row_b[local_col] = float_to_scalar<scalar_t>(total_b);
+      }
     }
   } else if (tid == 0) {
     scalar_t* __restrict__ out_row_a =
@@ -2699,6 +2714,43 @@ int launch_q4_dual_natural_tile8_parallel(const void* x,
 }
 
 template <typename scalar_t>
+int launch_q4_dual_natural_tile8_parallel_silu(
+    const void* x,
+    const void* selected,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out ||
+      x_rows != 1 || rows != 10 || in_features != 3072 ||
+      out_features != 1024 || num_experts <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(1024 / 8, 10);
+  hipLaunchKernelGGL(
+      (q4_k_t16_selected_dual_natural_tile8_gemv_kernel<
+          scalar_t, true, true>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<scalar_t*>(out),
+      nullptr,
+      num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dual_pairreuse_direct(const void* x,
                                     const void* selected,
                                     const void* tiles_a,
@@ -2991,6 +3043,17 @@ hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out(
   return launch_q4_dual_natural_tile8_parallel<uint16_t>(
       x, selected, tiles_a, tiles_b, out_a, out_b, x_rows, rows,
       in_features, out_features, num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a,
+    const void* tiles_b, void* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dual_natural_tile8_parallel_silu<uint16_t>(
+      x, selected, tiles_a, tiles_b, out, x_rows, rows, in_features,
+      out_features, num_experts, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out(

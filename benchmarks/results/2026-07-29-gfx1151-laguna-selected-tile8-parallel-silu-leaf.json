@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T15:53:25+09:00",
+  "kind": "hipengine_laguna_selected_tile8_parallel_silu_leaf",
+  "status": "candidate",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_count": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M"
+  },
+  "workload": {
+    "layer": 1,
+    "shape": "c1/top10 selected Q4_K T16 dual gate/up plus SiLU, K3072/N1024",
+    "selected_experts": [17, 3, 91, 42, 7, 128, 201, 55, 240, 12],
+    "resident_input_bytes": 931223632
+  },
+  "candidate": {
+    "control": "parallel tile8 dual gate/up followed by silu_mul_separate_out_kernel<uint16_t>",
+    "candidate": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<uint16_t,true,true>",
+    "change": "Round gate/up in the existing eight-lane tail, evaluate the identical SiLU expression, and write only the BF16 intermediate.",
+    "preserved": "Resident T16 bytes, grid/local128 geometry, all K/FMA ownership and reductions, independent BF16 gate/up round trips, expf expression, final BF16 store.",
+    "removed_per_layer": "one SiLU launch, two BF16 gate/up writes, two BF16 gate/up reads"
+  },
+  "protocol": {
+    "warmups": 5,
+    "samples": 21,
+    "burst": 50,
+    "timing": "counterbalanced HIP-event elapsed time over the complete control two-launch chain versus candidate one-launch chain",
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu --gate-only --warmups 5 --samples 21 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-tile8-parallel-silu-leaf.json",
+    "raw_sha256": "93ef75be26dff9e2fb418e9c228d7a8501e6accfee563b1a86d37c29f50e8d0c"
+  },
+  "results": {
+    "control_median_ms": 0.1310584164,
+    "candidate_median_ms": 0.1295291615,
+    "candidate_delta_percent": -1.166849834,
+    "saving_ms_per_layer": 0.0015292549,
+    "paired_wins": 21,
+    "paired_samples": 21,
+    "intermediate_bf16_mismatches": 0,
+    "control_launches": 2,
+    "candidate_launches": 1,
+    "memory_after_bytes": 0
+  },
+  "validation": {
+    "red": "test collection failed on the absent fused natural-tile8 wrapper",
+    "focused_test": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py",
+    "focused_result": "102 passed",
+    "rocprof_trace_sha256": "84ddad986aef389bbd8d5129770cfc44d02c4dd403f73990d62293561a80db96",
+    "rocprof_child_sha256": "a37e06fd070b554ad1f3ba714d8d97f6d0d41ccb613692f9389a1cc0722fdef1",
+    "rocprof_candidate_median_duration_us": 139.421,
+    "resources": {
+      "grid_size_x": 16384,
+      "grid_size_y": 10,
+      "workgroup_size_x": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "compiler_ran_under_profiler": false,
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat remains environment-blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; this is an in-tree exact output-fusion change and ports no external source."
+  },
+  "decision": {
+    "action": "Retain as a separately registered default-off primitive and proceed to a same-session resident p512/d128 A/B.",
+    "production_changed": false,
+    "production_baseline_tok_s": 20.007890075
+  }
+}

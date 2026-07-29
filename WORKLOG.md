@@ -190044,3 +190044,26 @@ Vulkan local sizes verbatim will close the measured gap.
   rollback, parallel registered primitive, and serial tile8 registered owner.
   Qualified gfx1151 production remains capability-selected and peer
   backends/non-natural shapes remain unchanged.
+
+## 2026-07-29 15:54 JST — Retain exact tile8 parallel-tail SiLU leaf
+
+- RED first fails test collection on the absent natural tile8 parallel-tail
+  SiLU wrapper. GREEN adds a separately exported/registered specialization
+  that preserves every GEMV operation, independently round-trips gate/up
+  through BF16, evaluates the same `g * sigmoid(g) * u`, and writes only the
+  BF16 expert intermediate.
+- The current control writes and rereads 20,480 B of BF16 gate/up per layer
+  and launches standalone SiLU. The candidate removes that traffic and one
+  launch. Actual layer-1 K3072/N1024 gate/up improves
+  **0.131058 -> 0.129529 ms (-1.167%)** across 21 counterbalanced 50-launch
+  samples; all **21/21** pairs win and the intermediate has zero BF16
+  mismatches.
+- The complete changed HIP test file passes **102/102**. Cached tracing names
+  the `<unsigned short,true,true>` specialization at
+  grid16384x10/local128, VGPR96/SGPR128/LDS512/scratch0. Trace/child SHA-256
+  values are `84ddad98...db96` and `a37e06fd...def1`; no compiler ran under
+  the profiler.
+- Raw SHA-256 is `93ef75be...8d0c`. Production remains
+  **20.007890 tok/s**; next add a session-scoped default-off route and run a
+  matched resident p512/d128 gate. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json`.

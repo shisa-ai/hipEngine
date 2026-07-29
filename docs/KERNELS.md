@@ -442,6 +442,18 @@ duration. Evidence:
 [`tile8 parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-leaf.json),
 [`retained resident gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-tail-retained.json).
 
+The registered exact tile8 parallel-tail SiLU sibling consumes the two
+independently BF16-rounded gate/up values inside the tail and writes the same
+BF16 intermediate directly. This removes one launch plus 20,480 B each of
+gate/up writes and reads per selected layer without changing any GEMV
+arithmetic. On actual layer-1 K3072/N1024 weights, the complete current
+two-launch chain improves **0.131058 -> 0.129529 ms (-1.167%)**; all 21
+counterbalanced pairs win and the intermediate has zero BF16 mismatches.
+Cached tracing keeps grid16384x10/local128,
+VGPR96/SGPR128/LDS512/scratch0. The primitive remains default-off pending a
+resident p512/d128 state/performance gate. Evidence:
+[`tile8 parallel-tail SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
