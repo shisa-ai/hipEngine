@@ -4234,6 +4234,18 @@ register/serial pressure dominate the V saving, so the candidate is removed.
 Evidence:
 [`rejected GQA9/D32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-dim32-rejected.json).
 
+The first post-census tensorized state repair is also rejected. The
+compensated-WMMA **GQA9 x K64** tile now carries each split's unnormalized PV
+numerator and applies the denominator only once in the FP64 merge, removing
+the rejected predecessor's local divide/global multiply round trip. It keeps
+the material leaf win, **0.081649 -> 0.034335 ms (-57.95%)**, and lowers the
+prior all-layer maximum KL **1.754897 -> 1.426066 (-18.73%)**. That is still
+**28.52x** the admitted 0.05 ceiling. The full 18-prompt/576-step gate records
+**555/576 (96.35%)** top-1, but every category exceeds the KL budget, so the
+kernel, wrapper, diagnostic selector, oracle, and harness are removed.
+Evidence:
+[`rejected raw-numerator WMMA`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-raw-numerator-rejected.json).
+
 The next material SWA gate must start from llama.cpp's actual advantage:
 tensorized QK and PV inside one GQA tile, with a separately budgeted
 high-precision correction strategy. Reusing scalar ownership, global score
@@ -4347,7 +4359,10 @@ and shape/backend fallbacks.
    slower, closing scalar ordinary-grid SWA ownership below 32 blocks. The
    final 32-block GQA9/D32 dimension-sharded screen is exact but **69.60%**
    slower: fourfold lower V traffic cannot repay fourfold redundant QK and
-   nine-head issue pressure. Apply
+   nine-head issue pressure. A single-normalization raw-numerator WMMA repair
+   retains a **57.95%** leaf win and improves the prior WMMA max KL
+   **1.754897 -> 1.426066**, but remains 28.52x over budget and is removed.
+   Apply
    exact wave32 exp issue in global GQA2 is retained at **2.25-3.79%** leaf
    and **+0.0479%** complete decode. The next material SWA step requires an
    independently gated tensorized high-precision repair. Do not resume
