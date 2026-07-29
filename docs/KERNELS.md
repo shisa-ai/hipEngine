@@ -1791,10 +1791,14 @@ keep the production schedule. Wrapped/evicted outputs are byte-exact. The
 9x50 leaf improves **0.056018 -> 0.055849 ms (-0.303%)**, and a stronger
 21x100 screen confirms **0.056164 -> 0.055990 ms (-0.309%)** with **20/21**
 paired wins. Cache-only tracing leaves grid32/local384, VGPR104, SGPR128,
-LDS25,600, and scratch0 unchanged. The registered primitive is retained
-pending seven resident p512/d128 pairs; production remains **20.270314
-tok/s**:
-[`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json).
+LDS25,600, and scratch0 unchanged. The resident gate is positive but not
+robust: median decode moves only
+**20.279694 -> 20.283354 tok/s (+0.0180%, -0.0089 ms/token)**, with six
+paired wins but one **-0.0207% / +0.0102 ms/token** loss larger than the
+median saving. Remove all comparison runtime plumbing and retain only the
+registered diagnostic primitive; production remains **20.270314 tok/s**:
+[`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json),
+[`runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-runtime-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

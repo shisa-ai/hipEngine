@@ -4958,7 +4958,7 @@ The remaining attention sequence is:
     retained probability-cache schedule. Evidence:
     [`rejected GQA3 stage cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa3-stage-pcache-rejected.json).
 42. Schedule pair-owner probability work on otherwise-idle waves. **Primitive
-    retained pending resident gate:** the 24 pair-owner blocks in mixed32 have
+    retained; runtime promotion rejected:** the 24 pair-owner blocks in mixed32 have
     eight active output waves and four idle waves. Production assigns exact
     probability/denominator work to active waves 0 and 4, preventing them from
     helping stage V. The candidate moves those two producers to idle waves 8
@@ -4971,10 +4971,16 @@ The remaining attention sequence is:
     the stronger 21x100 confirmation improves
     **0.056164 -> 0.055990 ms (-0.309%)**, with **20/21** paired wins.
     Cache-only tracing keeps grid32/local384, VGPR104, SGPR128, LDS25,600, and
-    scratch0 for both control and candidate. Retain the registered primitive
-    and run seven counterbalanced resident p512/d128 pairs before changing
-    production. Current production remains **20.270314 tok/s**. Evidence:
-    [`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json).
+    scratch0 for both control and candidate. Seven counterbalanced resident
+    p512/d128 pairs move median decode only
+    **20.279694 -> 20.283354 tok/s (+0.0180%, -0.0089 ms/token)**. Six pairs
+    win, but the lone **-0.0207% / +0.0102 ms/token** loss is larger than the
+    median modeled saving. Reject promotion, remove the comparison cache field,
+    session setter, profile CLI, and routing-test seam, and retain only the
+    registered diagnostic primitive. Current production remains
+    **20.270314 tok/s**. Evidence:
+    [`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json) ·
+    [`runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-runtime-rejected.json).
 
 Current exact decode checkpoint:
 

@@ -190993,3 +190993,23 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **20.270314 tok/s** pending seven counterbalanced resident
   p512/d128 pairs. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json`.
+
+## 2026-07-29 23:10 JST — Reject idle-wave SWA runtime promotion
+
+- Add a comparison-only cache field, session setter, profile CLI, and routing
+  test, leaving production as control. The plumbing suite passes **36** tests;
+  the isolated HIP oracle initially misses its cache after a whitespace-only
+  source restoration changed the build hash, then passes after the object is
+  rebuilt outside profiling.
+- Seven counterbalanced Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 pairs
+  move median decode **20.279694 -> 20.283354 tok/s
+  (+0.018046%, -0.008897 ms/token)**. Six of seven pairs win, but the lone
+  loss is **-0.020723% / +0.010221 ms/token**, larger than the median saving.
+- Every row preserves next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero tracked
+  allocations after teardown. Raw output SHA-256 is `4c4805ce...b44660`.
+- Reject runtime promotion as indistinguishable from resident noise. Remove
+  the comparison cache field, setter, CLI, routing seam, and refactor entry.
+  Keep the exact registered primitive/oracle/leaf harness diagnostic-only.
+  Production remains **20.270314 tok/s**. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-runtime-rejected.json`.
