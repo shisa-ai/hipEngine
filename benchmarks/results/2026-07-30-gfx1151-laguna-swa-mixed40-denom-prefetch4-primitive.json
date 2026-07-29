@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T02:08:51+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_denom_prefetch4_primitive",
+  "status": "accepted_primitive_pending_runtime_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source": {
+    "base_revision": "0947db3bbbffbfe8462a179cc6215134f5b5fa75",
+    "external_source_copied": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 384
+  },
+  "retained_counter_census": {
+    "protocol": "one require-cached rocprofv3 process per counter; four steady candidate dispatches per process",
+    "mem_unit_busy_percent": {
+      "median": 51.2643365,
+      "range": [50.184088, 52.540592]
+    },
+    "l2_cache_hit_percent": {
+      "median": 49.742283,
+      "range": [49.742283, 49.864245]
+    },
+    "fetch_size_kilobytes": 2091.125,
+    "sq_insts_valu": 1764240,
+    "sq_insts_lds": 482056,
+    "sq_insts_salu": 640936,
+    "sq_wave_cycles_quad_cycles_median": 47948181.5,
+    "wavefronts": 480,
+    "raw_counter_csv_sha256": {
+      "MemUnitBusy": "0293c8a0e48e7a1de0effcdf735257acdacba082d21ecc49f08f8f7810ed88fd",
+      "L2CacheHit": "a7ea9fdec4043bf6401ede56ee3aefcc6675b394b3ca7e9c39d45042c2b2369d",
+      "FETCH_SIZE": "d23f098ae42bd55eed7abaa4f1397d7e3f4abbec7e9b09ba256a5730a65cc1db",
+      "SQ_INSTS_VALU": "a3d8e1e1048025ff48995d17c35deb67a4dd43e7f1bc316fb7b28ef25f0b80bb",
+      "SQ_INSTS_LDS": "124a69e31ddbc2a91a5606ec4f43dfcc362ec618e1c7ecff4287356094cea3c8",
+      "SQ_INSTS_SALU": "adafd92b798388d0c1cc2036b3aebeff2558d899c7ac00cda6f5aa3d44239810",
+      "SQ_WAVE_CYCLES": "6e42a285846d8ed49a9ebbf280210dd7034a7725178895279613400bdf91fd4f",
+      "Wavefronts": "642341116f58c7a6f4902168e682e9847a4a184f30f5efce66b336029328f022"
+    },
+    "interpretation": "The current kernel is a mixed instruction and memory-latency workload, not a DRAM roof or an LDS-capacity roof."
+  },
+  "candidate": {
+    "description": "Issue four adjacent float4 LDS probability loads before replaying their 16 denominator components in the original scalar order.",
+    "control": "retained mixed40 tail producer with one float4 load immediately followed by lgkmcnt(0) and four adds",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": 0,
+    "dispatch_count_changed": false,
+    "ownership_changed": false,
+    "barrier_count_changed": false
+  },
+  "correctness": {
+    "red": "focused wrap/eviction test failed importing the absent denominator-prefetch4 wrapper",
+    "green": "focused wrap/eviction test passed after implementation",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "screen_9x50": {
+      "control_median_ms": 0.03718807935714721,
+      "candidate_median_ms": 0.03703573942184448,
+      "latency_change_percent": -0.4096472254984995,
+      "candidate_wins": 9,
+      "paired_samples": 9,
+      "raw_sha256": "a992b197f58e128010365a2ba501524b927e145985f53ac2637d91d52d7bd847"
+    },
+    "screen_21x100": {
+      "control_median_ms": 0.03759679079055786,
+      "candidate_median_ms": 0.03755870103836059,
+      "latency_change_percent": -0.10131117948193324,
+      "candidate_wins": 19,
+      "ties": 1,
+      "candidate_losses": 1,
+      "paired_samples": 21,
+      "raw_sha256": "f4b549742a644fa36d7f54600c74c840cff9664ea1e995bfb2f0ec3d637f774f"
+    }
+  },
+  "isa": {
+    "control_sha256": "9e4be0a3988d388a048baafcbf429d6fe7c70fadcacf705a29662992c8cbc83e",
+    "candidate_sha256": "eb6a9f1d3637f9e2cc619438881fd20981987da13e9e399680afdcb45e0f3fc2",
+    "code_bytes_control": 5740,
+    "code_bytes_candidate": 5740,
+    "static_instruction_count_control": 1070,
+    "static_instruction_count_candidate": 1070,
+    "denominator_schedule_control": "sixteen repeated ds_load_b128 then lgkmcnt(0) chains",
+    "denominator_schedule_candidate": "four groups of four ds_load_b128 followed by lgkmcnt(3), lgkmcnt(2), lgkmcnt(1), and lgkmcnt(0) consumption",
+    "ordered_adds_preserved": 64
+  },
+  "trace": {
+    "cache_only": true,
+    "compiler_ran_under_profiler": false,
+    "control": {
+      "grid_x": 15360,
+      "workgroup_x": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25600,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "grid_x": 15360,
+      "workgroup_x": 384,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 25600,
+      "scratch_bytes": 0
+    },
+    "raw_sha256": "08a2fb660a3884e8d896631fe3cecf65024b5836e75d92cd12a95d4f50daf6c9",
+    "child_sha256": "086c52ed89578e66230a6aa5fba73b3ffaaa7ab5b153a871dffbe47c38b6a114",
+    "failed_preflight_excluded": "The first trace process found the pinned cache artifact absent and exited before launching a kernel; the exact compiler-version key was then prebuilt outside rocprofv3 and the successful cache-only process above was run once."
+  },
+  "decision": {
+    "retain_registered_primitive": true,
+    "production_changed": false,
+    "production_tok_s": 20.49473174761836,
+    "next_gate": "seven counterbalanced exact p512/d128 resident pairs",
+    "interpretation": "The ISA-directed latency overlap is exact and repeatably positive without changing allocated resources, but its small leaf effect requires a resident wall gate."
+  }
+}
