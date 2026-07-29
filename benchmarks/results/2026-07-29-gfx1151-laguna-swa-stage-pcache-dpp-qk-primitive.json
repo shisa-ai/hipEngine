@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T22:22:27+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_dpp_qk_primitive",
+  "status": "retained_primitive_pending_resident_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "2ff2e3bffcb62f1ef402fb5cac8c9d232174e777",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 32,
+    "threads_per_block": 384
+  },
+  "change": {
+    "description": "Combine the retained exact stage-probability cache with the exact permlanex16 plus DPP QK lane-transport tree.",
+    "arithmetic": "The 128-term QK products and +16,+8,+4,+2,+1 F32 tree, producer maxima/gates, expf, ordered denominator, PV FMA/divide, BF16 gate, and stores are unchanged.",
+    "production_changed": false,
+    "rollback": "The current stage-probability-cache specialization remains the production route."
+  },
+  "correctness": {
+    "red": "The wrap/eviction test failed to import the missing combined wrapper before implementation.",
+    "green_test": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "explicit_eviction_position": 200,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 9 --warmups 3 --burst 50 --candidate mixed32-exp32-producer-max-gate-stage-pcache-dpp-qk-vstage64-vec16-direct-assume-exp --allow-dirty --output /tmp/laguna-swa-stage-pcache-dpp-leaf.json",
+    "raw_sha256": "4b58b77730bf12a55df1eb07a9bab4304886b5d01d610bfee31686f5d719b12a",
+    "control": "stage probability cache with shuffle QK transport",
+    "candidate": "stage probability cache with exact DPP QK transport",
+    "control_samples_ms": [
+      0.0562547779083252,
+      0.05640888214111328,
+      0.05629466056823731,
+      0.05640687942504883,
+      0.05629868030548096,
+      0.056238718032836914,
+      0.05618179798126221,
+      0.05635734081268311,
+      0.0563645601272583
+    ],
+    "candidate_samples_ms": [
+      0.05324356079101562,
+      0.05232501983642578,
+      0.05223748207092285,
+      0.05225111961364746,
+      0.05218378067016602,
+      0.05224165916442871,
+      0.0523410177230835,
+      0.052318601608276366,
+      0.052298660278320315
+    ],
+    "control_median_ms": 0.05629868030548096,
+    "candidate_median_ms": 0.052298660278320315,
+    "latency_change_percent": -7.1049978533355045,
+    "complete_sample_separation": true
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-stage-pcache-dpp-trace.8LHXLd --output-file stagepcachedpp -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --samples 1 --warmups 0 --burst 1 --candidate mixed32-exp32-producer-max-gate-stage-pcache-dpp-qk-vstage64-vec16-direct-assume-exp --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-stage-pcache-dpp-trace.8LHXLd/leaf.json",
+    "trace_sha256": "7454e6ddf4ccee69179a607054daf2e2985007b50a346df164b490603563b2ee",
+    "compiler_invocations_under_profiler": 0,
+    "control_and_candidate_grid_size_x": 12288,
+    "control_and_candidate_workgroup_size_x": 384,
+    "control_and_candidate_vgpr_count": 104,
+    "control_and_candidate_sgpr_count": 128,
+    "control_and_candidate_lds_bytes": 25600,
+    "control_and_candidate_scratch_bytes": 0
+  },
+  "lineage": {
+    "external_source_copied": false,
+    "llamacpp_reference": "/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e",
+    "check_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "check_status": "blocked before drift reporting because /home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "decision": {
+    "retain": true,
+    "promote": false,
+    "reason": "The exact combined primitive improves the current production attention leaf by 7.105% with complete sample separation and unchanged resources.",
+    "next_gate": "Add a comparison-only gfx1151 capability and run seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 pairs. Promote only on an exact, positive resident result."
+  }
+}

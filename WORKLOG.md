@@ -190879,3 +190879,31 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw trace SHA-256 is `2f379b32...26a`; child artifact SHA-256 is
   `370eab86...79f`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-post-stage-pcache-wall-reprofile.json`.
+
+## 2026-07-29 22:22 JST — Retain combined SWA stage-cache/DPP primitive
+
+- The proposed global stage-probability-cache transfer is structurally
+  redundant or non-exact. Global mixed32 already computes each probability
+  once, stores the full normalized probability plane in LDS, and reuses it
+  across four output waves. SWA's unnormalized-numerator then divide schedule
+  changes global's FP32 association.
+- Screened the non-redundant exact continuation: combine the retained SWA
+  stage cache with the existing exact `permlanex16` plus DPP QK transport.
+  This changes only lane transport and preserves all products and the
+  **+16,+8,+4,+2,+1** F32 tree.
+- RED: the wrap/eviction test failed to import the missing combined wrapper.
+  GREEN: the focused test passes and is F32-context/gated-BF16 byte-exact
+  through wrap plus explicit position-200 eviction.
+- The cached 9x50 leaf improves
+  **0.056298680 -> 0.052298660 ms (-7.104998%)**, and every candidate sample
+  beats every control. Raw SHA-256 is `4b58b777...9b12a`.
+- Cache-only native tracing confirms the combined instantiation at
+  grid12288/local384, VGPR104, SGPR128, LDS25,600, and scratch0, identical to
+  control resources. Trace SHA-256 is `7454e6dd...2ee`.
+- Retain the registered primitive; production remains **20.270314 tok/s**
+  until seven counterbalanced resident p512/d128 pairs pass exact
+  state/lifecycle and speed gates. `scripts/check_lineage.py --kind kernel
+  --diff stat` remains blocked because the manifest's read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json`.

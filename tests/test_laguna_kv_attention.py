@@ -3136,6 +3136,7 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+        laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
@@ -3516,6 +3517,30 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
             laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                sliding_window=512,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            for host, device in (
+                (candidate, candidate_out),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
                 *common,
                 candidate_out.ptr,
                 gate_device.ptr,
