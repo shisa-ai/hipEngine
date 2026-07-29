@@ -102,6 +102,19 @@ and selector are removed; only the separately registered
 [`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json)
 remains. Exact coltile and the canonical clean headline above are unchanged.
 
+The post-H4 [`exact residual reprofile`](results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json)
+refreshes hipEngine on the same apples-to-apples direct-M512 axes as the frozen
+llama.cpp HIP comparator. Five clean exact samples yield **169.516 tok/s**
+median versus **694.184 tok/s (4.095x)**, with token **2930**, position 511,
+deterministic repeats, and full lifecycle recovery. Cached tracing records
+**3,001.692-ms** kernel sum in a **3,016.780-ms** span across **1,477**
+dispatches, leaving only **15.087 ms / 0.500%** outside kernels. Q5 exact
+coltile remains the next binding target at **1,270.458 ms / 42.325%** and
+**21.551x** its matched llama.cpp body. WPF-H5A therefore tests transient
+raw-Q5-to-F32 expansion plus BF16-to-F32 widening and F32 SGEMM, with no
+resident sidecar and the complete quality lane binding for reassociation. This
+is an attribution baseline and target decision, not a production speedup.
+
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen
