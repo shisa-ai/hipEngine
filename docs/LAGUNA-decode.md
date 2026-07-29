@@ -5400,6 +5400,30 @@ The remaining attention sequence is:
     **20.494732 tok/s**. Do not try a deeper staged-V source prefetch—the
     bounded depth-two screen already fails decisively. Evidence:
     [`value-prefetch2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-value-prefetch2-rejected.json).
+61. Let the finished probability-producer waves copy the staged-V tail.
+    **Retained as an exact diagnostic primitive; rejected for production:**
+    on pair owners, the two tail producer waves copy vectors 960..1023 while
+    every other loader performs exactly three copies instead of 64 lanes
+    performing four. The singleton producer wave similarly copies
+    vectors 992..1023. This changes only copy ownership after probability
+    publication; staged bytes, barriers, QK, softmax, denominator, PV, and
+    stores are unchanged. The wrapped/evicted oracle is F32/BF16 byte-exact.
+
+    The 9x50 and 21x100 leaves improve
+    **0.036699 -> 0.035635 ms (-2.898%)** and
+    **0.037575 -> 0.036346 ms (-3.270%)**. Cache-only tracing keeps
+    grid15,360/local384, VGPR104, SGPR128, LDS25,600, and scratch0. Seven
+    counterbalanced actual-model p512/d128 pairs nevertheless move median
+    decode **20.509962 -> 20.507264 tok/s (-0.01316%)**; median paired
+    change is only **+0.00032%** and **4/7** pairs improve. Generated
+    trajectories, positions, repeat determinism, and allocation lifecycle
+    remain exact.
+
+    Remove the benchmark-only registry swap and do not promote the primitive.
+    Production remains **20.494732 tok/s**. Retain the separate symbol only
+    for a compounded wave-scheduling experiment where its strong leaf gain
+    may become compositional. Evidence:
+    [`producer-value-tail runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-producer-value-tail-runtime-rejected.json).
 
 Current exact decode checkpoint:
 
