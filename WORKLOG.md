@@ -189353,3 +189353,27 @@ Vulkan local sizes verbatim will close the measured gap.
   local128 singleton launches. Raw leaf SHA-256 is
   `d7cb899c...0f977d`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json`.
+
+## 2026-07-29 11:40 JST — Reject exact global split32 exp32
+
+- RED required the absent split32 wrapper. The candidate kept mixed32's four
+  K/V owners per KV head but separated work into **16 pair-owner local256
+  blocks + 16 singleton-owner local128 blocks**. The singleton kernel
+  emulated the retained eight-wave score/reduction association on four
+  physical waves, then used all four waves for D128 PV.
+- GREEN is F32 context and gated BF16 byte identity at evicted
+  live513/576/639. An initial mismatch was traced to saving the maximum before
+  the max merge; moving the private maximum capture after that merge restored
+  byte identity. No relaxed correctness result was admitted.
+- Nine counterbalanced 50-launch samples decisively regress retained mixed32:
+  **0.076609 -> 0.185596 ms (+142.26%)** at live513,
+  **0.083784 -> 0.213137 ms (+154.39%)** at live576, and
+  **0.091793 -> 0.233758 ms (+154.66%)** at live639. The second launch and
+  exact four-physical/eight-virtual-wave reduction overwhelm removal of
+  singleton PV idle waves.
+- Removed the kernel generalization/specializations, wrapper, registry entry,
+  oracle extension, and leaf-harness choice. `cmp` confirms the four touched
+  production/test/harness files match `b05c2110a` byte-for-byte. Production
+  remains **19.667705 tok/s**. No runtime A/B or trace was run under the leaf
+  stop rule. Raw SHA-256 is `1be7e45a...5ca066`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-split32-exp32-rejected.json`.

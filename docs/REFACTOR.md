@@ -2064,7 +2064,9 @@ should be boring.
 - Clean selector-unset production is **19.667705 tok/s**, **+0.1917% /
   -0.0975 ms/token** over the preceding packet, with exact repeated state.
 - The 40-block ordinary-grid point is rejected at live576/live639 and removed.
-  Keep the explicit false rollback through the remaining pair-local256 plus
-  singleton-local128 split-launch screen and the next clean attention census.
-  Then collapse positive selector semantics while retaining the 24-block GQA2
-  exp32 primitive as the exact compiler/occupancy rollback.
+  The pair-local256 plus singleton-local128 split-launch screen is also removed
+  after exact leaves regress **142.26-154.66%**. Keep the explicit false
+  rollback through the next clean attention census and the resulting
+  single-launch screen. Then collapse positive selector semantics while
+  retaining the 24-block GQA2 exp32 primitive as the exact
+  compiler/occupancy rollback.
