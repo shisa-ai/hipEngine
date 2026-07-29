@@ -191363,3 +191363,30 @@ Vulkan local sizes verbatim will close the measured gap.
   **6.129 ms/token** and hipEngine is **12.519%** below Vulkan throughput.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-idle-vector-denom-production.json`.
+
+## 2026-07-30 01:13 JST — Retain exact SWA mixed40 primitive
+
+- The required lineage check remains blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external source was
+  copied. This is an in-tree ownership extension of the retained SWA kernel.
+- Add a one-launch **2+2+2+2+1** owner for each GQA9/KV head. It grows the
+  grid **32 -> 40 blocks**, fills the 40-CU gfx1151, and removes all
+  triple-query critical blocks while paying 25% more K/V-owner traffic.
+  Probability, denominator, PV, gate, stores, resident bytes, and dispatch
+  count remain exact/unchanged.
+- RED fails importing the absent wrapper. GREEN passes the focused
+  wrap/explicit-eviction oracle; F32 context and gated BF16 output are
+  byte-identical to production.
+- Cached 9x50 medians improve
+  **0.045322 -> 0.037665 ms (-16.894%)**. Strong 21x100 medians improve
+  **0.045322 -> 0.037599 ms (-17.039%)** with **21/21** paired wins and
+  complete separation. Raw SHA-256 values are
+  `ca9206d6...b334` / `c4999706...b14d`.
+- Cache-only tracing names grid15,360/local384, VGPR104, SGPR128, LDS25,600,
+  scratch0 versus production grid12,288 at identical per-block resources. No
+  compiler runs under profiling. Raw trace/child SHA-256 values are
+  `eaeee8d9...9f9a` / `c7e44a22...b751`.
+- Retain the registered exact primitive; production remains
+  **20.425412 tok/s**. Next run seven exact counterbalanced p512/d128
+  resident pairs. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json`.

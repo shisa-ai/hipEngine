@@ -3694,9 +3694,10 @@ void laguna_swa_attention_fused_exact_gated_gqa2_fixed512_kernel(
 
 // Exact fused-GQA3 family. The retained base maps 24 ordinary local384
 // workgroups to three queries each. The gfx1151 mixed specialization maps
-// four owners per KV head as 2+2+2+3 (32 blocks); pair-owner idle waves still
+// four owners per KV head as 2+2+2+3 (32 blocks). The mixed40 diagnostic maps
+// five owners per KV head as 2+2+2+2+1 (40 blocks). Idle waves still
 // participate in every staged-V barrier. Active heads preserve the same QK,
-// softmax, PV, gate, and store association in both forms.
+// softmax, PV, gate, and store association in all forms.
 template <
     int kValueStage,
     bool kVectorValueStage,
@@ -3715,7 +3716,8 @@ template <
     bool kIdleProbabilityProducer = false,
     bool kVectorDenomReplay = false,
     bool kVectorProbabilityReplay = false,
-    bool kIdleVectorDenomReplay = false>
+    bool kIdleVectorDenomReplay = false,
+    bool kMixed40Owners = false>
 __global__ __launch_bounds__(384)
 void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float* query,
@@ -3734,7 +3736,8 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
   constexpr int kHeadDim = 128;
   constexpr int kQueryGroup = 9;
   constexpr int kOwnedQueries = 3;
-  constexpr int kOwnersPerKv = kMixed32Owners ? 4 : 3;
+  constexpr int kOwnersPerKv =
+      kMixed40Owners ? 5 : (kMixed32Owners ? 4 : 3);
   constexpr int kScoreWaves = 12;
   static_assert(
       !kStageProbabilityCache ||
@@ -3753,6 +3756,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
            !kIdleProbabilityProducer),
       "idle vector denominator replay requires the active-producer vector "
       "denominator stage cache");
+  static_assert(
+      !(kMixed32Owners && kMixed40Owners),
+      "mixed32 and mixed40 ownership are mutually exclusive");
   __shared__ float shared_scores[kOwnedQueries][kScanSlots];
   __shared__ int32_t shared_physical[kScanSlots];
   __shared__ float shared_wave_max[kOwnedQueries][kScoreWaves];
@@ -3768,11 +3774,15 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
   const int kv_head = owner / kOwnersPerKv;
   const int query_owner = owner % kOwnersPerKv;
   const int q_head_base = kv_head * kQueryGroup +
-      (kMixed32Owners
+      (kMixed40Owners
+           ? query_owner * 2
+           : kMixed32Owners
            ? (query_owner < 3 ? query_owner * 2 : 6)
            : query_owner * kOwnedQueries);
   const int owned_queries =
-      kMixed32Owners && query_owner < 3 ? 2 : kOwnedQueries;
+      kMixed40Owners
+          ? (query_owner < 4 ? 2 : 1)
+          : (kMixed32Owners && query_owner < 3 ? 2 : kOwnedQueries);
   const int tid = static_cast<int>(threadIdx.x);
   const int lane = tid & 31;
   const int wave = tid >> 5;
@@ -10166,6 +10176,80 @@ hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_m
           true,
           true>),
       dim3(32),
+      dim3(384),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      token_positions,
+      evict_mask,
+      row_positions,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 512 ||
+      sliding_window != 512 || scratch_stride != 512 ||
+      scan_slots != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
+          64,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          true,
+          true,
+          true,
+          true>),
+      dim3(40),
       dim3(384),
       0,
       stream,
