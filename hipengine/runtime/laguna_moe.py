@@ -26,6 +26,10 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+    gguf_q8_1_ds4_quantize_bf16_kmajor,
+    q8_1_ds4_kmajor_nbytes,
+)
 from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
 
 _QK_K = 256
@@ -51,6 +55,10 @@ _SELECTED_DOWN_MMQ64X32_D4X3_F32_VARIANT = (
     "prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+_SOURCE_MMQ_DOWN_VARIANT = (
+    "selected_mmq_i128_j128_k256_q8_1_ds4_"
+    "prefill_compact_bf16_bf16_out"
+)
 _IQ3_WAVE10_FUSED_VARIANT = (
     "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
 )
@@ -81,6 +89,7 @@ _SELECTED_DOWN_MODES = frozenset(
     {
         "direct",
         "grouped_exact",
+        "grouped_source_mmq",
         "grouped_smallm",
         "adaptive_grouped_smallm",
         "grouped_smallm_fused",
@@ -129,6 +138,7 @@ _Q8_1_DS4_F32_BLOCK_BYTES = 160
 _Q8_1_DS4_RESIDUAL_PLANES = 3
 _MMQ32_ROWS = 32
 _MMQ64_ROWS = 64
+_SOURCE_MMQ_ROWS = 128
 
 
 def _should_fuse_grouped_weighted_sum(
@@ -371,6 +381,8 @@ class LagunaMoEKernelPlan:
     grouped_pair16_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     grouped_exact_down_keys: Mapping[str, KernelKey]
     grouped_exact_down_routes: Mapping[str, LagunaMoESelectedRoute]
+    grouped_source_mmq_down_keys: Mapping[str, KernelKey]
+    grouped_source_mmq_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -390,6 +402,7 @@ class LagunaMoEKernelPlan:
     grouped_compact_source_rows_parallel_key: KernelKey
     mmq_tile_map_key: KernelKey
     mmq64_tile_map_key: KernelKey
+    mmq128_tile_map_key: KernelKey
     grouped_gather_key: KernelKey
     grouped_smallm_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
@@ -424,6 +437,7 @@ class LagunaMoEKernelPlan:
     grouped_compact_source_rows_parallel: Callable
     mmq_tile_map: Callable
     mmq64_tile_map: Callable
+    mmq128_tile_map: Callable
     grouped_gather: Callable
     grouped_smallm_downs: Mapping[str, Callable]
     grouped_weighted_sum: Callable
@@ -449,6 +463,7 @@ class LagunaMoEKernelPlan:
             *tuple(self.c1_selected_gate_up_keys.values()),
             *tuple(self.grouped_pair16_gate_up_keys.values()),
             *tuple(self.grouped_exact_down_keys.values()),
+            *tuple(self.grouped_source_mmq_down_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -465,6 +480,7 @@ class LagunaMoEKernelPlan:
             self.grouped_compact_source_rows_parallel_key,
             self.mmq_tile_map_key,
             self.mmq64_tile_map_key,
+            self.mmq128_tile_map_key,
             self.grouped_gather_key,
             *tuple(self.grouped_smallm_down_keys.values()),
             self.grouped_weighted_sum_key,
@@ -819,6 +835,12 @@ def resolve_laguna_moe_plan(
             "generic",
             "tile64",
         ),
+        "mmq128_tile_map": KernelKey(
+            backend,
+            "moe_mmq_tile_map",
+            "generic",
+            "tile128",
+        ),
         "grouped_gather": KernelKey(
             backend, "moe_gather_packed_hidden", "generic", "bf16_lanes"
         ),
@@ -996,6 +1018,34 @@ def resolve_laguna_moe_plan(
             for quant, key in grouped_exact_down_keys.items()
         }
     )
+    grouped_source_mmq_down_specs = {
+        quant: KernelKey(
+            backend,
+            "moe_linear",
+            quant,
+            _SOURCE_MMQ_DOWN_VARIANT,
+        )
+        for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
+    }
+    grouped_source_mmq_down_keys = MappingProxyType(
+        {
+            quant: key
+            for quant, key in grouped_source_mmq_down_specs.items()
+            if is_registered(key)
+        }
+    )
+    grouped_source_mmq_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="grouped_source_mmq_raw_iq",
+                allocation_name="raw",
+                library_key="iq_source_mmq",
+            )
+            for quant, key in grouped_source_mmq_down_keys.items()
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1115,6 +1165,8 @@ def resolve_laguna_moe_plan(
         grouped_pair16_gate_up_routes=grouped_pair16_gate_up_routes,
         grouped_exact_down_keys=grouped_exact_down_keys,
         grouped_exact_down_routes=grouped_exact_down_routes,
+        grouped_source_mmq_down_keys=grouped_source_mmq_down_keys,
+        grouped_source_mmq_down_routes=grouped_source_mmq_down_routes,
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
         selected_down_key=keys["selected_down"],
@@ -1159,6 +1211,7 @@ def resolve_laguna_moe_plan(
         ],
         mmq_tile_map_key=keys["mmq_tile_map"],
         mmq64_tile_map_key=keys["mmq64_tile_map"],
+        mmq128_tile_map_key=keys["mmq128_tile_map"],
         grouped_gather_key=keys["grouped_gather"],
         grouped_smallm_down_keys=grouped_smallm_down_keys,
         grouped_weighted_sum_key=keys["grouped_weighted_sum"],
@@ -1176,6 +1229,7 @@ def resolve_laguna_moe_plan(
         ],
         mmq_tile_map=functions["mmq_tile_map"],
         mmq64_tile_map=functions["mmq64_tile_map"],
+        mmq128_tile_map=functions["mmq128_tile_map"],
         grouped_gather=functions["grouped_gather"],
         grouped_smallm_downs=grouped_smallm_downs,
         grouped_weighted_sum=functions["grouped_weighted_sum"],
@@ -1713,6 +1767,100 @@ def _launch_selected_down_grouped_exact(
             runtime=active_runtime,
         ),
     )
+
+
+def _launch_selected_down_grouped_source_mmq(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> bool:
+    """Pack compact post-SiLU rows once and run source-shaped raw-IQ MMQ."""
+
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    route = plan.grouped_source_mmq_down_routes.get(weight.spec.quant_key)
+    if route is None:
+        return False
+    active_runtime = runtime or get_hip_runtime()
+    mmq_total_rows = _mmq_static_upper_rows(
+        lanes,
+        plan.expert_count,
+        tile_rows=_SOURCE_MMQ_ROWS,
+    )
+    tile_capacity = mmq_total_rows // _SOURCE_MMQ_ROWS
+    if tile_capacity > lanes:
+        raise ValueError("Laguna source-MMQ tile metadata exceeds bounded lane storage")
+    required_nbytes = q8_1_ds4_kmajor_nbytes(lanes, plan.expert_ffn_size)
+    if required_nbytes > scratch.activation_q8.nbytes:
+        raise ValueError(
+            "Laguna source-MMQ DS4 workspace is too small: "
+            f"required={required_nbytes} available={scratch.activation_q8.nbytes}"
+        )
+
+    plan.mmq128_tile_map(
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_expert_start_mmq32.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        scratch.grouped_mmq_total.ptr,
+        plan.expert_count,
+        tile_capacity=tile_capacity,
+        **_stage_kwargs(
+            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    gguf_q8_1_ds4_quantize_bf16_kmajor(
+        scratch.expert_gate.ptr,
+        scratch.activation_q8.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            "iq_source_mmq_producer",
+            libraries,
+            stream=stream,
+            runtime=active_runtime,
+        ),
+    )
+    route.function(
+        scratch.activation_q8.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_expert_start_mmq32.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        weight.allocation(route.allocation_name).tensor.ptr,
+        scratch.expert_down.ptr,
+        compact_rows=lanes,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        num_experts=plan.expert_count,
+        mmq_total_rows=mmq_total_rows,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=active_runtime,
+        ),
+    )
+    plan.grouped_weighted_sum(
+        scratch.expert_down.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_lane_to_row.ptr,
+        scratch.routed_output.ptr,
+        tokens,
+        plan.top_k,
+        plan.hidden_size,
+        **_stage_kwargs(
+            "grouped_weighted_sum",
+            libraries,
+            stream=stream,
+            runtime=active_runtime,
+        ),
+    )
+    return True
 
 
 def _mmq32_static_upper_rows(lanes: int, expert_count: int) -> int:
@@ -2698,10 +2846,12 @@ def run_laguna_moe_rows(
             f"{tuple(sorted(_ROUTER_LOGITS_MODES))}"
         )
     grouped_gate_up = selected_gate_up_mode in {"grouped_exact", "grouped_pair16"}
-    grouped_exact = grouped_gate_up and selected_down_mode == "grouped_exact"
-    if grouped_gate_up != (selected_down_mode == "grouped_exact"):
+    grouped_source_mmq = selected_down_mode == "grouped_source_mmq"
+    grouped_down = selected_down_mode in {"grouped_exact", "grouped_source_mmq"}
+    grouped_exact = grouped_gate_up and grouped_down
+    if grouped_gate_up != grouped_down:
         raise ValueError(
-            "Laguna grouped gate/up and grouped-exact down modes must be selected together"
+            "Laguna grouped gate/up and grouped down modes must be selected together"
         )
     if dense_q4_prefill_mode not in _DENSE_Q4_PREFILL_MODES:
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
@@ -3006,15 +3156,27 @@ def run_laguna_moe_rows(
         and tokens >= _GROUPED_SMALLM_MIN_ROWS
     ) or use_grouped_fused_combine
     if grouped_exact:
-        _launch_selected_down_grouped_exact(
-            layer,
-            scratch,
-            tokens=tokens,
-            lanes=lanes,
-            stream=stream,
-            runtime=runtime,
-            libraries=libraries,
+        used_source_mmq = grouped_source_mmq and (
+            _launch_selected_down_grouped_source_mmq(
+                layer,
+                scratch,
+                tokens=tokens,
+                lanes=lanes,
+                stream=stream,
+                runtime=runtime,
+                libraries=libraries,
+            )
         )
+        if not used_source_mmq:
+            _launch_selected_down_grouped_exact(
+                layer,
+                scratch,
+                tokens=tokens,
+                lanes=lanes,
+                stream=stream,
+                runtime=runtime,
+                libraries=libraries,
+            )
     elif use_mmq_down:
         if not use_grouped_fused_combine:
             plan.grouped_weighted_sum(

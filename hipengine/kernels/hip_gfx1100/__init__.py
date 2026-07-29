@@ -113,6 +113,10 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
+# WPF-H3's source-shaped IQ3/IQ4 selected-down MMQ is admitted only as an
+# explicit runtime candidate pending complete category quality and clean timing.
+LAGUNA_IQ_SOURCE_MMQ_SUPPORTED = True
+LAGUNA_IQ_SOURCE_MMQ = False
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. WPF-1T's exact constant-accumulator screen admits four adjacent output
@@ -163,6 +167,8 @@ __all__ = [
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",
+    "LAGUNA_IQ_SOURCE_MMQ",
+    "LAGUNA_IQ_SOURCE_MMQ_SUPPORTED",
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
