@@ -1918,9 +1918,14 @@ gfx1151 CUs and removing triple-query critical blocks at the cost of 25% more
 K/V-owner traffic. The wrap/eviction oracle is F32/BF16 byte-exact. Strong
 21x100 leaves improve **0.045322 -> 0.037599 ms (-17.039%)** with complete
 separation at unchanged local384/VGPR104/SGPR128/LDS25,600/scratch0.
-Retain pending seven resident p512/d128 pairs; production remains
-**20.425412 tok/s**:
-[`mixed40 primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json).
+All seven resident p512/d128 candidates beat every control with complete
+separation, moving **20.433014 -> 20.501083 tok/s
+(+0.33313%, -0.16249 ms/token)** with exact state/lifecycle. gfx1151 promotes
+the qualified capability, mixed32 remains exact rollback, comparison plumbing
+is removed, and peer backends are unchanged. Clean selector-unset publication
+remains next:
+[`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json),
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

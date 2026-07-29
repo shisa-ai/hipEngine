@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T01:18:05+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_mixed40_retained",
+  "status": "retained_default_pending_clean_publication",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "46b6f7f49f3af1af1415784cc55826fb3302ee5c",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_id": "mixed_ja_en_review",
+    "prefill_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "context_capacity": 4096,
+    "matrix_chunk_size": 2048,
+    "attention_rows": 128,
+    "mode": "eager c=1"
+  },
+  "control": {
+    "description": "production mixed32 2+2+2+3 SWA ownership",
+    "decode_median_tok_s": 20.433014065512964,
+    "decode_samples_tok_s": [
+      20.414979328552196,
+      20.433014065512964,
+      20.43336244742944,
+      20.42959636476097,
+      20.434699280065125,
+      20.43620559854267,
+      20.43024718108953
+    ]
+  },
+  "candidate": {
+    "description": "one-launch mixed40 2+2+2+2+1 SWA ownership",
+    "decode_median_tok_s": 20.501083002644453,
+    "decode_samples_tok_s": [
+      20.498547415304223,
+      20.497656014788838,
+      20.501083002644453,
+      20.49634246032567,
+      20.505259127080055,
+      20.50380971834877,
+      20.504826721563404
+    ]
+  },
+  "result": {
+    "throughput_change_percent": 0.33313214053121154,
+    "saving_ms_per_token": 0.1624948986784034,
+    "paired_candidate_wins": 7,
+    "paired_samples": 7,
+    "minimum_paired_change_percent": 0.31636032290007776,
+    "maximum_paired_change_percent": 0.40934690849845357,
+    "complete_sample_separation": true
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "tracked_active_allocations_after": 0,
+    "tracked_current_allocated_bytes_after": 0
+  },
+  "validation": {
+    "focused_route_and_profile": "2 passed"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-mixed40 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-mixed40-ab.json",
+    "raw_sha256": "944e2f7560460345e7ee3a8fc8dada6058969d6af26f76fad72d4630b5a4b8fa",
+    "timed_order": "AB/BA counterbalanced by repetition",
+    "load_seconds_excluded": 89.18887136899866
+  },
+  "decision": {
+    "retain": true,
+    "promote_gfx1151": true,
+    "capability": "LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
+    "qualified_shape": "gated 72Q/8KV/D128/SWA512 exact BF16-KV decode",
+    "rollback": "registered mixed32 2+2+2+3 owner",
+    "comparison_seam_removed": true,
+    "peer_backends_unchanged": true,
+    "production_topline_pending_clean_publication": true
+  }
+}
