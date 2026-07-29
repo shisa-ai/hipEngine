@@ -190089,3 +190089,25 @@ Vulkan local sizes verbatim will close the measured gap.
 - `docs/REFACTOR.md` records the promotion/removal trigger. Production remains
   **20.007890 tok/s**; next commit this default-off screen and run seven
   counterbalanced resident p512/d128 pairs.
+
+## 2026-07-29 16:05 JST — Promote exact tile8 parallel-tail SiLU
+
+- Seven control/candidate measurements run in counterbalanced order within
+  one resident model session. All **7/7** candidate pairs improve, spanning
+  **+0.254% to +0.346%**.
+- Median fixed-horizon decode improves
+  **20.008491 -> 20.063975 tok/s (+0.2773%)**, or
+  **49.978781 -> 49.840573 ms/token (-0.138209 ms)**. The fused route removes
+  **47 compute launches/token**.
+- Repeated next/final tokens 2930/74107, generated-ID hash, final position
+  638, deterministic repeats, tracked ownership, and zero-allocation teardown
+  are exact.
+- Promote
+  `LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE` on gfx1151. The
+  registered parallel tile8 gate/up plus standalone SiLU remains exact
+  rollback; non-natural shapes and peer backends are unchanged. Raw SHA-256
+  is `7fa7c722...6a48c`.
+- Production remains published at **20.007890 tok/s** until a tracked-clean,
+  selector-unset p512/d128 checkpoint and cached symbol/launch-count trace
+  complete. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json`.

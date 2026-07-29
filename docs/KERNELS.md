@@ -450,9 +450,12 @@ arithmetic. On actual layer-1 K3072/N1024 weights, the complete current
 two-launch chain improves **0.131058 -> 0.129529 ms (-1.167%)**; all 21
 counterbalanced pairs win and the intermediate has zero BF16 mismatches.
 Cached tracing keeps grid16384x10/local128,
-VGPR96/SGPR128/LDS512/scratch0. The primitive remains default-off pending a
-resident p512/d128 state/performance gate. Evidence:
-[`tile8 parallel-tail SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json).
+VGPR96/SGPR128/LDS512/scratch0. All seven same-session resident p512/d128
+pairs improve **20.008491 -> 20.063975 tok/s (+0.2773%, -0.1382 ms/token)**
+with exact generated state and lifecycle, removing **47 compute
+launches/token**, so gfx1151 promotes the fused route. Evidence:
+[`tile8 parallel-tail SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json),
+[`retained resident gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
