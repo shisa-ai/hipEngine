@@ -7,6 +7,7 @@ import pytest
 
 from scripts.laguna_long_context_profile import (
     ATTACK_LENGTHS,
+    COMPARISON_ARGUMENTS,
     DECODE_OUTPUT_TOKENS,
     EAGER_DECODE_CONTEXT_LIMIT,
     FINAL_SWEEP_LENGTHS,
@@ -14,6 +15,7 @@ from scripts.laguna_long_context_profile import (
     LC0_TRACE_LENGTHS,
     PROFILE_LENGTH_SETS,
     STANDARD_DECODE_LENGTHS,
+    _active_comparison_count,
     _parse_chunk_size,
     _parse_decode_output_tokens,
     _parse_lengths,
@@ -68,6 +70,13 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
         _parse_chunk_size("64")
     with pytest.raises(argparse.ArgumentTypeError, match="1 or 128"):
         _parse_decode_output_tokens("32")
+
+
+def test_lpf5_parallel_tail_flag_enters_shared_comparison_contract() -> None:
+    values = {name: False for name in COMPARISON_ARGUMENTS}
+    values["compare_selected_natural_tile8_parallel_decode"] = True
+
+    assert _active_comparison_count(argparse.Namespace(**values)) == 1
 
 
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:

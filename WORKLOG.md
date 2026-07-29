@@ -189974,3 +189974,19 @@ Vulkan local sizes verbatim will close the measured gap.
   session, and complete profile-harness tests. `docs/REFACTOR.md` records the
   exact promotion/removal triggers. Production remains **20.003064 tok/s**;
   next run seven counterbalanced resident p512/d128 pairs.
+
+## 2026-07-29 15:28 JST — Repair parallel-tail comparison activation
+
+- The first requested resident run emitted seven production-only rows with no
+  mode field. Audit found that the new flag entered mutual-exclusion counting
+  and artifact metadata but not the separate `comparison` predicate. The
+  resulting `/tmp/laguna-p512-d128-tile8-parallel-tail-ab.json` is protocol
+  invalid and makes no performance claim.
+- Remove the duplicated comparison-flag list. One named
+  `COMPARISON_ARGUMENTS` contract now drives both mutual exclusion and whether
+  control/candidate modes execute, preventing future additions from diverging.
+  A regression fixture proves the parallel-tail flag activates exactly one
+  comparison.
+- Python compilation and the complete profile-harness test file pass
+  **36/36**. Rerun the intended seven control/candidate pairs from the repaired
+  committed revision.
