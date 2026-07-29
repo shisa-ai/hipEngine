@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_gqa9_dim32_screen",
+  "date": "2026-07-29",
+  "status": "rejected",
+  "source_revision": "de2cb5075b9ae271f80b661b2c5494d44341cfb1",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "family": "Laguna",
+    "quant": "Q4_K"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "scan_slots": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "candidate": {
+    "description": "exact GQA9 with four D32 V owners per KV head, full QK recomputed per owner, and no split-softmax merge",
+    "workgroups": 32,
+    "local_size": 288,
+    "median_ms": 0.13890720367431642,
+    "samples_ms": [
+      0.1387024974822998,
+      0.138880615234375,
+      0.13890720367431642,
+      0.13875729560852051,
+      0.1389402389526367,
+      0.13855549812316895,
+      0.14084941864013673,
+      0.14085674285888672,
+      0.1390196990966797
+    ]
+  },
+  "control": {
+    "description": "retained exact mixed32 2+2+2+3 local384 exp32 fused SWA",
+    "workgroups": 32,
+    "local_size": 384,
+    "median_ms": 0.0819022560119629,
+    "samples_ms": [
+      0.08371729850769043,
+      0.08198537826538085,
+      0.08172167778015137,
+      0.08191652297973633,
+      0.08441720008850098,
+      0.08177718162536621,
+      0.08183405876159668,
+      0.0819022560119629,
+      0.08180208206176758
+    ]
+  },
+  "result": {
+    "latency_change_percent": 69.60119346898968,
+    "performance_claim": false,
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_max_abs_error": 0.0
+  },
+  "protocol": {
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50,
+    "correctness_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "benchmark_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate gqa9-dim32-vstage64 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-gqa9-dim32-vstage64-leaf.json",
+    "raw_output_sha256": "b0277b7123cfad3995ccbdcb1e8b3b6ebb892ecf6525216246357cc55eb44ea2"
+  },
+  "decision": {
+    "reason": "Fourfold V-traffic reduction does not repay fourfold redundant exact QK plus nine-head register and serial issue pressure.",
+    "runtime_integrated": false,
+    "implementation_removed": true,
+    "production_unchanged_tok_s": 19.561715
+  }
+}
