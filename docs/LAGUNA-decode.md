@@ -4641,6 +4641,24 @@ The remaining attention sequence is:
     ownership wins to global attention without a direct leaf screen.
     Evidence:
     [`rejected global producer gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-gate-rejected.json).
+27. Rematerialize global physical slots to cross the dynamic-LDS occupancy
+    seam. **Complete and rejected:** the candidate removes the per-token
+    `int32` physical-slot LDS plane, recomputes exact visibility once during
+    softmax, and rematerializes one slot per 16-thread staged-V vector group.
+    QK, maximum, exp32, denominator, PV association, divide, gate, and stores
+    remain byte-exact at evicted live513/576/639. The modeled score+V footprint
+    falls below three times 64 KiB, but the launch still loses all **27/27**
+    leaf pairs:
+    **0.073445 -> 0.075353 ms (+2.60%)**,
+    **0.079795 -> 0.082079 ms (+2.86%)**, and
+    **0.087454 -> 0.089966 ms (+2.87%)**. Reduced dynamic LDS does not create
+    useful residency for this local256/VGPR schedule; metadata
+    rematerialization is net overhead. Remove the candidate before trace or
+    runtime work. Production remains **20.069608 tok/s**. Small exact global
+    epilogue/metadata changes are now closed; the material attention route is
+    a cooperative core with an independently valid correctness mechanism.
+    Evidence:
+    [`rejected global physical rematerialization`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-physical-remat-rejected.json).
 
 Current exact decode checkpoint:
 
