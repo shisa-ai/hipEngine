@@ -191266,3 +191266,28 @@ Vulkan local sizes verbatim will close the measured gap.
   census so optimization follows the measured post-change family ordering.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json`.
+
+## 2026-07-30 00:39 JST — Re-profile global vector probability wall
+
+- Run one tracked-clean, require-cached `rocprofv3 --kernel-trace` process at
+  revision `31ff34e5f`. The trace contains warmup128, timed prefill512, and
+  the expected **127** one-token decode segments. It names the promoted global
+  specialization at grid8,192/local256, VGPR48, SGPR128, static LDS512,
+  scratch0; no compiler runs under profiling.
+- Median decode is **721 compute + 5 runtime-copy dispatches/token**,
+  **47.174209 ms/token** kernel sum, and **50.598383 ms/token** span. The span
+  is profiler/noise-sensitive and regresses despite the clean production
+  wall win, so it is attribution-only. Attention is
+  **3.023432 ms/token = 2.017783 SWA + 1.005649 global**.
+- Against the post-vector-denominator census, global falls
+  **1.110485 -> 1.005649 ms/token (-9.441%)**, total attention falls
+  **3.579%**, and kernel sum falls **0.259%**. SWA and the
+  **24.027570-ms/token** source-F16 family remain flat.
+- Same-GGUF llama.cpp Vulkan attention is **0.909423 ms/token**. hipEngine's
+  remaining attention gap is **2.114009 ms/token**, **34.35%** of the current
+  **6.155-ms/token** production wall gap. Continue with a new single-launch
+  exact data-movement/scheduling screen in the saturated SWA body rather than
+  retrying lower-precision cooperative arithmetic.
+- Raw trace SHA-256 is `3e02fde0...f4c3`; child SHA-256 is
+  `ef6974ac...c63b`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json`.

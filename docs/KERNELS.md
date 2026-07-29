@@ -1883,6 +1883,13 @@ capability active and preserves exact repeated trajectory/state/lifecycle:
 [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json),
 [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json),
 [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json).
+The following clean 127-transition census measures **721 compute + 5
+runtime-copy dispatches/token**, **47.174209 ms/token** kernel sum, and
+**3.023432 ms/token** attention. Global falls
+**1.110485 -> 1.005649 ms/token (-9.441%)** while SWA remains
+**2.017783 ms/token**. Attention is still **2.114009 ms/token** above
+same-GGUF Vulkan and **34.35%** of the remaining production wall gap:
+[`post-global-probability census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-probability-vec4-wall-reprofile.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
