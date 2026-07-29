@@ -189855,3 +189855,22 @@ Vulkan local sizes verbatim will close the measured gap.
   until a session-scoped gfx1151 selector passes matched resident
   p512/d128 state/lifecycle/performance gates. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-leaf.json`.
+
+## 2026-07-29 14:48 JST — Add default-off SWA producer-gate resident screen
+
+- RED added a missing session-scoped producer-gate setter test. GREEN adds the
+  registered runtime variant, fail-closed cache capability, gfx1151
+  default-off architecture capability, session setter, and counterbalanced
+  `--compare-swa-producer-gate` profile seam. Production selection is
+  unchanged.
+- The cache-routing test now proves the natural saturated SWA shape selects
+  producer-gate only when both producer-max and the candidate gate are
+  enabled; disabling the candidate returns to the retained producer-max
+  owner.
+- Validation:
+  - `python -m py_compile` for the touched runtime, wrapper, profile, and tests.
+  - focused session setter plus cache-routing tests: **2 passed**.
+  - `tests/test_laguna_long_context_profile.py`: **35 passed**.
+- `docs/REFACTOR.md` records removal/promotion triggers. Next: seven matched
+  resident Poolside Laguna S 2.1 p512/d128 control/candidate pairs with exact
+  state and lifecycle checks.

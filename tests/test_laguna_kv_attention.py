@@ -3958,6 +3958,10 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             gfx1151_cache.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512
             is True
         )
+        assert (
+            gfx1151_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512
+            is False
+        )
         gfx1151_cache.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = (
             False
         )
@@ -4038,6 +4042,13 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         )
         gfx1151_cache.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = (
             True
+        )
+        gfx1151_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512 = (
+            True
+        )
+        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.swa_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512 = (
+            False
         )
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = (
@@ -4129,6 +4140,14 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 (
                     "swa_context_fused_exact_gated_mixed32_exp16_vstage64_"
                     "vec16_direct_assume_exp_fixed512_spans"
+                ),
+            ),
+            (
+                "laguna_attention_decode",
+                (
+                    "swa_context_fused_exact_gated_"
+                    "mixed32_exp32_producer_max_gate_vstage64_vec16_direct_"
+                    "assume_exp_fixed512_spans"
                 ),
             ),
             (
