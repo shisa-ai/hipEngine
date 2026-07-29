@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_f32_hipblaslt_dense_initial_attention_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_transfer_candidate_admitted_runtime_policy_pending",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "BF16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "base_revision": "2e484ee01",
+    "source": "existing in-tree gfx11 dense-initial BF16-cache-to-F32 hipBLASLt route; no external kernel port",
+    "prior_architecture_evidence": [
+      "benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-candidate.json",
+      "benchmarks/results/2026-07-26-gfx1151-laguna-attention-hipblaslt-production.json"
+    ],
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "candidate": {
+    "scope": "complete preappended M128 dense-initial global/SWA tiles at start positions 128, 256, and 384",
+    "arithmetic": "exact resident BF16 K/V widening to F32; packed zero-workspace F32 hipBLASLt QK/PV; wave32 causal F32 softmax",
+    "packed_query_producer": true,
+    "packed_output_gate": true,
+    "scratch_bytes": 27787264,
+    "persistent_weight_sidecar_bytes": 0,
+    "fallbacks": [
+      "start position 0",
+      "partial rows",
+      "wrapped or explicitly evicted KV",
+      "verifier transactions",
+      "decode",
+      "unsupported heads, contexts, or backends"
+    ],
+    "complete_kv_live_spans_consumed": true,
+    "gfx1100_algorithm_policy": {
+      "context_256": {"qk": 2, "pv": 2},
+      "context_384": {"qk": 1, "pv": 2},
+      "context_512": {"qk": 3, "pv": 2},
+      "applies_to_query_heads": [48, 72],
+      "heuristics_available_per_operation": 4
+    }
+  },
+  "leaf": {
+    "rows": 128,
+    "contexts": [128, 256, 384, 512],
+    "selected_contexts": [256, 384, 512],
+    "warmups": 5,
+    "counter_rotated_samples": 15,
+    "launches_per_sample": 3,
+    "control": "exact dense-initial qrow4 with start0 retained in both policies",
+    "basic_blas_weighted_ms": 117.76590549945831,
+    "exact_qrow4_weighted_ms": 109.89722883701326,
+    "packed_wave_default_weighted_ms": 85.51514375209808,
+    "packed_wave_tuned_weighted_ms": 62.654672265052795,
+    "basic_blas_speedup": 0.9331837459316165,
+    "packed_wave_default_speedup": 1.285120085345316,
+    "packed_wave_tuned_speedup": 1.7540149020667877,
+    "all_six_selected_global_swa_shapes_faster": true,
+    "selected_shape_speedup_range": [1.488596, 2.024893],
+    "interpretation": "The basic eight-QK/eight-PV composition regresses and is rejected. Only the packed two-call QK/PV plus wave-softmax route with gfx1100-tuned algorithms advances."
+  },
+  "correctness": {
+    "gfx1100_cpu_reference_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_dense_initial_blas_helpers_match_cpu",
+    "gfx1100_cpu_reference_result": "1 passed",
+    "cache_widening_bf16_value_exact": true,
+    "complete_kv_live_spans_fixture": true,
+    "leaf_all_finite": true,
+    "leaf_max_mean_kl": 1.4092785796335626e-17,
+    "leaf_max_row_kl": 1.104135403434432e-15,
+    "leaf_min_top1_agreement": 1.0,
+    "leaf_max_abs": 4.842877388000488e-08,
+    "leaf_tracked_returned_to_baseline": true,
+    "natural_m512_full_state": {
+      "finite": true,
+      "mean_kl": 0.00042897662269381044,
+      "top1_agreement": 1.0,
+      "next_token": 2930,
+      "candidate_repeat_exact": true,
+      "all_48_hidden_boundaries_repeat_exact": true,
+      "complete_kv_and_kvlivespans_repeat_exact": true,
+      "tracked_returned_to_baseline": true,
+      "first_pair_control_tok_s": 170.27061760380695,
+      "first_pair_candidate_tok_s": 187.33281278510847,
+      "first_pair_speedup": 1.100206338717832,
+      "candidate_repeat_tok_s": 195.70927686331044
+    }
+  },
+  "integrated_cached_trace": {
+    "request_dispatches": 1918,
+    "request_kernel_sum_ms": 2603.51998,
+    "frozen_exact_request_dispatches": 1477,
+    "frozen_exact_request_kernel_sum_ms": 3001.69225,
+    "kernel_sum_reduction_ms": 398.17227,
+    "kernel_sum_reduction_percent": 13.264926476056965,
+    "candidate_attention": {
+      "cache_widens": 144,
+      "cache_widen_ms": 1.07125,
+      "qk_calls": 144,
+      "qk_ms": 23.584955,
+      "softmax_calls": 144,
+      "softmax_ms": 5.331361,
+      "pv_calls": 144,
+      "pv_ms": 21.524017,
+      "exact_start0_calls": 48,
+      "exact_start0_ms": 9.157755,
+      "total_ms": 60.669338,
+      "frozen_exact_attention_ms": 488.304264,
+      "speedup": 8.048616980129237
+    },
+    "resources": {
+      "cache_widen": "local256/VGPR24/SGPR128/LDS0/scratch0",
+      "wave_softmax": "local32/VGPR24/SGPR128/LDS0/scratch0",
+      "qk_pv": "local64/VGPR28/SGPR128/LDS2048/scratch0"
+    },
+    "no_compiler_under_profile": true,
+    "profile_span_note": "The first profiled owner includes lazy hipBLASLt descriptor setup and profiler gaps; kernel sum, not profiled span, is the retained attribution."
+  },
+  "promotion_blockers": [
+    "gfx1100 package capability and architecture-local algorithm ownership are not implemented",
+    "the structurally valid multi-prompt changed-association quality gate has not run",
+    "clean counter-ordered 512/1K timing and a committed all-family trace have not run"
+  ],
+  "source_artifacts": {
+    "leaf_json_sha256": "21194aa89a9f8ab9e1029afd3bc19da96ef73cb79529da86dde6d305e5057e15",
+    "leaf_harness_sha256": "8617649de351e6cb207aa3fa4f20aed82e9787b5caafeda39ddf466681cd2e6f",
+    "leaf_stdout_sha256": "9a9a4fdcafa5a1629e8b8b6d6723029478cec8e978cdeb89b714a3a1156e5a26",
+    "full_state_json_sha256": "4be25fefa92c07477bdaab2f71147438d559c6ed01c255ba3a8bbebe13cdc222",
+    "full_state_harness_sha256": "cfa5a88851a03df5e20f2a5b07e862b0f8fbba2aeb34009d292cc2494014d1bb",
+    "full_state_stdout_sha256": "e99590dce51a38ddd8f4675c73f18b349f67274e694512d90b4082dbc008c17e",
+    "trace_csv_sha256": "4c547ea36ce5dd6a44481ec0ed4315509d11ba8cfd7e5473379dff91afb09355",
+    "trace_harness_sha256": "bee8c3e6b28f67563ddf75dc4040c14de865ae571e1a9af4f1def0e48963e705",
+    "trace_stdout_sha256": "93c530cd0c772980161704e632554d9aca23d7b06304ff55d349aeb10d4027a0"
+  },
+  "commands": {
+    "leaf": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5b_attention_leaf.py",
+    "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5b_attention_full_state.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5b-attention-trace -- uv run python -u /tmp/laguna_wpfh5b_attention_trace.py"
+  },
+  "decision": {
+    "standalone_candidate_admitted": true,
+    "production_changed": false,
+    "next_action": "Add a default-off gfx1100 package capability plus architecture-local algorithm map without a backend branch, then run multi-prompt changed-association quality before clean timing."
+  }
+}

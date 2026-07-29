@@ -136,6 +136,22 @@ owner, workspace, capabilities, and tests are removed; exact production and the
 canonical headline remain unchanged. See the
 [rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json).
 
+The next [`WPF-H5B gfx1100 F32 dense-initial attention candidate`](results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)
+reuses the in-tree complete-`KVLiveSpans` route rather than porting a new body.
+On W7900, the basic eight-QK/eight-PV composition regresses and is rejected;
+packed two-call QK/PV plus wave32 softmax with contexts 256/384/512 QK
+algorithms 2/1/3 and PV algorithm 2 improves the selected-context 48-layer leaf
+**109.897 -> 62.655 ms (1.754x)**. All selected shapes win, output is finite at
+max-row KL **1.10e-15**, top-1 **100%**, and max abs **4.84e-8**. An explicit
+same-resident natural-M512 owner passes at KL **0.000429**, token **2930**,
+deterministic complete state/KV/`KVLiveSpans`, and exact teardown; its first
+pair improves **170.271 -> 187.333 tok/s (1.100x)**. Cached tracing observes
+exactly **144** widen/QK/softmax/PV stacks, retains all 48 start-0 exact calls,
+and moves attention **488.304 -> 60.669 ms (8.049x)** plus complete kernel sum
+**3,001.692 -> 2,603.520 ms (-13.265%)**. This is transfer-candidate attribution,
+not a production claim: gfx1100 capability/algorithm ownership, multi-prompt
+changed-association quality, and clean 512/1K publication remain pending.
+
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen

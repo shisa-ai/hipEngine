@@ -5,8 +5,8 @@ Last updated: 2026-07-30
 ## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
 Status: **WPF-H1 through WPF-H5A changed-arithmetic runtimes are rejected;
-exact WPF-1T remains production, H5B gfx1100 F32 dense-initial attention is
-next, and 16K+ remains deferred**. This section is the
+exact WPF-1T remains production, H5B's gfx1100 F32 dense-initial attention
+transfer candidate is admitted pending runtime quality, and 16K+ remains deferred**. This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
 geometry.
@@ -58,9 +58,22 @@ reassociation at maximum KL **1.143627 > 0.05** despite **564/576 (97.917%)**
 top-1, deterministic repeats, lifecycle recovery, and diagnostic prefill
 **152.359 -> 202.707 tok/s (1.330x)** with all categories positive. Remove the
 owner/workspace/capabilities/tests and retain exact production plus standalone
-leaf evidence. H5B next qualifies the existing exact BF16-cache-to-F32
-dense-initial hipBLASLt attention path on gfx1100 behind complete
-`KVLiveSpans`.
+leaf evidence.
+
+H5B now qualifies the existing complete-`KVLiveSpans` BF16-cache-to-F32 route
+on W7900. The basic eight-QK/eight-PV composition regresses and is rejected;
+packed two-call QK/PV plus wave32 softmax with gfx1100 QK algorithms **2/1/3**
+at contexts **256/384/512** and PV algorithm **2** moves the selected-context
+48-layer leaf **109.897 -> 62.655 ms (1.754x)**. Every selected global/SWA shape
+wins; max-row KL is **1.10e-15**, top-1 **100%**, and max abs **4.84e-8**.
+An explicit natural-M512 owner passes KL **0.000429**, token **2930**, complete
+deterministic state/KV/`KVLiveSpans`, and teardown while its first pair improves
+**170.271 -> 187.333 tok/s (1.100x)**. Cached tracing observes **144** complete
+widen/QK/softmax/PV stacks, keeps all 48 start-0 calls exact, and moves attention
+**488.304 -> 60.669 ms (8.049x)** plus full kernel sum **3,001.692 -> 2,603.520
+ms (-13.265%)**. Production remains unchanged. Next add only architecture-local
+algorithm/capability ownership, then run multi-prompt changed-association quality
+before clean 512/1K timing.
 
 ### Matched M512 kernel/module gap ledger
 
@@ -197,9 +210,12 @@ The revised execution order is:
    passes natural M512 at KL **0.0003742**, but the complete lane rejects it at
    max KL **1.143627** with **564/576** top-1 despite **1.330x** diagnostic
    prefill. Remove all runtime ownership and retain the standalone leaf only.
-   Next screen the already quality-proven gfx1151-style exact BF16-cache-to-F32
-   dense-initial attention premise on gfx1100 behind complete `KVLiveSpans`; do
-   not stack H1-H5A or reopen P6.
+   H5B's existing complete-`KVLiveSpans` packed F32 attention route now passes
+   the W7900 transfer screen at **109.897 -> 62.655 ms (1.754x)** leaf,
+   M512 KL **0.000429** / top-1 **100%**, and cached attention **488.304 ->
+   60.669 ms (8.049x)**. Add architecture-local algorithm/capability ownership
+   and run multi-prompt changed-association quality next; do not stack H1-H5A or
+   reopen P6.
 6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
@@ -634,6 +650,7 @@ heldouts before any clean publication.
 | **WPF-H3 source-faithful IQ3/IQ4 selected-down MMQ** | **Rejected; runtime owner removed** | The standalone local `(32,8)` I128/J128/K256 leaf moves all **45 IQ3 + 2 IQ4** actual M512 layers **565.437 -> 115.951 ms (4.877x)**; IQ3 is **27.145% below** llama.cpp. Complete runtime quality nevertheless reaches max KL **0.373028** at **567/576** top-1 despite **1.192x** diagnostic prefill. IQ3-source/IQ4-exact still reaches **0.372917**. Remove runtime ownership/capabilities/tests; retain exact grouped production and the separately registered VGPR152/248 leaf. [`rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-rejected.json) · [`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json). |
 | **WPF-H4 source-faithful Q6_K F16/rocBLAS** | **Rejected; runtime owner removed** | The standalone local64/F16-compute leaf moves the actual six-shape/144-call M512 inventory **174.351 -> 14.349 ms (12.151x)**, **3.825% below** matched llama.cpp. Runtime natural-prompt prefill improves **151.784 -> 158.205 tok/s (1.042x)** with every category positive, but complete changed-arithmetic quality reaches max KL **0.338657** at **567/576** top-1. Remove runtime ownership, rocBLAS handle, 97,517,568-byte workspace, capabilities, and tests; retain exact coltile plus the registered leaf. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json) · [`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json). |
 | **WPF-H5A exact-value Q5 F32/SGEMM** | **Rejected; runtime owner removed** | Clean exact M512 is **169.516 tok/s** versus matched llama.cpp HIP **694.184 (4.095x)**, with Q5 at **1,270.458 ms / 42.325%**. The bounded no-sidecar leaf selects exact N48 fallback and moves the actual 235-call role policy **1,256.936 -> 221.137 ms (5.684x)** by events, corroborated by **5.273x** wall. Raw operand values are exact; max mean/max-row KL is **1.59e-9/5.79e-8** and top-1 **100%**. The default-off owner passes natural M512 at KL **0.0003742**, but complete quality reaches max KL **1.143627** at **564/576** top-1 despite **1.330x** diagnostic prefill. Remove runtime ownership/workspace/capabilities/tests; retain exact coltile plus the registered leaf. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-candidate.json). |
+| **WPF-H5B packed F32 dense-initial attention transfer** | **Standalone candidate admitted; runtime quality pending** | Reuses the existing complete-`KVLiveSpans` route; no kernel is ported. The basic BLAS composition loses, while gfx1100-tuned packed two-call QK/PV plus wave32 softmax moves the selected-context 48-layer leaf **109.897 -> 62.655 ms (1.754x)** with max-row KL **1.10e-15** and top-1 **100%**. Natural M512 passes at KL **0.000429**, token **2930**, deterministic complete state/KV, and teardown. Cached tracing observes **144** candidate stacks plus **48** exact start-0 calls and moves attention **488.304 -> 60.669 ms (8.049x)**, reducing complete kernel sum **13.265%**. Exact production remains unchanged pending architecture-local ownership and multi-prompt changed-association quality. [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh post-H4 M512 span-minus-sum is only **15.087 ms / 0.500%**, and llama.cpp is faster despite **2,824 vs 1,477** dispatches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | Clean 4K remains **123.084 tok/s**. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
