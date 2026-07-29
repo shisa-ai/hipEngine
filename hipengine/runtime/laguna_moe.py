@@ -51,6 +51,15 @@ _SELECTED_DOWN_MMQ64X32_D4X3_F32_VARIANT = (
     "prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+_GROUPED_IQ_DOWN_BASELINE_VARIANTS = MappingProxyType(
+    {
+        "gguf_iq3_xxs": (
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+        ),
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+    }
+)
+_GROUPED_IQ_DOWN_ROLE = (1024, 3072)
 _IQ3_WAVE10_FUSED_VARIANT = (
     "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
 )
@@ -320,6 +329,43 @@ def resolve_laguna_group_compact_mode(
     if parsed not in _GROUP_COMPACT_MODES:
         raise ValueError("unsupported Laguna MoE group compact mode")
     return parsed
+
+
+def _resolve_laguna_grouped_iq_down_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[str, str]:
+    """Apply registered package variants only to the exact Laguna IQ-down role."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped-IQ down variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for raw_quant, raw_variant in raw_variants.items():
+        quant = str(raw_quant)
+        if quant not in _GROUPED_IQ_DOWN_BASELINE_VARIANTS:
+            raise ValueError(
+                f"Laguna grouped-IQ down policy has unsupported quant {quant!r}"
+            )
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError("Laguna grouped-IQ down policy requires non-empty variants")
+        parsed[quant] = variant
+
+    selected = dict(_GROUPED_IQ_DOWN_BASELINE_VARIANTS)
+    role = (config.expert_feed_forward_length, config.hidden_size)
+    if role != _GROUPED_IQ_DOWN_ROLE:
+        return MappingProxyType(selected)
+    for quant, variant in parsed.items():
+        key = KernelKey(backend, "moe_linear", quant, variant)
+        if is_registered(key):
+            selected[quant] = variant
+    return MappingProxyType(selected)
 
 
 @dataclass(frozen=True)
@@ -964,18 +1010,11 @@ def resolve_laguna_moe_plan(
         }
     )
     grouped_exact_down_specs = {
-        "gguf_iq3_xxs": KernelKey(
-            backend,
-            "moe_linear",
-            "gguf_iq3_xxs",
-            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
-        ),
-        "gguf_iq4_xs": KernelKey(
-            backend,
-            "moe_linear",
-            "gguf_iq4_xs",
-            "selected_grouped_prefill_compact_auto_bf16_bf16_out",
-        ),
+        quant: KernelKey(backend, "moe_linear", quant, variant)
+        for quant, variant in _resolve_laguna_grouped_iq_down_variants(
+            config,
+            backend=backend,
+        ).items()
     }
     grouped_exact_down_keys = MappingProxyType(
         {

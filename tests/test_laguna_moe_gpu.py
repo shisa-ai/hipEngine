@@ -1636,6 +1636,127 @@ def test_laguna_persistent_wave_top10_router_is_not_runtime_selectable() -> None
         allocate_laguna_moe_scratch(plan, allocate_router_counter=True)
 
 
+def test_h5j_grouped_iq_down_package_policy_is_bounded_and_fail_closed(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100, hip_gfx1151
+
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    retained_variants = {
+        "gguf_iq3_xxs": (
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+        ),
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+    }
+    candidate_variants = {
+        "gguf_iq3_xxs": (
+            "selected_grouped_prefill_compact_k1024_resident_"
+            "rowbatch8_bf16_bf16_out"
+        ),
+        "gguf_iq4_xs": (
+            "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+        ),
+    }
+
+    assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
+    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
+    retained = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert {
+        quant: key.variant for quant, key in retained.grouped_exact_down_keys.items()
+    } == retained_variants
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        candidate_variants,
+    )
+    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert {
+        quant: key.variant for quant, key in candidate.grouped_exact_down_keys.items()
+    } == candidate_variants
+    assert all(
+        route.abi == "grouped_raw_iq"
+        and route.allocation_name == "raw"
+        and route.library_key == "grouped_iq_prefill"
+        for route in candidate.grouped_exact_down_routes.values()
+    )
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {"gguf_iq3_xxs": candidate_variants["gguf_iq3_xxs"]},
+    )
+    one_sided = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert one_sided.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
+        candidate_variants["gguf_iq3_xxs"]
+    )
+    assert one_sided.grouped_exact_down_keys["gguf_iq4_xs"].variant == (
+        retained_variants["gguf_iq4_xs"]
+    )
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        candidate_variants,
+    )
+    wrong_shape = replace(config, expert_feed_forward_length=2048)
+    shape_fallback = resolve_laguna_moe_plan(
+        wrong_shape,
+        backend="hip_gfx1100",
+    )
+    assert {
+        quant: key.variant
+        for quant, key in shape_fallback.grouped_exact_down_keys.items()
+    } == retained_variants
+
+    candidate_names = frozenset(candidate_variants.values())
+    monkeypatch.setattr(
+        laguna_moe_module,
+        "is_registered",
+        lambda key: key.variant not in candidate_names,
+    )
+    registration_fallback = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+    )
+    assert {
+        quant: key.variant
+        for quant, key in registration_fallback.grouped_exact_down_keys.items()
+    } == retained_variants
+
+    gfx1151 = resolve_laguna_moe_plan(config, backend="hip_gfx1151")
+    assert {
+        quant: key.variant for quant, key in gfx1151.grouped_exact_down_keys.items()
+    } == retained_variants
+
+
+def test_h5j_grouped_iq_down_package_policy_rejects_malformed_metadata(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100
+
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    monkeypatch.setattr(hip_gfx1100, "LAGUNA_GROUPED_IQ_DOWN_VARIANTS", 17)
+    with pytest.raises(ValueError, match="must be a mapping"):
+        resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {"gguf_unknown": "candidate"},
+    )
+    with pytest.raises(ValueError, match="unsupported quant"):
+        resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {"gguf_iq3_xxs": ""},
+    )
+    with pytest.raises(ValueError, match="non-empty variants"):
+        resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+
+
 def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")

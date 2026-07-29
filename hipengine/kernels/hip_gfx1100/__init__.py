@@ -113,6 +113,10 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
+# WPF-H5J's exact K1024 IQ3/IQ4 row-ownership leaves are admitted standalone.
+# Keep package ownership empty until complete state, integrated tracing, and
+# clean 512/1K/4K timing qualify the actual-layer policy.
+LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {}
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. WPF-1T's exact constant-accumulator screen admits four adjacent output
@@ -195,6 +199,7 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 __all__ = [
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
+    "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",
