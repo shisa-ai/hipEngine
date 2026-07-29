@@ -189647,3 +189647,27 @@ Vulkan local sizes verbatim will close the measured gap.
   census to re-rank SWA/global/other gaps against same-GGUF llama.cpp Vulkan.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-production.json`.
+
+## 2026-07-29 13:41 JST — Re-profile producer-max attention wall
+
+- Tracked-clean `94d21510a`, cached builds, two HIP queues, and one
+  profiler-only p512/d128 pass emit 127 one-token segments with zero compiler
+  invocations. Production wall remains the non-profiled **19.983610 tok/s**.
+- Relative to the post-global-mixed32 census, SWA falls
+  **3.182894 -> 2.503017 ms/token (-21.36%)**, total attention
+  **4.365075 -> 3.687803 ms (-15.52%)**, kernel sum
+  **48.701082 -> 47.990073 ms (-1.46%)**, and span
+  **52.204569 -> 50.433725 ms (-3.39%)**. Global is flat
+  **1.182181 -> 1.178331 ms (-0.33%)**.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s** with logged attention
+  **0.909423 ms/token**. hipEngine's residual attention gap is
+  **2.778380 ms/token**, **38.5%** of the complete **7.211486-ms/token** wall
+  gap. SWA remains the largest attention family; source-F16 remains the
+  largest absolute family at **24.063 ms/token**.
+- Trace/child SHA-256 values are `4b210429...a32d` and
+  `8c9e684a...b733`. RED/GREEN extends the trace classifier to decode
+  global/SWA symbols so attribution no longer falls into `other`.
+- The clean census closes the comparison-only debt: remove
+  `--compare-swa-producer-max` and its session setter, retain the gfx1151
+  architecture capability and registered mixed32/exp32 rollback. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-max-wall-reprofile.json`.

@@ -448,6 +448,15 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
         ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("qk_t16_selected_grouped_smallm_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
+        (
+            "laguna_global_attention_fused_exact_gated_mixed32_exp32_kernel",
+            "global_attention",
+        ),
+        (
+            "laguna_swa_attention_fused_exact_gated_mixed32_exp32_"
+            "producer_max_kernel",
+            "swa_attention",
+        ),
         ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
         (

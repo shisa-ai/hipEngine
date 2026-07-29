@@ -1488,6 +1488,12 @@ Tracked-clean selector-unset production confirms
 19.667705 packet, with the capability active and exact repeated
 state/lifecycle:
 [`producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-production.json).
+The tracked-clean 127-transition census measures
+**3.688 ms/token attention = 2.503 SWA + 1.178 global**. Relative to the
+pre-producer census, SWA falls **21.36%**, total attention **15.52%**, and
+kernel sum **1.46%**. The residual attention gap to same-GGUF Vulkan is
+**2.778 ms/token**, **38.5%** of the complete wall gap:
+[`post-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-producer-max-wall-reprofile.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
