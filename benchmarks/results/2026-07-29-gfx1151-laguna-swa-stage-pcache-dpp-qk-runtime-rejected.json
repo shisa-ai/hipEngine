@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T22:30:35+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_pcache_dpp_qk_runtime_rejected",
+  "status": "rejected_runtime_primitive_retained",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "cfba0adb3727589ef106a0c36602fc6fd215f792",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-stage-pcache-dpp-qk --allow-dirty --output /tmp/laguna-p512-d128-swa-stage-pcache-dpp-ab.json",
+    "raw_sha256": "f0778174507a097ec65afea4a51739472c12e7b35a947d5f18cd43a95ee2b6be",
+    "timing_order": "AB then BA, alternating by repetition",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions_per_mode": 7,
+    "model_load_seconds_excluded": 90.38468440109864
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "performance": {
+    "control": "retained exact stage-probability-cache SWA",
+    "candidate": "exact stage-probability-cache plus DPP-QK SWA",
+    "control_samples_tok_s": [
+      20.26099984827103,
+      20.278116089405408,
+      20.273079313787907,
+      20.27605663031125,
+      20.278828598847916,
+      20.273268526728863,
+      20.277209970902387
+    ],
+    "candidate_samples_tok_s": [
+      20.256623186887374,
+      20.260314426474274,
+      20.266937444202494,
+      20.24808570667302,
+      20.257053291160716,
+      20.263520377875032,
+      20.265786776241672
+    ],
+    "control_median_tok_s": 20.27605663031125,
+    "candidate_median_tok_s": 20.260314426474274,
+    "throughput_change_percent": -0.0776393759595373,
+    "control_ms_per_token": 49.31925463776185,
+    "candidate_ms_per_token": 49.35757555140872,
+    "latency_change_ms_per_token": 0.038320913646870736,
+    "candidate_pair_wins": 0,
+    "control_pair_wins": 7
+  },
+  "decision": {
+    "retain_primitive": true,
+    "promote_runtime": false,
+    "production_changed": false,
+    "production_tok_s": 20.270313915500993,
+    "reason": "The exact primitive's 7.105% isolated leaf win does not survive the resident two-queue workload; every counterbalanced pair regresses.",
+    "cleanup": "Remove the gfx1151 capability, LagunaKVCache field/dispatch route, profile comparison CLI, and routing tests. Keep only the registered primitive, leaf harness choice, and byte-exact oracle coverage.",
+    "next_gate": "Do not retry DPP-only lane transport on the local384 SWA body without a scheduler-visible geometry or resource change."
+  }
+}

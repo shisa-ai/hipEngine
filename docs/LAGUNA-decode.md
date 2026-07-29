@@ -4916,9 +4916,16 @@ The remaining attention sequence is:
     BF16 byte-exact. The cached 9x50 leaf improves
     **0.056299 -> 0.052299 ms (-7.105%)**, with complete sample separation.
     Cache-only tracing keeps grid32/local384, VGPR104, SGPR128, LDS25,600, and
-    scratch0. Retain the registered primitive and run a seven-pair resident
-    p512/d128 gate before promotion. Evidence:
-    [`combined stage-cache/DPP primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json).
+    scratch0. The seven-pair resident p512/d128 gate then rejects the route:
+    every paired candidate loses and median decode moves
+    **20.276057 -> 20.260314 tok/s
+    (-0.0776%, +0.0383 ms/token)**, with exact trajectory, positions,
+    determinism, and allocation lifecycle. Remove the comparison capability,
+    cache route, profile CLI, and routing-test seam; retain only the registered
+    diagnostic primitive, leaf choice, and oracle coverage. Production remains
+    **20.270314 tok/s** on stage cache plus shuffle transport. Evidence:
+    [`combined stage-cache/DPP primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-primitive.json) ·
+    [`runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-runtime-rejected.json).
 
 Current exact decode checkpoint:
 
