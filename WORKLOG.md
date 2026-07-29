@@ -190243,3 +190243,22 @@ Vulkan local sizes verbatim will close the measured gap.
   transfer Vulkan's tile. Production remains **20.056756 tok/s**. Raw SHA-256
   is `6a449e88...5bfa345`; evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-fp64-pv-rejected.json`.
+
+## 2026-07-29 17:09 JST — Reject terminal SWA V-stage barrier contraction
+
+- RED fails on the absent no-final-V-barrier wrapper. GREEN appends an exact
+  specialization that preserves all retained arithmetic/ownership and omits
+  only the post-consume workgroup barrier after the eighth and final 64-slot
+  V tile. Positions 512-519 after ring wrap plus explicit position-200
+  eviction remain F32/BF16 byte-exact.
+- The directional 9x50 leaf improves
+  **0.058923 -> 0.058824 ms (-0.168%)** with 8/9 paired wins. The decisive
+  21x100 gate reverses the result:
+  **0.058735 -> 0.058774 ms (+0.066%)**, with only 11/21 pairs positive.
+  Raw SHA-256 values are `c82172f0...97398c` and `6b5293d1...fcc4386`.
+- Reject and remove the specialization, wrapper, registry key, harness seam,
+  and test extension before trace/runtime work. Production remains
+  **20.056756 tok/s**. Scalar SWA synchronization contraction is exhausted;
+  pivot the next decode work to the measured selected-Q4 gate/up and down
+  excess. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-final-vbarrier-rejected.json`.

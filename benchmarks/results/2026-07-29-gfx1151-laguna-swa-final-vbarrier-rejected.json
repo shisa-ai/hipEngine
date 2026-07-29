@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T17:09:37+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_final_vbarrier_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "e38ab4c892bee48917248b7bca85ce0734521bf2",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "72Q/8KV/D128/SWA512"
+  },
+  "candidate": {
+    "description": "Preserve the retained mixed32 producer-max/producer-gate body, but omit the post-consume workgroup barrier after the eighth and final 64-slot staged-V tile.",
+    "premise": "No producer can overwrite LDS after the terminal V tile, so the last post-consume barrier is semantically unnecessary.",
+    "geometry": "unchanged 32 local384 workgroups"
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed before implementation because the no-final-V-barrier wrapper did not exist.",
+    "green_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "positions": "512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "directional": {
+      "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-no-final-vbarrier-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-no-final-vbarrier-leaf.json",
+      "raw_sha256": "c82172f04b5a209ea90315a4b8a07ddd98c5e72b2fd03e3707b2b996dc497398",
+      "control_median_ms": 0.058922839164733884,
+      "candidate_median_ms": 0.05882359981536865,
+      "latency_change_percent": -0.16842255188651567,
+      "paired_wins": 8,
+      "paired_samples": 9
+    },
+    "decisive": {
+      "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-no-final-vbarrier-vstage64-vec16-direct-assume-exp --samples 21 --warmups 10 --burst 100 --allow-dirty --output /tmp/laguna-swa-no-final-vbarrier-leaf-21.json",
+      "raw_sha256": "6b5293d1a6b89e5afa7d86bd4ab29fafd46f85dba9ac42f896fd7a868fcc4386",
+      "control_median_ms": 0.05873528003692627,
+      "candidate_median_ms": 0.058774161338806155,
+      "latency_change_percent": 0.06619752532965872,
+      "paired_wins": 11,
+      "paired_samples": 21,
+      "warmups": 10,
+      "launches_per_sample": 100
+    }
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "trace_run": false,
+    "runtime_gate_run": false,
+    "production_tok_s": 20.0567558587,
+    "production_status": "unchanged",
+    "reason": "The larger paired leaf gate reverses the directional result and regresses 0.066%. The barrier is semantically redundant but performance-neutral on gfx1151.",
+    "finding": "Scalar SWA synchronization contraction is exhausted. Further material attention work requires a different cooperative arithmetic schedule; the next decode work pivots to the measured selected-Q4 excess."
+  }
+}

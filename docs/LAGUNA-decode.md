@@ -4579,6 +4579,20 @@ The remaining attention sequence is:
     scalar-F32 association, and it cannot bridge to llama.cpp's cooperative
     Br16 x Bc64 PV tile. Production remains **20.056756 tok/s**. Evidence:
     [`rejected FP64 PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fp64-pv-rejected.json).
+23. Remove the terminal staged-V consumer barrier. **Complete and rejected:**
+    the eighth 64-slot V tile has no successor that can overwrite LDS, so the
+    post-consume workgroup barrier is semantically unnecessary. The
+    wrapped/evicted oracle is F32/BF16 byte-exact through positions 512-519
+    and explicit eviction. A directional 9x50 screen initially improves
+    **0.058923 -> 0.058824 ms (-0.168%)** with 8/9 paired wins, but the
+    decisive 21x100 gate reverses to
+    **0.058735 -> 0.058774 ms (+0.066%)**, with only 11/21 pairs positive.
+    Remove the specialization, wrapper, registry key, harness seam, and test
+    extension before trace or runtime work. Production remains
+    **20.056756 tok/s**. This closes scalar SWA synchronization contraction;
+    pivot the next decode candidate to the measured selected-Q4 gate/up and
+    down excess. Evidence:
+    [`rejected terminal V barrier`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-final-vbarrier-rejected.json).
 
 Current exact decode checkpoint:
 

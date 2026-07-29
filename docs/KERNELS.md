@@ -1587,6 +1587,17 @@ mathematical precision does not reproduce the recurrent scalar-F32 boundary
 and is not a throughput bridge to cooperative PV:
 [`rejected FP64 PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-fp64-pv-rejected.json).
 
+The remaining scalar synchronization contraction is closed as well. The
+final 64-slot V tile has no successor that can overwrite LDS, so a temporary
+specialization omitted only its post-consume workgroup barrier and remained
+F32/BF16 byte-exact through wrap and eviction. A directional 9x50 screen
+improved **0.058923 -> 0.058824 ms (-0.168%)**, but the decisive 21x100 gate
+reversed to **0.058735 -> 0.058774 ms (+0.066%)**, with only 11/21 pairs
+positive. The specialization, wrapper, registry key, harness seam, and test
+extension are removed before trace/runtime work. Do not reopen scalar
+barrier-only tuning:
+[`rejected terminal V barrier`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-final-vbarrier-rejected.json).
+
 The exact scalar form of llama.cpp-style whole-GQA ownership is closed.
 One local384 block per KV head stages all nine queries and reuses each K/V
 tile and exp32 weight while preserving the production denominator and scalar
