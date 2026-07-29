@@ -127,7 +127,7 @@ __global__ void gguf_q5_k_dequantize_f32_exact_kernel(
 }
 
 template <typename out_t, int COL_TILE, int ROW_BATCH>
-__launch_bounds__(128, 2)
+__launch_bounds__(128, (COL_TILE * ROW_BATCH == 64 ? 1 : 2))
 __global__ void gguf_q5_k_f32_weight_ordered_coltile_kernel(
     const uint16_t* __restrict__ input,
     const float* __restrict__ weight,
@@ -136,8 +136,9 @@ __global__ void gguf_q5_k_f32_weight_ordered_coltile_kernel(
     int in_features,
     int out_features) {
   static_assert(
-      COL_TILE * ROW_BATCH == 32,
-      "ordered F32 Q5 screens only constant-32-accumulator output tiles");
+      COL_TILE * ROW_BATCH == 32 ||
+          COL_TILE * ROW_BATCH == 64,
+      "ordered F32 Q5 screens only constant-32/64-accumulator output tiles");
   const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
   const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
   const int tid = static_cast<int>(threadIdx.x);
@@ -315,6 +316,9 @@ extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_coltile##COL_TILE##_rowbat
 
 HIPENGINE_Q5_F32_ORDERED_EXPORTS(4, 8)
 HIPENGINE_Q5_F32_ORDERED_EXPORTS(8, 4)
+HIPENGINE_Q5_F32_ORDERED_EXPORTS(4, 16)
+HIPENGINE_Q5_F32_ORDERED_EXPORTS(8, 8)
+HIPENGINE_Q5_F32_ORDERED_EXPORTS(16, 4)
 
 #undef HIPENGINE_Q5_F32_ORDERED_EXPORTS
 

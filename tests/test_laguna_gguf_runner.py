@@ -143,7 +143,19 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     )
     assert (
         libraries.linear[
-            "gguf_q5_k:f32_ordered_coltile4_rowbatch8_bf16_bf16_out"
+            "gguf_q5_k:f32_ordered_coltile4_rowbatch16_bf16_bf16_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_coltile16_rowbatch4_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_coltile8_rowbatch8_bf16_bf16_out"
         ]
         is q5_f32_ordered
     )
@@ -1161,12 +1173,13 @@ def test_laguna_q5_f32_ordered_prefill_is_default_on_gfx1100_only() -> None:
     ) is True
     assert policy == {
         ("bf16", 3072, 1024): "coltile8_rowbatch4",
-        ("bf16", 3072, 12288): "coltile4_rowbatch8",
-        ("bf16", 6144, 3072): "coltile8_rowbatch4",
-        ("f32", 3072, 48): "coltile8_rowbatch4",
+        ("bf16", 3072, 12288): "coltile4_rowbatch16",
+        ("bf16", 6144, 3072): "coltile16_rowbatch4",
+        ("bf16", 9216, 3072): "coltile8_rowbatch8",
+        ("f32", 3072, 48): "coltile16_rowbatch4",
         ("f32", 3072, 72): "coltile8_rowbatch4",
-        ("f32", 3072, 6144): "coltile8_rowbatch4",
-        ("f32", 3072, 9216): "coltile4_rowbatch8",
+        ("f32", 3072, 6144): "coltile16_rowbatch4",
+        ("f32", 3072, 9216): "coltile4_rowbatch16",
     }
     assert resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100")
     assert resolve_laguna_q5_f32_ordered_prefill("hip_gfx1100", True)

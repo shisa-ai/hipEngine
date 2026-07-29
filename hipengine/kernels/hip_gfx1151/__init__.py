@@ -561,7 +561,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 ("f32_weight", "ordered_"),
                 ("gguf_q5_k", "f32_ordered_"),
             )
-            for col_tile, row_batch in ((4, 8), (8, 4))
+            for col_tile, row_batch in (
+                (4, 8),
+                (8, 4),
+                (4, 16),
+                (8, 8),
+                (16, 4),
+            )
             for output_dtype in ("bf16", "f32")
         ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
