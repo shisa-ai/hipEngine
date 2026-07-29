@@ -6375,6 +6375,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "swa_context_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans",
+            laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_spans",
             laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         ),
