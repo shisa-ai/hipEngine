@@ -5544,19 +5544,24 @@ The remaining attention sequence is:
     preserves the same generated-state SHA, tokens, position, and lifecycle.
     gfx1151 now selects the qualified capability, other backends remain
     unchanged, and the prior exact probability replay remains the fallback.
-    A clean production packet is the next checkpoint.
+    Tracked-clean selector-unset production is
+    **20.489386/20.496816/20.498178 tok/s**, median
+    **20.496816 tok/s** (**48.788 ms/token**): **+0.01017%** over the
+    preceding clean packet and **+78.751%** over sprint start. All runs retain
+    the exact trajectory/state/lifecycle.
     Evidence:
     [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-primitive.json),
-    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json).
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-retained.json),
+    [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-prenorm-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.494732 tok/s** | **48.793 ms** | **+78.733%** |
+| hipEngine current production | **20.496816 tok/s** | **48.788 ms** | **+78.751%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.964 ms/token** | hipEngine is **12.222%** below Vulkan throughput |
+| Remaining wall gap | — | **5.959 ms/token** | hipEngine is **12.213%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,
