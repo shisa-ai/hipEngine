@@ -1559,6 +1559,10 @@ generated state and lifecycle: median decode is
 producer-gate specialization while preserving producer-max as its exact
 rollback:
 [`producer-gate retained`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json).
+Clean selector-unset production is **20.003064 tok/s**, **+0.0835%** over the
+prior packet and **+74.445%** over sprint start, with exact repeated
+state/lifecycle:
+[`producer-gate production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-production.json).
 
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is

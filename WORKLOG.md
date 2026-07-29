@@ -189893,3 +189893,17 @@ Vulkan local sizes verbatim will close the measured gap.
   **19.986371 tok/s** remains the topline until a clean selector-unset
   publication. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-retained.json`.
+
+## 2026-07-29 14:57 JST — Publish SWA producer-gate production
+
+- Tracked-clean, selector-unset p512/d128 production at promoted revision
+  `9409d1147` measures **19.991789/20.003064/20.005123 tok/s**, median
+  **20.003064**.
+- This is **+0.0835% / -0.0418 ms/token** over the prior clean 19.986371
+  packet and **+74.445%** over the 11.466687 sprint start.
+- The producer-gate capability is active without a comparison selector.
+  Repeated next token 2930, final token 74107, generated-ID hash, final
+  position 638, determinism, and allocation teardown are exact.
+- Raw SHA-256 is `6fa20a09...a479f`. Next: cached 127-transition attention
+  census, then remove the temporary comparison setter/profile flag. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-gate-production.json`.
