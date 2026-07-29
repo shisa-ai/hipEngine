@@ -516,6 +516,23 @@ primitive/ceiling evidence. That IQ2 result does not adjudicate WPF-1R; the
 separate raw-Q5/Q6 screen below closes on its own actual tensors.
 Evidence: [`P6 M512 rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json).
 
+WPF-H1 adds separately registered gfx1100-only, source-faithful Q5_K
+primitives in `quant/gguf_k_mmq_prefill.{hip,py}` from llama.cpp
+`c0bc8591e`. The producer expands hipEngine's BF16 boundary to F32, then emits
+the same K-major 144-byte DS4 record: four FP16 `(scale, pre-quantization sum)`
+pairs and 128 signed bytes. Its maximum actual M512/K9216 workspace is
+**5,308,416 bytes**. The consumer uses local256 I128/J128/K256 ownership,
+eight RDNA3 integer-WMMA waves, one raw-Q5 expansion per K256 slab, separate
+dot/min terms, and a 57,856-byte dynamic-LDS launch class; no weight sidecar or
+runtime owner exists yet. CPU byte oracles pass at 127/128/129-row producer
+tails, and BF16/F32 output fixtures pass the repository KL/top-1 gate at
+M17/N72, M127/N128, and M129/N128. Cached W7900 tracing names the producer at
+local256/VGPR24/scratch0 and both consumers at local256/VGPR184/scratch0 with
+plausible **78.760-88.920 us** tiny-fixture durations; rocprof reports dynamic
+LDS separately from its zero static-LDS field. gfx1151 is explicitly excluded.
+This is primitive admission only: all-eight-role inclusive timing, model
+quality, runtime integration, and production promotion remain pending.
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
