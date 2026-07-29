@@ -2104,6 +2104,7 @@ class LagunaGGUFResidentSession:
         use_selected_natural_tile8_decode: bool | None = None,
         use_selected_natural_tile8_parallel_decode: bool | None = None,
         use_selected_natural_tile8_parallel_silu_decode: bool | None = None,
+        use_selected_down_natural_parallel_decode: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2283,6 +2284,15 @@ class LagunaGGUFResidentSession:
             )
             if use_selected_natural_tile8_parallel_silu_decode is None
             else use_selected_natural_tile8_parallel_silu_decode
+        )
+        self.use_selected_down_natural_parallel_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
+                False,
+            )
+            if use_selected_down_natural_parallel_decode is None
+            else use_selected_down_natural_parallel_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3060,6 +3070,14 @@ class LagunaGGUFResidentSession:
         """Select the exact tile8 natural gate/up sibling."""
 
         self.use_selected_natural_tile8_decode = bool(enabled)
+
+    def set_selected_down_natural_parallel_decode(
+        self,
+        enabled: bool,
+    ) -> None:
+        """Select the exact parallel-tail natural selected-down sibling."""
+
+        self.use_selected_down_natural_parallel_decode = bool(enabled)
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -5026,6 +5044,9 @@ class LagunaGGUFResidentSession:
             ),
             use_selected_natural_tile8_parallel_silu_decode=(
                 self.use_selected_natural_tile8_parallel_silu_decode
+            ),
+            use_selected_down_natural_parallel_decode=(
+                self.use_selected_down_natural_parallel_decode
             ),
         )
         config = self.weights.config

@@ -176,6 +176,17 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
             "selected_t16_natural_gemv_decode_bf16_bf16_out"
         ),
     }
+    assert {
+        quant: route.key.variant
+        for quant, route in plan.natural_parallel_selected_down_routes.items()
+    } == {
+        "gguf_q4_k_t16_v1": (
+            "selected_t16_natural_parallel_gemv_decode_bf16_bf16_out"
+        ),
+        "gguf_q6_k_t16_v1": (
+            "selected_t16_natural_parallel_gemv_decode_bf16_bf16_out"
+        ),
+    }
     planar = resolve_laguna_moe_plan(
         config,
         backend="hip_gfx1151",

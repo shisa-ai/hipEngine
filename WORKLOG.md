@@ -190306,3 +190306,19 @@ Vulkan local sizes verbatim will close the measured gap.
   session selector and require seven exact counterbalanced p512/d128 pairs.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json`.
+
+## 2026-07-29 17:30 JST — Stage default-off selected-down production screen
+
+- RED first fails import on the absent gfx1151 capability. GREEN adds a
+  fail-closed registered Q4/planar-Q6 plan route, default-off gfx1151
+  capability, session-scoped selector, and counterbalanced profile lane.
+  Peer backends, selected gate/up, non-natural rows, and production defaults
+  remain unchanged.
+- A focused propagation test exposed an initial miswired keyword on the
+  selected gate/up call; repair routes the selector only into the weighted
+  selected-down composite. Capability, plan, session, propagation, and
+  profile contracts then pass **5/5**. The complete four-file affected
+  runtime/profile bundle passes **107/107**; the focused registered-plan node
+  also passes. Python compilation and diff checks pass.
+- `docs/REFACTOR.md` records the promotion/removal trigger. Production remains
+  **20.056756 tok/s**. Next run the seven-pair exact resident p512/d128 gate.

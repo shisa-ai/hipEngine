@@ -105,10 +105,15 @@ def test_weighted_hidden_rejection_restores_c1_weighted_sum(
         "_launch_selected_gate_up",
         lambda *_args, **_kwargs: calls.append("selected_gate_up"),
     )
+
+    def selected_down_composite(*_args, **kwargs) -> bool:
+        calls.append(f"natural_parallel={kwargs['use_natural_parallel']}")
+        return False
+
     monkeypatch.setattr(
         moe_module,
         "_launch_weighted_selected_down",
-        lambda *_args, **_kwargs: False,
+        selected_down_composite,
     )
     monkeypatch.setattr(
         moe_module,
@@ -117,8 +122,18 @@ def test_weighted_hidden_rejection_restores_c1_weighted_sum(
     )
 
     with pytest.raises(StopRouted):
-        moe_module.run_laguna_moe_c1_components(1, layer, scratch)
-    assert calls == ["selected_gate_up", "selected_down", "routed_sum"]
+        moe_module.run_laguna_moe_c1_components(
+            1,
+            layer,
+            scratch,
+            use_selected_down_natural_parallel_decode=True,
+        )
+    assert calls == [
+        "selected_gate_up",
+        "natural_parallel=True",
+        "selected_down",
+        "routed_sum",
+    ]
     assert "defer_routed_sum" not in inspect.signature(
         moe_module.run_laguna_moe_c1_components
     ).parameters
