@@ -89,14 +89,21 @@ numbers below.
   three exact fallbacks, moving Q6 **177.047 -> 110.170 ms (-37.774%)** and
   request kernel sum **2,667.034 -> 2,600.260 ms (-2.504%)**. Clean
   selector-unset production is **191.713/178.080/134.411 tok/s** at 512/1K/4K,
-  **+1.762%/+1.736%/+1.256%** over H5G and a **3.621x** matched M512 gap. Full
-  logits, all 48 hidden
-  boundaries, routing prefixes, active K/V, and every `KVLiveSpans` field are
-  bit-exact at KL 0 on
-  the deep M512 gate; every 512/1K/4K publication sample is byte-exact,
-  deterministic, and lifecycle-clean. The 150-tok/s short gate and restored 4K
-  gate pass, while 16K+ stays closed below the 800/700 512/4K stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
+  **+1.762%/+1.736%/+1.256%** over H5G and a **3.621x** matched M512 gap. The
+  reconciled H5I trace is led by Q5 **922.619 ms**, IQ down **556.749 ms**,
+  attention **471.150 ms**, and Q6 **110.170 ms**. H5J targets exact IQ down:
+  45 K1024 IQ3 calls account for **530.864 ms**, and actual routing shows only
+  **9,844** active expert instances versus **33,547** rowbatch8 weight-decode
+  batches. A strict resident-segment specialization can eliminate **70.656%**
+  of those reconstructions without changing any eight-row dot/reduction phase;
+  two K1024 IQ4 calls separately admit an exact one-wave geometry screen. Full
+  logits, all 48 hidden boundaries, routing prefixes, active K/V, and every
+  `KVLiveSpans` field are bit-exact at KL 0 on the deep M512 gate; every
+  512/1K/4K publication sample is byte-exact, deterministic, and
+  lifecycle-clean. The 150-tok/s short gate and restored 4K gate pass, while
+  16K+ stays closed below the 800/700 512/4K stretch target
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+  [post-H5I residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
   [preceding coltile production](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
   [role policy](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)).
   A separately registered WPF-H2 F16-WMMA FlashAttention leaf keeps BF16 K/V
@@ -168,6 +175,7 @@ numbers below.
   [H5G Q5 production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json) ·
   [H5H boundary rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-register-boundary-rejected.json) ·
   [post-H5G residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json) ·
+  [post-H5I residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
   [H5I leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
   [H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
   [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·

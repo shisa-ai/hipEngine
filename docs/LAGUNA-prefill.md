@@ -136,9 +136,17 @@ through all boundaries/logits/KV/live spans/repeat/teardown. Cached tracing
 records **143** Q6 producers, **143** ordered consumers, and **3** raw-coltile
 fallbacks, moving Q6 **177.047 -> 110.170 ms (-37.774%)** and request kernel
 sum **2,667.034 -> 2,600.260 ms (-2.504%)**. Clean selector-unset 512/1K/4K
-promotes **191.713/178.080/134.411 tok/s**. Return to exact IQ3/IQ4 row
-ownership
+promotes **191.713/178.080/134.411 tok/s**. The reconciled H5I trace now assigns
+Q5 **922.619 ms**, IQ3/IQ4 down **556.749 ms**, attention **471.150 ms**,
+gate/up **469.311 ms**, Q6 **110.170 ms**, and remaining **70.261 ms**. IQ down
+retains a **401.254-ms** matched gap. H5J targets its exact row ownership: 45
+K1024 IQ3 calls own **530.864 ms**, and routing has only **9,844** active expert
+instances versus **33,547** rowbatch8 segment reconstructions. Decode each
+fixed segment once before replaying the unchanged eight-row phases; separately
+screen local32 for two K1024 IQ4 calls. Prior rowbatch16 spill, output tiling,
+and source-MMQ remain closed
 ([H5I production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+[post-H5I residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
 [H5I leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-candidate.json) ·
 [post-H5G residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5g-residual.json)).
 
@@ -298,8 +306,10 @@ The revised execution order is:
    **194.758/189.722 -> 119.751/121.353 ms** event/wall, with four selected
    roles, two exact long-K fallbacks, and one exact wide-N fallback. Complete
    state and integrated tracing pass; clean 512/1K/4K promotes
-   **191.713/178.080/134.411 tok/s**. Resume exact IQ3/IQ4 row ownership. Do not
-   stack H1-H5B or reopen P6.
+   **191.713/178.080/134.411 tok/s**. H5J now screens exact K1024 IQ3
+   resident-segment reuse across all 45 calls plus a two-call IQ4 wave32
+   sibling. Preserve every rowbatch8 reduction; do not stack H1-H5B or reopen
+   the spilled rowbatch16, regressive output tile, source MMQ, or P6.
 6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
