@@ -66,13 +66,23 @@
     ],
     "raw_sha256": "06a3b960e3743649ccb9b5f6abc3c66c5cb51dee2f3155e8667753212795f527"
   },
+  "bounded_unroll_rerun": {
+    "reason": "The first diagnostic fully unrolled 128 float4 PV iterations, so a second build bounded that loop to unroll depth four while preserving the same arithmetic and ownership.",
+    "protocol": "paired 9 samples x 50 launches after 3 warmups",
+    "control_median_ms": 0.03676484107971192,
+    "candidate_median_ms": 0.12288694381713867,
+    "latency_change_percent": 234.25125801768215,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "2c5ab47fbb620c22bdfd6508db48ff0ca55db0155e0dce04daf2c90a3d27326d"
+  },
   "decision": {
     "retain": false,
     "promote": false,
     "candidate_code_removed": true,
     "resident_gate_skipped": true,
     "production_tok_s": 20.49473174761836,
-    "reason": "Removing the singleton owner's LDS V stage changes its coalesced 16-byte global loads into four output waves' strided scalar value loads. That memory-layout loss overwhelms all avoided barriers and regresses the exact leaf by 447.93%.",
+    "reason": "The original fully-unrolled diagnostic regresses 447.93%, and the controlled-unroll rerun still regresses 234.25%. Four output waves issuing scalar V loads cannot expose or hide value-cache latency as effectively as the retained twelve-wave cooperative 16-byte copy, even though accesses within each output wave remain contiguous.",
     "next": "Keep cooperative staged-V transport even for singleton owners. Attack work duplication or synchronization only while retaining coalesced V loads."
   }
 }

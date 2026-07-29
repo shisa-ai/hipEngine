@@ -5508,12 +5508,15 @@ The remaining attention sequence is:
     all eight K64 V-stage copies and sixteen staged-loop barriers in those
     blocks.
 
-    The wrapped/evicted oracle is F32-context and gated-BF16 byte-exact, but
-    the 9x50 leaf regresses
-    **0.036936 -> 0.202381 ms (+447.929%)**. The staged path's aligned
-    16-byte cooperative loads are essential: direct replay turns them into
-    four output waves' strided scalar V loads, and that memory-layout loss
-    dwarfs the saved synchronization.
+    The wrapped/evicted oracle is F32-context and gated-BF16 byte-exact. The
+    first 9x50 leaf regresses
+    **0.036936 -> 0.202381 ms (+447.929%)**, but that diagnostic also fully
+    unrolled 128 probability vectors. A controlled-unroll rerun removes that
+    code-generation confound and still regresses
+    **0.036765 -> 0.122887 ms (+234.251%)**. Lanes within an output wave
+    remain contiguous, so the corrected finding is not uncoalesced addresses:
+    four scalar-load PV waves expose far less V-level parallelism than the
+    retained twelve-wave aligned 16-byte cooperative copy.
 
     Remove the template branch, export, wrapper, and leaf selector; skip
     tracing and resident integration. Keep coalesced staged-V transport even

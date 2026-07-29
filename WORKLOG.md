@@ -191835,3 +191835,17 @@ Vulkan local sizes verbatim will close the measured gap.
   production remains **20.494732 tok/s**. Raw SHA-256 is
   `06a3b960...95f527`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-singleton-direct-pv-rejected.json`.
+
+## 2026-07-30 04:01 JST — Confirm singleton direct-PV rejection without full unroll
+
+- Correct the first diagnostic's attribution before closing it. Its outer PV
+  loop used an unbounded unroll pragma over 128 probability vectors; lanes
+  inside each output wave also access contiguous dimensions, not strided
+  addresses.
+- Rebuild the same byte-exact singleton direct-PV mechanism with unroll depth
+  four. It improves substantially over the accidental fully-unrolled form but
+  still regresses **0.036765 -> 0.122887 ms (+234.251%)**.
+- The stable conclusion is insufficient memory-level parallelism: four scalar
+  PV waves cannot replace twelve waves of aligned 16-byte cooperative V
+  staging. Candidate code remains fully removed. Raw SHA-256 is
+  `2c5ab47f...27326d`; the rejection artifact now carries both screens.
