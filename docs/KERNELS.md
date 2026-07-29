@@ -1922,10 +1922,12 @@ All seven resident p512/d128 candidates beat every control with complete
 separation, moving **20.433014 -> 20.501083 tok/s
 (+0.33313%, -0.16249 ms/token)** with exact state/lifecycle. gfx1151 promotes
 the qualified capability, mixed32 remains exact rollback, comparison plumbing
-is removed, and peer backends are unchanged. Clean selector-unset publication
-remains next:
+is removed, and peer backends are unchanged. Tracked-clean selector-unset
+production is **20.483884 tok/s**, **+0.28627% / -0.13975 ms/token** over the
+preceding clean packet and **+78.638%** over sprint start:
 [`primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-primitive.json),
-[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json).
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json),
+[`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:

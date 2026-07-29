@@ -191411,3 +191411,21 @@ Vulkan local sizes verbatim will close the measured gap.
   production-route/profile validation passes **2** tests. Clean
   selector-unset production remains next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-retained.json`.
+
+## 2026-07-30 01:23 JST — Publish exact SWA mixed40 production
+
+- On tracked-clean `28a5ad676`, run three selector-unset Poolside Laguna S
+  2.1 Q4_K_M BF16-KV p512/d128 eager c=1 production repetitions.
+  Decode is **20.479107/20.483884/20.498437 tok/s**, median
+  **20.483884 tok/s / 48.819 ms/token**. This is **+0.28627%** and
+  **-0.13975 ms/token** versus the preceding clean packet, and
+  **+78.638%** from the 11.466687 tok/s sprint start.
+- The normal route reports mixed40 active with no comparison selector. All
+  repetitions preserve next/final tokens **2930/74107**, trajectory SHA-256
+  `94f803f7...ebda32`, final position 638, repeat determinism, and zero
+  tracked allocations after teardown. Model load **89.174 s** is excluded;
+  raw output SHA-256 is `beae0f18...e8f9`.
+- Against same-GGUF llama.cpp Vulkan at **23.348381 tok/s / 42.830 ms**,
+  the remaining gap is **5.989 ms/token** and hipEngine is **12.269%** below
+  comparator throughput. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-production.json`.
