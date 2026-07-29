@@ -2094,3 +2094,19 @@ should be boring.
   single-launch screen. Then collapse positive selector semantics while
   retaining the 24-block GQA2 exp32 primitive as the exact
   compiler/occupancy rollback.
+
+## Laguna gfx1151 exact global producer-max selector
+
+- Added 2026-07-29 as the default-off session-scoped
+  `LagunaKVCache.global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape`
+  field, `LagunaGGUFResidentSession.set_decode_global_producer_max(...)`, and
+  `--compare-global-producer-max`. False restores the retained global
+  mixed32/exp32 owner.
+- The primitive is byte-exact at live513/576/639, improves the leaves
+  **4.50%/4.89%/4.88%**, removes one barrier, and lowers VGPR **56 -> 48**
+  without added LDS or scratch.
+- Promote only if seven matched resident p512/d128 pairs preserve exact
+  trajectories/state/lifecycle and pass the positive complete-model gate.
+  After clean selector-unset publication, remove the comparison flag and
+  session setter while retaining the architecture capability and registered
+  mixed32/exp32 rollback.

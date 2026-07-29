@@ -189700,3 +189700,20 @@ Vulkan local sizes verbatim will close the measured gap.
   **19.983610 tok/s** until a session-scoped gfx1151 selector passes matched
   resident p512/d128 state/lifecycle/performance gates. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-leaf.json`.
+
+## 2026-07-29 14:00 JST — Admit default-off global producer-max gate
+
+- RED required the absent
+  `LagunaGGUFResidentSession.set_decode_global_producer_max(...)`. GREEN adds
+  a default-off gfx1151 capability, fail-closed cache field, highest-priority
+  qualified-global selection, backend-key validation, session setter, and
+  counterbalanced `--compare-global-producer-max` profile route.
+- The candidate is enabled only on top of retained global mixed32/exp32 for
+  capacity4096/live<=4000/48Q. Peer backends, unqualified shapes, and false
+  rollback remain unchanged.
+- Focused validation passes **37 tests**: the new session-scope test, complete
+  cache capability/rollback test, and the profile-harness bundle. The
+  comparison-only cleanup trigger is recorded in `docs/REFACTOR.md`.
+- Next run seven resident Poolside Laguna S 2.1 p512/d128 pairs with two HIP
+  queues and cached builds. Retain only on exact trajectory/state/lifecycle
+  and positive counterbalanced throughput.
