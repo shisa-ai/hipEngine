@@ -191652,3 +191652,25 @@ Vulkan local sizes verbatim will close the measured gap.
   The material llama.cpp target remains cooperative K/V tile reuse plus
   tensorized QK/PV, not key-layout-only vectorization. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-lane-major-key-rejected.json`.
+
+## 2026-07-30 02:46 JST — Reject mixed40 restrict/noalias annotation
+
+- The required kernel-lineage check remains environment-blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external source is
+  copied. Source review instead compares the read-only llama.cpp Vulkan
+  `flash_attn_cm1.comp@c0bc8591e` with the retained in-tree body.
+- Screen a compiler-only exact seam: mark every independent query, K, V,
+  context, gate, gated-output, and `KVLiveSpans` pointer `__restrict__`,
+  matching adjacent fused KV writers. There is no behavioral RED because no
+  symbol, registry key, dispatch, ABI, arithmetic, byte count, or ownership
+  changes. The focused wrapped/explicitly-evicted oracle remains F32/BF16
+  byte-exact.
+- Three independent cached 21x100 processes before and after move the
+  production-tail median-of-process-medians **0.037002 -> 0.037097 ms
+  (+0.259%)**. Baseline process medians are
+  **0.036951/0.037010/0.037002 ms**; annotated medians are
+  **0.037097/0.037555/0.037056 ms**. Remove the qualifiers and skip resident
+  integration. Production remains **20.494732 tok/s**. Pointer alias analysis
+  is not the missing Vulkan multiplier; select a measured cooperative-work or
+  instruction-dependency change next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-mixed40-restrict-noalias-rejected.json`.
