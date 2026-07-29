@@ -1481,11 +1481,16 @@ role. All candidates are removed. The retained H5G request segment now
 reconciles **2,667.034 ms / 1,720 dispatches** in a **2,702.091-ms** kernel
 span: Q5 is **920.633 ms**, IQ3/IQ4 down **560.642 ms**, gate/up **470.116
 ms**, attention **468.533 ms**, Q6 **177.047 ms**, and all remaining kernels
-**70.063 ms**. Q5 geometry and prior attention lanes are closed; WPF-H5I next
-reuses the bounded serial plane for exact raw-Q6-to-F32 expansion plus the
-production-ordered consumer. If that role-inclusive lane closes, return to
-exact IQ3/IQ4 row ownership. Do not stack rejected H1-H5B arithmetic or reopen
-P6/repair; launch fusion remains deferred at **1.297%** request span-minus-sum.
+**70.063 ms**. Q5 geometry and prior attention lanes are closed. WPF-H5I's
+exact raw-Q6-to-F32 producer plus ordered consumer clears the all-role leaf:
+strong 146-call event/wall sums move **194.758/189.722 -> 119.751/121.353 ms
+(-38.513%/-36.037%)**. Four roles select `16x5`/`16x4`/`8x4`; both long-K
+roles and the wide-N F32 role remain exact raw coltile. Add only bounded default-off ownership through
+the existing serial plane, then require complete M512 state, cached integrated
+trace, and clean 512/1K/4K non-regression before promotion. If that integration
+closes, return to exact IQ3/IQ4 row ownership. Do not stack rejected H1-H5B
+arithmetic or reopen P6/repair; launch fusion remains deferred at **1.297%**
+request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

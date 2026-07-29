@@ -36,6 +36,7 @@ _ORDERED_GEOMETRIES = (
     (8, 12),
     (12, 8),
 )
+_Q6_ORDERED_GEOMETRIES = frozenset(((8, 4), (16, 4), (16, 5)))
 _ORDERED_SYMBOL = (
     "hipengine_gguf_q5_k_f32_weight_ordered_coltile{col_tile}_"
     "rowbatch{row_batch}_bf16_{output_dtype}_out"
@@ -430,9 +431,6 @@ for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
         _composite_name = (
             f"gguf_q5_k_{_ORDERED_COMPOSITE_VARIANT.format(variant=_variant)}"
         )
-        _q6_composite_name = (
-            f"gguf_q6_k_{_ORDERED_COMPOSITE_VARIANT.format(variant=_variant)}"
-        )
         _primitive = _make_q5_f32_weight_ordered(
             _col_tile,
             _row_batch,
@@ -445,22 +443,26 @@ for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
             col_tile=_col_tile,
         )
         _composite.__name__ = _composite_name
-        _q6_composite = _make_q_f32_ordered_composite(
-            _primitive,
-            gguf_q6_k_dequantize_f32_exact,
-            col_tile=_col_tile,
-        )
-        _q6_composite.__name__ = _q6_composite_name
         globals()[_primitive_name] = _primitive
         globals()[_composite_name] = _composite
-        globals()[_q6_composite_name] = _q6_composite
         _key = (_col_tile, _row_batch, _output_dtype)
         _ORDERED_PRIMITIVES[_key] = _primitive
         _ORDERED_COMPOSITES[_key] = _composite
-        _Q6_ORDERED_COMPOSITES[_key] = _q6_composite
-        _ORDERED_EXPORT_NAMES.extend(
-            (_primitive_name, _composite_name, _q6_composite_name)
-        )
+        _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
+        if (_col_tile, _row_batch) in _Q6_ORDERED_GEOMETRIES:
+            _q6_composite_name = (
+                "gguf_q6_k_"
+                f"{_ORDERED_COMPOSITE_VARIANT.format(variant=_variant)}"
+            )
+            _q6_composite = _make_q_f32_ordered_composite(
+                _primitive,
+                gguf_q6_k_dequantize_f32_exact,
+                col_tile=_col_tile,
+            )
+            _q6_composite.__name__ = _q6_composite_name
+            globals()[_q6_composite_name] = _q6_composite
+            _Q6_ORDERED_COMPOSITES[_key] = _q6_composite
+            _ORDERED_EXPORT_NAMES.append(_q6_composite_name)
 del _col_tile, _row_batch, _output_dtype, _variant
 del _primitive_name, _composite_name, _q6_composite_name
 del _primitive, _composite, _q6_composite, _key
@@ -594,9 +596,9 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
         _ORDERED_PRIMITIVES.items()
     ):
         composite = _ORDERED_COMPOSITES[(col_tile, row_batch, output_dtype)]
-        q6_composite = _Q6_ORDERED_COMPOSITES[
+        q6_composite = _Q6_ORDERED_COMPOSITES.get(
             (col_tile, row_batch, output_dtype)
-        ]
+        )
         variant = _ORDERED_PRIMITIVE_VARIANT.format(
             col_tile=col_tile,
             row_batch=row_batch,
@@ -617,16 +619,17 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
             composite,
             replace=replace,
         )
-        register(
-            KernelKey(
-                "hip_gfx1100",
-                "linear",
-                "gguf_q6_k",
-                _ORDERED_COMPOSITE_VARIANT.format(variant=variant),
-            ),
-            q6_composite,
-            replace=replace,
-        )
+        if q6_composite is not None:
+            register(
+                KernelKey(
+                    "hip_gfx1100",
+                    "linear",
+                    "gguf_q6_k",
+                    _ORDERED_COMPOSITE_VARIANT.format(variant=variant),
+                ),
+                q6_composite,
+                replace=replace,
+            )
 
 
 register_gguf_q5_k_f32_rocblas_prefill_kernels()
