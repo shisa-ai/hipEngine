@@ -4997,6 +4997,24 @@ The remaining attention sequence is:
     denominator replay without a parallel exact prefix or materially
     different producer ownership. Evidence:
     [`post-barrier denominator rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json).
+44. Vectorize the published-probability denominator replay. **Primitive
+    retained pending resident gate:** the scalar LDS screen established the
+    right schedule with the wrong load form. The successor reads the aligned
+    K64 probability tile as sixteen `float4` vectors on producer lane zero,
+    then issues the same 64 ordered denominator adds while the other waves
+    perform PV. Published invisible probabilities are positive zero, so
+    consuming them preserves the denominator bits; every QK, maximum, `expf`,
+    PV FMA, divide, gate, and store remains unchanged.
+
+    The wrapped/evicted oracle is F32-context and gated-BF16 byte-exact. The
+    9x50 leaf improves **0.056281 -> 0.045338 ms (-19.443%)**. A 21x100
+    confirmation improves **0.056116 -> 0.045204 ms (-19.445%)**, with all
+    21 candidate samples faster than every control. Cache-only tracing
+    confirms unchanged grid32/local384, VGPR104, SGPR128, LDS25,600, and
+    scratch0. Retain the registered primitive and leaf/oracle seam. Production
+    remains **20.270314 tok/s** pending seven counterbalanced resident
+    p512/d128 pairs. Evidence:
+    [`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json).
 
 Current exact decode checkpoint:
 

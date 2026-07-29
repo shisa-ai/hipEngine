@@ -1808,6 +1808,17 @@ is byte-exact, but all nine cache-hot samples regress
 wave more than the shuffles cost; all candidate code is removed and
 production remains **20.270314 tok/s**. Evidence:
 [`post-barrier denominator rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json).
+The aligned-vector successor fixes that implementation bottleneck. Producer
+lane zero reads the published K64 probability row as sixteen `float4` LDS
+vectors, then performs the identical 64 ordered adds while other waves
+compute PV. Wrapped/evicted F32/BF16 output is byte-exact. The 9x50 and
+21x100 leaves improve **19.443%/19.445%**, with complete 21-sample separation.
+Cache-only tracing keeps grid32/local384, VGPR104, SGPR128, LDS25,600, and
+scratch0 unchanged. Retain
+`swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_vstage64_vec16_direct_assume_exp_fixed512_spans`
+as a registered primitive pending seven resident pairs; production remains
+**20.270314 tok/s**:
+[`vec4 denominator primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-denom-primitive.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
