@@ -4445,7 +4445,17 @@ The remaining attention sequence is:
     aggregate-flat-to-positive at **+0.0138%** versus the prior packet and
     exact across repeated state/lifecycle. Evidence:
     [`global producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-production.json).
-13. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
+13. Re-profile after global producer maxima. **Complete:** the clean
+    127-transition trace keeps 768 compute dispatches/token and moves global
+    attention **1.178 -> 1.149 ms/token (-2.50%)**, total attention
+    **3.688 -> 3.658 ms (-0.80%)**, kernel sum
+    **47.990 -> 47.956 ms (-0.07%)**, and span
+    **50.434 -> 50.405 ms (-0.06%)**. SWA is flat at **2.497 ms/token**.
+    Against Vulkan's **0.909 ms/token** attention, the residual
+    **2.749-ms/token** attention gap is **38.2%** of the complete wall gap.
+    Evidence:
+    [`post-global-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json).
+14. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
     precision-design problem: retain its compact GQA9/K64 ownership and
     tensorized QK/PV throughput, but establish an independently valid
     score/numerator error bound or a higher-precision cooperative

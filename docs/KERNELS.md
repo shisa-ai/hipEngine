@@ -1517,6 +1517,15 @@ aggregate-flat-to-positive at **+0.0138% / -0.0069 ms/token** versus the
 prior clean packet, with the capability active and exact repeated state:
 [`global producer-max production`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-producer-max-production.json).
 
+The tracked-clean 127-transition follow-up keeps **768 compute
+dispatches/token** and measures
+**3.658 ms/token attention = 2.497 SWA + 1.149 global**. Relative to the
+preceding census, global falls **2.50%**, total attention **0.80%**, kernel
+sum **0.07%**, and span **0.06%**. The residual attention gap to same-GGUF
+Vulkan is **2.749 ms/token**, **38.2%** of the complete wall gap. The global
+candidate appears at grid8192/local256/VGPR48/SGPR128/LDS512/scratch0:
+[`post-global-producer-max census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json).
+
 The clean post-wave32 census keeps **816 dispatches/token** and measures
 **48.966 ms/token** kernel sum / **51.519 ms/token** span. Attention is
 **4.478 ms/token = 3.181 SWA + 1.289 global**, down **5.62%** from post-exp4

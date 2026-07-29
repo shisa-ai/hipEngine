@@ -189768,3 +189768,26 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused validation passes **37 tests** across the profile harness, retained
   mixed32 session rollback, and complete cache capability/dispatch bundle.
   Next run a tracked-clean 127-transition attention census.
+
+## 2026-07-29 14:16 JST — Re-profile global producer-max attention wall
+
+- Tracked-clean `b5200362b`, cached builds, two HIP queues, and one
+  profiler-only p512/d128 pass emit 127 one-token segments with zero compiler
+  invocations. Production wall remains the non-profiled
+  **19.986371 tok/s**.
+- Relative to the pre-global-max census, global attention falls
+  **1.178331 -> 1.148914 ms/token (-2.50%)**, total attention
+  **3.687803 -> 3.658463 ms (-0.80%)**, kernel sum
+  **47.990073 -> 47.955880 ms (-0.07%)**, and span
+  **50.433725 -> 50.405381 ms (-0.06%)**. SWA is flat within profiler
+  variance at **2.497126 ms/token**.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s** with logged
+  attention **0.909423 ms/token**. hipEngine's residual attention gap is
+  **2.749040 ms/token**, **38.2%** of the complete
+  **7.204574-ms/token** wall gap. Source-F16 remains the largest absolute
+  family at **24.063834 ms/token**.
+- The global candidate appears at grid8192/local256/VGPR48/SGPR128/LDS512/
+  scratch0. Trace/child SHA-256 values are `880caf9e...05b5d3` and
+  `469f166f...f2f05`; profiled throughput is attribution-only.
+- Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-global-producer-max-wall-reprofile.json`.
