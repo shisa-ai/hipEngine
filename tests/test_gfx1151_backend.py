@@ -254,7 +254,14 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
 
     backend.register_gfx1151_kernels()
 
-    assert registered == []
+    assert registered == [
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair",
+            "gguf_q4_k",
+            "pack8_dual_decode_bf16_bf16_out",
+        )
+    ]
 
 
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:

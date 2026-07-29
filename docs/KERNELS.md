@@ -56,6 +56,20 @@ global/SWA wraps and prove the gated/wave-local reducers bit-exact to their
 registered unfused/retained chains. Cached tracing observes all required
 producer/reducer families with zero kernel scratch.
 
+The gfx1151-only
+`linear_pair/gguf_q4_k/pack8_dual_decode_bf16_bf16_out` key now reuses the
+existing exact local32 pack8 dual body for Laguna c=1 gate/up. It owns all
+**47 shared plus one leading-dense pair/token**; registry, backend, shape, or
+layout miss retains two singleton launches. Direct K3072/N1024, K1024/N3072,
+and K3072/N12288 leaves are BF16 byte-exact and improve two singletons by
+**20.25%/24.81%/12.48%**. Seven resident p512/d128 pairs improve
+**19.556271 -> 19.645185 tok/s (+0.4547%, -0.2314 ms/token)** with exact
+trajectories and lifecycle. Cache-only tracing names
+`gguf_q4_k_pack8_dual_prefill_out_kernel<unsigned short>` for exactly
+**5,969 shared + 127 dense** calls at local32/VGPR96/SGPR128/LDS512/scratch0,
+reduces compute dispatches **816 -> 768/token**, and cuts the complete Q4
+pack8 family **3.018303 -> 2.836943 ms/token (-6.01%)**.
+
 ### Laguna gfx1151 exact cached-only qrow4 prefill
 
 The global/SWA `laguna_attention_prefill` family now registers cached-only

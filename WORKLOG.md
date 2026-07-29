@@ -189193,3 +189193,34 @@ Vulkan local sizes verbatim will close the measured gap.
   remaining numerical blocker; split normalization was real but secondary.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-raw-numerator-rejected.json`.
+
+## 2026-07-29 10:10 JST — Retain exact Q4 pack8 dual decode
+
+- Reused the existing exact local32 Q4 pack8 dual body under a gfx1151-only
+  `linear_pair` key. It now owns all 47 shared-MoE gate/up pairs plus the
+  leading dense gate/up pair at c=1; peers, rows>1, shape/layout/registry miss
+  retain the two-singleton fallback.
+- RED was the absent key and the registered-only dispatch returning before Q4
+  consideration. GREEN adds registered dispatch coverage and a HIP-guarded
+  dual-versus-two-local32 BF16 byte-identity fixture.
+- Direct leaf medians improve two singleton launches by **20.2538%** at
+  K3072/N1024, **24.8095%** at K1024/N3072, and **12.4795%** at
+  K3072/N12288, with zero BF16 mismatches.
+- Seven counterbalanced wired p512/d128 pairs improve
+  **19.556271 -> 19.645185 tok/s (+0.4547%, -0.2314 ms/token)**; every pair
+  wins and tokens 2930/74107, trajectory SHA `94f803f7...ebda32`, positions,
+  determinism, and allocation recovery are exact. Raw artifact SHA is
+  `58c61509...270a3`.
+- Required cached tracing names **5,969 shared + 127 dense** dual calls at
+  local32/VGPR96/SGPR128/LDS512/scratch0. It removes exactly **48 compute
+  launches/token (816 -> 768)** and cuts the complete Q4 family
+  **3.018303 -> 2.836943 ms/token (-6.01%)**. Trace SHA is
+  `f636847c...54cd`; child SHA is `a1d5b327...2383a`.
+- Removed the temporary benchmark comparison selector after admission.
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` could not
+  complete because the lineage manifest references missing read-only peer
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. Clean selector-unset publication
+  remains the next action. Focused validation established all other affected
+  nodes green, then exposed one stale backend-registration expectation; the
+  scoped repair passes all **23** `test_gfx1151_backend.py` nodes. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-retained.json`.

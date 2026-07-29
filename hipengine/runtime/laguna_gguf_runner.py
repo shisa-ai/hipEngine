@@ -4898,24 +4898,42 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         scratch = self.scratch
         linear_libraries = self.libraries.linear
-        for slot, output in (
-            ("ffn_gate", scratch.dense_gate),
-            ("ffn_up", scratch.dense_up),
-        ):
-            launch_gguf_linear(
-                layer.weight(slot),
-                scratch.norm.ptr,
-                output.ptr,
-                1,
-                config.hidden_size,
-                config.feed_forward_length,
-                backend=self.backend,
-                stream=stream,
-                libraries=linear_libraries,
-                runtime=self.runtime,
-                use_wmma_prefill=False,
-                use_gemv_decode=True,
-            )
+        dense_pair = launch_gguf_linear_pair(
+            layer.weight("ffn_gate"),
+            layer.weight("ffn_up"),
+            scratch.norm.ptr,
+            scratch.dense_gate.ptr,
+            scratch.dense_up.ptr,
+            1,
+            config.hidden_size,
+            config.feed_forward_length,
+            backend=self.backend,
+            stream=stream,
+            libraries=linear_libraries,
+            runtime=self.runtime,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+        )
+        if not dense_pair:
+            for slot, output in (
+                ("ffn_gate", scratch.dense_gate),
+                ("ffn_up", scratch.dense_up),
+            ):
+                launch_gguf_linear(
+                    layer.weight(slot),
+                    scratch.norm.ptr,
+                    output.ptr,
+                    1,
+                    config.hidden_size,
+                    config.feed_forward_length,
+                    backend=self.backend,
+                    stream=stream,
+                    libraries=linear_libraries,
+                    runtime=self.runtime,
+                    use_wmma_prefill=False,
+                    use_gemv_decode=True,
+                )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
             scratch.dense_up.ptr,

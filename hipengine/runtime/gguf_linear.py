@@ -1125,6 +1125,39 @@ def launch_gguf_linear_pair(
             runtime=runtime,
         )
         return True
+    if pair_kind == "q4_pack8_dual_decode":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q4_k",
+            "pack8_dual_decode_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
     return False
 
 
@@ -1248,6 +1281,22 @@ def _resolve_gguf_linear_pair_kind(
             return "registered_raw_decode_pair_unequal"
         if out_features_b == out_features:
             return "registered_raw_decode_pair_equal"
+
+    q4_decode = KernelKey(backend, "linear", "gguf_q4_k", "pack8_bf16_bf16_out")
+    q4_decode_pair = KernelKey(
+        backend,
+        "linear_pair",
+        "gguf_q4_k",
+        "pack8_dual_decode_bf16_bf16_out",
+    )
+    if (
+        rows == 1
+        and out_features_b == out_features
+        and dispatch_a.key == q4_decode
+        and dispatch_b.key == q4_decode
+        and is_registered(q4_decode_pair)
+    ):
+        return "q4_pack8_dual_decode"
 
     if registered_decode_only:
         return "none"
