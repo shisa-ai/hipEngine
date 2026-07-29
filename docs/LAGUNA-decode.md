@@ -4392,17 +4392,36 @@ The remaining attention sequence is:
    issue overhead cost more than the duplicated softmax work. All candidate
    code is removed. Evidence:
    [`rejected wave64 shared softmax`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-wave64-shared-softmax-rejected.json).
-9. The next material design must raise arithmetic per K/V ownership/load
-   event, not merely alter synchronization. Revisit llama.cpp's cooperative
-   matrix GQA tile as a precision-design problem: retain its compact
-   GQA9/K64 ownership and tensorized QK/PV throughput, but establish an
-   independently valid score/numerator error bound or a higher-precision
-   cooperative accumulation before any whole-model quality run. The measured
-   scalar split merge, global score plane, output-derived repair, packed-BF16
-   dot2, and synchronization-only variants remain closed.
+9. Reusing the score producers for the exact maximum is **complete and
+   retained as a registered primitive**. Each of the twelve score waves
+   accumulates one partial maximum per owned query while it already owns the
+   score, publishes 36 values before the existing phase barrier, and lets
+   each output owner reduce twelve partials instead of rescanning all 512
+   scores. QK, score storage, exp32 issue, denominator/PV association, gate,
+   stores, grid, and barriers are unchanged. The wrap/eviction oracle is
+   F32/BF16 byte-exact; the leaf improves
+   **0.081790 -> 0.059101 ms (-27.74%)**. Cached tracing keeps
+   local384/VGPR104/SGPR128/scratch0 and raises LDS only
+   **24,576 -> 25,088 bytes**. Production remains **19.667705 tok/s** until
+   the session-scoped resident p512/d128 gate passes. Evidence:
+   [`retained producer-max primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-max-leaf.json).
+10. Wire the producer-max primitive behind an explicit gfx1151 session
+    capability and run matched resident p512/d128 pairs. Promote only if
+    complete trajectories, runtime state, lifecycle, and throughput all pass;
+    otherwise remove the runtime owner while retaining the exact diagnostic
+    primitive.
+11. After that gate, revisit llama.cpp's cooperative matrix GQA tile as a
+    precision-design problem: retain its compact GQA9/K64 ownership and
+    tensorized QK/PV throughput, but establish an independently valid
+    score/numerator error bound or a higher-precision cooperative
+    accumulation before any whole-model quality run. The measured scalar
+    split merge, global score plane, output-derived repair, packed-BF16 dot2,
+    and synchronization-only variants remain closed.
 
-The next material SWA gate must improve llama.cpp's actual advantage rather
-than wrap it in scalar replay: tensorized QK and PV inside one GQA tile with
+The producer-max result captures one exact piece of llama.cpp's advantage:
+cooperative work should be computed by the waves that already own the data,
+not replayed by every consumer. The next material gate after its resident
+promotion still requires tensorized QK and PV inside one GQA tile with
 intrinsically higher precision or a cheap independently valid error bound.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
