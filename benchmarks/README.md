@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-07-29**
+Last updated: **2026-07-30**
 
 The canonical clean W7900 Laguna UD-Q2_K_XL prefill packet is
 [`2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json`](results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json).
@@ -88,21 +88,19 @@ tile128 metadata route, and selector are removed; only the separately registered
 [`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json)
 remains, and exact grouped down plus the canonical headline above are unchanged.
 
-The [`WPF-H4 Q6_K F16/rocBLAS standalone leaf`](results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json)
-is **admitted pending runtime and complete-quality gates**. One local64 launch
-produces caller-owned F16 weight bytes from raw Q6_K while independently casting
-the resident BF16 activation; source-matching F16-compute `rocblas_gemm_ex`
-then writes F16 output for one BF16/F32 result cast. Across the actual six-shape,
-144-call M512 inventory, retained exact coltile moves **174.351 -> 14.349 ms
-(12.151x, -91.770%)**. Every role wins, maximum mean KL is **3.441e-5**, and
-minimum top-1 is **97.852%**. The candidate is **0.571 ms / 3.825% below** the
-matched llama.cpp **14.919865-ms** source-stack recount; this is a matched-family
-attribution, not a paired-process wall claim. Scratch is bounded at
-**97,517,568 bytes** and no dequantized weight persists. The integrated
-default-off owner passes natural M512 at KL **0.000721933**, top-1 **100%**,
-deterministic complete state, and exact teardown; cached tracing observes all
-144 expected source stacks. Exact coltile remains production until the
-18-prompt/576-step quality, clean 512/1K timing, and all-family reprofile pass.
+The [`WPF-H4 Q6_K F16/rocBLAS runtime`](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json)
+is **rejected for production** despite a parity-beating standalone leaf. One
+local64 producer plus F16-compute `rocblas_gemm_ex` and a result cast moves the
+actual six-shape/144-call M512 inventory **174.351 -> 14.349 ms (12.151x)**,
+**3.825% below** llama.cpp's matched **14.919865-ms** stack. Natural-prompt
+prefill improves **151.784 -> 158.205 tok/s (1.042x)** and every category is
+positive, but the binding 18-prompt/576-step changed-arithmetic lane reaches
+maximum KL **0.338657 > 0.05** at **567/576 (98.438%)** top-1. Poolside,
+deterministic repeats, M512 state, and lifecycle pass but cannot waive KL. The
+temporary owner, rocBLAS handle, **97,517,568-byte** workspace, capabilities,
+and selector are removed; only the separately registered
+[`leaf evidence`](results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json)
+remains. Exact coltile and the canonical clean headline above are unchanged.
 
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).

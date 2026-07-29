@@ -167,19 +167,19 @@ The revised execution order is:
    **567/576** top-1. Keeping IQ4 exact still reaches **0.372917**, isolating
    source IQ3 arithmetic. Remove the runtime owner/selector and retain exact
    grouped production plus separately registered leaf evidence. Proceed to H4.
-4. **WPF-H4 source-faithful Q6_K dequantize-plus-rocBLAS has an admitted
-   standalone leaf.** The fused local64 raw-Q6/BF16 producer, F16-compute
-   `rocblas_gemm_ex`, and one result cast move the actual six-shape/144-call
-   M512 family **174.351 -> 14.349 ms (12.151x)**, **3.825% below** the matched
-   llama.cpp **14.919865-ms** stack. No persistent full-family sidecar is
-   created; one M512 owner is bounded at **97,517,568 bytes**. Its default-off
-   integration passes natural M512 at KL **0.000721933**, top-1 **100%**,
-   deterministic complete state, and teardown. Production stays exact pending
-   the complete category quality, clean timing, and reprofile gates.
-5. **WPF-H5 residual tail:** reprofile only after H4 is independently decided
-   against the exact production route. IQ2/P6, launch fusion, and small support
-   kernels stay deferred; IQ2 core is only **25.151 ms** behind in the exact ledger and
-   span-minus-sum is only **15.211 ms / 0.503%** at M512.
+4. **WPF-H4 source-faithful Q6_K dequantize-plus-rocBLAS is rejected for
+   runtime use.** The standalone fused producer/F16-compute-GEMM leaf moves the
+   six-shape/144-call M512 family **174.351 -> 14.349 ms (12.151x)**, **3.825%
+   below** llama.cpp's matched **14.919865-ms** stack. Natural-prompt prefill
+   improves **151.784 -> 158.205 tok/s (1.042x)** with every category positive,
+   but complete changed-arithmetic quality reaches max KL **0.338657** at
+   **567/576** top-1. Remove the owner/selector/rocBLAS handle/97,517,568-byte
+   workspace/capabilities; retain exact coltile and separately registered leaf
+   evidence.
+5. **WPF-H5 residual tail:** start with a clean exact-production M512 reprofile
+   now that H4 is independently rejected. Do not stack H1-H4 arithmetic. Re-rank
+   only measured residual families; prior P6/repair rejection remains binding
+   and launch fusion stays deferred unless the fresh span-minus-sum exceeds 5%.
 6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
@@ -612,8 +612,8 @@ heldouts before any clean publication.
 | **WPF-H1 source-faithful Q5_K MMQ** | **Rejected; runtime owner removed** | The strict DS4 producer plus isolated fast-math I128/J128/K256 consumer moves the eight-role/235-call leaf **1,562.932 -> 97.110 ms (16.094x)** and natural-prompt prefill **151.252 -> 203.862 tok/s (1.348x)**, but complete quality reaches max KL **4.162014** at **561/576** top-1. Poolside/repeats/lifecycle pass. Remove the constructor switch, activation scopes, DS4 workspace owner, package capability, and dispatch policy; retain only the registered primitive/leaf evidence. Production stays exact. |
 | **WPF-H2 source-faithful full-M512 FlashAttention** | **Rejected; runtime owner removed** | The retained standalone BF16-cache/F32-boundary whole-tile body copies F16 `128x128`, eight-query/eight-GQA-head WMMA ownership behind complete `KVLiveSpans`. Weighted 12-global/36-SWA M512 moves **490.919 -> 21.719 ms (22.603x)** and nominally matches llama.cpp's **21.725-ms** trace; natural-prompt prefill improves **152.087 -> 156.219 tok/s (1.027x)**. Complete quality nevertheless reaches max KL **1.804860** at **564/576** top-1. F32 PV/global-only/SWA-only followups fail, and the stream route was already non-finite/slower. Remove runtime ownership/capabilities/tests; retain the corrected standalone primitive and exact qrow4/M128 production. |
 | **WPF-H3 source-faithful IQ3/IQ4 selected-down MMQ** | **Rejected; runtime owner removed** | The standalone local `(32,8)` I128/J128/K256 leaf moves all **45 IQ3 + 2 IQ4** actual M512 layers **565.437 -> 115.951 ms (4.877x)**; IQ3 is **27.145% below** llama.cpp. Complete runtime quality nevertheless reaches max KL **0.373028** at **567/576** top-1 despite **1.192x** diagnostic prefill. IQ3-source/IQ4-exact still reaches **0.372917**. Remove runtime ownership/capabilities/tests; retain exact grouped production and the separately registered VGPR152/248 leaf. [`rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-rejected.json) · [`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json). |
-| **WPF-H4 source-faithful Q6_K F16/rocBLAS** | **Standalone leaf admitted; runtime gates pending** | The fused local64 raw-Q6/BF16 producer, F16-compute `rocblas_gemm_ex`, and one output cast move the actual six-shape/144-call M512 inventory **174.351 -> 14.349 ms (12.151x, -91.770%)**. Every role wins at max mean KL **3.441e-5** and min top-1 **97.852%**. The leaf is **0.571 ms / 3.825% below** the matched llama.cpp **14.919865-ms** stack, uses at most **97,517,568 bytes** reusable scratch, and creates no persistent weight sidecar. The default-off owner passes natural M512 at KL **0.000721933**, top-1 **100%**, deterministic complete state, and teardown; integrated tracing observes all 144 stacks. Exact coltile remains production pending complete category quality, clean 512/1K timing, and an all-family reprofile. [`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json). |
-| **WPF-H5 residual tail** | Deferred | Reprofile after H4 is independently decided against exact production. IQ2 core is only **25.151 ms** behind in the exhaustive ledger and prior P6 quality/repair rejection remains binding; launch/fusion remains deferred at **15.211 ms** span-minus-sum. |
+| **WPF-H4 source-faithful Q6_K F16/rocBLAS** | **Rejected; runtime owner removed** | The standalone local64/F16-compute leaf moves the actual six-shape/144-call M512 inventory **174.351 -> 14.349 ms (12.151x)**, **3.825% below** matched llama.cpp. Runtime natural-prompt prefill improves **151.784 -> 158.205 tok/s (1.042x)** with every category positive, but complete changed-arithmetic quality reaches max KL **0.338657** at **567/576** top-1. Remove runtime ownership, rocBLAS handle, 97,517,568-byte workspace, capabilities, and tests; retain exact coltile plus the registered leaf. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json) · [`leaf`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json). |
+| **WPF-H5 residual tail** | **Ready: exact reprofile next** | Reprofile the clean exact M512 route and re-rank only measured residual families. Do not stack rejected H1-H4 arithmetic; prior P6 quality/repair rejection remains binding and launch/fusion requires a fresh >5% span-minus-sum share. |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh M512 span-minus-sum is only **15.211 ms / 0.503%**, and llama.cpp is faster despite **2,824 vs 1,477** dispatches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | Clean 4K remains **123.084 tok/s**. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |

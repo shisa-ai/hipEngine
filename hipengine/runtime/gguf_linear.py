@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import Iterator, Mapping
 
 from hipengine.core.hip import get_hip_runtime
-from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
@@ -30,12 +29,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     register_gguf_q4_k_pack8_gemv_kernels,
-)
-from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
-    q6_k_f16_input_nbytes,
-    q6_k_f16_output_nbytes,
-    q6_k_f16_weight_nbytes,
-    register_gguf_q6_k_f16_rocblas_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     register_gguf_q6_k_pack8_gemv_kernels,
@@ -207,54 +200,6 @@ _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
     "q8_mmq_prefill_session",
     default=None,
 )
-
-
-@dataclass(frozen=True)
-class Q6F16RocblasPrefillSession:
-    """Caller-owned transient planes for one source-shaped Q6 projection."""
-
-    max_rows: int
-    weight_f16_ptr: int
-    weight_f16_nbytes: int
-    x_f16_ptr: int
-    x_f16_nbytes: int
-    out_f16_ptr: int
-    out_f16_nbytes: int
-    dequant_library: object
-    cast_library: object
-    rocblas: Rocblas
-    min_rows: int = 512
-
-    def __post_init__(self) -> None:
-        if not 0 < int(self.min_rows) <= int(self.max_rows):
-            raise ValueError(
-                "Q6 F16 rocBLAS min_rows must be positive and fit max_rows"
-            )
-        planes = (
-            (self.weight_f16_ptr, self.weight_f16_nbytes),
-            (self.x_f16_ptr, self.x_f16_nbytes),
-            (self.out_f16_ptr, self.out_f16_nbytes),
-        )
-        if any(int(ptr) <= 0 or int(nbytes) <= 0 for ptr, nbytes in planes):
-            raise ValueError("Q6 F16 rocBLAS planes must be non-empty device buffers")
-
-
-_q6_f16_rocblas_prefill_session: ContextVar[
-    Q6F16RocblasPrefillSession | None
-] = ContextVar("q6_f16_rocblas_prefill_session", default=None)
-
-
-@contextlib.contextmanager
-def q6_f16_rocblas_prefill_session(
-    session: Q6F16RocblasPrefillSession | None,
-) -> Iterator[None]:
-    """Expose one bounded Q6-to-F16 workspace during an owner row pass."""
-
-    token = _q6_f16_rocblas_prefill_session.set(session)
-    try:
-        yield
-    finally:
-        _q6_f16_rocblas_prefill_session.reset(token)
 
 
 @contextlib.contextmanager
@@ -762,64 +707,6 @@ def _rowtile_dispatch(
     )
 
 
-def _q6_f16_rocblas_prefill_dispatch(
-    dispatch: GGUFLinearDispatch,
-    *,
-    rows: int,
-    in_features: int,
-    out_features: int,
-) -> GGUFLinearDispatch:
-    """Select source Q6 for package shapes inside the owner-qualified row range."""
-
-    session = _q6_f16_rocblas_prefill_session.get()
-    if (
-        session is None
-        or int(rows) < int(session.min_rows)
-        or int(rows) > int(session.max_rows)
-    ):
-        return dispatch
-    output_variants = {
-        "prefill_bf16_bf16_out": "bf16",
-        "prefill_bf16_f32_out": "f32",
-    }
-    output_dtype = output_variants.get(dispatch.key.variant)
-    if (
-        output_dtype is None
-        or dispatch.abi != "raw"
-        or dispatch.key.quant != "gguf_q6_k"
-    ):
-        return dispatch
-    shape = (output_dtype, int(in_features), int(out_features))
-    supported = backend_package_capability(
-        dispatch.key.backend,
-        "GGUF_Q6_F16_ROCBLAS_PREFILL_SHAPES",
-        frozenset(),
-    )
-    if shape not in supported:
-        return dispatch
-    try:
-        required_weight = q6_k_f16_weight_nbytes(in_features, out_features)
-        required_input = q6_k_f16_input_nbytes(rows, in_features)
-        required_output = q6_k_f16_output_nbytes(rows, out_features)
-    except ValueError:
-        return dispatch
-    if (
-        required_weight > int(session.weight_f16_nbytes)
-        or required_input > int(session.x_f16_nbytes)
-        or required_output > int(session.out_f16_nbytes)
-    ):
-        return dispatch
-    key = KernelKey(
-        dispatch.key.backend,
-        dispatch.key.layer,
-        dispatch.key.quant,
-        f"f16_rocblas_source_bf16_{output_dtype}_out",
-    )
-    if not is_registered(key):
-        return dispatch
-    return GGUFLinearDispatch(key, "raw_q6_f16_rocblas")
-
-
 def _raw_k_prefill_rowbatch_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -983,7 +870,6 @@ def launch_gguf_linear(
     raw_k_rowbatch = raw_k_prefill_rowbatch()
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
-    q6_f16_session = _q6_f16_rocblas_prefill_session.get()
     cache_key = (
         generation(),
         weight.spec.layout,
@@ -1003,7 +889,6 @@ def launch_gguf_linear(
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
-        None if q6_f16_session is None else id(q6_f16_session),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -1047,12 +932,6 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_rowtile=f_rowtile,
-        )
-        dispatch = _q6_f16_rocblas_prefill_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
         )
         dispatch = _raw_k_prefill_rowbatch_dispatch(
             dispatch,
@@ -2251,37 +2130,6 @@ def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features
     )
 
 
-def _launch_raw_q6_f16_rocblas(
-    fn,
-    weight,
-    x_ptr,
-    out_ptr,
-    rows,
-    in_features,
-    out_features,
-    kwargs,
-) -> None:
-    session = _q6_f16_rocblas_prefill_session.get()
-    if session is None:
-        raise RuntimeError("Q6 F16 rocBLAS dispatch escaped its owner session")
-    fn(
-        x_ptr,
-        weight.allocation("raw").tensor.ptr,
-        out_ptr,
-        session.x_f16_ptr,
-        session.weight_f16_ptr,
-        session.out_f16_ptr,
-        rows,
-        in_features,
-        out_features,
-        stream=kwargs.get("stream", 0),
-        dequant_library=session.dequant_library,
-        cast_library=session.cast_library,
-        rocblas=session.rocblas,
-        runtime=kwargs.get("runtime"),
-    )
-
-
 def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     # Registry plan tests clear global registrations; keep GGUF runtime dispatch
     # independent of previous test/import order without overwriting tests that
@@ -2300,7 +2148,6 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
-    register_gguf_q6_k_f16_rocblas_prefill_kernels()
     register_gguf_q6_k_pack8_gemv_kernels()
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_mmq_prefill_kernels()
@@ -2316,7 +2163,6 @@ _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
-    "raw_q6_f16_rocblas": _launch_raw_q6_f16_rocblas,
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
@@ -2329,7 +2175,6 @@ __all__ = [
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
-    "Q6F16RocblasPrefillSession",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
@@ -2337,7 +2182,6 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
-    "q6_f16_rocblas_prefill_session",
     "q8_mmq_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",
