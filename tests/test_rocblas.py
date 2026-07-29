@@ -28,6 +28,33 @@ def _value(arg) -> int:
     return int(arg.value) if hasattr(arg, "value") else int(arg)
 
 
+def test_rocblas_fp16_compute_f16_uses_f16_output_and_compute_descriptors() -> None:
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    blas.gemm_ex_rowmajor_nt_fp16_compute_f16(
+        101,
+        202,
+        303,
+        rows=512,
+        in_features=3072,
+        out_features=1024,
+        stream=404,
+    )
+
+    assert library.rocblas_set_stream.args is not None
+    assert tuple(_value(arg) for arg in library.rocblas_set_stream.args) == (17, 404)
+    args = library.rocblas_gemm_ex.args
+    assert args is not None
+    assert _value(args[8]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[11]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[15]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[18]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[20]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[16]) == 1024
+    assert _value(args[19]) == 1024
+
+
 def test_rocblas_fp16_f32_out_uses_fp32_c_and_d_descriptors() -> None:
     library = _Library()
     blas = Rocblas(library=library, handle=17)

@@ -512,6 +512,24 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             )
             for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
         ),
+        # WPF-H4 copies llama.cpp's gfx1100 Q6-to-F16/rocBLAS ownership and
+        # remains excluded until gfx1151 receives an independent gate.
+        ("dequant", "gguf_q6_k", "raw_f16_source_local64"),
+        (
+            "dequant_cast",
+            "gguf_q6_k",
+            "raw_f16_bf16_input_source_local64",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "f16_rocblas_source_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "f16_rocblas_source_bf16_f32_out",
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),
