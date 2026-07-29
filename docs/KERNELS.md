@@ -2010,6 +2010,12 @@ target lacks `vmem-to-lds-load-insts`. The diagnostic candidate was removed
 before benchmarking. Keep the ordinary supported instructions and pursue
 multi-load issue/source prefetch if this dependency is revisited:
 [`unsupported global-to-LDS load`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-global-load-lds-unsupported.json).
+The supported two-load version is also closed. Issuing two ordinary
+`global_load_b128` value reads before either LDS store preserves F32/BF16
+bytes but regresses the paired 9x50 leaf
+**0.037081 -> 0.045278 ms (+22.106%)**. The diagnostic source is removed;
+do not increase staged-V source-prefetch depth:
+[`value-prefetch2 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-value-prefetch2-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
