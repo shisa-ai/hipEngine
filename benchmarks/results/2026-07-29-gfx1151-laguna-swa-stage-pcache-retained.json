@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T21:57:51+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_stage_probability_cache_retained",
+  "status": "retained_default",
+  "performance_claim": true,
+  "source": {
+    "base_revision": "986fec0ea2cc3353d076f13b2d87ce444189ecf4",
+    "candidate_uncommitted": true,
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "llamacpp_reference_shader": "ggml/src/ggml-vulkan/vulkan-shaders/flash_attn.comp",
+    "rejected_predecessor": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pcache4-rejected.json"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "production_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 78807922708
+  },
+  "change": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "geometry": "32 local384 workgroups; four output-dimension waves per owned query; eight K64 V stages",
+    "mechanism": "One output wave per active query computes the identical 32-lane expf weights and exact ordered denominator while the remaining waves stage V. The existing V-publication barrier also publishes the 3x64 probability tile, so all four output waves reuse each weight without any new barrier.",
+    "loader_repair": "Exclude the two or three active probability-producer waves from V loading and compact the same 1,024 aligned 16-byte V copies across the remaining ten or nine waves.",
+    "arithmetic": "Exact retained scalar QK tree, maximum, expf input/result, token-order denominator, per-dimension PV FMA order, divide, softplus gate, F32 context, and RNE BF16 gated output."
+  },
+  "correctness": {
+    "red": "Focused wrap/eviction test failed to import the missing stage-probability-cache wrapper.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "green_result": "1 passed",
+    "leaf_wrap_eviction_context_f32_byte_exact": true,
+    "leaf_wrap_eviction_gated_bf16_byte_exact": true,
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "repeat_next_token_deterministic": true,
+    "final_positions_exact": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "tracked_returned_to_baseline": true,
+    "derived_kl": 0.0,
+    "derived_top1_agreement": 1.0
+  },
+  "leaf": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-stage-pcache-vstage64-vec16-direct-assume-exp --samples 9 --warmups 3 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-stage-pcache-compact-loader-leaf.json",
+    "raw_sha256": "99afeed5fb3d95fe4d563ce0aa2eb8dae4f634b9fcc387161da29ff0742a4219",
+    "control_median_ms": 0.0587344408,
+    "candidate_median_ms": 0.0559961796,
+    "latency_change_percent": -4.662120492,
+    "all_nine_candidate_samples_faster_than_all_controls": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "initial_uncompacted_loader_candidate_ms": 0.0595602798,
+    "initial_uncompacted_loader_change_percent": 1.266
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-stage-pcache-trace.JaYW6Y -o stage_pcache_kernel_trace -- env GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-gate-stage-pcache-vstage64-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "raw_sha256": "c3d4353d85146bd9dbcc0d5f7599f8044ecc9ded3819da054780787c0800f9a7",
+    "candidate_grid_blocks": 32,
+    "candidate_workgroup_size": 384,
+    "candidate_allocated_vgpr": 104,
+    "candidate_allocated_sgpr": 128,
+    "candidate_lds_bytes": 25600,
+    "candidate_scratch_bytes": 0,
+    "control_allocated_vgpr": 104,
+    "control_lds_bytes": 25088
+  },
+  "production_ab": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-swa-stage-pcache --allow-dirty --output /tmp/laguna-p512-d128-swa-stage-pcache-ab.json",
+    "raw_sha256": "b964d08b79b31c936c6541968a919b250d7ba06e67ce213a2646115de3ce4550",
+    "control_decode_tok_s": 20.097967775138198,
+    "candidate_decode_tok_s": 20.2829156937631,
+    "throughput_change_percent": 0.9202319393391001,
+    "control_ms_per_token": 49.75627442477197,
+    "candidate_ms_per_token": 49.302576370097285,
+    "saving_ms_per_token": 0.45369805467468893,
+    "all_seven_candidate_samples_faster_than_all_controls": true,
+    "control_samples_tok_s": [
+      20.09050283050007,
+      20.097967775138198,
+      20.099220465936796,
+      20.095473302238602,
+      20.099717903885516,
+      20.093306807679035,
+      20.098261876649886
+    ],
+    "candidate_samples_tok_s": [
+      20.281426855036063,
+      20.282506598808236,
+      20.2829156937631,
+      20.27847544501821,
+      20.2857570903475,
+      20.284676562952818,
+      20.283761149127756
+    ]
+  },
+  "validation": {
+    "focused_command": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_long_context_profile.py tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "focused_result": "37 passed",
+    "backend_command": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gfx1151_backend.py",
+    "backend_result": "23 passed"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_capability_default": true,
+    "qualified_scope": "gated saturated natural-shape 72Q/8KV/D128/SWA512 decode",
+    "rollback": "exact mixed32 exp32 producer-max/gate V-stage64 vec16-direct assumed-domain owner",
+    "peer_backends_unchanged": true,
+    "next_gate": "Tracked-clean selector-unset three-run p512/d128 production publication and cached attention census."
+  }
+}

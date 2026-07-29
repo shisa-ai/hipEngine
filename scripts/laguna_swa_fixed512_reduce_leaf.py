@@ -36,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+    laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
     laguna_swa_attention_decode_fused_exact_gated_mixed32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
@@ -75,6 +76,7 @@ def _parse_args() -> argparse.Namespace:
             "mixed32-exp32-vstage64-vec16-direct-assume-exp",
             "mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp",
             "mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp",
+            "mixed32-exp32-producer-max-gate-stage-pcache-vstage64-vec16-direct-assume-exp",
             "mixed32-exp32-producer-max-gate-dpp-qk-vstage64-vec16-direct-assume-exp",
             "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp",
         ),
@@ -254,6 +256,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "mixed32-exp32-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+            "mixed32-exp32-producer-max-gate-stage-pcache-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-dpp-qk-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         }[args.candidate]
@@ -272,6 +275,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "mixed32-exp32-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
+            "mixed32-exp32-producer-max-gate-stage-pcache-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-dpp-qk-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_dpp_qk_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
             "mixed32-exp32-producer-max-gate-gated-only-vstage64-vec16-direct-assume-exp": laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_gated_only_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         }[args.candidate]

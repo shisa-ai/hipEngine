@@ -4844,6 +4844,34 @@ The remaining attention sequence is:
     bound. Evidence:
     [`rejected consensus association`](../benchmarks/results/2026-07-29-gfx1151-laguna-attention-consensus-association-rejected.json).
 
+37. Reuse exact probabilities through the V-stage publication barrier.
+    **Retained and promoted:** one output wave per active query computes the
+    identical wave32 `expf` weights and exact slot-order denominator while the
+    other waves stage the same K64 V tile. The barrier already required to
+    publish V now publishes the **3 x 64** probability tile as well, so all
+    four output-dimension waves reuse each weight with no additional barrier.
+    Excluding the two or three active probability-producer waves from V
+    loading and compacting the same aligned copies across the remaining ten
+    or nine waves is essential: the initial duplicate-work schedule regresses
+    **0.058816 -> 0.059560 ms (+1.266%)**, while the compact schedule improves
+    **0.058734 -> 0.055996 ms (-4.662%)** with complete nine-sample
+    separation.
+
+    The wrap/explicit-eviction oracle is F32-context and gated-BF16 byte-exact.
+    Cache-only tracing confirms the intended grid32/local384 body at unchanged
+    VGPR104/SGPR128/scratch0; LDS rises only **25,088 -> 25,600 bytes**.
+    All seven resident p512/d128 candidate samples beat every control, moving
+    median decode **20.097968 -> 20.282916 tok/s
+    (+0.9202%, -0.4537 ms/token)** with an identical 128-token trajectory,
+    positions, determinism, and allocation lifecycle. gfx1151 now selects the
+    specialization only for gated saturated natural-shape
+    72Q/8KV/D128/SWA512; the producer-max/gate owner remains the exact
+    rollback and peer backends are unchanged. This is the first direct
+    transfer of llama.cpp's probability-tile reuse that preserves Laguna's
+    recurrent arithmetic contract. Tracked-clean selector-unset publication
+    is the next gate. Evidence:
+    [`retained stage probability cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

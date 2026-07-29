@@ -1719,6 +1719,24 @@ registered DPP sibling remains diagnostic only. This local384 body needs a
 materially different cooperative tile or resource profile, not another
 lane-transport-only retry. Evidence:
 [`rejected SWA DPP-QK runtime`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-dpp-qk-runtime-rejected.json).
+The next exact saturated-SWA specialization transfers the comparator's
+probability-tile reuse without its lower-precision cooperative arithmetic.
+One output wave per active query computes the unchanged wave32 `expf` weights
+and exact ordered denominator while the remaining waves load the current K64
+V tile. The already-required V publication barrier also publishes a
+**3 x 64** FP32 probability tile, allowing all four output-dimension waves to
+reuse each weight without another barrier. Compacting V loads across the ten
+or nine non-producer waves is required; with it, the byte-exact leaf improves
+**0.058734 -> 0.055996 ms (-4.662%)** and all seven resident p512/d128 pairs
+improve **20.097968 -> 20.282916 tok/s
+(+0.9202%, -0.4537 ms/token)** with complete separation. Cached tracing keeps
+grid32/local384, VGPR104, SGPR128, and scratch0; LDS rises only
+**25,088 -> 25,600 bytes**. gfx1151 selects
+`swa_context_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512_spans`
+only for the saturated natural shape. The producer-max/gate sibling remains
+registered exact rollback; peer and non-natural routes are unchanged.
+Evidence:
+[`retained stage probability cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
