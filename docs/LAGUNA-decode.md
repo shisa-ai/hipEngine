@@ -5787,6 +5787,25 @@ The remaining attention sequence is:
     shorten the live range and measurably reduce VGPR or complete-model wall.
     Evidence:
     [`V-stage128 bounded16 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage128-bounded16-rejected.json).
+77. Audit the retained V64/V128 device code before another register-pressure
+    experiment. **Priority corrected:** the authoritative gfx1151 code-object
+    metadata reports V64/V128 at **32/35 logical VGPR**, **32/32 SGPR**, zero
+    spills/private segment, and **25,564/42,716 B LDS**. The trace column's
+    V128 value **176** is not 176 live logical registers.
+
+    V128's 40 workgroups exactly match the device's 40 CUs, with 16 wave32s
+    per workgroup. Its LDS footprint prevents a second resident workgroup, but
+    this dispatch has no second workgroup per CU to schedule. The bounded16
+    result therefore failed because it did not materially change code
+    resources, not because the compiler ignored a 176-register emergency.
+
+    Applying the complete **6.717%** leaf reduction to the pre-V128
+    **1.565501-ms/token** SWA census gives an optimistic
+    **0.1052-ms/token / 0.219%** whole-decode ceiling. More pragma/stage-width
+    micro-tuning cannot close the **5.376-ms/token** Vulkan wall gap. Require
+    a genuinely new arithmetic/traffic premise before returning to SWA and
+    move next to the larger selected-MoE comparator gap:
+    [`V-stage code-object audit`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-vstage-codeobject-audit.json).
 
 Current exact decode checkpoint:
 
@@ -5808,8 +5827,11 @@ independent QK and value-transport phases. The fresh census leaves SWA as the
 dominant exact-attention family at **1.565501 ms/token**. Total attention
 remains **2.451x** llama.cpp Vulkan's logged **0.909423 ms/token**, a
 **1.319562-ms/token** gap representing **24.26%** of the complete remaining
-wall gap. The next bounded work is therefore another exact SWA scheduling or
-transport screen before returning to tensorized QK/PV.
+wall gap. Device-code inspection now closes pragma-only register/stage tuning:
+V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
+grid already maps one workgroup to each of the 40 CUs. The next bounded work is
+the selected-MoE address/K-loop contraction; return to attention only for a
+materially new exact-association or quality-safe cooperative premise.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
