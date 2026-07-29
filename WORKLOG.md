@@ -190854,3 +190854,28 @@ Vulkan local sizes verbatim will close the measured gap.
   any approximate cooperative-matrix result.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-production.json`.
+
+## 2026-07-29 22:14 JST — Re-profile clean stage-cache attention wall
+
+- A cached `rocprofv3 --kernel-trace` run at clean revision `fd1a10ca1`
+  contains warmup128, prefill512, and the expected **127** one-token decode
+  segments. The trace is sorted across both queues before request
+  segmentation.
+- Median decode is **721 compute dispatches**, **47.554087 ms/token** kernel
+  sum, and **49.824983 ms/token** span. Attention is
+  **3.353534 ms/token = 2.237644 SWA + 1.107316 global**.
+- Relative to the post-producer-gate census, attention falls
+  **0.303852 ms / 8.3079%**, SWA falls **10.1648%**, kernel sum falls
+  **0.7951%**, and span falls **1.0800%**. This interval also contains retained
+  selected-projection and global-DPP work; the seven-pair stage-cache artifact
+  remains the isolated wall gate.
+- Same-GGUF llama.cpp Vulkan attention is **0.909423 ms/token**, leaving
+  **2.444111 ms/token** or **37.58%** of the clean total wall gap attributable
+  to attention. Source inspection at `c0bc8591e` confirms the mechanism:
+  GQA-collapsed cooperative tiles, tile-local online-softmax state, and one
+  published probability tile reused by PV. Its F16 K/V and lower-precision
+  cooperative QK/PV arithmetic do not satisfy hipEngine's exact BF16 recurrent
+  contract. Port exact probability reuse to the 12 global layers next.
+- Raw trace SHA-256 is `2f379b32...26a`; child artifact SHA-256 is
+  `370eab86...79f`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-post-stage-pcache-wall-reprofile.json`.

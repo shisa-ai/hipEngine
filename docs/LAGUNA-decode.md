@@ -4877,6 +4877,29 @@ The remaining attention sequence is:
     [`retained stage probability cache`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-retained.json) ·
     [`clean production`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-production.json).
 
+38. Re-profile the clean attention wall and pin the comparator mechanism.
+    **Complete:** the sorted two-queue trace contains the expected warmup128,
+    prefill512, and **127** one-token decode segments. Median decode kernel sum
+    is **47.554 ms/token** and span is **49.825 ms/token** at **721** compute
+    dispatches. Attention is now **3.354 ms/token = 2.238 SWA + 1.107
+    global**, down **0.304 ms / 8.31%** from the post-producer-gate census.
+    The interval also contains the retained selected-projection and global-DPP
+    changes, so the seven-pair resident artifact remains the causal stage-cache
+    wall gate.
+
+    The shader/source audit explains the remaining comparator gap. llama.cpp
+    collapses grouped queries into one cooperative tile, keeps online
+    maximum/denominator/output state tile-local, and publishes one probability
+    tile for reused PV. It also uses F16 K/V and lower-precision cooperative
+    QK/PV arithmetic, which is not hipEngine's exact BF16 recurrent contract.
+    Probability reuse is therefore the exact transferable mechanism; local
+    size, wave64, or cooperative matrix instructions alone are not. Same-GGUF
+    Vulkan remains **0.909 ms/token** for attention, leaving **2.444
+    ms/token**, or **37.58%** of the clean total wall gap, attributable to
+    attention. Transfer the exact K64 probability/V publication schedule to
+    the **12 global layers** next. Evidence:
+    [`post-stage-cache census`](../benchmarks/results/2026-07-29-gfx1151-laguna-post-stage-pcache-wall-reprofile.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
