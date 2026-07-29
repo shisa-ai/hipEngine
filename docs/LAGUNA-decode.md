@@ -5097,22 +5097,27 @@ The remaining attention sequence is:
     128-token trajectory, positions, repeat state, and allocation lifecycle.
     Promote the qualified gfx1151 capability, retain scalar probability
     replay as exact rollback, and remove the comparison-only CLI/session
-    seam. Production remains **20.349871 tok/s** pending selector-unset
-    publication.
+    seam. Tracked-clean selector-unset production is
+    **20.403940/20.414792/20.418871 tok/s**, median **20.414792**:
+    **+0.3190% / -0.1563 ms/token** over the preceding clean packet and
+    **+78.036%** over sprint start. The normal route reports the capability
+    active without a comparison selector and preserves exact repeated
+    trajectory/state/lifecycle.
     This is the directly transferable part of llama.cpp Vulkan's tile-local
     probability reuse; its cooperative lower-precision QK/PV arithmetic
     remains outside the exact BF16 recurrent contract. Evidence:
     [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json) ·
-    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json).
+    [`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json) ·
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.349871 tok/s** | **49.140 ms** | **+77.469%** |
+| hipEngine current production | **20.414792 tok/s** | **48.984 ms** | **+78.036%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **6.311 ms/token** | hipEngine is **12.842%** below Vulkan throughput |
+| Remaining wall gap | — | **6.155 ms/token** | hipEngine is **12.564%** below Vulkan throughput |
 
 The producer-max result captures one exact piece of llama.cpp's advantage:
 cooperative work should be computed by the waves that already own the data,

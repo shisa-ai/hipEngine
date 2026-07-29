@@ -191246,3 +191246,23 @@ Vulkan local sizes verbatim will close the measured gap.
   peer backends are unchanged. Remove the comparison-only CLI/session seam;
   clean selector-unset publication remains next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json`.
+
+## 2026-07-30 00:31 JST — Publish global vector probability production
+
+- Run the normal tracked-clean selector-unset Poolside Laguna S 2.1 Q4_K_M
+  BF16-KV p512/d128 eager c=1 protocol at retained revision `3029051e7`.
+  Decode is **20.403940/20.414792/20.418871 tok/s**, median
+  **20.414792**: **+0.3190% / -0.1563 ms/token** over the preceding clean
+  20.349871 packet and **+78.036%** over the 11.466687 sprint start.
+- The normal route reports the global vector-probability capability active
+  without a comparison selector. All three runs preserve next/final tokens
+  **2930/74107**, trajectory SHA-256 `94f803f7...ebda32`, final position
+  638, repeat determinism, and zero tracked allocations after teardown.
+  Load remains excluded and the repository is tracked-clean; raw output
+  SHA-256 is `e673d668...f58ba`.
+- Current wall is **48.984 ms/token**. Against same-GGUF llama.cpp Vulkan
+  **23.348381 tok/s / 42.8295 ms**, the remaining gap is
+  **6.155 ms/token**. The next step is a clean cache-only 127-transition wall
+  census so optimization follows the measured post-change family ordering.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json`.

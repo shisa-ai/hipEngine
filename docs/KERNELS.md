@@ -1875,10 +1875,14 @@ complete separation: all seven candidates beat every control, moving
 **20.373406 -> 20.409544 tok/s
 (+0.17738%, -0.08691 ms/token)** with exact state/lifecycle. gfx1151
 promotes the qualified capability, scalar probability replay remains exact
-rollback, and comparison plumbing is removed. Production remains
-**20.349871 tok/s** pending clean publication:
+rollback, and comparison plumbing is removed. Tracked-clean selector-unset
+production is **20.403940/20.414792/20.418871 tok/s**, median
+**20.414792**, or **+0.3190% / -0.1563 ms/token** over the preceding clean
+packet and **+78.036%** over sprint start. The normal route reports the
+capability active and preserves exact repeated trajectory/state/lifecycle:
 [`global vector probability primitive`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-primitive.json),
-[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json).
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-retained.json),
+[`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-probability-vec4-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
