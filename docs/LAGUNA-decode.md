@@ -4376,7 +4376,15 @@ The remaining attention sequence is:
    All candidate code is removed; do not retry mixed32 as separate launches.
    Evidence:
    [`rejected mixed32 pair/triple split`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pair-triple-rejected.json).
-7. The next material design must raise arithmetic per K/V ownership/load
+7. Compiling the unchanged exact body for physical wave64 is **complete and
+   rejected**. Width-32 shuffle segments preserve the complete F32/BF16
+   result byte-for-byte, but two non-profiled screens regress the leaf
+   **3.81%** and **3.56%**. Cached tracing keeps local384/LDS24576/scratch0
+   but raises VGPR allocation **104 -> 112**. llama.cpp's wave64 speed is
+   therefore inseparable from its wave64-native Br16 x Bc64 cooperative tile;
+   physical wave64 alone does not transfer. Evidence:
+   [`rejected physical wave64 mixed32`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-wave64-rejected.json).
+8. The next material design must raise arithmetic per K/V ownership/load
    event, not merely alter synchronization. Revisit llama.cpp's cooperative
    matrix GQA tile as a precision-design problem: retain its compact
    GQA9/K64 ownership and tensorized QK/PV throughput, but establish an

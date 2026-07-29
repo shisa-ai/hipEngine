@@ -189522,3 +189522,27 @@ Vulkan local sizes verbatim will close the measured gap.
   byte. Production remains **19.667705 tok/s**. Raw SHA-256 is
   `bfb19b6b...8fe`. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-pair-triple-rejected.json`.
+
+## 2026-07-29 13:05 JST — Reject physical-wave64 exact mixed32
+
+- The llama.cpp Vulkan audit established that gfx1151 executes its
+  Br16 x Bc64 cooperative tile as four wave64 subgroups. RED required an
+  alternate `-mwavefrontsize64` Laguna attention code object. GREEN calls the
+  retained mixed32/exp32 symbol only from that code object and passes the
+  positions-512-519 ring-wrap plus position-200 eviction oracle with byte-exact
+  F32 context and gated BF16 output.
+- The candidate changes no HIP source arithmetic, ownership, workgroup, or
+  grid. Width-32 shuffles keep the retained logical reduction segments inside
+  physical wave64. Nine x 50 launches regress
+  **0.081910 -> 0.085032 ms (+3.81%)**; a longer 15 x 200 confirmation
+  regresses **0.082250 -> 0.085178 ms (+3.56%)**.
+- Cached tracing names both intended symbols. Wave64 raises VGPR allocation
+  **104 -> 112** while SGPR128, LDS24576, scratch0, local384, and grid32 remain
+  unchanged. Profiler-perturbed event timing is not used for the leaf
+  decision.
+- Removed the temporary build parameter, oracle call, and leaf-harness route;
+  all three touched source/test/harness files match `0a5b603d0` byte for byte.
+  No resident-model run was made; production remains **19.667705 tok/s**.
+  Leaf/confirmation/trace SHA-256 values are `30b3ac54...b2b5f2`,
+  `2ca7a311...12b0`, and `a34bd6dd...26ea`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-mixed32-wave64-rejected.json`.

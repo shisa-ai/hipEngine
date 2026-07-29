@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_mixed32_physical_wave64_screen",
+  "status": "rejected_and_removed",
+  "created_at": "2026-07-29T13:04:53+09:00",
+  "source_revision": "0a5b603d058da63dfc4b81d17e56e3cc4056bb9b",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128
+  },
+  "comparator_basis": {
+    "llama_cpp_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "device_topology": "four physical wave64 subgroups in a Br16 x Bc64 local256 cooperative tile",
+    "hypothesis": "physical wave64 may improve issue topology while HIP width-32 shuffle segments preserve the retained arithmetic and ownership mapping"
+  },
+  "candidate": {
+    "description": "compile the unchanged exact mixed32 exp32 attention source with -mwavefrontsize64 and call only the retained SWA symbol from that alternate code object",
+    "control": "physical wave32, unchanged 32 local384 blocks",
+    "candidate_geometry": "physical wave64, unchanged 32 local384 blocks and logical width-32 shuffle segments",
+    "initial_control_median_ms": 0.08191012382507325,
+    "initial_candidate_median_ms": 0.08503246307373047,
+    "initial_latency_change_percent": 3.811908837209521,
+    "confirm_control_median_ms": 0.08224970817565919,
+    "confirm_candidate_median_ms": 0.08517813682556152,
+    "confirm_latency_change_percent": 3.5604122067498967,
+    "initial_raw_sha256": "30b3ac54dc563a1985822175237330e764eeab65b0a10cdc34938d5bc7b2b5f2",
+    "confirm_raw_sha256": "2ca7a311bb0ff3fa775feefab4910fcd066b3c16eeabd3cc68fbeefbc05412b0"
+  },
+  "correctness": {
+    "red": "laguna attention build did not admit a wavefront-size-qualified code object",
+    "green": "positions 512-519 after ring wrap plus explicit position-200 eviction",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "result": "1 passed"
+  },
+  "trace": {
+    "qualification": "cached kernel-name/resource proof only; profiler timing is not the leaf decision",
+    "control": {
+      "wavefront_size": 32,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0,
+      "workgroup_size": 384,
+      "grid_blocks": 32
+    },
+    "candidate": {
+      "wavefront_size": 64,
+      "vgpr": 112,
+      "sgpr": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0,
+      "workgroup_size": 384,
+      "grid_blocks": 32
+    },
+    "raw_sha256": "a34bd6ddccdb210791ab2e7462f5e975535a8f520170ee88d731ff7f9d7e26ea"
+  },
+  "commands": {
+    "correctness": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-wave64-vstage64-vec16-direct-assume-exp --samples 15 --warmups 10 --burst 200 --allow-dirty --output /tmp/laguna-swa-mixed32-exp32-wave64-leaf-rerun.json",
+    "trace": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wave64-trace.MU8RYQ --output-file wave64 -- env PYTHONPATH=. HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-wave64-vstage64-vec16-direct-assume-exp --samples 3 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-wave64-trace.MU8RYQ/leaf.json"
+  },
+  "decision": {
+    "retained": false,
+    "runtime_integrated": false,
+    "production_screen_run": false,
+    "all_candidate_code_removed": true,
+    "production_unchanged_tok_s": 19.667705,
+    "reason": "Two non-profiled event-timed screens consistently regress 3.56-3.81%, and physical wave64 raises VGPR allocation 104 -> 112. Vulkan's wave64 advantage belongs to its wave64-native cooperative tile, not to physical issue width in isolation.",
+    "next": "Do not retry the wave32 arithmetic body under wave64. A future wave64 candidate must redesign the cooperative tile natively and pass the exact or full quality gate."
+  }
+}
