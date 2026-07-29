@@ -23,6 +23,15 @@ _FUSED_PRODUCER_SYMBOL = (
 _DEQUANT_VARIANT = "raw_f32_exact_local64"
 _FUSED_PRODUCER_VARIANT = "raw_f32_bf16_input_exact_local64"
 _LINEAR_VARIANT = "f32_rocblas_exact_values_bf16_{output_dtype}_out"
+_ORDERED_GEOMETRIES = ((4, 8), (8, 4))
+_ORDERED_SYMBOL = (
+    "hipengine_gguf_q5_k_f32_weight_ordered_coltile{col_tile}_"
+    "rowbatch{row_batch}_bf16_{output_dtype}_out"
+)
+_ORDERED_PRIMITIVE_VARIANT = (
+    "ordered_coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out"
+)
+_ORDERED_COMPOSITE_VARIANT = "f32_{variant}"
 _QK_K = 256
 _F32_NBYTES = 4
 _SESSION_MAX_IN_FEATURES = 9_216
@@ -105,6 +114,13 @@ def q5_k_f32_output_nbytes(rows: int, out_features: int) -> int:
     parsed_rows = _check_rows(rows)
     outputs = _check_out_features(out_features)
     return parsed_rows * outputs * _F32_NBYTES
+
+
+def q5_k_f32_ordered_workspace_nbytes(
+    in_features: int,
+    out_features: int,
+) -> int:
+    return q5_k_f32_weight_nbytes(in_features, out_features)
 
 
 def q5_k_f32_rocblas_workspace_nbytes(
@@ -204,6 +220,175 @@ def gguf_q5_k_dequantize_bf16_to_f32_exact_fused(
     )
     if int(error) != HIP_SUCCESS:
         runtime.check(int(error))
+
+
+def _launch_q5_f32_weight_ordered(
+    *,
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    x_ptr: int,
+    weight_f32_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    parsed_rows = _check_rows(rows)
+    hidden = _check_in_features(in_features)
+    outputs = _check_out_features(out_features)
+    if col_tile * row_batch != 32 or (col_tile, row_batch) not in _ORDERED_GEOMETRIES:
+        raise ValueError("ordered Q5 geometry must keep 32 accumulators")
+    if outputs % col_tile != 0:
+        raise ValueError(f"out_features must be divisible by {col_tile}")
+    if output_dtype not in {"bf16", "f32"}:
+        raise ValueError("output_dtype must be bf16 or f32")
+
+    library = library or build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    symbol = _ORDERED_SYMBOL.format(
+        col_tile=col_tile,
+        row_batch=row_batch,
+        output_dtype=output_dtype,
+    )
+    function = getattr(library, symbol)
+    function.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    function.restype = ctypes.c_int
+    error = function(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_f32_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(parsed_rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(outputs),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def _make_q5_f32_weight_ordered(
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+):
+    def launch(
+        x_ptr: int,
+        weight_f32_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        **kwargs,
+    ) -> None:
+        _launch_q5_f32_weight_ordered(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+            x_ptr=x_ptr,
+            weight_f32_ptr=weight_f32_ptr,
+            out_ptr=out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            **kwargs,
+        )
+
+    return launch
+
+
+def _make_q5_f32_ordered_composite(
+    primitive,
+    *,
+    col_tile: int,
+):
+    def launch(
+        x_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        weight_f32_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        parsed_rows = _check_rows(rows)
+        hidden = _check_in_features(in_features)
+        outputs = _check_out_features(out_features)
+        if outputs % col_tile != 0:
+            raise ValueError(f"out_features must be divisible by {col_tile}")
+        runtime = runtime or get_hip_runtime()
+        gguf_q5_k_dequantize_f32_exact(
+            qweight_ptr,
+            weight_f32_ptr,
+            hidden,
+            outputs,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        primitive(
+            x_ptr,
+            weight_f32_ptr,
+            out_ptr,
+            parsed_rows,
+            hidden,
+            outputs,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    return launch
+
+
+_ORDERED_PRIMITIVES = {}
+_ORDERED_COMPOSITES = {}
+_ORDERED_EXPORT_NAMES = []
+for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
+    for _output_dtype in ("bf16", "f32"):
+        _variant = _ORDERED_PRIMITIVE_VARIANT.format(
+            col_tile=_col_tile,
+            row_batch=_row_batch,
+            output_dtype=_output_dtype,
+        )
+        _primitive_name = f"gguf_q5_k_f32_weight_{_variant}"
+        _composite_name = (
+            f"gguf_q5_k_{_ORDERED_COMPOSITE_VARIANT.format(variant=_variant)}"
+        )
+        _primitive = _make_q5_f32_weight_ordered(
+            _col_tile,
+            _row_batch,
+            _output_dtype,
+        )
+        _primitive.__name__ = _primitive_name
+        _composite = _make_q5_f32_ordered_composite(
+            _primitive,
+            col_tile=_col_tile,
+        )
+        _composite.__name__ = _composite_name
+        globals()[_primitive_name] = _primitive
+        globals()[_composite_name] = _composite
+        _key = (_col_tile, _row_batch, _output_dtype)
+        _ORDERED_PRIMITIVES[_key] = _primitive
+        _ORDERED_COMPOSITES[_key] = _composite
+        _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
+del _col_tile, _row_batch, _output_dtype, _variant
+del _primitive_name, _composite_name, _primitive, _composite, _key
 
 
 def _launch_q5_f32_rocblas(
@@ -325,6 +510,30 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
             function,
             replace=replace,
         )
+    for (col_tile, row_batch, output_dtype), primitive in (
+        _ORDERED_PRIMITIVES.items()
+    ):
+        composite = _ORDERED_COMPOSITES[(col_tile, row_batch, output_dtype)]
+        variant = _ORDERED_PRIMITIVE_VARIANT.format(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+        )
+        register(
+            KernelKey("hip_gfx1100", "linear", "f32_weight", variant),
+            primitive,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q5_k",
+                _ORDERED_COMPOSITE_VARIANT.format(variant=variant),
+            ),
+            composite,
+            replace=replace,
+        )
 
 
 register_gguf_q5_k_f32_rocblas_prefill_kernels()
@@ -337,10 +546,12 @@ __all__ = [
     "gguf_q5_k_f32_rocblas_bf16_bf16_out",
     "gguf_q5_k_f32_rocblas_bf16_f32_out",
     "plan_gguf_q5_k_f32_rocblas_prefill_build",
+    "q5_k_f32_ordered_workspace_nbytes",
     "q5_k_f32_input_nbytes",
     "q5_k_f32_output_nbytes",
     "q5_k_f32_rocblas_session_nbytes",
     "q5_k_f32_rocblas_workspace_nbytes",
     "q5_k_f32_weight_nbytes",
     "register_gguf_q5_k_f32_rocblas_prefill_kernels",
+    *_ORDERED_EXPORT_NAMES,
 ]

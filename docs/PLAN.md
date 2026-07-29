@@ -1457,10 +1457,14 @@ reassociation at maximum KL **0.444675 > 0.05** despite **564/576 (97.917%)**
 top-1 and diagnostic prefill **165.555 -> 190.103 tok/s (1.148x)** with every
 category positive. Remove the gfx1100 capability/component policy, heuristic
 map, generic map seam, owner propagation, and tests; retain exact qrow4/M128
-production plus standalone leaf evidence. H5C returns to exact Q5 arithmetic:
-transient exact-value expansion followed by a custom F32-weight reduction must
-preserve production coltile K ownership, FMA order, and wave/cross-wave tree.
-Do not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion
+production plus standalone leaf evidence. H5C returns to exact Q5 arithmetic
+and clears its standalone gate: transient exact-value expansion plus local128
+ordered 8x4/4x8 consumers preserves production bytes and moves the actual
+235-call role policy **1,323.267 -> 1,012.380 ms (1.307x)** by events and
+**1,250.095 -> 988.526 ms (1.265x)** by wall. One BF16 K9216/N3072 role stays
+raw coltile; scratch is bounded at **150,994,944 bytes** with no sidecar. Add a
+default-off owner and run complete M512 state before clean 512/1K. Do not stack
+rejected H1-H5B arithmetic or reopen P6/repair; launch fusion
 remains deferred at 0.500%.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

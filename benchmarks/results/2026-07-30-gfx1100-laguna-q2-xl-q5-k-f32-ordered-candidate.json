@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_exact_value_f32_ordered_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_exact_candidate_admitted_runtime_owner_pending",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "base_revision": "fa214450a",
+    "source": "net-new in-tree exact-ordered consumer reusing the separately admitted exact-value raw-Q5-to-F32 producer; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "785ead74beb3390afdff5eb7cdbc3f63d71972145893510bd7b0aff83c667b23",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fdc7411422339f5f94be3ecd5ab800a972ea8a0dde5e72ba1aae9c9084c1b2c5",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "cefdfcbb917c6a1caaefea867f2343d4c131bc6d8e1ea6002d8e168b3d7c3287",
+      "tests/test_gguf_q5_k_f32_rocblas_prefill.py": "fda197f5b1a9a0624045363991c6c4da81f7b2a288931ace6b9c8f83038fcbfd"
+    }
+  },
+  "candidate": {
+    "producer": "one local64 exact raw-Q5-to-row-major-F32 expansion into caller-owned projection-local scratch",
+    "consumer": "one local128 BF16-input/F32-weight output-column kernel preserving production per-thread K ownership, ordered FMA sequence, wave32 shuffle tree, serial wave-0..3 sum, and final BF16/F32 store",
+    "retained_geometries": [
+      {"columns": 4, "rows": 8},
+      {"columns": 8, "rows": 4}
+    ],
+    "rejected_geometries": [
+      {"columns": 1, "rows": 32},
+      {"columns": 2, "rows": 16},
+      {"columns": 16, "rows": 2}
+    ],
+    "accumulators_per_thread": 32,
+    "persistent_weight_sidecar_bytes": 0,
+    "max_projection_local_workspace_bytes": 150994944,
+    "unfused_chain_registered": true,
+    "gfx1151_fail_closed": true
+  },
+  "protocol": {
+    "claim_scope": "actual-M512 Q5_K primitive family only; not end-to-end throughput or a production-default claim",
+    "rows": 512,
+    "unique_configurations": 8,
+    "production_invocations": 235,
+    "control": "retained exact Q5 role-qualified raw coltile policy",
+    "candidate_timing": "inclusive exact F32 producer plus exact-ordered F32-weight consumer",
+    "selected_policy": "ordered 8x4 for five roles, ordered 4x8 for two roles, exact raw-coltile fallback for BF16 K9216/N3072",
+    "warmups_per_arm": 3,
+    "counter_rotated_repetitions": 9,
+    "launches_per_sample": 3,
+    "timing": "HIP-event and synchronized-wall medians summed across the actual eight-shape/235-call inventory",
+    "four_k_or_longer_run_performed": false
+  },
+  "aggregate_ms": {
+    "exact_coltile_weighted_event": 1323.2671557267508,
+    "selected_policy_weighted_event": 1012.3797580103079,
+    "event_speedup": 1.3070857504376114,
+    "event_reduction_percent": 23.493925347652162,
+    "exact_coltile_weighted_wall": 1250.0945054925978,
+    "selected_policy_weighted_wall": 988.5259226430207,
+    "wall_speedup": 1.2646046773869333,
+    "wall_reduction_percent": 20.923904688830415,
+    "selected_candidate_roles_faster_on_both_clocks": true,
+    "exact_fallback_configurations": 1,
+    "frozen_exact_request_kernel_sum_ms": 3001.69225,
+    "modeled_kernel_sum_after_measured_delta_ms": 2690.8048522835577,
+    "interpretation": "The exact role policy saves 310.887 ms from the measured Q5 family. The modeled request sum applies only that measured family delta and is not a tok/s forecast."
+  },
+  "roles": [
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [1024, 3072],
+      "calls": 92,
+      "selected_route": "ordered_8x4",
+      "exact_event_ms": 1.3620497385660808,
+      "selected_event_ms": 0.5381636619567871,
+      "exact_wall_ms": 1.3908890541642904,
+      "selected_wall_ms": 0.5213737022131681,
+      "workspace_bytes": 12582912
+    },
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [12288, 3072],
+      "calls": 2,
+      "selected_route": "ordered_4x8",
+      "exact_event_ms": 16.496538798014324,
+      "selected_event_ms": 15.479656219482422,
+      "exact_wall_ms": 16.190321339915197,
+      "selected_wall_ms": 15.72297497962912,
+      "workspace_bytes": 150994944
+    },
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [3072, 6144],
+      "calls": 12,
+      "selected_route": "ordered_8x4",
+      "exact_event_ms": 9.233177185058594,
+      "selected_event_ms": 3.3983192443847656,
+      "exact_wall_ms": 8.522863344599804,
+      "selected_wall_ms": 3.7325209317107997,
+      "workspace_bytes": 75497472
+    },
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [3072, 9216],
+      "calls": 35,
+      "selected_route": "exact_coltile",
+      "exact_event_ms": 13.898815155029297,
+      "selected_event_ms": 13.898815155029297,
+      "exact_wall_ms": 12.716287281364202,
+      "selected_wall_ms": 12.716287281364202,
+      "workspace_bytes": 113246208
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [48, 3072],
+      "calls": 12,
+      "selected_route": "ordered_8x4",
+      "exact_event_ms": 0.06757399936517079,
+      "selected_event_ms": 0.03065366546312968,
+      "exact_wall_ms": 0.07333761701981227,
+      "selected_wall_ms": 0.03559064740935961,
+      "workspace_bytes": 589824
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [72, 3072],
+      "calls": 35,
+      "selected_route": "ordered_8x4",
+      "exact_event_ms": 0.11729433139165242,
+      "selected_event_ms": 0.040720333655675255,
+      "exact_wall_ms": 0.12183499832948048,
+      "selected_wall_ms": 0.04584062844514847,
+      "workspace_bytes": 884736
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [6144, 3072],
+      "calls": 12,
+      "selected_route": "ordered_8x4",
+      "exact_event_ms": 9.33711306254069,
+      "selected_event_ms": 3.6130549112955728,
+      "exact_wall_ms": 8.45588898907105,
+      "selected_wall_ms": 3.9385436878850064,
+      "workspace_bytes": 75497472
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [9216, 3072],
+      "calls": 35,
+      "selected_route": "ordered_4x8",
+      "exact_event_ms": 12.878494262695312,
+      "selected_event_ms": 10.272037506103516,
+      "exact_wall_ms": 12.45122030377388,
+      "selected_wall_ms": 10.570264343793193,
+      "workspace_bytes": 113246208
+    }
+  ],
+  "correctness": {
+    "all_actual_role_outputs_byte_exact": true,
+    "rows_17_and_33_tail_fixtures_byte_exact": true,
+    "bf16_and_f32_outputs_checked": true,
+    "raw_q5_to_f32_bytes_exact": true,
+    "production_k_fma_wave_and_store_order_preserved": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "peak_tracked_bytes": 217841664,
+    "peak_allocations": 6,
+    "total_allocated_bytes": 825269760
+  },
+  "cached_trace": {
+    "producer_dispatches": 16,
+    "ordered_8x4_dispatches": 10,
+    "ordered_4x8_dispatches": 6,
+    "producer_resources": "local64/VGPR16/SGPR128/LDS0/scratch0",
+    "ordered_resources": "local128/VGPR72/SGPR128/LDS512/scratch0",
+    "ordered_kernel_names_observed": [
+      "gguf_q5_k_f32_weight_ordered_coltile_kernel<unsigned short, 8, 4>",
+      "gguf_q5_k_f32_weight_ordered_coltile_kernel<unsigned short, 4, 8>",
+      "gguf_q5_k_f32_weight_ordered_coltile_kernel<float, 8, 4>",
+      "gguf_q5_k_f32_weight_ordered_coltile_kernel<float, 4, 8>"
+    ],
+    "no_compiler_under_profile": true
+  },
+  "lifecycle": {
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "promotion_blockers": [
+    "no resident runtime owner or role policy exists yet",
+    "complete M512 hidden/logit/KV repeat validation has not run",
+    "clean counter-ordered 512/1K end-to-end timing has not run"
+  ],
+  "source_artifacts": {
+    "actual_role_json_sha256": "618212a79140a0a2ede318e1e067ec588aea6d3a932fd47ad7b4dbe36296ba38",
+    "actual_role_harness_sha256": "66015193ea81a7aa7f8673119e0754b4c0e6f4d4735d9169366b217bf65eb4b9",
+    "actual_role_stdout_sha256": "efd26a2676cb7a4de00773190ee107dab9a67c0f1215ee16851711aefdb7f6d3",
+    "trace_csv_sha256": "b0ea39bb8bf06f4bbda9c5d492d5caa2e807e6b668ee2d97fb9fdda62a06b2b3",
+    "trace_harness_sha256": "4eb3d2b305297b9a2839d09dcd60fa4b3ecc79887f9369a00f9030b895fe6fef",
+    "trace_stdout_sha256": "42af1d1f7e9df43dfb6214c7bf0dc9792ff490fb095c2cae38fd99cef6c0c19b"
+  },
+  "commands": {
+    "actual_roles": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5c_q5_ordered_actual.py",
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_f32_rocblas_prefill.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5c-q5-ordered-trace -- uv run python -u /tmp/laguna_wpfh5c_q5_ordered_trace.py"
+  },
+  "decision": {
+    "standalone_candidate_admitted": true,
+    "runtime_default_changed": false,
+    "next_action": "Add a bounded default-off resident owner for the seven exact role keys, preserve BF16 K9216/N3072 and all unsupported shapes on raw coltile, then run complete M512 state and clean 512/1K gates."
+  }
+}

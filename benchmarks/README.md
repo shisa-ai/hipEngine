@@ -161,6 +161,21 @@ capability/component policy, heuristic map, owner propagation, and generic map
 seam; retain exact qrow4/M128 production and the standalone leaf. Clean 512/1K
 promotion timing does not run after the quality failure.
 
+The next [`WPF-H5C exact-ordered F32-weight Q5 candidate`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json)
+reuses H5A's bit-exact transient raw-Q5-to-F32 producer but replaces rejected
+SGEMM association with a local128 consumer that preserves production's
+per-thread K/FMA order, wave32 shuffle tree, serial wave-0..3 sum, and final
+BF16/F32 store. Tail fixtures and every actual M512 role are byte-exact. A
+role-qualified **8x4/4x8** policy keeps BF16 K9216/N3072 on raw coltile and
+improves each of the other seven roles on both event and synchronized-wall
+clocks. Across the actual **235** calls, inclusive producer+consumer timing moves
+**1,323.267 -> 1,012.380 ms (1.307x, -23.494%)** by events and **1,250.095 ->
+988.526 ms (1.265x, -20.924%)** by wall. Scratch is projection-local, bounded at
+**150,994,944 bytes**, and adds no persistent sidecar. Cached tracing names both
+ordered bodies at local128/VGPR72/SGPR128/LDS512/scratch0. This admits only the
+standalone exact leaf; runtime ownership, complete M512 state, and clean 512/1K
+timing remain pending.
+
 The current gfx1151 Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
 Complete dense-initial M128 tiles beginning at positions 128/256/384 now widen

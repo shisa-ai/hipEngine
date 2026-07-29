@@ -133,9 +133,15 @@ numbers below.
   (97.917%)** top-1, deterministic repeats, lifecycle recovery, and diagnostic
   prefill **165.555 -> 190.103 tok/s (1.148x)** with every category positive.
   The gfx1100 capability/map/owner seam is removed; exact production remains.
-  H5C returns to exact Q5 arithmetic with transient exact-value expansion plus a
-  custom reduction preserving coltile K/FMA/reduction order
-  ([reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
+  H5C then returns to exact Q5 arithmetic: a transient exact-value weight
+  expansion feeds local128 ordered **8x4/4x8** consumers that preserve coltile
+  K/FMA/wave/store order byte-for-byte. The actual 235-call M512 policy keeps
+  BF16 K9216/N3072 on raw coltile and improves the remaining seven roles on both
+  clocks, moving weighted event/wall **1,323.267 -> 1,012.380 ms (1.307x)** and
+  **1,250.095 -> 988.526 ms (1.265x)** with no persistent sidecar. This is
+  standalone leaf evidence pending bounded runtime ownership and complete state
+  ([H5C leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-candidate.json) ·
+  [reprofile](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json) ·
   [H5A rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json) ·
   [H5B rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json) ·
   [H5B leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json)).
