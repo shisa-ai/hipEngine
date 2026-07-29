@@ -189224,3 +189224,18 @@ Vulkan local sizes verbatim will close the measured gap.
   nodes green, then exposed one stale backend-registration expectation; the
   scoped repair passes all **23** `test_gfx1151_backend.py` nodes. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-retained.json`.
+
+## 2026-07-29 10:14 JST — Publish clean Q4 pack8 dual production
+
+- Three tracked-clean, selector-unset, require-cached p512/d128 runs on
+  `8b3dc6ff0` measure **19.620780/19.630076/19.639015 tok/s**, median
+  **19.630076**. This improves clean global-exp32 production
+  **19.561715 -> 19.630076 tok/s (+0.3495%, -0.1780 ms/token)**.
+- All runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...ebda32`, final position 638, determinism, and zero tracked bytes
+  after teardown. Cumulative decode is **+71.192%** over the 11.466687 sprint
+  start. The same-GGUF Vulkan 23.348381 comparator remains **18.942%** ahead,
+  an **8.113-ms/token** wall gap.
+- Raw artifact SHA-256 is `d87e92f7...975d3`; clean load time
+  **94.907 s** is excluded. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-q4-pack8-dual-decode-production.json`.
