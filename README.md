@@ -101,6 +101,14 @@ numbers below.
   production stays exact
   ([rejection](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-rejected.json) ·
   [leaf evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json)).
+  The separately registered WPF-H4 Q6 F16/rocBLAS leaf moves the six-shape,
+  144-call M512 family **174.351 -> 14.349 ms (12.151x)**, **3.825% below**
+  llama.cpp's matched **14.919865-ms** stack. Runtime promotion is rejected:
+  complete changed-arithmetic quality reaches max KL **0.338657 > 0.05** despite
+  **567/576** top-1 and **1.042x** diagnostic prefill. The temporary
+  97,517,568-byte owner is removed and production stays exact
+  ([rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json) ·
+  [leaf evidence](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json)).
 - The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
   torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
   parsing, and exact source-bound cached loading. Its quality-admitted

@@ -132,20 +132,6 @@ GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset(
     }
 )
 GGUF_RAW_K_PREFILL_VARIANT = "coltile"
-# WPF-H4 is integrated default-off while its complete quality/economics lane is
-# pending. These six source-owned M512 shapes are quant-family/ABI policy, not
-# model layer IDs; every other shape and row count remains on exact coltile.
-GGUF_Q6_F16_ROCBLAS_PREFILL = False
-GGUF_Q6_F16_ROCBLAS_PREFILL_SHAPES = frozenset(
-    {
-        ("bf16", 1024, 3072),
-        ("bf16", 9216, 3072),
-        ("bf16", 12288, 3072),
-        ("f32", 3072, 72),
-        ("f32", 3072, 1024),
-        ("f32", 3072, 9216),
-    }
-)
 # LCP-2B removes the 512-token compact-MoE scheduler's per-layer scalar D2H
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
@@ -209,8 +195,6 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
-    "GGUF_Q6_F16_ROCBLAS_PREFILL",
-    "GGUF_Q6_F16_ROCBLAS_PREFILL_SHAPES",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",

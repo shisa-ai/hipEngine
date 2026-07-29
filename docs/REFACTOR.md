@@ -16,21 +16,18 @@ should be removed or collapsed.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 
-- Added 2026-07-29 for WPF-H4. `LagunaGGUFResidentSession(...,
-  use_q6_f16_rocblas=True)` owns one context-local, contiguous
-  **97,517,568-byte** three-plane workspace plus one rocBLAS handle. It selects
-  only six package-declared M512 Q6 shapes; disabled, row, shape, key, capacity,
-  and backend misses retain exact coltile. No dequantized weight survives a
-  projection and gfx1151 is explicitly unsupported.
-- The natural-M512 state gate passes at KL **0.000721933**, top-1 **100%**,
-  deterministic complete state, and exact teardown; cached tracing names all
-  144 expected source stacks. Remove the constructor seam, context-local ABI,
-  conditional eager library, rocBLAS handle, workspace owner, backend
-  capabilities, and focused runtime tests if the binding 18-prompt/576-step
-  quality lane fails. If complete quality and clean 512/1K timing pass, promote
-  the package default and retain the boolean only through one publication/
-  reprofile rollback window; then collapse it while preserving the registered
-  unfused numerical fallback.
+- WPF-H4's temporary selector and owner are removed. The complete changed-
+  arithmetic 18-prompt/576-step lane rejects source Q6 at maximum KL
+  **0.338657 > 0.05** despite **567/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **151.784 -> 158.205 tok/s
+  (1.042x)**. The earlier M512 state gate passed at KL **0.000721933**, but it
+  cannot waive the category-heldout ceiling.
+- Remove the constructor seam, context-local ABI, conditional eager library,
+  rocBLAS handle, **97,517,568-byte** workspace owner, backend capabilities, and
+  focused runtime tests. Retain only the separately registered raw-Q6/F16
+  producer/composite primitives, their required unfused numerical chain, and
+  leaf evidence. Exact role-qualified coltile remains production. Reopen only
+  with materially different arithmetic and a fresh complete quality gate.
 
 ## Laguna raw-Q5/Q6 prefill rowbatch selector
 

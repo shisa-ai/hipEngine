@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_q6_k_f16_rocblas_candidate",
   "date": "2026-07-29",
-  "status": "candidate_runtime_integrated_default_off_pending_complete_quality_and_timing_gates",
+  "status": "standalone_leaf_admitted_runtime_rejected_complete_quality_gate",
   "hardware": {
     "device": "AMD Radeon Pro W7900",
     "architecture": "gfx1100",
@@ -75,7 +75,15 @@
     "max_row_kl": 0.00027649359313887097,
     "min_top1_agreement": 0.978515625,
     "max_abs": 0.125,
-    "complete_18_prompt_576_step_gate": "pending"
+    "complete_18_prompt_576_step_gate": {
+      "pass": false,
+      "max_kl_divergence": 0.3386567970951901,
+      "kl_threshold": 0.05,
+      "top1_matches": 567,
+      "steps": 576,
+      "diagnostic_prefill_speedup": 1.0423003161147522,
+      "rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json"
+    }
   },
   "resources": {
     "fused_producer": {
@@ -150,7 +158,9 @@
       "full_state_harness_sha256": "2a7f2145ea85de375c3d2e70e2d1823c7098b129d57347838a325ffed36b8c89",
       "integrated_trace_sha256": "750e0d238e41b6e0ca3b21de3ad853290643225155830ed90e21d59bfc738b46",
       "integrated_trace_harness_sha256": "07b119788d45ad43a70f92602ef27b86385d0061d51aade18d0cedc749637179"
-    }
+    },
+    "removed_after_quality_rejection": true,
+    "removal_scope": "constructor switch, context-local ABI, conditional eager library and rocBLAS handle, bounded workspace owner, package capabilities, and focused integration tests"
   },
   "lifecycle": {
     "peak_tracked_bytes": 141066240,
@@ -182,7 +192,7 @@
     "rocprof_harness_sha256": "d4e244b4b67fde2de1f46f4b30d93f47c4b7a9daa62f7efe5c0759a89899c8aa"
   },
   "promotion_blockers": [
-    "complete 18-prompt/576-step train+heldout and category-heldout quality gates are pending",
-    "clean counter-ordered 512/1K timing and all-family reprofile are pending"
+    "complete 18-prompt/576-step train+heldout and category-heldout quality reaches maximum KL 0.338657 above the mandatory 0.05 ceiling",
+    "runtime ownership was removed and clean 512/1K promotion timing was not run after the quality failure"
   ]
 }

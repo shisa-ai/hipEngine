@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-30
+
+- [rejected gfx1100 Laguna Q2 XL WPF-H4 Q6_K F16/rocBLAS runtime] Radeon Pro W7900 / complete changed-arithmetic 18-prompt/576-step gate rejects the parity-beating source-Q6 leaf at max KL **0.338657 > 0.05** despite **567/576 (98.438%)** top-1, deterministic repeats, lifecycle recovery, and diagnostic natural-prompt prefill **151.784 -> 158.205 tok/s (1.042x)**; remove the runtime owner/97.5-MB workspace and retain exact production plus standalone leaf evidence; `benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json`.
+
 ## 2026-07-29
 
 - [integrated default-off gfx1100 Laguna Q2 XL WPF-H4 Q6_K F16/rocBLAS runtime] Radeon Pro W7900 / one context-local, single-allocation **97,517,568-byte** owner selects only the six package-qualified M512 shapes and fails closed to exact coltile; natural M512 passes at KL **0.000721933**, top-1 **100%**, deterministic complete state, and teardown, while cached tracing observes exactly **144** fused producers, **144** rocBLAS bodies, and **144** result casts; exact production remains unchanged pending complete category quality and clean timing; `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json`.
