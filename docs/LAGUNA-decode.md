@@ -4659,6 +4659,25 @@ The remaining attention sequence is:
     a cooperative core with an independently valid correctness mechanism.
     Evidence:
     [`rejected global physical rematerialization`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-physical-remat-rejected.json).
+28. Build the material global GQA6 x K64 cooperative core. **Primitive
+    complete; full-model quality pending:** four QK waves and eight PV waves
+    cover one `(KV head, K64 split)` local256 block. F32 query and probability
+    operands use three non-overlapping BF16 terms; split maxima/denominators
+    and raw numerators feed a 48-block local128 FP64 merge. The explicit
+    eviction oracle passes at live513/576/639 with maximum F32 error
+    **1.49e-8** and gated BF16 mismatches **0/1/2 of 6,144**. Cached 9x50
+    leaves improve
+    **0.073109 -> 0.041343 ms (-43.45%)**,
+    **0.079822 -> 0.043986 ms (-44.89%)**, and
+    **0.087357 -> 0.046227 ms (-47.08%)**. Tracing names the intended
+    partial at local256/VGPR96/LDS4,608/scratch0 and merge at
+    local128/VGPR24/LDS0/scratch0. This is a registered diagnostic, not a
+    production win: next add a default-off global-only resident selector and
+    run the complete 18-prompt/576-step gate. The candidate must clear max KL
+    **0.05**, top-1 **90%**, complete span/lifecycle checks, and matched
+    throughput before promotion.
+    Evidence:
+    [`global three-term WMMA primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-primitive.json).
 
 Current exact decode checkpoint:
 

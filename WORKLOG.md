@@ -190457,3 +190457,29 @@ Vulkan local sizes verbatim will close the measured gap.
   attention progress requires a cooperative core plus an independently valid
   correctness mechanism. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-global-physical-remat-rejected.json`.
+
+## 2026-07-29 19:08 JST — Admit global three-term WMMA primitive
+
+- RED requires the absent global GQA6/K64 wrapper. GREEN adds a separately
+  registered two-dispatch primitive: one local256 partial per
+  `(KV head, K64 split)` uses four QK and eight PV waves, three
+  non-overlapping BF16 terms per F32 query/probability, and raw split
+  numerators; a 48-block local128 merge combines maxima, denominators, and
+  numerators with FP64 arithmetic.
+- The live513/576/639 CPU/control oracle includes explicit position-200
+  eviction and passes `rtol=atol=3e-4`. Maximum F32 context error is
+  **1.49e-8**; gated BF16 mismatches are **0/1/2 of 6,144**.
+- Cached 9x50 leaves improve
+  **0.073109 -> 0.041343 ms (-43.45%)**,
+  **0.079822 -> 0.043986 ms (-44.89%)**, and
+  **0.087357 -> 0.046227 ms (-47.08%)**. Raw SHA-256 is
+  `e5e3c022...ff85a`.
+- A cache-only trace names the partial at
+  local256/VGPR96/SGPR128/LDS4,608/scratch0 and the merge at
+  local128/VGPR24/SGPR128/LDS0/scratch0. Trace SHA-256 is
+  `4dbd21f6...bb19`; no compiler ran under profiling.
+- This is a diagnostic primitive, not a production claim. Production remains
+  **20.069608 tok/s**. Next add a default-off global-only resident selector
+  and run the mandatory 18-prompt/576-step quality gate before any
+  promotion. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-global-three-term-wmma-primitive.json`.

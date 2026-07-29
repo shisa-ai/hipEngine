@@ -8,6 +8,10 @@
 
 namespace {
 
+typedef uint16_t laguna_bf16_t;
+typedef laguna_bf16_t __attribute__((ext_vector_type(16))) laguna_bf16x16_t;
+typedef float __attribute__((ext_vector_type(8))) laguna_float8_t;
+
 __device__ inline float laguna_bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -26,6 +30,37 @@ __device__ inline uint16_t laguna_float_to_bf16_bits(float value) {
   const uint32_t lsb = (in.u32 >> 16) & 1U;
   in.u32 += 0x7FFFU + lsb;
   return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+__device__ inline laguna_float8_t laguna_wmma_zero_acc() {
+  laguna_float8_t acc;
+#pragma unroll
+  for (int item = 0; item < 8; ++item) {
+    acc[item] = 0.0f;
+  }
+  return acc;
+}
+
+__device__ inline laguna_bf16x16_t laguna_wmma_zero_bf16x16() {
+  laguna_bf16x16_t values;
+#pragma unroll
+  for (int item = 0; item < 16; ++item) {
+    values[item] = 0;
+  }
+  return values;
+}
+
+__device__ inline void laguna_three_term_bf16(
+    float value,
+    uint16_t& term0,
+    uint16_t& term1,
+    uint16_t& term2) {
+  term0 = laguna_float_to_bf16_bits(value);
+  const float residual0 = value - laguna_bf16_bits_to_float(term0);
+  term1 = laguna_float_to_bf16_bits(residual0);
+  const float residual1 =
+      residual0 - laguna_bf16_bits_to_float(term1);
+  term2 = laguna_float_to_bf16_bits(residual1);
 }
 
 __device__ inline float laguna_softplus_f32(float value) {
@@ -1618,6 +1653,284 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     gated_out[output_idx] = laguna_float_to_bf16_bits(
         acc * laguna_softplus_f32(gate[q_head]));
   }
+}
+
+// Vulkan-informed global decode screen. One local256 workgroup owns one
+// (KV-head, K64 split): four waves form the six-query QK tile and eight waves
+// form 16 output dimensions each. Three non-overlapping BF16 terms preserve
+// substantially more of the F32 query/probability operands than a direct
+// conversion. Split maxima/denominators and raw numerators are merged by a
+// separate query-head-parallel kernel.
+__global__ __launch_bounds__(256)
+void laguna_global_attention_wmma_gqa6_k64_three_term_raw_numerator_partial_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* numerator_scratch,
+    float* state_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int scan_slots,
+    int split_count,
+    float scale) {
+  constexpr int kCapacity = 4096;
+  constexpr int kBlockSize = 256;
+  constexpr int kNumQueryHeads = 48;
+  constexpr int kNumKvHeads = 8;
+  constexpr int kHeadDim = 128;
+  constexpr int kQueryGroup = 6;
+  constexpr int kSplitTokens = 64;
+  __shared__ float shared_probability[16][kSplitTokens];
+  __shared__ int32_t shared_physical[kSplitTokens];
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & 31;
+  const int lane_lo = lane & 15;
+  const int lane_hi = lane >> 4;
+  const int wave = tid >> 5;
+  const int split = static_cast<int>(blockIdx.x) % split_count;
+  const int kv_head = static_cast<int>(blockIdx.x) / split_count;
+  const int split_base = split * kSplitTokens;
+  int context_len = static_cast<int>(
+      live_counts[0] < kCapacity ? live_counts[0] : kCapacity);
+  context_len = context_len < scan_slots ? context_len : scan_slots;
+  const int64_t query_position = row_positions[0];
+
+  if (tid < kSplitTokens) {
+    const int token = split_base + tid;
+    int physical_slot = -1;
+    if (token < context_len && query_position >= 0) {
+      const int64_t key_position = token_positions[token];
+      if (evict_mask[token] == 0 &&
+          key_position >= 0 &&
+          key_position <= query_position) {
+        physical_slot = static_cast<int>(
+            laguna_global_physical_slot(
+                base_offsets, token, kBlockSize));
+      }
+    }
+    shared_physical[tid] = physical_slot;
+  }
+  __syncthreads();
+
+  if (wave < 4) {
+    const int token_local = wave * 16 + lane_lo;
+    const int physical_slot = shared_physical[token_local];
+    laguna_bf16x16_t key_values = laguna_wmma_zero_bf16x16();
+    if (physical_slot >= 0) {
+      const uint16_t* key_ptr =
+          key_cache +
+          (physical_slot * kNumKvHeads + kv_head) * kHeadDim;
+      key_values =
+          *reinterpret_cast<const laguna_bf16x16_t*>(key_ptr);
+    }
+
+    laguna_float8_t score0 = laguna_wmma_zero_acc();
+    laguna_float8_t score1 = laguna_wmma_zero_acc();
+    laguna_float8_t score2 = laguna_wmma_zero_acc();
+    const int query_local = lane_lo;
+    const bool query_valid = query_local < kQueryGroup;
+    const int query_head = kv_head * kQueryGroup + query_local;
+#pragma unroll
+    for (int dim_base = 0; dim_base < kHeadDim; dim_base += 16) {
+      if (dim_base != 0 && physical_slot >= 0) {
+        const uint16_t* key_ptr =
+            key_cache +
+            (physical_slot * kNumKvHeads + kv_head) * kHeadDim +
+            dim_base;
+        key_values =
+            *reinterpret_cast<const laguna_bf16x16_t*>(key_ptr);
+      }
+      laguna_bf16x16_t query0 = laguna_wmma_zero_bf16x16();
+      laguna_bf16x16_t query1 = laguna_wmma_zero_bf16x16();
+      laguna_bf16x16_t query2 = laguna_wmma_zero_bf16x16();
+      if (query_valid) {
+        const float* query_ptr =
+            query + query_head * kHeadDim + dim_base;
+#pragma unroll
+        for (int item = 0; item < 16; ++item) {
+          uint16_t term0;
+          uint16_t term1;
+          uint16_t term2;
+          laguna_three_term_bf16(
+              query_ptr[item],
+              term0,
+              term1,
+              term2);
+          query0[item] = term0;
+          query1[item] = term1;
+          query2[item] = term2;
+        }
+      }
+      score0 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+          key_values, query0, score0);
+      score1 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+          key_values, query1, score1);
+      score2 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+          key_values, query2, score2);
+    }
+    if (query_valid) {
+#pragma unroll
+      for (int item = 0; item < 8; ++item) {
+        const int output_token =
+            wave * 16 + 2 * item + lane_hi;
+        const float score =
+            (score0[item] + score1[item] + score2[item]) * scale;
+        shared_probability[query_local][output_token] =
+            shared_physical[output_token] >= 0
+            ? score
+            : -3.4028234663852886e38f;
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < kQueryGroup) {
+    float max_score = -3.4028234663852886e38f;
+#pragma unroll
+    for (int token_local = 0;
+         token_local < kSplitTokens;
+         ++token_local) {
+      if (shared_physical[token_local] >= 0) {
+        max_score = fmaxf(
+            max_score,
+            shared_probability[tid][token_local]);
+      }
+    }
+    float denominator = 0.0f;
+#pragma unroll
+    for (int token_local = 0;
+         token_local < kSplitTokens;
+         ++token_local) {
+      float probability = 0.0f;
+      if (shared_physical[token_local] >= 0) {
+        probability = expf(
+            shared_probability[tid][token_local] - max_score);
+        denominator += probability;
+      }
+      shared_probability[tid][token_local] = probability;
+    }
+    const int query_head = kv_head * kQueryGroup + tid;
+    const int state_idx =
+        (split * kNumQueryHeads + query_head) * 2;
+    state_scratch[state_idx] = max_score;
+    state_scratch[state_idx + 1] = denominator;
+  }
+  __syncthreads();
+
+  const int dim_base = wave * 16;
+  laguna_float8_t numerator0 = laguna_wmma_zero_acc();
+  laguna_float8_t numerator1 = laguna_wmma_zero_acc();
+  laguna_float8_t numerator2 = laguna_wmma_zero_acc();
+#pragma unroll
+  for (int token_base = 0;
+       token_base < kSplitTokens;
+       token_base += 16) {
+    const int query_local = lane_lo;
+    laguna_bf16x16_t probability0 = laguna_wmma_zero_bf16x16();
+    laguna_bf16x16_t probability1 = laguna_wmma_zero_bf16x16();
+    laguna_bf16x16_t probability2 = laguna_wmma_zero_bf16x16();
+    if (query_local < kQueryGroup) {
+#pragma unroll
+      for (int item = 0; item < 16; ++item) {
+        uint16_t term0;
+        uint16_t term1;
+        uint16_t term2;
+        laguna_three_term_bf16(
+            shared_probability[query_local][token_base + item],
+            term0,
+            term1,
+            term2);
+        probability0[item] = term0;
+        probability1[item] = term1;
+        probability2[item] = term2;
+      }
+    }
+
+    laguna_bf16x16_t value_values = laguna_wmma_zero_bf16x16();
+    const int dim = dim_base + lane_lo;
+#pragma unroll
+    for (int item = 0; item < 16; ++item) {
+      const int physical_slot =
+          shared_physical[token_base + item];
+      if (physical_slot >= 0) {
+        value_values[item] = value_cache[
+            (physical_slot * kNumKvHeads + kv_head) * kHeadDim +
+            dim];
+      }
+    }
+    numerator0 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+        probability0, value_values, numerator0);
+    numerator1 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+        probability1, value_values, numerator1);
+    numerator2 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+        probability2, value_values, numerator2);
+  }
+#pragma unroll
+  for (int item = 0; item < 8; ++item) {
+    const int query_local = 2 * item + lane_hi;
+    if (query_local < kQueryGroup) {
+      const int query_head = kv_head * kQueryGroup + query_local;
+      const int dim = dim_base + lane_lo;
+      numerator_scratch[
+          (split * kNumQueryHeads + query_head) * kHeadDim + dim] =
+          numerator0[item] + numerator1[item] + numerator2[item];
+    }
+  }
+}
+
+__global__ __launch_bounds__(128)
+void laguna_global_attention_wmma_gqa6_k64_three_term_raw_numerator_merge_kernel(
+    const float* numerator_scratch,
+    const float* state_scratch,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    int split_count) {
+  constexpr int kNumQueryHeads = 48;
+  constexpr int kHeadDim = 128;
+  const int query_head = static_cast<int>(blockIdx.x);
+  const int dim = static_cast<int>(threadIdx.x);
+  if (query_head >= kNumQueryHeads || dim >= kHeadDim) return;
+
+  float global_max = -3.4028234663852886e38f;
+  for (int split = 0; split < split_count; ++split) {
+    const float denominator =
+        state_scratch[(split * kNumQueryHeads + query_head) * 2 + 1];
+    if (denominator > 0.0f) {
+      global_max = fmaxf(
+          global_max,
+          state_scratch[(split * kNumQueryHeads + query_head) * 2]);
+    }
+  }
+  double denominator = 0.0;
+  double numerator = 0.0;
+  for (int split = 0; split < split_count; ++split) {
+    const int state_idx =
+        (split * kNumQueryHeads + query_head) * 2;
+    const float split_denominator = state_scratch[state_idx + 1];
+    if (!(split_denominator > 0.0f)) continue;
+    const double factor = exp(
+        static_cast<double>(state_scratch[state_idx] - global_max));
+    denominator +=
+        static_cast<double>(split_denominator) * factor;
+    numerator +=
+        static_cast<double>(
+            numerator_scratch[
+                (split * kNumQueryHeads + query_head) * kHeadDim + dim]) *
+        factor;
+  }
+  const float context_value =
+      denominator > 0.0
+      ? static_cast<float>(numerator / denominator)
+      : 0.0f;
+  const int output_idx = query_head * kHeadDim + dim;
+  out[output_idx] = context_value;
+  gated_out[output_idx] = laguna_float_to_bf16_bits(
+      context_value * laguna_softplus_f32(gate[query_head]));
 }
 
 __global__ void laguna_global_attention_prefill_bf16_kernel(
@@ -6740,6 +7053,80 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_produce
       row_positions,
       static_cast<int>(scan_slots),
       scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 1024 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int split_count =
+      (static_cast<int>(scan_slots) + 63) / 64;
+  hipLaunchKernelGGL(
+      laguna_global_attention_wmma_gqa6_k64_three_term_raw_numerator_partial_kernel,
+      dim3(static_cast<unsigned int>(8 * split_count)),
+      dim3(256),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      score_scratch,
+      reinterpret_cast<float*>(physical_scratch),
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      split_count,
+      scale);
+  int error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_global_attention_wmma_gqa6_k64_three_term_raw_numerator_merge_kernel,
+      dim3(48),
+      dim3(128),
+      0,
+      stream,
+      score_scratch,
+      reinterpret_cast<const float*>(physical_scratch),
+      out,
+      gate,
+      gated_out,
+      split_count);
   return static_cast<int>(hipGetLastError());
 }
 

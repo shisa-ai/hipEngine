@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T19:08:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_global_three_term_wmma_primitive",
+  "status": "diagnostic_primitive_quality_pending",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "2dcf0c41e3f15d92c68ef3e301b351d78ed5147d",
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "llamacpp_reference_shader": "ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "external_code_copied": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "48Q/8KV/D128/global, live513/576/639"
+  },
+  "candidate": {
+    "description": "Global GQA6 x K64 split attention. WMMA computes QK and PV from three non-overlapping BF16 terms for each F32 query/probability, emits split maxima/denominators plus raw numerators, and merges split state per query head with FP64 numerator/denominator arithmetic.",
+    "dispatches": 2,
+    "qualified_scan_slots": "1..1024",
+    "production_selected": false
+  },
+  "correctness": {
+    "red": "The live513/576/639 global CPU/control oracle failed before implementation because the GQA6/K64 wrapper did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "green_result": "1 passed",
+    "explicit_eviction_position": 200,
+    "context_tolerance": {
+      "rtol": 0.0003,
+      "atol": 0.0003
+    },
+    "maximum_context_abs_error": 1.4901161193847656e-08,
+    "gated_bf16_mismatches": {
+      "live513": 0,
+      "live576": 1,
+      "live639": 2,
+      "outputs_per_shape": 6144
+    },
+    "full_model_quality": "pending"
+  },
+  "leaf": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-gqa6-k64-three-term-raw-numerator --samples 9 --warmups 5 --burst 50 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-three-term-leaf.json",
+    "raw_sha256": "e5e3c022809dc8b611f7e4ea341479515b30cf9ec8aafd69da97fcfeb72ff85a",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.07310867786407471,
+        "candidate_median_ms": 0.0413429594039917,
+        "latency_change_percent": -43.44999716605811
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.07982222080230712,
+        "candidate_median_ms": 0.043986339569091794,
+        "latency_change_percent": -44.8946181564765
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.08735730171203614,
+        "candidate_median_ms": 0.04622742176055908,
+        "latency_change_percent": -47.082360770548114
+      }
+    ]
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt rocprofv3 --kernel-trace -f csv --output-directory /tmp/laguna-global-three-term-csv.cTtu4D -- uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-gqa6-k64-three-term-raw-numerator --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build",
+    "raw_sha256": "4dbd21f6799ce5ff65b21f26e5abb734db1600c6ae9783798325a54e68b3bb19",
+    "partial": {
+      "workgroup_size": 256,
+      "grid_threads_live513_576": 18432,
+      "grid_threads_live639": 20480,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 4608,
+      "scratch_bytes": 0
+    },
+    "merge": {
+      "workgroup_size": 128,
+      "grid_threads": 6144,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "decision": {
+    "retained_as_diagnostic_primitive": true,
+    "runtime_integration": "next",
+    "production_tok_s": 20.0696080824,
+    "production_status": "unchanged",
+    "promotion_gate": "A default-off global-only resident route must pass the complete 18-prompt/576-step teacher-forced gate at max KL <= 0.05 and top-1 >= 90%, then exact KVLiveSpans/lifecycle and positive matched production throughput."
+  }
+}

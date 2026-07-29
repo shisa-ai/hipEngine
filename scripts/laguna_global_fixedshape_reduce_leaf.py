@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+    laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
 )
@@ -63,6 +64,7 @@ def _parse_args() -> argparse.Namespace:
             "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp",
             "fused-mixed32-exp32-vstage64-vec16-direct-assume-exp",
             "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp",
+            "wmma-gqa6-k64-three-term-raw-numerator",
         ),
         default="fixedshape",
     )
@@ -222,6 +224,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp",
                 "fused-mixed32-exp32-vstage64-vec16-direct-assume-exp",
                 "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp",
+                "wmma-gqa6-k64-three-term-raw-numerator",
             ):
                 control_kernel = laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans
                 if (
@@ -239,6 +242,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     == "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp"
                 ):
                     control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
+                elif (
+                    args.candidate
+                    == "wmma-gqa6-k64-three-term-raw-numerator"
+                ):
+                    control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
             else:
                 control_kernel = (
                     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans
@@ -261,6 +269,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "fused-mixed32-exp32-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+                "wmma-gqa6-k64-three-term-raw-numerator": laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
             }[args.candidate]
 
             def control() -> None:
@@ -300,10 +309,24 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 control_context_host, candidate_context_host
             )
             gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
-            if not context_exact or not gated_exact:
+            approximate_candidate = (
+                args.candidate == "wmma-gqa6-k64-three-term-raw-numerator"
+            )
+            if (not context_exact or not gated_exact) and not approximate_candidate:
                 raise AssertionError(
                     f"{args.candidate} is not byte-exact at {live_count=}"
                 )
+            context_max_abs = float(
+                np.max(
+                    np.abs(
+                        candidate_context_host.astype(np.float64)
+                        - control_context_host.astype(np.float64)
+                    )
+                )
+            )
+            gated_mismatches = int(
+                np.count_nonzero(candidate_gated_host != control_gated_host)
+            )
 
             for _ in range(args.warmups):
                 control()
@@ -330,6 +353,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     "correctness": {
                         "context_f32_byte_exact": context_exact,
                         "gated_bf16_byte_exact": gated_exact,
+                        "context_max_abs": context_max_abs,
+                        "gated_bf16_mismatches": gated_mismatches,
                         "context_sha256": hashlib.sha256(
                             candidate_context_host.tobytes()
                         ).hexdigest(),
