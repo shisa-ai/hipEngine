@@ -4981,6 +4981,22 @@ The remaining attention sequence is:
     **20.270314 tok/s**. Evidence:
     [`idle-wave producer primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-primitive.json) ·
     [`runtime rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-idle-producer-runtime-rejected.json).
+43. Replay the exact denominator from the already-published probability tile.
+    **Complete and rejected:** production pays 64 wave-shuffle transports per
+    query/K64 stage to preserve the exact slot-order denominator chain. The
+    candidate removes those shuffles and, after the existing probability/V
+    publication barrier, has producer lane zero consume the same 64 visible
+    probabilities from LDS in identical order while other waves perform PV.
+    The existing end-of-stage barrier preserves the dependency, so there is
+    no new barrier or arithmetic reassociation. The wrapped/evicted oracle is
+    F32-context and gated-BF16 byte-exact, but every cache-hot sample loses:
+    **0.056170 -> 0.060017 ms (+6.849%)**. Serial LDS reads delay the complete
+    producer wave more than the removed shuffle transport saves. Remove the
+    kernel specialization, wrapper, registry, oracle call, and leaf choice;
+    production remains **20.270314 tok/s**. Do not retry scalar LDS
+    denominator replay without a parallel exact prefix or materially
+    different producer ownership. Evidence:
+    [`post-barrier denominator rejection`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-postbarrier-denom-rejected.json).
 
 Current exact decode checkpoint:
 
