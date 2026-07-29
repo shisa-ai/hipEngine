@@ -193,6 +193,13 @@ the saturated leaf **0.081796 -> 0.178297 ms (+117.98%)**. Two sequential
 underfilled grids cost far more than eliminating inactive pair-owner output
 waves; all candidate code is removed and production remains
 **19.667705 tok/s**.
+The comparator's physical wave64 mode does not transfer by itself either.
+Compiling the unchanged exact mixed32/exp32 body with
+`-mwavefrontsize64` remains F32/BF16 byte-exact but regresses two
+non-profiled leaf screens **3.81%/3.56%** and raises VGPR allocation
+**104 -> 112** at unchanged local384/LDS24576/scratch0. llama.cpp's wave64
+benefit comes from its wave64-native cooperative tile, not physical issue
+width in isolation; the candidate is removed.
 
 Native head-RMSNorm + partial-RoPE + BF16 KV-write composites first reach
 **11.485885 tok/s**, then the complete global/SWA/tile16 split-attention
