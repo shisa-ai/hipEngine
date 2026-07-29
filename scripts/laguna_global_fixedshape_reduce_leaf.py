@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+    laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans,
     laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
@@ -64,6 +65,7 @@ def _parse_args() -> argparse.Namespace:
             "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp",
             "fused-mixed32-exp32-vstage64-vec16-direct-assume-exp",
             "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp",
+            "wmma-qk-three-term-mixed32-exact-pv",
             "wmma-gqa6-k64-three-term-raw-numerator",
         ),
         default="fixedshape",
@@ -224,6 +226,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp",
                 "fused-mixed32-exp32-vstage64-vec16-direct-assume-exp",
                 "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp",
+                "wmma-qk-three-term-mixed32-exact-pv",
                 "wmma-gqa6-k64-three-term-raw-numerator",
             ):
                 control_kernel = laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_bf16_spans
@@ -242,6 +245,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     == "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp"
                 ):
                     control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
+                elif (
+                    args.candidate
+                    == "wmma-qk-three-term-mixed32-exact-pv"
+                ):
+                    control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
                 elif (
                     args.candidate
                     == "wmma-gqa6-k64-three-term-raw-numerator"
@@ -269,6 +277,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-gqa2-exp32-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "fused-mixed32-exp32-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "fused-mixed32-exp32-producer-max-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+                "wmma-qk-three-term-mixed32-exact-pv": laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans,
                 "wmma-gqa6-k64-three-term-raw-numerator": laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
             }[args.candidate]
 
@@ -309,8 +318,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 control_context_host, candidate_context_host
             )
             gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
-            approximate_candidate = (
-                args.candidate == "wmma-gqa6-k64-three-term-raw-numerator"
+            approximate_candidate = args.candidate in (
+                "wmma-qk-three-term-mixed32-exact-pv",
+                "wmma-gqa6-k64-three-term-raw-numerator",
             )
             if (not context_exact or not gated_exact) and not approximate_candidate:
                 raise AssertionError(

@@ -1301,7 +1301,8 @@ template <
     bool kAssumeSoftmaxDomain = false,
     bool kSoftmaxExp32 = false,
     bool kMixed32Owners = false,
-    bool kProducerMax = false>
+    bool kProducerMax = false,
+    bool kWmmaThreeTermQk = false>
 __global__ __launch_bounds__(256)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1322,6 +1323,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   constexpr int kNumKvHeads = 8;
   constexpr int kHeadDim = 128;
   constexpr int kQueryGroup = 6;
+  static_assert(
+      !kWmmaThreeTermQk || kProducerMax,
+      "three-term WMMA QK requires producer-owned maxima");
   constexpr int kOwnersPerKv =
       kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries;
   constexpr int kNumWarps = 8;
@@ -1358,69 +1362,167 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   context_len = context_len < scan_slots ? context_len : scan_slots;
   if (context_len <= 0 || row_positions[0] < 0) return;
 
-  float query_values[kOwnedQueries][4] = {};
-  float producer_max[kOwnedQueries];
-#pragma unroll
-  for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
-    producer_max[q_local] = -3.4028234663852886e38f;
-    if (q_local >= owned_queries) continue;
-    const int q_offset = (q_head_base + q_local) * kHeadDim + lane * 4;
-#pragma unroll
-    for (int item = 0; item < 4; ++item) {
-      query_values[q_local][item] = query[q_offset + item];
+  if constexpr (kWmmaThreeTermQk) {
+    for (int token = tid; token < context_len;
+         token += static_cast<int>(blockDim.x)) {
+      const int64_t key_position = token_positions[token];
+      const bool visible = evict_mask[token] == 0 &&
+                           key_position >= 0 &&
+                           key_position <= row_positions[0];
+      shared_physical[token] = visible
+          ? static_cast<int>(
+                laguna_global_physical_slot(
+                    base_offsets, token, kBlockSize))
+          : -1;
     }
-  }
+    __syncthreads();
 
-  for (int token = wave; token < context_len; token += kNumWarps) {
-    const int64_t key_position = token_positions[token];
-    const bool visible = evict_mask[token] == 0 &&
-                         key_position >= 0 &&
-                         key_position <= row_positions[0];
-    int physical_slot = -1;
-    if (visible) {
-      physical_slot = static_cast<int>(
-          laguna_global_physical_slot(base_offsets, token, kBlockSize));
-    }
-    float key_values[4] = {};
-    if (physical_slot >= 0) {
-      const int key_offset =
-          (physical_slot * kNumKvHeads + kv_head) * kHeadDim + lane * 4;
+    const int lane_lo = lane & 15;
+    const int lane_hi = lane >> 4;
+    const int query_local = lane_lo;
+    const bool query_valid =
+        wave < 4 && query_local < owned_queries;
+    const int query_head = q_head_base + query_local;
+    float wave_max = -3.4028234663852886e38f;
+    for (int stage_base = 0; stage_base < context_len; stage_base += 64) {
+      if (wave >= 4) continue;
+      const int token_local = wave * 16 + lane_lo;
+      const int token = stage_base + token_local;
+      const int physical_slot =
+          token < context_len ? shared_physical[token] : -1;
+      laguna_bf16x16_t key_values = laguna_wmma_zero_bf16x16();
+      laguna_float8_t score0 = laguna_wmma_zero_acc();
+      laguna_float8_t score1 = laguna_wmma_zero_acc();
+      laguna_float8_t score2 = laguna_wmma_zero_acc();
 #pragma unroll
-      for (int item = 0; item < 4; ++item) {
-        key_values[item] =
-            laguna_bf16_bits_to_float(key_cache[key_offset + item]);
+      for (int dim_base = 0; dim_base < kHeadDim; dim_base += 16) {
+        if (physical_slot >= 0) {
+          const uint16_t* key_ptr =
+              key_cache +
+              (physical_slot * kNumKvHeads + kv_head) * kHeadDim +
+              dim_base;
+          key_values =
+              *reinterpret_cast<const laguna_bf16x16_t*>(key_ptr);
+        } else {
+          key_values = laguna_wmma_zero_bf16x16();
+        }
+        laguna_bf16x16_t query0 = laguna_wmma_zero_bf16x16();
+        laguna_bf16x16_t query1 = laguna_wmma_zero_bf16x16();
+        laguna_bf16x16_t query2 = laguna_wmma_zero_bf16x16();
+        if (query_valid) {
+          const float* query_ptr =
+              query + query_head * kHeadDim + dim_base;
+#pragma unroll
+          for (int item = 0; item < 16; ++item) {
+            uint16_t term0;
+            uint16_t term1;
+            uint16_t term2;
+            laguna_three_term_bf16(
+                query_ptr[item],
+                term0,
+                term1,
+                term2);
+            query0[item] = term0;
+            query1[item] = term1;
+            query2[item] = term2;
+          }
+        }
+        score0 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+            key_values, query0, score0);
+        score1 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+            key_values, query1, score1);
+        score2 = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
+            key_values, query2, score2);
+      }
+      if (query_valid) {
+#pragma unroll
+        for (int item = 0; item < 8; ++item) {
+          const int output_token =
+              stage_base + wave * 16 + 2 * item + lane_hi;
+          if (output_token < context_len) {
+            const float score =
+                shared_physical[output_token] >= 0
+                    ? (score0[item] + score1[item] + score2[item]) * scale
+                    : -3.4028234663852886e38f;
+            shared_scores[query_local * scan_slots + output_token] = score;
+            wave_max = fmaxf(wave_max, score);
+          }
+        }
       }
     }
+    if (wave < 4 && query_valid) {
+      wave_max = fmaxf(wave_max, __shfl_xor(wave_max, 16, 32));
+      if (lane_hi == 0) {
+        warp_buf[query_local][wave] = wave_max;
+      }
+    } else if (wave >= 4 && lane < owned_queries) {
+      warp_buf[lane][wave] = -3.4028234663852886e38f;
+    }
+  } else {
+    float query_values[kOwnedQueries][4] = {};
+    float producer_max[kOwnedQueries];
 #pragma unroll
     for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+      producer_max[q_local] = -3.4028234663852886e38f;
       if (q_local >= owned_queries) continue;
-      float acc = 0.0f;
-      if (physical_slot >= 0) {
+      const int q_offset = (q_head_base + q_local) * kHeadDim + lane * 4;
 #pragma unroll
-        for (int item = 0; item < 4; ++item) {
-          acc += query_values[q_local][item] * key_values[item];
-        }
-      }
-      for (int offset = 16; offset > 0; offset >>= 1) {
-        acc += __shfl_down(acc, offset);
-      }
-      if (lane == 0) {
-        const float score =
-            physical_slot >= 0 ? acc * scale : -3.4028234663852886e38f;
-        shared_scores[q_local * scan_slots + token] = score;
-        if constexpr (kProducerMax) {
-          producer_max[q_local] = fmaxf(producer_max[q_local], score);
-        }
+      for (int item = 0; item < 4; ++item) {
+        query_values[q_local][item] = query[q_offset + item];
       }
     }
-    if (lane == 0) shared_physical[token] = physical_slot;
-  }
-  if constexpr (kProducerMax) {
-    if (lane == 0) {
+
+    for (int token = wave; token < context_len; token += kNumWarps) {
+      const int64_t key_position = token_positions[token];
+      const bool visible = evict_mask[token] == 0 &&
+                           key_position >= 0 &&
+                           key_position <= row_positions[0];
+      int physical_slot = -1;
+      if (visible) {
+        physical_slot = static_cast<int>(
+            laguna_global_physical_slot(base_offsets, token, kBlockSize));
+      }
+      float key_values[4] = {};
+      if (physical_slot >= 0) {
+        const int key_offset =
+            (physical_slot * kNumKvHeads + kv_head) * kHeadDim + lane * 4;
+#pragma unroll
+        for (int item = 0; item < 4; ++item) {
+          key_values[item] =
+              laguna_bf16_bits_to_float(key_cache[key_offset + item]);
+        }
+      }
 #pragma unroll
       for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
-        if (q_local < owned_queries) {
-          warp_buf[q_local][wave] = producer_max[q_local];
+        if (q_local >= owned_queries) continue;
+        float acc = 0.0f;
+        if (physical_slot >= 0) {
+#pragma unroll
+          for (int item = 0; item < 4; ++item) {
+            acc += query_values[q_local][item] * key_values[item];
+          }
+        }
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          acc += __shfl_down(acc, offset);
+        }
+        if (lane == 0) {
+          const float score =
+              physical_slot >= 0 ? acc * scale : -3.4028234663852886e38f;
+          shared_scores[q_local * scan_slots + token] = score;
+          if constexpr (kProducerMax) {
+            producer_max[q_local] = fmaxf(producer_max[q_local], score);
+          }
+        }
+      }
+      if (lane == 0) shared_physical[token] = physical_slot;
+    }
+    if constexpr (kProducerMax) {
+      if (lane == 0) {
+#pragma unroll
+        for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+          if (q_local < owned_queries) {
+            warp_buf[q_local][wave] = producer_max[q_local];
+          }
         }
       }
     }
@@ -7030,6 +7132,84 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_produce
       (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
           kOwnedQueries,
           kValueStage,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true>),
+      dim3(32),
+      dim3(256),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * scan_slots) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
           true,
           true,
           true,
