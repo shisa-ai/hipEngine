@@ -192326,3 +192326,27 @@ Vulkan local sizes verbatim will close the measured gap.
   micro-tuning is closed on both SWA and global; move to the traced
   **2.234-ms/token** dense/shared dual-Q4 owner. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-local512-vstage128-rejected.json`.
+
+## 2026-07-30 08:00 JST — Reject dual-Q4 quad metadata broadcast
+
+- Screen an exact traffic contraction in the traced 48-call dense/shared
+  dual-Q4 family: one lane per four-lane column quad loads scale/min metadata
+  and broadcasts the four gate and four up values, replacing 512 issued bytes
+  with 128 unique bytes per K32 group.
+- RED is the focused natural dual-Q4 test importing the absent wrapper; GREEN
+  passes against the two exact local32 singleton owners with zero BF16
+  mismatches.
+- The 9x50 natural leaves decisively reject the premise. Shared M1 K3072 N1024
+  regresses **0.013525 -> 0.034564 ms (+155.555%)** and dense M1 K3072 N12288
+  regresses **0.472077 -> 0.514232 ms (+8.930%)**; the candidate loses all
+  nine pairs at both shapes. Raw leaf hash is `2269c264...c8ee`.
+- Cache-only native tracing confirms unchanged local32 grid4096/grid49152,
+  allocated **VGPR96/SGPR128/LDS512/scratch0**. Trace hash is
+  `8baefc66...4a2`. The repeated metadata loads are evidently cheap
+  cache/coalescing hits relative to 32 shuffle broadcasts per lane per K
+  iteration.
+- Skip the resident gate and remove every candidate kernel, wrapper, test
+  addition, and temporary leaf harness. Production returns byte-for-byte to
+  `c4491c4ed` at **20.744351 tok/s**. Next screen exact dual-Q4 plus SiLU
+  consumer-boundary fusion:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-pack8-dual-quadmeta-rejected.json`.
