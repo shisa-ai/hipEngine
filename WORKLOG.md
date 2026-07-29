@@ -190927,3 +190927,24 @@ Vulkan local sizes verbatim will close the measured gap.
   Do not retry DPP-only transport on this local384 body without a
   scheduler-visible geometry or resource change. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-dpp-qk-runtime-rejected.json`.
+
+## 2026-07-29 22:43 JST — Reject GQA4+5 stage-cache recombination
+
+- Recovered the prior exact two-owner-per-KV GQA4+5/local512 design and
+  recombined it with the now-retained producer maxima/gates and per-K64
+  probability/V-stage overlap. This is a new schedule relative to the old
+  5.44% local512 miss: one wave per query computes the identical
+  probability/denominator sequence while all other waves load V through the
+  existing publication barrier.
+- RED fails on the absent wrapper. GREEN passes the wrapped positions
+  512-519 plus explicit position-200 eviction with byte-identical F32 context
+  and BF16 gated output.
+- Every one of nine 50-launch candidate samples loses. Median leaf latency is
+  **0.056133 -> 0.061001 ms (+8.673%)**. Probability reuse cannot repay
+  reducing ordinary-grid breadth **32 -> 16** on the 40-CU device.
+- Remove the kernel, wrapper, registry key, oracle call, and harness choice
+  before trace/runtime work. Production remains **20.270314 tok/s**.
+  Exact scalar ownership below 32 workgroups is closed even when combined
+  with the retained stage-cache schedule. Raw SHA-256 is
+  `b434681d...27267277`; evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa45-stage-pcache-rejected.json`.
