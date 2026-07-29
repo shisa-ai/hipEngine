@@ -1531,6 +1531,15 @@ halve staged-V barriers **16 -> 8**, but improve the leaf only
 both before-consume and after-consume copy schedules. All code is removed
 before production:
 [`rejected V-stage64 ping-pong`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-vstage64-pingpong-rejected.json).
+The comparator-derived structural tensorized-PV screen is closed as well.
+Laguna's `FULL,SWA,SWA,SWA` cycle defines three complete, non-arbitrary
+12-layer SWA roles. Exact QK plus exact denominator order and tensorized F32 PV
+on roles 1/2/3 reaches max KL **1.590854/1.690376/4.873391** over the same
+18-prompt/576-step gate, despite **97.57%/97.40%/97.22%** top-1 and only
+**3.94-3.98%** directional speedup. No historical candidate code was ported
+to current main. Tensorized PV is therefore inadmissible even at one-third
+structural depth; do not retry arbitrary layer subsets:
+[`rejected structural-role tensorized PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-tensorized-pv-role-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls

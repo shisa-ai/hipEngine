@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_tensorized_pv_structural_role_screen",
+  "status": "rejected_quality_and_removed",
+  "created_at": "2026-07-29T12:46:29+09:00",
+  "source_revision": "961fab1899230b702f6982345d6c7c000cad4da2",
+  "production_revision": "67072d55f",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 77133835284,
+    "kv_dtype": "BF16"
+  },
+  "comparator_audit": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "device_topology": "Br16 x Bc64, local256, four wave64 subgroups, GQA9, K64 split",
+    "precision": "same-GGUF command requests F16 K/V; non-BF16 shader path uses F16 accumulator/output types",
+    "conclusion": "The comparator's tensorized arithmetic is not exact and cannot be assumed admissible under hipEngine's recurrent quality gate."
+  },
+  "candidate": {
+    "qk": "retained exact tile16 GQA3 ordered products and reduction tree",
+    "softmax": "exact exponentials and retained logical-slot denominator order",
+    "pv": "F32 hipBLASLt tensorized contraction",
+    "scope": "one complete architecture-defined 12-layer SWA role",
+    "roles": {
+      "1": "layers 1 mod 4",
+      "2": "layers 2 mod 4",
+      "3": "layers 3 mod 4"
+    },
+    "implementation_location": "detached worktree at historical candidate revision; never ported to current main"
+  },
+  "quality": {
+    "protocol": "all 18 canonical train+heldout prompts, 32 exact-baseline teacher-forced full-logit steps per prompt, 576 steps per role",
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "thresholds": {
+      "max_kl": 0.05,
+      "minimum_suite_top1": 0.9,
+      "minimum_each_category_top1": 0.9
+    },
+    "roles": {
+      "1": {
+        "pass": false,
+        "max_kl": 1.5908539769828145,
+        "top1_matches": 562,
+        "top1_steps": 576,
+        "top1_agreement": 0.9756944444444444
+      },
+      "2": {
+        "pass": false,
+        "max_kl": 1.6903758364849266,
+        "top1_matches": 561,
+        "top1_steps": 576,
+        "top1_agreement": 0.9739583333333334
+      },
+      "3": {
+        "pass": false,
+        "max_kl": 4.873391133830917,
+        "top1_matches": 560,
+        "top1_steps": 576,
+        "top1_agreement": 0.9722222222222222
+      }
+    },
+    "raw_path": "/tmp/laguna-swa-decode-role-quality-screen.json",
+    "raw_sha256": "004d2d45f8c5a96a175037de94b0240e29048c63f9c68444c952a3f99ab6159a"
+  },
+  "directional_timing": {
+    "exact_decode_seconds": 37.797638612566516,
+    "role1_speedup": 1.039377659596848,
+    "role2_speedup": 1.0397671188021804,
+    "role3_speedup": 1.0398480521648295,
+    "qualification": "one interleaved diagnostic pass; not a retained performance claim"
+  },
+  "validation": {
+    "focused_compatibility_test": "1 passed",
+    "tracked_allocations_recovered": true,
+    "production_source_changed": false,
+    "production_default_changed": false
+  },
+  "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 /home/lhl/hipEngine-main/.venv/bin/python3 -u scripts/laguna_swa_decode_role_quality_screen.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-swa-decode-role-quality-screen.json",
+  "decision": {
+    "retained": false,
+    "all_current_main_candidate_code_absent": true,
+    "production_unchanged_tok_s": 19.667705,
+    "reason": "Tensorized PV alone violates the KL contract on every complete structural SWA role. High top-1 does not compensate for distribution errors 31.8x, 33.8x, and 97.5x over the 0.05 ceiling.",
+    "next": "Keep exact scalar PV association. Pursue single-launch exact dataflow or launch/ownership improvements; do not retry tensorized PV by arbitrary layer-ID subsets."
+  }
+}

@@ -189475,3 +189475,29 @@ Vulkan local sizes verbatim will close the measured gap.
   increase arithmetic per K/V ownership/load event with a precision-qualified
   cooperative GQA tile rather than more scalar scheduling. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-vstage64-pingpong-rejected.json`.
+
+## 2026-07-29 12:47 JST — Reject structural-role tensorized SWA PV
+
+- Audited llama.cpp Vulkan `c0bc8591e` `flash_attn_cm1.comp` at the actual
+  gfx1151 route. It uses a cooperative **Br16 x Bc64**, local256/four-wave64,
+  GQA9/K64 topology. The same-GGUF command requests F16 K/V, and the non-BF16
+  shader path uses F16 accumulator/output types. Its speed is therefore not
+  evidence that tensorized attention preserves hipEngine's exact recurrent
+  arithmetic.
+- Recovered the already-rejected exact-QK/tensorized-F32-PV candidate in a
+  detached worktree at `961fab189` and predeclared Laguna's three complete
+  structural SWA roles from the exact `FULL,SWA,SWA,SWA` cycle:
+  `layer_id mod 4 = 1,2,3`, twelve layers each. Current main was not modified.
+  The focused historical compatibility test passes.
+- Ran all 18 canonical train+heldout prompts with 32 exact-baseline
+  teacher-forced full-logit steps per prompt, **576 steps per role**. Roles
+  1/2/3 fail at max KL **1.590854/1.690376/4.873391**, respectively
+  **31.82x/33.81x/97.47x** the 0.05 ceiling, despite
+  **562/561/560 of 576** top-1. One interleaved diagnostic pass shows only
+  **1.03938/1.03977/1.03985x** directional decode speedup. Tracked allocations
+  return to zero.
+- No candidate was ported and no production/default files changed. Production
+  stays **19.667705 tok/s**. Tensorized PV is closed even at a principled
+  one-third structural scope; arbitrary layer-ID subsets would be benchmark
+  gaming, not a repair. Raw SHA-256 is `004d2d45...6159a`. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-tensorized-pv-role-rejected.json`.
