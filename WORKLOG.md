@@ -190769,3 +190769,29 @@ Vulkan local sizes verbatim will close the measured gap.
   to probability/KV reuse rather than another scalar remap.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-pair36-rejected.json`.
+
+## 2026-07-29 21:35 JST — Reject attention association consensus guard
+
+- Recovering the removed SWA three-term WMMA source was unnecessary for the
+  first gate: the retained global GQA6/K64 primitive uses the same three-term
+  component sums and FP64 K64-split merge and already has **0/1/2** known
+  exact gated-BF16 errors at live513/576/639.
+- A source-local right-association diagnostic changes
+  **3,152/3,246/3,285** F32 contexts, with maximum A/B delta
+  **1.40e-9/1.40e-9/1.86e-9**, but changes zero gated BF16 bins. It therefore
+  misses all three exact errors. One live639 error has bit-identical F32
+  outputs under both component associations.
+- Reversing the FP64 split merge changes neither F32 nor BF16 hashes and also
+  recalls **0/3** errors. A/B/reverse raw JSON SHA-256 values are
+  `0a245c2c...c6645`, `68390a6c...61b2`, and `21a692b7...a8f`.
+- Remove the temporary dump option and both source-local association edits.
+  Do not reconstruct SWA or spend a resident quality run: agreement between
+  these approximations is not a correctness classifier. Production remains
+  **20.105078 tok/s**.
+- The next exact attention screen is distinct from rejected P-cache4: compute
+  each K64 stage's probability tile while the block loads V, publish through
+  the barrier already required for V visibility, and share the identical
+  weights/ordered denominator across four dimension waves with no new
+  workgroup barrier.
+  Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-attention-consensus-association-rejected.json`.
