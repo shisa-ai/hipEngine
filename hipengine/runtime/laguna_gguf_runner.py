@@ -3095,6 +3095,15 @@ class LagunaGGUFResidentSession:
             bool(enabled)
         )
 
+    def set_decode_swa_producer_max(self, enabled: bool) -> None:
+        """Select exact score-producer maxima or the exp32 rollback."""
+
+        if self.kv_cache is None:
+            raise RuntimeError("Laguna KV cache is not available")
+        self.kv_cache.swa_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixed512 = (
+            bool(enabled)
+        )
+
     def set_decode_global_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized global expf or its rollback."""
 

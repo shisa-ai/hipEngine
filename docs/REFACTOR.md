@@ -14,6 +14,18 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna exact SWA producer-maximum selector
+
+- Added 2026-07-29 as a default-off gfx1151 capability plus session/profile
+  comparison seam after the separately registered primitive passed byte-exact
+  wrap/eviction, leaf, and cached resource gates.
+- If matched resident p512/d128 decode is negative, remove the runtime
+  capability, cache field, session setter, and profile comparison switch while
+  retaining the exact registered primitive for diagnostics. If positive,
+  promote the architecture capability, publish a clean selector-unset result,
+  then remove the dedicated comparison switch after one later attention
+  re-profile. Keep the prior mixed32/exp32 kernel as the exact rollback.
+
 ## Laguna long-context F32 hipBLASLt rollback routes
 
 - Added 2026-07-27. The first capacity-sized full-score owner improved
