@@ -192204,3 +192204,17 @@ Vulkan local sizes verbatim will close the measured gap.
   before diff inspection by the pre-existing absent read-only checkout
   `/home/lhl/amd-gpu-tuning/reference/atlas`; this is an in-tree specialization,
   not an external kernel port.
+
+## 2026-07-30 06:57 JST — Publish exact V-stage128 production
+
+- Run three tracked-clean, selector-unset, cache-only Poolside Laguna S 2.1
+  Q4_K_M BF16-KV p512/d128 eager c=1 repetitions at retained `568e8ae93`.
+  Decode is **20.728553/20.744351/20.751098 tok/s**, median
+  **20.744351 tok/s (48.20589 ms/token)**.
+- This is **+0.06145% / -0.02962 ms/token** over the preceding
+  **20.731612 tok/s** clean packet, **+80.910%** over sprint start, and
+  **11.153%** below same-GGUF llama.cpp Vulkan throughput. All runs preserve
+  next/final tokens **2930/74107**, trajectory SHA `94f803f7...bda32`,
+  position 638, determinism, and allocation recovery. Raw hash is
+  `4becc88a...8ebd`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-production.json`.
