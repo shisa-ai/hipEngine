@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-29T14:31:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_producer_scaled_scores_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "ded3362fb7890c1505627726f7a45e90bf4f299a",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model_scope": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "shape": "72Q/8KV/D128/SWA512"
+  },
+  "candidate": {
+    "description": "Have each score-producing lane store dot*scale once, then let the four output-dimension waves consume that value instead of each reevaluating dot*scale.",
+    "intended_saving": "Remove four repeated score-scale multiplications per query/token while retaining producer maxima.",
+    "unexpected_numerical_change": "Production contracts dot*scale-max as one fused operation; storing dot*scale rounds before the later subtraction."
+  },
+  "correctness": {
+    "red": "The focused wrapped/evicted oracle failed before implementation because the producer-scaled-score wrapper did not exist.",
+    "oracle_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction -q",
+    "oracle_result": "failed byte identity after implementation",
+    "leaf_context_f32_byte_exact": false,
+    "leaf_context_max_abs_error": 2.7939677238464355e-09,
+    "leaf_gated_bf16_byte_exact": true,
+    "leaf_gated_bf16_mismatches": 0,
+    "quality_gate_run": false,
+    "quality_gate_reason": "The leaf speed result was neutral, so the non-exact candidate did not justify a 576-step model gate."
+  },
+  "leaf": {
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python3 scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed32-exp32-producer-max-scaled-scores-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --allow-dirty --output /tmp/laguna-swa-producer-scaled-scores-leaf.json",
+    "raw_sha256": "a91d2c16bbaf6c84c38cb97c31c9027f96c8e443a5945e878628fda522b31a38",
+    "control_median_ms": 0.059182682037353516,
+    "candidate_median_ms": 0.05917200088500976,
+    "latency_change_percent": -0.01804776663723029,
+    "samples": 9,
+    "warmups": 5,
+    "launches_per_sample": 50
+  },
+  "decision": {
+    "retained": false,
+    "candidate_code_removed": true,
+    "production_tok_s": 19.9863710167,
+    "production_status": "unchanged",
+    "reason": "The candidate trades exact F32 context for a 0.018% leaf change, far below any meaningful gate and not worth model-quality budget.",
+    "next_gate": "Preserve the fused score-scale-minus-maximum expression. Do not hoist score scaling across the materialized-score boundary."
+  }
+}

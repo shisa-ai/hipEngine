@@ -189817,3 +189817,20 @@ Vulkan local sizes verbatim will close the measured gap.
   environment-blocked on the absent read-only Atlas checkout; the llama.cpp
   shader was inspected without copying source. Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-swa-gqa9-shared-scalar-rejected.json`.
+
+## 2026-07-29 14:31 JST — Reject producer-scaled SWA scores
+
+- SWA production stores the unscaled dot, so four output-dimension waves each
+  evaluate `dot * scale - max`. A bounded candidate moves `dot * scale` to
+  the score producer and stores the scaled result once.
+- RED required the missing wrapper. The wrapped/evicted oracle then rejects
+  F32 byte identity: production contracts the multiply-subtract, while the
+  producer-stored form rounds before subtraction. Maximum F32 context error is
+  **2.79e-9**; gated BF16 has zero mismatches on this fixture.
+- Nine 50-launch samples are neutral:
+  **0.059183 -> 0.059172 ms (-0.018%)**. Raw SHA-256 is
+  `a91d2c16...1a38`.
+- A non-exact candidate with no material leaf gain does not justify the
+  18-prompt/576-step quality gate. Remove every candidate line and keep
+  production at **19.986371 tok/s**. Evidence:
+  `benchmarks/results/2026-07-29-gfx1151-laguna-swa-producer-scaled-scores-rejected.json`.
