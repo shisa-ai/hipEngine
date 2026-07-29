@@ -191168,3 +191168,25 @@ Vulkan local sizes verbatim will close the measured gap.
   peer backends are unchanged. Remove the comparison-only CLI/session seam;
   clean selector-unset publication remains next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json`.
+
+## 2026-07-30 00:06 JST — Publish vectorized SWA probability production
+
+- Run the normal tracked-clean selector-unset Poolside Laguna S 2.1 Q4_K_M
+  BF16-KV p512/d128 eager c=1 protocol at retained revision `5b24cac8d`.
+  Decode is **20.335685/20.349871/20.352342 tok/s**, median
+  **20.349871**. This is **-0.0431% / +0.0212 ms/token** versus the
+  preceding clean 20.358649 packet, within observed shared-APU variance; the
+  stronger same-process retained gate has all **7/7** candidate runs beating
+  their paired controls by **+0.06287% / -0.03085 ms/token**.
+- The normal route reports the vectorized-probability capability active.
+  All three runs preserve next/final tokens **2930/74107**, trajectory
+  SHA-256 `94f803f7...ebda32`, final position 638, repeat determinism, and
+  zero tracked allocations after teardown. Load remains excluded and the
+  repository is tracked-clean; raw output SHA-256 is
+  `c0139019...cfc2f36b`.
+- Current wall is **49.140 ms/token**, **+77.469%** over the 11.466687 sprint
+  start. Against same-GGUF llama.cpp Vulkan **23.348381 tok/s /
+  42.8295 ms**, the remaining gap is **6.311 ms/token** or **12.842%**
+  throughput. Next audit the global exact probability cache/PV loop for the
+  same contiguous vector-read opportunity. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json`.

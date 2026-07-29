@@ -1850,10 +1850,15 @@ VGPR104, SGPR128, LDS25,600, scratch0. All seven resident candidate runs beat
 their paired controls, moving **20.366610 -> 20.379415 tok/s
 (+0.06287%, -0.03085 ms/token)** with exact state/lifecycle. gfx1151
 promotes the capability, scalar PV reads remain exact rollback, and the
-comparison seam is removed. Clean publication remains pending from
-**20.358649 tok/s**:
+comparison seam is removed. Tracked-clean selector-unset production is
+**20.335685/20.349871/20.352342 tok/s**, median **20.349871**. The absolute
+checkpoint is **0.0431%** below the preceding clean packet, inside shared-APU
+variance; retention rests on the stronger **7/7** paired gate. The normal
+route reports the capability active and preserves exact repeated
+trajectory/state/lifecycle:
 [`vectorized probability primitive`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-stage-pcache-vec4-probability-primitive.json),
-[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json).
+[`resident retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-retained.json),
+[`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-stage-pcache-vec4-probability-production.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
 the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
