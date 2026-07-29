@@ -190365,3 +190365,16 @@ Vulkan local sizes verbatim will close the measured gap.
   capability-selected session field and exact registered serial rollback.
   Evidence:
   `benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-production.json`.
+
+## 2026-07-29 17:48 JST — Close selected-down parallel-tail screen
+
+- The tracked-clean selector-unset production checkpoint and cached
+  Q4/planar-Q6 symbol/resource census are complete. Remove the temporary
+  `--compare-selected-down-natural-parallel-decode` profile switch, session
+  setter, setter-only test, and closed `docs/REFACTOR.md` entry.
+- Retain the default-on gfx1151 capability, capability-resolved session field,
+  explicit constructor rollback, parallel registered plan route, and serial
+  natural registered owner. Qualified gfx1151 production remains
+  **20.069608 tok/s**; peer backends and non-natural shapes remain unchanged.
+  The complete affected runner/profile bundle passes **80/80**; Python
+  compilation and diff checks pass.

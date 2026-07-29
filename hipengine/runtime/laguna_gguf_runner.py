@@ -3071,14 +3071,6 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_tile8_decode = bool(enabled)
 
-    def set_selected_down_natural_parallel_decode(
-        self,
-        enabled: bool,
-    ) -> None:
-        """Select the exact parallel-tail natural selected-down sibling."""
-
-        self.use_selected_down_natural_parallel_decode = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 
