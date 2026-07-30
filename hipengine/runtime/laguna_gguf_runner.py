@@ -1011,6 +1011,21 @@ class LagunaEagerLibraries:
                 if self.q5_f32_ordered is not None
                 else {}
             ),
+            **(
+                {
+                    "gguf_q5_k:f32_ordered_weight_major_tile_k_col_"
+                    f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                    f"{output_dtype}_out": self.q5_f32_ordered
+                    for col_tile, row_batch, output_dtype in (
+                        (8, 4, "bf16"),
+                        (16, 5, "bf16"),
+                        (16, 5, "f32"),
+                        (8, 10, "f32"),
+                    )
+                }
+                if self.q5_f32_ordered is not None
+                else {}
+            ),
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
             "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,

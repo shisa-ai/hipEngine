@@ -17,8 +17,8 @@ retains an exact global cached-source local256 leaf but rejects runtime
 ownership at the source-default 1K gate, H5V rejects exact Q5 one-wave
 sequential K-partition replay on all six roles, H5W exact Q6 weight-major
 composites are retained package production through 4K, H5X retains four exact
-tile-K-col F32 Q5 leaves pending runtime qualification, and 16K+ remains
-deferred**.
+tile-K-col F32 Q5 leaves plus qualified default-off runtime ownership pending
+source-default publication, and 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -322,9 +322,19 @@ Four roles / **151 calls** win both clocks; remove BF16 K3072/N12288 and
 K9216/N3072 and retain H5L for their **37** calls. Six-role selected event/wall
 falls **465.863/467.511 -> 458.615/459.712 ms (-1.556%/-1.668%)**. The final
 four source roles independently fall **265.784/266.992 -> 258.653/258.959
-(-2.683%/-3.009%)**, 4/4 wins. No package owner exists yet; production stays
-H5W pending complete-state, exact **151 H5X + 37 H5L + 47 H5G** topology, and
-clean one-queue 512/1K/4K gates
+(-2.683%/-3.009%)**, 4/4 wins. Default-off natural-M512 state is KL0 and
+byte-exact across all 48 hidden boundaries plus complete logits/KV/`KVLiveSpans`
+and repeat. Four counter-rotated cached request segments record exact
+**151 H5X + 37 H5L + 47 H5G** ownership behind all **235** immediately paired
+producers
+at unchanged **1,862/470** request/Q5 dispatches. Median Q5/request/span moves
+**479.776/1,826.542/1,850.682 -> 470.606/1,814.537/1,834.282 ms
+(-1.911%/-0.657%/-0.886%)** with unchanged scratch-free resources. Clean
+one-queue 512/1K/4K moves **271.744/233.742/161.579 ->
+272.936/234.834/162.416 tok/s (+0.439%/+0.468%/+0.518%)**, 3/3 wins each with
+unchanged workspace and lifecycle recovery. Retain four eager aliases; package
+policy and canonical H5W **271.526/234.020/161.853 tok/s** remain unchanged
+pending the frozen selector-unset publication gate
 ([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
@@ -1024,7 +1034,7 @@ heldouts before any clean publication.
 | **WPF-H5U exact global preappend cached-source local256** | **Runtime rejected; standalone leaf retained** | Standalone starts are byte/CPU exact and weighted event/wall falls **17.148%/16.955%**. Default-off M512/C4096 is KL0, tracing records **48 H5U + 144 H5R** pairs at unchanged **1,862** dispatches and cuts global schedule **15.494%**; matched M512 is **+0.849% with 5/5 wins**. Source-default 4K is **+0.073%**, but the binding balanced role-ineligible 1K adjudication is **-0.00257% with 2/8 wins**. Remove runtime policy/map/runner/tests; H5R stays production. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json). |
 | **WPF-H5V exact Q5 one-wave sequential K-partition replay** | **Rejected; all candidate surfaces removed** | All six H5L roles remain byte-exact at rows17/33/M512. Cached local32 symbols preserve SGPR128, LDS, and scratch0 with only +8 VGPR. Yet **0/6** roles wins both clocks; producer-inclusive weighted event/wall regresses **464.968/466.267 -> 492.423/493.754 ms (+5.905%/+5.895%)**. Remove code/tests and retain H5L/H5G; do not retry without a new operation or cross-tile reuse premise. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json). |
 | **WPF-H5W exact Q6 weight-major composite reuse** | **Complete; retained gfx1100 production through 4K** | Exactly three Q6 wrappers/keys reuse retained local128 16x5-BF16, 16x4-BF16, and 16x5-F32 physical symbols across **142/143** H5I-selected calls with no new body/symbol/allocation. Rows17/33/M512 and complete state are byte-exact at KL0. Cached integration records **142 H5W + one H5I + three raw** consumers at unchanged **1,862/289** request/Q6 dispatches, cuts Q6/request sum **23.635%/2.628%**, and preserves scratch0/resources. Default-off 512/1K/4K is **+1.830%/+1.492%/+1.061%**; selector-unset confirms **+1.785%/+1.532%/+1.100%**, 3/3 wins each, promoting **271.526/234.020/161.853 tok/s**. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) · [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json). |
-| **WPF-H5X exact tile-K-col F32 AoSoA Q5 plane** | **Standalone leaf admitted for four roles; runtime pending** | All six actual M512 outputs and rows17/33 plane permutations are byte-exact. Physical ISA realizes **8/12/16 `global_load_b32` -> 2/3/4 `global_load_b128`** with unchanged local128 consumer resources; the producer is local256/VGPR16/scratch0. Four roles / **151 calls** win both clocks; two losing BF16 surfaces are removed and H5L retains **37** calls. Six-role selected event/wall falls **1.556%/1.668%**; final-source winners fall **2.683%/3.009%**, 4/4 wins. Production remains H5W pending complete-state/integrated/clean gates. [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json). |
+| **WPF-H5X exact tile-K-col F32 AoSoA Q5 plane** | **Default-off runtime qualified for four roles; source default pending** | All six actual M512 outputs and rows17/33 plane permutations are byte-exact. Physical ISA realizes **8/12/16 `global_load_b32` -> 2/3/4 `global_load_b128`** with unchanged local128 consumer resources; the producer is local256/VGPR16/scratch0. Four roles / **151 calls** win both clocks; two losing BF16 surfaces are removed and H5L retains **37** calls. Complete state is KL0. Paired tracing records **151 H5X + 37 H5L + 47 H5G** at unchanged **1,862/470** request/Q5 dispatches and cuts median Q5/request/span **1.911%/0.657%/0.886%**. Default-off 512/1K/4K is **+0.439%/+0.468%/+0.518%**, 3/3 wins each. Retain four eager aliases, but production remains H5W pending selector-unset publication. [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh H5W M512 span-minus-sum is only **26.726 ms / 1.461%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H5W 4K is **161.853 tok/s (+1.018% over H5R canonical)**. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |

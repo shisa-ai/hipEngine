@@ -910,9 +910,13 @@ actual M512 outputs are exact. Four roles / **151 calls** win both clocks; remov
 BF16 K3072/N12288 and K9216/N3072 surfaces and retain H5L for their **37**
 calls. Six-role selected event/wall falls **465.863/467.511 -> 458.615/459.712
 ms (-1.556%/-1.668%)**; final-source winners fall **265.784/266.992 ->
-258.653/258.959 (-2.683%/-3.009%)** with 4/4 wins. No package owner exists yet;
-next require complete state, exact **151 H5X + 37 H5L + 47 H5G** topology, and
-clean 512/1K/4K before source default
+258.653/258.959 (-2.683%/-3.009%)** with 4/4 wins. Default-off complete state
+is KL0 and byte-exact. Four counter-rotated cached request segments record exact
+**151 H5X + 37 H5L + 47 H5G** ownership at unchanged **1,862/470** request/Q5
+dispatches and cut median Q5/request/span **1.911%/0.657%/0.886%**. Clean
+512/1K/4K improves **+0.439%/+0.468%/+0.518%**, 3/3 wins each. Retain four
+eager aliases while package policy remains H5L/H5G; next freeze and run the
+selector-unset source-default gate
 ([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·

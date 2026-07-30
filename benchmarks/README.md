@@ -32,9 +32,16 @@ linear producer is local256/VGPR16/scratch0. Four roles / **151 calls** win both
 clocks; remove the two losing surfaces and retain H5L for their **37** calls.
 The six-role selected event/wall model moves **465.863/467.511 ->
 458.615/459.712 ms (-1.556%/-1.668%)**. Final-source winners independently move
-**265.784/266.992 -> 258.653/258.959 ms (-2.683%/-3.009%)**. Production remains
-H5W **271.526/234.020/161.853 tok/s** pending complete-state, integrated, and
-clean runtime gates. WPF-H5S screens the distinct persistent row-group Q5
+**265.784/266.992 -> 258.653/258.959 ms (-2.683%/-3.009%)**. Default-off
+complete state is KL0/byte-exact across all 48 boundaries. Four counter-rotated
+cached request segments preserve **1,862/470** request/Q5 dispatches and exact
+**151 H5X + 37 H5L + 47 H5G** ownership while median Q5/request/span moves
+**479.776/1,826.542/1,850.682 -> 470.606/1,814.537/1,834.282 ms
+(-1.911%/-0.657%/-0.886%)**. Clean 512/1K/4K improves
+**271.744/233.742/161.579 -> 272.936/234.834/162.416 tok/s
+(+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Production remains H5W
+**271.526/234.020/161.853 tok/s** pending selector-unset publication. WPF-H5S
+screens the distinct persistent row-group Q5
 dimension at partitions **1/2/4/8/16/32**. All candidate outputs are byte-exact, all 36 symbols are
 scratch-free, and resource classes rise only eight VGPR, but **0/6** actual
 roles win both clocks. Even P32 regresses producer-inclusive weighted event/wall
@@ -407,8 +414,13 @@ aligned `global_load_b128` consumers with unchanged H5L arithmetic/resources.
 All six screened outputs are exact; four roles / **151 calls** win both clocks,
 and the two losing roles are removed. Selected six-role event/wall falls
 **1.556%/1.668%**; the four final-source winners fall **2.683%/3.009%** with
-4/4 wins. No package owner exists yet. Wider qrows, cross-head/key-split, source
-MMQ, and changed-association attention stay closed
+4/4 wins. Default-off complete state is KL0; paired tracing records exact
+**151 H5X + 37 H5L + 47 H5G** ownership and cuts median Q5/request/span
+**1.911%/0.657%/0.886%** at unchanged topology. Clean 512/1K/4K improves
+**+0.439%/+0.468%/+0.518%**, 3/3 wins each. Four eager aliases are retained,
+but package policy remains H5L/H5G pending selector-unset publication. Wider
+qrows, cross-head/key-split, source MMQ, and changed-association attention stay
+closed
 ([H5X candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·

@@ -236,9 +236,16 @@ numbers below.
   scalar loads with 2/3/4 `global_load_b128`**, and four roles / **151 calls**
   win both clocks. Remove two losing surfaces and retain H5L for **37** calls.
   Six-role selected event/wall falls **1.556%/1.668%** and the four final-source
-  winners fall **2.683%/3.009%**, 4/4 wins. Production remains H5W pending H5X
-  complete-state/integrated/clean gates. Both short rows exceed 150 tok/s and
-  H5W 4K remains positive; 16K+ stays closed below the 800/700 stretch target
+  winners fall **2.683%/3.009%**, 4/4 wins. Default-off complete state is KL0
+  and byte-exact across all 48 boundaries. Four paired cached request segments
+  record exact **151 H5X + 37 H5L + 47 H5G** ownership at unchanged
+  **1,862/470** request/Q5 dispatches and move median Q5/request/span
+  **479.776/1,826.542/1,850.682 -> 470.606/1,814.537/1,834.282 ms
+  (-1.911%/-0.657%/-0.886%)**. Clean 512/1K/4K improves
+  **271.744/233.742/161.579 -> 272.936/234.834/162.416 tok/s
+  (+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Production remains H5W only
+  pending selector-unset publication. Both short rows exceed 150 tok/s and H5W
+  4K remains positive; 16K+ stays closed below the 800/700 stretch target
   ([H5X candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
   [H5X target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
   [current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
