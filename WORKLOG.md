@@ -195193,3 +195193,22 @@ Vulkan local sizes verbatim will close the measured gap.
   integration. Production remains **22.780604 tok/s / 43.896992 ms/token**.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-uniform-meta-rejected.json`.
+
+## 2026-07-31 08:45 JST — Reject codegen-equivalent Q4 gate launch bounds
+
+- Screened the retained gfx1151 dual-interleaved tile8 gate/up owner with
+  `__launch_bounds__(128, 2)` against production
+  `__launch_bounds__(128, 4)`. Q/metadata transport, F32 math order, reduction,
+  BF16 boundary, grid, resident bytes, and fused SiLU were unchanged.
+- RED failed on the absent wrapper. GREEN synthetic coverage and the actual
+  layer-1 E256/K3072/N1024/top-10 leaf have zero BF16 mismatches.
+- Cache-only tracing reports local128/VGPR80/SGPR128/LDS512/scratch0 for both.
+  Disassembly is exactly codegen-equivalent: **3,360 bytes**, **574 normalized
+  instructions**, and identical normalized instruction lists.
+- Twenty-one counterbalanced 100-launch bursts are flat:
+  **0.117864 -> 0.117856 ms (-0.007%)**. This is timing noise over identical
+  machine code, so the candidate kernel, wrapper, harness selector, and test
+  addition were removed before runtime integration. Production remains
+  **22.780604 tok/s / 43.896992 ms/token**.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-lb2-codegen-equivalent.json`.
