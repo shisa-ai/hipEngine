@@ -981,18 +981,32 @@ class LagunaEagerLibraries:
             ),
             **(
                 {
-                    f"gguf_q5_k:f32_ordered_weight_major_coltile{col_tile}_"
+                    f"{quant}:f32_ordered_weight_major_coltile{col_tile}_"
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out": (
                         self.q5_f32_ordered
                     )
-                    for col_tile, row_batch, output_dtype in (
-                        (8, 4, "bf16"),
-                        (8, 12, "bf16"),
-                        (16, 5, "bf16"),
-                        (12, 8, "bf16"),
-                        (16, 5, "f32"),
-                        (8, 10, "f32"),
+                    for quant, geometries in (
+                        (
+                            "gguf_q5_k",
+                            (
+                                (8, 4, "bf16"),
+                                (8, 12, "bf16"),
+                                (16, 5, "bf16"),
+                                (12, 8, "bf16"),
+                                (16, 5, "f32"),
+                                (8, 10, "f32"),
+                            ),
+                        ),
+                        (
+                            "gguf_q6_k",
+                            (
+                                (16, 5, "bf16"),
+                                (16, 4, "bf16"),
+                                (16, 5, "f32"),
+                            ),
+                        ),
                     )
+                    for col_tile, row_batch, output_dtype in geometries
                 }
                 if self.q5_f32_ordered is not None
                 else {}

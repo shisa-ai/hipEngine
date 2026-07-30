@@ -221,8 +221,14 @@ numbers below.
   tracing records the Q6 producer immediately before local128/VGPR136-168/
   scratch0 consumers. Final-source producer-inclusive weighted event/wall falls
   **87.859/81.559 -> 70.756/67.795 ms (-19.466%/-16.876%)**, with all three
-  roles winning both clocks. Production stays unchanged pending complete-state,
-  integrated-route, and clean 512/1K/4K runtime gates. Both short rows exceed
+  roles winning both clocks. Default-off runtime qualification is KL0/byte-exact
+  across all 48 boundaries and complete state. Cached integration records exact
+  **142 H5W + one H5I + three raw** consumers at unchanged **1,862** request /
+  **289** Q6 dispatches and cuts Q6/request sum **121.306/1,851.695 ->
+  92.636/1,803.036 ms (-23.635%/-2.628%)**. One-queue clean 512/1K/4K is
+  **266.814/230.134/159.970 -> 271.697/233.568/161.668 tok/s
+  (+1.830%/+1.492%/+1.061%)**, 3/3 wins each. Production stays unchanged only
+  until the required selector-unset source-default rerun. Both short rows exceed
   150 tok/s and H5R 4K remains positive; 16K+ stays closed below the 800/700
   stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·

@@ -1687,9 +1687,16 @@ byte-exact. Cached tracing records each exact Q6 producer immediately before the
 expected VGPR136-168/LDS1024-1536/scratch0 consumer and exact grid. All three
 final-source roles win both clocks; producer-inclusive weighted event/wall falls
 **87.859/81.559 -> 70.756/67.795 ms (-19.466%/-16.876%)** across **142/143**
-H5I-selected calls. Preserve H5I F32-N72 and raw long-K/wide-N fallbacks;
-production remains unchanged until complete M512 state, exact integrated route
-counts/topology/ownership, and clean one-queue 512/1K/4K non-regression pass
+H5I-selected calls. Default-off runtime qualification is KL0/byte-exact across
+all 48 boundaries and complete state. Cached integration records exact
+**142 H5W + one H5I + three raw** consumers at unchanged **1,862** request /
+**289** Q6
+dispatches and moves Q6/request sum **121.306/1,851.695 -> 92.636/1,803.036 ms
+(-23.635%/-2.628%)**. One-queue clean 512/1K/4K improves
+**266.814/230.134/159.970 -> 271.697/233.568/161.668 tok/s
+(+1.830%/+1.492%/+1.061%)**, 3/3 wins each. Preserve H5I F32-N72 and raw
+long-K/wide-N fallbacks; production remains unchanged only until the required
+selector-unset source-default rerun
 ([H5W leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,

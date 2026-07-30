@@ -890,10 +890,14 @@ workspace, sidecar, or package-policy change. Rows17/33/M512 are byte-exact.
 Cached tracing records producer->consumer order at VGPR136-168/LDS1024-1536/
 scratch0 and expected grids. Every final-source role wins both clocks, moving
 producer-inclusive weighted event/wall **87.859/81.559 -> 70.756/67.795 ms
-(-19.466%/-16.876%)**. Preserve H5I F32-N72 and raw long-K/wide-N fallbacks;
-require complete state, integrated **142 H5W + one H5I + three raw** route
-counts, ownership/topology identity, and clean one-queue 512/1K/4K before
-package ownership
+(-19.466%/-16.876%)**. Default-off runtime is KL0/byte-exact across all 48
+boundaries and complete state. Cached integration records exact **142 H5W + one
+H5I + three raw** consumers at unchanged **1,862** request / **289** Q6
+dispatches; Q6/request sum falls **121.306/1,851.695 -> 92.636/1,803.036 ms
+(-23.635%/-2.628%)**. Clean one-queue 512/1K/4K improves
+**+1.830%/+1.492%/+1.061%** with 3/3 wins each. Preserve H5I F32-N72 and raw
+long-K/wide-N fallbacks; package ownership now requires only the frozen
+selector-unset source-default rerun
 ([H5W leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
 [H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
