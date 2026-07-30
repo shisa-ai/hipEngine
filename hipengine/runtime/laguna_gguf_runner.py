@@ -3164,11 +3164,6 @@ class LagunaGGUFResidentSession:
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
 
-    def set_f16_attention_quad_decode(self, enabled: bool) -> None:
-        """Select the exact c=1 source-F16 Q/K/V/gate quad."""
-
-        self.use_f16_attention_quad_decode = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 

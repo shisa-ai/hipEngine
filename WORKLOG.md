@@ -193741,3 +193741,11 @@ Vulkan local sizes verbatim will close the measured gap.
   `34462347...9ea`.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json`.
+
+## 2026-07-30 19:39 JST — Remove admitted F16-quad comparison seam
+
+- Removed `--compare-f16-attention-quad-decode`, its same-resident setter, and
+  comparison-protocol bookkeeping after clean publication and the wall census
+  passed. The session constructor override remains for explicit rollback and
+  tests; gfx1151 capability selection, the registered quad, peer-backend
+  behavior, and the exact unfused fallback are unchanged.
