@@ -194897,3 +194897,26 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked-clean selector-unset p512/d128 production publication.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json`.
+
+## 2026-07-31 05:33 JST — Publish c=1 routed/shared overlap
+
+- Tracked-clean selector-unset revision `5fddf8500` automatically applies
+  `GPU_MAX_HW_QUEUES=2` and the gfx1151 decode-overlap capability. Three
+  p512/d128 repetitions measure
+  **22.736808/22.752894/22.753717 tok/s**, median
+  **22.752894 tok/s / 43.950453 ms/token**. This advances the prior clean
+  router-projection checkpoint **22.581875 -> 22.752894 (+0.757329%)** and
+  saves **0.332849 ms/token**.
+- The three runs preserve next/final tokens **2930/74107**, final position
+  **638**, generated-ID SHA-256 `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete tracked-allocation
+  recovery. pp512 remains flat at **657.699 tok/s** median.
+- Current exact decode is now **+98.426%** over the **11.466687 tok/s**
+  sprint start and only **1.120931 ms/token / 2.617% throughput** behind the
+  same-GGUF Vulkan result. Reaching 24 tok/s still requires
+  **2.283786 ms/token**; the overlap win changes the next optimization
+  premise but does not complete the target.
+- Raw production SHA-256 is
+  `dc132d3f4e19dce03b0e5a8b933d5282e91ddd41cf678b01a7d8e9e3cde60ac5`.
+  Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json`.

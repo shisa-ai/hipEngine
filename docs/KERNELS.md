@@ -2474,8 +2474,11 @@ tail. The schedule preserves **482 kernels/token**, moves **94** to the second
 queue, adds no resident bytes, and keeps the serial constructor rollback.
 Seven p512/d128 pairs improve **22.577646 -> 22.749657 tok/s (+0.76186%,
 7/7)**, while cached tracing cuts median device span
-**44.516384 -> 44.042675 ms/token**. See
-`benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json`.
+**44.516384 -> 44.042675 ms/token**. Tracked-clean selector-unset production
+reaches **22.752894 tok/s / 43.950 ms/token** with flat pp512. See
+`benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json`
+and
+`benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json`.
 
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
 specialization. One thread owns each routed activation row, reads its compact

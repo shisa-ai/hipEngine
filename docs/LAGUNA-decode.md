@@ -7258,8 +7258,8 @@ The remaining attention sequence is:
      rereads the same resident tile:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-tile8-rejected.json).
 134. Extend the already-retained exact prefill routed/shared overlap schedule
-     to c=1's specialized T16 decode paths. **Retained for the gfx1151
-     default; clean publication pending.** Router projection and correction
+     to c=1's specialized T16 decode paths. **Retained, default, and
+     published.** Router projection and correction
      selection finish on the caller stream, then the complete shared
      gate/up+SiLU+down branch runs on the existing least-priority nonblocking
      stream while the caller executes selected gate/up and weighted selected
@@ -7284,11 +7284,16 @@ The remaining attention sequence is:
      **44.516384 -> 44.042675 (-0.473709 ms/token)**. This is real
      critical-path contraction, not an isolated leaf or launch-count proxy.
 
-     Promote through the gfx1151 package capability only; peer backends and
-     prefill scheduling are unchanged. The next gate is one tracked-clean
-     selector-unset p512/d128 production run, followed by removal of no
-     temporary comparison surface (only the constructor rollback remains):
-     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json).
+     The gfx1151 capability selects the schedule only when automatic
+     two-queue shared resources exist; peer backends and prefill scheduling
+     are unchanged. Tracked-clean selector-unset production at `5fddf8500`
+     reaches **22.752894 tok/s / 43.950 ms/token**, improving the prior
+     **22.581875 tok/s** checkpoint **0.75733%** and saving
+     **0.332849 ms/token**. Prefill remains flat at **657.699 tok/s**. One
+     hardware queue or constructor `False` keeps exact serial rollback; no
+     temporary comparison surface remains:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json).
 
 Current exact decode checkpoint:
 
@@ -7312,16 +7317,20 @@ Current exact decode checkpoint:
 | hipEngine retained router-projection wave-0 same-resident gate | **22.579029 tok/s** | **44.289 ms** | **+96.909%** |
 | hipEngine current tracked-clean router-projection wave-0 production | **22.581875 tok/s** | **44.283 ms** | **+96.935%** |
 | hipEngine retained c=1 routed/shared overlap gate | **22.749657 tok/s** | **43.957 ms** | **+98.400%** |
+| hipEngine current tracked-clean c=1 routed/shared overlap production | **22.752894 tok/s** | **43.950 ms** | **+98.426%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **1.454 ms/token** | hipEngine is **3.283%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **1.121 ms/token** | hipEngine is **2.617%** below Vulkan throughput |
 
-The refreshed post-router census confirms **47 wave-level / zero scalar**
+The retained two-stream schedule supersedes the single-stream wall while
+preserving its device kernels. The refreshed post-router census confirms
+**47 wave-level / zero scalar**
 decode projections per token. Router falls
 **1.082592 -> 1.054864 ms/token (-2.561%)**, complete kernel work falls
 **42.894886 -> 42.841932**, and span falls
 **44.564343 -> 44.514008 ms/token** at unchanged 482 dispatches. hipEngine
 kernel work is now **0.817268 ms/token below** Vulkan's logged GPU sum, while
-tracked-clean production remains **1.453781 ms/token** slower in wall time.
+the pre-overlap tracked-clean production remained **1.453781 ms/token** slower
+in wall time; current clean overlap reduces that gap to **1.120931 ms/token**.
 Dense/shared remains **0.017681 ms/token faster** than Vulkan. The remaining
 like-for-like positive family gaps rank paired selected gate/up
 **+0.321883**, selected down **+0.279808**, attention **+0.210155**, and
