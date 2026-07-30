@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-31",
+  "kind": "hipengine_laguna_decode_moe_branch_concurrency_production",
+  "status": "retained_production_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "tracked-clean selector-unset Poolside Laguna S 2.1 Q4_K_M p512/d128 eager c=1 on Radeon 8060S/gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "automatic GPU_MAX_HW_QUEUES=2",
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_bytes": 79066169172
+  },
+  "repo": {
+    "revision": "5fddf850034e90ee9a1db0f23be644a3791b74ca",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "production_default": {
+    "capability": "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY=true",
+    "resource_gate": "automatic only when the retained shared MoE resources and at least two hardware queues are active",
+    "schedule": "after router selection, run shared gate/up+SiLU+down at HIP priority +1 while selected gate/up and weighted down execute at priority 0; join before the exact MoE tail",
+    "arithmetic": "unchanged",
+    "resident_byte_delta": 0,
+    "device_kernel_delta": 0,
+    "peer_backends": "unchanged",
+    "fallback": "one hardware queue or constructor false selects exact serial execution"
+  },
+  "selector_unset": {
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output <tmp>",
+    "resolved_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "decode_samples_tok_s": [
+      22.736807616707083,
+      22.752894000735072,
+      22.753717118950693
+    ],
+    "decode_median_tok_s": 22.752894000735072,
+    "decode_median_ms_per_token": 43.95045307061569,
+    "previous_production_tok_s": 22.581875,
+    "previous_production_ms_per_token": 44.283302427944755,
+    "change_percent": 0.7573286130362122,
+    "saving_ms_per_token": 0.3328493566628268,
+    "prefill_samples_tok_s": [
+      609.8899076356159,
+      658.0577604662358,
+      657.6989763096972
+    ],
+    "prefill_median_tok_s": 657.6989763096972,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "tracked_allocations_recovered": true,
+    "raw_sha256": "dc132d3f4e19dce03b0e5a8b933d5282e91ddd41cf678b01a7d8e9e3cde60ac5"
+  },
+  "matched_ab": {
+    "source_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json",
+    "control_median_tok_s": 22.57764641745489,
+    "candidate_median_tok_s": 22.749656858999103,
+    "change_percent": 0.7618617032253194,
+    "candidate_wins": "7/7",
+    "paired_median_saving_ms_per_token": 0.3361147956731969,
+    "exact_trajectories": true
+  },
+  "rocprof": {
+    "source_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json",
+    "device_kernels_per_token": 482,
+    "secondary_kernels_per_token": 94,
+    "secondary_overlap_ms_per_token": 6.524765,
+    "secondary_overlap_percent": 99.808705,
+    "median_kernel_span_ms_per_token": {
+      "control": 44.516384,
+      "candidate": 44.042675,
+      "saving": 0.473709
+    }
+  },
+  "correctness": {
+    "production_shape_q4_bf16_mismatches": 0,
+    "full_model_trajectories_exact": true,
+    "final_positions_exact": true,
+    "resident_bytes_exact": true,
+    "lifecycle_pass": true,
+    "quality_transfer": "only stream scheduling changes; production-shape BF16 output is byte-exact and all matched/full production trajectories remain identical"
+  },
+  "comparison": {
+    "sprint_start_tok_s": 11.466687,
+    "change_vs_sprint_start_percent": 98.42604930905563,
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llamacpp_vulkan_ms_per_token": 42.829522,
+    "remaining_vulkan_gap_ms_per_token": 1.1209310706156899,
+    "remaining_vulkan_gap_percent": 2.6171923415355014,
+    "remaining_24_tok_s_gap_ms_per_token": 2.2837864039490228
+  },
+  "decision": {
+    "retained": true,
+    "production_default": true,
+    "reason": "the clean selector-unset result reproduces the unanimous matched A/B and profiler-visible critical-path reduction without changing prefill, arithmetic, residency, or kernel count"
+  }
+}

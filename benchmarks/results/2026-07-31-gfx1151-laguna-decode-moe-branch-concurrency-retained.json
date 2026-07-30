@@ -139,6 +139,6 @@
     "retained": true,
     "gfx1151_default": true,
     "reason": "the exact schedule wins all seven matched pairs, reduces wall and profiler-visible critical path, and adds no allocations, kernels, or resident bytes",
-    "production_publication_pending": "one tracked-clean selector-unset p512/d128 run after the implementation commit"
+    "production_publication": "benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json"
   }
 }

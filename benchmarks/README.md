@@ -52,22 +52,24 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.581875 tok/s / 44.283 ms/token**, up **96.935%** from the
-**11.466687 tok/s** sprint start. The latest exact router-projection
+**22.752894 tok/s / 43.950 ms/token**, up **98.426%** from the
+**11.466687 tok/s** sprint start. Exact low-priority routed/shared overlap
+moves **94 of 482 kernels/token** to the existing secondary stream after
+router selection. Seven matched pairs improve
+**22.577646 -> 22.749657 tok/s (+0.76186%, 7/7 wins)**, and tracked-clean
+selector-unset production advances **22.581875 -> 22.752894 tok/s
+(+0.75733%, -0.332849 ms/token)** with exact trajectories, unchanged
+residency, and flat **657.699 tok/s** prefill. Cached tracing overlaps
+**6.524765 ms/token** and cuts median device span
+**44.516384 -> 44.042675 ms/token**.
+[`production overlap`](results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json).
+The preceding exact router-projection
 wave-0 owner preserves the separate selector and full F32 dot association,
 but replaces the final shared-memory projection reduction with five wave32
 shuffles. Six of seven same-resident pairs improve
 **22.572873 -> 22.579029 tok/s (+0.02727%)**; tracked-clean selector-unset
 production advances **22.555437 -> 22.581875 tok/s (+0.11721%,
 -0.051906 ms/token)** at unchanged residency and launch count.
-The newly retained gfx1151 c=1 routed/shared overlap gate improves
-**22.577646 -> 22.749657 tok/s (+0.76186%, 7/7 wins)** and saves
-**0.336115 ms/token** by paired median with exact trajectories and unchanged
-residency/kernel count. Cached tracing moves **94 of 482 kernels/token** to
-the existing low-priority secondary stream, overlaps **6.524765 ms/token**,
-and cuts median device span **44.516384 -> 44.042675 ms/token**. A
-tracked-clean selector-unset publication is the remaining promotion gate.
-[`retained overlap`](results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json).
 The preceding exact Q4T16 shared-down owner
 streams **22.917%** fewer bytes than expanded pack8 while preserving its
 FP32 coefficient products, FMA/reduction order, BF16 outputs, and native D9
