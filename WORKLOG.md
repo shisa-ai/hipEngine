@@ -194337,3 +194337,22 @@ Vulkan local sizes verbatim will close the measured gap.
   `b012409461c9c87d65bbbaa9f79f3b8f3e936220d0cffcb38ddc00f5e1bd7cde`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-paired-expert-wall-reprofile.json`.
+
+## 2026-07-31 01:35 JST — Reject exact SWA one-ahead K register pipeline
+
+- RED first added the missing candidate to the real fixed512 wrap oracle; the
+  focused test failed on import. The implemented dense-ring-only sibling then
+  passed that live-HIP CPU/byte gate with zero context-F32 or gated-BF16
+  differences at the 512 -> 513 transition.
+- The required gfx1151 21x100 saturated-SWA leaf regressed
+  **0.021326771 -> 0.021988809 ms/layer (+3.104260%)**. The second live K bank
+  loses in the retained local512/VGPR-heavy owner before a whole-model screen.
+- The candidate, wrapper, harness route, and RED fixture were removed. Per the
+  bounded gate, do not repeat the same strategy in global attention and stop
+  exact scalar K-load scheduling. Production remains **22.262504 tok/s**.
+- Command:
+  `HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-output-sharded-probability-dpp-qk-dense-ring-key-pipeline-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --require-cached-build --allow-dirty --output /tmp/laguna-swa-key-pipeline-leaf.json`
+- Raw output SHA-256:
+  `f2a149eee834de100776e681e65ccefdd28ebff0f3d55be92c6cd843944355b3`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-swa-key-pipeline-rejected.json`.

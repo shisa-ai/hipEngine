@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-31T01:35:34+09:00",
+  "status": "rejected_removed",
+  "scope": "gfx1151 Laguna exact saturated-SWA decode attention",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M weights, BF16 KV cache",
+  "source_revision": "f7ecc1d2aec4e4d22c9a7160111a95b904948ea5",
+  "candidate": "one-slot-ahead BF16 K register pipeline inside the retained dense-ring local512 DPP-QK owner",
+  "shape": {
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "scan_slots": 512,
+    "sliding_window": 512
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-output-sharded-probability-dpp-qk-dense-ring-key-pipeline-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --require-cached-build --allow-dirty --output /tmp/laguna-swa-key-pipeline-leaf.json",
+    "samples": 21,
+    "warmups": 5,
+    "burst": 100,
+    "raw_output_sha256": "f2a149eee834de100776e681e65ccefdd28ebff0f3d55be92c6cd843944355b3"
+  },
+  "correctness": {
+    "red": "focused live-HIP test failed to import the absent candidate",
+    "green": "focused live-HIP wrap/eviction test passed",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_max_abs_error": 0.0
+  },
+  "performance": {
+    "control_median_ms": 0.021326770782470705,
+    "candidate_median_ms": 0.02198880910873413,
+    "latency_change_percent": 3.1042595853638666,
+    "control_samples_ms": [
+      0.022112278938293456,
+      0.02166485071182251,
+      0.02115809917449951,
+      0.02125859022140503,
+      0.021280629634857176,
+      0.021324310302734375,
+      0.021334741115570068,
+      0.021320719718933106,
+      0.02131592035293579,
+      0.021390159130096436,
+      0.021259410381317137,
+      0.02133517026901245,
+      0.021342780590057373,
+      0.021386470794677735,
+      0.021305909156799318,
+      0.021313529014587402,
+      0.02137603998184204,
+      0.02123579978942871,
+      0.021326770782470705,
+      0.021332380771636964,
+      0.021367640495300294
+    ],
+    "candidate_samples_ms": [
+      0.022350530624389648,
+      0.02196160078048706,
+      0.021962809562683105,
+      0.021987950801849364,
+      0.021981940269470215,
+      0.021970319747924804,
+      0.022006399631500244,
+      0.02203526020050049,
+      0.022008409500122072,
+      0.021975948810577392,
+      0.02202323913574219,
+      0.022005228996276854,
+      0.02200922966003418,
+      0.022006020545959473,
+      0.022335350513458252,
+      0.02198678970336914,
+      0.02195473909378052,
+      0.021929099559783935,
+      0.02198760986328125,
+      0.02198880910873413,
+      0.02204010009765625
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "production_changed": false,
+    "reason": "The first required performance gate regressed 3.104%; remove the candidate and do not transfer the same register-live-range strategy to global attention.",
+    "next": "Stop exact scalar load-schedule tuning and require a structural cooperative candidate with a tighter exact-replay certificate."
+  }
+}
