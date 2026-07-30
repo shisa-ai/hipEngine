@@ -3702,9 +3702,9 @@ a valid smaller win:
 | Streaming-family floor | >=70% of measured read roof | About 155 GB/s if the same-host anchor is 221 GB/s; report each mapped family. |
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
-The 350 and 500 production targets are achieved and current pp512 production
-is **655.535 tok/s**. The 700 stretch and stronger streaming/roofline rows
-remain active targets.
+The 350 and 500 production targets are achieved and current tracked-clean
+pp512 production is **656.990 tok/s**. The 700 stretch and stronger
+streaming/roofline rows remain active targets.
 
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
@@ -3719,13 +3719,13 @@ two-queue policy, but their timing scopes are not interchangeable.
 
 | Metric | Current result | Protocol / status |
 | --- | ---: | --- |
-| Repeated short prefill, 512/1K/4K | **655.535 / 579.699 / 468.608 tok/s** | Paired-layout pp512 production; 1K/4K carry the prior repeated closure |
+| Repeated short prefill, 512/1K/4K | **656.990 / 579.699 / 468.608 tok/s** | Tracked-clean paired-layout pp512 production; 1K/4K carry the prior repeated closure |
 | Canonical clean one-pass capacity sweep, 512/1K/4K/32K/64K/128K | **614.031 / 666.901 / 609.879 / 365.481 / 247.408 / 149.308 tok/s** | Clean anti-overtuning closure; exact positions and lifecycle |
 | Post-pair one-pass capacity confirmation, same shapes | **597.902 / 664.805 / 606.498 / 365.623 / 246.748 / 148.780 tok/s** | Candidate-tree confirmation; 32K/64K/128K are **+0.039%/-0.267%/-0.354%** versus clean closure, with exact positions/lifecycle |
-| Simple p512/d128 eager c=1 decode | **22.260802 tok/s** | Current exact byte-neutral paired expert production; exactly 127 timed `forward_token` calls |
-| Prefill paired with the decode snapshot | **655.535 tok/s** | Same three-run production packet; ordinary-layout control is 654.569 tok/s |
+| Simple p512/d128 eager c=1 decode | **22.262504 tok/s** | Tracked-clean exact byte-neutral paired expert production; exactly 127 timed `forward_token` calls |
+| Prefill paired with the decode snapshot | **656.990 tok/s** | Tracked-clean three-run production packet; same-revision ordinary-layout A/B control is 654.569 tok/s |
 | Absolute quality | **0.049542582 max KL; 316/320 top-1** | Complete ten-prompt all-exact gate passes |
-| Next short-prefill target | **700 tok/s / 731.429 ms** | Current pp512 wall **781.041 ms**; **49.612 ms** remains |
+| Next short-prefill target | **700 tok/s / 731.429 ms** | Current pp512 wall **779.312 ms**; **47.883 ms** remains |
 
 All three p512/d128 production runs produce token **2930** first, token
 **74107** last, position **638**, and the same complete 128-token hash.
@@ -3739,8 +3739,8 @@ The subsequent gfx1151-native GQA3 SWA score owner moves its same-commit
 rollback **14.563678 -> 14.740486 tok/s (+1.214%)** without changing the
 trajectory.
 The subsequent exact decode campaign advances this same protocol to
-**22.260802 tok/s**. Its latest byte-neutral step replaces both ordinary
-routed-expert T16 allocations with one paired allocation and independently
+**22.262504 tok/s** tracked-clean. Its latest byte-neutral step replaces both
+ordinary routed-expert T16 allocations with one paired allocation and independently
 improves same-revision decode **0.59027%** plus pp512 **0.14757%** without
 changing resident bytes or state. A fresh 128K-capacity anti-overtuning pass
 confirms **597.902/664.805/606.498/365.623/246.748/148.780 tok/s** at

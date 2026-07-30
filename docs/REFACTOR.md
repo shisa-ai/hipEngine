@@ -2182,7 +2182,8 @@ should be boring.
   `LagunaGGUFResidentSession(...,
   use_q4_expert_t16_dual_interleaved=False)`. Same-revision production improves
   **22.130173 -> 22.260802 tok/s** with exact state and unchanged
-  **79,022,522,196-byte** residency.
+  **79,022,522,196-byte** residency. Tracked-clean publication reaches
+  **22.262504 tok/s** decode and **656.990 tok/s** pp512.
 - The existing repacked cache still stores ordinary gate and up T16 payloads,
   so default load interleaves them on the host and rises
   **92.084 -> 142.902 seconds**. Retain the rollback until a versioned paired
