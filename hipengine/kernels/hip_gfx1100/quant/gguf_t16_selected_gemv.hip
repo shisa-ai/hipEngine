@@ -1787,6 +1787,119 @@ void q4_k_t16_dense_dual_local32_silu_gemv_kernel(
   }
 }
 
+// Decode-only dense/shared Q4T16 single-output owner. Match the retained
+// pack8 local32 owner exactly: each lane owns eight contiguous K values per
+// 256-wide superblock, every output uses the same FMA sequence and wave32
+// reduction tree, and the final scalar is rounded directly to BF16.
+template <typename scalar_t>
+__global__ __launch_bounds__(32, 8)
+void q4_k_t16_dense_single_local32_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+
+  float acc[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc[local_col] = 0.0f;
+  }
+
+  const int k_lane_base = tid * 8;
+  const int sb = k_lane_base >> 5;
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) *
+                    Q4_T16_BLOCK_BYTES;
+
+    float scale[kTileCols];
+    float min_value[kTileCols];
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t coeff_scale =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t coeff_min =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      scale[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(d)) *
+          static_cast<float>(coeff_scale & 0xFFu);
+      scale[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+          static_cast<float>(coeff_scale >> 8);
+      min_value[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+          static_cast<float>(coeff_min & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+          static_cast<float>(coeff_min >> 8);
+    }
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int k_in_block = k_lane_base + j;
+      const int lane32 = k_in_block & 31;
+      const float xv =
+          scalar_to_float<scalar_t>(x[blk * QK_K + k_in_block]);
+#pragma unroll
+      for (int local_pair = 0;
+           local_pair < kTileCols / 2;
+           ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const int col0 = col_base + local_col0;
+        const int q_index =
+            Q4_T16_Q_OFFSET +
+            (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+            (col0 >> 1);
+        const uint8_t packed = tile[q_index];
+        acc[local_col0] = fmaf(
+            xv,
+            static_cast<float>(packed & 0x0Fu) *
+                    scale[local_col0] -
+                min_value[local_col0],
+            acc[local_col0]);
+        acc[local_col1] = fmaf(
+            xv,
+            static_cast<float>(packed >> 4) *
+                    scale[local_col1] -
+                min_value[local_col1],
+            acc[local_col1]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc[local_col]);
+  }
+  if (tid == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      out[out_base + local_col] =
+          float_to_scalar<scalar_t>(0.0f + acc[local_col]);
+    }
+  }
+}
+
 // Decode-only dense/shared dual-interleaved Q4T16 owner. This preserves the
 // retained local32 arithmetic exactly while replacing the two same-size T16
 // streams with one byte-neutral paired stream.
@@ -3566,6 +3679,36 @@ int launch_q4_dense_dual_local32_silu(
   return hipGetLastError();
 }
 
+template <typename scalar_t>
+int launch_q4_dense_single_local32(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 1 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  hipLaunchKernelGGL(
+      (q4_k_t16_dense_single_local32_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
 template <typename scalar_t, int kTileCols>
 int launch_q4_dense_dual_interleaved_local32_silu(
     const void* x,
@@ -3981,6 +4124,15 @@ hipengine_gguf_q4_k_t16_dense_dual_local32_silu_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_dense_dual_local32_silu<uint16_t>(
       x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_single_local32<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int
