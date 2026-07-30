@@ -192453,3 +192453,23 @@ Vulkan local sizes verbatim will close the measured gap.
   before commit. Production remains **20.803189 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q6-natural-weighted-decode-rejected.json`.
+
+## 2026-07-30 09:13 JST — Reject exact paired-query scalar PV on V64
+
+- Re-audit llama.cpp Vulkan `c0bc8591e` on the actual RADV device. GQA folding
+  changes decode `N=1` to global/SWA `N=6/9` before the final tuning pass, so
+  subgroup64 plus `VK_KHR_cooperative_matrix` selects coopmat1
+  Br16/Bc64/local256 with K64 split-K. The scalar `N=1` fallback does not run.
+- Screen an exact mixed40/local512/V64 analogue: four output waves carry each
+  natural query pair, reuse one staged BF16 V load, and retain two independent
+  512-slot F32 FMA chains. RED fails on the absent wrapper; GREEN is byte-exact
+  in F32 context and gated BF16 through wrap and explicit eviction.
+- The cached 9x50 leaf regresses **0.031300 -> 0.034642 ms (+10.675%)** and
+  loses all nine pairs. Scalar query pairing halves useful PV wave breadth;
+  V-load reuse alone does not inherit llama.cpp's cooperative throughput.
+- Remove every candidate kernel/wrapper/test/harness seam before commit.
+  Production stays **20.803189 tok/s**. The production capability retains its
+  historical V64 boolean name but dispatches the already-retained V128 symbol;
+  no V128 default was lost in the merge.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-paired-pv-v64-rejected.json`.

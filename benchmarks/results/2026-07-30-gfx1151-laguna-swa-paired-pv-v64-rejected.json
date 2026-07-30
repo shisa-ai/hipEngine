@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T09:13:07+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_paired_query_pv_v64_screen",
+  "status": "rejected_at_leaf_and_removed",
+  "performance_claim": false,
+  "source": {
+    "base_revision": "ac6fff70e0bf8ecc50b6c9eb688cc9a184f5d7f0",
+    "candidate_uncommitted": true,
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
+    "llamacpp_repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "llamacpp_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "comparator_audit": {
+    "device_features": "subgroupSize 64 plus VK_KHR_cooperative_matrix revision 2",
+    "host_selection": "decode GQA folding changes N=1 to N=6 global or N=9 SWA before the final FlashAttention tuning pass",
+    "selected_path": "coopmat1 Br16 x Bc64, local256/four wave64 subgroups, K64 split-K",
+    "transfer_premise": "reuse one staged V value across multiple grouped-query accumulators while keeping independent scalar F32 chains"
+  },
+  "candidate": {
+    "shape": "72Q/8KV/D128/SWA512, mixed40/local512, V-stage64",
+    "description": "Four output waves carry the natural query pair for each 2-query owner, load each staged BF16 V value once, and update two independent slot-order F32 FMA accumulators. Singleton owners retain one accumulator.",
+    "arithmetic_changed": false,
+    "dispatch_count_changed": false,
+    "resident_layout_changed": false
+  },
+  "correctness": {
+    "red": "focused wrapped/evicted test failed importing the absent paired-PV wrapper",
+    "green": "focused wrapped/evicted test passed after implementation",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-tail-producer-value-tail-idle-vec4-denom-probability-paired-pv-vstage64-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-paired-pv-leaf-9x50.json",
+    "raw_sha256": "8a4e1b09cbfc60ea520077fbe4b1be1325aac98a662f5579744ca2440ed655e6",
+    "control_median_ms": 0.031300179958343506,
+    "candidate_median_ms": 0.0346416187286377,
+    "latency_change_percent": 10.675461849552349,
+    "candidate_losses": 9,
+    "paired_samples": 9
+  },
+  "decision": {
+    "retain": false,
+    "candidate_code_removed": true,
+    "production_default_unchanged": true,
+    "production_decode_tok_s": 20.803189,
+    "reason": "Halving per-query staged-V reads cannot repay halving the active PV wave breadth. The scalar exact analogue does not inherit cooperative-matrix grouped-query throughput.",
+    "scope_closed": "Do not retry paired-query scalar PV on the V64 owner unchanged.",
+    "next": "Keep the production V128/local512 owner and test two exact exponent-producer waves per query, which increases softmax issue width without serializing PV."
+  }
+}

@@ -5936,6 +5936,29 @@ The remaining attention sequence is:
     serial top-10 ownership for natural T16; a viable weighted fusion must
     retain route-parallel weight streaming:
     [`Q6 natural-weighted rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q6-natural-weighted-decode-rejected.json).
+84. Transfer llama.cpp's grouped-query V reuse into two exact scalar PV
+    accumulators per wave. **V64 leaf rejected and removed:** the source audit
+    confirms the exact comparator path at `c0bc8591e`: RADV exposes subgroup64
+    plus `VK_KHR_cooperative_matrix`; host GQA folding changes decode `N=1` to
+    global/SWA `N=6/9` before final tuning, selecting coopmat1
+    **Br16 x Bc64/local256** plus K64 split-K. The transferable premise is one
+    V tile serving multiple query accumulators, not the Vulkan API.
+
+    The exact HIP screen keeps mixed40/local512/V64 ownership but maps each
+    natural query pair onto the same four output waves. Every query retains its
+    original 512 slot-order FMA chain while both accumulators reuse one staged
+    BF16 V load. RED fails on the absent wrapper; GREEN is F32-context and
+    gated-BF16 byte-exact through wrap and explicit eviction.
+
+    The 9x50 cached leaf regresses
+    **0.031300 -> 0.034642 ms (+10.675%)**, losing all nine pairs. Halving LDS V
+    reads cannot repay halving active scalar PV wave breadth; cooperative
+    grouped-query reuse does not transfer as serial scalar accumulation. Remove
+    the kernel, wrapper, test, and harness seam before commit. Production
+    remains **20.803189 tok/s**. This closes only the unchanged V64 form; the
+    next distinct exact screen keeps production V128/PV breadth and assigns two
+    exponent-producer waves per query:
+    [`paired-PV V64 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-paired-pv-v64-rejected.json).
 
 Current exact decode checkpoint:
 
