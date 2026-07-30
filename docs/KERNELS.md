@@ -874,8 +874,20 @@ M512/C4096 is KL0; tracing records **48 H5U + 144 H5R** pairs at unchanged
 **1,862** dispatches and cuts global schedule **15.494%**. Matched direct M512
 improves **0.849% with 5/5 wins**, but source-default ownership is rejected:
 the final balanced role-ineligible 1K adjudication is **-0.00257% with 2/8
-wins**. Remove all global runtime-policy plumbing and retain only the leaf
-([H5U runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
+wins**. Remove all global runtime-policy plumbing and retain only the leaf.
+H5V next targets the largest retained family without reopening H5S persistence
+or H5P geometry. A separate local32 Q5 weight-major body keeps one workgroup per
+H5L output tile/row group and sequentially replays original local128 logical K
+partitions 0..3. The same accumulator plane is reused; each unchanged wave
+reduction is retained in the existing four-plane LDS shape before the same
+serial partition sum/store. Producer, F32 plane, geometry, workgroup order and
+count, scalar FMA association, LDS bytes, workspace, and fallbacks remain
+unchanged. The modeled **20,085,760 -> 5,021,440** physical wave instances and
+removal of **5,021,440** whole-block barriers are not a speed claim. Require
+rows17/33/M512 identity, local32/scratch0 with no material VGPR regression, and
+producer-inclusive both-clock timing across all six roles before any owner
+([H5V target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
+[H5U runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
 [H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
 [H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
 [H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·

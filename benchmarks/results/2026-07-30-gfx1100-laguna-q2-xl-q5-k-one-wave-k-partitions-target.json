@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_q5_one_wave_k_partitions_target_selection",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "14a9efe76",
+    "post_h5r_residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json",
+    "post_h5r_residual_artifact_sha256": "78ab0d31b0304e76031e094a368d70b6340aa77c51f8b041dd4b60aadbbed363",
+    "h5s_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json",
+    "h5s_rejection_artifact_sha256": "d358caa4e49e2e224f5d4511ae2110d8b80f565b52a3d0b6ccd842bf42652dcc",
+    "h5u_runtime_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json",
+    "h5u_runtime_rejection_artifact_sha256": "721c7f487602466b9f4e6b8e3d1608acc6e32fc3a6195a2f57fbccd4179bf7fa",
+    "h5l_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json",
+    "h5l_production_artifact_sha256": "742c7bb7abc99b11e9a116d8eb73bd40af56ad61ec738bd0394d69981af7a5e4",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "source": "net-new in-tree exact wave32 schedule for H5L's four logical K partitions; no external device body is copied",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "e2588d7f8b3aacc9b4f6945bc26a857c7aae7414db716d1efc15076a56767baa",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "2a7cf30ee1521b0450b05f907f72f5a44e39089f90bc4a350fbf6014233e1c57",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a9c9c4a05d4ef8bc875d4dfb440803f32784b29d81c00cfe6c0dab9c6cb1bb8e"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "production": {
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157,
+    "request_kernel_sum_ms": 1851.695368,
+    "request_kernel_span_ms": 1877.998081,
+    "request_dispatches": 1862,
+    "span_minus_sum_ms": 26.30271300000004,
+    "span_minus_sum_percent": 1.400571878433141,
+    "production_policy_changed": false
+  },
+  "attribution": {
+    "q5_ms": 482.338679,
+    "matched_llamacpp_q5_ms": 58.95103,
+    "family_gap_ms": 423.387649,
+    "family_ratio": 8.18202292648661,
+    "share_of_total_kernel_gap_percent": 37.55444832063171,
+    "exact_f32_producer_calls": 235,
+    "exact_f32_producer_ms": 15.850593,
+    "h5l_weight_major_calls": 188,
+    "h5l_weight_major_ms": 464.597421,
+    "h5l_share_of_q5_percent": 96.32182556108049,
+    "trace_sha256": "b07a7fca715e6f8d03ce55bec591287a188e3ae749fcca211b09574157dc6bd3",
+    "analyzer_sha256": "9f8003599bad7c985c560463554a1447909454479b3f8507f2d03f5bba59067a",
+    "summary_sha256": "f474338cfb00d67ccf4532a73ebe9a44a154f503887700881f1488626b6235f7"
+  },
+  "current_h5l_ownership": {
+    "roles": [
+      {
+        "name": "bf16_k3072_n1024",
+        "calls": 92,
+        "geometry": "coltile8_rowbatch4",
+        "current_ms": 36.303428,
+        "weighted_workgroups": 1507328
+      },
+      {
+        "name": "bf16_k3072_n12288",
+        "calls": 2,
+        "geometry": "coltile8_rowbatch12",
+        "current_ms": 16.288235,
+        "weighted_workgroups": 132096
+      },
+      {
+        "name": "bf16_k6144_n3072",
+        "calls": 12,
+        "geometry": "coltile16_rowbatch5",
+        "current_ms": 27.716413,
+        "weighted_workgroups": 237312
+      },
+      {
+        "name": "bf16_k9216_n3072",
+        "calls": 35,
+        "geometry": "coltile12_rowbatch8",
+        "current_ms": 189.221596,
+        "weighted_workgroups": 573440
+      },
+      {
+        "name": "f32_k3072_n6144",
+        "calls": 12,
+        "geometry": "coltile16_rowbatch5",
+        "current_ms": 26.825803,
+        "weighted_workgroups": 474624
+      },
+      {
+        "name": "f32_k3072_n9216",
+        "calls": 35,
+        "geometry": "coltile8_rowbatch10",
+        "current_ms": 168.241946,
+        "weighted_workgroups": 2096640
+      }
+    ],
+    "weighted_workgroups": 5021440,
+    "current_local128_waves": 20085760,
+    "current_whole_block_barriers": 5021440,
+    "candidate_local32_waves": 5021440,
+    "candidate_wave_scheduling_instance_reduction": 4,
+    "candidate_wave_scheduling_instance_reduction_percent": 75.0,
+    "useful_fma_work_unchanged": true,
+    "weight_and_activation_reads_unchanged": true,
+    "workgroup_count_unchanged": true,
+    "counts_are_schedule_rationale_not_performance_claim": true
+  },
+  "target": {
+    "label": "WPF-H5V exact Q5 one-wave sequential K-partition replay",
+    "variant_family": "ordered_weight_major_wave32_serial_k4_coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
+    "roles": 6,
+    "local_size": 32,
+    "mapping": "one local32 wave owns one unchanged H5L output-tile/row-group workgroup; for logical partition p=0..3, lane i replays original local128 lane p*32+i at k=p*32+i+128*n, reduces the unchanged accumulator tile with offsets 16/8/4/2/1, stores that partition's reduced tile in the existing four-plane LDS shape, then reuses the same register accumulator plane for p+1; after p=3, lanes stride output elements and add stored partition totals 0 through 3 before the unchanged BF16/F32 store",
+    "preserved": "H5L exact F32 producer and plane, weight-major output-tile/row-group order, role geometry, workgroup count, each logical lane's K sequence, BF16-to-F32 activation widening, scalar fmaf order, wave32 reduction tree, serial partition 0..3 sum, BF16/F32 store, one producer plus one consumer launch, workspace, allocation, and H5L/H5G fallbacks",
+    "changed": "four local128 waves execute sequentially in one wave32 while the accumulator register plane is reused between partitions; whole-block synchronization is removed and each reduced partition is retained in the same logical four-plane LDS partial shape",
+    "new_launches": 0,
+    "new_allocations": 0,
+    "new_workspace_bytes": 0,
+    "new_sidecar_bytes": 0,
+    "production_policy_changed": false,
+    "gfx1151_policy_changed": false
+  },
+  "closed_predecessors": {
+    "h5s_persistent_row_groups": "looped multiple row groups inside one long local128 block and regressed all six roles; H5V retains one row group per workgroup and changes only physical K-partition ownership",
+    "h5t_iq3_one_wave": "kept four independent accumulator planes live concurrently and was event-neutral; H5V targets Q5 and reuses one accumulator plane while spilling only reduced partition totals to the existing LDS shape",
+    "h5p_geometry": "cross-screened accumulator tile geometry and retained one standalone leaf but rejected runtime ownership; H5V keeps every production geometry unchanged",
+    "h5o_factorized_plane": "added coefficient reconstruction and lost all roles; H5V keeps exact F32 weights and operation values unchanged",
+    "source_mmq_and_sgemm": "changed-association Q8_1/WMMA/SGEMM routes remain complete-quality rejected; H5V preserves exact scalar FMA and reduction association",
+    "larger_output_tiles": "constant-112/128 accumulators were universally slower and hit the VGPR256 spill cliff; H5V does not grow the accumulator tile"
+  },
+  "distinctness": {
+    "from_h5s": "no persistent row-group loop, no extra end-of-row-group barrier, and unchanged workgroup lifetime per output tile/row group",
+    "from_h5t": "one accumulator plane is reused across sequential partitions instead of holding four partition planes in registers",
+    "from_geometry_sweeps": "COL_TILE and ROW_BATCH remain exactly production-selected per role",
+    "from_changed_arithmetic": "every per-partition FMA, shuffle, partition sum, and output conversion remains in production order",
+    "unmeasured_in_current_prefill_path": true
+  },
+  "admission": {
+    "red_first": "add separate gfx1100-only symbols/keys for the six H5L roles; require strict geometry/output-dtype preflight before HIP loading, rows17/33 and natural-M512 H5L byte identity, unchanged package policy, and gfx1151 absence",
+    "resources": "cached trace must physically name local32, unchanged LDS class, scratch0, expected grid, and no more than +16 VGPR versus each H5L control; any private memory or spill rejects before timing",
+    "performance": "actual weights for all six roles and 188 calls with the unchanged producer in both arms; five warmups, 15 counter-rotated repetitions, five launches/sample; HIP-event plus synchronized-wall medians; retain a role only if both clocks improve, and require the final selected weighted aggregate to improve both clocks",
+    "runtime_gate_if_admitted": "only then add a bounded default-off role map with H5L/H5G fallbacks; require complete natural-M512 state, exact integrated call inventory, unchanged launch/allocation/workspace, and clean one-queue 512/1K/4K non-regression before source default",
+    "rejection": "remove every H5V surface if no role clears exactness, resources, and both-clock timing"
+  },
+  "decision": {
+    "selected": true,
+    "production_changed": false,
+    "next_action": "Freeze RED and implement separately registered local32 sequential-K4 H5V leaves; screen every H5L role before any runtime owner."
+  }
+}
