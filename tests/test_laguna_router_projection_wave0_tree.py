@@ -182,11 +182,12 @@ def test_router_projection_wave0_tree_package_registry_scope_and_fallback() -> N
     import hipengine.kernels.hip_gfx1151 as gfx1151
 
     gfx1151.register_gfx1151_kernels(replace=True)
-    for backend in ("hip_gfx1151", "cuda_sm86", "cpu_reference"):
+    assert is_registered(KernelKey("hip_gfx1151", _LAYER, _QUANT, _VARIANT))
+    for backend in ("cuda_sm86", "cpu_reference"):
         assert not is_registered(KernelKey(backend, _LAYER, _QUANT, _VARIANT))
 
     runtime_source = _RUNTIME.read_text(encoding="utf-8")
-    assert _VARIANT not in runtime_source
+    assert runtime_source.count(_VARIANT) == 1
     assert _SYMBOL not in runtime_source
     import hipengine.kernels.hip_gfx1100 as backend
 

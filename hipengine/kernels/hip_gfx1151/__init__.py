@@ -74,6 +74,10 @@ LAGUNA_F16_PROJECTION_HEAD_KV_DECODE = True
 # and standalone local256 add/RMSNorm trees while removing 48 launches/token.
 # Seven exact same-resident pairs are all positive.
 LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE = True
+# Exact c=1 router projection wave-level reduction. Seven same-resident
+# p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
+# registered rollback.
+LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = True
 # Exact K3072/N1024 gate/up and K1024/N3072 down siblings preserve the
 # production local128 grid and reduction order while compile-time-specializing
 # only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
@@ -692,13 +696,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k+gguf_q6_k+gguf_q6_k+gguf_q5_k",
             "mixed_pair_reuse_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
         ),
-        # Laguna c=1 F32-router wave-0 reduction is W7900-only pending an
-        # independent gfx1151 correctness and performance gate.
-        (
-            "router_logits",
-            "f32",
-            "bf16_hidden_wave0_tree",
-        ),
         # Laguna compact/persistent routing is W7900-only pending independent gates.
         (
             "laguna_sigmoid_router_topk",
@@ -949,6 +946,7 @@ __all__ = [
     "LAGUNA_Q6_QMICRO",
     "LAGUNA_Q6_QMICRO_PLANAR",
     "LAGUNA_Q6_QMICRO_PERMUTE",
+    "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE",
     "LAGUNA_ROUTER_LOGITS_MODE",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",

@@ -58,6 +58,7 @@ class LagunaMoETailHostBatchContext:
 
 
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
+_ROUTER_LOGITS_WAVE0_TREE_VARIANT = "bf16_hidden_wave0_tree"
 _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DUAL_NATURAL_VARIANT = (
@@ -980,6 +981,12 @@ def resolve_laguna_moe_plan(
                 "router_logits",
                 "f32",
                 "bf16_hidden_token_tile_16",
+            ),
+            "wave0_tree": KernelKey(
+                backend,
+                "router_logits",
+                "f32",
+                _ROUTER_LOGITS_WAVE0_TREE_VARIANT,
             ),
         }
     )
@@ -2756,6 +2763,7 @@ def run_laguna_moe_c1_components(
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
     use_q4_shared_down_t16_decode: bool = False,
+    use_router_projection_wave0_tree: bool = False,
     tail_context: LagunaMoETailHostBatchContext | None = None,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
@@ -2773,7 +2781,12 @@ def run_laguna_moe_c1_components(
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
 
-    plan.router_logits(
+    router_logits = (
+        plan.router_logits_functions["wave0_tree"]
+        if use_router_projection_wave0_tree
+        else plan.router_logits
+    )
+    router_logits(
         hidden_bf16_ptr,
         router,
         scratch.router_logits.ptr,

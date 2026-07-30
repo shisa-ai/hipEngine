@@ -2332,6 +2332,7 @@ class LagunaGGUFResidentSession:
         use_q4_shared_down_t16_decode: bool | None = None,
         use_q4_expert_t16_dual_interleaved: bool | None = None,
         use_shared_down_moe_tail_host_batch: bool | None = None,
+        use_router_projection_wave0_tree: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2900,6 +2901,15 @@ class LagunaGGUFResidentSession:
             )
         )
         self.router_logits_mode = resolve_laguna_router_logits_mode(self.backend)
+        self.use_router_projection_wave0_tree = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE",
+                False,
+            )
+            if use_router_projection_wave0_tree is None
+            else use_router_projection_wave0_tree
+        )
         self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(self.backend)
         self.group_compact_mode = resolve_laguna_group_compact_mode(self.backend)
         self.f16_prefill_mode = resolve_laguna_f16_prefill_mode(self.backend)
@@ -3267,6 +3277,11 @@ class LagunaGGUFResidentSession:
             self.backend,
             mode,
         )
+
+    def set_router_projection_wave0_tree(self, enabled: bool) -> None:
+        """Select the exact c=1 wave-level router projection reduction."""
+
+        self.use_router_projection_wave0_tree = bool(enabled)
 
     def set_f16_prefill_mode(self, mode: str) -> None:
         """Select the explicit rows>1 source-F16 projection route."""
@@ -5522,6 +5537,9 @@ class LagunaGGUFResidentSession:
             ),
             use_q4_shared_down_t16_decode=(
                 self.use_q4_shared_down_t16_decode
+            ),
+            use_router_projection_wave0_tree=(
+                self.use_router_projection_wave0_tree
             ),
             tail_context=tail_context,
         )

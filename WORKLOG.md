@@ -194691,3 +194691,38 @@ Vulkan local sizes verbatim will close the measured gap.
   materially different router schedule or graph-wide submission amortization.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-router-wave-top10-rejected.json`.
+
+## 2026-07-31 03:52 JST — Retain gfx1151 router-projection wave-0 tree
+
+- Followed the fused-router rejection's explicit reopen criterion with a
+  materially different schedule: preserve one workgroup/expert and the
+  separate correction-bias selector, but replace only the final exact
+  shared-memory projection reduction with one publication plus five wave32
+  shuffle-down additions. This changes neither residency nor launch count.
+- RED failed all three absent gfx1151/runtime/benchmark contracts. GREEN adds
+  the gfx1151 alias, explicit four-axis plan route, default-on architecture
+  capability, c=1-only runtime selection, scalar rollback, and counterbalanced
+  comparison harness. The focused projection/plan/profile bundle passes
+  **44 tests**, including live HIP. A wider bundle reproduced only the two
+  already-recorded unrelated failures: the stale prefill scratch-byte literal
+  and rows-three experimental Q6 equivalence assertion.
+- One directional resident p512/d128 pair saves **0.033729 ms/token**. The
+  seven-pair gate moves **22.572873 -> 22.579029 tok/s (+0.02727%)**, saves
+  **0.012080 ms/token** by independent and paired medians, and wins **6/7**.
+  All arms preserve tokens **2930/74107**, final position 638, generated-ID
+  SHA-256 `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete allocation recovery. Raw
+  SHA-256 is
+  `2a8b0c727440d4a9fca209a0e368399eb6c78efc15664f2ba7cb6f754a3efe56`.
+- Cache-only `rocprofv3` names
+  `qwen35_router_logits_bf16_f32w_wave0_tree_kernel` at local256,
+  VGPR24/SGPR128/scratch0 with **1.282/1.402 us** synthetic dispatches. Trace
+  SHA-256 is
+  `77e18fa645c7fd2e6136492a80b7d3e06055d9b34655cc067e073b8b864dbf0d`;
+  no compiler runs under the profiler.
+- The mandatory lineage command remains environment-blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; no external source was
+  copied. Publish tracked-clean selector-unset production next, then remove
+  the temporary comparison setter/CLI while retaining constructor rollback.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json`.

@@ -2419,3 +2419,18 @@ should be boring.
   **24 T16 / zero pack8** shared-down calls per token. The comparison CLI and
   session setter are removed. Retain the constructor rollback, capability,
   sidecars, registered owners, and expanded-pack8 fallback.
+
+## Laguna gfx1151 router-projection wave-0 selector
+
+- Added 2026-07-31 as
+  `LagunaGGUFResidentSession.set_router_projection_wave0_tree(...)` and
+  `--compare-router-projection-wave0-tree`. The gfx1151 capability defaults
+  on; false restores the exact scalar local256 projection while preserving
+  the separate correction-bias selector.
+- Six of seven same-resident p512/d128 candidates improve
+  **22.572873 -> 22.579029 tok/s (+0.02727%)**, saving
+  **0.012080 ms/token** by paired median with unchanged trajectory, residency,
+  and launch count.
+- Remove the comparison CLI and session setter after tracked-clean
+  selector-unset production. Retain the constructor rollback, architecture
+  capability, registered wave-level owner, and scalar local256 fallback.

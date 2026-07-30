@@ -7125,6 +7125,31 @@ The remaining attention sequence is:
      submission amortization or a router schedule that avoids last-producer
      tail work:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-wave-top10-rejected.json).
+130. Transfer the exact c=1 router-projection wave-0 tree to gfx1151 without
+     fusing the selector. **Retained/default pending clean publication:** this
+     is the materially different schedule left open by item 129. It keeps one
+     workgroup per expert and the separate correction-bias selector, preserves
+     every BF16/F32 load, eight-term accumulation, K traversal, per-thread
+     partial, stride-128/64/32 addition, and F32 logit bit, then replaces only
+     the final shared-memory reduction with five wave32 shuffle-down additions.
+     It changes neither resident bytes nor launch count.
+
+     The live primitive remains F32-bit exact against the scalar reduction and
+     passes the CPU-reference KL/top-1 gate. Cache-only tracing names the native
+     gfx1151 candidate at local256, VGPR24/SGPR128/scratch0 with plausible
+     **1.282/1.402 us** synthetic dispatches. One directional resident-model
+     pair saves **0.033729 ms/token**. The seven-pair counterbalanced gate then
+     moves **22.572873 -> 22.579029 tok/s (+0.02727%)**, saving
+     **0.012080 ms/token** by both independent and paired medians; candidates
+     win **6/7**.
+
+     Every arm preserves next/final tokens **2930/74107**, final position 638,
+     generated-ID SHA-256 `94f803f7...bda32`, repeat determinism,
+     **79,066,169,172-byte** residency, and complete allocation recovery.
+     Promote only gfx1151 c=1; gfx1100 remains on its independently rejected
+     production route, rows/prefill keep token-tile projection, and the scalar
+     local256 key remains exact rollback:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json).
 
 Current exact decode checkpoint:
 
@@ -7145,6 +7170,7 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean global local1024 production | **22.378602 tok/s** | **44.686 ms** | **+95.162%** |
 | hipEngine retained exact Q4T16 shared-down same-resident gate | **22.563488 tok/s** | **44.319 ms** | **+96.776%** |
 | hipEngine current tracked-clean Q4T16 shared-down production | **22.555437 tok/s** | **44.335 ms** | **+96.704%** |
+| hipEngine retained router-projection wave-0 same-resident gate | **22.579029 tok/s** | **44.289 ms** | **+96.909%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining tracked-clean wall gap | — | **1.506 ms/token** | hipEngine is **3.396%** below Vulkan throughput |
 
