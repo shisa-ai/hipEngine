@@ -7515,6 +7515,28 @@ The remaining attention sequence is:
      harness, and RED/GREEN additions before runtime integration. Production
      remains **22.780604 tok/s / 43.896992 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-pair2-rejected.json).
+143. Scalarize wave-uniform Q4 gate/up scale/min metadata after auditing the
+     retained gfx1151 ISA.
+     **Rejected at the actual-weight leaf gate and completely removed.**
+     Block-uniform d/dmin already compile to scalar `s_load_b256` transport and
+     scalar FP16 conversion. Scale/min addresses vary only by wave K32
+     subblock, but compile as two vector `global_load_b128` operations. The
+     exact candidate keeps those aligned vectors and applies `readfirstlane`
+     to each word before unchanged dequantization and FMA.
+
+     RED fails on the absent wrapper. GREEN and the actual layer-1
+     E256/K3072/N1024/top-10 fixture have zero BF16 mismatches. The candidate
+     preserves local128/grid16,384/SGPR128/LDS512/scratch0, but does not reduce
+     allocated VGPRs from **80** and expands static code **3,360 -> 3,408
+     bytes**. Twenty-one counterbalanced 100-launch bursts regress
+     **0.113190 -> 0.119996 ms (+6.013%)**.
+
+     Remove the kernel, wrapper, harness selector, and test addition before
+     runtime integration. The coalescer already handles the replicated wave
+     address; `readfirstlane` adds transfer work without eliminating the
+     vector instruction. Production remains **22.780604 tok/s /
+     43.896992 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-uniform-meta-rejected.json).
 
 Current exact decode checkpoint:
 

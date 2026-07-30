@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T08:38:00+09:00",
+  "kind": "hipengine_laguna_q4_gate_uniform_metadata_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "b862f4cd13fdb51615a9529c34fa3e422faeb36a",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "isa_audit": {
+    "kernel": "q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel<unsigned short>",
+    "finding": "Block-uniform d/dmin already compile to scalar s_load_b256 plus scalar FP16 conversions. Wave-uniform scale/min compile as two vector global_load_b128 operations because their address depends on the wave K32 subblock.",
+    "candidate": "Load the same aligned scale/min u32x4 vectors, readfirstlane each word into wave-uniform values, and leave Q, F32 dequantization, FMA order, reduction, BF16 boundaries, grid, layout, and bytes unchanged."
+  },
+  "correctness": {
+    "red": "ImportError on the absent uniform-metadata wrapper.",
+    "green": "Synthetic natural selected-decode coverage matches every BF16 output byte against the retained dual-interleaved tile8 owner.",
+    "actual_leaf_bf16_mismatches": 0,
+    "pass": true
+  },
+  "leaf": {
+    "shape": "actual layer-1 E256/K3072/N1024/top10 Q4 gate+up, fused SiLU",
+    "protocol": "21 counterbalanced samples, five warmups, 100 launches/timing burst",
+    "control_median_ms": 0.11318964004516602,
+    "candidate_median_ms": 0.11999564170837403,
+    "candidate_change_percent": 6.012919257002869,
+    "raw_sha256": "73d865f72dbd60b6ef17e69c90dcc05856f3fcdf842ad2a238c8bf57bf282119"
+  },
+  "trace": {
+    "control_vgpr_count": 80,
+    "candidate_vgpr_count": 80,
+    "sgpr_count": 128,
+    "local_x": 128,
+    "grid_threads": 16384,
+    "lds_block_bytes": 512,
+    "scratch_bytes": 0,
+    "candidate_static_code_bytes": 3408,
+    "control_static_code_bytes": 3360,
+    "trace_sha256": "e69682282781d4bb55452d2ea776ee44f30bf6503dbaad0aba61bf496e388af9"
+  },
+  "decision": {
+    "result": "reject and remove before runtime integration",
+    "reason": "readfirstlane transport does not change the 80-VGPR allocation or vector load count, adds scalar-transfer instructions, and regresses the actual leaf 6.01%. The hardware coalescer already handles the replicated wave address efficiently.",
+    "production": "unchanged at 22.780604 tok/s / 43.896992 ms/token",
+    "reopen_only_if": "The resident layout makes scale/min block-uniform or eliminates the metadata load rather than copying it from the first lane."
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits --maxfail=1",
+    "leaf": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-uniform-meta --gate-only --samples 21 --warmups 5 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-gate-uniform-meta-leaf.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-gate-uniform-meta-trace.MUFxXr --output-file trace -- .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits"
+  }
+}

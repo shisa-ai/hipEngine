@@ -195170,3 +195170,26 @@ Vulkan local sizes verbatim will close the measured gap.
   preserves the exact per-column arithmetic tree.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-pair2-rejected.json`.
+
+## 2026-07-31 08:38 JST — Reject Q4 gate/up wave-uniform metadata transfer
+
+- Disassembled the retained gfx1151 dual-interleaved tile8 gate/up owner.
+  Block-uniform d/dmin already use scalar `s_load_b256` plus scalar FP16
+  conversion. Wave-uniform scale/min still appear as two vector
+  `global_load_b128` instructions because their address depends on the wave's
+  K32 subblock.
+- Implemented an exact `u32x4 + readfirstlane` screen for those two vectors.
+  Q, FP32 dequantization/FMA order, reductions, BF16 boundaries, grid, layout,
+  bytes, and SiLU remain unchanged.
+- RED failed on the absent wrapper. GREEN synthetic coverage and the actual
+  layer-1 E256/K3072/N1024/top-10 leaf have zero BF16 mismatches. Cache-only
+  tracing retains local128/grid16,384/SGPR128/LDS512/scratch0 and allocated
+  VGPR80; static code grows **3,360 -> 3,408 bytes**.
+- Twenty-one counterbalanced 100-launch bursts reject the candidate:
+  **0.113190 -> 0.119996 ms (+6.013%)**. `readfirstlane` does not remove the
+  vector load instruction or reduce VGPR allocation; it adds scalar-transfer
+  work over an already-coalesced address.
+- Removed all candidate code, wrapper, harness, and tests before runtime
+  integration. Production remains **22.780604 tok/s / 43.896992 ms/token**.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-uniform-meta-rejected.json`.
