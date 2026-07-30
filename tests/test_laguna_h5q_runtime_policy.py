@@ -22,38 +22,54 @@ _H5Q_IQ3 = (
 _H5Q_ABI = "grouped_raw_iq_active_experts"
 
 
-def test_h5q_package_policy_is_default_off_bounded_and_fail_closed(monkeypatch) -> None:
+def test_h5q_package_policy_is_promoted_bounded_and_fail_closed(monkeypatch) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
-    production_variants = {
+    h5j_variants = {
         "gguf_iq3_xxs": _H5J_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
-    candidate_variants = {
-        **production_variants,
-        "gguf_iq3_xxs": _H5Q_IQ3,
-    }
-    candidate_abis = {_H5Q_IQ3: _H5Q_ABI}
+    production_variants = {**h5j_variants, "gguf_iq3_xxs": _H5Q_IQ3}
+    production_abis = {_H5Q_IQ3: _H5Q_ABI}
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants
-    assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+    assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == production_abis
+    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
     assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+
+    package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
+        _H5Q_IQ3
+    )
+    assert package_default.grouped_exact_down_routes["gguf_iq3_xxs"].abi == _H5Q_ABI
+    assert package_default.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
+    assert package_default.grouped_exact_down_routes["gguf_iq4_xs"].abi == (
+        "grouped_raw_iq"
+    )
 
     monkeypatch.setattr(
         hip_gfx1100,
         "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
-        candidate_variants,
+        h5j_variants,
     )
     monkeypatch.setattr(
         hip_gfx1100,
         "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
-        candidate_abis,
+        {},
     )
-    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert candidate.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H5Q_IQ3
-    assert candidate.grouped_exact_down_routes["gguf_iq3_xxs"].abi == _H5Q_ABI
-    assert candidate.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
-    assert candidate.grouped_exact_down_routes["gguf_iq4_xs"].abi == "grouped_raw_iq"
+    rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H5J_IQ3
+    assert rollback.grouped_exact_down_routes["gguf_iq3_xxs"].abi == "grouped_raw_iq"
 
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        production_variants,
+    )
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
+        production_abis,
+    )
     wrong_shape = resolve_laguna_moe_plan(
         replace(config, expert_feed_forward_length=2048),
         backend="hip_gfx1100",

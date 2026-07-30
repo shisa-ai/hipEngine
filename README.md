@@ -167,12 +167,14 @@ numbers below.
   matches H5J, and cached tracing is local128/VGPR48/LDS512/scratch0. Complete
   M512 state is KL0/byte-exact; integrated tracing selects all **45** IQ3 calls
   and cuts IQ-down/request sum **3.255%/0.491%**. Default-off clean 512/1K/4K
-  improves **+0.702%/+0.278%/+0.370% (3/3 paired wins each)**. Production stays
-  H5J pending the selector-unset source-default publication gate.
-  Both short rows exceed 150 tok/s and H5M 4K
+  improves **+0.702%/+0.278%/+0.370% (3/3 paired wins each)**; selector-unset
+  source-default publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3
+  paired wins each. H5Q is production at **239.981/219.494/158.693 tok/s** and
+  narrows the apples-to-apples llama.cpp HIP M512 gap to **2.89266x**.
+  Both short rows exceed 150 tok/s and H5Q 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
   [H5Q leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
   [H5Q target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
   [H5P rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·

@@ -1658,14 +1658,9 @@ def test_h5j_grouped_iq_down_package_policy_is_bounded_and_fail_closed(
         ),
     }
 
-    assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == candidate_variants
+    # H5Q now owns the package IQ3 entry; this historical H5J contract keeps
+    # testing its explicit map and every retained fallback independently.
     assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
-    package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert {
-        quant: key.variant
-        for quant, key in package_default.grouped_exact_down_keys.items()
-    } == candidate_variants
-
     monkeypatch.setattr(
         hip_gfx1100,
         "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",

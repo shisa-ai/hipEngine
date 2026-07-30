@@ -121,22 +121,23 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
-# WPF-H5J promotes exact K1024/N3072 IQ3/IQ4 row ownership after KL0 complete
-# state, all 47 expected integrated calls, and positive clean 512/1K/4K timing.
-# Every map, shape, registration, and backend miss retains the preceding route.
+# WPF-H5Q promotes exact K1024/N3072 active-expert P64 IQ3 ownership after KL0
+# complete state, all 45 expected integrated calls, and positive clean
+# 512/1K/4K timing. H5J's exact IQ4 owner remains unchanged; every map, ABI,
+# shape, registration, and backend miss retains the preceding exact route.
+_H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "resident_rowbatch8_bf16_bf16_out"
+)
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
-    "gguf_iq3_xxs": (
-        "selected_grouped_prefill_compact_k1024_resident_"
-        "rowbatch8_bf16_bf16_out"
-    ),
+    "gguf_iq3_xxs": _H5Q_IQ3_ACTIVE_EXPERT_VARIANT,
     "gguf_iq4_xs": (
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),
 }
-# H5Q's admitted P64 leaf requires the existing active-expert list/count ABI.
-# Keep ABI overrides empty until complete-state, trace, and all-length runtime
-# qualification proves package ownership; H5J remains the selector-unset owner.
-LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
+LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
+    _H5Q_IQ3_ACTIVE_EXPERT_VARIANT: "grouped_raw_iq_active_experts"
+}
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. WPF-1T's exact constant-accumulator screen admits four adjacent output

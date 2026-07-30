@@ -1599,13 +1599,15 @@ local128/VGPR48/SGPR128/LDS512/scratch0 resources, unchanged metadata/
 allocation, and gfx1151 fail-closed. Complete M512 state is KL0/byte-exact;
 integrated tracing selects all **45** P64 IQ3 calls and cuts IQ-down/request sum
 **3.255%/0.491%**. Default-off clean 512/1K/4K improves
-**+0.702%/+0.278%/+0.370%**, with 3/3 paired wins at every length. Production
-remains H5J pending selector-unset source-default publication. The old
-wider-qrow, cross-head/key-split,
+**+0.702%/+0.278%/+0.370%**, with 3/3 paired wins at every length. Selector-unset
+publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3 paired wins each,
+and promotes **239.981/219.494/158.693 tok/s**. One bounded gfx1100 IQ3
+variant+ABI entry changes; H5J remains fallback, IQ4 is unchanged, and gfx1151
+stays fail-closed. The old wider-qrow, cross-head/key-split,
 rowbatch16, output-tile, source-MMQ, changed-association attention, and
 P6/repair routes remain closed.
 Launch fusion remains
-below its trigger at **1.251%** request span-minus-sum.
+below its trigger at **1.213%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

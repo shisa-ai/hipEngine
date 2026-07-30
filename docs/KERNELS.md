@@ -831,9 +831,13 @@ reduction/store order, metadata, allocation, layout, and H5J fallback remain
 unchanged. Complete state is KL0/byte-exact and integrated tracing selects all
 **45** P64 IQ3 calls, cutting IQ-down/request sum **3.255%/0.491%**. The
 scoped default-off clean gate improves 512/1K/4K
-**+0.702%/+0.278%/+0.370%**, with 3/3 paired wins each. Production remains H5J
-until the selector-unset source-default publication gate passes
-([H5Q leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
+**+0.702%/+0.278%/+0.370%**, with 3/3 paired wins each. Selector-unset
+publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3 wins each, and
+promotes **239.981/219.494/158.693 tok/s**. Only the gfx1100 K1024/N3072/E256
+IQ3 variant+ABI entries change; H5J remains fallback, IQ4 is unchanged, and
+gfx1151 remains fail-closed
+([H5Q production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
+[H5Q leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
 [H5Q target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
 [H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
