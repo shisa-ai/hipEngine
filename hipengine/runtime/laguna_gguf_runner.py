@@ -3439,11 +3439,6 @@ class LagunaGGUFResidentSession:
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
 
-    def set_q4_shared_down_t16_decode(self, enabled: bool) -> None:
-        """Select exact Q4T16 shared-down decode or pack8 rollback."""
-
-        self.use_q4_shared_down_t16_decode = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 

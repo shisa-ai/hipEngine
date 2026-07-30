@@ -2415,3 +2415,7 @@ should be boring.
   Retain the constructor rollback, architecture capability, sidecar
   materialization, registered T16 single-output and host-batch keys, and
   expanded-pack8 fallback.
+- Tracked-clean publication passes at **22.555437 tok/s** and tracing records
+  **24 T16 / zero pack8** shared-down calls per token. The comparison CLI and
+  session setter are removed. Retain the constructor rollback, capability,
+  sidecars, registered owners, and expanded-pack8 fallback.

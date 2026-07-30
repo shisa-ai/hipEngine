@@ -7075,7 +7075,7 @@ The remaining attention sequence is:
      loader rollback while a paired cache format removes that one-time debt:
      [`production gate`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
 128. Consume the existing compact T16 layout for the 24 Q4 shared-down
-     projections. **Retained/default pending clean publication:** the exact
+     projections. **Retained/default and published:** the exact
      local32/tile8 owner preserves expanded-pack8's K ownership, FP32
      coefficient products, FMA sequence, wave32 tree, BF16 store, and the
      retained native shared-down-to-D9 host boundary. Pack8 remains the
@@ -7089,9 +7089,20 @@ The remaining attention sequence is:
      **0.373822 ms/token**. Every token, trajectory, position, repeat, and
      lifecycle check is exact. Twenty-four decode-only sidecars add exactly
      **43,646,976 bytes**, bringing resident bytes to **79,066,169,172**.
-     Next publish a tracked-clean selector-unset packet and cached
-     127-transition census before removing the comparison seam:
-     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-retained.json).
+
+     Tracked-clean selector-unset production reaches **22.555437 tok/s /
+     44.335 ms/token**, improving the global-local1024 checkpoint
+     **0.79020% / 0.350336 ms/token** and reaching **+96.704%** over the
+     sprint start. Cached tracing proves **24 T16 / zero pack8** shared-down
+     calls per token and cuts dense/shared
+     **2.350846 -> 1.981566 ms/token (-15.708%)**, kernel sum
+     **43.248078 -> 42.894886**, and span
+     **44.927596 -> 44.564343 ms/token** at unchanged 482 dispatches/token.
+     The temporary comparison CLI/setter are removed; constructor override
+     and pack8 remain exact rollback:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-production.json),
+     [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
@@ -7109,25 +7120,23 @@ Current exact decode checkpoint:
 | hipEngine retained exact SWA local1024 same-resident gate | **22.356330 tok/s** | **44.730 ms** | **+94.968%** |
 | hipEngine prior tracked-clean SWA local1024 production | **22.335681 tok/s** | **44.771 ms** | **+94.788%** |
 | hipEngine retained exact global local1024 same-resident gate | **22.383414 tok/s** | **44.676 ms** | **+95.204%** |
-| hipEngine current tracked-clean global local1024 production | **22.378602 tok/s** | **44.686 ms** | **+95.162%** |
+| hipEngine prior tracked-clean global local1024 production | **22.378602 tok/s** | **44.686 ms** | **+95.162%** |
 | hipEngine retained exact Q4T16 shared-down same-resident gate | **22.563488 tok/s** | **44.319 ms** | **+96.776%** |
+| hipEngine current tracked-clean Q4T16 shared-down production | **22.555437 tok/s** | **44.335 ms** | **+96.704%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Current tracked-clean wall gap | — | **1.856 ms/token** | hipEngine is **4.154%** below Vulkan throughput |
-| Retained-gate wall gap pending clean publication | — | **1.490 ms/token** | hipEngine is **3.362%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **1.506 ms/token** | hipEngine is **3.396%** below Vulkan throughput |
 
-The refreshed post-global-local1024 census confirms the second exact
-cooperative-width transfer. Complete hipEngine kernel work is
-**43.248078 ms/token**, already **0.411122 ms/token below** Vulkan's logged
-GPU sum, while tracked-clean production remains **1.856022 ms/token** slower
-in wall time. Cumulatively, SWA is **0.721272 ms/token** and global falls
-**0.453932 -> 0.402996 (-11.221%)**; total attention is now
-**1.124268 ms/token**, only **+0.214845 ms/token** above Vulkan. The
-like-for-like positive family gaps now rank dense/shared **+0.350957**,
-paired selected gate/up **+0.321657**, selected down **+0.274700**,
-attention **+0.214845**, and router **+0.107659 ms/token**. The trace retains
-**482 model dispatches/token** and shows **1.679518 ms/token** between summed
-kernels and kernel span:
-[`post-global-local1024 census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json).
+The refreshed post-Q4T16 census closes dense/shared against the comparator.
+Complete hipEngine kernel work is **42.894886 ms/token**, now
+**0.764314 ms/token below** Vulkan's logged GPU sum, while tracked-clean
+production remains **1.505686 ms/token** slower in wall time. Dense/shared is
+**1.981566 ms/token**, **0.018323 ms/token faster** than Vulkan. The remaining
+like-for-like positive family gaps rank paired selected gate/up
+**+0.318431**, selected down **+0.277841**, attention **+0.210840**, and
+router **+0.111876 ms/token**. The trace retains **482 model
+dispatches/token** and shows **1.669457 ms/token** between summed kernels and
+kernel span:
+[`post-Q4T16 shared-down census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json).
 
 The producer-max and local1024 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
