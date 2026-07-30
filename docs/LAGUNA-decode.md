@@ -6473,6 +6473,23 @@ The remaining attention sequence is:
      **21.304731 tok/s (+0.3293%, -0.1545 ms/token)** versus the preceding
      clean production checkpoint:
      [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-production.json).
+105. Re-profile the tracked-clean dense-global wall.
+     **Accepted attribution checkpoint:** 127 one-token trace segments retain
+     **673 dispatches/token** and measure **45.088360 ms/token** kernel sum
+     plus **47.139237 ms/token** span. Versus the post-dense-ring census,
+     global attention falls **0.655231 -> 0.505909 ms/token (-22.789%)**,
+     total attention falls **1.542659 -> 1.383152 (-10.340%)**, kernel sum
+     falls **0.154051 ms/token**, and span falls **0.156104 ms/token**. SWA
+     and all non-attention families are stable.
+
+     The current named same-GGUF Vulkan gaps are selected gate/up
+     **+0.510319 ms/token**, attention **+0.473729**, and selected down
+     **+0.265733**; source-F16 is **0.717130 ms/token faster**. The ranking
+     has therefore changed: selected T16 gate/up is now the largest named
+     positive gap and **12.42%** of the complete clean wall gap, narrowly
+     ahead of attention at **11.53%**. Pivot the next bounded screen to the
+     exact T16 gate/up consumer:
+     [`post-dense-global census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-global-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
