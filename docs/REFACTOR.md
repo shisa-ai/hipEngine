@@ -2192,3 +2192,6 @@ should be boring.
   selector-unset publication and its first wall census. Retain the
   architecture capability, materialized T16 sidecars, and registered pack8
   fallback.
+- Tracked-clean publication passes at **21.851538 tok/s**, with all three
+  trajectories exact and the capability active. Remove the comparison seam
+  after the pending post-sidecar wall census.

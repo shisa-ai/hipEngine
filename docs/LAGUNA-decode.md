@@ -6558,15 +6558,20 @@ The remaining attention sequence is:
      explicit session rollback:
      [`T16 dense/shared retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-retained.json).
 
+     Tracked-clean selector-unset production confirms
+     **21.851538 tok/s**, or **+2.56660% / -1.174562 ms/token** versus the
+     preceding clean checkpoint, across three exact repeated trajectories:
+     [`T16 dense/shared production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine tracked-clean production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
-| hipEngine retained T16 sidecar | **21.852204 tok/s** | **45.762 ms** | **+90.567%** |
+| hipEngine prior tracked-clean production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
+| hipEngine current tracked-clean production | **21.851538 tok/s** | **45.763 ms** | **+90.565%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining retained wall gap | — | **2.932 ms/token** | hipEngine is **6.408%** below Vulkan throughput |
+| Remaining wall gap | — | **2.934 ms/token** | hipEngine is **6.411%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
