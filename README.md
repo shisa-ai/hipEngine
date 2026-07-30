@@ -259,8 +259,12 @@ numbers below.
   intended width-matched loads with identical consumer resources and scratch0.
   The **188-call** pack-inclusive event/wall aggregate falls
   **462.608/455.971 -> 263.014/274.237 ms (-43.145%/-39.856%)**, with 6/6
-  both-clock wins. Production remains H5X until complete-state, topology, and
-  clean 512/1K/4K runtime gates pass. Both short rows exceed 150 tok/s and H5X
+  both-clock wins. Default-off complete M512 state is KL0/byte-exact; paired
+  tracing adds exactly 188 packs and cuts Q5/request/span
+  **47.204%/9.685%/9.770%**. Clean 512/1K/4K improves
+  **272.917/234.864/162.367 -> 302.770/256.121/171.978 tok/s
+  (+10.939%/+9.051%/+5.920%)**, 3/3 wins each. Production remains H5X pending
+  selector-unset publication. Both short rows exceed 150 tok/s and H5X
   4K remains positive; 16K+ stays closed below the 800/700 stretch target
   ([H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
   [post-H5X matched residual / H5Y target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·

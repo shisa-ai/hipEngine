@@ -39,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+    q5_k_f32_activation_tile_k_row_nbytes,
     q5_k_f32_ordered_workspace_nbytes,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -629,36 +630,86 @@ class LagunaRowsScratch:
 
 @dataclass
 class LagunaQ5F32OrderedScratch:
-    """One projection-local exact F32 weight plane for ordered Q5 prefill."""
+    """Projection-local exact F32 weight and optional BF16 activation planes."""
 
     max_rows: int
     buffer: DeviceBuffer
+    activation_bf16_nbytes: int = 0
     _closed: bool = False
 
     _MAX_WEIGHT_IN_FEATURES = 3_072
     _MAX_WEIGHT_OUT_FEATURES = 12_288
+    _ACTIVATION_LAYOUTS = (
+        (3_072, 4),
+        (3_072, 12),
+        (6_144, 5),
+        (9_216, 8),
+        (3_072, 5),
+        (3_072, 10),
+    )
 
     @classmethod
-    def planned_nbytes(cls, *, max_rows: int) -> int:
-        rows = int(max_rows)
-        if rows <= 0:
-            raise ValueError("Q5 F32 ordered max_rows must be positive")
+    def weight_f32_planned_nbytes(cls) -> int:
         return q5_k_f32_ordered_workspace_nbytes(
             cls._MAX_WEIGHT_IN_FEATURES,
             cls._MAX_WEIGHT_OUT_FEATURES,
         )
 
     @classmethod
+    def activation_bf16_planned_nbytes(cls, *, max_rows: int) -> int:
+        rows = int(max_rows)
+        if rows <= 0:
+            raise ValueError("Q5 F32 ordered max_rows must be positive")
+        return max(
+            q5_k_f32_activation_tile_k_row_nbytes(
+                rows,
+                in_features,
+                row_batch,
+            )
+            for in_features, row_batch in cls._ACTIVATION_LAYOUTS
+        )
+
+    @classmethod
+    def planned_nbytes(
+        cls,
+        *,
+        max_rows: int,
+        use_activation_tile_k_row: bool = False,
+    ) -> int:
+        rows = int(max_rows)
+        if rows <= 0:
+            raise ValueError("Q5 F32 ordered max_rows must be positive")
+        activation_nbytes = (
+            cls.activation_bf16_planned_nbytes(max_rows=rows)
+            if use_activation_tile_k_row
+            else 0
+        )
+        return cls.weight_f32_planned_nbytes() + activation_nbytes
+
+    @classmethod
     def allocate(
         cls,
         *,
         max_rows: int,
+        use_activation_tile_k_row: bool = False,
         runtime: HipRuntime | None = None,
     ) -> "LagunaQ5F32OrderedScratch":
         rows = int(max_rows)
+        activation_nbytes = (
+            cls.activation_bf16_planned_nbytes(max_rows=rows)
+            if use_activation_tile_k_row
+            else 0
+        )
         return cls(
             max_rows=rows,
-            buffer=malloc(cls.planned_nbytes(max_rows=rows), runtime=runtime),
+            buffer=malloc(
+                cls.planned_nbytes(
+                    max_rows=rows,
+                    use_activation_tile_k_row=use_activation_tile_k_row,
+                ),
+                runtime=runtime,
+            ),
+            activation_bf16_nbytes=activation_nbytes,
         )
 
     @property
@@ -667,7 +718,13 @@ class LagunaQ5F32OrderedScratch:
 
     @property
     def weight_f32_nbytes(self) -> int:
-        return self.buffer.nbytes
+        return self.weight_f32_planned_nbytes()
+
+    @property
+    def activation_bf16_ptr(self) -> int:
+        if self.activation_bf16_nbytes <= 0:
+            return 0
+        return self.buffer.ptr + self.weight_f32_nbytes
 
     @property
     def nbytes(self) -> int:
@@ -698,6 +755,7 @@ class LagunaPrefillScratchPlan:
         *,
         policy: LagunaPrefillChunkPolicy,
         use_q5_f32_ordered: bool = False,
+        use_q5_activation_tile_k_row: bool = False,
     ) -> "LagunaPrefillScratchPlan":
         rows_nbytes = LagunaRowsScratch.planned_nbytes(
             config,
@@ -707,8 +765,15 @@ class LagunaPrefillScratchPlan:
             moe_plan,
             max_rows=policy.matrix_rows,
         )
+        if use_q5_activation_tile_k_row and not use_q5_f32_ordered:
+            raise ValueError(
+                "H5Y activation-tile-K-row ownership requires ordered F32 scratch"
+            )
         q5_f32_ordered_nbytes = (
-            LagunaQ5F32OrderedScratch.planned_nbytes(max_rows=512)
+            LagunaQ5F32OrderedScratch.planned_nbytes(
+                max_rows=512,
+                use_activation_tile_k_row=use_q5_activation_tile_k_row,
+            )
             if use_q5_f32_ordered
             else 0
         )
@@ -1021,6 +1086,24 @@ class LagunaEagerLibraries:
                         (16, 5, "bf16"),
                         (16, 5, "f32"),
                         (8, 10, "f32"),
+                    )
+                }
+                if self.q5_f32_ordered is not None
+                else {}
+            ),
+            **(
+                {
+                    "gguf_q5_k:f32_ordered_weight_major_"
+                    f"{weight_layout}_activation_tile_k_row_"
+                    f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                    f"{output_dtype}_out": self.q5_f32_ordered
+                    for col_tile, row_batch, output_dtype, weight_layout in (
+                        (8, 4, "bf16", "tile_k_col"),
+                        (8, 12, "bf16", "row_major"),
+                        (16, 5, "bf16", "tile_k_col"),
+                        (12, 8, "bf16", "row_major"),
+                        (16, 5, "f32", "tile_k_col"),
+                        (8, 10, "f32", "tile_k_col"),
                     )
                 }
                 if self.q5_f32_ordered is not None
@@ -1705,6 +1788,26 @@ def _resolve_laguna_f32_ordered_prefill_quants(backend: str) -> frozenset[str]:
                 f"{quant!r} on {backend!r}"
             )
     return selected
+
+
+def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
+    """Detect bounded H5Y ownership from the quant-keyed package policy."""
+
+    policies = backend_package_capability(
+        backend,
+        "GGUF_F32_ORDERED_PREFILL_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    q5_policy = policies.get("gguf_q5_k", {})
+    if not isinstance(q5_policy, Mapping):
+        return False
+    return any(
+        isinstance(geometry, str)
+        and "_activation_tile_k_row_" in geometry
+        for geometry in q5_policy.values()
+    )
 
 
 def resolve_laguna_head_kv_fusion(
@@ -2514,6 +2617,9 @@ class LagunaGGUFResidentSession:
         self._f32_ordered_prefill_quants = (
             _resolve_laguna_f32_ordered_prefill_quants(self.backend)
         )
+        self._q5_activation_tile_k_row = (
+            _resolve_laguna_q5_activation_tile_k_row(self.backend)
+        )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
                 self.backend,
@@ -2923,6 +3029,9 @@ class LagunaGGUFResidentSession:
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
                 use_q5_f32_ordered=bool(self._f32_ordered_prefill_quants),
+                use_q5_activation_tile_k_row=(
+                    self._q5_activation_tile_k_row
+                ),
             )
             self.prefill_scratch_admission_nbytes = max(
                 DEFAULT_LAGUNA_SCRATCH_BYTES,
@@ -3035,6 +3144,9 @@ class LagunaGGUFResidentSession:
                 self.q5_f32_ordered_scratch = (
                     LagunaQ5F32OrderedScratch.allocate(
                         max_rows=512,
+                        use_activation_tile_k_row=(
+                            self._q5_activation_tile_k_row
+                        ),
                         runtime=self.runtime,
                     )
                 )
@@ -3044,6 +3156,10 @@ class LagunaGGUFResidentSession:
                     max_rows=q5_scratch.max_rows,
                     weight_f32_ptr=q5_scratch.weight_f32_ptr,
                     weight_f32_nbytes=q5_scratch.weight_f32_nbytes,
+                    activation_bf16_ptr=q5_scratch.activation_bf16_ptr,
+                    activation_bf16_nbytes=(
+                        q5_scratch.activation_bf16_nbytes
+                    ),
                     library=self.libraries.q5_f32_ordered,
                 )
             if self.moe_branch_concurrency:

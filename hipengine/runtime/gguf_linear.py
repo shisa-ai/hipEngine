@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     register_gguf_q4_k_pack8_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+    q5_k_f32_activation_tile_k_row_nbytes,
     q5_k_f32_ordered_workspace_nbytes,
     register_gguf_q5_k_f32_rocblas_prefill_kernels,
 )
@@ -215,6 +216,8 @@ class Q5F32OrderedPrefillSession:
     weight_f32_nbytes: int
     library: object
     min_rows: int = 512
+    activation_bf16_ptr: int = 0
+    activation_bf16_nbytes: int = 0
 
     def __post_init__(self) -> None:
         if not 0 < int(self.min_rows) <= int(self.max_rows):
@@ -224,6 +227,12 @@ class Q5F32OrderedPrefillSession:
         if int(self.weight_f32_ptr) <= 0 or int(self.weight_f32_nbytes) <= 0:
             raise ValueError(
                 "Q5 F32 ordered weight plane must be a non-empty device buffer"
+            )
+        has_activation_ptr = int(self.activation_bf16_ptr) > 0
+        has_activation_nbytes = int(self.activation_bf16_nbytes) > 0
+        if has_activation_ptr != has_activation_nbytes:
+            raise ValueError(
+                "Q5 F32 ordered activation plane pointer/bytes must be both set or zero"
             )
 
 
@@ -804,6 +813,23 @@ def _raw_k_f32_ordered_prefill_dispatch(
         return dispatch
     if required > int(session.weight_f32_nbytes):
         return dispatch
+    activation_marker = "_activation_tile_k_row_"
+    uses_activation_tile_k_row = activation_marker in geometry
+    if uses_activation_tile_k_row:
+        try:
+            row_batch = int(geometry.rsplit("rowbatch", 1)[1])
+            activation_required = q5_k_f32_activation_tile_k_row_nbytes(
+                rows,
+                in_features,
+                row_batch,
+            )
+        except (IndexError, ValueError):
+            return dispatch
+        if (
+            int(session.activation_bf16_ptr) <= 0
+            or activation_required > int(session.activation_bf16_nbytes)
+        ):
+            return dispatch
     key = KernelKey(
         dispatch.key.backend,
         dispatch.key.layer,
@@ -812,7 +838,12 @@ def _raw_k_f32_ordered_prefill_dispatch(
     )
     if not is_registered(key):
         return dispatch
-    return GGUFLinearDispatch(key, "raw_k_f32_ordered")
+    abi = (
+        "raw_k_f32_ordered_activation_tile_k_row"
+        if uses_activation_tile_k_row
+        else "raw_k_f32_ordered"
+    )
+    return GGUFLinearDispatch(key, abi)
 
 
 def _raw_k_prefill_rowbatch_dispatch(
@@ -2261,6 +2292,36 @@ def _launch_raw_k_f32_ordered(
     )
 
 
+def _launch_raw_k_f32_ordered_activation_tile_k_row(
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    session = _q5_f32_ordered_prefill_session.get()
+    if session is None or int(session.activation_bf16_ptr) <= 0:
+        raise RuntimeError(
+            "raw-K F32 ordered activation-tile-K-row dispatch escaped its owner session"
+        )
+    fn(
+        x_ptr,
+        weight.allocation("raw").tensor.ptr,
+        out_ptr,
+        session.weight_f32_ptr,
+        session.activation_bf16_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=kwargs.get("stream", 0),
+        library=session.library,
+        runtime=kwargs.get("runtime"),
+    )
+
+
 def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     # The WMMA prefill wrapper has the same (x, qweight, out, rows, in_f, out_f)
     # raw-pointer signature as _launch_raw, but accepts (tile_m, tile_n, stream)
@@ -2312,6 +2373,9 @@ _LAUNCH_ABI = {
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
     "raw_k_f32_ordered": _launch_raw_k_f32_ordered,
+    "raw_k_f32_ordered_activation_tile_k_row": (
+        _launch_raw_k_f32_ordered_activation_tile_k_row
+    ),
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
