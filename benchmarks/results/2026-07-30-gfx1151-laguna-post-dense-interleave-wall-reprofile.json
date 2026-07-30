@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T19:04:00+09:00",
+  "kind": "hipengine_laguna_post_dense_interleave_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "8c68c966d61c811db3bc998d1f61d7359eafa88b",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 43.823282,
+    "kernel_span": 45.861315,
+    "submission_idle": 2.037411,
+    "source_f16_projection": 24.053006,
+    "selected_q4_gate_up": 7.944424,
+    "selected_q4_q6_down": 4.771549,
+    "dense_shared_quant_projection": 2.357141,
+    "router": 1.063797,
+    "attention_total": 1.323765,
+    "swa_attention": 0.873478,
+    "global_attention": 0.450287,
+    "norm_rope_gate": 1.055819,
+    "activation_reduce_residual": 0.120989,
+    "lm_head_argmax": 1.118218,
+    "embedding": 0.002284
+  },
+  "change_from_post_global_idle_v_census": {
+    "kernel_sum_ms_per_token": -0.111810,
+    "kernel_sum_percent": -0.254489,
+    "kernel_span_ms_per_token": -0.109573,
+    "kernel_span_percent": -0.238353,
+    "dense_shared_ms_per_token": -0.054462,
+    "dense_shared_percent": -2.258332
+  },
+  "same_gguf_vulkan": {
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.829522098341634,
+    "dispatches_per_token": 1150,
+    "hipengine_kernel_sum_delta_ms": 0.164082,
+    "hipengine_kernel_sum_delta_percent": 0.375825,
+    "hipengine_profile_span_delta_ms": 3.031793,
+    "family_comparison_ms_per_token": {
+      "source_f16_projection_delta": -0.725664,
+      "selected_q4_gate_up_delta": 0.496884,
+      "selected_q4_q6_down_delta": 0.242849,
+      "dense_shared_quant_projection_delta": 0.357252,
+      "attention_delta": 0.414342,
+      "router_delta": 0.093081,
+      "norm_rope_gate_delta": -0.176869,
+      "lm_head_argmax_delta": -0.498727
+    }
+  },
+  "submission_gap_census": {
+    "single_active_decode_queue": true,
+    "gaps_per_token": 672,
+    "median_kernel_overlap_ms_per_token": 0.0,
+    "median_idle_ms_per_token": 2.037411,
+    "interpretation": "The dense/shared owner changes no launch count or schedule. Vulkan records evaluation nodes into command buffers and can turn a larger aggregate GPU-duration ledger into a shorter wall; hipEngine remains a serialized launch stream."
+  },
+  "trace_resources": {
+    "dense_dual_interleaved_kernel": "q4_k_t16_dense_dual_interleaved_local32_silu_gemv_kernel<unsigned short,2>",
+    "dense_dual_interleaved_calls": 6096,
+    "dense_dual_interleaved_ms_per_token": 1.067567,
+    "dense_dual_interleaved_local_x": 32,
+    "dense_dual_interleaved_vgpr": 72,
+    "dense_dual_interleaved_lds": 0,
+    "dense_dual_interleaved_scratch": 0
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-dense-interleave-wall.mQrmNr --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-dense-interleave-wall.mQrmNr/bench.json",
+    "segmentation": "final 127 length-one request segments after warmup and pp512; rows sorted by start timestamp and dispatch ID",
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "bc418bf3ae202b0577211acc652860834f5494ac309909a4154a9e50795f7c17",
+    "bench_sha256": "0bb24b36b40c020535cccb43224e5a664bcb926263adeb0b34738e5efd74cfcc",
+    "summary_sha256": "815dce11892fd60dda1a70af9b84fd937738a46b2b121b0ff0e8ca42037cc506"
+  },
+  "interpretation": {
+    "result": "The paired dense/shared owner removes 0.111810 ms/token from kernel sum and 0.109573 ms/token from span. Total hipEngine kernel work is now only 0.164082 ms/token above Vulkan's logger, while 2.037411 ms/token remains as serialized submission idle.",
+    "next": "Inspect Vulkan's cooperative attention and within-evaluation command-buffer submission against hipEngine. The next arithmetic gaps are selected gate/up, attention, dense/shared, and selected down; the next whole-wall mechanism must reduce serialized submission or fuse exact adjacent work."
+  }
+}
