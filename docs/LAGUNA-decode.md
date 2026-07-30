@@ -7167,11 +7167,17 @@ Next attention-core attack:
    **0.203804 ms/token**:
    [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-production.json),
    [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json).
-6. **Next:** transfer only this measured width premise to dense-prefix global
-   attention. Keep its exact scalar FP32 association, fixed denominator tree,
-   40 workgroups, and local512 rollback. Require exact live-length
-   513/576/639 results plus an all-positive repeated leaf before any
-   full-model screen.
+6. **Retained/default pending clean publication:** transfer only this measured
+   width premise to dense-prefix global attention. The candidate keeps its
+   exact scalar FP32 association, eight-wave denominator tree, 40 workgroups,
+   and local512 rollback while doubling QK/value transport waves. F32 and
+   gated-BF16 outputs are byte-exact at live lengths 513/576/639; the 21x100
+   leaves improve **2.126%/3.823%/4.157%**. All seven exact same-resident
+   p512/d128 candidates win **22.358675 -> 22.383414 tok/s (+0.11065%)**,
+   saving **0.059368 ms/token** by paired median at unchanged residency:
+   [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-retained.json).
+   Next publish tracked-clean selector-unset production and refresh the
+   127-transition attention census.
 
 The Vulkan review changes the next move from another attention-math rewrite
 to exact device-dispatch contraction. llama.cpp does not expose a reusable
