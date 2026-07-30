@@ -1628,10 +1628,23 @@ Selector-unset one-queue 512/1K/4K improves **+11.340%/+4.848%/+0.746%**, with
 ([H5R production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json)).
-The old wider-qrow, cross-head/key-split,
-rowbatch16, output-tile, source-MMQ, changed-association attention, and
-P6/repair routes remain closed.
-Launch fusion remains deferred pending the post-H5R one-queue residual reprofile.
+The production-identical post-H5R one-queue request reconciles **1,851.695 ms /
+1,862 dispatches** in a **1,877.998-ms** span against matched llama.cpp HIP
+**724.299 ms**. Exact gaps now rank Q5 **423.388 ms**, IQ down **332.278 ms**,
+attention **195.796 ms**, Q6 **106.386 ms**, and gate/up **65.602 ms**; launch/
+submission residue stays below trigger at **26.303 ms / 1.401%**. Select
+**WPF-H5S exact persistent row-group Q5 traversal**. Separately registered
+fixed partitions **1/2/4/8/16/32** make each output-tile workgroup loop disjoint
+row groups while preserving H5L's F32 plane, role geometry, per-thread K/
+`fmaf`/wave/serial-sum/store order, one consumer launch, workspace, and H5L/H5G
+fallbacks. Partition 1 models six-role workgroups **5,021,440 -> 71,040
+(70.68x)** with unchanged useful dot work; this count is rationale, not a
+performance claim. Require byte identity, cached scratch-free resources, and
+producer-inclusive both-clock wins per actual role before any runtime owner
+([post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json)).
+The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
+changed-association attention, H5O representation, H5P geometry, and P6/repair
+routes remain closed. Launch fusion remains deferred.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates
