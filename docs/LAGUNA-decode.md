@@ -6358,15 +6358,20 @@ The remaining attention sequence is:
     complete allocation recovery. Promote through a gfx1151 capability and
     retain the preceding shuffle body as exact rollback:
     [`DPP-QK retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-retained.json).
+    The subsequent tracked-clean selector-unset packet measures
+    **20.994944/21.007908/21.014742 tok/s**, median
+    **21.007908 tok/s (+0.2008%, -0.0956 ms/token)** versus the preceding
+    production checkpoint:
+    [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.965807 tok/s** | **47.697 ms** | **+82.841%** |
+| hipEngine current production | **21.007908 tok/s** | **47.601 ms** | **+83.208%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **4.867 ms/token** | hipEngine is **10.205%** below Vulkan throughput |
+| Remaining wall gap | — | **4.772 ms/token** | hipEngine is **10.024%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own

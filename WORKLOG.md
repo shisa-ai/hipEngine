@@ -193003,3 +193003,20 @@ Vulkan local sizes verbatim will close the measured gap.
   follows the commit.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-retained.json`.
+
+## 2026-07-30 13:35 JST — Publish clean DPP-QK production
+
+- Commit `30776074f` permits the required tracked-clean, selector-unset
+  production run with the retained gfx1151 capability active. No compiler
+  process or comparison selector runs inside the measured process.
+- Three Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 repetitions
+  measure **20.994944/21.007908/21.014742 tok/s**, median
+  **21.007908 tok/s**. This improves the preceding clean
+  **20.965807 tok/s** checkpoint by **0.2008%**, saves
+  **0.095587 ms/token**, and reaches **+83.208%** over sprint start.
+- Every repetition preserves next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, and complete
+  tracked allocation recovery. The raw packet reports tracked-clean revision
+  `30776074f`; shared unrelated untracked artifacts are disclosed/excluded.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-production.json`.
