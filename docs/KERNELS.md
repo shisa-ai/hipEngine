@@ -780,15 +780,19 @@ gfx1151 retain WPF-3. The production-identical post-H5M request reconciles
 rank attention/Q5/IQ-down at **429.065/406.709/336.162 ms**. Attention's 48
 global, 72 SWA-wave32, and 72 source-qualified-qrow4 calls consume
 **80.707/109.583/260.500 ms**; qrow4 remains **57.79%** of attention, with
-**111.604/148.896 ms** at starts 256/384. H5N therefore screens one separately
-registered exact dense-first-fill specialization of H5M. It derives identity-
-ring position/visibility without token-position/eviction reads while retaining
-cached `base_offsets`, the full `KVLiveSpans` ABI, source rounding, dot tree,
-two-pass arithmetic, attend-before-append schedule, and H5M fallback. The
-508,944,384 source-level generic metadata predicates are diagnostic, not a
-physical-load claim; gfx1151 dense-initial evidence is not gfx1100 performance
-evidence
-([post-H5M residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
+**111.604/148.896 ms** at starts 256/384. H5N's separately registered exact
+first-fill specialization derives identity-ring position/visibility without
+`token_positions`, `evict_mask`, or `live_counts` reads while retaining cached
+`base_offsets`, the full `KVLiveSpans` ABI, source rounding, dot tree, two-pass
+arithmetic, attend-before-append schedule, and H5M fallback. It matches
+H5M/wave32 bytes and improves start 256 **1.147x/1.144x event/wall**, start 384
+**1.166x/1.163x**, and their sums **1.158x/1.156x**, with unchanged
+local32/VGPR72/SGPR128/LDS0/scratch0 resources. This admits only the leaf;
+production remains H5M pending complete state, integrated 72-call ownership,
+and clean 512/1K/4K. The 508,944,384 source-level generic predicates remain
+diagnostic, not a physical-load claim
+([H5N leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
+[post-H5M residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5M leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
 [post-H5L residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·

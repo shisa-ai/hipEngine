@@ -2678,7 +2678,10 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_wave32_exact_
   }
 }
 
-template <int kQueryRows, bool kQualifiedSourceLoads = false>
+template <
+    int kQueryRows,
+    bool kQualifiedSourceLoads = false,
+    bool kDenseFirstFill = false>
 __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_bf16_kernel(
     const float* query,
     const float* current_key,
@@ -2705,10 +2708,21 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
   if (query_row_base >= rows || q_head >= num_q_heads || lane >= 32) return;
 
   const int64_t start_position = row_positions[0];
-  const int64_t prior_live_count = live_counts[0];
+  if constexpr (kDenseFirstFill) {
+    static_assert(kQualifiedSourceLoads);
+    if (rows != 128 || capacity != 512 || sliding_window != 512 ||
+        num_q_heads != 72 || num_kv_heads != 8 || head_dim != 128 ||
+        (start_position != 256 && start_position != 384) ||
+        start_position + rows > capacity) {
+      return;
+    }
+  }
+  const int64_t prior_live_count =
+      kDenseFirstFill ? start_position : live_counts[0];
   const int64_t q_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / q_group;
-  const int64_t start_slot = start_position % capacity;
+  const int64_t start_slot =
+      kDenseFirstFill ? start_position : start_position % capacity;
   if (prior_live_count <= 0 && start_position < 0) {
 #pragma unroll
     for (int row_index = 0; row_index < kQueryRows; ++row_index) {
@@ -2742,7 +2756,7 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
 
   for (int64_t logical_slot = 0; logical_slot < scan_slots; ++logical_slot) {
     int64_t current_row = logical_slot - start_slot;
-    if (current_row < 0) current_row += capacity;
+    if (!kDenseFirstFill && current_row < 0) current_row += capacity;
     const bool has_current = current_row >= 0 && current_row < rows;
     const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
     const bool cache_valid = physical_slot >= 0 && physical_slot < capacity;
@@ -2758,12 +2772,16 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
         if (query_row >= rows) continue;
         const int64_t query_position = start_position + query_row;
         const bool from_current = has_current && current_row <= query_row;
-        const int64_t key_position = from_current
+        const int64_t key_position = kDenseFirstFill
+            ? logical_slot
+            : from_current
             ? start_position + current_row
             : token_positions[logical_slot];
-        const bool source_valid = from_current || cache_valid;
+        const bool source_valid = from_current ||
+            (cache_valid && (!kDenseFirstFill || logical_slot < start_position));
         const bool visible = source_valid &&
-                             (from_current || evict_mask[logical_slot] == 0) &&
+                             (kDenseFirstFill || from_current ||
+                              evict_mask[logical_slot] == 0) &&
                              key_position >= 0 && key_position <= query_position &&
                              key_position > query_position - sliding_window;
         qualified_from_current[row_index] = from_current;
@@ -2799,10 +2817,13 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
       const bool from_current = kQualifiedSourceLoads
           ? qualified_from_current[row_index]
           : has_current && current_row <= query_row;
-      const int64_t key_position = from_current
+      const int64_t key_position = kDenseFirstFill
+          ? logical_slot
+          : from_current
           ? start_position + current_row
           : token_positions[logical_slot];
-      const bool source_valid = from_current || cache_valid;
+      const bool source_valid = from_current ||
+          (cache_valid && (!kDenseFirstFill || logical_slot < start_position));
       const bool visible = kQualifiedSourceLoads
           ? qualified_visible[row_index]
           : (from_current || evict_mask[logical_slot] == 0) &&
@@ -2836,7 +2857,7 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
   float output_acc[kQueryRows][4] = {};
   for (int64_t logical_slot = 0; logical_slot < scan_slots; ++logical_slot) {
     int64_t current_row = logical_slot - start_slot;
-    if (current_row < 0) current_row += capacity;
+    if (!kDenseFirstFill && current_row < 0) current_row += capacity;
     const bool has_current = current_row >= 0 && current_row < rows;
     const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
     const bool cache_valid = physical_slot >= 0 && physical_slot < capacity;
@@ -2852,12 +2873,16 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
         if (query_row >= rows) continue;
         const int64_t query_position = start_position + query_row;
         const bool from_current = has_current && current_row <= query_row;
-        const int64_t key_position = from_current
+        const int64_t key_position = kDenseFirstFill
+            ? logical_slot
+            : from_current
             ? start_position + current_row
             : token_positions[logical_slot];
-        const bool source_valid = from_current || cache_valid;
+        const bool source_valid = from_current ||
+            (cache_valid && (!kDenseFirstFill || logical_slot < start_position));
         const bool visible = source_valid &&
-                             (from_current || evict_mask[logical_slot] == 0) &&
+                             (kDenseFirstFill || from_current ||
+                              evict_mask[logical_slot] == 0) &&
                              key_position >= 0 && key_position <= query_position &&
                              key_position > query_position - sliding_window;
         qualified_from_current[row_index] = from_current;
@@ -2902,10 +2927,13 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrows_exact_b
       const bool from_current = kQualifiedSourceLoads
           ? qualified_from_current[row_index]
           : has_current && current_row <= query_row;
-      const int64_t key_position = from_current
+      const int64_t key_position = kDenseFirstFill
+          ? logical_slot
+          : from_current
           ? start_position + current_row
           : token_positions[logical_slot];
-      const bool source_valid = from_current || cache_valid;
+      const bool source_valid = from_current ||
+          (cache_valid && (!kDenseFirstFill || logical_slot < start_position));
       const bool visible = kQualifiedSourceLoads
           ? qualified_visible[row_index]
           : (from_current || evict_mask[logical_slot] == 0) &&
@@ -6266,6 +6294,57 @@ extern "C" int hipengine_laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf1
   hipLaunchKernelGGL(
       (laguna_swa_attention_prefill_qrows_exact_bf16_kernel<4, true>),
       dim3(static_cast<unsigned int>(num_q_heads), row_groups),
+      dim3(32),
+      0,
+      stream,
+      query,
+      current_key,
+      current_value,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      capacity,
+      sliding_window,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_swa_attention_prefill_qrow4_dense_first_fill_exact_bf16_spans(
+    const float* query,
+    const float* current_key,
+    const float* current_value,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows != 128 || capacity != 512 || sliding_window != 512 ||
+      num_q_heads != 72 || num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_prefill_qrows_exact_bf16_kernel<4, true, true>),
+      dim3(static_cast<unsigned int>(num_q_heads), 32),
       dim3(32),
       0,
       stream,

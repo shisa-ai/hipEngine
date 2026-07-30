@@ -501,6 +501,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "swa_context_rows_qrow4_sourcequal_exact_spans",
         ),
+        # WPF-H5N's identity/no-wrap exact specialization is likewise scoped to
+        # gfx1100 until it has independent gfx1151 evidence.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_first_fill_exact_spans",
+        ),
         # WPF-H2 copies llama.cpp's gfx1100 F16-WMMA FlashAttention geometry
         # and remains excluded until gfx1151 receives an independent gate.
         (
