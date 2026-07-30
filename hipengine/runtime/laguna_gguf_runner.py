@@ -2384,7 +2384,6 @@ class LagunaGGUFResidentSession:
                 "Laguna global attention rows must be a supported width "
                 "within matrix capacity"
             )
-        self._global_prefill_package_default = global_prefill_variant is None
         self.global_prefill_variant = resolve_laguna_global_prefill_variant(
             self.backend,
             global_prefill_variant,
@@ -2962,9 +2961,6 @@ class LagunaGGUFResidentSession:
                 prefill_cached_meta=self.prefill_cached_meta,
                 prefill_global_qrow6=self.prefill_global_qrow6,
                 prefill_dense_initial=self.prefill_dense_initial,
-                prefill_global_preappend_package_default=(
-                    self._global_prefill_package_default
-                ),
                 prefill_preappend_package_default=(
                     self._swa_prefill_package_default
                 ),

@@ -17,10 +17,6 @@ LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_sourcequal_exact_spans"
     ),
 }
-# WPF-H5U's exact global cached-source leaf remains empty-by-default until its
-# complete-state, integrated-call/topology, and clean 512/1K/4K runtime gates
-# pass. The separate map preserves independent global/SWA selector ownership.
-LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS = {}
 # WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
 # all 144 physical append-before-attention calls, and positive default-off clean
 # 512/1K/4K timing. The package-only role map restricts schedule reordering to
@@ -244,7 +240,6 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
-    "LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS",

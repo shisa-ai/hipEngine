@@ -867,18 +867,16 @@ boundary. Named register planes eliminate an initial scratch104 spill and
 reach local32/VGPR96/LDS0/scratch0 with exact bytes. Actual event/wall moves
 **474.107/485.298 -> 475.945/469.677 ms (+0.388%/-3.219%)**; only **12/45**
 layers win both clocks. Remove the symbol/key/test and retain H5Q. H5U's
-separate gfx1100 cached-source global leaf now preserves
-`laguna_global_attention_prefill_bf16_kernel`'s one-row/local256 score/query
-scratch, contiguous-four dot, eight-wave max/denominator, materialized-weight,
-normalized-PV, production current-row visibility, metadata, and store
-association. All starts are byte/CPU exact. Cached tracing records the four
-expected local256/VGPR40/SGPR128/dynamic-LDS16928/scratch0 calls and unchanged
-grid with no compiler; this avoids H5R's rejected local32/VGPR248/LDS8192 qrow4
-rebuild. Equal-append starts 0/128/256/384 all win both clocks, and weighted
-48-call event/wall moves **101.535/101.899 -> 84.124/84.622 ms
-(1.207x/1.204x)**. Keep production unchanged until a bounded default-off owner
-passes complete-state, physical-call/topology, and clean 512/1K/4K gates
-([H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
+separate gfx1100 cached-source global leaf preserves the production local256
+arithmetic and wins every standalone start, with weighted event/wall
+**101.535/101.899 -> 84.124/84.622 ms (1.207x/1.204x)**. Default-off
+M512/C4096 is KL0; tracing records **48 H5U + 144 H5R** pairs at unchanged
+**1,862** dispatches and cuts global schedule **15.494%**. Matched direct M512
+improves **0.849% with 5/5 wins**, but source-default ownership is rejected:
+the final balanced role-ineligible 1K adjudication is **-0.00257% with 2/8
+wins**. Remove all global runtime-policy plumbing and retain only the leaf
+([H5U runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
+[H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
 [H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
 [H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
