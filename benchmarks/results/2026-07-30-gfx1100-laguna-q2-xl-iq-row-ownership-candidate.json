@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_exact_iq_row_ownership_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_candidate_admitted_runtime_owner_pending",
+  "status": "standalone_exact_candidate_resolved_to_production",
   "performance_claim": true,
   "correctness_claim": true,
   "hardware": {
@@ -148,15 +148,21 @@
     "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_selected_prefill.py tests/test_gfx1151_backend.py::test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider",
     "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5j-final-rocprof -- uv run pytest -q tests/test_gguf_iq_selected_prefill.py::test_h5j_k1024_candidates_match_retained_bits_and_cpu_oracle tests/test_gguf_iq_selected_prefill.py::test_h5j_iq4_wave32_preserves_retained_shared_rounding_boundary"
   },
-  "promotion_blockers": [
-    "no runtime/package owner selects either candidate key",
-    "complete M512 hidden/logit/KV/KVLiveSpans repeat validation has not run",
-    "cached integrated physical execution has not run",
-    "clean counter-ordered 512/1K/4K timing has not run"
-  ],
+  "promotion_blockers": [],
+  "promotion_resolution": {
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json",
+    "complete_m512_state_kl": 0.0,
+    "exact_hidden_boundaries": 48,
+    "integrated_candidate_calls": 47,
+    "clean_package_default_tok_s": {
+      "512": 196.10271441429387,
+      "1024": 181.85900293284575,
+      "4096": 137.16861562535314
+    }
+  },
   "decision": {
     "standalone_candidate_admitted": true,
-    "runtime_default_changed": false,
-    "next_action": "Add one default-off backend-package mapping from the two quant keys to these exact variants, preserve the retained grouped routes on every map/key/shape miss, then require complete M512 state, cached integrated tracing, and clean 512/1K/4K non-regression before promotion."
+    "runtime_default_changed": true,
+    "next_action": "Use the promoted H5J trace to screen exact larger resident IQ3 row batches, beginning with 12/16 and extending only while scratch-free."
   }
 }
