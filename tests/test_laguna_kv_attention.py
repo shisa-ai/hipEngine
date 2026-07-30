@@ -413,6 +413,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_swa_attention_prefill_qrow2_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow2_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_exact_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow4_m128_c256_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans,
@@ -427,7 +428,7 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         register_laguna_kv_attention_kernels,
     )
     from hipengine.kernels.backends import load_backend_kernel_package
-    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
     artifact = plan_laguna_kv_attention_build(
         cache_root=tmp_path / "cache",
@@ -592,6 +593,23 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="swa_context_rows_qrow4_exact_spans",
         )
         is laguna_swa_attention_prefill_qrow4_exact_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_qrow4_sourcequal_exact_spans",
+        )
+        is laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans
+    )
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_sourcequal_exact_spans",
+        )
     )
     assert (
         resolve(
@@ -1948,6 +1966,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         laguna_global_attention_prefill_qrow4_online_bf16_spans,
         laguna_swa_attention_prefill_qrow2_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_exact_bf16_spans,
+        laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans,
         laguna_swa_attention_prefill_qrow4_online_bf16_spans,
         laguna_swa_attention_prefill_qrow4_sourcequal_online_bf16_spans,
     )
@@ -2022,6 +2041,8 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         swa_qrow2_online_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow4_exact_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow4_exact_odd_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_qrow4_sourcequal_exact_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_qrow4_sourcequal_exact_odd_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow4_online_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow4_online_odd_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_qrow4_sourcequal_online_out = malloc(query_swa.nbytes, runtime=runtime)
@@ -2045,6 +2066,8 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
                 swa_qrow2_online_out,
                 swa_qrow4_exact_out,
                 swa_qrow4_exact_odd_out,
+                swa_qrow4_sourcequal_exact_out,
+                swa_qrow4_sourcequal_exact_odd_out,
                 swa_qrow4_online_out,
                 swa_qrow4_online_odd_out,
                 swa_qrow4_sourcequal_online_out,
@@ -2228,6 +2251,28 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
                 library=library,
                 runtime=runtime,
             )
+        for exact_rows, exact_out in (
+            (rows, swa_qrow4_sourcequal_exact_out),
+            (rows - 1, swa_qrow4_sourcequal_exact_odd_out),
+        ):
+            laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans(
+                swa_query_rows.ptr,
+                key_rows.ptr + seed_rows * row_bytes,
+                value_rows.ptr + seed_rows * row_bytes,
+                swa_layer.key_cache.ptr,
+                swa_layer.value_cache.ptr,
+                exact_out.ptr,
+                swa_layer.spans,
+                exact_rows,
+                swa_layer.q_heads,
+                config.head_count_kv,
+                config.key_length,
+                config.key_length**-0.5,
+                sliding_window=config.sliding_window,
+                start_position=seed_rows,
+                library=library,
+                runtime=runtime,
+            )
         for online_rows, online_out in (
             (rows, swa_qrow4_online_out),
             (rows - 1, swa_qrow4_online_odd_out),
@@ -2324,6 +2369,8 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         actual_swa_qrow2_online = np.empty_like(query_swa)
         actual_swa_qrow4_exact = np.empty_like(query_swa)
         actual_swa_qrow4_exact_odd = np.empty_like(query_swa[:-1])
+        actual_swa_qrow4_sourcequal_exact = np.empty_like(query_swa)
+        actual_swa_qrow4_sourcequal_exact_odd = np.empty_like(query_swa[:-1])
         actual_swa_qrow4_online = np.empty_like(query_swa)
         actual_swa_qrow4_online_odd = np.empty_like(query_swa[:-1])
         actual_swa_qrow4_sourcequal_online = np.empty_like(query_swa)
@@ -2396,6 +2443,18 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             runtime=runtime,
         )
         copy_device_to_host(
+            host_array_ptr(actual_swa_qrow4_sourcequal_exact),
+            swa_qrow4_sourcequal_exact_out,
+            actual_swa_qrow4_sourcequal_exact.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_swa_qrow4_sourcequal_exact_odd),
+            swa_qrow4_sourcequal_exact_odd_out,
+            actual_swa_qrow4_sourcequal_exact_odd.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
             host_array_ptr(actual_swa_qrow4_online),
             swa_qrow4_online_out,
             actual_swa_qrow4_online.nbytes,
@@ -2450,6 +2509,14 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         np.testing.assert_array_equal(
             actual_swa_qrow4_exact_odd,
             actual_swa_wave32[:-1],
+        )
+        np.testing.assert_array_equal(
+            actual_swa_qrow4_sourcequal_exact,
+            actual_swa_qrow4_exact,
+        )
+        np.testing.assert_array_equal(
+            actual_swa_qrow4_sourcequal_exact_odd,
+            actual_swa_qrow4_exact_odd,
         )
         np.testing.assert_allclose(
             actual_swa_qrow2_online,

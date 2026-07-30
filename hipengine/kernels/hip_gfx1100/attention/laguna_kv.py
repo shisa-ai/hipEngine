@@ -95,6 +95,9 @@ _SYMBOL_SWA_PREFILL_QROW2_EXACT = (
 _SYMBOL_SWA_PREFILL_QROW4_EXACT = (
     "hipengine_laguna_swa_attention_prefill_qrow4_exact_bf16_spans"
 )
+_SYMBOL_SWA_PREFILL_QROW4_SOURCEQUAL_EXACT = (
+    "hipengine_laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans"
+)
 _SYMBOL_SWA_PREFILL_QROW2_ONLINE = (
     "hipengine_laguna_swa_attention_prefill_qrow2_online_bf16_spans"
 )
@@ -2368,6 +2371,67 @@ def laguna_swa_attention_prefill_qrow4_exact_bf16_spans(
     _check_launch(runtime, err)
 
 
+def laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    start_position: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact qrow4 after choosing the required current/cache sources."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if window <= 0 or window > capacity:
+        raise ValueError("sliding_window must be in [1, ring capacity]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_PREFILL_QROW4_SOURCEQUAL_EXACT)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(current_key_ptr),
+        ctypes.c_void_p(current_value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_swa_attention_prefill_qrow2_online_bf16_spans(
     query_ptr: int,
     current_key_ptr: int,
@@ -3665,6 +3729,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_prefill",
+            "swa_context_rows_qrow4_sourcequal_exact_spans",
+            laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans,
+        ),
+        (
+            "laguna_attention_prefill",
             "swa_context_rows_qrow4_m128_c256_exact_spans",
             laguna_swa_attention_prefill_qrow4_m128_c256_exact_bf16_spans,
         ),
@@ -3856,6 +3925,7 @@ __all__ = [
     "laguna_swa_attention_prefill_qrow2_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow2_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_exact_bf16_spans",
+    "laguna_swa_attention_prefill_qrow4_sourcequal_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_m128_c256_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans",
