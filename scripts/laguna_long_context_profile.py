@@ -92,7 +92,6 @@ COMPARISON_ARGUMENTS = (
     "compare_selected_natural_tile8_decode",
     "compare_q4_decode_t16_sidecar",
     "compare_q4_decode_t16_dual_interleaved",
-    "compare_router_projection_wave0_tree",
 )
 
 
@@ -357,11 +356,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-q4-decode-t16-dual-interleaved",
         action="store_true",
         help="counterbalance separate and paired T16 dense/shared Q4 decode",
-    )
-    parser.add_argument(
-        "--compare-router-projection-wave0-tree",
-        action="store_true",
-        help="counterbalance exact scalar and wave-level c=1 router projection",
     )
     parser.add_argument(
         "--ordinary-q4-expert-t16",
@@ -682,11 +676,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_q4_expert_t16_dual_interleaved=(
                 False if args.ordinary_q4_expert_t16 else None
             ),
-            use_router_projection_wave0_tree=(
-                False
-                if args.compare_router_projection_wave0_tree
-                else None
-            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -951,10 +940,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_q4_decode_t16_dual_interleaved(
                             mode == "candidate"
                         )
-                    if args.compare_router_projection_wave0_tree:
-                        owner.set_router_projection_wave0_tree(
-                            mode == "candidate"
-                        )
                     owner.reset_state()
                     started = time.perf_counter()
                     result = owner.prefill(token_stream[:length], use_bulk=True)
@@ -1213,9 +1198,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "q4_decode_t16_sidecar": active_q4_decode_t16_sidecar,
             "compare_q4_decode_t16_dual_interleaved": (
                 args.compare_q4_decode_t16_dual_interleaved
-            ),
-            "compare_router_projection_wave0_tree": (
-                args.compare_router_projection_wave0_tree
             ),
             "q4_decode_t16_dual_interleaved": (
                 active_q4_decode_t16_dual_interleaved

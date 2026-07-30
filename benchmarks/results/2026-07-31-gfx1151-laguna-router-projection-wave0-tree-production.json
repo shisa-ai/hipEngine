@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "date": "2026-07-31",
+  "status": "accepted_production_default",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "revision": {
+    "git": "a7961dcb7c965799c58a43fc7023746cdc1f08f6",
+    "tracked_clean": true,
+    "selector_unset": true
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "warmup_rows": 128,
+    "repetitions": 3,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-router-projection-wave0-production.json",
+    "raw_path": "/tmp/laguna-p512-d128-router-projection-wave0-production.json",
+    "raw_sha256": "68f0170c125db6206c52e1023fea072aacffe988c0fb12980e08ba9f3feed145"
+  },
+  "performance": {
+    "decode_samples_tok_s": [
+      22.554472928108954,
+      22.581874840016503,
+      22.584838589079133
+    ],
+    "decode_median_tok_s": 22.581874840016503,
+    "decode_median_ms_per_token": 44.283302741007894,
+    "prior_clean_decode_tok_s": 22.555437,
+    "prior_clean_ms_per_token": 44.33520840230229,
+    "delta_pct": 0.11721271468383421,
+    "delta_ms_per_token": -0.05190566129439844,
+    "prefill_median_tok_s": 657.7295473124065
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "resident_nbytes": 79066169172,
+    "allocation_recovery": true
+  },
+  "decision": {
+    "default": "hip_gfx1151/router_logits/f32/bf16_hidden_wave0_tree for c=1",
+    "rollback": "constructor false selects registered scalar local256 projection",
+    "rows_prefill": "unchanged token-tile projection",
+    "temporary_comparison_cli_removed": true,
+    "temporary_session_setter_removed": true
+  },
+  "source_gate": "benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json"
+}

@@ -40,6 +40,10 @@ def test_router_projection_wave0_tree_is_gfx1151_default_on() -> None:
     assert "use_router_projection_wave0_tree" in inspect.signature(
         LagunaGGUFResidentSession
     ).parameters
+    assert not hasattr(
+        LagunaGGUFResidentSession,
+        "set_router_projection_wave0_tree",
+    )
     assert is_registered(_GFX1100_CANDIDATE_KEY)
     gfx1151.register_gfx1151_kernels(replace=True)
     assert is_registered(_GFX1151_CANDIDATE_KEY)
@@ -58,7 +62,7 @@ def test_laguna_plan_exposes_exact_router_projection_candidate() -> None:
     assert plan.router_select is not None
 
 
-def test_router_projection_wave0_tree_benchmark_opt_in_is_explicit(
+def test_router_projection_wave0_tree_benchmark_compare_is_removed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from scripts import laguna_long_context_profile as benchmark
@@ -71,4 +75,5 @@ def test_router_projection_wave0_tree_benchmark_opt_in_is_explicit(
             "--compare-router-projection-wave0-tree",
         ],
     )
-    assert benchmark._parse_args().compare_router_projection_wave0_tree is True
+    with pytest.raises(SystemExit):
+        benchmark._parse_args()

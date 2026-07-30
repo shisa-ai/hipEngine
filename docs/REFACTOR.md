@@ -2434,3 +2434,6 @@ should be boring.
 - Remove the comparison CLI and session setter after tracked-clean
   selector-unset production. Retain the constructor rollback, architecture
   capability, registered wave-level owner, and scalar local256 fallback.
+- Tracked-clean publication passes at **22.581875 tok/s**. The comparison CLI,
+  setter, and protocol fields are removed. Retain only constructor rollback,
+  the gfx1151 capability, registered wave-level owner, and scalar fallback.

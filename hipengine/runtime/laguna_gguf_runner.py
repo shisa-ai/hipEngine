@@ -3278,11 +3278,6 @@ class LagunaGGUFResidentSession:
             mode,
         )
 
-    def set_router_projection_wave0_tree(self, enabled: bool) -> None:
-        """Select the exact c=1 wave-level router projection reduction."""
-
-        self.use_router_projection_wave0_tree = bool(enabled)
-
     def set_f16_prefill_mode(self, mode: str) -> None:
         """Select the explicit rows>1 source-F16 projection route."""
 

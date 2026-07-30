@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-07-31",
-  "status": "retained_pending_clean_publication",
+  "status": "retained",
   "decision": {
     "retain": true,
     "default_backend": "hip_gfx1151",
@@ -128,5 +128,6 @@
     "broad_result": "Two known unrelated failures remain: stale prefill scratch-byte literal and rows-three experimental Q6 equivalence assertion.",
     "lineage": "The mandatory lineage command remains environment-blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external source was copied."
   },
-  "next_action": "Commit the retained default, then run tracked-clean selector-unset production and remove the temporary comparison setter/CLI after publication."
+  "publication": "benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json",
+  "next_action": "Refresh the whole-model wall census, then rank the remaining exact attention and selected-expert gaps against Vulkan."
 }
