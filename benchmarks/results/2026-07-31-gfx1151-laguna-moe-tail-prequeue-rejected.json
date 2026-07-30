@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T07:42:25+09:00",
+  "kind": "hipengine_laguna_decode_optimization_rejection",
+  "status": "rejected",
+  "title": "Reject exact c=1 MoE-tail cross-stream prequeue",
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "baseline": {
+    "production_tok_s": 22.752894,
+    "production_ms_per_token": 43.950453,
+    "revision": "61d77f9cc0d055eee3c6d46ac4504ef240409f9a"
+  },
+  "premise": {
+    "measured_selected_down_to_tail_gap_ms_per_token": 0.355161,
+    "change": "Record routed completion on the primary stream, make the low-priority shared stream wait for it behind shared-down, enqueue the unchanged fused aggregate+residual+next-RMSNorm tail on that stream, then make the primary stream wait for tail completion.",
+    "arithmetic_changed": false,
+    "weights_or_scratch_changed": false,
+    "extra_hip_events": 1
+  },
+  "correctness": {
+    "passed": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_recovered": true,
+    "fused_tail_gpu_oracle": "byte exact to the registered three-kernel fallback at hidden 17 and 3072"
+  },
+  "directional_gate": {
+    "shape": "p512/d128 eager c=1, one same-resident alternating pair",
+    "control_tok_s": 22.727932573133003,
+    "candidate_tok_s": 22.589471715018746,
+    "throughput_delta_percent": -0.609210088373513,
+    "control_ms_per_token": 43.99872257550225,
+    "candidate_ms_per_token": 44.268410196381176,
+    "delta_ms_per_token": 0.26968762087892356,
+    "decision": "reject before the seven-pair gate"
+  },
+  "interpretation": [
+    "Two additional record/wait dependencies per sparse layer cost more than the Python-visible predecessor gap they were intended to hide.",
+    "llama.cpp Vulkan amortizes graph recording in command buffers; fine-grained HIP event choreography is not an equivalent mechanism."
+  ],
+  "cleanup": {
+    "candidate_kernel_or_math": "none added",
+    "runtime_flag_removed": true,
+    "events_removed": true,
+    "comparison_cli_removed": true,
+    "tests_removed": true,
+    "production_unchanged": true
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compare-moe-decode-tail-prequeue --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-moe-tail-prequeue-onepair.json",
+  "raw_artifact": {
+    "path": "/tmp/laguna-p512-d128-moe-tail-prequeue-onepair.json",
+    "sha256": "412a45ebaef29faceca99dbc7b88335be24355bb07c64c5e71b8dbcbb04e2b19"
+  }
+}
