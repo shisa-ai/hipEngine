@@ -194356,3 +194356,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `f2a149eee834de100776e681e65ccefdd28ebff0f3d55be92c6cd843944355b3`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-swa-key-pipeline-rejected.json`.
+
+## 2026-07-31 01:51 JST — Retain exact saturated-SWA local1024 on gfx1151
+
+- The device exposes wave32, **32 waves/CU**, **1024 work-items/CU**, and a
+  **1024-thread** workgroup limit. This falsifies the earlier local512
+  "natural endpoint" assumption. A candidate-only local1024 specialization
+  keeps all 40 dense-ring owners and every exact QK/softmax/denominator/PV/
+  gate/store operation while doubling independent QK and V-transport waves.
+- RED first fails importing the absent candidate. GREEN passes the live-HIP
+  wrapped/evicted CPU oracle and dispatch fallback. The 21x100 leaf improves
+  **0.020947621 -> 0.019422780 ms/layer (-7.279302%)**, with F32 context and
+  gated BF16 byte-exact.
+- Cached `rocprofv3` names grid40/local1024 at reported VGPR32/SGPR128,
+  LDS40,960, and scratch0. Trace/leaf SHA-256 values are
+  `82ce10fe...2f0ef7` / `8c87bb49...e04f2`.
+- All seven same-resident p512/d128 pairs improve
+  **22.273482 -> 22.356330 tok/s (+0.371954%)**, saving
+  **0.166375 ms/token** by both independent medians and paired median. Every
+  run retains tokens 2930/74107, trajectory `94f803f7...bda32`, position 638,
+  determinism, **79,022,522,196-byte** residency, and complete allocation
+  recovery. Raw SHA-256 is `d09344b5...a9f3`.
+- Promote `LAGUNA_SWA_LOCAL1024` on gfx1151. Keep local512 as the exact dense,
+  non-dense, explicit-eviction, and peer-backend rollback. Tracked-clean
+  selector-unset publication and the 127-transition attention census remain.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-retained.json`.

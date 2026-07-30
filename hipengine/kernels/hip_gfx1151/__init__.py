@@ -480,6 +480,10 @@ LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK = True
 # pre-saturation, and non-standard states retain the generic DPP owner.
 # The byte-exact leaf improves 25.55% and all seven resident pairs win.
 LAGUNA_SWA_DENSE_RING = True
+# gfx1151 exposes 32 wave32 slots and 1024 work-items per CU. The exact
+# local1024 dense-ring owner fills that natural limit while preserving all 40
+# workgroups; all seven same-resident p512/d128 pairs improve.
+LAGUNA_SWA_LOCAL1024 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -965,6 +969,7 @@ __all__ = [
     "LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
     "LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512",
     "LAGUNA_SWA_DENSE_RING",
+    "LAGUNA_SWA_LOCAL1024",
     "LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK",
     "LAGUNA_SWA_SPLIT_FIXED512_REDUCE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",

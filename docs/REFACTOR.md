@@ -14,6 +14,23 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna gfx1151 exact SWA local1024 selector
+
+- Added 2026-07-31 as a default-off runtime capability and
+  `--compare-swa-local1024` profile seam after the exact dense-ring candidate
+  passed RED/GREEN, the real wrap oracle, a positive 21x100 leaf, and cached
+  resource tracing.
+- If any of seven same-resident p512/d128 pairs regresses or changes state,
+  remove the capability field, profile switch, registered local1024 route,
+  wrapper, export, and body specialization. If all seven improve, promote the
+  gfx1151 capability, publish a tracked-clean selector-unset result, then
+  remove the comparison switch after the next attention census. Keep
+  local512 as the exact rollback.
+- **Promotion gate passed 2026-07-31:** all seven exact resident pairs improve
+  **22.273482 -> 22.356330 tok/s (+0.37195%)**. The gfx1151 capability is
+  promoted. Keep the comparison switch through tracked-clean publication and
+  the post-promotion attention census, then remove it.
+
 ## Laguna exact SWA producer-gate selector
 
 - Added 2026-07-29 as a default-off gfx1151 capability plus session/profile

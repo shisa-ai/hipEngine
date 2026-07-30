@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-31T01:50:26+09:00",
+  "status": "retained_default_pending_clean_publication",
+  "scope": "gfx1151 Laguna exact saturated-SWA decode attention",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "wavefront_size": 32,
+    "max_waves_per_cu": 32,
+    "max_workgroup_size": 1024,
+    "compute_units": 40
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "gguf": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "source_revision": "8a4948a6d9f10b24b7a61dd0fad5fbdd3bca86b7",
+  "candidate": {
+    "description": "raise the exact dense-ring mixed40 owner from local512 to local1024 while retaining 40 workgroups",
+    "arithmetic_changes": false,
+    "resident_byte_changes": 0,
+    "dispatch_count_changes": 0
+  },
+  "correctness": {
+    "red": "focused live-HIP test failed to import the absent local1024 candidate",
+    "green": "focused live-HIP wrap/eviction and runtime-dispatch tests passed",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "control_candidate_next_tokens_match": true,
+    "control_candidate_generated_ids_match": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "repeat_deterministic": true,
+    "tracked_returned_to_zero": true
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128, dense saturated SWA512",
+    "protocol": "5 warmups, 21 samples, burst 100, counterbalanced",
+    "control_local512_median_ms": 0.020947620868682862,
+    "candidate_local1024_median_ms": 0.019422780275344848,
+    "latency_change_percent": -7.279302040537128,
+    "raw_sha256": "8c87bb49234e4c6c08e6280c5c4482f4e3f5bffceea350243ba3f77dac8e04f2"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-swa-local1024-trace --output-file local1024 -- .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local1024-exp32-producer-max-gate-stage-pcache-output-sharded-probability-dpp-qk-dense-ring-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 1 --warmups 0 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-local1024-trace/leaf.json",
+    "grid_workgroups": 40,
+    "workgroup_threads": 1024,
+    "vgpr_count_reported": 32,
+    "sgpr_count_reported": 128,
+    "lds_bytes": 40960,
+    "scratch_bytes": 0,
+    "csv_sha256": "82ce10fe07899b1b7c429991b0d0be265f488ed1d075d2fefb2f4c60c02f0ef7"
+  },
+  "production_gate": {
+    "shape": "p512/d128 eager c=1, 127 decode transitions",
+    "protocol": "one resident model load, seven alternating same-resident control/candidate pairs, two HIP queues",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-local1024 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-swa-local1024-ab.json",
+    "control_local512_samples_tok_s": [
+      22.249189734957866,
+      22.277707743982678,
+      22.276154382629166,
+      22.271430369023292,
+      22.273482488308296,
+      22.27062721806726,
+      22.273647021848547
+    ],
+    "candidate_local1024_samples_tok_s": [
+      22.357005512775682,
+      22.360687294225666,
+      22.34840274298281,
+      22.356495526197847,
+      22.356329530907086,
+      22.345422231681482,
+      22.353696785810282
+    ],
+    "control_median_tok_s": 22.273482488308296,
+    "candidate_median_tok_s": 22.356329530907086,
+    "throughput_change_percent": 0.37195370163725094,
+    "control_median_ms_per_token": 44.89643685153033,
+    "candidate_median_ms_per_token": 44.73006173117658,
+    "median_paired_saving_ms_per_token": 0.16637512035374868,
+    "candidate_wins": 7,
+    "pairs": 7,
+    "resident_nbytes": 79022522196,
+    "raw_sha256": "d09344b5653c8ad5fc4d573fce62293d2646cac8d4dae0811c05d552a66da9f3"
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "production_publication_pending": true,
+    "rollback": "exact local512 dense-ring owner",
+    "next": "run tracked-clean selector-unset production and a cached 127-transition attention census"
+  }
+}
