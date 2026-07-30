@@ -70,6 +70,11 @@ profile comparison seam. Fake-owner selection proves that only dense-prefix
 idle-buffer requests reach local1024 and that local512 remains the exact
 fallback; production remains unchanged pending the same-resident model gate:
 [`runtime admission`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-runtime-correctness.json).
+That gate now passes: all seven exact p512/d128 candidate runs win
+**22.358675 -> 22.383414 tok/s (+0.11065%)** with unchanged state and
+residency, so gfx1151 promotes the capability. Tracked-clean selector-unset
+publication and the next attention census remain:
+[`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-retained.json).
 
 The gfx1151-only
 `linear_pair/gguf_q4_k/pack8_dual_decode_bf16_bf16_out` key now reuses the

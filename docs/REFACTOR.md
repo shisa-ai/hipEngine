@@ -25,6 +25,11 @@ should be removed or collapsed.
   gfx1151 capability, publish tracked-clean selector-unset production, and
   remove the comparison switch after the next attention census. Keep local512
   as the exact non-dense/eviction/peer rollback.
+- **Promotion gate passed 2026-07-31:** all seven exact resident pairs improve
+  **22.358675 -> 22.383414 tok/s (+0.11065%)** with a
+  **0.059368-ms/token** paired-median saving. The gfx1151 capability is
+  promoted. Keep the comparison switch through tracked-clean publication and
+  the post-promotion attention census, then remove it.
 
 ## Laguna gfx1151 exact SWA local1024 selector
 

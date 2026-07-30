@@ -4725,7 +4725,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         )
         assert gfx1151_cache.global_dense_prefix is True
         assert gfx1151_cache.global_dense_prefix_idle_double_buffer is True
-        assert gfx1151_cache.global_local1024 is False
+        assert gfx1151_cache.global_local1024 is True
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
@@ -4802,6 +4802,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
 
         gfx1151_cache._resolve = resolve_probe
         gfx1151_cache.position = 256
+        gfx1151_cache.global_local1024 = False
         gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.global_local1024 = True
         gfx1151_cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)

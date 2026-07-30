@@ -194486,3 +194486,28 @@ Vulkan local sizes verbatim will close the measured gap.
   and lifecycle before promotion.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-runtime-correctness.json`.
+
+## 2026-07-31 02:27 JST — Retain global local1024 on gfx1151
+
+- One resident model load and seven counterbalanced p512/d128 control/candidate
+  pairs compare the exact dense-prefix global local512 owner with local1024.
+  All seven candidates win. Independent medians improve
+  **22.358675 -> 22.383414 tok/s (+0.110645%)**, saving
+  **0.049432 ms/token**; paired median saving is **0.059368 ms/token**.
+- Control samples are
+  **22.323485/22.360332/22.362533/22.359605/22.354827/22.351218/22.358675**;
+  candidate samples are
+  **22.377762/22.383414/22.387374/22.373837/22.384535/22.381168/22.389607
+  tok/s**. The first control includes a cold prefill only; decode is the
+  independently timed 127-transition window.
+- Every run preserves tokens 2930/74107, trajectory `94f803f7...bda32`,
+  position 638, deterministic repeats, **79,022,522,196-byte** residency, and
+  complete allocation recovery. Excluded load is 137.146 seconds and no
+  compiler spawns. Raw SHA-256 is
+  `58266e81de7cb5e48bb17f3455c9dc67077bb1f3be8f2d64270b7a705ea8cea0`.
+- Promote `LAGUNA_GLOBAL_LOCAL1024=True` on gfx1151. Keep local512 for
+  non-dense, explicit-eviction, peer-backend, and comparison rollback.
+  Tracked-clean selector-unset publication and the 127-transition attention
+  census remain.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-retained.json`.

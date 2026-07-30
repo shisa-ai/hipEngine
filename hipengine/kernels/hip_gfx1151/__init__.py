@@ -362,9 +362,9 @@ LAGUNA_GLOBAL_DENSE_PREFIX = True
 # assigning it to otherwise-idle query-owner waves. All natural leaves and
 # seven resident p512/d128 pairs win byte-exactly.
 LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER = True
-# Candidate-only until the same-resident p512/d128 gate passes. Preserve the
-# eight-wave denominator while widening dense-prefix QK/value transport.
-LAGUNA_GLOBAL_LOCAL1024 = False
+# Preserve the eight-wave denominator while widening dense-prefix QK/value
+# transport. All seven exact same-resident p512/d128 candidate runs win.
+LAGUNA_GLOBAL_LOCAL1024 = True
 LAGUNA_SWA_SPLIT_MIN_LIVE = 65
 LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
 LAGUNA_SPLIT_GATE_FUSION = True
