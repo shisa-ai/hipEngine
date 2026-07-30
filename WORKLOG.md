@@ -194622,3 +194622,40 @@ Vulkan local sizes verbatim will close the measured gap.
   comparison seam.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-retained.json`.
+
+## 2026-07-31 03:10 JST — Publish and census exact Q4T16 shared down
+
+- Tracked-clean selector-unset revision `4340a1851` measures
+  **22.537190/22.555437/22.560953 tok/s**, median
+  **22.555437 tok/s / 44.335208 ms/token**, with steady pp512 median
+  **654.700 tok/s**. This advances the global-local1024 checkpoint
+  **22.378602 -> 22.555437 tok/s (+0.790199%)**, saves
+  **0.350336 ms/token**, and reaches **+96.704%** over the sprint start.
+- Every run preserves tokens **2930/74107**, final position 638,
+  generated-ID SHA-256 `94f803f7...bda32`, deterministic repeats,
+  **79,066,169,172-byte** residency, and complete allocation recovery. Raw
+  production SHA-256 is
+  `82bb5cf1b15351b9af87f45a707d786251af34c889aefb88c71c3fcaf74ec1fe`.
+- A separate require-cached `rocprofv3` run over 127 steady-state one-token
+  segments records **482 dispatches/token**, **42.894886-ms** kernel sum,
+  **44.564343-ms** span, and **1.669457 ms/token** span minus summed kernels.
+  It proves **24 T16 / zero pack8** Q4 shared-down calls per token at
+  grid384/local32, VGPR96/SGPR128/LDS0/scratch0.
+- Dense/shared falls **2.350846 -> 1.981566 ms/token (-15.708%)** and
+  complete kernel sum/span fall **0.353192/0.363253 ms/token**. hipEngine
+  kernel work is now **0.764314 ms/token below** Vulkan's logged sum, while
+  clean wall remains **1.505686 ms/token** slower. Dense/shared is now
+  **0.018323 ms/token faster** than Vulkan; remaining named positive gaps are
+  selected gate/up **+0.318431**, selected down **+0.277841**, attention
+  **+0.210840**, and router **+0.111876 ms/token**.
+- Trace/bench SHA-256 values are
+  `652f3e81534ea30c2fe223547b1885ed3c793171a7445ce937aa835281e3a76a`
+  and
+  `ad01a3104aaa126160b2e2f41c4f101211e728e5af5df5a692b5106596e412a5`.
+  No compiler ran under the profiler. Remove the temporary comparison CLI
+  and session setter; retain constructor rollback, capability, compact
+  sidecars, registered owners, and exact expanded-pack8 fallback.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-production.json`
+  and
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json`.

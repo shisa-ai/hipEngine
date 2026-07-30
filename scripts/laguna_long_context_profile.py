@@ -92,7 +92,6 @@ COMPARISON_ARGUMENTS = (
     "compare_selected_natural_tile8_decode",
     "compare_q4_decode_t16_sidecar",
     "compare_q4_decode_t16_dual_interleaved",
-    "compare_q4_shared_down_t16_decode",
 )
 
 
@@ -357,11 +356,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-q4-decode-t16-dual-interleaved",
         action="store_true",
         help="counterbalance separate and paired T16 dense/shared Q4 decode",
-    )
-    parser.add_argument(
-        "--compare-q4-shared-down-t16-decode",
-        action="store_true",
-        help="counterbalance pack8 and exact T16 Q4 shared-down decode",
     )
     parser.add_argument(
         "--ordinary-q4-expert-t16",
@@ -944,10 +938,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_q4_decode_t16_dual_interleaved:
                         owner.set_q4_decode_t16_dual_interleaved(
-                            mode == "candidate"
-                        )
-                    if args.compare_q4_shared_down_t16_decode:
-                        owner.set_q4_shared_down_t16_decode(
                             mode == "candidate"
                         )
                     owner.reset_state()
