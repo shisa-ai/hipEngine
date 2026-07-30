@@ -261,14 +261,19 @@ numbers below.
   **462.608/455.971 -> 263.014/274.237 ms (-43.145%/-39.856%)**, with 6/6
   both-clock wins. Default-off complete M512 state is KL0/byte-exact; paired
   tracing adds exactly 188 packs and cuts Q5/request/span
-  **47.204%/9.685%/9.770%**. Clean 512/1K/4K improves
+  **47.204%/9.685%/9.770%**. Default-off 512/1K/4K improves
   **272.917/234.864/162.367 -> 302.770/256.121/171.978 tok/s
-  (+10.939%/+9.051%/+5.920%)**, 3/3 wins each. Production remains H5X pending
-  selector-unset publication. Both short rows exceed 150 tok/s and H5X
-  4K remains positive; 16K+ stays closed below the 800/700 stretch target
-  ([H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
+  (+10.939%/+9.051%/+5.920%)**, 3/3 wins each. Selector-unset publication
+  confirms **273.439/235.058/162.365 -> 303.140/256.139/171.830 tok/s
+  (+10.862%/+8.969%/+5.829%)**, again 3/3 each. H5Y is production at canonical
+  **303.140/256.139/171.830 tok/s (+10.892%/+8.967%/+5.720% over H5X)**,
+  narrowing the canonical-dashboard M512 gap to **2.28998x**. Both short rows
+  exceed 150 tok/s and H5Y 4K remains positive; 16K+ stays closed below the
+  800/700 stretch target
+  ([H5Y production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
+  [H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
   [post-H5X matched residual / H5Y target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
-  [current H5X production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+  [preceding H5X production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
   [H5X candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
   [H5X target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
   [H5W production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·

@@ -80,9 +80,17 @@ should be removed or collapsed.
   consumers at unchanged topology, default-off 512/1K/4K is
   **+0.439%/+0.468%/+0.518%**, and selector-unset publication confirms
   **+0.531%/+0.310%/+0.327%**, 3/3 wins each. Retain exactly the four eager
-  aliases and promoted Q5 role entries; they add no selector, allocation, or
-  workspace. Keep the two losing BF16 roles on H5L, N48/N72 on H5G, and all Q6
-  routes unchanged. Do not add a public/session selector or duplicate owner.
+  aliases and H5X/H5L rollback primitives beneath H5Y. N48/N72 remain H5G and
+  all Q6 routes remain unchanged. Do not add a public/session selector or
+  duplicate owner.
+- WPF-H5Y's eager/workspace cleanup trigger is closed. Complete state is KL0;
+  cached integration records **188 packs + 235 weight producers + 188 H5Y +
+  47 H5G**, default-off 512/1K/4K is **+10.939%/+9.051%/+5.920%**, and
+  selector-unset publication confirms **+10.862%/+8.969%/+5.829%**, 3/3 wins
+  each. Retain exactly six eager aliases and one combined **161,120,256-byte**
+  ordered scratch allocation containing the F32 weight and BF16 activation
+  planes. Keep H5X/H5L/H5G registered fallbacks and all Q6 routes unchanged;
+  do not add a public/session selector, persistent sidecar, or duplicate owner.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 
