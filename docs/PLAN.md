@@ -1644,6 +1644,17 @@ event/wall **459.018/473.034 -> 565.864/566.290 ms
 surfaces and do not infer speed from the P1 **70.68x** workgroup-prologue model
 ([H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
 [post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json)).
+Advance to **WPF-H5T exact IQ3 one-wave K-partition collapse**. Current IQ3 is
+**479.190 ms** versus matched llama.cpp HIP **152.380 ms**, or **98.240%** of
+the IQ-down family and a **326.811-ms** gap. Keep H5Q's P64 grid, rowbatch8,
+active-expert order, useful dot work, and four independent K256 arithmetic
+trees; map logical lanes `i/i+32/i+64/i+96` onto physical lane `i`, then add
+partition totals 0..3 before the same BF16 store. The local32 candidate removes
+LDS and two whole-block barriers per rowbatch phase but changes no bytes or
+operation order. Require H5Q/CPU byte identity, local32/LDS0/scratch0 with
+VGPR <=128, and both-clock wins on all 45 actual layers before runtime
+qualification
+([H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, and P6/repair routes remain closed. Launch fusion remains deferred.

@@ -196,11 +196,16 @@ numbers below.
   scratch-free, but **0/6** actual roles win both clocks; even P32 regresses
   producer-inclusive weighted event/wall **459.018/473.034 -> 565.864/566.290
   ms (+23.277%/+19.714%)**. All H5S surfaces are removed and H5L remains Q5
-  production.
+  production. WPF-H5T now targets the **479.190-ms IQ3 / 326.811-ms matched
+  gap** with one exact local32 wave carrying H5Q's four independent K256
+  partitions. It keeps rowbatch8/P64 and all arithmetic, but removes LDS and
+  two whole-block barriers per rowbatch phase; this is a target, not a speed
+  claim.
   Both short rows exceed 150 tok/s and H5R 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5T IQ3 target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
   [H5S rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
   [post-H5R residual / H5S target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json) ·
   [H5Q production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
