@@ -2392,6 +2392,7 @@ class LagunaGGUFResidentSession:
             self.backend,
             swa_decode_variant,
         )
+        self._swa_prefill_package_default = swa_prefill_variant is None
         self.swa_prefill_variant = resolve_laguna_swa_prefill_variant(
             self.backend,
             swa_prefill_variant,
@@ -2960,6 +2961,9 @@ class LagunaGGUFResidentSession:
                 prefill_cached_meta=self.prefill_cached_meta,
                 prefill_global_qrow6=self.prefill_global_qrow6,
                 prefill_dense_initial=self.prefill_dense_initial,
+                prefill_preappend_package_default=(
+                    self._swa_prefill_package_default
+                ),
                 global_split_min_live=self.global_split_min_live,
                 swa_split_min_live=self.swa_split_min_live,
                 swa_split_tile16_min_live=self.swa_split_tile16_min_live,
