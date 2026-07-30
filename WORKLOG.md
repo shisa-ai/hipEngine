@@ -193199,3 +193199,28 @@ Vulkan local sizes verbatim will close the measured gap.
   exact tile8 pair-coefficient production at **21.304731 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-tile16-rejected.json`.
+
+## 2026-07-30 14:57 JST — Reject exact selected-route activation reuse
+
+- The bounded candidate pairs two of Laguna's ten selected routes per tile8
+  workgroup, stages their shared singleton K3072 BF16 activation once as FP32
+  in LDS, and evaluates the two experts sequentially. Per-output K ownership,
+  FMA/reduction association, BF16 gate/up boundaries, fused SiLU, resident
+  bytes, and output bits remain unchanged.
+- RED fails importing the absent diagnostic wrapper. GREEN passes
+  `test_laguna_t16_natural_selected_decode_matches_production_bits`; the
+  candidate has zero BF16 mismatches against the retained pair-coefficient
+  owner.
+- The actual layer-1 counterbalanced 9x50 leaf decisively regresses
+  **0.109045 -> 0.149036 ms (+36.674%)**. Cached native tracing names both
+  expected kernels and records grid Y **10 -> 5**, but VGPR **72 -> 128** and
+  LDS **512 -> 12,800 bytes** at local128/SGPR128/scratch0.
+- Reject at the mandatory leaf stop and remove the kernel, export, wrapper,
+  fixture seam, and harness selector. The production test passes after
+  removal; exact production remains **21.304731 tok/s**. Do not retry a full
+  per-workgroup activation copy or serial route pairing.
+- The required lineage audit was attempted before the kernel screen and is
+  blocked by the known missing read-only peer
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-rowpair-activation-reuse-rejected.json`.
