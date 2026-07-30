@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_exact_iq3_active_expert_persistent_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_candidate_admitted_production_unchanged",
+  "status": "standalone_exact_candidate_default_off_runtime_qualified_production_unchanged",
   "performance_claim": true,
   "correctness_claim": true,
   "hardware": {
@@ -20,6 +20,8 @@
   },
   "lineage": {
     "base_revision": "3295b07bf",
+    "leaf_revision": "61e30df61",
+    "runtime_integration_revision": "13ed82364",
     "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json",
     "target_artifact_sha256": "0a8c4f16d25b7a3d2d164ac549ac4d77a896f301ed93311aa6bb0d7d7b412451",
     "h5j_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json",
@@ -29,9 +31,15 @@
     "implementation_sha256": {
       "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "466f6f3d2bacb9e76f16d45b0890a6b3b6375ee2376798707f0abab549b31c94",
       "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "c7505678d3abde98a625bf57cc09a0eb48f378bae934ecdd5b880dcee96a115b",
-      "hipengine/kernels/hip_gfx1151/__init__.py": "5a138874fc0ce6f60afb03a8131044971060a8afbff643c9441a81bb1a8b940b",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "b6d7ad2d89e4c868f6192a40892a33ef109a5406fdf98634030978c6f082915f",
       "tests/test_gfx1151_backend.py": "607317815469a5e609cc2b13c8b4697ccb77307609fd2a17f53edf50efc71aca",
       "tests/test_gguf_iq3_active_expert_persistent.py": "bc1ddbd07006d09289b4c7f899e4ad8a4c42253743a69b2142e6053c9b0a4e8c"
+    },
+    "runtime_candidate_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "1d165f929899cb7f0b2623ed6808ae7e87a7ca517fcdd141384f29b341998b6d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "b6d7ad2d89e4c868f6192a40892a33ef109a5406fdf98634030978c6f082915f",
+      "hipengine/runtime/laguna_moe.py": "5fcd28dc20615d187fe640a7525cff2d219da71fc7d4bf588b921ed8a10b9a08",
+      "tests/test_laguna_h5q_runtime_policy.py": "c6089d5c0e3dd8fe6ff59558e3dcd86d3237b24550febbbafea0f5c393c775ff"
     }
   },
   "candidate": {
@@ -145,11 +153,70 @@
     "final_trace_stdout_sha256": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
     "final_trace_stderr_sha256": "291c88dbe9cc7350a1497ad5f9b74ec8eec0b8c13cf3a22a8b4b40f5d5847fe3"
   },
+  "runtime_qualification": {
+    "same_resident_natural_m512_state": {
+      "control": "H5J exact resident-rowbatch8 IQ3 package production",
+      "candidate": "scoped default-off H5Q P64 active-expert IQ3 package route",
+      "next_token_id": 2930,
+      "final_position": 511,
+      "kl_mean": 0.0,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "exact_hidden_boundaries": 48,
+      "complete_logits_hidden_kv_live_spans_exact": true,
+      "candidate_repeat_exact": true,
+      "workspace_bytes": 150994944,
+      "lifecycle_recovered": true,
+      "json_sha256": "8847e69292b7999b7a02d8e9b22d1a449a6ee5eba97c58a185eb445adddff699",
+      "harness_sha256": "146f6179d3696f1c4f1f2212ad512fd6f04e029353242c255cde9bf28a0ea59e",
+      "stdout_sha256": "954ea86406f77c5eede40c6ede19b02ed5e5496ff6daf2b61a77054bc286bb32",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    },
+    "cached_integrated_trace": {
+      "dispatches_before": 1862,
+      "dispatches_after": 1862,
+      "h5q_iq3_calls": 45,
+      "retained_h5j_iq4_calls": 2,
+      "iq_down_ms_before": 491.657647,
+      "iq_down_ms_after": 475.651902,
+      "iq_down_reduction_percent": 3.2554654845020625,
+      "request_kernel_sum_ms_before": 2060.485414,
+      "request_kernel_sum_ms_after": 2050.376445,
+      "request_kernel_sum_reduction_percent": 0.49061104394696464,
+      "kernel_span_ms_after": 2075.543277,
+      "candidate_resources": "local128/VGPR48/SGPR128/LDS512/scratch0/grid-y64",
+      "trace_sha256": "691278811bb21c75c720f2980636e357a8ad6570dd2dee8db35642a9c82cfac1",
+      "summary_sha256": "b2ee188ac3808c0d4af9f7967dd2cd04a448ed74bd4f8170df84565392bed75f",
+      "analyzer_sha256": "003b840db0cc0a2b818b00e40871ca22083bf35a9244d39f883b0893fd48b50c",
+      "child_sha256": "33f27655f70b5f4c61b6044386a626c5b7eb2198e9e60c17b929c9f3f07103ce",
+      "stdout_sha256": "1121ecc5cc97236ed2523b7e45806bb3eb519596e57a0cd956905e461a744d0b",
+      "stderr_sha256": "d18fa50074f92728b1fbf6e28b5a654e9d99098e430da8e7a59ceabe5c232261",
+      "no_compiler_under_profile": true
+    },
+    "default_off_clean_512_1k_4k": {
+      "protocol": "one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length",
+      "control_tok_s": [239.07361450837695, 219.2331526507819, 158.3842275261113],
+      "candidate_tok_s": [240.75282255777444, 219.84190111831794, 158.97044856280485],
+      "gain_percent": [0.7023811694362614, 0.2776717208029744, 0.3701258931208429],
+      "paired_candidate_wins": [3, 3, 3],
+      "all_state_exact": true,
+      "all_finite": true,
+      "all_lifecycle_recovered": true,
+      "workspace_bytes": 150994944,
+      "json_sha256": "1cca7aa1543fa0f84f01c3cb88fd7cce97125181935ac98c6670c2e5de8e4641",
+      "harness_sha256": "c16f353deaa6140470076914c33ec9aabd8ec8aacfd495f45fdade1145f3996a",
+      "stdout_sha256": "538f206ff62e7a7a170df393ee9f6ecb322ccc15bead9b0f87731d3baaaecfc1",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    }
+  },
   "commands": {
     "focused_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_iq3_active_expert_persistent.py tests/test_gguf_iq_selected_prefill.py tests/test_gfx1151_backend.py",
     "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5q-final-rocprof -- .venv/bin/python -m pytest -q tests/test_gguf_iq3_active_expert_persistent.py::test_h5q_partitions_match_h5j_and_cpu_at_boundary_and_tail",
     "initial_actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python /tmp/laguna_wpfh5q_iq3_active_expert_persistent_actual_screen.py",
-    "final_actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python /tmp/laguna_wpfh5q_iq3_active_expert_p64_final_screen.py"
+    "final_actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python /tmp/laguna_wpfh5q_iq3_active_expert_p64_final_screen.py",
+    "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5q_active_expert_package_full_state.py",
+    "integrated_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5q-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5q_active_expert_trace_integrated.py",
+    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5q_active_expert_default_off_clean_512_4k.py"
   },
   "production": {
     "runtime_owner_added": false,
@@ -162,7 +229,8 @@
   },
   "decision": {
     "standalone_candidate_admitted": true,
+    "default_off_runtime_qualified": true,
     "runtime_default_changed": false,
-    "next_action": "Qualify a bounded default-off grouped-IQ role owner through complete M512 state, cached integrated physical counts, and clean 512/1K/4K non-regression before any package promotion."
+    "next_action": "Attempt the selector-unset one-entry gfx1100 package default and retain it only after an exact clean 512/1K/4K source-default publication gate."
   }
 }

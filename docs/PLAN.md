@@ -1596,9 +1596,12 @@ layers on both clocks; the predeclared max-min rule retains P64. Final-source
 event/wall sums fall **492.847/491.518 -> 481.081/483.823 ms
 (-2.387%/-1.565%)**, with H5J byte identity, sampled CPU-oracle agreement,
 local128/VGPR48/SGPR128/LDS512/scratch0 resources, unchanged metadata/
-allocation, and gfx1151 fail-closed. Admit only the standalone leaf; production
-remains unchanged until complete-state, integrated-call, and clean 512/1K/4K
-runtime gates pass. The old wider-qrow, cross-head/key-split,
+allocation, and gfx1151 fail-closed. Complete M512 state is KL0/byte-exact;
+integrated tracing selects all **45** P64 IQ3 calls and cuts IQ-down/request sum
+**3.255%/0.491%**. Default-off clean 512/1K/4K improves
+**+0.702%/+0.278%/+0.370%**, with 3/3 paired wins at every length. Production
+remains H5J pending selector-unset source-default publication. The old
+wider-qrow, cross-head/key-split,
 rowbatch16, output-tile, source-MMQ, changed-association attention, and
 P6/repair routes remain closed.
 Launch fusion remains
