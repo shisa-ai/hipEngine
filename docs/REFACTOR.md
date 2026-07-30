@@ -2296,5 +2296,3 @@ should be boring.
 - The comparison CLI, setter, and protocol fields are removed. Retain the
   constructor rollback, capability, registered composite, shared counter
   scratch, and exact unfused fallback.
-  Retain the constructor override for explicit rollback, gfx1151 capability,
-  four-axis registrations, counter scratch, and exact unfused fallback.
