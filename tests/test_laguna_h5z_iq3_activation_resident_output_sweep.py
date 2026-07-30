@@ -27,7 +27,7 @@ from tests.test_gguf_iq_gemv import (
     _selected_reference,
 )
 
-_OUTPUT_PARTITIONS = (32, 64, 128, 256, 512)
+_OUTPUT_PARTITIONS = (256,)
 _EXPERT_PARTITIONS = 64
 
 
@@ -107,7 +107,7 @@ def test_h5z_registry_preflight_and_gfx1151_fail_closed(
         raise AssertionError("invalid H5Z shape reached the HIP loader")
 
     monkeypatch.setattr(module, "build_gguf_iq_selected_prefill", fail_if_loaded)
-    candidate = candidates[32]
+    candidate = candidates[256]
     common = dict(
         compact_rows=9,
         in_features=_IN_FEATURES,
@@ -191,7 +191,7 @@ def _assert_all_candidates_match_h5q_and_cpu(
     sample_rows = np.unique(
         np.asarray([0, compact_rows // 3, compact_rows // 2, compact_rows - 1])
     )
-    sample_cols = np.asarray([0, 31, 32, 1535, 3071])
+    sample_cols = np.asarray([0, 255, 256, 1535, 3071])
     cpu = _selected_reference(
         x_bf16[sample_rows],
         selected[sample_rows],

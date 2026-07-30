@@ -273,14 +273,17 @@ numbers below.
   **1,658.386 ms / 2,050 dispatches** versus llama.cpp **724.299 ms**; gaps now
   rank IQ-down/attention/Q5/gate-up/Q6 at
   **339.558/239.624/188.153/82.382/79.327 ms**. IQ3 alone owns
-  **486.381 ms / 45 calls**. WPF-H5Z therefore targets a distinct exact
-  activation-resident output-column sweep: preserve H5Q's local128/four-wave
-  rowbatch8 arithmetic, keep each K8 activation tile in registers, and sweep
-  one independent output at a time. The P64 static VMEM-record model falls
-  **45.426%**, explicitly not yet a measured speed claim. Both short rows exceed
-  150 tok/s and H5Y 4K remains positive; 16K+ stays closed below the 800/700
-  stretch target
-  ([post-H5Y matched residual / H5Z target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
+  **486.381 ms / 45 calls**. WPF-H5Z now admits a distinct exact
+  activation-resident output-column P256 leaf over H5Q's local128/four-wave
+  rowbatch8 arithmetic. P256/P512 alone win all **45/45** actual layers; the
+  frozen max-min rule keeps P256. Final-source event/wall moves
+  **478.606/486.167 -> 459.818/451.737 ms (-3.926%/-7.082%)** with byte-exact
+  outputs, local128/VGPR112/LDS512/scratch0 resources, token 2930, and lifecycle
+  recovery. Production remains H5Y pending complete H5Z runtime gates. Both
+  short rows exceed 150 tok/s and H5Y 4K remains positive; 16K+ stays closed
+  below the 800/700 stretch target
+  ([H5Z leaf](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
+  [post-H5Y matched residual / H5Z target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
   [H5Y production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
   [H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
   [post-H5X matched residual / H5Y target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
