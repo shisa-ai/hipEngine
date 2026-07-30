@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:16:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_register_forward_probability_rejected",
+  "status": "rejected_at_leaf",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "04e9f33a5c71b83af50b3b39364b5bad5902c093",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 512,
+    "value_stage": 128
+  },
+  "candidate": {
+    "description": "After exact probability publication, let each output-sharded PV wave load its own 32-weight shard once per lane and reconstruct that shard through wave32 shuffles; preserve the other 96 weights as production float4 LDS reads.",
+    "control": "retained mixed40-local512 output-sharded probability V-stage128 body",
+    "arithmetic_changed": false,
+    "probability_values_changed": false,
+    "pv_order_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "ownership_changed": false,
+    "abi_changed": false
+  },
+  "correctness": {
+    "red": "focused test failed importing the intentionally absent diagnostic wrapper",
+    "green": "focused wrapped and explicitly evicted SWA oracle passed",
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "context_sha256": "53d9bb47fc552029b4131e22ce11468d415590a5ca77a7dcc47ac09b908a2cde",
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "gated_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73",
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "protocol": "paired 9 samples x 50 launches after 5 warmups",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-output-sharded-register-forward-probability-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-register-forward-probability-9x50.json",
+    "control_median_ms": 0.030110740661621095,
+    "candidate_median_ms": 0.03887120008468628,
+    "latency_change_percent": 29.09413461964818,
+    "control_samples_ms": [
+      0.038810160160064694,
+      0.03040083885192871,
+      0.03027901887893677,
+      0.030181279182434084,
+      0.030110740661621095,
+      0.02995445966720581,
+      0.029792540073394776,
+      0.0300763201713562,
+      0.03010035991668701
+    ],
+    "candidate_samples_ms": [
+      0.03940327882766723,
+      0.03916281938552856,
+      0.0390089201927185,
+      0.038903999328613284,
+      0.038803820610046384,
+      0.03876935958862305,
+      0.03879580020904541,
+      0.03887120008468628,
+      0.03884955883026123
+    ],
+    "raw_sha256": "26097cf21a16c75d15c6088c0e5638c363f64e1a099a707c5e71eb93098312ad"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "resident_gate_skipped": true,
+    "production_tok_s": 20.965807,
+    "reason": "Uniform float4 LDS probability replay is already efficient on gfx1151. Replacing one quarter of it with 32 wave shuffles adds issue latency and regresses the direct exact leaf by 29.09%.",
+    "next": "Close register-forwarded probability replay as a llama.cpp subgroup-transfer seam. Re-rank complete wall-time overhead and only revisit attention for a mechanism that removes real traffic or safely changes the arithmetic contract."
+  }
+}

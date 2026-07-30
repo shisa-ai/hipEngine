@@ -192951,3 +192951,27 @@ Vulkan local sizes verbatim will close the measured gap.
   refactor entry. Production remains **20.965807 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-coeff4-rejected.json`.
+
+## 2026-07-30 13:16 JST — Reject SWA register-forwarded probability replay
+
+- Screen the most direct exact subgroup-register transfer suggested by the
+  llama.cpp Vulkan cooperative path. In the retained output-sharded V128 body,
+  each of four PV waves owns one 32-weight probability shard. The candidate
+  loads each lane's own probability scalar after publication and reconstructs
+  only that local shard with wave32 shuffles; the remaining 96 weights stay on
+  the production float4 LDS path.
+- Preserve QK, softmax, denominator replay, all 512 scalar PV FMAs and their
+  association, output stores, resident bytes, ownership, ABI, and dispatch
+  count. RED fails on the missing wrapper. GREEN passes the wrapped and
+  explicitly evicted CPU-reference fixture with byte-identical F32 context and
+  gated BF16 output.
+- The paired cache-only 9x50 leaf decisively rejects the candidate:
+  **0.030111 -> 0.038871 ms (+29.094%)**. Uniform float4 LDS replay is already
+  efficient on gfx1151; 32 shuffles add issue latency instead of removing a
+  bottleneck.
+- Remove the template axis, export, wrapper, registry/export entry, test call,
+  and harness selector before resident integration. Production remains
+  **20.965807 tok/s**. Re-rank the full wall rather than trying another
+  subgroup-only probability transport substitution.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-register-forward-probability-rejected.json`.
