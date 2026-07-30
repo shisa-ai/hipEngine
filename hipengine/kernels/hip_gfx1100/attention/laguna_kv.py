@@ -303,6 +303,12 @@ _SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE
     "dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_"
     "direct_assume_exp_fixed512_bf16_spans"
 )
+_SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL1024_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_OUTPUT_SHARDED_PROBABILITY_DPP_QK_DENSE_RING_ALLWAVE_VALUE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE128_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
+    "hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed40_local1024_"
+    "exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_"
+    "dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_"
+    "direct_assume_exp_fixed512_bf16_spans"
+)
 _SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
     "hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_"
     "producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_"
@@ -5832,6 +5838,67 @@ def laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_produce
     )
 
 
+def laguna_swa_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact dense-ring SWA with the full 32-wave gfx1151 block."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if (
+        capacity != 512
+        or window != 512
+        or int(scan_slots) != 512
+        or int(num_q_heads) != 72
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+    ):
+        raise ValueError(
+            "mixed40 local1024 output-sharded probability DPP-QK dense-ring "
+            "V-stage128 fixed512 SWA requires capacity/window/scan 512, "
+            "72 query heads, 8 KV heads, and D128"
+        )
+    _laguna_swa_attention_decode_split_exact_gated_bf16_spans(
+        _SYMBOL_SWA_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL1024_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_OUTPUT_SHARDED_PROBABILITY_DPP_QK_DENSE_RING_ALLWAVE_VALUE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE128_VEC16_DIRECT_ASSUME_EXP_FIXED512,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        sliding_window=window,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -7744,6 +7811,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "swa_context_fused_exact_gated_mixed40_local1024_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_spans",
+            laguna_swa_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "swa_context_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_spans",
             laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         ),
@@ -8055,6 +8127,7 @@ __all__ = [
     "laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans",
+    "laguna_swa_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans",
     "laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans",

@@ -80,6 +80,7 @@ COMPARISON_ARGUMENTS = (
     "compare_swa_mixed32_exp8",
     "compare_swa_mixed32_exp16",
     "compare_swa_mixed32_exp32",
+    "compare_swa_local1024",
     "compare_global_fixedshape_reduce",
     "compare_global_fused_fixedshape",
     "compare_global_gqa2_vstage64",
@@ -296,6 +297,11 @@ def _parse_args() -> argparse.Namespace:
         "--compare-swa-mixed32-exp32",
         action="store_true",
         help="counterbalance retained exp16 against exact wave-wide expf",
+    )
+    parser.add_argument(
+        "--compare-swa-local1024",
+        action="store_true",
+        help="counterbalance exact dense-ring SWA local512 against local1024",
     )
     parser.add_argument(
         "--compare-global-fixedshape-reduce",
@@ -757,6 +763,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512 = (
             owner.kv_cache.swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
         )
+        active_swa_local1024 = owner.kv_cache.swa_local1024
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
         )
@@ -892,6 +899,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_decode_swa_mixed32_exp16(mode == "candidate")
                     if args.compare_swa_mixed32_exp32:
                         owner.set_decode_swa_mixed32_exp32(mode == "candidate")
+                    if args.compare_swa_local1024:
+                        owner.kv_cache.swa_local1024 = mode == "candidate"
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
@@ -1162,6 +1171,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_swa_mixed32_exp8": args.compare_swa_mixed32_exp8,
             "compare_swa_mixed32_exp16": args.compare_swa_mixed32_exp16,
             "compare_swa_mixed32_exp32": args.compare_swa_mixed32_exp32,
+            "compare_swa_local1024": args.compare_swa_local1024,
             "compare_global_fixedshape_reduce": (
                 args.compare_global_fixedshape_reduce
             ),
@@ -1269,6 +1279,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512": (
                 active_swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
             ),
+            "swa_local1024": active_swa_local1024,
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce
             ),

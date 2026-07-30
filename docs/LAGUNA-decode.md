@@ -7088,6 +7088,7 @@ Current exact decode checkpoint:
 | hipEngine prior route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
 | hipEngine prior shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
 | hipEngine current byte-neutral expert dual-interleave production | **22.262504 tok/s** | **44.919 ms** | **+94.151%** |
+| hipEngine retained exact SWA local1024 same-resident gate | **22.356330 tok/s** | **44.730 ms** | **+94.968%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **2.089 ms/token** | hipEngine is **4.651%** below Vulkan throughput |
 
@@ -7147,6 +7148,17 @@ Next attention-core attack:
    output-rounding certificate that predicts sparse exact replay. The
    already-rejected standard gamma bound, BF16 midpoint repair, extra
    decomposition terms, and full component replay are not new premises.
+5. **Retained/default pending clean publication:** the hardware audit corrects
+   the old local512 endpoint assumption. gfx1151 supports **32 wave32s/CU**
+   and **1024 work-items/workgroup**. Raising only the exact dense-ring owner
+   to local1024 keeps all 40 workgroups, doubles independent QK/transport
+   waves, and leaves every arithmetic operation fixed. The 21x100 leaf
+   improves **0.020948 -> 0.019423 ms/layer (-7.279%)**. Cached tracing names
+   grid40/local1024, reported VGPR32, LDS40,960, and scratch0. All seven exact
+   same-resident p512/d128 pairs win **22.273482 -> 22.356330 tok/s
+   (+0.37195%, -0.166375 ms/token)** with unchanged residency and complete
+   state/lifecycle:
+   [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-retained.json).
 
 The Vulkan review changes the next move from another attention-math rewrite
 to exact device-dispatch contraction. llama.cpp does not expose a reusable
