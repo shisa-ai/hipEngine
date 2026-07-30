@@ -34,6 +34,9 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_bf16_spans"
 )
 _SYMBOL_GLOBAL_PREFILL = "hipengine_laguna_global_attention_prefill_bf16_spans"
+_SYMBOL_GLOBAL_PREFILL_CACHED_EXACT = (
+    "hipengine_laguna_global_attention_prefill_cached_exact_bf16_spans"
+)
 _SYMBOL_GLOBAL_PREFILL_QROW2_ONLINE = (
     "hipengine_laguna_global_attention_prefill_qrow2_online_bf16_spans"
 )
@@ -940,6 +943,82 @@ def laguna_global_attention_prefill_bf16_spans(
         ctypes.c_int64(num_q_heads),
         ctypes.c_int64(num_kv_heads),
         ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_prefill_cached_exact_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    start_position: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact global GQA from a safely preappended BF16 cache tile."""
+
+    parsed_start = None if start_position is None else int(start_position)
+    if (
+        int(rows) != 128
+        or int(max_context_len) != 4096
+        or int(num_q_heads) != 48
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+        or parsed_start not in {0, 128, 256, 384}
+    ):
+        raise ValueError(
+            "cached-exact global requires M128/C4096/H48/KV8/D128 "
+            "at start 0, 128, 256, or 384"
+        )
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    if capacity != 4096 or parsed_start + int(rows) > capacity:
+        raise ValueError(
+            "cached-exact global requires C4096 without capacity overflow"
+        )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_PREFILL_CACHED_EXACT)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 11
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(current_key_ptr),
+        ctypes.c_void_p(current_value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(parsed_start),
         ctypes.c_float(scale),
         ctypes.c_void_p(stream),
     )
@@ -3822,6 +3901,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_prefill",
+            "global_context_rows_cached_exact_spans",
+            laguna_global_attention_prefill_cached_exact_bf16_spans,
+        ),
+        (
+            "laguna_attention_prefill",
             "global_context_rows_qrow2_online_spans",
             laguna_global_attention_prefill_qrow2_online_bf16_spans,
         ),
@@ -4066,6 +4150,7 @@ __all__ = [
     "laguna_global_attention_decode_split_exact_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",
+    "laguna_global_attention_prefill_cached_exact_bf16_spans",
     "laguna_global_attention_prefill_qrow2_online_bf16_spans",
     "laguna_global_attention_prefill_qrow4_cached_meta_online_bf16_spans",
     "laguna_global_attention_prefill_qrow4_cached_online_bf16_spans",

@@ -34,11 +34,14 @@ H5S surface and keep H5L/H5G production. WPF-H5T then carries H5Q's four
 independent K256 partitions in one exact local32/VGPR96/LDS0/scratch0 wave.
 All 45 actual layers are byte-exact and wall improves **3.219%**, but event sum
 regresses **0.388%** and only **12/45** layers win both clocks. Remove all H5T
-surfaces and retain H5Q. H5U now targets the surviving **48-call / 83.324-ms
-global-attention slice** without repeating H5R's rejected qrow4 rebuild: retain
-the production one-row/local256 two-pass body and remove only current/cache
-source selection plus in-body BF16 conversion after matching preappend. This is
-target rationale, not a speed claim. H5N's
+surfaces and retain H5Q. H5U now admits the separate exact cached-source global
+leaf without repeating H5R's rejected qrow4 rebuild. All four starts are byte-
+and CPU-exact; cached tracing retains local256/VGPR40/SGPR128/dynamic-LDS16928/
+scratch0. With equal append cost, starts 0/128/256/384 all win both clocks and
+the weighted 48-call event/wall model moves **101.535/101.899 ->
+84.124/84.622 ms (-17.148%/-16.955%, 1.207x/1.204x)**. Production and tok/s
+remain unchanged pending complete-state, topology, and clean 512/1K/4K runtime
+gates. H5N's
 separately registered exact dense-first-fill leaf is byte-identical to H5M and
 wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
@@ -66,7 +69,8 @@ and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5R 4K remains positive; 16K+ stays closed
 below the 800/700 gate
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
-[H5U global cached-source target](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
+[H5U global cached-source leaf](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
+[H5U target](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
 [H5T IQ3 rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
 [H5S rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
@@ -336,13 +340,16 @@ weighted event/wall **23.277%/19.714%**. Remove all H5S code/tests and retain
 H5L/H5G. H5T then reconstructs IQ3's four K256 partitions in one exact
 local32/VGPR96/LDS0/scratch0 wave. Wall improves **3.219%**, but event sum
 regresses **0.388%** and only **12/45** actual layers win both clocks. Remove
-all H5T surfaces and retain H5Q. H5U selects a distinct exact global leaf: keep
-local256/VGPR40 and the materialized-score/two-pass/normalized-PV association,
-then consume only preappended BF16 cache bytes. It targets current global
-**83.324 ms / 48 calls** and changes no production policy. Wider qrows,
-cross-head/key-split, source MMQ, and changed-association attention stay closed
+all H5T surfaces and retain H5Q. H5U's distinct exact global cached-source leaf
+passes byte/CPU, lifecycle, backend, and cached resource gates at
+local256/VGPR40/SGPR128/dynamic-LDS16928/scratch0. Equal-append starts
+0/128/256/384 improve both clocks; weighted 48-call event/wall falls
+**101.535/101.899 -> 84.124/84.622 ms (1.207x/1.204x)**. Production remains
+unchanged before the separate runtime gate. Wider qrows, cross-head/key-split,
+source MMQ, and changed-association attention stay closed
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
-[H5U global cached-source target](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
+[H5U global cached-source leaf](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
+[H5U target](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
 [H5T IQ3 rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
 [H5S rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·

@@ -866,17 +866,20 @@ partitions into one wave while preserving P64/rowbatch8 and every arithmetic
 boundary. Named register planes eliminate an initial scratch104 spill and
 reach local32/VGPR96/LDS0/scratch0 with exact bytes. Actual event/wall moves
 **474.107/485.298 -> 475.945/469.677 ms (+0.388%/-3.219%)**; only **12/45**
-layers win both clocks. Remove the symbol/key/test and retain H5Q. H5U next
-selects the current **83.324-ms / 48-call** global slice with a distinct exact
-source specialization. Keep `laguna_global_attention_prefill_bf16_kernel`'s
-one-row/local256/VGPR40 score/query scratch, contiguous-four dot, eight-wave
-max/denominator, materialized-weight, normalized-PV, metadata, and store
-association; after matching preappend compile out only current/cache selection
-and F32->BF16->F32 current K/V conversion. Do not reconstruct it as H5R's
-rejected local32/VGPR248/LDS8192 qrow4 body. Add one separate gfx1100 key and
-require all-start byte identity, local256/dynamic-LDS16928/scratch0 with no
-resource regression, and both-clock wins before ownership
-([H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
+layers win both clocks. Remove the symbol/key/test and retain H5Q. H5U's
+separate gfx1100 cached-source global leaf now preserves
+`laguna_global_attention_prefill_bf16_kernel`'s one-row/local256 score/query
+scratch, contiguous-four dot, eight-wave max/denominator, materialized-weight,
+normalized-PV, production current-row visibility, metadata, and store
+association. All starts are byte/CPU exact. Cached tracing records the four
+expected local256/VGPR40/SGPR128/dynamic-LDS16928/scratch0 calls and unchanged
+grid with no compiler; this avoids H5R's rejected local32/VGPR248/LDS8192 qrow4
+rebuild. Equal-append starts 0/128/256/384 all win both clocks, and weighted
+48-call event/wall moves **101.535/101.899 -> 84.124/84.622 ms
+(1.207x/1.204x)**. Keep production unchanged until a bounded default-off owner
+passes complete-state, physical-call/topology, and clean 512/1K/4K gates
+([H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
+[H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
 [H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
 [H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
