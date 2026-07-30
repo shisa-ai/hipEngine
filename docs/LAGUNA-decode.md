@@ -6926,6 +6926,26 @@ The remaining attention sequence is:
      a materially larger within-layer transaction or remove actual GPU
      launches; do not reopen another pair-only native wrapper batch.
 
+122. Re-screen the dead F32 attention-context store on the current saturated
+     SWA owner. **Rejected and removed at the leaf stop:** the earlier
+     gated-only result predated local512 ownership, output-sharded
+     probabilities, V-stage128, DPP-QK, and dense-ring specialization, so the
+     current body supplied a materially different schedule. The diagnostic
+     compiles out only the unused F32 context write; every QK, maximum,
+     probability, denominator, ordered scalar PV FMA, softplus gate, and BF16
+     store is unchanged.
+
+     RED fails on the absent wrapper and GREEN proves the full-ring F32 plane
+     remains at its sentinel while every gated BF16 bit matches production.
+     The 21x100 paired leaf moves only
+     **0.0213095 -> 0.0212854 ms/layer (-0.113%)** with **15/21** wins.
+     Across 36 SWA layers that models less than **0.001 ms/token**, far below
+     the complete-model noise floor. Remove the body/export/wrapper/key,
+     test, and leaf selector before runtime integration. Production remains
+     **22.141787 tok/s**. Do not reopen output-store removal without a larger
+     fused consumer:
+     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-current-gated-only-leaf-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

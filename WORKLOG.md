@@ -194102,3 +194102,27 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required lineage command still stops before producing a report because
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
   source was copied.
+
+## 2026-07-30 23:07 JST — Reject current-kernel SWA gated-only replay
+
+- Re-audited llama.cpp Vulkan `c0bc8591e` and the complete gfx1100/gfx1151
+  router history. Vulkan's remaining advantage is graph-wide command-buffer
+  recording plus cooperative Br16 x Bc64 GQA6/GQA9 attention; the exact
+  persistent router already removed 47 launches/token on gfx1100 and still
+  failed complete-model gates, so it is not a fresh gfx1151 premise.
+- Re-screened the dead F32 attention-context store because the old gated-only
+  experiment predated the current local512/output-sharded/V128/DPP/dense-ring
+  SWA schedule. RED failed on the missing current-body wrapper. GREEN leaves
+  the F32 sentinel untouched and reproduces every gated BF16 bit on the
+  wrapped full ring.
+- The 21x100 cache-only paired leaf moves
+  **0.0213095 -> 0.0212854 ms/layer (-0.113%)** with only **15/21** wins.
+  The projected saving across 36 SWA layers is **0.000867 ms/token**, below
+  complete-model resolution. Remove all candidate source, wrapper, registry,
+  test, and harness seams before runtime integration. Production remains
+  **22.141787 tok/s / 45.163473 ms/token / 482 model kernels/token**.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-current-gated-only-leaf-rejected.json`.
+- The required lineage command still stops before producing a report because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
+  source was copied.
