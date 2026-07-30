@@ -112,24 +112,29 @@ numbers below.
   lifecycle. Cached tracing observes **235** producers, **188** candidates, and
   **47** fallbacks, cutting Q5 **919.697 -> 466.986 ms (-49.224%)** and request
   kernel sum **2,532.020 -> 2,074.261 ms (-18.079%)** at unchanged **1,862**
-  dispatches. Clean package-default 512/1K/4K reaches
-  **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)**,
-  narrowing the matched M512 gap **3.540x -> 2.917x**. No allocation, sidecar,
-  arithmetic, or fallback changes. Post-H5L tracing now ranks matched residuals
-  by exact gap: attention **437.720 ms**, Q5 **408.035 ms**, and IQ down
-  **338.619 ms**. Exact SWA qrow4 owns **268.720 ms / 58.49%** of attention.
-  H5M's separate two-pass source-qualified qrow4 body preserves every admitted
-  dot/softmax/PV operation while avoiding unused current/cache K/V loads. Dense
-  starts 0/128/256/384 plus 508..515 wrap/eviction/ragged cases are bit-exact.
-  At production starts 256/384, event/wall sums improve **6.728/6.737 ->
-  6.437/6.443 ms (-4.324%/-4.354%)**, with both positions positive and unchanged
-  local32/VGPR72/LDS0/scratch0 resources. The leaf is admitted; production stays
-  H5L pending complete-state/integrated/clean-timing qualification. The 150-tok/s
-  short gate and restored 4K gate pass, while 16K+ stays closed below the
-  800/700 512/4K stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
+  dispatches. H5L package-default 512/1K/4K reaches
+  **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)**.
+  Post-H5L tracing ranks matched residuals attention **437.720 ms**, Q5
+  **408.035 ms**, and IQ down **338.619 ms**; exact SWA qrow4 owns **268.720 ms
+  / 58.49%** of attention. H5M's separately registered source-qualified qrow4
+  keeps every admitted two-pass operation while skipping unused current/cache
+  K/V loads. Dense starts 0/128/256/384 plus 508..515 wrap/eviction/ragged cases
+  are bit-exact, and production starts 256/384 improve event/wall sums
+  **6.728/6.737 -> 6.437/6.443 ms (-4.324%/-4.354%)**. Complete M512 state is
+  KL0/byte-exact across all 48 boundaries, logits, K/V/live spans, repeat, and
+  teardown. Cached tracing observes exactly **48 global + 72 wave32 + 72 H5M**
+  calls; qrow4 falls **268.720 -> 260.500 ms (-3.059%)**, attention **459.445 ->
+  450.790 ms (-1.884%)**, and request kernel sum **2,074.261 -> 2,060.485 ms
+  (-0.664%)** at unchanged **1,862** dispatches. Clean package-default
+  512/1K/4K promotes **238.565/218.182/158.138 tok/s
+  (+0.256%/+0.135%/+0.490% over H5L)**, narrowing the matched M512 gap
+  **2.91728x -> 2.90983x** with no allocation or sidecar. Both short rows exceed
+  150 tok/s and 4K remains positive; 16K+ stays closed below the 800/700 stretch
+  target
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
   [H5M leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
   [post-H5L residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
+  [H5L production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
   [H5L leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json) ·
   [H5J production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
   [post-H5K residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·

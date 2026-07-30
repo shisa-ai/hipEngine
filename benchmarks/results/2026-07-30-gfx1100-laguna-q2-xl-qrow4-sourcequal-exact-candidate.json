@@ -89,9 +89,11 @@
   "correctness_claim": true,
   "date": "2026-07-30",
   "decision": {
-    "next_action": "Add bounded default-off package ownership for the candidate and require complete M512 state, integrated physical call counts, and clean counter-ordered 512/1K/4K non-regression before promotion.",
-    "runtime_qualification_required": true,
-    "standalone_leaf_admitted": true
+    "next_action": "Use the production artifact for complete runtime evidence and reprofile the exact post-H5M residual before selecting the next lane.",
+    "runtime_qualification_required": false,
+    "standalone_leaf_admitted": true,
+    "promoted_package_default": true,
+    "runtime_default_changed": true
   },
   "hardware": {
     "architecture": "gfx1100",
@@ -195,5 +197,22 @@
     "screen_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "screen_stdout_sha256": "f7e6fc268e1f026d467558ff4eb645c6f8171549411b289a70359901b367a7be"
   },
-  "status": "retained_exact_standalone_candidate_pending_runtime_qualification"
+  "status": "promoted_to_exact_package_default",
+  "promotion": {
+    "status": "resolved",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json",
+    "complete_m512_state": "KL0 and byte-exact across all 48 boundaries, complete logits, K/V/live spans, repeat, workspace, and lifecycle",
+    "integrated_calls": {
+      "global": 48,
+      "swa_wave32": 72,
+      "swa_qrow4_sourcequal": 72
+    },
+    "integrated_attention_ms": 450.7898079999999,
+    "integrated_request_kernel_sum_ms": 2060.485414,
+    "clean_512_1k_4k_tok_s": [
+      238.56489443755876,
+      218.1815612145882,
+      158.13810004175082
+    ]
+  }
 }

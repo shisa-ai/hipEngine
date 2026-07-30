@@ -182,6 +182,17 @@ should be removed or collapsed.
   do not remove online qrow2/qrow4 registrations because gfx1151 independently
   owns them. Do not reopen changed-association gfx1100 SWA without a materially
   different arithmetic premise and a new complete quality gate.
+- WPF-H5M's package-only `LAGUNA_SWA_PREFILL_ROLE_VARIANTS` cleanup trigger is
+  closed. Complete M512 state is KL0/byte-exact, integrated tracing selects all
+  **72** expected calls, and clean package-default 512/1K/4K publishes
+  **238.565/218.182/158.138 tok/s (+0.256%/+0.135%/+0.490% over H5L)**. Keep the
+  one-entry gfx1100 map and bounded resolver: it replaces only the retained
+  package-default auto route at M128, window 512, 72 SWA heads, and start >=256;
+  explicit rollback plus shape, registration, and backend misses retain WPF-3.
+  gfx1151 remains empty/fail-closed. There is no public/session selector, new
+  allocation, workspace, or sidecar to remove. After one release checkpoint,
+  consider folding the stable role into the existing auto wrapper and deleting
+  only the map/cache-field indirection while preserving exact fallbacks.
 
 ## Laguna source-IQ selected-down MMQ selector
 

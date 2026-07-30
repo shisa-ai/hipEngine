@@ -55,6 +55,9 @@ LAGUNA_PREFILL_MATRIX_ROWS = 2048
 # Qrow2/exact variants remain explicit rollback; unmeasured backends are unchanged.
 LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_m128_online_spans"
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
+# WPF-H5M source-qualified exact qrow4 ownership is W7900-only pending an
+# independent gfx1151 exactness/resource/performance gate.
+LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {}
 # Exact pre-append scheduling lets complete M128 global tiles and pre-wrap SWA
 # tiles consume one BF16 cache source. Wrapped SWA, residual rows, verifier
 # transactions, and other backends retain attend-then-append.
@@ -861,6 +864,7 @@ __all__ = [
     "LAGUNA_ROUTER_LOGITS_MODE",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SELECTED_GATE_UP_MODE",
+    "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
