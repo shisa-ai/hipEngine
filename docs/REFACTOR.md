@@ -2451,3 +2451,7 @@ should be boring.
 - Remove the direct profiling flag after tracked-clean selector-unset
   publication. Retain the constructor rollback, gfx1151 capability, both
   four-axis registrations, and exact scalar-column fallback.
+- Tracked-clean publication passes at **22.780604 tok/s / 43.896992
+  ms/token**. The direct profiling flag is removed. Retain only the constructor
+  rollback, gfx1151 capability, both registrations, and exact scalar-column
+  fallback.
