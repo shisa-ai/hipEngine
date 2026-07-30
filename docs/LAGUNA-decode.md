@@ -6805,10 +6805,13 @@ The remaining attention sequence is:
      paired deltas. All trajectories retain tokens **2930/74107**, SHA
      `94f803f7...bda32`, final position 638, deterministic state, and complete
      recovery. Remove the diagnostic duplicate allocations before production.
-     The byte-neutral selector-unset packet measures
+     The byte-neutral dirty selector-unset packet measures
      **21.923059/21.945923/21.942208 tok/s**, median
      **21.942208 (+0.28406%, -0.129457 ms/token)** versus the preceding clean
-     checkpoint, with unchanged residency and exact state:
+     checkpoint. Tracked-clean production at `f5b63ff59` measures
+     **21.907532/21.926113/21.927954 tok/s**, median
+     **21.926113 (+0.21050%, -0.096003 ms/token)** with unchanged residency,
+     exact state, and complete allocation recovery:
      [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-dual-interleaved-retained.json).
 
 Current exact decode checkpoint:
@@ -6816,10 +6819,10 @@ Current exact decode checkpoint:
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine prior tracked-clean production | **21.851538 tok/s** | **45.763 ms** | **+90.565%** |
-| hipEngine current production | **21.942208 tok/s** | **45.574 ms** | **+91.356%** |
+| hipEngine prior tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
+| hipEngine current production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.745 ms/token** | hipEngine is **6.023%** below Vulkan throughput |
+| Remaining wall gap | — | **2.778 ms/token** | hipEngine is **6.092%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
