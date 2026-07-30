@@ -6666,17 +6666,22 @@ The remaining attention sequence is:
      `LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER`; retain single-buffer
      dense-prefix as the exact peer fallback:
      [`idle-double-buffer retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-retained.json).
+     The tracked-clean selector-unset packet measures
+     **21.880056/21.872319/21.898392 tok/s**, median
+     **21.880056 tok/s (+0.13051%, -0.059647 ms/token)** versus the preceding
+     clean checkpoint. Prefill is within noise at **651.220 tok/s** and all
+     three production trajectories remain exact:
+     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine prior tracked-clean production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
-| hipEngine current tracked-clean production | **21.851538 tok/s** | **45.763 ms** | **+90.565%** |
-| hipEngine retained idle-V candidate, clean publication pending | **21.891144 tok/s** | **45.681 ms** | **+90.911%** |
+| hipEngine prior tracked-clean production | **21.851538 tok/s** | **45.763 ms** | **+90.565%** |
+| hipEngine current tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.934 ms/token** | hipEngine is **6.411%** below Vulkan throughput |
+| Remaining wall gap | — | **2.874 ms/token** | hipEngine is **6.289%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
