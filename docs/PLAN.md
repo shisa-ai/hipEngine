@@ -1811,19 +1811,19 @@ tok/s**; synthetic pp512 is **711.410 tok/s**, consistent with the user's
 **1,568.190/718.241 ms**; current residuals rank IQ-down/Q5/attention/gate-up/Q6
 at **336.609/187.223/147.249/93.203/79.112 ms**.
 
-Select **WPF-H6B exact active-IQ3 signed-magnitude segment plane**. A bounded
-producer writes one aligned 16-byte record per active-expert/output/group8:
-the exact current F32 scale, eight exact signed int8 magnitudes, and padding. A
-matching H5Z-derived consumer performs exact int8-to-F32 conversion and retains
-the scalar BF16 dot, scale multiply, wave tree, serial wave sum, rowbatch8, P64
-expert, P256 output, store, metadata, and fallback order. Natural M512 has
-**9,844** active layer-expert instances and **33,547** rowbatch8 iterations, so
-the static repeated-decode ratio is **3.40786x**. The fixed 256-expert plane is
-**1,610,612,736 bytes** and combined workspace is **1,771,732,992 bytes**; this
-is an admission bound/static rationale, not a speed claim. Require exact record/
-output bytes, producer-inclusive all-45-layer both-clock wins, bounded resources/
-memory, complete state, and clean 512/1K/4K before ownership
-([post-H6A matched residual / comparator correction / H6B target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
+**WPF-H6B exact active-IQ3 signed-magnitude segment plane** implements the
+materially different data-layout screen selected after H6A. Complete reordered
+16-byte records match the pinned IQ3 decode bytes; P64/P65/tail/empty outputs
+match H5Z and the independent CPU oracle; all **45/45** actual-layer outputs are
+byte-exact. The producer-inclusive binding screen rejects the path on every
+layer and both clocks: H5Z -> H6B event/wall moves
+**462.301/450.204 -> 575.804/587.342 ms (+24.552%/+30.461%)**, with **0/45**
+wins. The producer is local256/VGPR24/LDS0/scratch0; the local128/VGPR104/
+LDS512/scratch0 consumer compiles one b96 load because dead padding is elided,
+missing the frozen b128 physical contract. Remove every candidate source/key/
+test surface without a runtime gate and retain H6A/H5Y/H5Z
+([H6B rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json) ·
+[post-H6A matched residual / H6B target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
 [H6A production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
 [H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
 [post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
@@ -1838,7 +1838,8 @@ memory, complete state, and clean 512/1K/4K before ownership
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
-ownership, H5T one-wave IQ3 ownership, and P6/repair routes remain closed.
+ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
+P6/repair routes remain closed.
 Launch fusion remains deferred.
 Keep 16K+ closed until direct M512 reaches **696.342 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

@@ -988,16 +988,19 @@ exact natural/C4096/BF16 llama.cpp HIP at **696.342 tok/s**; synthetic pp512 is
 rank IQ-down/Q5/attention/gate-up/Q6 at
 **336.609/187.223/147.249/93.203/79.112 ms**.
 
-WPF-H6B selects a new exact IQ3 data-layout operation rather than reopening
-closed tiles: a producer emits aligned 16-byte
-`{float scale, int8 magnitude[8], padding}` records for each active expert,
-output column, and group8; an H5Z-derived consumer converts the integers exactly
-and preserves the scalar dot/scale/reduction/store order. The fixed 256-expert
-plane is **1,610,612,736 bytes** and combined workspace is **1,771,732,992
-bytes**. Require record/output byte identity, one physical b128 consumer load,
-producer-inclusive all-45-layer both-clock wins, bounded resources/memory, and
-complete runtime gates before ownership
-([post-H6A matched residual / comparator correction / H6B target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
+WPF-H6B screens the new exact IQ3 data-layout operation selected after H6A.
+Complete aligned 16-byte `{float scale, int8 magnitude[8], padding}` records and
+all **45/45** actual-layer outputs match H5Z/CPU bytes. Physical tracing is
+scratch-free at producer local256/VGPR24/LDS0 and consumer local128/VGPR104/
+LDS512, but LLVM elides dead padding into one b96 rather than the frozen b128
+record load. More importantly, producer-inclusive H5Z -> H6B event/wall
+regresses **462.301/450.204 -> 575.804/587.342 ms (+24.552%/+30.461%)**, with
+**0/45** both-clock wins. Remove the producer/consumer symbols, wrappers,
+registry keys, exclusions, and RED test; retain H5Z and do not retry this
+representation without a materially different operation-count/data-movement
+premise
+([H6B rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json) ·
+[post-H6A matched residual / H6B target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
 [H6A production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
 [H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
 [post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
