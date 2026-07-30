@@ -18,9 +18,14 @@ ms (-18.079%)** at unchanged **1,862** dispatches. Three-repeat package-default
 production is **237.956/217.888/157.366 tok/s** at 512/1K/4K, improving H5J
 **+21.342%/+19.812%/+14.725%**; every sample is exact and lifecycle-clean. The
 matched llama.cpp HIP M512 target remains **694.184 tok/s**, narrowing the gap
-**3.540x -> 2.917x**. Both short rows exceed 150 tok/s and 4K remains positive;
-16K+ stays closed below the 800/700 stretch gate
+**3.540x -> 2.917x**. The post-H5L exact-gap order is attention **437.720 ms**,
+Q5 **408.035 ms**, and IQ down **338.619 ms**. Exact SWA qrow4 contributes
+**268.720 ms / 58.49%** of attention, selecting H5M's two-pass
+source-qualified qrow4 screen; its 29.69–37.11% logical-source model is
+attribution rationale, not a performance claim. Both short rows exceed 150
+tok/s and 4K remains positive; 16K+ stays closed below the 800/700 stretch gate
 ([H5L production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
+[post-H5L residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
 [H5L leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json) ·
 [H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
 [post-H5K residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
@@ -209,9 +214,16 @@ candidate byte matches, lifecycle recovers, and all temporary code is removed.
 The unchanged H5J request reconciles to Q5 **919.697 ms**, attention **468.007**,
 IQ down **497.145**, gate/up **466.826**, Q6 **110.293**, and remaining **70.051
 ms**. Q5 consumers own **904.399 ms** and select H5L's exact weight-tile-major
-linear workgroup traversal; do not reopen larger row ownership, output tiling,
-or source-MMQ arithmetic
-([post-H5K residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
+linear workgroup traversal. H5L then cuts integrated Q5 to **466.986 ms** and
+publishes **237.956/217.888/157.366 tok/s**. Its reconciled request is led by
+matched attention gap **437.720 ms**, then Q5 **408.035** and IQ down **338.619**.
+The two exact SWA qrow4 slices consume **268.720 ms**, selecting H5M's
+visibility-first current/cache source loads without changing two-pass
+association; do not reopen larger IQ rows, Q5 output tiling, source MMQ, or
+changed-association attention
+([post-H5L residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
+[H5L production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
+[post-H5K residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
 [H5K rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
 [H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
 [H5J leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·

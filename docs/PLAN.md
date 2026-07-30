@@ -1532,10 +1532,20 @@ fallbacks: Q5 falls **919.697 -> 466.986 ms (-49.224%)** and request kernel sum
 **2,532.020 -> 2,074.261 ms (-18.079%)** at unchanged **1,862** dispatches.
 Clean package-default 512/1K/4K promotes **237.956/217.888/157.366 tok/s
 (+21.342%/+19.812%/+14.725% over H5J)** and narrows matched M512 to **2.917x**.
-Every miss and gfx1151 retain the preceding exact route. The old rowbatch16
-spill, output-tile regression, and source-MMQ quality failure remain closed. Do
-not stack rejected H1-H5B arithmetic or reopen P6/repair; reprofile this H5L
-production request before selecting the next exact lane. Launch fusion remains
+Every miss and gfx1151 retain the preceding exact route. The post-H5L request
+reconciles **2,074.261 ms / 1,862 dispatches** in a **2,100.389-ms** span.
+Matched gaps now rank attention **437.720 ms**, Q5 **408.035**, and IQ down
+**338.619**. Attention is **80.824 ms** global plus **109.901 ms** exact SWA
+wave32 and **268.720 ms** exact SWA qrow4; qrow4 owns **58.49%** of the family.
+Select WPF-H5M exact source-qualified qrow4: compute the existing per-row
+visibility predicates before loading current/cache K/V, but preserve logical-
+slot order, BF16 source rounding, the reconstructed dot tree, two-pass maximum/
+denominator/PV order, stores, KV schedule, and fallback. Its dense-M512 logical
+source model removes **37.11%/29.69%** at starts 256/384; this is a diagnostic
+premise, not a speed claim. Require dense plus wrapped/evicted byte equality and
+both clocks before ownership. The old rowbatch16 spill, output-tile regression,
+source-MMQ failure, and changed-association attention routes remain closed. Do
+not stack rejected H1-H5B arithmetic or reopen P6/repair. Launch fusion remains
 below its trigger at **1.244%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
