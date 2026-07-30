@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:50:08.447443+00:00",
+  "kind": "hipengine_gfx1151_laguna_selected_gate_down_host_batch",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 2,
+    "rocm_version": "7.15.0-0000000"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79022522196
+  },
+  "baseline": {
+    "revision": "43854b6d13e8b979426c83ab873d484eeba88b44",
+    "tracked_clean_production_decode_tok_s": 22.1417871921,
+    "tracked_clean_production_ms_per_token": 45.1634726377,
+    "model_kernels_per_token": 482
+  },
+  "candidate": {
+    "description": "Invoke the retained Q4 selected gate/up wrapper and retained Q4 or planar-Q6 route-parallel weighted selected-down wrapper inside one native host call.",
+    "gpu_kernels_changed": false,
+    "gpu_launch_count_changed": false,
+    "arithmetic_changed": false,
+    "bf16_boundaries_changed": false,
+    "resident_bytes_added": 0
+  },
+  "correctness": {
+    "production_shape_q4_intermediate_bf16_mismatches": 0,
+    "production_shape_q4_down_bf16_mismatches": 0,
+    "production_shape_q4_routed_bf16_mismatches": 0,
+    "production_shape_q6_intermediate_bf16_mismatches": 0,
+    "production_shape_q6_down_bf16_mismatches": 0,
+    "production_shape_q6_routed_bf16_mismatches": 0,
+    "completion_counter_planes_reset": true,
+    "control_candidate_next_tokens_match": true,
+    "control_candidate_generated_ids_match": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "allocation_lifecycle_exact": true
+  },
+  "screen": {
+    "command": [
+      "GPU_MAX_HW_QUEUES=2",
+      "HIP_VISIBLE_DEVICES=0",
+      "HIPENGINE_HIP_ARCH=gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt",
+      "PYTHONPATH=.",
+      ".venv/bin/python3",
+      "-u",
+      "scripts/laguna_long_context_profile.py",
+      "--context-length",
+      "4096",
+      "--lengths",
+      "512",
+      "--chunk-size",
+      "2048",
+      "--decode-output-tokens",
+      "128",
+      "--repetitions",
+      "7",
+      "--warmup-rows",
+      "128",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--compare-selected-gate-down-host-batch",
+      "--allow-dirty"
+    ],
+    "single_pair": {
+      "control_decode_tok_s": 22.1372662392,
+      "candidate_decode_tok_s": 22.1609596546,
+      "candidate_delta_percent": 0.1070295407,
+      "raw_sha256": "c915e348884a01a94336f9bba618263ec271923ff303458707fb55cec61b4043"
+    },
+    "seven_pair": {
+      "control_median_decode_tok_s": 22.1352064406,
+      "candidate_median_decode_tok_s": 22.1302098322,
+      "candidate_delta_percent": -0.0225731279,
+      "control_median_ms_per_token": 45.1768996454,
+      "candidate_median_ms_per_token": 45.1870997873,
+      "candidate_added_ms_per_token": 0.0102001418,
+      "paired_median_added_ms_per_token": 0.0123431407,
+      "candidate_pair_wins": 2,
+      "candidate_pair_losses": 5,
+      "paired_candidate_savings_ms_per_token": [
+        0.056868494,
+        -0.041279867,
+        -0.012343141,
+        -0.022338410,
+        -0.003751512,
+        0.037820962,
+        -0.018484124
+      ],
+      "raw_sha256": "5eaa24210d41ebe9fc8915060f8dee5f401b0e981fda06b5ce7ad6b04669c6f6"
+    }
+  },
+  "comparator_review": {
+    "llama_cpp_revision": "c0bc8591e",
+    "source": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+    "finding": "Vulkan records dependent graph work into command buffers and submits by a FLOP budget or at most 100 nodes; one pair of nested HIP wrapper calls is not equivalent to that graph-wide submission model."
+  },
+  "lineage": {
+    "external_code_copied": false,
+    "check_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "check_status": "blocked_missing_read_only_checkout",
+    "blocker": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "decision": {
+    "retained": false,
+    "production_changed": false,
+    "candidate_code_removed": true,
+    "reason": "The exact seven-pair gate lost five pairs and regressed both endpoint and paired medians. The trace gap cannot be attributed to the Python boundary between only these two wrapper calls."
+  }
+}
