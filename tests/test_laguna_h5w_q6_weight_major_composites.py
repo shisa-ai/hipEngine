@@ -30,14 +30,26 @@ _CANDIDATES = (
     (16, 5, "f32"),
 )
 _Q5_PRODUCTION_POLICY = {
-    ("bf16", 3072, 1024): "weight_major_tile_k_col_coltile8_rowbatch4",
-    ("bf16", 3072, 12288): "weight_major_coltile8_rowbatch12",
-    ("bf16", 6144, 3072): "weight_major_tile_k_col_coltile16_rowbatch5",
-    ("bf16", 9216, 3072): "weight_major_coltile12_rowbatch8",
+    ("bf16", 3072, 1024): (
+        "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch4"
+    ),
+    ("bf16", 3072, 12288): (
+        "weight_major_row_major_activation_tile_k_row_coltile8_rowbatch12"
+    ),
+    ("bf16", 6144, 3072): (
+        "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5"
+    ),
+    ("bf16", 9216, 3072): (
+        "weight_major_row_major_activation_tile_k_row_coltile12_rowbatch8"
+    ),
     ("f32", 3072, 48): "coltile12_rowbatch4",
     ("f32", 3072, 72): "coltile8_rowbatch4",
-    ("f32", 3072, 6144): "weight_major_tile_k_col_coltile16_rowbatch5",
-    ("f32", 3072, 9216): "weight_major_tile_k_col_coltile8_rowbatch10",
+    ("f32", 3072, 6144): (
+        "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5"
+    ),
+    ("f32", 3072, 9216): (
+        "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch10"
+    ),
 }
 _Q6_PRODUCTION_POLICY = {
     ("bf16", 3072, 1024): "weight_major_coltile16_rowbatch5",
