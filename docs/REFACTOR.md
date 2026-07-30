@@ -2163,3 +2163,15 @@ should be boring.
   producer/denominator/PV scheduling screen. Remove it, its wrapper, registry
   key, leaf selector, and focused test call if no compound candidate uses it;
   never make it the default independently.
+
+## Laguna gfx1151 selected-Q4 scalar-Q rollback
+
+- Added 2026-07-30 after exact adjacent-column T16 Q-payload reuse improved the
+  actual gate/up leaf **1.945%** and all seven p512/d128 model pairs.
+  Production keeps the existing
+  `selected_dual_t16_natural_tile8_parallel_silu...` variant name; the
+  separately registered `...parallel_silu_scalarq...` sibling restores the
+  pre-change one-nibble-per-load body exactly.
+- Keep scalar-Q through clean selector-unset publication and one later decode
+  wall census. Remove its launcher, wrapper, registry key, and comparison-only
+  exactness call if pair-Q remains positive and spill-free after that census.

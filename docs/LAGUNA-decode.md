@@ -6098,6 +6098,25 @@ The remaining attention sequence is:
     older generic qmicro primitive as diagnostic evidence only. Production
     remains **20.800509 tok/s**:
     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-qmicro-tile8-silu-rejected.json).
+90. Reuse the packed T16 Q payload across adjacent output columns.
+    **Complete, retained, and promoted pending clean publication:** the
+    resident T16 Q plane already places adjacent output-column nibbles in one
+    byte. Load that byte once per pair and extract low/high nibbles while
+    preserving the T16 layout, coefficient loads, K ownership, FMA order,
+    wave32 tree, wave merge, BF16 gate/up boundaries, SiLU expression, and
+    BF16 output.
+
+    The actual layer-1 counterbalanced 21x100 leaf improves
+    **0.131761 -> 0.129199 ms (-1.945%)** with zero BF16 mismatches. Cached
+    tracing names the intended scalar-Q and pair-Q specializations and keeps
+    both at local128/VGPR96/SGPR128/LDS512/scratch0. Seven resident p512/d128
+    pairs all improve, moving median decode
+    **20.811539 -> 20.820664 tok/s (+0.04385%, -0.02106 ms/token)** with
+    exact tokens, trajectory, final position, determinism, and allocation
+    recovery. Promote pair-Q behind the existing production variant name;
+    retain the scalar-Q sibling briefly as an explicit compiler/codegen
+    rollback:
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json).
 
 Current exact decode checkpoint:
 
