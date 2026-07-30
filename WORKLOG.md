@@ -192614,3 +192614,36 @@ Vulkan local sizes verbatim will close the measured gap.
   synchronization topology changes.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-parallel-max-rejected.json`.
+
+## 2026-07-30 10:20 JST — Reprofile retained output-sharded decode wall
+
+- Run a cache-only `rocprofv3 --kernel-trace` on tracked-clean
+  `36cfef876` over one exact p512/d128 eager c=1 trajectory. No compiler runs
+  under the profiler. The trace contains 127 length-1 decode transitions and
+  **673 dispatches/token**.
+- Median device kernel sum is **46.214841 ms/token** and span is
+  **48.262162 ms/token**. Relative to the post-Q4-SiLU census, attention moves
+  **2.129354 -> 2.093607 ms/token (-1.679%)**, including SWA
+  **1.468158 -> 1.428844 (-2.678%)**; global is trace-noise flat at
+  **0.657957 -> 0.659514 ms/token**.
+- Current family wall is source-F16 **24.046884 ms/token**, selected Q4
+  gate/up **8.386938**, selected Q4/Q6 down **4.797364**, dense/shared quant
+  **3.518958**, attention **2.093607**, lm-head/argmax **1.118699**, router
+  **1.055096**, and norm/rope/gate **1.059150**.
+- Against the same-GGUF Vulkan logger, source-F16 is **0.711684 ms/token
+  faster**. Positive gaps are attention **+1.184184 ms/token**, selected
+  gate/up **+0.922848**, and selected down **+0.272274**.
+- The gate/up format gap is now bounded by bytes: retained T16 streams
+  **1.709507 GB/token** at **203.83 GB/s**. The existing exact qmicro
+  primitive streams **1.663304 GB/token**, removing T16's **2.778%** expanded
+  scale/min bytes. At the measured **221 GB/s** read anchor its floor is
+  **7.526 ms**, nearly Vulkan's **7.464 ms**. Next build the
+  production-shaped tile8/parallel-tail/fused-SiLU qmicro consumer and gate it
+  before changing resident selection.
+- Tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, final position
+  638, determinism, and allocation recovery pass. Bench/trace hashes are
+  `37352e33...4bcd` and `da896987...5a12`.
+- The generic trace-summary CLI expects prefill-only segments and rejects the
+  127 decode segments; aggregation used its family classifiers directly.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-output-sharded-wall-reprofile.json`.

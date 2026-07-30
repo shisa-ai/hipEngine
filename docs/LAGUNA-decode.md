@@ -6051,6 +6051,35 @@ The remaining attention sequence is:
     remains **20.800509 tok/s**. Maximum-replay-only scheduling is closed
     unless a larger score-production or synchronization topology changes:
     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-parallel-max-rejected.json).
+88. Reprofile the retained output-sharded production wall and select the next
+    bandwidth gate.
+    **Complete, accepted attribution checkpoint:** a cache-only
+    `rocprofv3 --kernel-trace` run on tracked-clean `36cfef876` records 127
+    exact decode transitions and **673 dispatches/token**. Median device
+    kernel sum is **46.214841 ms/token** and kernel span is
+    **48.262162 ms/token**. Relative to the post-Q4-SiLU census, attention
+    improves **2.129354 -> 2.093607 ms/token (-1.679%)**, driven by SWA
+    **1.468158 -> 1.428844 ms/token (-2.678%)**; global is flat within trace
+    noise at **0.657957 -> 0.659514 ms/token**.
+
+    The same-GGUF Vulkan family bridge now leaves three named positive gaps:
+    attention **+1.184184 ms/token**, selected gate/up
+    **+0.922848 ms/token**, and selected down **+0.272274 ms/token**.
+    Source-F16 remains **0.711684 ms/token faster** than Vulkan. Attention is
+    still the largest comparator gap, but the current scalar-exact topology's
+    bounded ownership, replay, stage, and register screens are exhausted; a
+    successor needs a materially different exact or quality-gated topology.
+
+    Selected gate/up provides the next concrete production screen. Its
+    retained T16 owner streams **1.709507 GB/token** in **8.386938 ms**, or
+    **203.83 GB/s**. The scale/min expansion alone makes T16 **2.778% larger**
+    than the existing exact byte-neutral qmicro layout. Qmicro would stream
+    **1.663304 GB/token**, with a **7.526 ms** floor at the measured
+    **221 GB/s** read anchor, nearly Vulkan's **7.464090 ms**. Build a
+    production-shaped tile8, parallel-tail, fused-SiLU qmicro consumer before
+    changing resident selection. Tokens **2930/74107**, trajectory, final
+    position, determinism, and allocation recovery remain exact:
+    [`wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-output-sharded-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
