@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T02:09:00+09:00",
+  "kind": "hipengine_laguna_post_swa_local1024_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "b805f8615720168b08bb7bc34bacaa10261b65bf",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 482,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 43.29771,
+    "kernel_span": 44.969697,
+    "median_per_segment_span_minus_kernel_sum": 1.673554,
+    "source_f16_projection_composites": 24.546111,
+    "selected_q4_gate_up": 7.776157,
+    "selected_q4_q6_down": 4.80358,
+    "dense_shared_quant_projection": 2.355941,
+    "router": 1.082753,
+    "attention_total": 1.175727,
+    "swa_attention": 0.721795,
+    "global_attention": 0.453932,
+    "norm_rope_gate_outside_projection_composites": 0.431608,
+    "activation_reduce_residual": 0.001522,
+    "lm_head_argmax": 1.1181,
+    "embedding": 0.002284
+  },
+  "change_from_pre_local1024_census": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-paired-expert-wall-reprofile.json",
+    "kernel_sum_ms_per_token": -0.202951,
+    "kernel_sum_percent": -0.466547,
+    "kernel_span_ms_per_token": -0.203804,
+    "kernel_span_percent": -0.451158,
+    "attention_ms_per_token": -0.171637,
+    "attention_percent": -12.738725,
+    "swa_ms_per_token": -0.171237,
+    "swa_percent": -19.174789,
+    "global_ms_per_token": -0.0004,
+    "dispatches_per_token": 0
+  },
+  "same_gguf_vulkan": {
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.8295220983,
+    "hipengine_traced_kernel_sum_delta_ms": -0.36149,
+    "hipengine_traced_kernel_sum_delta_percent": -0.827981,
+    "hipengine_clean_production_wall_ms_per_token": 44.771412070565205,
+    "hipengine_clean_production_wall_delta_ms": 1.9418899722235707,
+    "family_comparison_ms_per_token": {
+      "attention": {
+        "hipengine": 1.175727,
+        "vulkan": 0.909423,
+        "delta": 0.266304
+      },
+      "dense_shared_quant_projection": {
+        "hipengine": 2.355941,
+        "vulkan": 1.999889,
+        "delta": 0.356052
+      },
+      "selected_q4_gate_up": {
+        "hipengine": 7.776157,
+        "vulkan": 7.46409,
+        "delta": 0.312067
+      },
+      "selected_q4_q6_down": {
+        "hipengine": 4.80358,
+        "vulkan": 4.52509,
+        "delta": 0.27849
+      },
+      "router": {
+        "hipengine": 1.082753,
+        "vulkan": 0.970716,
+        "delta": 0.112037
+      }
+    },
+    "source_f16_qualification": "hipEngine's two retained source-F16 symbols include head/KV and add/RMSNorm work, so their 24.546111-ms composite is not directly compared with Vulkan's older projection-only family."
+  },
+  "trace_resources": {
+    "swa_attention": {
+      "kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<...,1024,...>",
+      "calls_per_token": 36,
+      "local_x": 1024,
+      "grid_workgroups": 40,
+      "vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 40960,
+      "scratch_bytes": 0
+    },
+    "global_attention": {
+      "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<...,512,...>",
+      "calls_per_token": 12,
+      "local_x": 512,
+      "grid_workgroups": 40,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-local1024-wall.rXldWA --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-local1024-wall.rXldWA/bench.json",
+    "segmentation": "sort by start timestamp and dispatch id; discard warmup128 and timed prefill512; report medians over the final 127 length-one embedding-through-argmax segments; classify families with scripts/laguna_long_context_trace_summary.py and split the two fused source-F16 composites from norm/RoPE manually",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "5be41fbbf2d0b5a7e62d5f16bfe605576306f43fc2e39741da1fb911ddc0c748",
+    "bench_sha256": "eebdc8a751cbdfa09d93412df36ecbc523dc94b80f0ab119b0d8b745f6378f84"
+  },
+  "interpretation": {
+    "result": "Local1024 removes 0.171637 ms/token from exact attention and 0.202951 ms/token from complete kernel work with no dispatch or resident-byte change.",
+    "arithmetic_priority": "Dense/shared is now the largest named positive family gap at 0.356052 ms/token, followed by selected gate/up at 0.312067, selected down at 0.278490, attention at 0.266304, and router at 0.112037.",
+    "attention_priority": "Global remains local512 and unchanged at 0.453932 ms/token; screen the same local1024 cooperative-width premise there before reopening approximate tensor arithmetic.",
+    "whole_wall_priority": "Complete hipEngine kernel work is 0.361490 ms/token below Vulkan's logged sum, but production wall remains 1.941890 ms/token slower. Submission/dispatch remains the dominant cross-family wall mechanism."
+  }
+}

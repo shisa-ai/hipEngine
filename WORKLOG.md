@@ -194382,3 +194382,52 @@ Vulkan local sizes verbatim will close the measured gap.
   selector-unset publication and the 127-transition attention census remain.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-retained.json`.
+
+## 2026-07-31 02:12 JST — Publish and census exact SWA local1024
+
+- Tracked-clean selector-unset revision `b805f8615` measures
+  **22.308401/22.335681/22.338578 tok/s**, median
+  **22.335681 tok/s / 44.771412 ms/token**, with steady pp512 median
+  **657.783910 tok/s**. This advances the prior exact production
+  **22.262504 -> 22.335681 tok/s (+0.328702%)**, saves
+  **0.147164 ms/token**, and is **94.787575%** above the 11.466687-tok/s
+  sprint start.
+- All three runs preserve tokens 2930/74107, final position 638, generated-ID
+  SHA-256 `94f803f7...bda32`, deterministic repeats,
+  **79,022,522,196-byte** residency, and zero tracked live allocations after
+  close. Raw selector-unset JSON SHA-256 is
+  `c2a91a70d04dd5a5317a5f7983f0e324396d5a696abf7976fdd8cc590583d1ef`.
+- A cached-only `rocprofv3` run on the same clean revision segments all
+  **127** exact decode transitions at **482 model dispatches/token**. Median
+  kernel sum is **43.297710 ms/token**, span is **44.969697**, and
+  span-minus-sum is **1.673554**. SWA falls
+  **0.893032 -> 0.721795 ms/token (-19.174789%)**; total attention falls
+  **1.347364 -> 1.175727 (-12.738725%)**. Complete kernel sum and span fall
+  **0.202951/0.203804 ms/token** with no dispatch change.
+- The retained attention resources are SWA grid40/local1024,
+  reported-VGPR32/SGPR128/LDS40,960/scratch0, and unchanged global
+  grid40/local512, reported-VGPR48/SGPR128/LDS512/scratch0. The generic
+  long-context summary CLI correctly found 129 segments but rejects decode
+  traces because its child-order contract expects only warmup plus timed
+  prefill rows; the accepted census therefore uses its family classifiers
+  directly over the final 127 length-one segments, matching prior decode
+  census protocol.
+- Complete hipEngine kernel work is now **0.361490 ms/token below** the
+  same-GGUF Vulkan logger. Clean production wall remains
+  **1.941890 ms/token** slower. The remaining like-for-like gaps rank
+  dense/shared **+0.356052**, selected gate/up **+0.312067**, selected down
+  **+0.278490**, attention **+0.266304**, and router
+  **+0.112037 ms/token**. Exact local1024 global is the next bounded
+  attention screen.
+- Exact trace command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-local1024-wall.rXldWA --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-local1024-wall.rXldWA/bench.json`.
+  Trace/bench SHA-256 values are
+  `5be41fbbf2d0b5a7e62d5f16bfe605576306f43fc2e39741da1fb911ddc0c748`
+  and
+  `eebdc8a751cbdfa09d93412df36ecbc523dc94b80f0ab119b0d8b745f6378f84`.
+- Publish
+  `benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-production.json`
+  and
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json`.
+  Remove the dedicated `--compare-swa-local1024` seam after publication and
+  census; retain local512 as the exact non-dense/eviction/peer fallback.
