@@ -6244,6 +6244,30 @@ The remaining attention sequence is:
     7/7 resident gate. All three repetitions preserve exact state and
     allocation teardown:
     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-production.json).
+96. Overlap the next SWA V128 tile with trailing exact PV through a split
+    workgroup barrier.
+    **Rejected and removed at the leaf stop:** replace each trailing
+    `__syncthreads()` with `thread_block::barrier_arrive()`, let early waves
+    fetch four next-stage `uint4` values while later waves finish their
+    unchanged scalar PV chain, wait for every wave, and only then publish the
+    prefetched values into the reused LDS plane. Staged bytes, QK, softmax,
+    denominator, PV association, stores, ownership, ABI, and dispatch count
+    are unchanged.
+
+    RED fails importing the absent diagnostic wrapper. GREEN passes the
+    wrapped/explicitly-evicted CPU-reference fixture with byte-identical F32
+    context and gated BF16 output. The paired 9x50 cache-only leaf nevertheless
+    regresses **0.029764 -> 0.033705 ms (+13.241%)**. Remove the template axis,
+    kernel export, wrapper, registry/export entry, test call, and harness
+    selector before any resident integration.
+
+    This is the materially different retry condition left by the earlier
+    V-stage double-buffer rejection, and it fails alongside depth-two source
+    prefetch. The exact local512 body is not improved by carrying next-stage V
+    data across current-stage PV; return only with a mechanism that removes
+    traffic or changes the cooperative arithmetic contract. Production remains
+    **20.965807 tok/s**:
+    [`split-barrier rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-splitbarrier-v-prefetch-rejected.json).
 
 Current exact decode checkpoint:
 
