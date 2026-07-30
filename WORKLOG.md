@@ -194804,3 +194804,34 @@ Vulkan local sizes verbatim will close the measured gap.
   accompany a larger selected-expert or source-F16 seam to reach 24 tok/s.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-sparse-core-host-batch-rejected.json`.
+
+## 2026-07-31 04:50 JST — Reject exact per-layer Laguna sparse-FFN graphs
+
+- Reused the in-tree self-validating `MoeGraphCache` around each of Laguna's
+  47 stateless sparse FFNs, replacing the Python launch sequence with one
+  `hipGraphLaunch` while preserving all 482 device kernels/token.
+- The first screen found 46/47 validation rejects because the FFN tail
+  intentionally overwrites its `scratch.norm` input with the next layer's
+  norm. Added a generic optional input snapshot/restore for the one-time
+  validation replay and a live HIP mutating-input gate. Commit `91f18831d`
+  retains this correctness fix independently of the rejected Laguna route.
+- With validation fixed, all **47 graphs capture**, the timed candidate records
+  **5,969 replays / zero eager / zero rejects**, and tokens, trajectory,
+  position, **79,066,169,172-byte** residency, and lifecycle remain exact.
+- Fully engaged graph replay loses the directional wall screen:
+  **22.573880 -> 22.465882 tok/s (-0.478421%)**, adding
+  **0.212954 ms/token**. Raw SHA-256 is
+  `07f969d148290a84e086a95d7943a56b424b05f16c65388b23a5dabc010a3533`.
+- Kernel tracing shows why: kernel sum is essentially flat
+  **42.859795 -> 42.874986 ms/token**, but span grows
+  **44.532228 -> 44.734457** and positive idle grows
+  **1.675078 -> 1.853355 ms/token**. The three large ~6.5-us internal sparse
+  boundaries do not shrink, while graph tail -> next head/KV grows
+  **1.924 -> 3.727 us**. Trace/bench SHA-256 values are
+  `f2defd74...6b36` and `e22decdd...1b69`.
+- Removed all Laguna graph integration, comparison CLI, and tests. Production
+  remains **22.581875 tok/s / 44.283303 ms/token**. Per-layer HIP graph replay
+  is closed; reopen only for graph-wide dynamic device state, demonstrably
+  prequeued lower-level commands, or actual device fusion.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-sparse-ffn-graph-rejected.json`.

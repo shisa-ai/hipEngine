@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T04:50:00+09:00",
+  "kind": "hipengine_laguna_decode_candidate",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "source_revision": "c2eb8361cadfb78f68fe3a3f7c570b03c02ea8fd",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_forward_calls_per_run": 127,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "resident_bytes": 79066169172,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "candidate": {
+    "name": "exact per-layer sparse-FFN HIP graph replay",
+    "scope": "Capture each of 47 stateless sparse FFNs as one graph containing the existing router, selector, selected expert, shared expert, and tail kernels.",
+    "device_kernels_changed": false,
+    "device_math_changed": false,
+    "kernel_dispatches_per_token_changed": false,
+    "python_launch_calls_replaced_per_token": 47,
+    "graph_stats": {
+      "capture": 47,
+      "replay": 5969,
+      "eager": 0,
+      "reject": 0
+    },
+    "capture_validation": "A one-time host snapshot/restore is required because the sparse FFN consumes scratch.norm and its tail overwrites that same allocation with the next layer's norm. Normal graph replay has no host copy."
+  },
+  "correctness": {
+    "live_hip_mutating_input_graph_gate": "pass",
+    "focused_graph_and_laguna_tests": "45 passed",
+    "control_candidate_tokens_exact": true,
+    "repeat_deterministic": true,
+    "state_residency_and_lifecycle_exact": true
+  },
+  "directional_wall": {
+    "control_tok_s": 22.57388047798119,
+    "candidate_tok_s": 22.465882397922005,
+    "throughput_delta_percent": -0.47842053635629433,
+    "control_ms_per_token": 44.29898532400802,
+    "candidate_ms_per_token": 44.51193958410891,
+    "wall_delta_ms_per_token": 0.21295426010088647,
+    "raw": "/tmp/laguna-sparse-ffn-graph-directional-fixed.json",
+    "raw_sha256": "07f969d148290a84e086a95d7943a56b424b05f16c65388b23a5dabc010a3533"
+  },
+  "kernel_trace_census_ms_per_token": {
+    "control": {
+      "dispatches": 482,
+      "kernel_sum": 42.859795,
+      "kernel_span": 44.532228,
+      "positive_idle": 1.675078
+    },
+    "candidate": {
+      "dispatches": 482,
+      "kernel_sum": 42.874986,
+      "kernel_span": 44.734457,
+      "positive_idle": 1.853355
+    },
+    "candidate_minus_control": {
+      "kernel_sum": 0.015191,
+      "kernel_span": 0.202229,
+      "positive_idle": 0.178277
+    },
+    "boundary_median_us": {
+      "output_add_rmsnorm_to_router_control": 6.532,
+      "output_add_rmsnorm_to_router_candidate": 6.533,
+      "selected_gate_up_to_selected_down_control": 6.452,
+      "selected_gate_up_to_selected_down_candidate": 6.452,
+      "selected_down_to_shared_gate_up_control": 6.452,
+      "selected_down_to_shared_gate_up_candidate": 6.452,
+      "sparse_tail_to_next_head_kv_control": 1.924,
+      "sparse_tail_to_next_head_kv_candidate": 3.727
+    }
+  },
+  "trace_protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-sparse-ffn-graph-fixed-trace.lrOcZs --output-file graph -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-sparse-ffn-graph --allow-dirty --output /tmp/laguna-sparse-ffn-graph-fixed-trace.lrOcZs/bench.json",
+    "segmentation": "The final two groups of 127 exact 482-dispatch embedding-through-argmax segments are control then candidate. Report medians within each group.",
+    "compiler_spawned_under_profiler": false,
+    "bench_sha256": "e22decdd57b97f1a6c85720c831f4060f69b1a83c52e5f876c0a0ab194b51b69",
+    "trace_sha256": "f2defd74d0118b0001134c3c92b2e07852aace7fad73a70bfe536c87cdda6b36"
+  },
+  "decision": {
+    "result": "Reject and remove all Laguna graph integration, comparison CLI, and tests.",
+    "reason": "Fully engaged HIP graph replay does not shrink the measured internal queue gaps, adds 0.178277 ms/token of idle, and loses 0.478421% in the unprofiled directional wall screen.",
+    "retained_fix": "Commit 91f18831d preserves only the generic graph-validation input restore and its live HIP correctness gate; it does not change Laguna production.",
+    "closed_work": "Do not reopen per-layer HIP graph replay as a Laguna dispatch optimization.",
+    "reopen_criterion": "Require a lower-level command owner that demonstrably prequeues work, a whole-token graph with dynamic device-owned state, or actual device-kernel fusion.",
+    "production": "Unchanged at 22.581875 tok/s / 44.283303 ms/token."
+  }
+}
