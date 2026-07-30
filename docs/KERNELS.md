@@ -2112,6 +2112,13 @@ qmicro primitive is byte-neutral at **1.663304 GB/token**. Extend qmicro to
 the production tile8/parallel-tail/fused-SiLU boundary before considering a
 resident route:
 [`wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-output-sharded-wall-reprofile.json).
+That production-shaped qmicro screen is now closed. All three implementations
+are BF16-byte exact, but cooperative LDS expansion, direct per-lane record
+decode, and lane-0 dword/wave broadcast regress the actual layer-1 gate/up
+leaf by **27.408%/21.124%/46.396%** respectively. The 2.778% resident-byte
+reduction cannot amortize scale/min unpack at c=1. The candidate and all
+comparison plumbing are removed; T16 remains the production layout:
+[`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-qmicro-tile8-silu-rejected.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace

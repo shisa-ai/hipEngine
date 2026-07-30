@@ -192647,3 +192647,26 @@ Vulkan local sizes verbatim will close the measured gap.
   127 decode segments; aggregation used its family classifiers directly.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-output-sharded-wall-reprofile.json`.
+
+## 2026-07-30 10:45 JST — Reject production-shaped Q4 qmicro decode
+
+- RED fails importing the absent natural tile8 fused-SiLU qmicro wrapper.
+  GREEN preserves the retained K ownership, FMA order, wave32 tree,
+  wave-0..3 merge, BF16 gate/up round trips, SiLU expression, and BF16 output.
+  The natural fixture is byte-identical.
+- The actual layer-1 qmicro gate/up pair is **905,969,664 bytes** versus T16
+  **931,135,488 bytes**; T16 moves **2.778%** more bytes.
+- Three counterbalanced 9x50 actual-weight screens all reject:
+  - cooperative LDS record expansion:
+    **0.143908 -> 0.183350 ms (+27.408%)**;
+  - barrier-free direct per-lane record decode:
+    **0.139026 -> 0.168395 ms (+21.124%)**;
+  - lane-0 unaligned dword decode plus wave broadcast:
+    **0.135095 -> 0.197774 ms (+46.396%)**.
+- Every screen has zero BF16 mismatches and recovers all tracked allocation.
+  The c=1 scale/min unpack cost dominates the 2.778% byte saving. Remove the
+  kernel, wrapper, T16-to-qmicro helper, tests, leaf option, and comparison
+  plumbing. Keep the older generic qmicro primitive as diagnostic evidence
+  only and retain T16 production **20.800509 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-qmicro-tile8-silu-rejected.json`.

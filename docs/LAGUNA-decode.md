@@ -6080,6 +6080,24 @@ The remaining attention sequence is:
     changing resident selection. Tokens **2930/74107**, trajectory, final
     position, determinism, and allocation recovery remain exact:
     [`wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-output-sharded-wall-reprofile.json).
+89. Consume byte-neutral qmicro in the production tile8 fused-SiLU boundary.
+    **Complete, rejected, and removed:** build an exact qmicro sibling with
+    the retained K ownership, FMA order, wave32 tree, wave-0..3 merge, BF16
+    gate/up round trips, SiLU expression, and BF16 output. It reduces the
+    actual gate/up pair from **931,135,488 -> 905,969,664 resident bytes**
+    and remains BF16-byte exact.
+
+    Three actual layer-1 9x50 screens reject the decode cost. Cooperative LDS
+    record expansion regresses **0.143908 -> 0.183350 ms (+27.408%)**.
+    Removing all expansion barriers and decoding records per lane improves the
+    candidate but still regresses **0.139026 -> 0.168395 ms (+21.124%)**.
+    One unaligned dword load on lane 0 plus wave broadcast regresses
+    **0.135095 -> 0.197774 ms (+46.396%)**. The 2.778% byte reduction cannot
+    pay for scale/min unpack at c=1. Remove every new kernel, wrapper,
+    conversion helper, test, and comparison seam; keep T16 production and the
+    older generic qmicro primitive as diagnostic evidence only. Production
+    remains **20.800509 tok/s**:
+    [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-qmicro-tile8-silu-rejected.json).
 
 Current exact decode checkpoint:
 
