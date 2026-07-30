@@ -495,19 +495,29 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             for col_tile, row_batch in ((2, 16), (4, 8))
             for output_dtype in ("bf16", "f32")
         ),
-        # WPF-H5U's local256 cached-only global screen is W7900-only pending an
-        # independent gfx1151 resource/performance gate.
+        # WPF-H5U and H6A local256 cached-only global leaves are W7900-only
+        # pending independent gfx1151 resource/performance gates.
         (
             "laguna_attention_prefill",
             "bf16",
             "global_context_rows_cached_exact_spans",
         ),
-        # WPF-H5R exact cached-only two-pass SWA qrow4 is W7900-only pending an
-        # independent gfx1151 resource/performance gate.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "global_context_rows_dense_initial_cached_exact_spans",
+        ),
+        # WPF-H5R and H6A exact cached-only two-pass SWA qrow4 leaves are
+        # W7900-only pending independent gfx1151 resource/performance gates.
         (
             "laguna_attention_prefill",
             "bf16",
             "swa_context_rows_qrow4_cached_exact_spans",
+        ),
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_initial_cached_exact_spans",
         ),
         # WPF-H5M exact source-qualified qrow4 is W7900-only pending an
         # independent gfx1151 resource/performance gate.

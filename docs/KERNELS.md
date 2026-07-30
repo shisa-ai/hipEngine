@@ -963,14 +963,19 @@ span **488.610/1,625.126/1,650.283 -> 477.168/1,603.812/1,624.882 ms
 Matched H5Z C4096/direct-M512 reaches **311.622 tok/s / 1,628.336-ms** kernel
 sum and narrows llama.cpp HIP to **2.22765x**. Gaps rank IQ-down/attention/Q5 at
 **325.570/235.310/182.882 ms**; IQ3 is **472.416 ms / 45 calls**. Immediate
-exact IQ ownership/geometries are already screened. WPF-H6A therefore selects
-exact dense-initial cached-only metadata elision over the second-ranked
-attention family: separate gfx1100 specializations of H5R SWA qrow4 and H5U
-global local256 derive identity position/no-eviction/physical-slot facts only
-for complete preappended first-fill M128 tiles while preserving complete
-`KVLiveSpans`, exact QK/two-pass-softmax/PV association, allocation, and every
-fallback. Screen the 144 SWA and 48 global calls independently before ownership
-([post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
+exact IQ ownership/geometries are already screened. WPF-H6A exact dense-initial
+cached-only metadata elision now admits separate gfx1100 specializations of H5R
+SWA qrow4 and H5U global local256. Every complete preappended first-fill M128
+start is byte/CPU exact and wins both clocks; equal-append weighted event/wall
+improves SWA **22.241%/22.475%** and global **44.388%/44.117%**. Cached resources
+match H5R/H5U at local32/VGPR64/scratch0 and local256/VGPR40/scratch0. Extracted
+ISA removes the intended token-position/eviction/physical-map load classes
+without code-object VGPR growth. Complete `KVLiveSpans`, exact
+QK/two-pass-softmax/PV association, allocation, and every fallback remain
+unchanged. Next require complete M512 state, exact 144 SWA + 48 global runtime
+topology, unchanged ownership, and clean one-queue 512/1K/4K before promotion
+([H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
+[post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
 [H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
 [H5Z candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
 [post-H5Y residual / H5Z target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·

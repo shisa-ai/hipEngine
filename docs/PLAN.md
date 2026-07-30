@@ -1786,15 +1786,20 @@ llama.cpp HIP. Five production traces reconcile **1,628.336 ms / 2,050
 dispatches** in a **1,651.364-ms** median span. Gaps rank IQ-down/attention/Q5/
 gate-up/Q6 at **325.570/235.310/182.882/78.514/77.504 ms**. IQ3 remains first
 at **472.416 ms / 45 calls**, but H5J/H5K/H5Q/H5T/H5Z, output tiling, and source
-MMQ already close the immediate exact ownership/geometry premises. Select
-**WPF-H6A exact dense-initial cached-only attention metadata elision** on the
-second-ranked family. Add separate gfx1100 first-fill specializations of H5R
-SWA qrow4 and H5U global local256, deriving identity position, no eviction, and
-physical slot only for complete preappended M128 tiles before wrap while
-preserving complete `KVLiveSpans`, QK/reduction, materialized-score/two-pass
-softmax, normalized-weight-before-PV association, F32 stores, allocation, and
-fallbacks. Screen SWA/global roles independently before any runtime owner
-([post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
+MMQ already close the immediate exact ownership/geometry premises. **WPF-H6A
+exact dense-initial cached-only attention metadata elision** now admits separate
+gfx1100 first-fill specializations of H5R SWA qrow4 and H5U global local256.
+Every complete preappended M128 start 0/128/256/384 is byte/CPU exact. With equal
+append cost, weighted event/wall improves SWA **22.241%/22.475%** and global
+**44.388%/44.117%**; cached resources remain local32/VGPR64/scratch0 and
+local256/VGPR40/scratch0, and ISA removes the intended per-token metadata loads.
+The leaves preserve complete `KVLiveSpans`, exact QK/reduction,
+materialized-score/two-pass softmax, normalized-weight-before-PV association,
+F32 stores, allocation, and every fallback. Runtime/package production remains
+unchanged until complete M512 state, exact 144 SWA + 48 global topology, and
+clean one-queue 512/1K/4K qualification
+([H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
+[post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
 [H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
 [H5Z candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
 [post-H5Y residual / H5Z target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
