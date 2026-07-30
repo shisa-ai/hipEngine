@@ -192800,3 +192800,31 @@ Vulkan local sizes verbatim will close the measured gap.
   now **4.84265 ms/token**, and hipEngine is **10.158%** lower in throughput.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-production.json`.
+
+## 2026-07-30 12:04 JST — Reprofile post-pair-coefficient decode wall
+
+- Run cache-only `rocprofv3 --kernel-trace` on tracked-clean `10fc75230`
+  over one exact p512/d128 trajectory. The trace contains 127 length-1 decode
+  transitions, **673 dispatches/token**, and no compiler process.
+- Median device kernel sum is **45.837460 ms/token** and span is
+  **47.883154 ms/token**, down **0.377381/0.379008 ms (-0.817%/-0.785%)**
+  from the preceding census.
+- The selected Q4 gate/up family falls
+  **8.386938 -> 7.979655 ms/token (-4.856%)**, accounting for the complete
+  kernel-sum improvement within trace variation. Its effective resident
+  bandwidth rises **203.83 -> 214.23 GB/s**.
+- Current family wall is source-F16 **24.063201 ms/token**, selected gate/up
+  **7.979655**, selected Q4/Q6 down **4.797327**, dense/shared quant
+  **3.508547**, attention **2.108879** (SWA **1.447078**, global
+  **0.662523**), lm-head/argmax **1.118821**, router **1.065247**, and
+  norm/rope/gate **1.056866**.
+- Against the same-GGUF Vulkan logger, source-F16 is **0.695367 ms/token
+  faster**. The positive gaps are attention **+1.199456 ms/token**, selected
+  gate/up **+0.515565**, and selected down **+0.272237**. Attention is again
+  the largest comparator seam, requiring a materially new exact
+  traffic/synchronization topology rather than another scalar replay tweak.
+- Tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, final position
+  638, and allocation recovery pass. Bench/trace SHA-256 values are
+  `c6345744...b991` / `e9a9a4ee...d3a4`.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-paircoeff-wall-reprofile.json`.

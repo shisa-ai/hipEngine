@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T12:04:00+09:00",
+  "kind": "hipengine_laguna_post_paircoeff_decode_wall_reprofile",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": false,
+  "source_revision": "10fc752303041dea1242c33ac3bff841aac09f49",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "protocol": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "tracked_clean": true,
+    "require_cached_build": true
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 45.83746,
+    "kernel_span": 47.883154,
+    "embedding": 0.002284,
+    "source_f16_projection": 24.063201,
+    "selected_q4_gate_up": 7.979655,
+    "selected_q4_q6_down": 4.797327,
+    "dense_shared_quant_projection": 3.508547,
+    "attention_total": 2.108879,
+    "attention_swa": 1.447078,
+    "attention_global": 0.662523,
+    "router": 1.065247,
+    "norm_rope_gate": 1.056866,
+    "activation_reduce_residual": 0.12207,
+    "lm_head_argmax": 1.118821
+  },
+  "change_from_pre_paircoeff_census": {
+    "kernel_sum_ms_per_token": -0.377381,
+    "kernel_sum_percent": -0.81658,
+    "kernel_span_ms_per_token": -0.379008,
+    "kernel_span_percent": -0.785311,
+    "selected_q4_gate_up_ms_per_token": -0.407283,
+    "selected_q4_gate_up_percent": -4.856158
+  },
+  "same_gguf_vulkan_comparison_ms_per_token": {
+    "source_f16_projection": {
+      "hipengine": 24.063201,
+      "vulkan": 24.758568,
+      "hipengine_minus_vulkan": -0.695367
+    },
+    "attention": {
+      "hipengine": 2.108879,
+      "vulkan": 0.909423,
+      "hipengine_minus_vulkan": 1.199456
+    },
+    "selected_gate_up": {
+      "hipengine": 7.979655,
+      "vulkan": 7.46409,
+      "hipengine_minus_vulkan": 0.515565
+    },
+    "selected_down": {
+      "hipengine": 4.797327,
+      "vulkan": 4.52509,
+      "hipengine_minus_vulkan": 0.272237
+    }
+  },
+  "selected_gate_up_stream": {
+    "streamed_bytes_per_token": 1709506560,
+    "effective_gb_s": 214.233142
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-paircoeff-wall.yEX5ti --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-paircoeff-wall.yEX5ti/bench.json",
+    "bench_sha256": "c634574456bcaa7ec657988b859c07a62994eb11214f7969ff8035e38e07b991",
+    "trace_sha256": "e9a9a4ee70c9af4e9a8fda0cf4923906cc7a35b06184c187486b7efcf353d3a4",
+    "compiler_spawned_under_profiler": false,
+    "segmentation": "127 length-1 decode segments classified with scripts/laguna_long_context_trace_summary.py family classifiers"
+  }
+}

@@ -6192,6 +6192,23 @@ The remaining attention sequence is:
     trajectory SHA `94f803f7...bda32`, final position 638, determinism, and
     allocation teardown:
     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-production.json).
+94. Re-profile the clean pair-coefficient production wall.
+    **Complete, accepted attribution checkpoint:** cache-only
+    `rocprofv3 --kernel-trace` over 127 exact decode transitions records the
+    unchanged **673 dispatches/token**. Median kernel sum falls
+    **46.214841 -> 45.837460 ms/token (-0.817%)** and span falls
+    **48.262162 -> 47.883154 ms/token (-0.785%)**. The intended selected
+    gate/up family falls **8.386938 -> 7.979655 ms/token (-4.856%)**, reaches
+    **214.23 GB/s**, and is now only **+0.515565 ms/token** behind Vulkan.
+
+    The remaining named positive Vulkan gaps are attention
+    **+1.199456 ms/token**, selected gate/up **+0.515565**, and selected down
+    **+0.272237**; source-F16 remains **0.695367 ms/token faster**. Attention
+    is again the largest comparative seam, but direct F16 cooperative
+    arithmetic cannot satisfy the BF16-KV/scalar-F32 association contract.
+    The next attention work must remove exact probability/V traffic or
+    synchronization without reordering the 512-term PV chains:
+    [`post-paircoeff wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-paircoeff-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
