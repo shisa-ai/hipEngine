@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_q5_k_weight_major_occupancy_retune_candidate",
   "date": "2026-07-30",
-  "status": "integrated_default_off_exact_candidate_pending_package_publication",
+  "status": "standalone_exact_candidate_runtime_ownership_rejected",
   "performance_claim": true,
   "hardware": {
     "device": "AMD Radeon Pro W7900",
@@ -29,9 +29,13 @@
       "hipengine/kernels/hip_gfx1151/__init__.py": "910161d7849e2fa33d47bbe506fe385eb58ed54037d1e06811c6fd16657ba35c",
       "tests/test_laguna_h5p_q5_weight_major_occupancy.py": "7886235a98d1fd9e2aeb8d50ee364c719e5bde6ee68a4c0d84c79e1b9fdb1c81"
     },
-    "runtime_implementation_sha256": {
+    "runtime_candidate_implementation_sha256": {
       "hipengine/runtime/laguna_gguf_runner.py": "7c616e73622d9be5cf1e2c85fb89fc2a29d529ef7a5f024e4681a27ec0961f32",
       "tests/test_laguna_gguf_runner.py": "6befad0f12c0d15344896eb4d53304323c67fba84935debd0f4ca19103e2ae65"
+    },
+    "restored_runtime_sha256": {
+      "hipengine/runtime/laguna_gguf_runner.py": "6ef0f77222c1cb59370f64f2c4f1bdbe6c636bd0db2cf6f933b5f6aab170d7dc",
+      "tests/test_laguna_gguf_runner.py": "704ac467c2dfd9fd55cd25bc5ad19b66ea9931501c4cf353f1a6ccbfe4df4d0e"
     }
   },
   "candidate": {
@@ -210,6 +214,28 @@
       "all_lifecycle_recovered": true,
       "json_sha256": "fea1f487801d26d4b2aede15d248bbc4993e5133c6c44e87199676e7fdaee16b",
       "harness_sha256": "c65061ef2a0d038d0e897ef84e39ad1b095b33aa309629d80f1b81ad61a789c3"
+    },
+    "source_default_publication_attempt": {
+      "control_tok_s": [238.5993971627226, 218.70859661473705, 158.24818010389805],
+      "candidate_tok_s": [238.82094970351667, 218.6665855217703, 158.16234544193605],
+      "gain_percent": [0.09285544868455897, -0.019208706752738003, -0.054240536545602236],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "decision": "1K and 4K conflict require one final frozen adjudication; do not retain package default from this packet",
+      "json_sha256": "607279d64c66dcb5fa85c30330bbda2f3963529ce6ee5e1a88351a66238e8cc0",
+      "harness_sha256": "f0c5a1b9e48489ba39ebded1db81d28325f888da5a32a8c8e309ce4ebac8a04d"
+    },
+    "final_1k_4k_adjudication": {
+      "repetitions": 7,
+      "control_median_tok_s": [218.34098165176127, 157.9360450619256],
+      "candidate_median_tok_s": [218.27573962199963, 157.95779389218413],
+      "gain_percent": [-0.02988079895404061, 0.013770656502143375],
+      "paired_candidate_wins": [3, 3],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "decision": "reject runtime ownership because the frozen 1K median remains negative",
+      "json_sha256": "bc0efab3dac108a597527c70b54a47e92549c9a05321e552be4081c195347686",
+      "harness_sha256": "7bd612235f43cb24d71b3b2e5d28475349cc34ce6e192dab4ad2b75d78bdbdc3"
     }
   },
   "validation": {
@@ -226,8 +252,10 @@
   },
   "decision": {
     "standalone_candidate_admitted": true,
-    "default_off_runtime_qualified": true,
+    "default_off_runtime_qualified": false,
+    "runtime_ownership_rejected": true,
     "production_changed": false,
-    "next_action": "Promote only BF16 K6144/N3072 16x4 in the gfx1100 package policy, then rerun selector-unset three-repeat 512/1K/4K publication before retaining the default."
+    "rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json",
+    "next_action": "Keep the exact standalone 16x4 leaf, restore H5L 16x5 package ownership, and select a distinct exact target from the production residual."
   }
 }

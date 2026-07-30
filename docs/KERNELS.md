@@ -817,9 +817,12 @@ final-source producer-inclusive 12-call role falls **31.306 -> 29.329 ms
 wall. Complete state is KL0/byte-exact and integrated tracing selects exactly
 **12** calls, cutting role/Q5/request sum **5.800%/0.572%/0.187%**. The first
 clean 512 packet is **-0.189%**, but a frozen seven-repeat adjudication is
-**+0.176%**; 1K/4K are **-0.006%/+0.021%**. Production stays H5L pending
-selector-unset package publication
-([H5P leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
+**+0.176%**. Source-default 512/1K/4K is **+0.093%/-0.019%/-0.054%** and the
+final frozen 1K/4K adjudication remains **-0.030%/+0.014%**. Reject runtime
+ownership; remove the eager/package surfaces, retain the exact leaf, and keep
+H5L production
+([H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
+[H5P leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
 [H5O target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·

@@ -149,13 +149,6 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     )
     assert (
         libraries.linear[
-            "gguf_q5_k:f32_ordered_weight_major_"
-            "coltile16_rowbatch4_bf16_bf16_out"
-        ]
-        is q5_f32_ordered
-    )
-    assert (
-        libraries.linear[
             "gguf_q5_k:f32_ordered_coltile4_rowbatch16_bf16_bf16_out"
         ]
         is q5_f32_ordered
