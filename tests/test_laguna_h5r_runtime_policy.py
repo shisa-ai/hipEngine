@@ -100,6 +100,12 @@ def test_h5r_scoped_preappend_policy_routes_only_safe_swa_tiles(
         {_ROLE: _CANDIDATE},
         raising=False,
     )
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+        {},
+        raising=False,
+    )
     runtime = _FakeRuntime()
     cache = module.allocate_laguna_kv_cache(
         _production_config(),
@@ -180,6 +186,12 @@ def test_h5r_preappend_role_policy_fails_closed_on_selector_and_registration(
         hip_gfx1100,
         "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS",
         {_ROLE: _CANDIDATE},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+        {},
         raising=False,
     )
 

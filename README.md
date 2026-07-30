@@ -310,8 +310,15 @@ numbers below.
   (-33.294%/-4.109%/-4.365%)** with unchanged resources and scratch0. Clean
   default-off 512/1K/4K improves **307.071/259.710/173.388 ->
   312.331/261.467/173.954 tok/s (+1.713%/+0.677%/+0.326%)**, 3/3 wins each.
-  Source production remains H5R/H5Y/H5Z pending selector-unset publication
-  ([H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). Both short
+  Selector-unset publication confirms **307.158/260.161/173.375 ->
+  312.781/261.591/173.997 tok/s (+1.831%/+0.550%/+0.359%)**, again 3/3.
+  Promote H6A source production at canonical **312.781/261.591/173.997 tok/s
+  (+1.665%/+0.633%/+0.251% over H5R/H5Y/H5Z)**, narrowing the canonical M512
+  gap to llama.cpp HIP **694.184 tok/s** from **2.25635x to 2.21939x**. The
+  matched comparator-shaped row remains the pre-promotion **311.622 tok/s**
+  until immediate H6A reprofiling
+  ([H6A production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
+  [H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). Both short
   rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
   ([post-H5Z matched residual / H6A target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
