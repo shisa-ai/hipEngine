@@ -193271,3 +193271,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-retained.json`.
   Next: publish tracked-clean selector-unset production, then re-profile the
   complete decode wall before choosing the next owner.
+
+## 2026-07-30 15:38 JST — Publish clean T16 dense/shared production
+
+- Commit `a709537df` enables the 96 decode-only T16 dense/shared Q4 sidecars
+  in tracked-clean selector-unset gfx1151 production. The exact cache key was
+  prebuilt outside measurement; the measured process uses
+  `--require-cached-build` and records no comparison mode.
+- Three Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 runs measure
+  **21.801500/21.856620/21.851538 tok/s**, median
+  **21.851538 tok/s**. This improves the preceding clean
+  **21.304731 tok/s** checkpoint by **2.56660%**, saves
+  **1.174562 ms/token**, and reaches **+90.565%** over sprint start.
+- Every repetition preserves next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and complete tracked
+  allocation recovery. The capability is active without a selector; resident
+  bytes are **79,022,520,340**. Load time **94.751 s** is excluded.
+- Prefill is non-regressive at median **652.139 tok/s**. The current
+  same-GGUF Vulkan gap is **2.933847 ms/token**, or hipEngine is **6.411%**
+  below Vulkan throughput.
+- Raw packet:
+  `/tmp/laguna-q4-t16-dense-sidecar-production-3.json`, SHA-256
+  `f8621c51...e211ddc`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-production.json`.
+- Next: collect the cached-build post-sidecar 127-transition wall census and
+  rank the remaining families against the same-GGUF Vulkan logger.
