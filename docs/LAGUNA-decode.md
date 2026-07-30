@@ -6749,6 +6749,33 @@ The remaining attention sequence is:
      not the equivalent scheduling primitive. Any successor needs genuine
      within-token batching or profitable exact fusion:
      [`graph rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-decode-graph-rejected.json).
+116. Physically interleave the exact resident T16 gate/up payloads so one
+     vector transaction feeds both selected-decode accumulator sets.
+     **Leaf-positive, production-blocked:** the candidate stores corresponding
+     `d/dmin`, scale/min, and packed-Q fields together inside one 4,736-byte
+     dual tile. It is byte-neutral versus the two existing 2,368-byte tiles
+     and reconstructs both source T16 matrices byte-for-byte.
+
+     This is a materially different result from source-level load widening.
+     Extracted current ISA already combines the four adjacent packed-Q bytes
+     for each matrix into one `global_load_b32`; there is no narrower compiler
+     miss to fix. The physical interleave lets the candidate issue one
+     `global_load_b64` for both matrices. The natural Laguna fixture preserves
+     every BF16 output bit. On actual layer-1 weights, the confirmation screen
+     improves **0.137458 -> 0.123006 ms (-10.514%)** and the tighter 21x100
+     screen improves **0.122684 -> 0.115685 ms (-5.705%, 21/21 wins)** at
+     unchanged **931,135,488-byte** pair residency. Cached tracing confirms
+     local128/VGPR80/SGPR128/LDS512/scratch0.
+
+     Do not promote this as a decode sidecar. Laguna's production prefill D8
+     MMQ128x32 wave-column/raw-prefetch owner and c=1 decode share the same
+     resident gate/up T16 matrices. Duplicating the candidate would add about
+     **43.76 GB** across 47 routed layers. A byte-neutral promotion therefore
+     requires a paired materializer/cache contract and an independently exact,
+     non-regressive prefill consumer for the new layout. Keep the primitive
+     diagnostic until that coupled resident-layout task is explicitly funded;
+     production remains **21.880056 tok/s**:
+     [`dual-interleave block`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dual-interleaved-blocked.json).
 
 Current exact decode checkpoint:
 
@@ -6796,10 +6823,12 @@ complete decode by **0.8364%** despite an isolated planar-Q6 leaf win.
 Attention should reopen only for a materially new exact-association or
 quality-safe cooperative premise: both SWA and global stage-width successors
 win isolated leaves but fail to produce a reliable complete-model improvement.
-The next bounded kernel target is instead the larger measured selected
-gate/up gap (**+0.526945 ms/token**), followed by dense/shared
-(**+0.411714**) and selected down (**+0.252713**) if their exact leaf wins
-survive the resident wall.
+The largest selected gate/up gap (**+0.526945 ms/token**) now has one exact
+positive leaf, but its required dual-interleaved resident layout is coupled to
+the retained prefill consumer and cannot be promoted as a 43.76-GB sidecar.
+Until that shared-layout task is opened, the next independent bounded kernel
+target is dense/shared (**+0.411714 ms/token**), followed by selected down
+(**+0.252713**) if its exact leaf wins survive the resident wall.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects

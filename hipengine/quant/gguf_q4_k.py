@@ -28,6 +28,33 @@ GGUF_Q4_K_TILE16_MIN_OFFSET = GGUF_Q4_K_TILE16_SCALE_OFFSET + GGUF_Q4_K_SUBBLOCK
 GGUF_Q4_K_TILE16_Q_OFFSET = GGUF_Q4_K_TILE16_MIN_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS
 GGUF_Q4_K_TILE16_BLOCK_BYTES = GGUF_Q4_K_TILE16_Q_OFFSET + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_SUBBLOCK * (GGUF_Q4_K_TILE16_COLS // 2)
 
+# Exact dual-matrix T16 decode screen. Corresponding gate/up payloads are
+# adjacent at the natural vector-load granularity without changing the total
+# resident bytes or the decoded arithmetic:
+#
+# - d/dmin: [column_pair8, gate_fp16x2, up_fp16x2]
+# - scale/min: [subblock8, column_pair8, gate_u8x2, up_u8x2]
+# - Q: [subblock8, lane32, half8cols, gate_u8x4, up_u8x4]
+GGUF_Q4_K_TILE16_DUAL_D_OFFSET = 0
+GGUF_Q4_K_TILE16_DUAL_DMIN_OFFSET = (
+    GGUF_Q4_K_TILE16_DUAL_D_OFFSET + (GGUF_Q4_K_TILE16_COLS // 2) * 8
+)
+GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET = (
+    GGUF_Q4_K_TILE16_DUAL_DMIN_OFFSET + (GGUF_Q4_K_TILE16_COLS // 2) * 8
+)
+GGUF_Q4_K_TILE16_DUAL_MIN_OFFSET = (
+    GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET
+    + GGUF_Q4_K_SUBBLOCKS * (GGUF_Q4_K_TILE16_COLS // 2) * 4
+)
+GGUF_Q4_K_TILE16_DUAL_Q_OFFSET = (
+    GGUF_Q4_K_TILE16_DUAL_MIN_OFFSET
+    + GGUF_Q4_K_SUBBLOCKS * (GGUF_Q4_K_TILE16_COLS // 2) * 4
+)
+GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES = (
+    GGUF_Q4_K_TILE16_DUAL_Q_OFFSET
+    + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_SUBBLOCK * 2 * 8
+)
+
 # Byte-neutral T16-lite replacement-layout prototype. It preserves the T16
 # Q4 nibble interleave but keeps each column's source-packed 12-byte scale/min
 # field instead of expanding it to sixteen uint8 scale/min planes.
@@ -320,6 +347,210 @@ def repack_gguf_q4_k_tile16(raw_qweight: Any) -> GGUFQ4KTile16:
         out_features=out_features,
         in_features=blocks_per_row * QK_K,
     )
+
+
+def interleave_gguf_q4_k_tile16_dual(
+    tiles_a: Any,
+    tiles_b: Any,
+) -> np.ndarray:
+    """Interleave two exact T16 matrices for fused gate/up vector loads."""
+
+    a = np.asarray(tiles_a, dtype=np.uint8)
+    b = np.asarray(tiles_b, dtype=np.uint8)
+    if (
+        a.ndim != 4
+        or a.shape != b.shape
+        or a.shape[-1] != GGUF_Q4_K_TILE16_BLOCK_BYTES
+    ):
+        raise ValueError(
+            "tiles_a/tiles_b must have matching shape "
+            "[experts, out_tiles16, blocks_per_row, 2368]"
+        )
+    prefix = a.shape[:-1]
+    out = np.empty((*prefix, GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES), dtype=np.uint8)
+
+    dual_d = out[
+        ...,
+        GGUF_Q4_K_TILE16_DUAL_D_OFFSET:
+        GGUF_Q4_K_TILE16_DUAL_DMIN_OFFSET,
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 8)
+    dual_d[..., 0:4] = a[
+        ..., GGUF_Q4_K_TILE16_D_OFFSET:GGUF_Q4_K_TILE16_DMIN_OFFSET
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 4)
+    dual_d[..., 4:8] = b[
+        ..., GGUF_Q4_K_TILE16_D_OFFSET:GGUF_Q4_K_TILE16_DMIN_OFFSET
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 4)
+
+    dual_dmin = out[
+        ...,
+        GGUF_Q4_K_TILE16_DUAL_DMIN_OFFSET:
+        GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET,
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 8)
+    dual_dmin[..., 0:4] = a[
+        ..., GGUF_Q4_K_TILE16_DMIN_OFFSET:GGUF_Q4_K_TILE16_SCALE_OFFSET
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 4)
+    dual_dmin[..., 4:8] = b[
+        ..., GGUF_Q4_K_TILE16_DMIN_OFFSET:GGUF_Q4_K_TILE16_SCALE_OFFSET
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 4)
+
+    dual_scale = out[
+        ...,
+        GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET:
+        GGUF_Q4_K_TILE16_DUAL_MIN_OFFSET,
+    ].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_COLS // 2,
+        4,
+    )
+    dual_scale[..., 0:2] = a[
+        ..., GGUF_Q4_K_TILE16_SCALE_OFFSET:GGUF_Q4_K_TILE16_MIN_OFFSET
+    ].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_COLS // 2,
+        2,
+    )
+    dual_scale[..., 2:4] = b[
+        ..., GGUF_Q4_K_TILE16_SCALE_OFFSET:GGUF_Q4_K_TILE16_MIN_OFFSET
+    ].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_COLS // 2,
+        2,
+    )
+
+    dual_min = out[
+        ...,
+        GGUF_Q4_K_TILE16_DUAL_MIN_OFFSET:
+        GGUF_Q4_K_TILE16_DUAL_Q_OFFSET,
+    ].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_COLS // 2,
+        4,
+    )
+    dual_min[..., 0:2] = a[
+        ..., GGUF_Q4_K_TILE16_MIN_OFFSET:GGUF_Q4_K_TILE16_Q_OFFSET
+    ].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_COLS // 2,
+        2,
+    )
+    dual_min[..., 2:4] = b[
+        ..., GGUF_Q4_K_TILE16_MIN_OFFSET:GGUF_Q4_K_TILE16_Q_OFFSET
+    ].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_COLS // 2,
+        2,
+    )
+
+    dual_q = out[..., GGUF_Q4_K_TILE16_DUAL_Q_OFFSET:].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_SUBBLOCK,
+        2,
+        8,
+    )
+    dual_q[..., 0:4] = a[..., GGUF_Q4_K_TILE16_Q_OFFSET:].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_SUBBLOCK,
+        2,
+        4,
+    )
+    dual_q[..., 4:8] = b[..., GGUF_Q4_K_TILE16_Q_OFFSET:].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_SUBBLOCK,
+        2,
+        4,
+    )
+    return out
+
+
+def unpack_gguf_q4_k_tile16_dual(
+    interleaved: Any,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Recover both original T16 matrices from the exact dual interleave."""
+
+    src = np.asarray(interleaved, dtype=np.uint8)
+    if src.ndim != 4 or src.shape[-1] != GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES:
+        raise ValueError(
+            "interleaved must have shape "
+            "[experts, out_tiles16, blocks_per_row, 4736]"
+        )
+    prefix = src.shape[:-1]
+    a = np.empty((*prefix, GGUF_Q4_K_TILE16_BLOCK_BYTES), dtype=np.uint8)
+    b = np.empty_like(a)
+
+    dual_d = src[
+        ...,
+        GGUF_Q4_K_TILE16_DUAL_D_OFFSET:
+        GGUF_Q4_K_TILE16_DUAL_DMIN_OFFSET,
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 8)
+    a[..., GGUF_Q4_K_TILE16_D_OFFSET:GGUF_Q4_K_TILE16_DMIN_OFFSET] = (
+        dual_d[..., 0:4].reshape(*prefix, GGUF_Q4_K_TILE16_COLS * 2)
+    )
+    b[..., GGUF_Q4_K_TILE16_D_OFFSET:GGUF_Q4_K_TILE16_DMIN_OFFSET] = (
+        dual_d[..., 4:8].reshape(*prefix, GGUF_Q4_K_TILE16_COLS * 2)
+    )
+
+    dual_dmin = src[
+        ...,
+        GGUF_Q4_K_TILE16_DUAL_DMIN_OFFSET:
+        GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET,
+    ].reshape(*prefix, GGUF_Q4_K_TILE16_COLS // 2, 8)
+    a[..., GGUF_Q4_K_TILE16_DMIN_OFFSET:GGUF_Q4_K_TILE16_SCALE_OFFSET] = (
+        dual_dmin[..., 0:4].reshape(*prefix, GGUF_Q4_K_TILE16_COLS * 2)
+    )
+    b[..., GGUF_Q4_K_TILE16_DMIN_OFFSET:GGUF_Q4_K_TILE16_SCALE_OFFSET] = (
+        dual_dmin[..., 4:8].reshape(*prefix, GGUF_Q4_K_TILE16_COLS * 2)
+    )
+
+    for offset, end in (
+        (GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET, GGUF_Q4_K_TILE16_DUAL_MIN_OFFSET),
+        (GGUF_Q4_K_TILE16_DUAL_MIN_OFFSET, GGUF_Q4_K_TILE16_DUAL_Q_OFFSET),
+    ):
+        dual_meta = src[..., offset:end].reshape(
+            *prefix,
+            GGUF_Q4_K_SUBBLOCKS,
+            GGUF_Q4_K_TILE16_COLS // 2,
+            4,
+        )
+        target_offset = (
+            GGUF_Q4_K_TILE16_SCALE_OFFSET
+            if offset == GGUF_Q4_K_TILE16_DUAL_SCALE_OFFSET
+            else GGUF_Q4_K_TILE16_MIN_OFFSET
+        )
+        target_end = target_offset + GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS
+        a[..., target_offset:target_end] = dual_meta[..., 0:2].reshape(
+            *prefix,
+            GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS,
+        )
+        b[..., target_offset:target_end] = dual_meta[..., 2:4].reshape(
+            *prefix,
+            GGUF_Q4_K_SUBBLOCKS * GGUF_Q4_K_TILE16_COLS,
+        )
+
+    dual_q = src[..., GGUF_Q4_K_TILE16_DUAL_Q_OFFSET:].reshape(
+        *prefix,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_SUBBLOCK,
+        2,
+        8,
+    )
+    a[..., GGUF_Q4_K_TILE16_Q_OFFSET:] = dual_q[..., 0:4].reshape(
+        *prefix,
+        GGUF_Q4_K_TILE16_BLOCK_BYTES - GGUF_Q4_K_TILE16_Q_OFFSET,
+    )
+    b[..., GGUF_Q4_K_TILE16_Q_OFFSET:] = dual_q[..., 4:8].reshape(
+        *prefix,
+        GGUF_Q4_K_TILE16_BLOCK_BYTES - GGUF_Q4_K_TILE16_Q_OFFSET,
+    )
+    return a, b
 
 
 def unpack_gguf_q4_k_tile16(packed: GGUFQ4KTile16 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
@@ -1145,6 +1376,7 @@ __all__ = [
     "GGUF_Q4_K_PACK",
     "GGUF_Q4_K_TILE16_BLOCK_BYTES",
     "GGUF_Q4_K_TILE16_COLS",
+    "GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES",
     "GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES",
     "GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES",
     "GGUF_Q4_K_TILE16_QMICRO_META_OFFSET",
@@ -1164,6 +1396,7 @@ __all__ = [
     "GGUFQ4KT16Quant",
     "awq_pack8_shift_for_lane",
     "gguf_q4_k_mmq_tile16_preview_matmul",
+    "interleave_gguf_q4_k_tile16_dual",
     "pack_gguf_q4_k_mmq_tile16_preview",
     "pack_q8_1_mmq_ds4_from_bf16",
     "repack_gguf_q4_k_pack8",
@@ -1171,6 +1404,7 @@ __all__ = [
     "repack_gguf_q4_k_tile16_lite",
     "repack_gguf_q4_k_tile16_qmicro",
     "unpack_gguf_q4_k_tile16",
+    "unpack_gguf_q4_k_tile16_dual",
     "unpack_gguf_q4_k_tile16_lite",
     "unpack_gguf_q4_k_tile16_qmicro",
 ]

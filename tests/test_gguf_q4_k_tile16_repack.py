@@ -7,16 +7,19 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_COLS,
+    GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_LITE_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_LITE_META_OFFSET,
     GGUF_Q4_K_TILE16_LITE_Q_OFFSET,
     GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_QMICRO_META_OFFSET,
     GGUF_Q4_K_TILE16_QMICRO_Q_OFFSET,
+    interleave_gguf_q4_k_tile16_dual,
     repack_gguf_q4_k_tile16,
     repack_gguf_q4_k_tile16_lite,
     repack_gguf_q4_k_tile16_qmicro,
     unpack_gguf_q4_k_tile16,
+    unpack_gguf_q4_k_tile16_dual,
     unpack_gguf_q4_k_tile16_lite,
     unpack_gguf_q4_k_tile16_qmicro,
 )
@@ -63,6 +66,22 @@ def test_q4_k_tile16_repack_has_expected_near_raw_storage_overhead() -> None:
     assert GGUF_Q4_K_TILE16_BLOCK_BYTES == 2368
     assert packed.tiles.nbytes == 2 * GGUF_Q4_K_TILE16_BLOCK_BYTES
     assert packed.tiles.nbytes / raw.nbytes == pytest.approx(2368 / 2304)
+
+
+def test_q4_k_tile16_dual_interleave_roundtrips_both_inputs_exactly() -> None:
+    raw_a = _raw_q4_k_bytes(experts=3, out_features=32, blocks_per_row=2)
+    raw_b = np.roll(raw_a, shift=7, axis=-1)
+    tiles_a = repack_gguf_q4_k_tile16(raw_a).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b).tiles
+
+    interleaved = interleave_gguf_q4_k_tile16_dual(tiles_a, tiles_b)
+    restored_a, restored_b = unpack_gguf_q4_k_tile16_dual(interleaved)
+
+    assert GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES == 2 * GGUF_Q4_K_TILE16_BLOCK_BYTES
+    assert interleaved.shape == (3, 2, 2, GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES)
+    assert interleaved.nbytes == tiles_a.nbytes + tiles_b.nbytes
+    np.testing.assert_array_equal(restored_a, tiles_a)
+    np.testing.assert_array_equal(restored_b, tiles_b)
 
 
 def test_q4_k_tile16_lite_repack_roundtrips_raw_bytes_exactly() -> None:

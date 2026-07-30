@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
@@ -62,7 +63,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_q4_k import (
+    interleave_gguf_q4_k_tile16_dual,
+    repack_gguf_q4_k_tile16,
+)
 from hipengine.quant.gguf_t16 import (
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
@@ -979,6 +983,24 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     )
     np.testing.assert_array_equal(
         gate_tile8_parallel_silu_pairq,
+        gate_tile8_parallel_silu_paircoeff,
+    )
+    gate_tiles_interleaved = interleave_gguf_q4_k_tile16_dual(
+        gate_tiles_a,
+        gate_tiles_b,
+    )
+    gate_tile8_parallel_silu_interleaved = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_interleaved,
+        gate_tiles_interleaved,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(
+        gate_tile8_parallel_silu_interleaved,
         gate_tile8_parallel_silu_paircoeff,
     )
     dense_tiles_a = repack_gguf_q4_k_tile16(gate_a[0:1]).tiles

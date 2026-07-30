@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T18:18:20+09:00",
+  "kind": "hipengine_laguna_q4_t16_dual_interleaved_decode_leaf",
+  "status": "blocked",
+  "performance_claim": false,
+  "decision": "retain the exact diagnostic primitive, but do not promote or duplicate the resident weights",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "driver": "ROCm 7.15 development environment"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1"
+  },
+  "workload": {
+    "layer": 1,
+    "shape": "c=1/top-10 selected gate/up, K3072/N1024, 256 experts",
+    "selected_experts": [
+      17,
+      3,
+      91,
+      42,
+      7,
+      128,
+      201,
+      55,
+      240,
+      12
+    ],
+    "control_layout": "two independent [256,64,12,2368] T16 matrices",
+    "candidate_layout": "one exact [256,64,12,4736] dual-interleaved T16 matrix",
+    "control_resident_bytes": 931135488,
+    "candidate_resident_bytes": 931135488
+  },
+  "results": {
+    "confirmation_9x50": {
+      "control_ms": 0.137458,
+      "candidate_ms": 0.123006,
+      "delta_percent": -10.514
+    },
+    "tight_21x100": {
+      "control_ms": 0.12268372535705567,
+      "candidate_ms": 0.11568466186523438,
+      "delta_percent": -5.7049649180862305,
+      "candidate_over_control": 0.9429503508191377,
+      "candidate_wins": 21,
+      "samples": 21
+    },
+    "modeled_complete_token_saving_ms": 0.3289559830932616,
+    "modeled_basis": "47 routed layers times the measured per-call median difference; not an end-to-end performance claim"
+  },
+  "correctness": {
+    "red": "focused decode fixture failed importing the absent interleaved wrapper",
+    "green": [
+      "11 q4 tile16 repack tests passed",
+      "natural Laguna selected-decode production-bit fixture passed"
+    ],
+    "layout_roundtrip": "both original T16 matrices reconstruct byte-for-byte",
+    "bf16_mismatches": 0
+  },
+  "codegen": {
+    "kernel": "q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel<unsigned short>",
+    "intended_q_load": "one global_load_b64 feeds gate and up; the retained separate layout emits two global_load_b32 instructions",
+    "isa_size_bytes": 3276,
+    "workgroup_size": 128,
+    "grid_size": 163840,
+    "vgpr": 80,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "profiled_duration_ns": 94778
+  },
+  "blocker": {
+    "summary": "Laguna prefill and decode share the same resident Q4T16 gate/up allocations",
+    "details": [
+      "Promoting the candidate as a sidecar would duplicate about 43.76 GB across 47 routed layers.",
+      "Replacing the resident layout requires a separately correct and non-regressive implementation of the production prefill D8 MMQ128x32 wave-column/raw-prefetch consumer plus paired materialization/cache ownership.",
+      "The current experiment therefore does not authorize a runtime/default change."
+    ],
+    "production_checkpoint_tok_s": 21.880056
+  },
+  "commands": {
+    "red_green": "uv run pytest -q tests/test_gguf_q4_k_tile16_repack.py tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "benchmark": "uv run python scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved --gate-only --warmups 9 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-q4-t16-dual-interleaved-screen-21x100.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-t16-dual-interleaved-rocprof --output-file dual-interleaved -- uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits"
+  },
+  "source_hashes": {
+    "benchmark_json_sha256": "88a3f30e98ffde6443f7ccc6efc7e6e3420daa9c2ff4d244e983bd010a1636dc",
+    "trace_csv_sha256": "ef454eee14c45ae7ed44fcd47d70bf8ee88988607e95d778c8f1a6100a21a471"
+  },
+  "repo": {
+    "baseline_revision": "e0f1e0d5750dbd779ce11166a9a771c5060c927a",
+    "tracked_worktree": "candidate implementation present"
+  }
+}
