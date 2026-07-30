@@ -81,6 +81,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_Q4_PACK8_DUAL_SILU_DECODE,
     LAGUNA_SELECTED_NATURAL_DECODE,
     LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE,
+    LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE,
     LAGUNA_SELECTED_NATURAL_TILE8_DECODE,
     LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE,
     LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE,
@@ -307,6 +308,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_Q4_PACK8_DUAL_SILU_DECODE is True
     assert LAGUNA_SELECTED_NATURAL_DECODE is True
     assert LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE is True
+    assert LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE is True
     assert LAGUNA_SELECTED_NATURAL_TILE8_DECODE is True
     assert LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE is True
     assert LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE is True
@@ -426,6 +428,22 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         backend_package_capability(
             "hip_gfx1100",
             "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
+            None,
+        )
+        is None
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE",
+            None,
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE",
             None,
         )
         is None

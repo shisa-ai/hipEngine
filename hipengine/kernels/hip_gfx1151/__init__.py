@@ -83,6 +83,10 @@ LAGUNA_SELECTED_NATURAL_DECODE = True
 # across lanes 0..15. All seven resident p512/d128 pairs are exact and
 # positive; the serial owner remains registered rollback.
 LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = True
+# Exact tile-local completion preserves all ten route-parallel weight streams,
+# every BF16 projection boundary, and the slot-order weighted FMA chain while
+# removing the standalone reducer launch. Seven same-resident pairs all win.
+LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE = True
 # Exact gate/up owner that splits each resident T16 tile across two 8-column
 # workgroups, halving live accumulators. The actual-weight leaf improves
 # 5.35-7.13%; seven exact p512/d128 pairs are all positive.
@@ -877,6 +881,7 @@ __all__ = [
     "LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED",
     "LAGUNA_SELECTED_NATURAL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
+    "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE",

@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T21:15:00+09:00",
+  "kind": "hipengine_laguna_selected_down_parallel_weighted_decode_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "b7285f3c4b81e4a0f678c1b1219b6c2e76c3e7d7",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "Preserve all ten route-parallel natural T16 selected-down blocks and every per-route BF16 output, then let the last producer for each 16-column tile execute the established slot-order F32 weighted FMA chain.",
+    "selected_layers_per_token": 47,
+    "launches_per_token": {
+      "control": 94,
+      "candidate": 47,
+      "removed": 47
+    },
+    "resident_bytes_added": 1536,
+    "counter_lifecycle": "Two bounded MoE scratch owners each add 192 tile-local int32 counters (768 bytes); every last producer resets its tile counter to zero before the stream-ordered next layer.",
+    "fallback": "The registered exact natural route-parallel Q4/planar-Q6 projection followed by the standalone slot-order weighted reducer remains the peer-backend, unsupported-layout, rows>1, key-miss, and explicit-disable path.",
+    "distinction_from_rejected_serial_candidate": "The rejected candidate assigned all ten weight streams for one output tile to one workgroup. This candidate retains 1,920 producer workgroups and synchronizes only the ten producers of each output tile."
+  },
+  "correctness": {
+    "red": "ImportError on the absent Q4/Q6 weighted natural-parallel wrappers before implementation.",
+    "green": "Natural Q4 and planar-Q6 gfx1151 fixtures match every per-route selected-down BF16 byte and every routed-output BF16 byte against the two-launch production chain; all 192 completion counters return to zero.",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "candidate_resident_nbytes": 79022522196,
+    "pass": true
+  },
+  "leaf": {
+    "workload": "Actual resident layer-10 Q4 and layer-1 planar-Q6 K1024/N3072/top-10 selected down; 21 counterbalanced samples, burst 100.",
+    "q4_control_ms": 0.061607580184936526,
+    "q4_candidate_ms": 0.05918024063110352,
+    "q4_change_percent": -3.9400014520072135,
+    "q6_control_ms": 0.07608798027038574,
+    "q6_candidate_ms": 0.07323300838470459,
+    "q6_change_percent": -3.752198278276997,
+    "bf16_mismatches": 0,
+    "nonzero_completion_counters": 0,
+    "raw_sha256": "9b352a1a334ee8ccbedb8f92089816ea3e309b65c412f05428cd4ae1c45e2df4"
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling and an explicit compiler-version file",
+    "kernels": [
+      "qk_t16_selected_natural_gemv_kernel<unsigned short,4,false,false,true,true>",
+      "qk_t16_selected_natural_gemv_kernel<unsigned short,6,true,true,true,true>"
+    ],
+    "grid_blocks": 1920,
+    "local_x": 128,
+    "q4_vgpr_count": 104,
+    "q6_vgpr_count": 80,
+    "sgpr_count": 128,
+    "lds_block_bytes": 512,
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "3607528c81e7a95305e3fffcdd7bb19698385bbbb71843f6369eb10aec7a1c8d"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "Seven alternating-order control/candidate pairs in one resident session; dirty candidate source over tracked-clean revision b7285f3c4; cached dependencies.",
+    "control_tok_s": [
+      22.05758900119391,
+      22.076218668228016,
+      22.072157040824592,
+      22.071106492548733,
+      22.071804653737267,
+      22.07566727496473,
+      22.071614918168567
+    ],
+    "candidate_tok_s": [
+      22.126516058236827,
+      22.13545223331702,
+      22.139076281290343,
+      22.134829002306397,
+      22.145794014828713,
+      22.15093113854147,
+      22.140655327993695
+    ],
+    "control_median_tok_s": 22.071804653737267,
+    "candidate_median_tok_s": 22.139076281290343,
+    "throughput_change_percent": 0.3047853522103683,
+    "control_median_ms_per_token": 45.30667137046616,
+    "candidate_median_ms_per_token": 45.16900286599114,
+    "saving_ms_per_token": 0.13766850447501744,
+    "paired_saving_ms_per_token": [
+      0.14122730069683762,
+      0.12121455905240351,
+      0.13694517299767553,
+      0.13043453520911885,
+      0.1513701276927013,
+      0.153914906128537,
+      0.14127937959521775
+    ],
+    "median_paired_saving_ms_per_token": 0.14122730069683762,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "b9598ae5606a3be4ce75836d307dabacab6764acecaa0108615b16f14b4f9fc1"
+  },
+  "validation": {
+    "focused": "Complete T16 selected GEMV file, weighted runtime-boundary fixture, gfx1151 backend capability fixture, MoE-plan route fixture, and targeted runner selection/residency tests pass.",
+    "lineage": "Required inspection remains blocked before execution by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas; no external source was copied."
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --down-candidate parallel-weighted --gate-candidate tile8-parallel-silu-interleaved --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-parallel-weighted-down-tile-counters-leaf.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-down-parallel-weighted-decode --allow-dirty --output /tmp/laguna-p512-d128-parallel-weighted-ab7.json",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-parallel-weighted-trace.tXLr3X --output-file trace -- .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --down-candidate parallel-weighted --gate-candidate tile8-parallel-silu-interleaved --warmups 1 --samples 1 --burst 1 --require-cached-build --output /tmp/laguna-parallel-weighted-trace-leaf.json"
+  },
+  "gate": {
+    "correctness": "pass; per-route down bytes, routed output bytes, complete generated trajectory, position, determinism, counter reset, and lifecycle are exact",
+    "resources": "pass; unchanged producer grid/local/VGPR/LDS/scratch resources",
+    "leaf": "pass; Q4 -3.940%, planar-Q6 -3.752%",
+    "whole_model": "pass; +0.30479%, 7/7 pair wins, 0.141227 ms/token paired-median saving",
+    "decision": "Promote through gfx1151 LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE, then require tracked-clean selector-unset production and a complete dispatch census before removing the temporary runtime comparison setter."
+  }
+}

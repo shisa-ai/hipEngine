@@ -2559,18 +2559,24 @@ template <
     int qtype,
     bool qmicro = false,
     bool qmicro_planar = false,
-    bool parallel_tail = false>
+    bool parallel_tail = false,
+    bool weighted_tail = false>
 __global__ __launch_bounds__(128, 4)
 void qk_t16_selected_natural_gemv_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ selected,
     const uint8_t* __restrict__ tiles,
     scalar_t* __restrict__ out,
+    const float* __restrict__ routing_weights,
+    scalar_t* __restrict__ routed_out,
+    int32_t* __restrict__ completion_counter,
     int64_t num_experts) {
   static_assert(qtype == 4 || qtype == 6,
                 "natural Laguna down supports Q4 or Q6");
   static_assert(!qmicro_planar || qmicro,
                 "planar qmicro requires qmicro layout");
+  static_assert(!weighted_tail || parallel_tail,
+                "weighted natural tail requires parallel output stores");
   constexpr int kRows = 10;
   constexpr int kInFeatures = 1024;
   constexpr int kOutFeatures = 3072;
@@ -2581,7 +2587,10 @@ void qk_t16_selected_natural_gemv_kernel(
   const int tid = threadIdx.x;
   if (row >= kRows) return;
   const int64_t expert_id = selected[row];
-  if (expert_id < 0 || expert_id >= num_experts) return;
+  const bool valid_expert = expert_id >= 0 && expert_id < num_experts;
+  if constexpr (!weighted_tail) {
+    if (!valid_expert) return;
+  }
   const scalar_t* __restrict__ x_row = x + row * kInFeatures;
 
   float acc[T16_COLS];
@@ -2590,7 +2599,7 @@ void qk_t16_selected_natural_gemv_kernel(
     acc[col] = 0.0f;
   }
 
-  for (int64_t blk = 0; blk < kBlocksPerRow; ++blk) {
+  for (int64_t blk = 0; blk < kBlocksPerRow && valid_expert; ++blk) {
     const uint8_t* __restrict__ tile;
     if constexpr (qtype == 4) {
       tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
@@ -2704,6 +2713,39 @@ void qk_t16_selected_natural_gemv_kernel(
         total += xchg[g * T16_COLS + col];
       }
       out_row[col] = float_to_scalar<scalar_t>(total);
+    }
+  }
+
+  if constexpr (weighted_tail) {
+    __syncthreads();
+    __shared__ int last_producer;
+    if (tid == 0) {
+      __threadfence();
+      const int prior = atomicAdd(completion_counter + out_tile, 1);
+      last_producer = prior + 1 == kRows ? 1 : 0;
+    }
+    __syncthreads();
+    if (last_producer == 0) {
+      return;
+    }
+    __threadfence();
+
+    if (tid < T16_COLS) {
+      const int col = out_tile * T16_COLS + tid;
+      float routed = 0.0f;
+#pragma unroll
+      for (int route = 0; route < kRows; ++route) {
+        routed = fmaf(
+            scalar_to_float<scalar_t>(
+                out[route * kOutFeatures + col]),
+            routing_weights[route],
+            routed);
+      }
+      routed_out[col] = float_to_scalar<scalar_t>(routed);
+    }
+    __syncthreads();
+    if (tid == 0) {
+      atomicExch(completion_counter + out_tile, 0);
     }
   }
 }
@@ -3708,6 +3750,53 @@ int launch_qk_natural(const void* x,
       reinterpret_cast<const int64_t*>(selected),
       reinterpret_cast<const uint8_t*>(tiles),
       reinterpret_cast<scalar_t*>(out),
+      nullptr,
+      nullptr,
+      nullptr,
+      num_experts);
+  return hipGetLastError();
+}
+
+template <
+    typename scalar_t,
+    int qtype,
+    bool qmicro = false,
+    bool qmicro_planar = false>
+int launch_qk_natural_parallel_weighted(
+    const void* x,
+    const void* selected,
+    const void* tiles,
+    void* out,
+    const void* routing_weights,
+    void* routed_out,
+    void* completion_counter,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles || !out || !routing_weights || !routed_out ||
+      !completion_counter || x_rows != 10 || rows != 10 ||
+      in_features != 1024 || out_features != 3072 || num_experts <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(3072 / T16_COLS, 10);
+  hipLaunchKernelGGL(
+      (qk_t16_selected_natural_gemv_kernel<
+          scalar_t, qtype, qmicro, qmicro_planar, true, true>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      reinterpret_cast<const float*>(routing_weights),
+      reinterpret_cast<scalar_t*>(routed_out),
+      reinterpret_cast<int32_t*>(completion_counter),
       num_experts);
   return hipGetLastError();
 }
@@ -3970,6 +4059,18 @@ hipengine_gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out(
       num_experts, stream);
 }
 
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    const void* routing_weights, void* routed_out, void* completion_counter,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_qk_natural_parallel_weighted<uint16_t, 4>(
+      x, selected, tiles, out, routing_weights, routed_out,
+      completion_counter, x_rows, rows, in_features, out_features,
+      num_experts, stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out(
     const void* x, const void* selected, const void* tiles, void* out,
     int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
@@ -4061,6 +4162,18 @@ hipengine_gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_o
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_qk_natural<uint16_t, 6, true, true, true>(
       x, selected, tiles, out, x_rows, rows, in_features, out_features,
+      num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_weighted_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    const void* routing_weights, void* routed_out, void* completion_counter,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_qk_natural_parallel_weighted<uint16_t, 6, true, true>(
+      x, selected, tiles, out, routing_weights, routed_out,
+      completion_counter, x_rows, rows, in_features, out_features,
       num_experts, stream);
 }
 
