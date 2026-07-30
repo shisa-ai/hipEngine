@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T07:25:09+09:00",
+  "kind": "hipengine_laguna_f16_high13_lossless_rejection",
+  "status": "rejected_removed",
+  "hardware": {
+    "device": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "queue_policy": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "source_f16_tensor_count": 240
+  },
+  "baseline": {
+    "revision": "055440418911f69c163a9b9430241b0341d07efe",
+    "production_decode_tok_s": 22.752894,
+    "production_decode_ms_per_token": 43.950453,
+    "source_f16_leaf_ms_per_token": 23.157221346348525
+  },
+  "layout": {
+    "block_weights": 64,
+    "high13_bytes_per_block": 104,
+    "dirty_ordinal_bytes_per_block": 2,
+    "row_offset_bytes": 4,
+    "low3_bytes_per_dirty_block": 24,
+    "source_bytes": 5606277120,
+    "packed_bytes": 4727445408,
+    "saving_bytes": 878831712,
+    "saving_percent": 15.675852141964752,
+    "dirty_blocks": 3422020,
+    "blocks": 43799040,
+    "dirty_fraction": 0.07813002294114209,
+    "bit_exact": true
+  },
+  "strongest_consumer": {
+    "name": "wave_cooperative_packed_word_load",
+    "baseline_ms_per_token": 23.157221346348525,
+    "candidate_ms_per_token": 51.644382217526434,
+    "latency_change_percent": 123.01631722179751,
+    "all_shapes_byte_exact": true,
+    "all_shapes_faster": false
+  },
+  "secondary_consumer": {
+    "name": "direct_duplicate_packed_word_load",
+    "baseline_ms_per_token": 23.164146818965676,
+    "candidate_ms_per_token": 58.39357223510742,
+    "latency_change_percent": 152.08600468417686,
+    "all_shapes_byte_exact": true,
+    "all_shapes_faster": false
+  },
+  "validation": {
+    "host_pack_roundtrip": "7 passed, including all 65536 FP16 bit patterns",
+    "gpu_natural_k_oracle": "3 passed at K3072/K6144/K9216 against the production fixed-K output bytes",
+    "actual_weight_tensors": [
+      "blk.0.attn_q.weight",
+      "blk.0.attn_k.weight",
+      "blk.0.attn_v.weight",
+      "blk.0.attn_gate.weight",
+      "blk.0.attn_output.weight",
+      "blk.1.attn_q.weight",
+      "blk.1.attn_k.weight",
+      "blk.1.attn_v.weight",
+      "blk.1.attn_gate.weight",
+      "blk.1.attn_output.weight"
+    ]
+  },
+  "decision": {
+    "retained": false,
+    "production_changed": false,
+    "reason": "Exact 13-bit reconstruction costs 2.23x the retained source-F16 family even with the stronger wave-cooperative loader; the 15.676% byte reduction cannot repay per-weight unpack and metadata work on gfx1151.",
+    "removed": [
+      "host packer and inverse",
+      "HIP consumer and wrappers",
+      "actual-weight leaf harness",
+      "host and GPU tests"
+    ],
+    "reopen_only_if": "hardware-native packed-FP16 decode or a materially cheaper byte-aligned lossless representation removes per-weight bit extraction"
+  }
+}

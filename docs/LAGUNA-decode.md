@@ -7403,6 +7403,35 @@ The remaining attention sequence is:
      ownership for the current interleaved route unless a new design holds the
      tile8 VGPR footprint or changes the overlap/resource premise:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile16-rejected.json).
+139. Test a fully lossless source-F16 replacement after the lossy Q8/Q8R4
+     screens proved unusable. **Rejected and completely removed.** An exact
+     scan of all 240 projection tensors shows that **99.6753%** of FP16 words
+     have zero low-three bits and **92.1870%** of block64 groups need no
+     exception plane. The implemented row-major format stores 104 bytes of
+     packed high-13 bits plus a two-byte dirty ordinal per block, four-byte
+     row offsets, and a 24-byte low-three-bit plane only for dirty blocks.
+     Complete model storage would fall
+     **5,606,277,120 -> 4,727,445,408 bytes (-15.6759%)** with every FP16 bit
+     recoverable.
+
+     RED fails on the absent host transform and GPU wrapper. GREEN round-trips
+     all **65,536 FP16 bit patterns**, validates row-local exception indexing,
+     and matches the retained fixed-K GPU output bytes at
+     **K3072/K6144/K9216**. Actual layer-0/full and layer-1/SWA Q/K/V/gate/
+     output tensors then expose the performance blocker. The stronger
+     wave-cooperative packed-word loader regresses the modeled source-F16
+     family **23.1572 -> 51.6444 ms/token (+123.02%)**. Letting each lane issue
+     direct duplicate packed-word loads is worse at
+     **23.1641 -> 58.3936 ms/token (+152.09%)**. Per-weight bit extraction and
+     exception metadata overwhelm the 15.7% byte reduction; the cache-hot
+     K/V shapes regress by more than 3x.
+
+     Remove the host packer/inverse, HIP body/wrappers, harness, and tests.
+     Production remains **22.752894 tok/s / 43.950453 ms/token**. Reopen
+     lossless source-F16 compression only if a hardware-native packed-FP16
+     decode or materially cheaper byte-aligned representation removes
+     per-weight bit extraction:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-high13-lossless-rejected.json).
 
 Current exact decode checkpoint:
 
@@ -7834,11 +7863,13 @@ and shape/backend fallbacks.
    and **+6.00%** family regressions. Stop F16 geometry work unless a new
    byte-reduction or cache-counter premise appears.
 3. **LD-3 — decode-only compressed source-F16 representation.** Closed for
-   plain block32 Q8_0/Q8_1, structural layer subsets, and one-sided residual
-   weight/activation repair. The best fast all-layer row reaches
-   **50.154 ms/token** but max KL **0.497301**; no tested scope clears
-   **0.05**. Reopen only for a materially different calibrated representation
-   with a predeclared full-model quality premise, not another Q8 residual pass.
+   plain block32 Q8_0/Q8_1, structural layer subsets, one-sided residual
+   weight/activation repair, block32 Q8-base/Q4-residual, and bit-lossless
+   block64 high13+sparse-low3. The lossy paths fail quality; the lossless path
+   preserves every output byte but regresses the modeled F16 family
+   **23.157 -> 51.644 ms/token**. Reopen only for hardware-native packed-FP16
+   decode, a materially cheaper byte-aligned lossless layout, or a calibrated
+   lossy representation with a predeclared full-model quality premise.
 4. **LD-4 — selected and dense/shared Q4 decode.** Raw residency and
    reduction-order-changing thread geometry remain closed. Pack8 is only
    **33.33%** larger than raw; raw local128 loses **63.6-85.4%** at actual
