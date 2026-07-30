@@ -917,6 +917,61 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     )
     assert [name for name, _ in calls] == ["qkv", "single:gate"]
 
+    calls.clear()
+
+    def f16_quad_launch(*args, **kwargs):
+        calls.append(("f16_quad", (args, kwargs)))
+
+    monkeypatch.setattr(
+        runner_module,
+        "launch_f16_weight_linear_quad",
+        f16_quad_launch,
+    )
+    f16_weights = tuple(
+        weight(name, LAYOUT_DENSE_F16) for name in ("q", "k", "v", "gate")
+    )
+    assert runner_module.launch_laguna_attention_projections(
+        *f16_weights,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1151",
+        stream=9,
+        libraries=libraries,
+        runtime="runtime-sentinel",
+        use_f16_attention_quad_decode=True,
+    )
+    assert [name for name, _ in calls] == ["f16_quad"]
+    quad_args, quad_kwargs = calls[0][1]
+    assert quad_args[:4] == f16_weights
+    assert quad_args[4:] == (
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+    )
+    assert quad_kwargs == {
+        "backend": "hip_gfx1151",
+        "stream": 9,
+        "libraries": libraries.linear,
+        "runtime": "runtime-sentinel",
+    }
+
 
 def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     monkeypatch,

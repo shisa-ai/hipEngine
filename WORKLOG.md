@@ -193660,3 +193660,33 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json`.
   Next: inspect Vulkan's attention and command-buffer execution against the
   current HIP bodies before selecting the next exact kernel or fusion.
+
+## 2026-07-30 19:18 JST — Add exact source-F16 attention-quad candidate
+
+- Read llama.cpp Vulkan at `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`.
+  Its graph records up to 100 nodes into reusable command buffers before
+  submission, so shader count is not equivalent to one host queue submission
+  per shader. Its Laguna attention route uses cooperative tile-local QK/PV
+  arithmetic that does not meet hipEngine's recurrent exactness contract.
+- The tracked-clean census instead shows hipEngine kernel sum only
+  **0.164082 ms/token** behind the same-GGUF Vulkan logger while production
+  wall is **2.778197 ms/token** behind. Forty-eight retained Q/K/V triple
+  launches are each followed by a tiny gate projection; their measured
+  dependency boundary alone costs **0.26638 ms/token**.
+- Added a separately registered c=1 source-F16 `linear_quad` candidate. It
+  selects Q/K/V/gate weights and outputs within one grid while preserving
+  every column's retained 256-thread K sequence and reduction tree. The
+  triple-plus-single route remains the required unfused fallback.
+- RED was the absent quad wrapper/registry import. GREEN covers registry,
+  resident raw-pointer dispatch, runtime fail-closed selection, and a gfx1151
+  device fixture that is F32-bit exact to fixed-K triple plus singleton.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_f16w_quad_fixedk_onebarrier_gemv_kernel<3072>` at
+  local256/VGPR24/SGPR128/LDS512/scratch0. On the focused 33+8+9+7-output
+  fixture it takes **8.095 us**, versus **12.583 + 7.694 us** for the
+  retained two launches. No compiler ran under the profiler.
+- The required lineage command remains blocked before inspection by missing
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas`. This is an in-tree
+  extension of the current exact source-F16 body, not an external port.
+  Next: commit the diagnostic, then run the clean same-resident p512/d128
+  production gate.

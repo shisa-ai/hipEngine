@@ -304,6 +304,65 @@ __global__ void laguna_f16w_triple_fixedk_onebarrier_gemv_kernel(
   if (threadIdx.x == 0) out[row * width + local_col] = total;
 }
 
+template <int K>
+__global__ void laguna_f16w_quad_fixedk_onebarrier_gemv_kernel(
+    const uint16_t* __restrict__ x,
+    const half_t* __restrict__ weight_a,
+    const half_t* __restrict__ weight_b,
+    const half_t* __restrict__ weight_c,
+    const half_t* __restrict__ weight_d,
+    float* __restrict__ out_a,
+    float* __restrict__ out_b,
+    float* __restrict__ out_c,
+    float* __restrict__ out_d,
+    int64_t rows,
+    int64_t out_a_features,
+    int64_t out_b_features,
+    int64_t out_c_features,
+    int64_t out_d_features) {
+  const int64_t col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (row >= rows ||
+      col >= out_a_features + out_b_features + out_c_features +
+                 out_d_features) {
+    return;
+  }
+  const half_t* weight;
+  float* out;
+  int64_t local_col;
+  int64_t width;
+  if (col < out_a_features) {
+    weight = weight_a;
+    out = out_a;
+    local_col = col;
+    width = out_a_features;
+  } else if (col < out_a_features + out_b_features) {
+    weight = weight_b;
+    out = out_b;
+    local_col = col - out_a_features;
+    width = out_b_features;
+  } else if (col < out_a_features + out_b_features + out_c_features) {
+    weight = weight_c;
+    out = out_c;
+    local_col = col - out_a_features - out_b_features;
+    width = out_c_features;
+  } else {
+    weight = weight_d;
+    out = out_d;
+    local_col =
+        col - out_a_features - out_b_features - out_c_features;
+    width = out_d_features;
+  }
+  float acc = 0.0f;
+#pragma unroll
+  for (int k = threadIdx.x; k < K; k += 256) {
+    acc += bf16_to_f32(x[row * K + k]) *
+           static_cast<float>(weight[local_col * K + k]);
+  }
+  const float total = block_sum_thread0(acc);
+  if (threadIdx.x == 0) out[row * width + local_col] = total;
+}
+
 template <typename out_t, int TILE_M>
 __global__ void laguna_f16w_tiled_exact_kernel(
     const uint16_t* __restrict__ x,
@@ -926,6 +985,69 @@ int launch_triple_fixedk_onebarrier(
   }
 }
 
+template <int K>
+int launch_quad_fixedk_onebarrier_k(
+    const uint16_t* x,
+    const half_t* wa,
+    const half_t* wb,
+    const half_t* wc,
+    const half_t* wd,
+    float* oa,
+    float* ob,
+    float* oc,
+    float* od,
+    int64_t rows,
+    int64_t out_a,
+    int64_t out_b,
+    int64_t out_c,
+    int64_t out_d,
+    hipStream_t stream) {
+  laguna_f16w_quad_fixedk_onebarrier_gemv_kernel<K><<<
+      dim3(out_a + out_b + out_c + out_d, rows), dim3(256), 0, stream>>>(
+      x, wa, wb, wc, wd, oa, ob, oc, od, rows, out_a, out_b, out_c, out_d);
+  return hipGetLastError();
+}
+
+int launch_quad_fixedk_onebarrier(
+    const uint16_t* x,
+    const half_t* wa,
+    const half_t* wb,
+    const half_t* wc,
+    const half_t* wd,
+    float* oa,
+    float* ob,
+    float* oc,
+    float* od,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a,
+    int64_t out_b,
+    int64_t out_c,
+    int64_t out_d,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows != 1 || out_a <= 0 || out_b <= 0 || out_c <= 0 ||
+      out_d <= 0 || threads != 256) {
+    return hipErrorInvalidValue;
+  }
+  switch (in_features) {
+    case 3072:
+      return launch_quad_fixedk_onebarrier_k<3072>(
+          x, wa, wb, wc, wd, oa, ob, oc, od, rows, out_a, out_b, out_c,
+          out_d, stream);
+    case 6144:
+      return launch_quad_fixedk_onebarrier_k<6144>(
+          x, wa, wb, wc, wd, oa, ob, oc, od, rows, out_a, out_b, out_c,
+          out_d, stream);
+    case 9216:
+      return launch_quad_fixedk_onebarrier_k<9216>(
+          x, wa, wb, wc, wd, oa, ob, oc, od, rows, out_a, out_b, out_c,
+          out_d, stream);
+    default:
+      return hipErrorInvalidValue;
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_f16w_gemv_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
@@ -940,6 +1062,7 @@ extern "C" int hipengine_laguna_f16w_dual_gemv_bf16_f32_out(const uint16_t* x, c
 extern "C" int hipengine_laguna_f16w_triple_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_onebarrier_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_onebarrier(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_fixedk_onebarrier(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
+extern "C" int hipengine_laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, const half_t* wd, float* oa, float* ob, float* oc, float* od, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t nd, int64_t t, hipStream_t s) { return launch_quad_fixedk_onebarrier(x,wa,wb,wc,wd,oa,ob,oc,od,r,k,na,nb,nc,nd,t,s); }
 extern "C" int hipengine_laguna_f16w_tiled_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_tiled_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_tiled_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_tiled_exact(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }

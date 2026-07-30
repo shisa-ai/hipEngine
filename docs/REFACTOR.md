@@ -2226,3 +2226,16 @@ should be boring.
 - The post-sidecar census passes at **43.972461 ms/token** kernel sum and
   **46.007636 ms/token** span. The comparison seam is now eligible for
   removal; retain only the capability, T16 materialization, and pack8 fallback.
+
+## Laguna gfx1151 source-F16 attention-quad selector
+
+- Added 2026-07-30 as
+  `LagunaGGUFResidentSession.set_f16_attention_quad_decode(...)` and
+  `--compare-f16-attention-quad-decode`. The candidate flattens the exact
+  fixed-K Q/K/V triple and per-head gate singleton into one grid for c=1;
+  rows>1, unsupported layouts, explicit disable, and unmeasured backends
+  retain the registered triple-plus-single chain.
+- Remove the comparison CLI and session setter after the same-resident
+  production gate is either rejected or published from a tracked-clean
+  default. If retained, keep the four-axis `linear_quad` registration,
+  gfx1151 capability, and unfused fallback.

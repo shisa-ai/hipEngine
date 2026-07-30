@@ -280,11 +280,65 @@ def launch_f16_weight_linear_triple(
     )
 
 
+def launch_f16_weight_linear_quad(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    weight_c: GGUFDeviceWeight,
+    weight_d: GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    out_d_ptr: int,
+    rows: int,
+    in_features: int,
+    out_a_features: int,
+    out_b_features: int,
+    out_c_features: int,
+    out_d_features: int,
+    *,
+    backend: str | None = None,
+    threads: int = 256,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+) -> None:
+    """Launch the exact rows==1 fixed-K four-projection sibling."""
+
+    resolved_backend = _backend((weight_a, weight_b, weight_c, weight_d), backend)
+    key = KernelKey(
+        resolved_backend,
+        "linear_quad",
+        F16_WEIGHT,
+        "fixedk_onebarrier_bf16_f32_out",
+    )
+    fn = _resolve(key)
+    fn(
+        x_ptr,
+        weight_a.allocation("raw").tensor.ptr,
+        weight_b.allocation("raw").tensor.ptr,
+        weight_c.allocation("raw").tensor.ptr,
+        weight_d.allocation("raw").tensor.ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        out_d_ptr,
+        rows,
+        in_features,
+        out_a_features,
+        out_b_features,
+        out_c_features,
+        out_d_features,
+        **_kwargs(key, libraries, threads=threads, stream=stream, runtime=runtime),
+    )
+
+
 __all__ = [
     "F16_WEIGHT",
     "LAYOUT_DENSE_F16",
     "SOURCE_QUANT_FP16",
     "launch_f16_weight_linear",
     "launch_f16_weight_linear_pair",
+    "launch_f16_weight_linear_quad",
     "launch_f16_weight_linear_triple",
 ]

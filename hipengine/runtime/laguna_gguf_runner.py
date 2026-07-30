@@ -71,6 +71,7 @@ from hipengine.runtime.gguf_linear import (
 )
 from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear,
+    launch_f16_weight_linear_quad,
     launch_f16_weight_linear_triple,
 )
 from hipengine.runtime.laguna_f16_hipblaslt import (
@@ -1214,17 +1215,57 @@ def launch_laguna_attention_projections(
     runtime: HipRuntime | None,
     compensated_wmma_eligible: bool = False,
     query_gate_decode_variant: str | None = None,
+    use_f16_attention_quad_decode: bool | None = None,
     use_mixed_q5_q6_attention: bool = False,
     use_mixed_q6_fixed_meta_attention: bool = False,
     use_mixed_local32_fixed_meta_attention: bool = False,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
-    The optional registered mixed-Q5/Q6 quad is c=1-only and fail-closed.
+    The source-F16 and optional mixed-Q5/Q6 quads are c=1-only and fail-closed.
     Registered query/gate and K/V pairs are decode-only and fail closed.
     Rows greater than one, registry/shape/quant misses, and unmeasured layouts
     retain the established fused-QKV or singleton fallbacks.
     """
+
+    if use_f16_attention_quad_decode is None:
+        use_f16_attention_quad_decode = bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_F16_ATTENTION_QUAD_DECODE",
+                False,
+            )
+        )
+    if (
+        use_f16_attention_quad_decode
+        and rows == 1
+        and all(
+            weight.spec.layout == LAYOUT_DENSE_F16
+            for weight in (q_weight, k_weight, v_weight, gate_weight)
+        )
+    ):
+        launch_f16_weight_linear_quad(
+            q_weight,
+            k_weight,
+            v_weight,
+            gate_weight,
+            x_ptr,
+            q_ptr,
+            k_ptr,
+            v_ptr,
+            gate_ptr,
+            rows,
+            in_features,
+            q_features,
+            k_features,
+            v_features,
+            gate_features,
+            backend=backend,
+            stream=stream,
+            libraries=libraries.linear,
+            runtime=runtime,
+        )
+        return True
 
     retained_mixed_variant = (
         _MIXED_ATTENTION_Q6_FIXED_META_VARIANT
@@ -2095,6 +2136,7 @@ class LagunaGGUFResidentSession:
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
         use_q5_shared_fixed_meta: bool | None = None,
+        use_f16_attention_quad_decode: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
@@ -2325,6 +2367,15 @@ class LagunaGGUFResidentSession:
             )
             if use_q4_decode_t16_dual_interleaved is None
             else use_q4_decode_t16_dual_interleaved
+        )
+        self.use_f16_attention_quad_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_F16_ATTENTION_QUAD_DECODE",
+                False,
+            )
+            if use_f16_attention_quad_decode is None
+            else use_f16_attention_quad_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3112,6 +3163,11 @@ class LagunaGGUFResidentSession:
         """Select paired exact Q4 dense/shared decode tiles."""
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
+
+    def set_f16_attention_quad_decode(self, enabled: bool) -> None:
+        """Select the exact c=1 source-F16 Q/K/V/gate quad."""
+
+        self.use_f16_attention_quad_decode = bool(enabled)
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -4846,6 +4902,9 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries,
             runtime=self.runtime,
             query_gate_decode_variant=self._q5_query_gate_variant,
+            use_f16_attention_quad_decode=(
+                self.use_f16_attention_quad_decode
+            ),
             use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
             use_mixed_q6_fixed_meta_attention=(
                 self.use_mixed_q6_fixed_meta_attention

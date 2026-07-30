@@ -52,6 +52,25 @@ _TRIPLE_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_QUAD_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 
 def plan_laguna_f16_projection_build(
@@ -753,6 +772,65 @@ def laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out(
         runtime.check(int(err))
 
 
+def laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out(
+    x_ptr,
+    weight_a_ptr,
+    weight_b_ptr,
+    weight_c_ptr,
+    weight_d_ptr,
+    out_a_ptr,
+    out_b_ptr,
+    out_c_ptr,
+    out_d_ptr,
+    rows,
+    in_features,
+    out_a_features,
+    out_b_features,
+    out_c_features,
+    out_d_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate_fixedk_decode(
+        rows,
+        in_features,
+        (out_a_features, out_b_features, out_c_features, out_d_features),
+        threads,
+    )
+    library = library or build_laguna_f16_projection(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out",
+        _QUAD_ARGS,
+        ctypes.c_int,
+    )
+    err = fn(
+        x_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        weight_c_ptr,
+        weight_d_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        out_d_ptr,
+        rows,
+        in_features,
+        out_a_features,
+        out_b_features,
+        out_c_features,
+        out_d_features,
+        threads,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def laguna_f16w_triple_tiled_bf16_f32_out(
     x_ptr,
     weight_a_ptr,
@@ -1091,6 +1169,16 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_quad",
+            "fp16_weight",
+            "fixedk_onebarrier_bf16_f32_out",
+        ),
+        laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_triple", "fp16_weight", "tiled_bf16_f32_out"),
         laguna_f16w_triple_tiled_bf16_f32_out,
         replace=replace,
@@ -1111,6 +1199,7 @@ __all__ = [
     "laguna_f16w_gemv_f32_f32_out",
     "laguna_f16w_onebarrier_gemv_bf16_bf16_out",
     "laguna_f16w_onebarrier_gemv_bf16_f32_out",
+    "laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out",
     "laguna_f16w_tiled_bf16_bf16_out",
     "laguna_f16w_tiled_bf16_f32_out",
     "laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out",
