@@ -250,7 +250,7 @@ def test_h5y_preflight_rejects_before_loading_hip(
         candidate(1, 2, 3, 4, 5, 17, 512, 50)
 
 
-@pytest.mark.parametrize("rows", [17, 33])
+@pytest.mark.parametrize("rows", [17, 33, 512])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_h5y_activation_plane_and_outputs_match_current_bytes(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime

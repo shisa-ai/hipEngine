@@ -253,13 +253,17 @@ numbers below.
   **169.516 tok/s** and **2.49651x** behind llama.cpp HIP. Its five-request
   cached trace reconciles **1,831.568 ms / 1,862 dispatches** versus llama.cpp
   **724.299 ms**; residual gaps rank Q5/IQ-down/attention/Q6/gate-up at
-  **407.137/326.998/234.055/77.436/59.236 ms**. WPF-H5Y next screens an exact
-  tile-K-row BF16 activation plane over unchanged H5X/H5L weights; the static
-  **4.521B -> 0.920B (-79.65%)** load-instruction model and bounded
-  **10,125,312-byte** plane are rationale, not a speed claim. Both short rows
-  exceed 150 tok/s and H5X 4K remains positive; 16K+ stays closed below the
-  800/700 stretch target
-  ([post-H5X matched residual / H5Y target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+  **407.137/326.998/234.055/77.436/59.236 ms**. WPF-H5Y now admits exact
+  tile-K-row BF16 activation leaves for all six roles over unchanged H5X/H5L
+  weights. Rows17/33/512 planes and outputs are byte-exact; cached ISA has the
+  intended width-matched loads with identical consumer resources and scratch0.
+  The **188-call** pack-inclusive event/wall aggregate falls
+  **462.608/455.971 -> 263.014/274.237 ms (-43.145%/-39.856%)**, with 6/6
+  both-clock wins. Production remains H5X until complete-state, topology, and
+  clean 512/1K/4K runtime gates pass. Both short rows exceed 150 tok/s and H5X
+  4K remains positive; 16K+ stays closed below the 800/700 stretch target
+  ([H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
+  [post-H5X matched residual / H5Y target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
   [current H5X production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
   [H5X candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
   [H5X target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
