@@ -1581,11 +1581,15 @@ of their candidate surfaces are removed. BF16 K6144/N3072 `16x4` is the sole
 final-source winner: cached tracing confirms local128/VGPR136/SGPR128/LDS1024/
 scratch0 versus H5L `16x5` VGPR168/LDS1536, and its unchanged-producer 12-call
 event/wall sums fall **31.306/30.890 -> 29.329/29.898 ms
-(-6.315%/-3.211%)** with byte-exact output and recovered allocations. Admit only
-the standalone gfx1100 leaf. Production remains H5M/H5L pending bounded
-role-policy complete-state, physical-call, and clean 512/1K/4K qualification.
-The old wider-qrow, cross-head/key-split, rowbatch16, output-tile, source-MMQ,
-changed-association attention, and P6/repair routes remain closed. Launch fusion remains
+(-6.315%/-3.211%)** with byte-exact output and recovered allocations. The
+bounded default-off owner passes complete M512 state at KL0/byte identity and
+tracing selects exactly **12** calls, cutting role/Q5/request sum
+**5.800%/0.572%/0.187%**. The first clean 512 result is **-0.189%**, but a
+predeclared seven-repeat adjudication resolves it at **+0.176%**; 1K/4K are
+**-0.006%/+0.021%**. Production remains H5M/H5L until selector-unset package
+publication. The old wider-qrow, cross-head/key-split, rowbatch16, output-tile,
+source-MMQ, changed-association attention, and P6/repair routes remain closed.
+Launch fusion remains
 below its trigger at **1.251%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

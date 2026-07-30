@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_q5_k_weight_major_occupancy_retune_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_candidate_pending_runtime_qualification",
+  "status": "integrated_default_off_exact_candidate_pending_package_publication",
   "performance_claim": true,
   "hardware": {
     "device": "AMD Radeon Pro W7900",
@@ -28,6 +28,10 @@
       "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "e2588d7f8b3aacc9b4f6945bc26a857c7aae7414db716d1efc15076a56767baa",
       "hipengine/kernels/hip_gfx1151/__init__.py": "910161d7849e2fa33d47bbe506fe385eb58ed54037d1e06811c6fd16657ba35c",
       "tests/test_laguna_h5p_q5_weight_major_occupancy.py": "7886235a98d1fd9e2aeb8d50ee364c719e5bde6ee68a4c0d84c79e1b9fdb1c81"
+    },
+    "runtime_implementation_sha256": {
+      "hipengine/runtime/laguna_gguf_runner.py": "7c616e73622d9be5cf1e2c85fb89fc2a29d529ef7a5f024e4681a27ec0961f32",
+      "tests/test_laguna_gguf_runner.py": "6befad0f12c0d15344896eb4d53304323c67fba84935debd0f4ca19103e2ae65"
     }
   },
   "candidate": {
@@ -125,7 +129,11 @@
     "tracked_returned_to_baseline": true,
     "active_allocations_after": 0,
     "current_allocated_bytes_after": 0,
-    "complete_model_state_gate_performed": false
+    "complete_model_state_gate_performed": true,
+    "complete_model_kl_mean": 0.0,
+    "complete_model_kl_max": 0.0,
+    "complete_model_top1_agreement": 1.0,
+    "complete_logits_hidden_kv_spans_repeat_exact": true
   },
   "cached_trace": {
     "candidate_symbol": "gguf_q5_k_f32_weight_ordered_weight_major_coltile_kernel<unsigned short, 16, 4>",
@@ -147,8 +155,67 @@
     "final_source_stdout_sha256": "035be7793f790a0ae161eea09e428fa0bebbee71a4ca538f830f63f7bca16230",
     "final_source_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
+  "runtime_qualification": {
+    "same_resident_natural_m512_state": {
+      "next_token_id": 2930,
+      "final_position": 511,
+      "kl_mean": 0.0,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "exact_hidden_boundaries": 48,
+      "complete_state_exact": true,
+      "candidate_repeat_exact": true,
+      "workspace_bytes": 150994944,
+      "lifecycle_recovered": true,
+      "json_sha256": "8832e43f408f3f93f518e582e8e6c3e08f8dca86f1160d7f2b793b503762515f",
+      "harness_sha256": "c8222d26726f197c274dbc9f8b7a0ec488d45b597b7c301200770e6bbf5705e9"
+    },
+    "cached_integrated_trace": {
+      "dispatches_before": 1862,
+      "dispatches_after": 1862,
+      "candidate_calls": 12,
+      "retained_bf16_16x5_calls": 0,
+      "role_ms_before": 26.9534,
+      "role_ms_after": 25.390004000000005,
+      "role_reduction_percent": 5.800366558578862,
+      "q5_ms_before": 465.6597829999998,
+      "q5_ms_after": 462.994027,
+      "q5_reduction_percent": 0.5724685913019334,
+      "request_kernel_sum_ms_before": 2060.485413999999,
+      "request_kernel_sum_ms_after": 2056.6361009999955,
+      "request_kernel_sum_reduction_percent": 0.1868158334851211,
+      "trace_sha256": "979c8b18435dc1a24f9000fde5f869f9797794a40db4fb949fd7071527e8ecd0",
+      "summary_sha256": "fefb97e6db57294f9b5d8138ab589dd8935030c57c42229671fa0f46565fc5ae",
+      "analyzer_sha256": "cece18e9211b2084d9e0aefe0f1c36022a489fe2955b0388c4316c921ed4e6cf",
+      "child_sha256": "5c8f1f251064c8edc0c3c848b27767835d5271eced8c63f059eff7b97bf2ac4e",
+      "no_compiler_under_profile": true
+    },
+    "first_clean_512_1k_4k": {
+      "control_tok_s": [238.78089659049422, 218.55410936964563, 158.1601490938827],
+      "candidate_tok_s": [238.33070515260394, 218.53993505586945, 158.1935097405774],
+      "gain_percent": [-0.1885374602066059, -0.006485494057772989, 0.021092953494195044],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "decision": "512 conflict requires predeclared seven-repeat adjudication; do not promote from this packet alone",
+      "json_sha256": "5545bb8748533a18c1194d298ac842b874b16ce7227b484bdd5937568aee41a3",
+      "harness_sha256": "3163eca39cca37cbfeff18ea098bfa1ada921e2e70de9e7002e3ef9a0de91507"
+    },
+    "predeclared_512_adjudication": {
+      "repetitions": 7,
+      "control_median_tok_s": 241.98848909685697,
+      "candidate_median_tok_s": 242.41337307595683,
+      "gain_percent": 0.1755802437899412,
+      "paired_candidate_wins": 4,
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "json_sha256": "fea1f487801d26d4b2aede15d248bbc4993e5133c6c44e87199676e7fdaee16b",
+      "harness_sha256": "c65061ef2a0d038d0e897ef84e39ad1b095b33aa309629d80f1b81ad61a789c3"
+    }
+  },
   "validation": {
     "focused_q5_gfx1151_tests": "38 passed",
+    "runtime_owner_tests": "relevant eager/policy and isolated lifecycle tests 3 passed; H5P file 4 passed",
+    "known_unrelated_runner_bundle_failure": "module-order cached gfx1151 moe_branch_concurrency assertion; isolated lifecycle test passes and H5P changes only eager Q5 library ownership",
     "ruff": "passed",
     "pycompile": "passed",
     "diff_check": "passed"
@@ -159,7 +226,8 @@
   },
   "decision": {
     "standalone_candidate_admitted": true,
+    "default_off_runtime_qualified": true,
     "production_changed": false,
-    "next_action": "Qualify a bounded default-off BF16 K6144/N3072 role policy with complete natural-M512 state, exact integrated call counts, and clean 512/1K/4K non-regression before any package default."
+    "next_action": "Promote only BF16 K6144/N3072 16x4 in the gfx1100 package policy, then rerun selector-unset three-repeat 512/1K/4K publication before retaining the default."
   }
 }

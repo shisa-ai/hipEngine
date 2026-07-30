@@ -152,8 +152,11 @@ numbers below.
   removed. The sole final-source winner is BF16 K6144/N3072 `16x4`: resources
   fall **VGPR168/LDS1536 -> VGPR136/LDS1024** at scratch0, and its 12-call
   producer-inclusive event/wall sums fall **31.306/30.890 -> 29.329/29.898 ms
-  (-6.315%/-3.211%)** with byte-exact output. Production stays H5M/H5L pending
-  complete state, physical call-count, and clean 512/1K/4K qualification. Both
+  (-6.315%/-3.211%)** with byte-exact output. Complete M512 state is KL0 and
+  byte-exact; tracing selects exactly **12** calls and cuts Q5/request sum
+  **0.572%/0.187%**. The first clean 512 row is **-0.189%**, but its predeclared
+  seven-repeat adjudication is **+0.176%**; 1K/4K are **-0.006%/+0.021%**.
+  Production stays H5M/H5L pending selector-unset package publication. Both
   short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
