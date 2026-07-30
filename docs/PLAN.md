@@ -1705,19 +1705,23 @@ fallbacks
 The production-identical H5W trace now reconciles **1,803.036 ms / 1,862
 dispatches** versus matched llama.cpp HIP **724.299 ms** and ranks exact gaps
 Q5/IQ-down/attention/Q6/gate-up at **417.482/327.846/192.029/77.716/60.898
-ms**. **WPF-H5X exact tile-K-col F32 AoSoA Q5** targets Q5's unchanged
-**476.433-ms** family without reopening H5O compression or H5P/H5S/H5V
-ownership. Six H5L roles own **188 calls / 459.232 ms**. A geometry-specific
-producer writes the same full-F32 plane as `[tile][k][col]`; the matching
-local128 consumer reads aligned `float4` records and replays every original
-scalar FMA/reduction/store. The static source model replaces **6.309B** scalar
-weight-load instruction instances with **1.577B** four-wide loads across the
-unchanged **5,021,440** workgroups, while value bytes, useful dot work, the
-**150,994,944-byte** workspace, launches, allocation, and production policy stay
-fixed. This **75%** instruction-count model is rationale only. Freeze RED on the
-six role surfaces and require exact plane/output bytes, cached dwordx4 ISA at
-scratch0, and producer-inclusive both-clock wins before runtime ownership
-([post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
+ms**. **WPF-H5X exact tile-K-col F32 AoSoA Q5** now admits a standalone leaf
+for Q5's unchanged **476.433-ms** family without reopening H5O compression or
+H5P/H5S/H5V ownership. Rows17/33 plane bits and all six actual M512 outputs are
+exact. The retained linear local256 producer writes full-F32
+`[tile][k][col]`; matching local128 consumers preserve every H5L
+FMA/reduction/store and physical VGPR/LDS/scratch0 while ISA realizes
+**8/12/16 `global_load_b32` -> 2/3/4 `global_load_b128`**. Four roles / **151
+calls** win both clocks. Remove the two losing BF16 surfaces and retain H5L for
+**37** calls. The six-role selected event/wall model falls
+**465.863/467.511 -> 458.615/459.712 ms (-1.556%/-1.668%)**; final-source
+winners fall **265.784/266.992 -> 258.653/258.959 (-2.683%/-3.009%)** with 4/4
+wins. Value bytes, useful work, the **150,994,944-byte** workspace, launches,
+allocation, package policy, and gfx1151 remain unchanged. Next add bounded
+default-off ownership and require complete state, exact **151 H5X + 37 H5L +
+47 H5G** topology, and clean one-queue 512/1K/4K before source default
+([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+[post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, and P6/repair routes remain closed.

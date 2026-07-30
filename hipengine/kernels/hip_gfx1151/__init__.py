@@ -677,6 +677,35 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (16, 5, "f32"),
             )
         ),
+        # H5X exact tile-K-col Q5 producers/consumers are W7900-only until an
+        # independent gfx1151 layout/resource/performance gate qualifies them.
+        *(
+            (
+                layer,
+                quant,
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for layer, quant, prefix in (
+                ("dequant", "gguf_q5_k", "raw_f32_exact_tile_k_col_"),
+                (
+                    "linear",
+                    "f32_weight",
+                    "ordered_weight_major_tile_k_col_",
+                ),
+                (
+                    "linear",
+                    "gguf_q5_k",
+                    "f32_ordered_weight_major_tile_k_col_",
+                ),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (8, 4, "bf16"),
+                (16, 5, "bf16"),
+                (16, 5, "f32"),
+                (8, 10, "f32"),
+            )
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),

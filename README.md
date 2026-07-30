@@ -231,9 +231,17 @@ numbers below.
   **266.763/230.491/160.091 -> 271.526/234.020/161.853 tok/s
   (+1.785%/+1.532%/+1.100%)**, again 3/3 each, promoting canonical throughput
   **+1.617%/+1.553%/+1.018%** over H5R and narrowing matched M512 to
-  **2.55661x**. Both short rows exceed 150 tok/s and H5R 4K remains positive;
-  16K+ stays closed below the 800/700 stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+  **2.55661x**. H5X then admits an exact standalone Q5 `[tile][k][col]` leaf:
+  all six actual outputs are byte-exact, physical consumers replace **8/12/16
+  scalar loads with 2/3/4 `global_load_b128`**, and four roles / **151 calls**
+  win both clocks. Remove two losing surfaces and retain H5L for **37** calls.
+  Six-role selected event/wall falls **1.556%/1.668%** and the four final-source
+  winners fall **2.683%/3.009%**, 4/4 wins. Production remains H5W pending H5X
+  complete-state/integrated/clean gates. Both short rows exceed 150 tok/s and
+  H5W 4K remains positive; 16K+ stays closed below the 800/700 stretch target
+  ([H5X candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+  [H5X target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+  [current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
   [H5W candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
   [H5W target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
   [H5V rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·

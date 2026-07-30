@@ -137,6 +137,38 @@ __global__ void gguf_q5_k_dequantize_f32_exact_kernel(
   expand_q5_block(block, dst, tid);
 }
 
+// H5X writes the same exact expanded values in output-tile/K/column order.
+// Every K row is 16-byte aligned because each admitted COL_TILE is a multiple
+// of four; matching consumers can therefore load adjacent columns as float4.
+template <int COL_TILE>
+__launch_bounds__(QK_K)
+__global__ void gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel(
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ out,
+    int in_features) {
+  static_assert(COL_TILE % 4 == 0, "tile-K-col rows must be float4 aligned");
+  // Linear output ownership makes each wave store contiguous tile-K-col
+  // elements. The source block/within mapping still evaluates q5_k_value once
+  // per output value with the exact row-major producer expression.
+  const int64_t element =
+      static_cast<int64_t>(blockIdx.x) * QK_K + threadIdx.x;
+  const int64_t tile_elements =
+      static_cast<int64_t>(in_features) * COL_TILE;
+  const int out_tile = static_cast<int>(element / tile_elements);
+  const int64_t tile_offset = element - out_tile * tile_elements;
+  const int k = static_cast<int>(tile_offset / COL_TILE);
+  const int tile_col =
+      static_cast<int>(tile_offset - static_cast<int64_t>(k) * COL_TILE);
+  const int output_col = out_tile * COL_TILE + tile_col;
+  const int64_t blocks_per_output = in_features / QK_K;
+  const int64_t block_id =
+      static_cast<int64_t>(output_col) * blocks_per_output + k / QK_K;
+  const int within = k & (QK_K - 1);
+  const uint8_t* __restrict__ block =
+      qweight + block_id * Q5_K_BLOCK_BYTES;
+  out[element] = q5_k_value(block, within);
+}
+
 __global__ void gguf_q6_k_dequantize_f32_exact_kernel(
     const uint8_t* __restrict__ qweight,
     float* __restrict__ out) {
@@ -361,6 +393,104 @@ __global__ void gguf_q5_k_f32_weight_ordered_weight_major_coltile_kernel(
   }
 }
 
+// H5X preserves H5L's local128/four-wave arithmetic and workgroup order, but
+// reads a tile-K-col F32 plane through aligned four-column records.
+template <typename out_t, int COL_TILE, int ROW_BATCH>
+__launch_bounds__(128, (COL_TILE * ROW_BATCH >= 64 ? 1 : 2))
+__global__ void gguf_q5_k_f32_weight_ordered_weight_major_tile_k_col_kernel(
+    const uint16_t* __restrict__ input,
+    const float* __restrict__ weight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  static_assert(
+      COL_TILE * ROW_BATCH == 32 ||
+          COL_TILE * ROW_BATCH == 64 ||
+          COL_TILE * ROW_BATCH == 80 ||
+          COL_TILE * ROW_BATCH == 96,
+      "tile-K-col Q5 uses only retained H5L accumulator tiles");
+  static_assert(COL_TILE % 4 == 0, "tile-K-col rows must be float4 aligned");
+  const int row_groups = (rows + ROW_BATCH - 1) / ROW_BATCH;
+  const int workgroup = static_cast<int>(blockIdx.x);
+  const int row_group = workgroup % row_groups;
+  const int out_tile = workgroup / row_groups;
+  const int out_col_base = out_tile * COL_TILE;
+  const int row_base = row_group * ROW_BATCH;
+  const int tid = static_cast<int>(threadIdx.x);
+  if (out_col_base >= out_features || row_base >= rows) return;
+
+  const float* __restrict__ weight_tile =
+      weight + static_cast<int64_t>(out_tile) * in_features * COL_TILE;
+  float acc[ROW_BATCH][COL_TILE] = {};
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[COL_TILE];
+    const float4* __restrict__ records = reinterpret_cast<const float4*>(
+        weight_tile + static_cast<int64_t>(k) * COL_TILE);
+#pragma unroll
+    for (int record_index = 0; record_index < COL_TILE / 4; ++record_index) {
+      const float4 record = records[record_index];
+      weights[record_index * 4 + 0] = record.x;
+      weights[record_index * 4 + 1] = record.y;
+      weights[record_index * 4 + 2] = record.z;
+      weights[record_index * 4 + 3] = record.w;
+    }
+#pragma unroll
+    for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+      const int row = row_base + row_index;
+      if (row < rows) {
+        const float input_value = bf16_bits_to_float(
+            input[static_cast<int64_t>(row) * in_features + k]);
+#pragma unroll
+        for (int col = 0; col < COL_TILE; ++col) {
+          acc[row_index][col] =
+              fmaf(input_value, weights[col], acc[row_index][col]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        acc[row_index][col] += __shfl_down(acc[row_index][col], offset);
+      }
+    }
+  }
+  __shared__ float wave_sums[4][ROW_BATCH][COL_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        wave_sums[wave][row_index][col] = acc[row_index][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_BATCH * COL_TILE) {
+    const int row_index = tid / COL_TILE;
+    const int col = tid - row_index * COL_TILE;
+    const int row = row_base + row_index;
+    if (row < rows) {
+      float total = 0.0f;
+#pragma unroll
+      for (int wave_index = 0; wave_index < 4; ++wave_index) {
+        total += wave_sums[wave_index][row_index][col];
+      }
+      store_output<out_t>(
+          out,
+          static_cast<int64_t>(row) * out_features + out_col_base + col,
+          total);
+    }
+  }
+}
+
 __global__ void gguf_q5_k_dequantize_bf16_to_f32_exact_fused_kernel(
     const uint8_t* __restrict__ qweight,
     float* __restrict__ weight_out,
@@ -459,6 +589,65 @@ int launch_q5_k_f32_weight_ordered_weight_major(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int COL_TILE>
+int launch_q5_k_dequantize_f32_exact_tile_k_col(
+    const uint8_t* qweight,
+    float* out,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!qweight || !out || !valid_shape(in_features, out_features) ||
+      out_features % COL_TILE != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total_blocks = out_features * (in_features / QK_K);
+  hipLaunchKernelGGL(
+      (gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel<COL_TILE>),
+      dim3(static_cast<unsigned int>(total_blocks)),
+      dim3(QK_K),
+      0,
+      stream,
+      qweight,
+      out,
+      static_cast<int>(in_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t, int COL_TILE, int ROW_BATCH>
+int launch_q5_k_f32_weight_ordered_weight_major_tile_k_col(
+    const uint16_t* input,
+    const float* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !weight || !out || rows <= 0 ||
+      !valid_shape(in_features, out_features) ||
+      out_features % COL_TILE != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_groups = (rows + ROW_BATCH - 1) / ROW_BATCH;
+  const int64_t output_tiles = out_features / COL_TILE;
+  const dim3 grid(static_cast<unsigned int>(row_groups * output_tiles));
+  hipLaunchKernelGGL(
+      (gguf_q5_k_f32_weight_ordered_weight_major_tile_k_col_kernel<
+          out_t,
+          COL_TILE,
+          ROW_BATCH>),
+      grid,
+      dim3(128),
+      0,
+      stream,
+      input,
+      weight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_q5_k_dequantize_f32_exact(
@@ -502,6 +691,21 @@ extern "C" int hipengine_gguf_q6_k_dequantize_f32_exact(
       out);
   return static_cast<int>(hipGetLastError());
 }
+
+#define HIPENGINE_Q5_TILE_K_COL_PRODUCER_EXPORT(COL_TILE, ROW_BATCH, OUTPUT_DTYPE) \
+extern "C" int hipengine_gguf_q5_k_dequantize_f32_exact_tile_k_col_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_##OUTPUT_DTYPE##_out( \
+    const uint8_t* qweight, float* out, int64_t in_features, \
+    int64_t out_features, hipStream_t stream) { \
+  return launch_q5_k_dequantize_f32_exact_tile_k_col<COL_TILE>( \
+      qweight, out, in_features, out_features, stream); \
+}
+
+HIPENGINE_Q5_TILE_K_COL_PRODUCER_EXPORT(8, 4, bf16)
+HIPENGINE_Q5_TILE_K_COL_PRODUCER_EXPORT(16, 5, bf16)
+HIPENGINE_Q5_TILE_K_COL_PRODUCER_EXPORT(16, 5, f32)
+HIPENGINE_Q5_TILE_K_COL_PRODUCER_EXPORT(8, 10, f32)
+
+#undef HIPENGINE_Q5_TILE_K_COL_PRODUCER_EXPORT
 
 #define HIPENGINE_Q5_F32_ORDERED_EXPORTS(COL_TILE, ROW_BATCH) \
 extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_bf16_out( \
@@ -556,6 +760,32 @@ HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_F32_EXPORT(8, 10)
 
 #undef HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT
 #undef HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_F32_EXPORT
+
+#define HIPENGINE_Q5_TILE_K_COL_BF16_EXPORT(COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_tile_k_col_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_bf16_out( \
+    const uint16_t* input, const float* weight, uint16_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, hipStream_t stream) { \
+  return launch_q5_k_f32_weight_ordered_weight_major_tile_k_col< \
+      uint16_t, COL_TILE, ROW_BATCH>( \
+      input, weight, out, rows, in_features, out_features, stream); \
+}
+
+#define HIPENGINE_Q5_TILE_K_COL_F32_EXPORT(COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_tile_k_col_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_f32_out( \
+    const uint16_t* input, const float* weight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, hipStream_t stream) { \
+  return launch_q5_k_f32_weight_ordered_weight_major_tile_k_col< \
+      float, COL_TILE, ROW_BATCH>( \
+      input, weight, out, rows, in_features, out_features, stream); \
+}
+
+HIPENGINE_Q5_TILE_K_COL_BF16_EXPORT(8, 4)
+HIPENGINE_Q5_TILE_K_COL_BF16_EXPORT(16, 5)
+HIPENGINE_Q5_TILE_K_COL_F32_EXPORT(16, 5)
+HIPENGINE_Q5_TILE_K_COL_F32_EXPORT(8, 10)
+
+#undef HIPENGINE_Q5_TILE_K_COL_BF16_EXPORT
+#undef HIPENGINE_Q5_TILE_K_COL_F32_EXPORT
 
 extern "C" int hipengine_gguf_q5_k_dequantize_bf16_to_f32_exact_fused(
     const uint8_t* qweight,
