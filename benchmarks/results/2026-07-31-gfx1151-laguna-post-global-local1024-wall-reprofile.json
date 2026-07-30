@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T02:27:00+09:00",
+  "kind": "hipengine_laguna_post_global_local1024_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "01b4a659f027441bce22285c83c8c61e63455ae0",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 482,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 43.248078,
+    "kernel_span": 44.927596,
+    "median_per_segment_span_minus_kernel_sum": 1.679518,
+    "source_f16_projection_composites": 24.546755,
+    "selected_q4_gate_up": 7.785747,
+    "selected_q4_q6_down": 4.79979,
+    "dense_shared_quant_projection": 2.350846,
+    "router": 1.078375,
+    "attention_total": 1.124268,
+    "swa_attention": 0.721272,
+    "global_attention": 0.402996,
+    "norm_rope_gate_outside_projection_composites": 0.438219,
+    "activation_reduce_residual": 0.001483,
+    "lm_head_argmax": 1.118216,
+    "embedding": 0.002324
+  },
+  "change_from_post_swa_local1024_census": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json",
+    "kernel_sum_ms_per_token": -0.049632,
+    "kernel_sum_percent": -0.114629619,
+    "kernel_span_ms_per_token": -0.042101,
+    "kernel_span_percent": -0.093620822,
+    "attention_ms_per_token": -0.051459,
+    "attention_percent": -4.376781345,
+    "global_ms_per_token": -0.050936,
+    "global_percent": -11.221063948,
+    "swa_ms_per_token": -0.000523,
+    "dispatches_per_token": 0
+  },
+  "same_gguf_vulkan": {
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.8295220983,
+    "hipengine_traced_kernel_sum_delta_ms": -0.411122,
+    "hipengine_traced_kernel_sum_delta_percent": -0.94166178,
+    "hipengine_clean_production_wall_ms_per_token": 44.6855445434,
+    "hipengine_clean_production_wall_delta_ms": 1.856022445,
+    "family_comparison_ms_per_token": {
+      "attention": {
+        "hipengine": 1.124268,
+        "vulkan": 0.909423,
+        "delta": 0.214845
+      },
+      "dense_shared_quant_projection": {
+        "hipengine": 2.350846,
+        "vulkan": 1.999889,
+        "delta": 0.350957
+      },
+      "selected_q4_gate_up": {
+        "hipengine": 7.785747,
+        "vulkan": 7.46409,
+        "delta": 0.321657
+      },
+      "selected_q4_q6_down": {
+        "hipengine": 4.79979,
+        "vulkan": 4.52509,
+        "delta": 0.2747
+      },
+      "router": {
+        "hipengine": 1.078375,
+        "vulkan": 0.970716,
+        "delta": 0.107659
+      }
+    },
+    "source_f16_qualification": "hipEngine's two retained source-F16 symbols include head/KV and add/RMSNorm work, so their 24.546755-ms composite is not directly compared with Vulkan's older projection-only family."
+  },
+  "trace_resources": {
+    "swa_attention": {
+      "kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<...,1024,...>",
+      "calls_per_token": 36,
+      "local_x": 1024,
+      "grid_workgroups": 40,
+      "vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 40960,
+      "scratch_bytes": 0
+    },
+    "global_attention": {
+      "kernel": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<...,1024,...>",
+      "calls_per_token": 12,
+      "local_x": 1024,
+      "grid_workgroups": 40,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-local1024-wall.WM9UNv --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-local1024-wall.WM9UNv/bench.json",
+    "segmentation": "sort by start timestamp and dispatch id; discard warmup128 and timed prefill512; report medians over the final 127 length-one embedding-through-argmax segments; classify families with scripts/laguna_long_context_trace_summary.py and split the two fused source-F16 composites from norm/RoPE manually",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "a66feb6e55b6c3310e3f993ce8e57bc6935419e3a99cd2f259e616d70095fd17",
+    "bench_sha256": "770cb5ce9035d0dd9b0cdaf42920fd9f55cf2ddee9c4685586d1810117878990"
+  },
+  "interpretation": {
+    "result": "Global local1024 removes 0.050936 ms/token from exact global attention and 0.049632 ms/token from complete kernel work with no dispatch or resident-byte change.",
+    "arithmetic_priority": "Dense/shared is the largest named positive family gap at 0.350957 ms/token, followed by selected gate/up at 0.321657, selected down at 0.274700, attention at 0.214845, and router at 0.107659.",
+    "attention_priority": "Exact cooperative-width tuning has cut the immediately preceding global family by 11.221% and cumulative attention to 1.124268 ms/token. A faster approximate cooperative-matrix contract remains quality-blocked.",
+    "whole_wall_priority": "Complete hipEngine kernel work is 0.411122 ms/token below Vulkan's logged sum, but production wall remains 1.856022 ms/token slower. The 1.679518-ms/token span-minus-kernel window makes submission/dispatch the dominant cross-family mechanism."
+  }
+}

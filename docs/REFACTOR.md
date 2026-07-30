@@ -30,6 +30,11 @@ should be removed or collapsed.
   **0.059368-ms/token** paired-median saving. The gfx1151 capability is
   promoted. Keep the comparison switch through tracked-clean publication and
   the post-promotion attention census, then remove it.
+- **Closed 2026-07-31:** tracked-clean selector-unset production reaches
+  **22.378602 tok/s**, and the 127-transition census cuts global
+  **0.453932 -> 0.402996 ms/token (-11.221%)**. Remove the dedicated
+  comparison switch; retain local512 as the exact non-dense,
+  explicit-eviction, and peer-backend fallback.
 
 ## Laguna gfx1151 exact SWA local1024 selector
 
