@@ -193532,3 +193532,39 @@ Vulkan local sizes verbatim will close the measured gap.
   ported in this unit.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-decode-graph-rejected.json`.
+
+## 2026-07-30 18:18 JST — Q4T16 dual-interleaved decode leaf wins; production blocked
+
+- Audited the retained
+  `q4_k_t16_selected_dual_natural_tile8_gemv_kernel<uint16_t,true,true,true,true>`
+  ISA. Clang already combines each matrix's four adjacent packed-Q bytes into
+  one `global_load_b32`; a source-only wider-load rewrite has no device-code
+  premise.
+- Added an exact 4,736-byte dual tile that physically interleaves corresponding
+  gate/up `d/dmin`, scale/min, and packed-Q vectors. Total bytes remain equal
+  to the two 2,368-byte T16 inputs. RED was the absent helper/wrapper import;
+  GREEN proves both T16 inputs reconstruct byte-for-byte and the natural
+  Laguna gate/up+SiLU output has zero BF16 mismatches.
+- Focused validation:
+  `uv run pytest -q tests/test_gguf_q4_k_tile16_repack.py` -> **11 passed**;
+  `uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits`
+  -> **1 passed**.
+- Actual layer-1 c=1/top-10 confirmation at 9x50 improves
+  **0.137458 -> 0.123006 ms (-10.514%)**. The tighter 21x100 counterbalanced
+  screen improves **0.122683725 -> 0.115684662 ms (-5.704965%)** with
+  **21/21** candidate samples below their paired controls and unchanged
+  **931,135,488-byte** pair residency. Command:
+  `uv run python scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved --gate-only --warmups 9 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-q4-t16-dual-interleaved-screen-21x100.json`.
+- Extracted gfx1151 ISA contains the intended single `global_load_b64`.
+  Cache-only `rocprofv3` tracing names the distinct kernel at local128,
+  VGPR80, SGPR128, LDS512, scratch0, and 94,778 ns in the profiled fixture.
+  Trace command and SHA-256 are recorded in the compact artifact.
+- Do not promote as a decode sidecar. Production prefill and decode share the
+  same resident T16 gate/up allocations. Duplicating the layout would add
+  about **43.76 GB** across 47 routed layers; replacing it requires a paired
+  materializer/cache contract and an independently exact/non-regressive
+  version of the retained D8 MMQ128x32 wave-column/raw-prefetch prefill
+  consumer. Keep the unregistered primitive diagnostic and production
+  unchanged at **21.880056 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dual-interleaved-blocked.json`.

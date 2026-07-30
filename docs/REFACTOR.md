@@ -2164,6 +2164,18 @@ should be boring.
   key, leaf selector, and focused test call if no compound candidate uses it;
   never make it the default independently.
 
+## Laguna gfx1151 Q4T16 dual-interleaved decode diagnostic
+
+- Added 2026-07-30 as an unregistered exact leaf primitive and actual-weight
+  harness mode. It is byte-neutral only when it replaces both resident
+  gate/up T16 matrices; keeping it as a sidecar would add about **43.76 GB**
+  across 47 routed layers.
+- Keep it only while a paired Laguna materializer/cache contract and the
+  production D8 MMQ128x32 prefill consumer are plausible next work. Remove the
+  dual-layout host helpers, HIP symbol/wrapper, leaf mode, and focused fixture
+  if that shared resident-layout task is declined or a prefill gate rejects
+  the layout. Never add a decode-only production sidecar for this primitive.
+
 ## Laguna gfx1151 selected-Q4 scalar-Q rollback
 
 - Added 2026-07-30 after exact adjacent-column T16 Q-payload reuse improved the
