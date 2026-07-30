@@ -6311,6 +6311,27 @@ The remaining attention sequence is:
     route, test/harness calls, backend capability, session selector, profile
     switch, and refactor entry. Production remains **20.965807 tok/s**:
     [`Q6 coefficient-quartet rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-coeff4-rejected.json).
+99. Forward each output-sharded SWA wave's own probability shard through
+    wave32 registers instead of replaying all four shards from LDS.
+    **Rejected and removed at the leaf stop:** after the existing publication
+    barrier, each active PV lane loads its one local probability scalar and
+    uses wave shuffles to reconstruct only its wave's 32-weight shard. The
+    other 96 weights retain production float4 LDS reads. QK, probability
+    values, denominator replay, all 512 scalar PV FMAs and their order, stores,
+    resident bytes, ownership, ABI, and dispatch count remain unchanged.
+
+    RED fails importing the absent diagnostic wrapper. GREEN passes the
+    wrapped/explicitly-evicted CPU-reference fixture with byte-identical F32
+    context and gated BF16 output. The paired 9x50 cache-only leaf nevertheless
+    regresses **0.030111 -> 0.038871 ms (+29.094%)**.
+
+    This closes the most direct exact subgroup-register transfer from the
+    llama.cpp cooperative design. On gfx1151, uniform float4 LDS replay is
+    already cheaper than issuing 32 shuffles for a quarter of the probability
+    plane. Remove the template axis, export, wrapper, registry/export entry,
+    test call, and harness selector before any resident integration.
+    Production remains **20.965807 tok/s**:
+    [`probability-forwarding rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-register-forward-probability-rejected.json).
 
 Current exact decode checkpoint:
 
