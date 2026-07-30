@@ -57,6 +57,7 @@ _SYMBOL_IQ3_GROUPED_SINGLE_K1024_RESIDENT_ROWBATCH8 = (
     "rowbatch8_bf16_bf16_out"
 )
 _IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITION_VALUES = (64,)
+_IQ3_ACTIVATION_RESIDENT_OUTPUT_PARTITION_VALUES = (256,)
 
 
 def _iq3_active_expert_persistent_symbol(partition: int) -> str:
@@ -70,6 +71,22 @@ def _iq3_active_expert_persistent_variant(partition: int) -> str:
     return (
         "selected_grouped_prefill_compact_k1024_active_expert_p"
         f"{partition}_resident_rowbatch8_bf16_bf16_out"
+    )
+
+
+def _iq3_activation_resident_output_symbol(output_partition: int) -> str:
+    return (
+        "hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_"
+        "active_expert_p64_activation_resident_out_p"
+        f"{output_partition}_rowbatch8_bf16_bf16_out"
+    )
+
+
+def _iq3_activation_resident_output_variant(output_partition: int) -> str:
+    return (
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+        "activation_resident_out_p"
+        f"{output_partition}_rowbatch8_bf16_bf16_out"
     )
 
 
@@ -542,6 +559,79 @@ GGUF_IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITIONS = MappingProxyType(
     {
         partition: _make_iq3_active_expert_persistent_wrapper(partition)
         for partition in _IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITION_VALUES
+    }
+)
+
+
+def _make_iq3_activation_resident_output_wrapper(output_partition: int):
+    symbol = _iq3_activation_resident_output_symbol(output_partition)
+
+    def wrapper(
+        x_ptr: int,
+        expert_start_compact_ptr: int,
+        active_experts_ptr: int,
+        active_count_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        *,
+        compact_rows: int,
+        in_features: int,
+        out_features: int,
+        num_experts: int,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        _validate_common(
+            compact_rows=compact_rows,
+            in_features=in_features,
+            out_features=out_features,
+            num_experts=num_experts,
+        )
+        if in_features != 1024:
+            raise ValueError(
+                "in_features must be exactly 1024 for activation-resident IQ3"
+            )
+        if out_features != 3072:
+            raise ValueError(
+                "out_features must be exactly 3072 for activation-resident IQ3"
+            )
+        if num_experts != 256:
+            raise ValueError(
+                "num_experts must be exactly 256 for activation-resident IQ3"
+            )
+        _launch_active_expert_persistent_single(
+            symbol,
+            x_ptr,
+            expert_start_compact_ptr,
+            active_experts_ptr,
+            active_count_ptr,
+            qweight_ptr,
+            out_ptr,
+            compact_rows=compact_rows,
+            in_features=in_features,
+            out_features=out_features,
+            num_experts=num_experts,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    wrapper.__name__ = (
+        "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_"
+        "active_expert_p64_activation_resident_out_p"
+        f"{output_partition}_rowbatch8_bf16_bf16_out"
+    )
+    wrapper.__qualname__ = wrapper.__name__
+    return wrapper
+
+
+GGUF_IQ3_ACTIVATION_RESIDENT_OUTPUT_PARTITIONS = MappingProxyType(
+    {
+        output_partition: _make_iq3_activation_resident_output_wrapper(
+            output_partition
+        )
+        for output_partition in _IQ3_ACTIVATION_RESIDENT_OUTPUT_PARTITION_VALUES
     }
 )
 
@@ -1338,12 +1428,26 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
             fn,
             replace=replace,
         )
+    for output_partition, fn in (
+        GGUF_IQ3_ACTIVATION_RESIDENT_OUTPUT_PARTITIONS.items()
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_iq3_xxs",
+                _iq3_activation_resident_output_variant(output_partition),
+            ),
+            fn,
+            replace=replace,
+        )
 
 
 register_gguf_iq_selected_prefill_kernels()
 
 
 __all__ = [
+    "GGUF_IQ3_ACTIVATION_RESIDENT_OUTPUT_PARTITIONS",
     "GGUF_IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITIONS",
     "build_gguf_iq_selected_prefill",
     "gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out",

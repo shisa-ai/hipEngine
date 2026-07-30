@@ -11,6 +11,7 @@
 namespace {
 
 typedef half_t __attribute__((ext_vector_type(16))) half16_t;
+typedef uint16_t __attribute__((ext_vector_type(8))) ushort8_t;
 typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 struct IQ2Segment {
@@ -153,6 +154,18 @@ __device__ inline IQ3Segment load_iq3_segment(
 __device__ inline float dot_iq3_segment(
     const IQ3Segment& segment,
     const uint16_t* __restrict__ x) {
+  float sum = 0.0f;
+#pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    sum += segment.magnitude[j] * bf16_bits_to_float(x[j]);
+    sum += segment.magnitude[j + 4] * bf16_bits_to_float(x[j + 4]);
+  }
+  return segment.scale * sum;
+}
+
+__device__ inline float dot_iq3_segment(
+    const IQ3Segment& segment,
+    const ushort8_t& x) {
   float sum = 0.0f;
 #pragma unroll
   for (int j = 0; j < 4; ++j) {
@@ -1016,6 +1029,86 @@ __global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_exper
   }
 }
 
+// H5Z keeps H5Q's fixed expert P64 schedule, K1024 lane ownership, and
+// rowbatch8 arithmetic. Each block first retains one K8 activation vector per
+// live row, then sweeps independent output columns. Weight decode, FMA order,
+// wave32 reduction, serial wave accumulation, and BF16 stores are unchanged.
+template <int OUTPUT_PARTITIONS>
+__launch_bounds__(128, 1)
+__global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_rowbatch8_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ active_experts,
+    const int64_t* __restrict__ active_count_ptr,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int out_features,
+    int num_experts) {
+  constexpr int expert_partitions = 64;
+  constexpr int in_features = 1024;
+  constexpr int row_batch = 8;
+  constexpr int row_bytes =
+      (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int active_count = static_cast<int>(
+      min(max(*active_count_ptr, static_cast<int64_t>(0)),
+          static_cast<int64_t>(num_experts)));
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int x_offset = threadIdx.x * 8;
+  __shared__ float wave_sums[row_batch * 8];
+
+  for (int active_index = blockIdx.y; active_index < active_count;
+       active_index += expert_partitions) {
+    const int64_t expert64 = active_experts[active_index];
+    if (expert64 < 0 || expert64 >= num_experts) continue;
+    const int expert = static_cast<int>(expert64);
+    const int64_t begin = expert_start_compact[expert];
+    const int64_t end = expert_start_compact[expert + 1];
+    if (begin >= end) continue;
+    const int64_t expert_weight_offset =
+        static_cast<int64_t>(expert) * expert_bytes;
+
+    for (int64_t row_base = begin; row_base < end; row_base += row_batch) {
+      ushort8_t activation[row_batch] = {};
+#pragma unroll
+      for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          activation[row_idx] =
+              *reinterpret_cast<const ushort8_t*>(
+                  x + row * in_features + x_offset);
+        }
+      }
+      for (int out_col = blockIdx.x; out_col < out_features;
+           out_col += OUTPUT_PARTITIONS) {
+        const int64_t weight_offset =
+            expert_weight_offset + static_cast<int64_t>(out_col) * row_bytes;
+        const IQ3Segment segment =
+            load_iq3_segment(qweight + weight_offset, threadIdx.x);
+        float acc[row_batch] = {};
+#pragma unroll
+        for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+          if (row_base + row_idx < end) {
+            acc[row_idx] += dot_iq3_segment(segment, activation[row_idx]);
+          }
+        }
+        reduce_block_batched(acc, wave_sums);
+        if (threadIdx.x == 0) {
+#pragma unroll
+          for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+            const int64_t row = row_base + row_idx;
+            if (row < end) {
+              out[row * out_features + out_col] =
+                  float_to_bf16_bits(acc[row_idx]);
+            }
+          }
+        }
+        __syncthreads();
+      }
+    }
+  }
+}
+
 __launch_bounds__(128, 2)
 __global__ void gguf_iq4_xs_selected_dual_grouped_prefill_compact_kernel(
     const uint16_t* __restrict__ x,
@@ -1844,6 +1937,49 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_res
 HIPENGINE_DEFINE_IQ3_ACTIVE_EXPERT_PERSISTENT(64)
 
 #undef HIPENGINE_DEFINE_IQ3_ACTIVE_EXPERT_PERSISTENT
+
+#define HIPENGINE_DEFINE_IQ3_ACTIVATION_RESIDENT_OUTPUT(OUTPUT_PARTITIONS)    \
+  extern "C" int                                                            \
+      hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p##OUTPUT_PARTITIONS##_rowbatch8_bf16_bf16_out( \
+          const uint16_t* x,                                                  \
+          const int64_t* expert_start_compact,                                \
+          const int64_t* active_experts,                                      \
+          const int64_t* active_count,                                        \
+          const uint8_t* qweight,                                             \
+          uint16_t* out,                                                      \
+          int64_t compact_rows,                                               \
+          int64_t in_features,                                                \
+          int64_t out_features,                                               \
+          int64_t num_experts,                                                \
+          hipStream_t stream) {                                               \
+    if (!valid_common(                                                        \
+            x, expert_start_compact, qweight, out, compact_rows, in_features, \
+            out_features, num_experts) ||                                     \
+        active_experts == nullptr || active_count == nullptr ||               \
+        in_features != 1024 || out_features != 3072 || num_experts != 256) {  \
+      return static_cast<int>(hipErrorInvalidValue);                          \
+    }                                                                         \
+    hipLaunchKernelGGL(                                                       \
+        (gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_rowbatch8_kernel<OUTPUT_PARTITIONS>), \
+        dim3(OUTPUT_PARTITIONS, 64),                                           \
+        dim3(128),                                                            \
+        0,                                                                    \
+        stream,                                                               \
+        x,                                                                    \
+        expert_start_compact,                                                 \
+        active_experts,                                                       \
+        active_count,                                                         \
+        qweight,                                                              \
+        out,                                                                  \
+        static_cast<int>(compact_rows),                                       \
+        static_cast<int>(out_features),                                       \
+        static_cast<int>(num_experts));                                       \
+    return static_cast<int>(hipGetLastError());                               \
+  }
+
+HIPENGINE_DEFINE_IQ3_ACTIVATION_RESIDENT_OUTPUT(256)
+
+#undef HIPENGINE_DEFINE_IQ3_ACTIVATION_RESIDENT_OUTPUT
 
 extern "C" int hipengine_gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out(
     const uint16_t* x,

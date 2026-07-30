@@ -566,6 +566,18 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             )
             for partition in (64,)
         ),
+        # H5Z's activation-resident output sweep keeps H5Q expert P64 but is
+        # gfx1100-only until independently screened on gfx1151.
+        *(
+            (
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+                "activation_resident_out_p"
+                f"{output_partition}_rowbatch8_bf16_bf16_out",
+            )
+            for output_partition in (256,)
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(
