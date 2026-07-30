@@ -6363,6 +6363,32 @@ The remaining attention sequence is:
     **21.007908 tok/s (+0.2008%, -0.0956 ms/token)** versus the preceding
     production checkpoint:
     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-production.json).
+101. Re-profile the tracked-clean DPP-QK wall and re-audit the exact Vulkan
+     decode route.
+     **Accepted attribution checkpoint:** 127 one-token trace segments retain
+     **673 dispatches/token** and measure **45.730503 ms/token** kernel sum
+     plus **47.786293 ms/token** span. Versus the post-pair-coefficient
+     census, SWA falls **1.447078 -> 1.359431 ms/token (-6.057%)**, total
+     attention falls **2.108879 -> 2.016624 (-4.375%)**, kernel sum falls
+     **0.106957 ms/token**, and span falls **0.096861 ms/token**.
+
+     At llama.cpp Vulkan revision `c0bc8591e`, host GQA folding presents
+     Laguna decode as global/SWA `N=6/9` before final FA tuning. RADV therefore
+     selects subgroup64 cooperative-matrix **Br16 x Bc64/local256**, not the
+     scalar `n_rows == 1` fallback. The material advantage remains grouped
+     K/V-tile reuse plus compact online state; the cooperative low-precision
+     arithmetic itself does not preserve Laguna's scalar F32 QK/PV contract.
+
+     The current same-GGUF named gaps are attention
+     **+1.107201 ms/token**, selected gate/up **+0.514686**, and selected down
+     **+0.265742**; source-F16 is **0.695734 ms/token faster**. Attention is
+     still the largest named gap and **23.20%** of the complete remaining
+     clean wall gap. Before another changed-arithmetic cooperative core,
+     screen the exact no-eviction/full-ring fact: SWA physical slots are
+     identity and every slot is visible, so production metadata loads and the
+     2 KiB physical-slot plane can disappear under an explicit runtime
+     qualification:
+     [`post-DPP census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dpp-qk-wall-reprofile.json).
 
 Current exact decode checkpoint:
 

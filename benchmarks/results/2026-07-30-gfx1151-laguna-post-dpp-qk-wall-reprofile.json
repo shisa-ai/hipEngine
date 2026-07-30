@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:39:57+09:00",
+  "kind": "hipengine_laguna_post_dpp_qk_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "c1c18f2296486b5fcfc2ac1ee33d114c265bb431",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 45.730503,
+    "kernel_span": 47.786293,
+    "source_f16_projection": 24.062834,
+    "selected_q4_gate_up": 7.978776,
+    "selected_q4_q6_down": 4.790832,
+    "dense_shared_quant_projection": 3.512632,
+    "router": 1.066839,
+    "attention_total": 2.016624,
+    "swa_attention": 1.359431,
+    "global_attention": 0.657193,
+    "norm_rope_gate": 1.051294,
+    "activation_reduce_residual": 0.121667,
+    "lm_head_argmax": 1.118219,
+    "embedding": 0.002324
+  },
+  "change_from_post_pair_coefficient_census": {
+    "kernel_sum_ms_per_token": -0.106957,
+    "kernel_sum_percent": -0.23334,
+    "kernel_span_ms_per_token": -0.096861,
+    "kernel_span_percent": -0.202286,
+    "attention_ms_per_token": -0.092255,
+    "attention_percent": -4.374599,
+    "swa_ms_per_token": -0.087647,
+    "swa_percent": -6.056826
+  },
+  "same_gguf_vulkan_comparison_ms_per_token": {
+    "source_f16_projection_delta": -0.695734,
+    "attention_delta": 1.107201,
+    "selected_q4_gate_up_delta": 0.514686,
+    "selected_q4_q6_down_delta": 0.265742,
+    "attention_share_of_remaining_clean_wall_gap_percent": 23.203976
+  },
+  "llama_cpp_source_audit": {
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "host_file": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+    "shader_file": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp",
+    "finding": "The model graph folds the six/nine GQA queries into the row dimension before final tuning, so Laguna decode selects AMD subgroup64 cooperative-matrix Br16 x Bc64/local256 rather than the scalar n_rows==1 fallback. The transferable mechanism is grouped K/V tile reuse and compact online state; its low-precision cooperative arithmetic does not preserve Laguna's exact scalar F32 QK/PV association."
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-dppqk-wall.laRrAL --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-dppqk-wall.laRrAL/bench.json",
+    "segmentation": "The established decode-census procedure classifies the final 127 length-one request segments emitted after the warmup and pp512 segments.",
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "2c458668a30d46a8293485b8dcce12d42bcb9c88b355d387956bf63cf3c2a3ae",
+    "bench_sha256": "9423e7a28b0ebc0b654fc28702a96411fff8bb07df8d66c6128d5d983553bf6c"
+  },
+  "interpretation": {
+    "result": "DPP QK transfers exactly as measured: SWA falls 6.06% and complete attention falls 4.37%, accounting for nearly all of the 0.107 ms/token kernel-sum reduction.",
+    "next": "Attention remains the largest named Vulkan gap, but exact scalar topology-only copies of the comparator are exhausted. Screen metadata-free full-ring SWA decode under an explicit no-eviction qualification before opening another changed-arithmetic cooperative core."
+  }
+}

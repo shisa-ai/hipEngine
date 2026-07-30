@@ -193020,3 +193020,32 @@ Vulkan local sizes verbatim will close the measured gap.
   `30776074f`; shared unrelated untracked artifacts are disclosed/excluded.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-production.json`.
+
+## 2026-07-30 13:40 JST — Re-profile post-DPP wall and correct Vulkan audit
+
+- A tracked-clean cached-build `rocprofv3` run on `c1c18f229` records 127
+  exact one-token segments at **673 dispatches/token**. Median kernel sum is
+  **45.730503 ms/token** and span is **47.786293 ms/token**.
+- Against the post-pair-coefficient census, SWA falls
+  **1.447078 -> 1.359431 ms/token (-6.057%)**, total attention falls
+  **2.108879 -> 2.016624 (-4.375%)**, kernel sum falls
+  **0.106957 ms/token**, and span falls **0.096861 ms/token**. The trace
+  preserves tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, and
+  allocation recovery.
+- Re-read llama.cpp Vulkan at exact revision
+  `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`. The scalar `n_rows == 1`
+  fallback is not the Laguna endpoint: host GQA folding presents decode as
+  global/SWA `N=6/9`, selecting subgroup64 coopmat1
+  **Br16 x Bc64/local256**. Its transferable mechanism is grouped K/V-tile
+  reuse and compact online state; the low-precision matrix arithmetic remains
+  outside the exact scalar F32 contract.
+- Current named same-GGUF Vulkan gaps are attention
+  **+1.107201 ms/token**, selected gate/up **+0.514686**, and selected down
+  **+0.265742**. Source-F16 is **0.695734 ms/token faster**. Next exact screen
+  removes full-ring SWA metadata loads/physical-slot LDS only when the runtime
+  still guarantees sequential identity slots and no explicit eviction.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is blocked by
+  the stale missing manifest repository
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external code is copied.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-dpp-qk-wall-reprofile.json`.
