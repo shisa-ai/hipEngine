@@ -6996,6 +6996,27 @@ The remaining attention sequence is:
      first-V/softmax overlap as an independent resident change; future global
      work needs to contract a larger phase:
      [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-softmax-v-overlap-rejected.json).
+125. Move the exact SWA denominator replay from its idle producer onto an
+     output wave. **Rejected and removed at the leaf stop:** the retained
+     mixed40/output-sharded V128 body already assigns exactly one ordered
+     denominator replay per query to an otherwise-idle wave. That producer
+     overlaps the scalar probability walk with four independent
+     32-dimension PV waves. The candidate instead assigns denominator replay
+     and LDS publication to output wave zero, freeing the idle wave for
+     uniform staged-V loading.
+
+     RED fails on the absent wrapper. GREEN passes the wrapped full-ring
+     oracle with byte-exact F32 context and gated BF16 output. The 9x50 leaf
+     nevertheless regresses
+     **0.021252 -> 0.023623 ms/layer (+11.156%)**. Production's sole idle
+     producer already hides denominator latency behind PV. The candidate's
+     output owner must finish both the ordered denominator and its PV chain
+     before the end-of-stage barrier, becoming the straggler.
+     Remove the template/export/wrapper/test/harness candidate before runtime
+     integration. Production remains **22.141787 tok/s**. Do not retry an
+     active-output denominator owner; the retained idle-wave producer is
+     already the correct exact schedule:
+     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-active-denominator-owner-rejected.json).
 
 Current exact decode checkpoint:
 

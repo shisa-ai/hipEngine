@@ -194188,3 +194188,26 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required lineage command still stops before producing a report because
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
   source was copied.
+
+## 2026-07-30 23:55 JST — Reject active-output SWA denominator owner
+
+- Audit the retained dense-ring output-sharded V128 SWA body against
+  llama.cpp's cooperative online state. Production already assigns the sole
+  exact ordered denominator replay per query to an otherwise-idle wave,
+  overlapping it with four independent 32-dimension PV chains.
+- Add a temporary exact specialization that moves the replay and publication
+  onto output wave zero, freeing the idle wave for uniform staged-V loading.
+  QK/DPP, maximum, `expf`, logical denominator association, scalar PV
+  association, gate, stores, launch count, LDS, and resident bytes are fixed.
+- RED fails on the absent wrapper. GREEN passes the wrapped saturated-ring
+  oracle with byte-exact F32 context and gated BF16 output.
+- The 9x50 cache-only leaf decisively regresses
+  **0.0212518 -> 0.0236226 ms/layer (+11.1558%)**. The retained idle producer
+  already hides denominator latency behind PV. The active owner becomes the
+  straggler because it must execute both denominator and PV before the
+  existing stage barrier.
+- Remove the template axis, export, wrapper, test seam, and leaf selector
+  before runtime integration. Production remains
+  **22.141787 tok/s / 45.163473 ms/token / 482 model kernels/token**. Do not
+  retry an active-output denominator owner. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-active-denominator-owner-rejected.json`.
