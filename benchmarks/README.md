@@ -23,11 +23,15 @@ registration/backend miss retains H5J and gfx1151 remains fail-closed. The
 production-identical post-H5Q trace reconciles **2,050.376 ms / 1,862
 dispatches** versus matched llama.cpp HIP **724.299 ms**. Remaining gaps rank
 attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and gate/up
-**59.253 ms**. WPF-H5R selects a distinct exact cached-only two-pass attention
-leaf behind the already-proven safe append-before-attend schedule; it preserves
-production association and complete `KVLiveSpans`, adds no launch/allocation/
-workspace/sidecar, and leaves production unchanged pending all-role admission.
-H5N's
+**59.253 ms**. WPF-H5R screens a distinct exact cached-only two-pass body behind
+the already-proven safe append-before-attend schedule. The global local256-tree
+reconstruction loses all four starts at **0.636–0.926x** on both clocks and is
+removed. The retained SWA-only leaf preserves every output bit and complete
+`KVLiveSpans` at starts 0/128/256/384, remains local32/VGPR64/LDS0/scratch0, and
+includes the unchanged append cost while moving the actual 144-call event/wall
+sums **337.277/334.031 -> 126.687/125.764 ms (2.662x/2.656x)**. It adds no
+launch/allocation/workspace/sidecar and leaves production unchanged pending
+runtime qualification. H5N's
 separately registered exact dense-first-fill leaf is byte-identical to H5M and
 wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
@@ -54,7 +58,8 @@ remains **-0.030%/+0.014%**, rejecting runtime ownership. Remove the eager owner
 and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5Q 4K remains positive; 16K+ stays closed
 below the 800/700 gate
-([post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
+([H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
+[post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5P rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
@@ -297,13 +302,18 @@ again 3/3 paired wins each, and promotes **239.981/219.494/158.693 tok/s**.
 The production-identical trace now sums **2,050.376 ms / 1,862 dispatches**
 against matched llama.cpp HIP **724.299 ms**. Residual gaps rank attention
 **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and gate/up **59.253
-ms**. H5R selects an exact cached-only two-pass global/SWA attention body behind
-the existing safe preappend schedule, replaying production logical-slot/dot/max/
-denominator/PV/store association and full `KVLiveSpans` semantics with no added
-launch, allocation, workspace, or sidecar. It remains a target only pending
-byte-exact primitive, resource, and 192-role both-clock gates. Wider qrows,
-cross-head/key-split, source MMQ, and changed-association attention stay closed
-([post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
+ms**. H5R screens exact cached-only two-pass global/SWA attention behind the
+existing safe preappend schedule. Both bodies are byte-exact, but global's
+VGPR248/LDS8192 reconstruction loses every start at **0.636–0.926x** and its
+export/key/exclusion/test case is removed. SWA wins all four starts on both
+clocks at local32/VGPR64/LDS0/scratch0. Including equal append cost, its actual
+144-call event/wall sums fall **337.277/334.031 -> 126.687/125.764 ms
+(-62.438%/-62.350%, 2.662x/2.656x)**. Admit only the standalone SWA leaf; no
+runtime owner/default changes before complete state, integrated symbols/counts,
+and clean 512/1K/4K. Wider qrows, cross-head/key-split, source MMQ, and
+changed-association attention stay closed
+([H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
+[post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5Q production](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
 [H5Q leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
 [H5Q target](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·

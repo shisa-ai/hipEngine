@@ -11,8 +11,8 @@ resident-IQ3 row batches, H5N retains an exact dense-first-fill qrow4 leaf but
 rejects runtime ownership at 4K, H5O rejects exact factorized-Q5 reconstruction,
 H5P retains one exact BF16 Q5 occupancy-retune leaf but rejects runtime
 ownership at 1K, H5Q exact IQ3 active-expert persistent P64 is production,
-H5R selects exact preappend cached-only two-pass attention as the next target,
-and 16K+ remains deferred**.
+H5R retains an exact SWA preappend cached-only leaf while removing its losing
+global sibling, and 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -227,20 +227,24 @@ KL0/byte-exact and selector-unset 512/1K/4K improves
 The production-identical post-H5Q request reconciles **2,050.376 ms / 1,862
 dispatches** versus matched llama.cpp HIP **724.299 ms**. Remaining gaps rank
 attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and gate/up
-**59.253 ms**. Select **WPF-H5R exact preappend cached-only two-pass attention**:
-reuse the existing append launch before every safe complete M128 tile, then run
-new separately registered cached-only qrow4 global/SWA bodies that replay
-production logical-slot/qrow order, F32 QK products/tree, first-pass max,
-second-pass denominator/PV, division/store, and complete `KVLiveSpans` semantics.
-No launch, allocation, workspace, or sidecar may be added. Partial, wrapped,
-evicted, staged-verifier, explicit, missing, and unsupported paths retain the
-attend-before-append H5M/wave32/global exact routes. Production remains H5Q until
-byte identity, cached resources, append-before-attention symbols/counts, all
-**192** actual M512 roles on both clocks including append cost, complete state,
-and clean 512/1K/4K non-regression pass. Wider qrows, rowbatch16,
-cross-head/key-split, source MMQ, and changed-association attention remain
-closed
-([post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
+**59.253 ms**. **WPF-H5R exact preappend cached-only two-pass attention** reuses
+the existing append launch before safe complete M128 tiles and initially adds
+separate global/SWA qrow4 candidates. Both replay production bytes and complete
+`KVLiveSpans`. Global's local256 dot/denominator/normalized-PV reconstruction
+reaches local32/VGPR248/LDS8192/scratch0 and loses starts 0/128/256/384 at
+**0.636–0.926x** on both clocks; remove its export/key/exclusion/test case. SWA
+remains local32/VGPR64/LDS0/scratch0, matches production plus sampled CPU and
+complete metadata at all four starts, and wins every start on both clocks.
+Including equal append cost, the actual 144-call event/wall sums fall
+**337.277/334.031 -> 126.687/125.764 ms (-62.438%/-62.350%, 2.662x/2.656x)**.
+Admit only the standalone SWA leaf. It adds no launch, allocation, workspace, or
+sidecar; partial, wrapped, staged-verifier, explicit, missing, and unsupported
+paths retain attend-before-append H5M/wave32. Production remains H5Q until
+complete state, physical 144-call append-before-attention tracing, and clean
+512/1K/4K non-regression pass. Wider qrows, rowbatch16, cross-head/key-split,
+source MMQ, and changed-association attention remain closed
+([H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
+[post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5Q production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
 [H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·

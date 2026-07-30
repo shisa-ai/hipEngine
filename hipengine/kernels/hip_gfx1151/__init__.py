@@ -495,6 +495,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             for col_tile, row_batch in ((2, 16), (4, 8))
             for output_dtype in ("bf16", "f32")
         ),
+        # WPF-H5R exact cached-only two-pass SWA qrow4 is W7900-only pending an
+        # independent gfx1151 resource/performance gate.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_cached_exact_spans",
+        ),
         # WPF-H5M exact source-qualified qrow4 is W7900-only pending an
         # independent gfx1151 resource/performance gate.
         (

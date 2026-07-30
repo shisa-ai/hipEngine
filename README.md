@@ -174,15 +174,19 @@ numbers below.
   The promoted request now reconciles **2,050.376 ms / 1,862 dispatches**
   versus llama.cpp HIP's matched **724.299 ms**. Remaining exact gaps rank
   attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and
-  gate/up **59.253 ms**. WPF-H5R therefore targets a separately registered
-  exact cached-only two-pass attention body behind the existing safe
-  append-before-attend schedule, preserving arithmetic/`KVLiveSpans` and adding
-  no launch, allocation, workspace, or sidecar; production is unchanged pending
-  primitive and all-role admission.
+  gate/up **59.253 ms**. WPF-H5R screens exact cached-only two-pass attention
+  behind the existing safe append-before-attend schedule. The global
+  reconstruction loses every start at **0.636–0.926x** on both clocks and is
+  removed. The retained SWA-only leaf is byte-exact at starts 0/128/256/384,
+  remains local32/VGPR64/LDS0/scratch0, and includes the unchanged append cost
+  while moving the actual 144-call event/wall sums **337.277/334.031 ->
+  126.687/125.764 ms (2.662x/2.656x)**. It adds no launch, allocation,
+  workspace, or sidecar; production is unchanged pending runtime qualification.
   Both short rows exceed 150 tok/s and H5Q 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
+  [H5R SWA leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
   [post-H5Q residual / H5R target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
   [H5Q leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
   [H5Q target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
