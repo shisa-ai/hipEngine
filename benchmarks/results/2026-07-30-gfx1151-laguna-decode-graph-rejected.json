@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_decode_graph_rejection",
+  "status": "rejected_removed",
+  "source_revision": "644b20e83c92aa4810b1b579d0760a6e6c536dcb",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79022520340
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 128,
+    "measured_transitions": 127,
+    "prompt_id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "repetitions": 1,
+    "protocol_note": "Bounded one-run rejection gate after the candidate missed both the correctness and speed gates in preliminary runs."
+  },
+  "candidate": {
+    "description": "Capture one complete current-code token step as a reusable HIP graph. Feed the next embedding from the device argmax result and fuse the two position increments into the unchanged argmax stage-2 owner.",
+    "ordinary_model_kernels_preserved": true,
+    "extra_model_dispatches": 0,
+    "capture_time_included": true,
+    "dynamic_state_fix": "Global attention's host-selected scan bound must reserve the complete replay horizon (639 slots here); each kernel still clamps visibility with device KVLiveSpans.live_counts.",
+    "removed_after_rejection": true
+  },
+  "result": {
+    "eager_tok_s": 21.863938730136894,
+    "graph_tok_s": 21.756760843985987,
+    "throughput_change_percent": -0.49020392653760236,
+    "eager_ms_per_token": 45.73741320549973,
+    "graph_ms_per_token": 45.96272428468691,
+    "wall_change_ms_per_token": 0.2253110791871797,
+    "generated_trajectories_exact": true,
+    "full_state_sha256_exact": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "state_sha256": "d81b1b7130130cbe084a6873feaa84134a3ed6e3fa3458bacb21a0b8ce1ee6d4",
+    "tracked_allocations_recovered": true
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The corrected graph is exact but 0.4902% slower. A preliminary corrected pair was also slower (21.862435 versus 21.759527 tok/s), so the mechanism is directionally negative before a full multi-pair gate.",
+    "production_checkpoint_tok_s": 21.880056,
+    "production_changed": false
+  },
+  "llamacpp_vulkan_context": {
+    "revision": "c0bc8591e",
+    "source": "/home/lhl/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+    "finding": "The Vulkan backend records graph nodes into command buffers and groups up to max_nodes_per_submit=100 before queue submission. This is per-evaluation command-buffer batching, not reuse of one token graph across changing decode state.",
+    "implication": "A persistent HIP graph is not an equivalent implementation of Vulkan's submission path; further scheduling work needs a lower-overhead within-token batching/fusion premise."
+  },
+  "validation": {
+    "red": "Focused test initially failed importing the absent fused argmax/position wrapper.",
+    "green": "tests/test_lm_head_plan.py: 6 passed before candidate removal.",
+    "raw_artifact_sha256": "cf061b6e520bd308d6a79b60ef4547950491093ed587fa3af3195ef24754accd",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_decode_graph_screen.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompt-length 512 --output-tokens 128 --context-length 4096 --chunk-size 2048 --warmups 0 --repetitions 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-decode-graph-screen-1pair.json"
+  }
+}
