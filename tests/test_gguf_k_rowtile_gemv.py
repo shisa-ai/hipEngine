@@ -645,6 +645,154 @@ def test_launch_gguf_linear_honors_raw_k_f32_ordered_prefill_session(
     ]
 
 
+def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from hipengine.kernels import hip_gfx1100 as package
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
+        register_gguf_q5_k_f32_rocblas_prefill_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, register
+    from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+    from hipengine.runtime.gguf_linear import (
+        GGUFLinearDispatch,
+        Q5F32OrderedPrefillSession,
+        _raw_k_f32_ordered_prefill_dispatch,
+        clear_gguf_linear_dispatch_cache,
+        launch_gguf_linear,
+        q5_f32_ordered_prefill_session,
+    )
+
+    geometry = (
+        "weight_major_tile_k_col_activation_tile_k_row_"
+        "coltile8_rowbatch4"
+    )
+    policy = {("bf16", 3072, 1024): geometry}
+    monkeypatch.setattr(
+        package,
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(("gguf_q5_k",)),
+    )
+    monkeypatch.setattr(
+        package,
+        "GGUF_F32_ORDERED_PREFILL_POLICIES",
+        {"gguf_q5_k": policy},
+    )
+    register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
+    base = GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k",
+            "prefill_bf16_bf16_out",
+        ),
+        "raw",
+    )
+    no_activation = Q5F32OrderedPrefillSession(
+        min_rows=512,
+        max_rows=512,
+        weight_f32_ptr=400,
+        weight_f32_nbytes=150_994_944,
+        library="ordered-library",
+    )
+    with q5_f32_ordered_prefill_session(no_activation):
+        assert (
+            _raw_k_f32_ordered_prefill_dispatch(
+                base,
+                rows=512,
+                in_features=3072,
+                out_features=1024,
+            )
+            is base
+        )
+
+    session = Q5F32OrderedPrefillSession(
+        min_rows=512,
+        max_rows=512,
+        weight_f32_ptr=400,
+        weight_f32_nbytes=150_994_944,
+        activation_bf16_ptr=500,
+        activation_bf16_nbytes=10_125_312,
+        library="ordered-library",
+    )
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        f"f32_ordered_{geometry}_bf16_bf16_out",
+    )
+    with q5_f32_ordered_prefill_session(session):
+        assert _raw_k_f32_ordered_prefill_dispatch(
+            base,
+            rows=512,
+            in_features=3072,
+            out_features=1024,
+        ) == GGUFLinearDispatch(
+            key,
+            "raw_k_f32_ordered_activation_tile_k_row",
+        )
+
+    calls: list[tuple[tuple, dict]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    raw = SimpleNamespace(tensor=SimpleNamespace(ptr=200))
+    weight = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k"),
+        allocation=lambda name: raw,
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    register(key, candidate, replace=True)
+    clear_gguf_linear_dispatch_cache()
+    try:
+        with q5_f32_ordered_prefill_session(session):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=300,
+                rows=512,
+                in_features=3072,
+                out_features=1024,
+                output_dtype="bf16",
+                backend="hip_gfx1100",
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        register(key, original, replace=True)
+        clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 200, 300, 400, 500, 512, 3072, 1024),
+            {
+                "stream": 7,
+                "library": "ordered-library",
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+    with pytest.raises(ValueError, match="pointer/bytes"):
+        Q5F32OrderedPrefillSession(
+            min_rows=512,
+            max_rows=512,
+            weight_f32_ptr=400,
+            weight_f32_nbytes=150_994_944,
+            activation_bf16_ptr=500,
+            activation_bf16_nbytes=0,
+            library="ordered-library",
+        )
+
+
 def test_raw_k_prefill_rowbatch_session_is_nested_and_fail_closed() -> None:
     from hipengine.runtime.gguf_linear import (
         raw_k_prefill_rowbatch,

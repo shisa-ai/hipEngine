@@ -36,8 +36,16 @@ unchanged H5X/H5L weight-load classes, identical VGPR/LDS/SGPR, and scratch0.
 The actual-weight **188-call** pack+weight-producer+consumer screen wins all
 **6/6** roles on both clocks: weighted event/wall falls
 **462.608/455.971 -> 263.014/274.237 ms (-43.145%/-39.856%, 1.759x/1.663x)**.
-The bounded runtime-owner workspace would rise **150,994,944 -> 161,120,256
-bytes**; no owner or package policy changes in this leaf unit. WPF-H5S
+The bounded runtime owner is now default-off qualified at
+**161,120,256 bytes**. Complete natural M512 state is KL0/byte-exact across all
+48 boundaries, logits, K/V/`KVLiveSpans`, and repeat. Four paired cached
+requests record exact **188 packs + 235 weight producers + 188 H5Y + 47 H5G**
+candidate topology and move median Q5/request-sum/span
+**470.661/1,807.103/1,832.090 -> 248.490/1,632.086/1,653.099 ms
+(-47.204%/-9.685%/-9.770%)**. Clean one-queue 512/1K/4K improves
+**272.917/234.864/162.367 -> 302.770/256.121/171.978 tok/s
+(+10.939%/+9.051%/+5.920%)**, 3/3 wins each. Package production remains H5X
+pending selector-unset publication. WPF-H5S
 screens the distinct persistent row-group Q5
 dimension at partitions **1/2/4/8/16/32**. All candidate outputs are byte-exact, all 36 symbols are
 scratch-free, and resource classes rise only eight VGPR, but **0/6** actual
@@ -428,7 +436,10 @@ and every miss remain unchanged. The corrected C4096/direct-M512 H5X row is
 rows17/33/512 planes/outputs are byte-exact, cached width-matched loads keep
 consumer resources/scratch0 unchanged, and the **188-call** pack-inclusive
 event/wall aggregate improves **43.145%/39.856%** with every role positive.
-Production remains H5X pending complete runtime gates. Wider qrows,
+Default-off complete state is KL0; candidate topology adds exactly 188 packs and
+cuts paired Q5/request/span **47.204%/9.685%/9.770%**. Clean 512/1K/4K improves
+**10.939%/9.051%/5.920%**, 3/3 wins each. Production remains H5X pending the
+selector-unset publication gate. Wider qrows,
 cross-head/key-split, source MMQ, and changed-association attention stay closed
 ([H5Y candidate](results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
 [post-H5X matched residual / H5Y target](results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
