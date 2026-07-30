@@ -6672,6 +6672,29 @@ The remaining attention sequence is:
      clean checkpoint. Prefill is within noise at **651.220 tok/s** and all
      three production trajectories remain exact:
      [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-production.json).
+113. Re-profile the complete wall after idle-wave global V overlap.
+     **Accepted attribution checkpoint:** 127 exact one-token segments retain
+     **673 dispatches/token**. Global attention falls
+     **0.504830 -> 0.452528 ms/token (-10.360%)**, total attention falls
+     **1.379830 -> 1.328653 (-3.709%)**, kernel sum falls
+     **43.972461 -> 43.935092**, and span falls
+     **46.007636 -> 45.970888 ms/token**. SWA is stable at
+     **0.876125 ms/token**.
+
+     hipEngine's complete kernel sum is now only **0.275892 ms/token** above
+     Vulkan's fresh **43.6592-ms** logged GPU total. The **2.035796-ms/token**
+     single-queue/no-overlap submission idle is unchanged. Positive family
+     gaps rank selected gate/up **+0.526945**, attention **+0.419230**,
+     dense/shared quant **+0.411714**, selected down **+0.252713**, and router
+     **+0.094082 ms/token**; faster source-F16, norm/gate, and LM-head families
+     offset most of them in aggregate.
+
+     SWA alone is now **0.876125 ms/token**, nearly Vulkan's complete
+     global-plus-SWA **0.909423-ms** family. The next attention screen must
+     therefore target the retained dense-ring output-sharded V128 body without
+     repeating its rejected register-prefetch or already-all-wave current
+     stage loader:
+     [`post-idle-V census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-idle-v-wall-reprofile.json).
 
 Current exact decode checkpoint:
 

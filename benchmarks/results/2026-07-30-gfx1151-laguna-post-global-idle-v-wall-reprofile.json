@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T17:10:33+09:00",
+  "kind": "hipengine_laguna_post_global_idle_v_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "f6691995c2cda2d0e4844ad66bc0fec42ef298d8",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 43.935092,
+    "kernel_span": 45.970888,
+    "submission_idle": 2.035796,
+    "source_f16_projection": 24.063111,
+    "selected_q4_gate_up": 7.974485,
+    "selected_q4_q6_down": 4.781413,
+    "dense_shared_quant_projection": 2.411603,
+    "router": 1.064798,
+    "attention_total": 1.328653,
+    "swa_attention": 0.876125,
+    "global_attention": 0.452528,
+    "norm_rope_gate": 1.053293,
+    "activation_reduce_residual": 0.120871,
+    "lm_head_argmax": 1.118299,
+    "embedding": 0.002284
+  },
+  "change_from_post_t16_sidecar_census": {
+    "kernel_sum_ms_per_token": -0.037369,
+    "kernel_sum_percent": -0.084983,
+    "kernel_span_ms_per_token": -0.036748,
+    "kernel_span_percent": -0.079874,
+    "global_attention_ms_per_token": -0.052302,
+    "global_attention_percent": -10.360319,
+    "attention_total_ms_per_token": -0.051177,
+    "attention_total_percent": -3.708935
+  },
+  "same_gguf_vulkan": {
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.829522098341634,
+    "dispatches_per_token": 1150,
+    "hipengine_kernel_sum_delta_ms": 0.275892,
+    "hipengine_kernel_sum_delta_percent": 0.6320,
+    "hipengine_profile_span_delta_ms": 3.141366,
+    "family_comparison_ms_per_token": {
+      "source_f16_projection_delta": -0.715559,
+      "selected_q4_gate_up_delta": 0.526945,
+      "selected_q4_q6_down_delta": 0.252713,
+      "dense_shared_quant_projection_delta": 0.411714,
+      "attention_delta": 0.419230,
+      "router_delta": 0.094082,
+      "norm_rope_gate_delta": -0.179395,
+      "lm_head_argmax_delta": -0.498646
+    }
+  },
+  "submission_gap_census": {
+    "single_active_decode_queue": true,
+    "gaps_per_token": 672,
+    "median_kernel_overlap_ms_per_token": 0.0,
+    "median_idle_ms_per_token": 2.035796,
+    "interpretation": "Submission idle is unchanged within 0.001 ms/token; the retained kernel changes no launch count or host schedule."
+  },
+  "trace_resources": {
+    "global_kernel_template": "laguna_global_attention_fused_exact_gated_fixedshape_kernel<2,64,...,512,true,true,true>",
+    "global_calls": 1524,
+    "global_grid_x_threads": 20480,
+    "global_local_x": 512,
+    "global_vgpr": 48,
+    "global_sgpr": 128,
+    "global_reported_static_lds": 512,
+    "global_scratch": 0,
+    "swa_calls": 4572,
+    "swa_grid_x_threads": 20480,
+    "swa_local_x": 512,
+    "swa_vgpr": 176,
+    "swa_sgpr": 128,
+    "swa_reported_lds": 40960,
+    "swa_scratch": 0
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-global-idle-v-wall.7Ytwro --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-global-idle-v-wall.7Ytwro/bench.json",
+    "segmentation": "final 127 length-one request segments after warmup and pp512; rows sorted by start timestamp and dispatch ID",
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "091d7fe29060a7008db143734b96b7c0e643fcc75665ed6b059de8cf245170d7",
+    "bench_sha256": "da3b78ce1d3e721c13da2353fa60fda70ba10cb811bbd192c93d4c49a8c089b4"
+  },
+  "interpretation": {
+    "result": "Idle-wave V64 ping-pong removes 0.0523 ms/token from the 12 global attention calls and 0.0367 ms/token from complete kernel span. Total hipEngine kernel work is now only 0.2759 ms/token above Vulkan's logger, while 2.0358 ms/token remains as single-queue zero-overlap submission idle.",
+    "next": "Within attention, SWA is now 65.9% of hipEngine attention time and almost equals Vulkan's entire global-plus-SWA family. Inspect the retained output-sharded V128 body for an exact overlap that does not duplicate its already-rejected register prefetch or all-wave current-stage loader."
+  }
+}

@@ -193434,3 +193434,29 @@ Vulkan local sizes verbatim will close the measured gap.
   Next: collect the cached-build post-promotion wall census and rank the
   remaining exact attention/scheduling surfaces against the fresh Vulkan
   logger.
+
+## 2026-07-30 17:10 JST — Re-profile post-idle-V decode wall
+
+- A tracked-clean cached-build `rocprofv3` run on `f6691995c` records the
+  final 127 exact one-token segments at unchanged **673 dispatches/token**.
+  Median kernel sum is **43.935092 ms/token** and span is
+  **45.970888 ms/token**.
+- Global attention falls **0.504830 -> 0.452528 ms/token (-10.360%)** and
+  total attention falls **1.379830 -> 1.328653 (-3.709%)**. Complete kernel
+  sum/span fall **0.037369/0.036748 ms/token**; SWA is flat at
+  **0.876125 ms/token**. The trace names the new true-template global owner
+  **1,524** times at grid40/local512/VGPR48/SGPR128/static-LDS512/scratch0.
+- Against the unchanged same-GGUF Vulkan logger, hipEngine's complete kernel
+  sum is now only **+0.275892 ms/token**. The remaining submission idle is
+  unchanged at **2.035796 ms/token**, with one active decode queue and zero
+  median kernel overlap. Positive family gaps rank selected gate/up
+  **+0.526945**, attention **+0.419230**, dense/shared **+0.411714**,
+  selected down **+0.252713**, and router **+0.094082 ms/token**.
+- SWA alone (**0.876125 ms/token**) now nearly equals Vulkan's entire
+  global-plus-SWA family (**0.909423**). Inspect the retained output-sharded
+  V128 body for a distinct exact overlap, excluding the already-rejected
+  register-prefetch and its already-all-wave current-stage loader.
+- Trace/bench SHA-256 are `091d7fe2...170d7` and
+  `da3b78ce...89b4`.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-global-idle-v-wall-reprofile.json`.
