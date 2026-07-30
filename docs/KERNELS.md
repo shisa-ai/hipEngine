@@ -520,11 +520,15 @@ fixtures match every projection F32 bit, rotated F32 bit, BF16 K/V byte,
 local256/VGPR24/SGPR128/LDS512/scratch0. Seven same-resident p512/d128 pairs
 are throughput-flat but mechanically positive at
 **22.016010 -> 22.017120 tok/s (+0.00504%)**, with a paired-median
-**0.002932-ms/token** saving and five of seven wins. gfx1151 provisionally
-selects the composite pending tracked-clean production and a complete
-127-transition dispatch census; peer backends and explicit disable retain the
-exact two-launch chain. Evidence:
-[`projection/head/KV retained candidate`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json).
+**0.002932-ms/token** saving and five of seven wins. Tracked-clean production
+is aggregate-flat at **22.007742 tok/s (-0.1097%)**, while the complete
+127-transition census proves **625 -> 577 dispatches/token**, a shorter
+**45.699715 -> 45.660100-ms/token** span, and
+**2.006962 -> 1.882766 ms/token** span-minus-kernel time. gfx1151 therefore
+selects the exact mechanical win; peer backends and explicit disable retain
+the exact two-launch chain. Evidence:
+[`projection/head/KV retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json),
+[`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |

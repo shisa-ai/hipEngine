@@ -193784,3 +193784,29 @@ Vulkan local sizes verbatim will close the measured gap.
   missing read-only `/home/lhl/amd-gpu-tuning/reference/atlas`; no external
   source was copied. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json`.
+
+## 2026-07-30 20:19 JST — Publish and trace F16 projection/head/KV
+
+- Tracked-clean selector-unset revision `d1b87128a` measures
+  **22.007742/21.989754/22.025709 tok/s**, median
+  **22.007742 tok/s / 45.438555 ms/token**. This is **-0.1097%** from the
+  preceding clean 22.031913 checkpoint and explicitly not claimed as a
+  headline throughput win. All runs preserve tokens **2930/74107**,
+  trajectory `94f803f7...bda32`, final position 638, deterministic repeats,
+  and complete recovery of **79,022,520,660 resident bytes**.
+- The cached complete wall trace records exactly **577 dispatches/token**,
+  down from 625, with 48 projection/head/KV composite calls, zero old quad
+  calls, and zero separate head/KV calls. No compiler ran under the profiler.
+- The composite boundary is slightly slower than quad plus head/KV at
+  **13.450773 -> 13.492194 ms/token (+0.041421 ms)**, and total kernel sum
+  rises **43.692753 -> 43.777334 (+0.084581 ms, +0.1936%)**. Removing the
+  queue boundary nevertheless shortens the complete kernel span
+  **45.699715 -> 45.660100 ms/token (-0.039615 ms)** and reduces
+  span-minus-kernel time **2.006962 -> 1.882766 ms/token
+  (-0.124196 ms, -6.19%)**.
+- Retain as the repository's declared exact launch-count/cycle-wall win, not
+  as an aggregate throughput increase. Raw production/trace/child SHA-256
+  values are `9dbc24b9...a0d471`, `64b09c38...0250fe`, and
+  `6b73dac0...df285`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json`.
+  Next: remove the admitted A/B seam, then re-rank the remaining exact gaps.

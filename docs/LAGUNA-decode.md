@@ -6821,10 +6821,10 @@ Current exact decode checkpoint:
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
 | hipEngine prior tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
 | hipEngine post-dense-interleave production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
-| hipEngine current F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
-| projection→head/KV candidate, same-session median | **22.017120 tok/s** | **45.419 ms** | provisional mechanical gate |
+| hipEngine F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
+| hipEngine current projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.559 ms/token** | hipEngine is **5.638%** below Vulkan throughput |
+| Remaining wall gap | — | **2.609 ms/token** | hipEngine is **5.742%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -6887,12 +6887,20 @@ fixtures match every projection F32 bit, rotated F32 bit, BF16 K/V byte,
 `KVLiveSpans` field, and reset counter. Cached tracing reports
 local256/VGPR24/SGPR128/LDS512/scratch0. Seven alternating same-resident
 p512/d128 pairs measure **22.016010 -> 22.017120 tok/s (+0.00504%)**, saving
-**0.002932 ms/token** by paired median with five of seven wins. This is a
-retained mechanical launch-reduction candidate, not yet a new production
-topline: tracked-clean selector-unset production and a complete
-127-transition census must show exactly 48 composite calls/token and no
-separate head/KV calls before final publication:
-[`projection/head/KV candidate`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json).
+**0.002932 ms/token** by paired median with five of seven wins. Tracked-clean
+selector-unset production measures **22.007742 tok/s**, **-0.1097%** from the
+preceding clean checkpoint and explicitly classified as shared-APU variance,
+not a headline throughput win. The complete census supplies the retention
+evidence: exactly **625 -> 577 dispatches/token**, 48 composite calls, zero
+old quad calls, zero separate head/KV calls, kernel span
+**45.699715 -> 45.660100 ms/token (-0.0867%)**, and span-minus-kernel time
+**2.006962 -> 1.882766 ms/token (-6.19%)**. The composite costs
+**0.041421 ms/token** more than quad plus head/KV and total kernel sum rises
+**0.084581 ms/token**, but deleting the queue boundary more than repays that
+inside the measured cycle wall. This is retained as an exact launch-count and
+span win:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json),
+[`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json).
 
 Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
