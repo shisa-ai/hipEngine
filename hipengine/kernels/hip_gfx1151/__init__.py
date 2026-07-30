@@ -312,9 +312,10 @@ GGUF_Q6_F32_ORDERED_PREFILL = False
 GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {}
 GGUF_F32_ORDERED_PREFILL_QUANTS = frozenset()
 GGUF_F32_ORDERED_PREFILL_POLICIES = {}
-# WPF-H5J's K1024 IQ row owners are W7900-only until an independent gfx1151
+# WPF-H5J/H5Q's K1024 IQ row owners are W7900-only until an independent gfx1151
 # actual-layer and complete-runtime transfer gate exists.
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {}
+LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -860,6 +861,7 @@ __all__ = [
     "LAGUNA_F16_PREFILL_STRATEGY",
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+    "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
