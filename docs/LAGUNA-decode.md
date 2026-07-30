@@ -7126,7 +7126,7 @@ The remaining attention sequence is:
      tail work:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-wave-top10-rejected.json).
 130. Transfer the exact c=1 router-projection wave-0 tree to gfx1151 without
-     fusing the selector. **Retained/default pending clean publication:** this
+     fusing the selector. **Retained/default and published:** this
      is the materially different schedule left open by item 129. It keeps one
      workgroup per expert and the separate correction-bias selector, preserves
      every BF16/F32 load, eight-term accumulation, K traversal, per-thread
@@ -7143,13 +7143,20 @@ The remaining attention sequence is:
      **0.012080 ms/token** by both independent and paired medians; candidates
      win **6/7**.
 
+     Tracked-clean selector-unset production at `a7961dcb7` reaches
+     **22.581875 tok/s / 44.283 ms/token**, advancing the prior clean
+     Q4T16-shared-down checkpoint **0.11721% / 0.051906 ms/token**. The
+     temporary comparison setter/CLI are removed; constructor `False` keeps
+     the scalar key as explicit rollback.
+
      Every arm preserves next/final tokens **2930/74107**, final position 638,
      generated-ID SHA-256 `94f803f7...bda32`, repeat determinism,
      **79,066,169,172-byte** residency, and complete allocation recovery.
      Promote only gfx1151 c=1; gfx1100 remains on its independently rejected
      production route, rows/prefill keep token-tile projection, and the scalar
      local256 key remains exact rollback:
-     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json).
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json).
 
 Current exact decode checkpoint:
 
@@ -7169,10 +7176,11 @@ Current exact decode checkpoint:
 | hipEngine retained exact global local1024 same-resident gate | **22.383414 tok/s** | **44.676 ms** | **+95.204%** |
 | hipEngine prior tracked-clean global local1024 production | **22.378602 tok/s** | **44.686 ms** | **+95.162%** |
 | hipEngine retained exact Q4T16 shared-down same-resident gate | **22.563488 tok/s** | **44.319 ms** | **+96.776%** |
-| hipEngine current tracked-clean Q4T16 shared-down production | **22.555437 tok/s** | **44.335 ms** | **+96.704%** |
+| hipEngine prior tracked-clean Q4T16 shared-down production | **22.555437 tok/s** | **44.335 ms** | **+96.704%** |
 | hipEngine retained router-projection wave-0 same-resident gate | **22.579029 tok/s** | **44.289 ms** | **+96.909%** |
+| hipEngine current tracked-clean router-projection wave-0 production | **22.581875 tok/s** | **44.283 ms** | **+96.935%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **1.506 ms/token** | hipEngine is **3.396%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **1.454 ms/token** | hipEngine is **3.283%** below Vulkan throughput |
 
 The refreshed post-Q4T16 census closes dense/shared against the comparator.
 Complete hipEngine kernel work is **42.894886 ms/token**, now

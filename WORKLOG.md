@@ -194726,3 +194726,24 @@ Vulkan local sizes verbatim will close the measured gap.
   the temporary comparison setter/CLI while retaining constructor rollback.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json`.
+
+## 2026-07-31 04:00 JST — Publish gfx1151 router-projection wave-0 default
+
+- Tracked-clean selector-unset revision `a7961dcb7` measures
+  **22.554473/22.581875/22.584839 tok/s**, median
+  **22.581875 tok/s / 44.283303 ms/token**, with steady pp512 median
+  **657.730 tok/s**. This advances the prior clean Q4T16 shared-down
+  checkpoint **22.555437 -> 22.581875 (+0.11721%)**, saves
+  **0.051906 ms/token**, and reaches **+96.935%** over the sprint start.
+- Every run preserves tokens **2930/74107**, final position 638, generated-ID
+  SHA-256 `94f803f7...bda32`, deterministic repeats,
+  **79,066,169,172-byte** residency, and complete allocation recovery. Raw
+  production SHA-256 is
+  `68f0170c125db6206c52e1023fea072aacffe988c0fb12980e08ba9f3feed145`.
+- Remove the temporary long-context comparison flag, session setter, and
+  protocol field. Retain the constructor rollback, gfx1151 capability,
+  registered wave-level owner, and scalar local256 fallback. The fresh clean
+  wall gap to same-GGUF Vulkan is **1.453781 ms/token / 3.283%**; a complete
+  kernel census remains next before selecting the next family.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json`.
