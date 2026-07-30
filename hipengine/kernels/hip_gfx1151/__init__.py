@@ -540,6 +540,17 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq4_xs",
             "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
         ),
+        # H5Q's active-expert persistent traversal is likewise gfx1100-only
+        # until gfx1151 receives independent resource/performance evidence.
+        *(
+            (
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_grouped_prefill_compact_k1024_active_expert_p"
+                f"{partition}_resident_rowbatch8_bf16_bf16_out",
+            )
+            for partition in (64,)
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(

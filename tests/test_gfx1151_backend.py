@@ -243,6 +243,16 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "gguf_iq4_xs",
             "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
         ),
+        *(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_grouped_prefill_compact_k1024_active_expert_p"
+                f"{partition}_resident_rowbatch8_bf16_bf16_out",
+            )
+            for partition in (64,)
+        ),
         KernelKey(
             "hip_gfx1100",
             "laguna_router_topk",
