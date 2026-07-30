@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_decode_production_publication",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "created_at": "2026-07-31T08:11:45+09:00",
+  "scope": "gfx1151 Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "repo": {
+    "revision": "c0071a9072aaf75d55e6ef1e9b0e684ff90b1f69",
+    "tracked_clean": true,
+    "compiler_cached_only": true
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "timed_decode_forward_calls": 127,
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "repetitions": 3,
+    "load_seconds_excluded": 139.78918516007252,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-p512-d128-q4-down-paircoeff-production.json"
+  },
+  "result": {
+    "prior_production_tok_s": 22.752894,
+    "production_median_tok_s": 22.780604377379305,
+    "throughput_delta_percent": 0.12178836406175897,
+    "prior_ms_per_token": 43.95045307203558,
+    "production_ms_per_token": 43.896991644039986,
+    "wall_delta_ms_per_token": -0.05346142799559317,
+    "decode_samples_tok_s": [
+      22.75909410707785,
+      22.786989246008513,
+      22.780604377379305
+    ],
+    "prefill_median_tok_s": 656.0528876499127,
+    "same_gguf_vulkan_tok_s": 23.348381,
+    "remaining_vulkan_wall_gap_ms_per_token": 1.0674695456983514,
+    "throughput_below_vulkan_percent": 2.4317601405454803,
+    "remaining_wall_to_24_tok_s_ms_per_token": 2.2303249773733214
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "all_repetitions_exact": true,
+    "repeat_deterministic": true,
+    "kl": 0.0,
+    "top1_agreement_percent": 100.0,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "raw_sha256": "fbc44b55ad492a9ba877308afed4760eea0d218c41aecb4781a2cb1dbe605efe",
+  "decision": "Publish the paired Q4 selected-down coefficient path as the canonical gfx1151 default. Keep the constructor false rollback and registered scalar-column weighted fallback."
+}

@@ -7460,7 +7460,7 @@ The remaining attention sequence is:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-prequeue-rejected.json).
 141. Transfer adjacent-column Q/scale transport from the retained Q4 gate/up
      owner into the exact route-parallel weighted Q4 down projection.
-     **Retained as the gfx1151 default pending tracked-clean publication.**
+     **Retained, published, and default on gfx1151.**
      Every pair of neighboring output columns shares one nibble byte, one
      aligned FP16 `d` pair, one aligned FP16 `dmin` pair, and scale/min byte
      pairs. Each column still executes its original F32 FMA chain, four-wave
@@ -7480,10 +7480,16 @@ The remaining attention sequence is:
      `94f803f7...bda32`, **79,066,169,172-byte** residency, determinism, and
      allocation recovery. Median decode improves
      **22.762554 -> 22.793632 tok/s (+0.13653%)**, saving
-     **0.059899 ms/token**, with five of seven paired wins. Retain the
-     constructor `false` rollback; remove the direct diagnostic CLI after
-     tracked-clean selector-unset publication:
-     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json).
+     **0.059899 ms/token**, with five of seven paired wins.
+
+     Tracked-clean selector-unset production at `c0071a907` reaches
+     **22.780604 tok/s / 43.896992 ms/token**, improving the previous
+     **22.752894 tok/s** checkpoint by **0.12179%** and saving
+     **0.053461 ms/token**. All three runs preserve the exact trajectory and
+     lifecycle. The direct diagnostic CLI is removed; retain the constructor
+     `false` rollback and registered scalar-column weighted owner:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
 Current exact decode checkpoint:
 
@@ -7507,12 +7513,15 @@ Current exact decode checkpoint:
 | hipEngine retained router-projection wave-0 same-resident gate | **22.579029 tok/s** | **44.289 ms** | **+96.909%** |
 | hipEngine current tracked-clean router-projection wave-0 production | **22.581875 tok/s** | **44.283 ms** | **+96.935%** |
 | hipEngine retained c=1 routed/shared overlap gate | **22.749657 tok/s** | **43.957 ms** | **+98.400%** |
-| hipEngine current tracked-clean c=1 routed/shared overlap production | **22.752894 tok/s** | **43.950 ms** | **+98.426%** |
+| hipEngine prior tracked-clean c=1 routed/shared overlap production | **22.752894 tok/s** | **43.950 ms** | **+98.426%** |
+| hipEngine current tracked-clean paired-Q4 selected-down production | **22.780604 tok/s** | **43.897 ms** | **+98.668%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **1.121 ms/token** | hipEngine is **2.617%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **1.067 ms/token** | hipEngine is **2.432%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
-preserving its device kernels. The refreshed post-router census confirms
+preserving its device kernels. The paired-Q4 down default subsequently
+removes another **0.053461 ms/token** in tracked-clean production. The
+refreshed post-router census confirms
 **47 wave-level / zero scalar**
 decode projections per token. Router falls
 **1.082592 -> 1.054864 ms/token (-2.561%)**, complete kernel work falls
@@ -7520,7 +7529,8 @@ decode projections per token. Router falls
 **44.564343 -> 44.514008 ms/token** at unchanged 482 dispatches. hipEngine
 kernel work is now **0.817268 ms/token below** Vulkan's logged GPU sum, while
 the pre-overlap tracked-clean production remained **1.453781 ms/token** slower
-in wall time; current clean overlap reduces that gap to **1.120931 ms/token**.
+in wall time; overlap plus paired Q4 down reduce that gap to
+**1.067470 ms/token**.
 Dense/shared remains **0.017681 ms/token faster** than Vulkan. The remaining
 like-for-like positive family gaps rank paired selected gate/up
 **+0.321883**, selected down **+0.279808**, attention **+0.210155**, and

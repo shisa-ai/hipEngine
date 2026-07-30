@@ -195126,3 +195126,22 @@ Vulkan local sizes verbatim will close the measured gap.
   Tracked-clean selector-unset publication remains next.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json`.
+
+## 2026-07-31 08:12 JST — Publish paired-coefficient Q4 selected down
+
+- Tracked-clean selector-unset production at `c0071a907` measures
+  **22.759094/22.786989/22.780604 tok/s**, median
+  **22.780604 tok/s / 43.896992 ms/token**. This advances the prior
+  **22.752894 tok/s** checkpoint **0.12179%** and saves
+  **0.053461 ms/token**.
+- All three runs preserve next/final tokens **2930/74107**, final position
+  **638**, generated-ID SHA `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete allocation recovery. Load is
+  excluded and cached-build enforcement is active.
+- The remaining same-GGUF Vulkan gap is **1.067470 ms/token** or
+  **2.4318%** throughput. Reaching 24 tok/s still requires
+  **2.230325 ms/token**. Remove the temporary direct profiling flag; retain
+  constructor `false`, the gfx1151 capability, both registered exact owners,
+  and scalar-column fallback.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json`.
