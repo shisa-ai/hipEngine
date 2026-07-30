@@ -171,10 +171,19 @@ numbers below.
   source-default publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3
   paired wins each. H5Q is production at **239.981/219.494/158.693 tok/s** and
   narrows the apples-to-apples llama.cpp HIP M512 gap to **2.89266x**.
+  The promoted request now reconciles **2,050.376 ms / 1,862 dispatches**
+  versus llama.cpp HIP's matched **724.299 ms**. Remaining exact gaps rank
+  attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and
+  gate/up **59.253 ms**. WPF-H5R therefore targets a separately registered
+  exact cached-only two-pass attention body behind the existing safe
+  append-before-attend schedule, preserving arithmetic/`KVLiveSpans` and adding
+  no launch, allocation, workspace, or sidecar; production is unchanged pending
+  primitive and all-role admission.
   Both short rows exceed 150 tok/s and H5Q 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
+  [post-H5Q residual / H5R target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
   [H5Q leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
   [H5Q target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
   [H5P rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·

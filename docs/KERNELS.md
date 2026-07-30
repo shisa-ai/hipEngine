@@ -835,8 +835,19 @@ scoped default-off clean gate improves 512/1K/4K
 publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3 wins each, and
 promotes **239.981/219.494/158.693 tok/s**. Only the gfx1100 K1024/N3072/E256
 IQ3 variant+ABI entries change; H5J remains fallback, IQ4 is unchanged, and
-gfx1151 remains fail-closed
-([H5Q production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
+gfx1151 remains fail-closed. The production-identical post-H5Q trace sums
+**2,050.376 ms / 1,862 dispatches** against matched llama.cpp HIP **724.299
+ms**; residual gaps rank attention **431.450 ms**, Q5 **409.559 ms**, IQ down
+**320.157 ms**, and gate/up **59.253 ms**. WPF-H5R selects separately registered
+exact cached-only two-pass global/SWA qrow4 leaves behind the existing safe
+preappend schedule for complete M128 tiles. They must replay production
+logical-slot/qrow order, F32 QK/tree/max/denominator/PV/store association, and
+complete `KVLiveSpans`, while adding no launch/allocation/workspace/sidecar and
+retaining H5M/wave32/global attend-before-append fallback for every unsafe or
+unsupported state. This is a target only; production stays H5Q pending exact
+primitive/resource and all-192-role both-clock admission
+([post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
+[H5Q production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
 [H5Q leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
 [H5Q target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
 [H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·

@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_post_h5q_exact_residual_target",
+  "date": "2026-07-30",
+  "status": "accepted_target_selection_production_unchanged",
+  "performance_claim": true,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "production_revision": "169bcbcb4",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json",
+    "production_artifact_sha256": "a7c3131d06fb55e5eafb22d4d90385380447560b40b1705a99f11135720324a9",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "trace_reuse": "the scoped H5Q trace is package-production-identical: the promoted source selects the same P64 IQ3 variant+ABI and changes no kernel body, allocation, launch shape, or other route",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "production": {
+    "m512_tok_s": 239.98127440702567,
+    "m1024_tok_s": 219.4938686139437,
+    "m4096_tok_s": 158.6934171527407,
+    "next_token_id_m512": 2930,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.8926590281482274,
+    "unchanged_by_target_selection": true
+  },
+  "hipengine_trace": {
+    "request_segment": "Q5 embedding through argmax stage 2, excluding one copy kernel",
+    "dispatches": 1862,
+    "kernel_sum_ms": 2050.376445,
+    "kernel_span_ms": 2075.543277,
+    "span_minus_sum_ms": 25.16683200000034,
+    "span_minus_sum_percent": 1.2125419054801205,
+    "families_ms": {
+      "q5": 468.5097239999996,
+      "q6": 119.68011399999995,
+      "iq_down": 475.651902,
+      "iq2_and_special_iq3_gate_up": 464.1558039999999,
+      "attention": 453.1750750000001,
+      "remaining": 69.20382599999998
+    },
+    "attention_routes": {
+      "global": {
+        "dispatches": 48,
+        "duration_ms": 81.58131400000002
+      },
+      "swa_wave32": {
+        "dispatches": 72,
+        "duration_ms": 109.91439300000003
+      },
+      "swa_qrow4_sourcequal": {
+        "dispatches": 72,
+        "duration_ms": 261.679368
+      }
+    },
+    "swa_qrow4_share_of_attention_percent": 57.74354823022868,
+    "trace_sha256": "691278811bb21c75c720f2980636e357a8ad6570dd2dee8db35642a9c82cfac1",
+    "summary_sha256": "b2ee188ac3808c0d4af9f7967dd2cd04a448ed74bd4f8170df84565392bed75f",
+    "analyzer_sha256": "003b840db0cc0a2b818b00e40871ca22083bf35a9244d39f883b0893fd48b50c",
+    "child_sha256": "33f27655f70b5f4c61b6044386a626c5b7eb2198e9e60c17b929c9f3f07103ce",
+    "no_compiler_under_profile": true
+  },
+  "matched_llamacpp_trace": {
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "kernel_sum_ms": 724.298567,
+    "dispatches": 2824,
+    "families_ms": {
+      "q5_k_mmq": 58.95103,
+      "iq3_xxs_mmq": 152.379859,
+      "iq4_xs_mmq": 3.11539,
+      "iq2_xs_mmq": 404.902905,
+      "flash_attention_main_and_fixup": 21.725298
+    },
+    "protocol": "same model, same fixed 512 token IDs, context4096, direct M512/ubatch512, FlashAttention, BF16 K/V, one W7900 and one HIP queue, last-row first-token projection"
+  },
+  "matched_gap_ranking": {
+    "total_kernel_gap_ms": 1326.0778779999998,
+    "families": [
+      {
+        "rank": 1,
+        "family": "global_plus_swa_attention",
+        "hipengine_ms": 453.175075,
+        "llamacpp_ms": 21.725298,
+        "gap_ms": 431.449777,
+        "share_of_total_gap_percent": 32.53577969724641
+      },
+      {
+        "rank": 2,
+        "family": "q5_exact_producer_plus_ordered_consumer",
+        "hipengine_ms": 468.509724,
+        "llamacpp_ms": 58.95103,
+        "gap_ms": 409.558694,
+        "share_of_total_gap_percent": 30.884965415281595
+      },
+      {
+        "rank": 3,
+        "family": "iq3_iq4_selected_down",
+        "hipengine_ms": 475.651902,
+        "llamacpp_ms": 155.495249,
+        "gap_ms": 320.156653,
+        "share_of_total_gap_percent": 24.14312600424815
+      },
+      {
+        "rank": 4,
+        "family": "iq2_and_special_iq3_gate_up",
+        "hipengine_ms": 464.155804,
+        "llamacpp_ms": 404.902905,
+        "gap_ms": 59.25289900000001,
+        "share_of_total_gap_percent": 4.468281990298011
+      }
+    ]
+  },
+  "selected_target": {
+    "id": "WPF-H5R",
+    "name": "exact preappend cached-only two-pass attention",
+    "reason": "attention is the largest matched residual; the current exact source-qualified body repeats current-versus-cache source qualification and BF16 conversion in both max and denominator/PV passes, while the existing runtime can safely append complete tiles before attention without adding a launch",
+    "scope": {
+      "rows": 128,
+      "global_calls_m512": 48,
+      "swa_calls_m512": 144,
+      "global_heads": 48,
+      "swa_heads": 72,
+      "kv_heads": 8,
+      "head_dim": 128,
+      "swa_capacity_and_window": 512
+    },
+    "schedule": "reuse the existing append_rows launch before each qualified complete M128 attention tile, then launch separately registered exact cached-only qrow4 global/SWA bodies",
+    "device_body": "read preappended BF16 K/V only from cache while replaying production logical-slot order, per-row QK products and wave32 tree, first-pass maximum, second-pass denominator/PV accumulation, F32 division/store, causal/window visibility, and complete KVLiveSpans semantics",
+    "unchanged_append_launch_count": true,
+    "additional_attention_launches": 0,
+    "additional_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "persistent_sidecar_bytes": 0,
+    "unfused_and_unsafe_fallback": "retained attend-before-append H5M/wave32/global exact routes for partial tiles, ring-wrap/unsafe preappend, staged verifier transactions, explicit selector, registration miss, and other backends",
+    "workload_counts_are_rationale_not_performance_claim": true,
+    "gfx1151_transfer_is_context_not_claim": {
+      "candidate_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-candidate.json",
+      "candidate_artifact_sha256": "d673fef15f05c8b38318aa58bb2c1ec63e39d8a96c2beb5b7cf72219da0a8c6b",
+      "production_artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-attention-preappend-production.json",
+      "production_artifact_sha256": "95ed00bf5a55d5d618a086986c7181bfe6b5274b19deea013442eabc2ef16552",
+      "finding": "the existing schedule is exact and positive on gfx1151, but gfx1100 requires a new exact two-pass body and independent W7900 admission"
+    }
+  },
+  "closed_predecessors": {
+    "source_f16_wmma_flash_attention": "rejected at max KL 1.804860 despite 22.603x standalone attention speedup",
+    "packed_f32_hipblaslt_attention": "rejected at max KL 0.444675 despite 8.049x integrated attention speedup",
+    "online_qrow4": "rejected at max KL 0.394600",
+    "h5n_dense_first_fill_exact": "standalone leaf retained but runtime rejected at 4K -0.202% across 7/7 adjudication pairs",
+    "wider_qrows_output_or_head_ownership_and_scalar_key_split": "closed by prior both-clock/resource screens",
+    "distinction": "H5R changes source scheduling only and preserves production two-pass association; it does not reuse any rejected online, WMMA, hipBLASLt, cross-head, wider-qrow, or key-split arithmetic"
+  },
+  "required_gates": [
+    "RED before implementation for exact cached-only global/SWA wrappers and gfx1151 absence",
+    "F32 byte identity versus production exact global/wave32/H5M on complete starts 0/128/256/384 plus partial, wrapped, evicted, ragged, and staged-verifier fallback coverage",
+    "independent CPU-reference sampled rows and complete KVLiveSpans validation",
+    "cached-only resource trace with no compiler under rocprofv3 and physical append-before-attention symbol/count proof",
+    "all 192 actual M512 attention roles screened on HIP events and synchronized wall with append cost included",
+    "complete natural-M512 logits, all 48 hidden boundaries, K/V/live spans, repeat, workspace, and lifecycle exact",
+    "clean counter-rotated 512/1K/4K non-regression before any package default"
+  ],
+  "commands": {
+    "production_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5q-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5q_active_expert_trace_integrated.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "decision": {
+    "production_changed": false,
+    "target_selected": true,
+    "next_action": "Freeze independent RED and add separately registered gfx1100 exact cached-only two-pass global/SWA leaves; do not change preappend/package policy before primitive and all-role admission."
+  }
+}
