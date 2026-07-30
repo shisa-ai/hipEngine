@@ -194773,3 +194773,34 @@ Vulkan local sizes verbatim will close the measured gap.
   No compiler ran under the profiler.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json`.
+
+## 2026-07-31 04:28 JST — Reject native five-launch sparse-core host batch
+
+- Exact trace attribution shows all **482 launches/token** on one queue,
+  stream, and host thread with zero device overlap. Median union idle is
+  **1.674661 ms/token**, essentially the complete span-minus-kernel window.
+  Three recurring sparse boundaries each grow from roughly 2 us in early
+  layers to roughly 6.5 us once the initial queue backlog is consumed, proving
+  that the host falls behind queue feeding.
+- Audited llama.cpp Vulkan `c0bc8591e881`: it records graph nodes into command
+  buffers and submits dynamically at a 200-GFLOP/prior-graph-FLOP threshold,
+  100 nodes, or near graph completion to overlap CPU command recording with
+  GPU execution. This is materially different from nesting ordinary HIP
+  launch wrappers in one C call.
+- Implemented and tested one bounded five-stage native transaction around the
+  unchanged router projection, selector, selected gate/up, weighted selected
+  down, and shared gate/up launches. ABI/callback-order tests and the focused
+  **40-test** bundle pass with exact tokens, state, residency, and lifecycle.
+- The directional screen loses **0.994887%**. Caching the signed ABI does not
+  recover it: two counterbalanced pairs move
+  **22.566901 -> 22.339232 tok/s (-1.008862%)**, adding
+  **0.451610 ms/token**, with both orders negative. Raw SHA-256 values are
+  `5c3d8779...72f0` and `5a8047d1...e077`.
+- Removed the entire candidate implementation/test/harness route. Production
+  remains tracked-clean at **22.581875 tok/s / 44.283303 ms/token**. Close
+  ordinary native-wrapper batching; reopen only for true device fusion or
+  command ownership below the wrapper level. Vulkan's complete measured
+  attention advantage is only **0.210155 ms/token**, so attention work must
+  accompany a larger selected-expert or source-F16 seam to reach 24 tok/s.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-sparse-core-host-batch-rejected.json`.

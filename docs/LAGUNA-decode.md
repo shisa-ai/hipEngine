@@ -7158,6 +7158,51 @@ The remaining attention sequence is:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json),
      [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json).
+131. Attribute the residual queue window against llama.cpp Vulkan, then test
+     a materially larger native sparse-core host transaction. **Attributed;
+     host-wrapper batching rejected and removed.** All 127 exact decode
+     segments in the production trace contain 482 launches on one queue, one
+     stream, and one host thread, with zero device overlap. Median union idle
+     is **1.674661 ms/token**, effectively the whole
+     **1.672076-ms/token** span-minus-summed-kernel window. The largest
+     repeated boundaries are output-add/RMSNorm -> router projection
+     **0.265368**, selected gate/up -> selected down **0.261966**, selected
+     down -> dense/shared gate/up **0.261946**, projection/head/KV ->
+     attention **0.270274**, router projection -> selector **0.091091**, and
+     selector -> selected gate/up **0.091038 ms/token**. Early sparse layers
+     retain roughly 2-us boundaries; after the initial queue backlog is
+     consumed, the three largest sparse boundaries settle near 6.5 us. The
+     host is falling behind queue feeding.
+
+     The source-faithful Vulkan mechanism at llama.cpp `c0bc8591e881` is
+     graph-wide command recording and dynamic submission, not nested host
+     wrappers. `ggml-vulkan.cpp` records graph nodes into command buffers and
+     submits at the minimum of a 200-GFLOP cap and prior graph FLOPs / 40, at
+     100 nodes, or near graph completion specifically so CPU command
+     generation overlaps GPU execution.
+
+     The bounded hipEngine screen wrapped five unchanged launches—router
+     projection, selector, selected gate/up, weighted selected down, and
+     shared gate/up—in one native C call. Dispatch count, kernels, math,
+     pointers, residency, and state stayed exact. ABI/order tests and the
+     focused **40-test** bundle pass. It is nevertheless negative before and
+     after caching the C ABI: the two-pair counterbalanced screen moves
+     **22.566901 -> 22.339232 tok/s (-1.00886%)**, adding
+     **0.451610 ms/token**, with candidate wins **0/2**. Every token,
+     trajectory, final position, resident byte, and lifecycle result is
+     exact.
+
+     Remove the complete candidate route. Do not reopen pair-only or wider C
+     wrappers that merely call the same ordinary HIP launchers. A successor
+     must either remove device launches through real fusion or own/record
+     commands below the ordinary HIP wrapper level. Vulkan's cooperative GQA
+     attention remains a useful device algorithm reference, but its complete
+     measured advantage is only **0.210155 ms/token**; the current
+     **44.283303-ms/token** wall needs **2.616636 ms/token** to reach
+     24 tok/s. Attention cannot finish the target alone, so the next device
+     step must be paired with the larger selected-expert and/or source-F16
+     seams:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-sparse-core-host-batch-rejected.json).
 
 Current exact decode checkpoint:
 
