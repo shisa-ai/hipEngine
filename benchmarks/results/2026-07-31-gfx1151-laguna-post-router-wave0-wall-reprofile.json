@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T04:05:00+09:00",
+  "kind": "hipengine_laguna_decode_wall_census",
+  "status": "accepted_attribution",
+  "performance_claim": false,
+  "source_revision": "4f84b62f0193d877614f7c0634e20d6beec197aa",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 482,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 42.841932,
+    "kernel_span": 44.514008,
+    "median_per_segment_span_minus_kernel_sum": 1.672076,
+    "source_f16_projection_composites": 24.538908,
+    "selected_q4_gate_up": 7.785973,
+    "selected_q4_q6_down": 4.804898,
+    "dense_shared_quant_projection": 1.982208,
+    "router": 1.054864,
+    "router_projection": 0.698396,
+    "router_selector": 0.355706,
+    "attention_total": 1.119578,
+    "swa_attention": 0.717151,
+    "global_attention": 0.402437,
+    "norm_rope_gate_outside_projection_composites": 0.431248,
+    "activation_reduce_residual": 0.001483,
+    "lm_head_argmax": 1.118018,
+    "embedding": 0.002284
+  },
+  "change_from_post_q4_t16_shared_down_census": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json",
+    "kernel_sum_ms_per_token": -0.052954,
+    "kernel_sum_percent": -0.123451,
+    "kernel_span_ms_per_token": -0.050335,
+    "kernel_span_percent": -0.112949,
+    "span_minus_kernel_sum_ms_per_token": 0.002619,
+    "router_ms_per_token": -0.027728,
+    "router_percent": -2.56126,
+    "dispatches_per_token": 0
+  },
+  "same_gguf_vulkan": {
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.829522098341634,
+    "hipengine_traced_kernel_sum_delta_ms": -0.817268,
+    "hipengine_traced_kernel_sum_delta_percent": -1.871926,
+    "hipengine_clean_production_wall_ms_per_token": 44.283302741007894,
+    "hipengine_clean_production_wall_delta_ms": 1.45378064266626,
+    "family_comparison_ms_per_token": {
+      "attention": {
+        "hipengine": 1.119578,
+        "vulkan": 0.909423,
+        "delta": 0.210155
+      },
+      "dense_shared_quant_projection": {
+        "hipengine": 1.982208,
+        "vulkan": 1.999889,
+        "delta": -0.017681
+      },
+      "selected_q4_gate_up": {
+        "hipengine": 7.785973,
+        "vulkan": 7.46409,
+        "delta": 0.321883
+      },
+      "selected_q4_q6_down": {
+        "hipengine": 4.804898,
+        "vulkan": 4.52509,
+        "delta": 0.279808
+      },
+      "router": {
+        "hipengine": 1.054864,
+        "vulkan": 0.970716,
+        "delta": 0.084148
+      }
+    },
+    "source_f16_qualification": "hipEngine's two retained source-F16 symbols include head/KV and add/RMSNorm work, so their 24.538908-ms composite is not directly compared with Vulkan's older projection-only family."
+  },
+  "trace_route": {
+    "wave0_projection_calls_per_token": 47,
+    "scalar_projection_calls_per_token": 0,
+    "selector_calls_per_token": 47,
+    "kernel": "qwen35_router_logits_bf16_f32w_wave0_tree_kernel",
+    "local_x": 256,
+    "grid_workgroups": 256,
+    "vgpr": 24,
+    "sgpr": 128,
+    "lds_bytes_reported": 0,
+    "scratch_bytes": 0
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-router-wave0-production-trace.vdncXy --output-file production -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-router-wave0-production-trace.vdncXy/bench.json",
+    "segmentation": "sort by start timestamp and dispatch id; discard warmup128 and timed prefill512; report medians over the final 127 length-one embedding-through-argmax segments; classify families with scripts/laguna_long_context_trace_summary.py and split the two fused source-F16 composites from norm/RoPE manually",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "60dc61bbc34a247383900bfa08156b33b546c043f993379159ad18a4d9f7a2ed",
+    "bench_sha256": "3720b1f2254d567aac3d7dfc8675a2bc3aeef859f395d0bc13d72f8ddcac720b"
+  },
+  "interpretation": {
+    "result": "Exact wave-level projection cuts the router family by 0.027728 ms/token and complete kernel work/span by 0.052954/0.050335 ms/token with no dispatch change.",
+    "arithmetic_priority": "Remaining named positive gaps rank selected gate/up 0.321883 ms/token, selected down 0.279808, attention 0.210155, and router 0.084148.",
+    "whole_wall_priority": "hipEngine kernel work is 0.817268 ms/token below Vulkan's logged sum, but clean production wall remains 1.453781 ms/token slower. The unchanged 1.672076-ms/token span-minus-kernel window makes submission/queue amortization the dominant cross-family mechanism."
+  }
+}
