@@ -1225,10 +1225,10 @@ def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
         ("f32", 3072, 9216): "weight_major_coltile8_rowbatch10",
     }
     assert q6_policy == {
-        ("bf16", 3072, 1024): "coltile16_rowbatch5",
-        ("bf16", 1024, 3072): "coltile16_rowbatch4",
+        ("bf16", 3072, 1024): "weight_major_coltile16_rowbatch5",
+        ("bf16", 1024, 3072): "weight_major_coltile16_rowbatch4",
         ("f32", 3072, 72): "coltile8_rowbatch4",
-        ("f32", 3072, 1024): "coltile16_rowbatch5",
+        ("f32", 3072, 1024): "weight_major_coltile16_rowbatch5",
     }
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_F32_ORDERED_PREFILL_QUANTS", None

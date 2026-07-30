@@ -40,10 +40,10 @@ _Q5_PRODUCTION_POLICY = {
     ("f32", 3072, 9216): "weight_major_coltile8_rowbatch10",
 }
 _Q6_PRODUCTION_POLICY = {
-    ("bf16", 3072, 1024): "coltile16_rowbatch5",
-    ("bf16", 1024, 3072): "coltile16_rowbatch4",
+    ("bf16", 3072, 1024): "weight_major_coltile16_rowbatch5",
+    ("bf16", 1024, 3072): "weight_major_coltile16_rowbatch4",
     ("f32", 3072, 72): "coltile8_rowbatch4",
-    ("f32", 3072, 1024): "coltile16_rowbatch5",
+    ("f32", 3072, 1024): "weight_major_coltile16_rowbatch5",
 }
 
 
