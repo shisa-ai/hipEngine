@@ -192783,3 +192783,20 @@ Vulkan local sizes verbatim will close the measured gap.
   Q6-vs-Q4 comparison and is not touched by this c=1 Q4 gate/up change.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-retained.json`.
+
+## 2026-07-30 11:57 JST — Publish T16 pair-coefficient production decode
+
+- Run the ordinary selector-unset p512/d128 eager c=1 path on tracked-clean
+  `2b06c11ca` with cached-build enforcement and two HIP queues.
+- Decode is **20.965915/20.989580/20.976598 tok/s**, median
+  **20.976598 tok/s (47.67217 ms/token)**. This improves the prior clean
+  **20.830515 tok/s** checkpoint by **0.70129% / 0.33432 ms/token** and reaches
+  **+82.935%** over the 11.466687 tok/s sprint start.
+- All three runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, tracked-clean
+  provenance, and complete allocation recovery. Raw SHA-256 is
+  `deffdafc...51410`.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s**. The clean wall gap is
+  now **4.84265 ms/token**, and hipEngine is **10.158%** lower in throughput.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-production.json`.

@@ -2145,6 +2145,12 @@ grid16384/local128/LDS512/scratch0 while reducing allocated VGPR
 gfx1151 promotes pair-coefficient transport behind the existing production
 variant, retains pair-Q as explicit rollback, and removes scalar-Q:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-retained.json).
+Tracked-clean selector-unset production publishes
+**20.965915/20.989580/20.976598 tok/s**, median **20.976598**, or
+**+0.70129% / -0.33432 ms/token** versus the prior clean checkpoint and
+**+82.935%** over sprint start, with exact repeated state and allocation
+teardown:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-production.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace

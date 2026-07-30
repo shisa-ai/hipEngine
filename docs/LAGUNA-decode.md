@@ -6160,7 +6160,7 @@ The remaining attention sequence is:
     remains **20.830515 tok/s**:
     [`fusion rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-head-kv-attention-fusion-rejected.json).
 93. Load adjacent T16 coefficient payloads as aligned pairs.
-    **Complete, retained, and promoted pending clean publication:** after
+    **Complete, retained, promoted, and cleanly published:** after
     adjacent output columns reuse one Q byte, replace their scalar coefficient
     reads with aligned 32-bit `d`/`dmin` half pairs and 16-bit scale/min byte
     pairs. Each coefficient converts to the same F32 value and every
@@ -6184,14 +6184,23 @@ The remaining attention sequence is:
     rollback, remove scalar-Q and all comparison plumbing:
     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-retained.json).
 
+    Tracked-clean selector-unset production is
+    **20.965915/20.989580/20.976598 tok/s**, median
+    **20.976598 tok/s (47.67217 ms/token)**. This is **+0.70129% /
+    -0.33432 ms/token** versus the prior clean checkpoint and **+82.935%**
+    over sprint start. All three repetitions preserve tokens **2930/74107**,
+    trajectory SHA `94f803f7...bda32`, final position 638, determinism, and
+    allocation teardown:
+    [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.830515 tok/s** | **48.006 ms** | **+81.661%** |
+| hipEngine current production | **20.976598 tok/s** | **47.672 ms** | **+82.935%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.177 ms/token** | hipEngine is **10.784%** below Vulkan throughput |
+| Remaining wall gap | — | **4.843 ms/token** | hipEngine is **10.158%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
