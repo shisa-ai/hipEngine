@@ -7068,7 +7068,10 @@ The remaining attention sequence is:
      lifecycle check is exact. The production decode checkpoint therefore
      advances from **22.141787 -> 22.260802 tok/s (+0.53751%)**. The one
      known cost is excluded startup: converting cached ordinary T16 payloads
-     on the host raises load **92.084 -> 142.902 seconds**. Keep the ordinary
+     on the host raises load **92.084 -> 142.902 seconds**. Tracked-clean
+     selector-unset publication at `1bc5f7405` independently reaches
+     **22.262504 tok/s / 44.919 ms/token** and **656.990 tok/s** pp512 with
+     the same complete token hash and zero live allocations. Keep the ordinary
      loader rollback while a paired cache format removes that one-time debt:
      [`production gate`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
 
@@ -7084,9 +7087,9 @@ Current exact decode checkpoint:
 | hipEngine prior output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
 | hipEngine prior route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
 | hipEngine prior shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
-| hipEngine current byte-neutral expert dual-interleave production | **22.260802 tok/s** | **44.922 ms** | **+94.136%** |
+| hipEngine current byte-neutral expert dual-interleave production | **22.262504 tok/s** | **44.919 ms** | **+94.151%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.092 ms/token** | hipEngine is **4.658%** below Vulkan throughput |
+| Remaining wall gap | — | **2.089 ms/token** | hipEngine is **4.651%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own

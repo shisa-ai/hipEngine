@@ -485,7 +485,8 @@ short-row decoder and local128/VGPR96/LDS3072/scratch0 for production MMQ.
 Same-revision production improves decode
 **22.130173 -> 22.260802 tok/s (+0.59027%)** and pp512
 **654.569 -> 655.535 tok/s (+0.14757%)** with unchanged
-**79,022,522,196-byte** residency:
+**79,022,522,196-byte** residency. Tracked-clean selector-unset publication
+reproduces **22.262504/656.990 tok/s**:
 [`paired expert production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
 
 An exact local32 replay is rejected and removed. One physical wave

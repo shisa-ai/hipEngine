@@ -194294,3 +194294,18 @@ Vulkan local sizes verbatim will close the measured gap.
   valid exact-replay certificate.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json`.
+
+## 2026-07-31 01:27 JST — Publish paired expert T16 tracked-clean
+
+- Commit `1bc5f7405` selector-unset p512/d128 three-repeat publication reaches
+  **22.262504 tok/s / 44.918576 ms/token** decode and
+  **656.990 tok/s / 779.311599 ms** pp512. Samples are
+  **22.238437/22.262504/22.266056** decode and
+  **608.810/657.599/656.990** pp512. This is within **+0.00765%** of the
+  same-revision candidate decode median.
+- All runs preserve token 2930 first, token 74107 last, final position 638,
+  generated-id SHA-256
+  `94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32`,
+  **79,022,522,196-byte** residency, deterministic repeats, and zero tracked
+  live bytes after close. Raw artifact SHA-256 is
+  `a43b0268343127256055c5dc09e66ba4751ba1960a7cbd770728e85e2f9c963c`.

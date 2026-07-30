@@ -34,7 +34,7 @@
     "candidate_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-dual-interleaved-current-candidate-3.json",
     "control_raw_sha256": "e3af30d64906a537970e995dbed568cf8089305e3d1afbe30363979867543c57",
     "candidate_raw_sha256": "362aa0540b0bb363a5f3d36f839a041fe5307dc3b0c4b9fa9a669636c045faf5",
-    "publication_qualification": "same-revision tracked-dirty A/B; a clean selector-unset repetition follows this implementation checkpoint"
+    "publication_qualification": "same-revision tracked-dirty A/B plus tracked-clean selector-unset three-repeat publication at commit 1bc5f7405"
   },
   "results": {
     "decode": {
@@ -73,8 +73,29 @@
     "same_gguf_llamacpp_vulkan": {
       "tok_s": 23.348381,
       "ms_per_token": 42.829522,
-      "candidate_throughput_gap_percent": -4.65805,
-      "candidate_wall_gap_ms_per_token": 2.0924899
+      "clean_production_throughput_gap_percent": -4.650758,
+      "clean_production_wall_gap_ms_per_token": 2.0890543
+    },
+    "tracked_clean_publication": {
+      "revision": "1bc5f7405f4f24e648ad017ddd383d8b20f75d41",
+      "tracked_clean": true,
+      "decode_samples_tok_s": [
+        22.2384368,
+        22.2625043,
+        22.2660563
+      ],
+      "decode_median_tok_s": 22.2625042815,
+      "decode_median_ms_per_token": 44.9185764259,
+      "prefill_samples_tok_s": [
+        608.8101738,
+        657.5992686,
+        656.9900931
+      ],
+      "prefill_median_tok_s": 656.9900931438,
+      "prefill_median_wall_ms": 779.311599,
+      "load_seconds_excluded": 140.1554092,
+      "resident_nbytes": 79022522196,
+      "raw_sha256": "a43b0268343127256055c5dc09e66ba4751ba1960a7cbd770728e85e2f9c963c"
     }
   },
   "anti_overtuning": {
