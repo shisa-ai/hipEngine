@@ -1702,6 +1702,22 @@ fallbacks
 ([H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5W candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json)).
+The production-identical H5W trace now reconciles **1,803.036 ms / 1,862
+dispatches** versus matched llama.cpp HIP **724.299 ms** and ranks exact gaps
+Q5/IQ-down/attention/Q6/gate-up at **417.482/327.846/192.029/77.716/60.898
+ms**. **WPF-H5X exact tile-K-col F32 AoSoA Q5** targets Q5's unchanged
+**476.433-ms** family without reopening H5O compression or H5P/H5S/H5V
+ownership. Six H5L roles own **188 calls / 459.232 ms**. A geometry-specific
+producer writes the same full-F32 plane as `[tile][k][col]`; the matching
+local128 consumer reads aligned `float4` records and replays every original
+scalar FMA/reduction/store. The static source model replaces **6.309B** scalar
+weight-load instruction instances with **1.577B** four-wide loads across the
+unchanged **5,021,440** workgroups, while value bytes, useful dot work, the
+**150,994,944-byte** workspace, launches, allocation, and production policy stay
+fixed. This **75%** instruction-count model is rationale only. Freeze RED on the
+six role surfaces and require exact plane/output bytes, cached dwordx4 ISA at
+scratch0, and producer-inclusive both-clock wins before runtime ownership
+([post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, and P6/repair routes remain closed.
