@@ -192565,3 +192565,23 @@ Vulkan local sizes verbatim will close the measured gap.
   specialization, not an external port.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-retained.json`.
+
+## 2026-07-30 09:51 JST — Publish output-sharded probability production
+
+- From tracked-clean retention commit `a8a91efab`, run the normal
+  selector-unset, require-cached p512/d128 path three times. Decode is
+  **20.798681/20.814372/20.800509 tok/s**, median
+  **20.800509 tok/s (48.07575 ms/token)**.
+- This is a noise-floor **-0.01553% / +0.00746 ms/token** versus the
+  preceding clean **20.803739 tok/s** packet and **+81.399%** over the
+  **11.466687 tok/s** sprint start. Retention rests on the exact **4.976%**
+  leaf improvement and **7/7** positive interleaved full-model pairs; the
+  publication does not conceal or over-interpret the small negative sample.
+- All three runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, tracked-clean
+  provenance, and allocation recovery. Raw SHA-256 is `ae13895b...b39e`.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s /
+  42.829522 ms/token**. The current clean wall gap is **5.24622 ms/token**,
+  and hipEngine is **10.912%** lower in throughput.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-production.json`.

@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T09:51:00+09:00",
+  "kind": "hipengine_laguna_swa_output_sharded_probability_vstage128_production",
+  "status": "accepted",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "source": {
+    "revision": "a8a91efabbda81d27aefb087cd4673fcd34d4d5e",
+    "tracked_clean": true,
+    "selector_unset": true,
+    "require_cached_build": true
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-output-sharded-probability-vstage128-production-3.json",
+    "raw_sha256": "ae13895bfdde05393b277c819792d0018a51e4916117312d2651c1c8696cb39e"
+  },
+  "timings": {
+    "decode_samples_tok_s": [
+      20.798680966828552,
+      20.81437178829332,
+      20.800508959788434
+    ],
+    "median_decode_tok_s": 20.800508959788434,
+    "median_ms_per_token": 48.07574670087165,
+    "prior_clean_tok_s": 20.803739205450018,
+    "throughput_change_percent": -0.015527235895829161,
+    "saving_ms_per_token": -0.007464834598927439,
+    "sprint_start_tok_s": 11.466687,
+    "change_from_sprint_start_percent": 81.39946577235808
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "comparison": {
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llamacpp_vulkan_ms_per_token": 42.829522,
+    "remaining_wall_gap_ms_per_token": 5.246224602530013,
+    "hipengine_throughput_below_vulkan_percent": 10.91241418499881
+  },
+  "evidence": {
+    "retention": "benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-retained.json",
+    "interpretation": "The three-run clean packet is noise-floor lower than the preceding packet. Retention rests on the exact 4.976% leaf improvement and 7/7 positive interleaved full-model pairs."
+  }
+}

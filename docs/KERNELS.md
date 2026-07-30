@@ -2087,6 +2087,12 @@ trajectory/state/lifecycle. gfx1151 now selects output-sharded probability for
 the saturated natural shape; dual-tail V128 remains registered rollback and
 peer backend selection is unchanged:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-retained.json).
+Tracked-clean selector-unset production at `a8a91efab` is
+**20.800509 tok/s (48.07575 ms/token)**, a noise-floor
+**-0.01553% / +0.00746 ms/token** versus the preceding clean packet and
+**+81.399%** over sprint start. Retention rests on the exact leaf and
+seven-pair evidence rather than the noisy three-run publication:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-production.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace
