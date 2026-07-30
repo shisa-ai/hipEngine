@@ -1589,15 +1589,16 @@ predeclared seven-repeat adjudication resolves it at **+0.176%**. The
 source-default publication is **+0.093%/-0.019%/-0.054%** at 512/1K/4K and its
 final frozen 1K/4K adjudication remains **-0.030%/+0.014%**. Reject runtime
 ownership under the all-length rule; remove the eager owner/package change,
-retain only the exact leaf, and keep H5M/H5L production. WPF-H5Q now selects
-the third-largest matched residual: IQ3/IQ4 down is **491.658 ms** versus
-llama.cpp HIP **155.495 ms**. H5J launches **35,389,440** IQ3 expert/output
-workgroups across 45 M512 layers for **30,240,768** active pairs; its existing
-active-expert list permits a separately registered exact persistent traversal
-with fixed 1–128 expert partitions, no new metadata/allocation, and unchanged
-useful dot/reduction/store work. These counts are attribution, not a speed
-claim; leaf admission requires exact bytes, cached scratch-free resources, and
-all-layer both-clock timing. The old wider-qrow, cross-head/key-split,
+retain only the exact leaf, and keep H5M/H5L production. WPF-H5Q addresses
+the third-largest matched residual, IQ3/IQ4 down at **491.658 ms** versus
+llama.cpp HIP **155.495 ms**. P64/P128 alone win all **45/45** actual IQ3
+layers on both clocks; the predeclared max-min rule retains P64. Final-source
+event/wall sums fall **492.847/491.518 -> 481.081/483.823 ms
+(-2.387%/-1.565%)**, with H5J byte identity, sampled CPU-oracle agreement,
+local128/VGPR48/SGPR128/LDS512/scratch0 resources, unchanged metadata/
+allocation, and gfx1151 fail-closed. Admit only the standalone leaf; production
+remains unchanged until complete-state, integrated-call, and clean 512/1K/4K
+runtime gates pass. The old wider-qrow, cross-head/key-split,
 rowbatch16, output-tile, source-MMQ, changed-association attention, and
 P6/repair routes remain closed.
 Launch fusion remains

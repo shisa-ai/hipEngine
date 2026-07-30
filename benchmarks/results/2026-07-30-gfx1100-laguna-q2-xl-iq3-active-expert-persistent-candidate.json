@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_active_expert_persistent_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_exact_candidate_admitted_production_unchanged",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "3295b07bf",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json",
+    "target_artifact_sha256": "0a8c4f16d25b7a3d2d164ac549ac4d77a896f301ed93311aa6bb0d7d7b412451",
+    "h5j_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json",
+    "h5j_production_artifact_sha256": "8f2bdccd93d27a39dcf8691f72d589331472d96a4bee9c69fa3223acf6a108af",
+    "source": "net-new in-tree active-expert persistent traversal of the retained H5J exact IQ3 body; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "466f6f3d2bacb9e76f16d45b0890a6b3b6375ee2376798707f0abab549b31c94",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "c7505678d3abde98a625bf57cc09a0eb48f378bae934ecdd5b880dcee96a115b",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5a138874fc0ce6f60afb03a8131044971060a8afbff643c9441a81bb1a8b940b",
+      "tests/test_gfx1151_backend.py": "607317815469a5e609cc2b13c8b4697ccb77307609fd2a17f53edf50efc71aca",
+      "tests/test_gguf_iq3_active_expert_persistent.py": "bc1ddbd07006d09289b4c7f899e4ad8a4c42253743a69b2142e6053c9b0a4e8c"
+    }
+  },
+  "candidate": {
+    "partition": 64,
+    "grid": "dim3(out_features=3072, expert_partitions=64)",
+    "mapping": "block y loops active indices y,y+64,... and selects experts from the existing device active-expert list",
+    "preserved": "H5J K1024 eight-value segment decode, rowbatch8 row and scalar dot/FMA order, wave32 shuffle tree, serial wave-0..3 sum, barriers, BF16 store, compact layout, output, allocation, and fallback",
+    "current_workgroups_across_45_layers": 35389440,
+    "candidate_workgroups_across_45_layers": 8847360,
+    "workgroup_ratio": 4.0,
+    "useful_active_expert_output_pairs": 30240768,
+    "unchanged_useful_work": true,
+    "workgroup_count_is_performance_claim": false,
+    "persistent_weight_sidecar_bytes": 0,
+    "additional_workspace_bytes": 0,
+    "additional_runtime_allocations": 0,
+    "gfx1151_fail_closed": true
+  },
+  "selection_screen": {
+    "partitions": [1, 2, 4, 8, 16, 32, 64, 128],
+    "actual_iq3_layers": 45,
+    "all_candidate_outputs_byte_exact": true,
+    "retained_partitions": [64, 128],
+    "selection_rule": "among partitions positive on every layer and both aggregate clocks, maximize the smaller aggregate event/wall speedup",
+    "partition_64": {
+      "h5j_event_sum_ms": 494.0008995056153,
+      "candidate_event_sum_ms": 486.1357040405273,
+      "event_speedup": 1.0161790121558985,
+      "event_reduction_percent": 1.5921419319194108,
+      "h5j_wall_sum_ms": 494.894412625581,
+      "candidate_wall_sum_ms": 486.9321853388101,
+      "wall_speedup": 1.0163518196712151,
+      "wall_reduction_percent": 1.608873950410683,
+      "both_clock_positive_layers": 45
+    },
+    "partition_128": {
+      "event_speedup": 1.014640072082261,
+      "wall_speedup": 1.0172921358572007,
+      "both_clock_positive_layers": 45
+    },
+    "partition_32": {
+      "event_speedup": 1.0074199507614305,
+      "wall_speedup": 1.0099441638436435,
+      "both_clock_positive_layers": 42
+    },
+    "partitions_1_2_4_8_16": "aggregate and every-layer rejected",
+    "selected_partition": 64
+  },
+  "final_source_gate": {
+    "rows": 512,
+    "compact_rows": 5120,
+    "in_features": 1024,
+    "out_features": 3072,
+    "expert_count": 256,
+    "top_k": 10,
+    "actual_iq3_layers": 45,
+    "actual_weights": true,
+    "natural_m512_routing_distributions": true,
+    "deterministic_bf16_compact_input": true,
+    "warmups": 5,
+    "counter_rotated_repetitions": 15,
+    "launches_per_sample": 5,
+    "clocks": ["HIP event", "synchronized wall"],
+    "control": "H5J exact K1024 resident IQ3 rowbatch8",
+    "candidate": "final-source exact active-expert persistent P64",
+    "h5j_event_sum_ms": 492.84655609130846,
+    "candidate_event_sum_ms": 481.08089065551763,
+    "event_speedup": 1.0244567299685485,
+    "event_reduction_percent": 2.3872877451153407,
+    "h5j_wall_sum_ms": 491.5179460775107,
+    "candidate_wall_sum_ms": 483.8234819006175,
+    "wall_speedup": 1.015903453355895,
+    "wall_reduction_percent": 1.5654492858903302,
+    "both_clock_positive_layers": 45,
+    "all_45_layers_byte_exact": true,
+    "next_token_id": 2930,
+    "final_position": 511,
+    "tracked_returned_to_baseline": true,
+    "four_k_or_longer_run_performed": false
+  },
+  "correctness": {
+    "strict_preflight_before_hip_load": true,
+    "empty_active_list_checked": true,
+    "active_count_128_boundary_checked": true,
+    "active_count_129_tail_checked": true,
+    "uneven_rowbatch_tails_checked": true,
+    "h5j_complete_output_byte_identity": true,
+    "sampled_independent_cpu_oracle_byte_identity": true,
+    "retained_iq_bundle_passes": 40,
+    "gfx1151_bundle_passes": 23,
+    "tracked_returned_to_baseline": true
+  },
+  "cached_trace": {
+    "control_symbol": "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_kernel",
+    "control_resources": "local128/VGPR40/SGPR128/LDS512/scratch0/grid_y256",
+    "candidate_symbol": "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_persistent_rowbatch8_kernel<64>",
+    "candidate_resources": "local128/VGPR48/SGPR128/LDS512/scratch0/grid_y64",
+    "no_compiler_under_profile": true
+  },
+  "source_artifacts": {
+    "initial_screen_json_sha256": "1c79606ebd86896cdcaf79e18f0536532186e5616a01e588f05dac70e88c9ab8",
+    "initial_screen_harness_sha256": "40f2a05992343e1d713fd565057e93392320f65bacf0c16edbe5587715c1c0db",
+    "initial_screen_stdout_sha256": "3fbf4eccbbaf03de791998d24bb6eec910c40e2e7572cbae60c0cd9b3b80eabb",
+    "initial_screen_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "initial_trace_csv_sha256": "32bd76706ed36ede5af91d20bc8e68b1806279275efaccbdb19eed2e971ca1b6",
+    "final_screen_json_sha256": "d8e8fff1ac159cf50b88e90330c48d38c13c7a8d5569ad1fa632ece8e98e2e6d",
+    "final_screen_harness_sha256": "53774dea23c6466d25298500841e3434d61661a3500e695ca424c94ec0b64146",
+    "final_screen_stdout_sha256": "19c577772b94f333bb9195b55c816bb3b7c6133278792f772b9a17382fdee273",
+    "final_screen_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "final_trace_csv_sha256": "9b113b4e82adb230e9dff3e2d3a30a34204565d095ebe36a1f8d0853e43dd402",
+    "final_trace_stdout_sha256": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "final_trace_stderr_sha256": "291c88dbe9cc7350a1497ad5f9b74ec8eec0b8c13cf3a22a8b4b40f5d5847fe3"
+  },
+  "commands": {
+    "focused_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_iq3_active_expert_persistent.py tests/test_gguf_iq_selected_prefill.py tests/test_gfx1151_backend.py",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5q-final-rocprof -- .venv/bin/python -m pytest -q tests/test_gguf_iq3_active_expert_persistent.py::test_h5q_partitions_match_h5j_and_cpu_at_boundary_and_tail",
+    "initial_actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python /tmp/laguna_wpfh5q_iq3_active_expert_persistent_actual_screen.py",
+    "final_actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python /tmp/laguna_wpfh5q_iq3_active_expert_p64_final_screen.py"
+  },
+  "production": {
+    "runtime_owner_added": false,
+    "package_policy_changed": false,
+    "m512_tok_s": 238.56489443755876,
+    "m1024_tok_s": 218.1815612145882,
+    "m4096_tok_s": 158.13810004175082,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.909832989621587
+  },
+  "decision": {
+    "standalone_candidate_admitted": true,
+    "runtime_default_changed": false,
+    "next_action": "Qualify a bounded default-off grouped-IQ role owner through complete M512 state, cached integrated physical counts, and clean 512/1K/4K non-regression before any package promotion."
+  }
+}

@@ -12,6 +12,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 from pathlib import Path
+from types import MappingProxyType
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
@@ -55,6 +56,23 @@ _SYMBOL_IQ3_GROUPED_SINGLE_K1024_RESIDENT_ROWBATCH8 = (
     "hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_"
     "rowbatch8_bf16_bf16_out"
 )
+_IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITION_VALUES = (64,)
+
+
+def _iq3_active_expert_persistent_symbol(partition: int) -> str:
+    return (
+        "hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_"
+        f"active_expert_p{partition}_resident_rowbatch8_bf16_bf16_out"
+    )
+
+
+def _iq3_active_expert_persistent_variant(partition: int) -> str:
+    return (
+        "selected_grouped_prefill_compact_k1024_active_expert_p"
+        f"{partition}_resident_rowbatch8_bf16_bf16_out"
+    )
+
+
 _SYMBOL_IQ4_GROUPED_DUAL = (
     "hipengine_gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out"
 )
@@ -456,6 +474,76 @@ def gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_
         library=library,
         runtime=runtime,
     )
+
+
+def _make_iq3_active_expert_persistent_wrapper(partition: int):
+    symbol = _iq3_active_expert_persistent_symbol(partition)
+
+    def wrapper(
+        x_ptr: int,
+        expert_start_compact_ptr: int,
+        active_experts_ptr: int,
+        active_count_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        *,
+        compact_rows: int,
+        in_features: int,
+        out_features: int,
+        num_experts: int,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        _validate_common(
+            compact_rows=compact_rows,
+            in_features=in_features,
+            out_features=out_features,
+            num_experts=num_experts,
+        )
+        if in_features != 1024:
+            raise ValueError(
+                "in_features must be exactly 1024 for active-expert persistent IQ3"
+            )
+        if out_features != 3072:
+            raise ValueError(
+                "out_features must be exactly 3072 for active-expert persistent IQ3"
+            )
+        if num_experts != 256:
+            raise ValueError(
+                "num_experts must be exactly 256 for active-expert persistent IQ3"
+            )
+        _launch_active_expert_persistent_single(
+            symbol,
+            x_ptr,
+            expert_start_compact_ptr,
+            active_experts_ptr,
+            active_count_ptr,
+            qweight_ptr,
+            out_ptr,
+            compact_rows=compact_rows,
+            in_features=in_features,
+            out_features=out_features,
+            num_experts=num_experts,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    wrapper.__name__ = (
+        "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p"
+        f"{partition}_resident_rowbatch8_bf16_bf16_out"
+    )
+    wrapper.__qualname__ = wrapper.__name__
+    return wrapper
+
+
+GGUF_IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITIONS = MappingProxyType(
+    {
+        partition: _make_iq3_active_expert_persistent_wrapper(partition)
+        for partition in _IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITION_VALUES
+    }
+)
 
 
 def gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out(
@@ -978,6 +1066,56 @@ def _launch_grouped_single(
     _check_launch(runtime, err)
 
 
+def _launch_active_expert_persistent_single(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    library = library or build_gguf_iq_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _launch_wmma_dual(
     symbol: str,
     x_ptr: int,
@@ -1189,12 +1327,24 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
             fn,
             replace=replace,
         )
+    for partition, fn in GGUF_IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITIONS.items():
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_iq3_xxs",
+                _iq3_active_expert_persistent_variant(partition),
+            ),
+            fn,
+            replace=replace,
+        )
 
 
 register_gguf_iq_selected_prefill_kernels()
 
 
 __all__ = [
+    "GGUF_IQ3_ACTIVE_EXPERT_PERSISTENT_PARTITIONS",
     "build_gguf_iq_selected_prefill",
     "gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out",
     "gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",

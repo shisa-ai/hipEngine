@@ -820,15 +820,17 @@ clean 512 packet is **-0.189%**, but a frozen seven-repeat adjudication is
 **+0.176%**. Source-default 512/1K/4K is **+0.093%/-0.019%/-0.054%** and the
 final frozen 1K/4K adjudication remains **-0.030%/+0.014%**. Reject runtime
 ownership; remove the eager/package surfaces, retain the exact leaf, and keep
-H5L production. WPF-H5Q next targets H5J's exact IQ3 workgroup traversal:
-**35,389,440** `(expert, output)` workgroups across 45 M512 layers execute only
-**30,240,768** active expert/output pairs. A separately registered gfx1100 body
-may consume the already-produced active-expert list and keep 1–128 output-column
-workgroup partitions resident across experts while preserving H5J's K1024
-segment decode, rowbatch8 arithmetic/reduction/store order, layout, workspace,
-and fallback. The workgroup reduction is attribution only; cached resource and
-both-clock timing decide admission
-([H5Q target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
+H5L production. WPF-H5Q consumes H5J's already-produced active-expert list
+under a separately registered exact persistent traversal. P64/P128 alone win
+all **45/45** actual IQ3 layers on both clocks; the predeclared robust rule keeps
+P64 and removes seven instantiations. Final-source event/wall sums fall
+**492.847/491.518 -> 481.081/483.823 ms (-2.387%/-1.565%)**, every output byte
+matches H5J, sampled CPU-oracle values agree, and tracing records local128/
+VGPR48/SGPR128/LDS512/scratch0/grid-y64. K1024 decode, rowbatch8 arithmetic/
+reduction/store order, metadata, allocation, layout, and H5J fallback remain
+unchanged. The standalone leaf still requires runtime qualification
+([H5Q leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
+[H5Q target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
 [H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
