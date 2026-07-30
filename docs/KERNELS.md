@@ -506,6 +506,26 @@ All seven same-resident p512/d128 candidates win
 state and unchanged residency, so gfx1151 now defaults the quad; peer
 backends and explicit disable retain triple plus singleton.
 
+The attention catalog also has a separately registered rows==1
+`attention_projection+head_rmsnorm+partial_rotary+kv_write` composite with
+`fp16_weight+laguna_f32_weight` and global/SWA fixed-K variants. It keeps one
+local256 block per exact Q/K/V/gate output column, then uses a per-head
+completion counter so only the final Q producer runs the retained head
+RMSNorm/RoPE body and only the final combined K/V producer runs the retained
+K/V norm/RoPE/BF16 append body. The existing `linear_quad` plus head/KV
+composite remains the unfused fallback. Natural Q48/global and Q72/SWA
+fixtures match every projection F32 bit, rotated F32 bit, BF16 K/V byte,
+`KVLiveSpans` field, and counter reset. Cached tracing names
+`laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel` at
+local256/VGPR24/SGPR128/LDS512/scratch0. Seven same-resident p512/d128 pairs
+are throughput-flat but mechanically positive at
+**22.016010 -> 22.017120 tok/s (+0.00504%)**, with a paired-median
+**0.002932-ms/token** saving and five of seven wins. gfx1151 provisionally
+selects the composite pending tracked-clean production and a complete
+127-transition dispatch census; peer backends and explicit disable retain the
+exact two-launch chain. Evidence:
+[`projection/head/KV retained candidate`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json).
+
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
 | `embedding` variant `lookup_bf16_out` | `gguf_q4_k`, `gguf_q5_k` | `hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip` | `gguf_q4_k_embedding_bf16_out(...)`, `gguf_q5_k_embedding_bf16_out(...)`, registry-driven `launch_gguf_embedding(...)` | Net-new gfx11 raw-Q4_K/Q5_K row dequant for Laguna target/DFlash roots. Synthetic Q4_K lookup is BF16-exact vs CPU, invalid token IDs preserve caller output rows, and the real S 2.1 root chain (Q4 embedding -> F32-weight RMSNorm -> Q6T16 full logits -> GPU argmax) gives embedding/norm max-abs `0`, logits KL `6.87e-13`, top-1 `81364 == 81364`, and finite 100,352-way logits on gfx1151. Cached `rocprofv3 --kernel-trace` shows `gguf_q4_k_embedding_bf16_out_kernel` at `9.818 us`, 16 VGPR, zero scratch/LDS, followed by the expected norm, Q6T16, and argmax kernels. The pinned Q2 XL Q5_K root is BF16-exact against direct GGUF dequant for four repeated/unique rows; cached W7900 tracing names `gguf_q5_k_embedding_bf16_out_kernel` at `12.440 us`. `scripts/laguna_root_probe.py`; `/tmp/laguna-root-rocprof-result.json`. |

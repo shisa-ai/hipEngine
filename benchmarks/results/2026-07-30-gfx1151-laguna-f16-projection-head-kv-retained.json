@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T20:01:00+09:00",
+  "kind": "hipengine_laguna_f16_projection_head_kv_decode_retention",
+  "status": "retained_mechanical_default",
+  "performance_claim": true,
+  "source_revision": "68ca015be831f59236c90cd294ec2780545acb85",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "Keep one exact fixed-K block per Q/K/V/gate output column, then use a per-head completion counter so the final producer runs the existing 256-thread head RMSNorm/RoPE/BF16-KV body in the same launch.",
+    "launches_per_token": {
+      "control": 96,
+      "candidate": 48,
+      "removed": 48
+    },
+    "resident_bytes_added": 320,
+    "counter_lifecycle": "The last producer resets its Q/KV-head counter before the stream-ordered next layer; explicit enable zeroes all counters once.",
+    "fallback": "The registered exact F16 quad plus registered head-RMSNorm/RoPE/KV composite remains the peer-backend, key-miss, unsupported-layout, and explicit-disable path."
+  },
+  "correctness": {
+    "red": "ImportError on the absent projection/head/KV wrapper before implementation.",
+    "green": "Natural global Q48 and SWA Q72 gfx1151 fixtures match every intermediate projection F32 bit, rotated F32 bit, BF16 K/V byte, live-span metadata field, and reset counter against fixed-K quad plus the retained head/KV composite.",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "resident_nbytes": 79022520660,
+    "pass": true
+  },
+  "leaf": {
+    "protocol": "Synthetic natural source-F16 weights; 20 warmups, 21 alternating samples, 20 launches/sample; HIP-event and synchronized wall medians.",
+    "global": {
+      "control_event_ms": 0.22615435123443603,
+      "candidate_event_ms": 0.22612369060516357,
+      "event_change_percent": -0.013557390828478066,
+      "control_wall_ms": 0.22718235,
+      "candidate_wall_ms": 0.2271423,
+      "wall_change_percent": -0.017629010352260277,
+      "candidate_event_pair_wins": 12,
+      "pairs": 21
+    },
+    "swa": {
+      "control_event_ms": 0.30866925716400145,
+      "candidate_event_ms": 0.30716938972473146,
+      "event_change_percent": -0.4859140988158428,
+      "control_wall_ms": 0.3097353,
+      "candidate_wall_ms": 0.30854455,
+      "wall_change_percent": -0.3844411663765701,
+      "candidate_event_pair_wins": 14,
+      "pairs": 21
+    }
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with both libraries built before profiling and an explicit compiler-version file",
+    "kernel": "laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel<true|false>",
+    "global_grid_workgroups": 8240,
+    "swa_grid_workgroups": 11336,
+    "local_x": 256,
+    "vgpr_count": 24,
+    "sgpr_count": 128,
+    "lds_block_bytes": 512,
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "fd925f29cbe3a69654bca86c83b5d1dfeb93c58ea890c2ed6de80ddb34c21827"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "Seven alternating-order control/candidate pairs in one resident session; dirty candidate source over tracked-clean revision 68ca015be; cached build.",
+    "control_tok_s": [
+      21.994254533829302,
+      22.020822213733126,
+      22.021296926952466,
+      22.00234877052173,
+      22.009500847862633,
+      22.01601028842139,
+      22.01987995744261
+    ],
+    "candidate_tok_s": [
+      22.02854028070505,
+      21.997180317437067,
+      22.022718805592557,
+      22.01635237320308,
+      22.017120325866387,
+      22.015509302219865,
+      22.02063659136349
+    ],
+    "control_median_tok_s": 22.01601028842139,
+    "candidate_median_tok_s": 22.017120325866387,
+    "throughput_change_percent": 0.005041955515339147,
+    "control_median_ms_per_token": 45.42149040173358,
+    "candidate_median_ms_per_token": 45.4192003858547,
+    "saving_ms_per_token": 0.0022900158788772274,
+    "median_paired_saving_ms_per_token": 0.002931896963809419,
+    "candidate_pair_wins": 5,
+    "pairs": 7,
+    "raw_sha256": "9d71a4122009ce7ba3cc83ab08e0319eed5e58b20f2ef1e67dda00e3f45dbfc9"
+  },
+  "validation": {
+    "device_result": "10 passed across the projection/head/KV and global wave-tree files",
+    "runner_profile_result": "The broad runner/profile run passed all 80 unaffected nodes; its two mock-lifecycle failures were caused only by unconditional counter initialization, and the repaired two nodes plus the new resident-ABI node pass focused.",
+    "format": "py_compile and git diff --check pass; Ruff is unavailable in the current environment.",
+    "lineage": "Blocked before inspection by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas; no external code was copied."
+  },
+  "protocol": {
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-f16-projection-head-kv-decode --allow-dirty --output /tmp/laguna-f16-projection-head-kv-7pair.json",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-projection-head-kv-trace.ZiDu8H --output-file trace -- .venv/bin/python3 -m pytest -q tests/test_laguna_head_kv_fusion.py::test_laguna_f16_projection_head_kv_is_bit_exact_to_quad_chain"
+  },
+  "gate": {
+    "correctness": "pass; all device bytes, complete generated trajectory, position, determinism, metadata, counter reset, and lifecycle are exact",
+    "resources": "pass; local256/VGPR24/SGPR128/LDS512/scratch0",
+    "whole_model": "mechanically positive but throughput-flat; +0.00504%, 5/7 pair wins, +0.00293 ms/token paired median saving",
+    "decision": "Provisionally promote through gfx1151 LAGUNA_F16_PROJECTION_HEAD_KV_DECODE because the exact path removes 48 launches/token and has no measured regression. Require tracked-clean production and complete trace before final retention."
+  }
+}

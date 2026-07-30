@@ -11,6 +11,7 @@ namespace {
 typedef uint16_t laguna_bf16_t;
 typedef laguna_bf16_t __attribute__((ext_vector_type(16))) laguna_bf16x16_t;
 typedef float __attribute__((ext_vector_type(8))) laguna_float8_t;
+using laguna_half_t = _Float16;
 
 __device__ inline float laguna_bf16_bits_to_float(uint16_t value) {
   union {
@@ -436,6 +437,224 @@ __global__ __launch_bounds__(256) void laguna_head_rmsnorm_partial_rotary_write_
     const int64_t position_count = position + 1 < capacity ? position + 1 : capacity;
     const int64_t candidate_count = slot_was_live ? old_count : position_count;
     live_counts[0] = old_count > candidate_count ? old_count : candidate_count;
+  }
+}
+
+__device__ __forceinline__ float laguna_f16_projection_block_sum_thread0(
+    float value) {
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value += __shfl_down(value, offset);
+  }
+  __shared__ float partial[8];
+  if (lane == 0) {
+    partial[wave] = value;
+  }
+  __syncthreads();
+  if (threadIdx.x != 0) {
+    return 0.0f;
+  }
+  float total = 0.0f;
+#pragma unroll
+  for (int item = 0; item < 8; ++item) {
+    total += partial[item];
+  }
+  return total;
+}
+
+// Exact c=1 Laguna source-F16 projection plus head normalization/KV append.
+// Each output column keeps the retained fixed-K one-block reduction. The last
+// producer for each Q or KV head performs the unchanged 256-thread head
+// RMSNorm/RoPE body after all 128/256 source columns are globally visible.
+// Counters are reset by their last producer and may therefore be reused by the
+// next stream-ordered layer launch.
+template <bool GlobalSpans>
+__global__ __launch_bounds__(256)
+void laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const laguna_half_t* __restrict__ query_weight,
+    const laguna_half_t* __restrict__ key_weight,
+    const laguna_half_t* __restrict__ value_weight,
+    const laguna_half_t* __restrict__ gate_weight,
+    float* __restrict__ query,
+    float* __restrict__ key,
+    float* __restrict__ value,
+    float* __restrict__ gate,
+    const float* __restrict__ q_norm_weight,
+    const float* __restrict__ k_norm_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    uint16_t* __restrict__ key_cache,
+    uint16_t* __restrict__ value_cache,
+    int32_t* __restrict__ completion_counters,
+    const int32_t* __restrict__ base_offsets,
+    int64_t* __restrict__ live_counts,
+    int64_t* __restrict__ token_positions,
+    uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  constexpr int64_t input_width = 3072;
+  constexpr int64_t head_dim = 128;
+  const int64_t position = row_positions[0];
+  if (position < 0 || position >= max_positions) {
+    return;
+  }
+
+  const int64_t q_width = num_q_heads * head_dim;
+  const int64_t kv_width = num_kv_heads * head_dim;
+  const int64_t q_end = q_width;
+  const int64_t k_end = q_end + kv_width;
+  const int64_t v_end = k_end + kv_width;
+  const int64_t gate_end = v_end + num_q_heads;
+  const int64_t column = static_cast<int64_t>(blockIdx.x);
+  if (column >= gate_end) {
+    return;
+  }
+
+  const laguna_half_t* weight;
+  float* projection_out;
+  int64_t local_column;
+  int64_t counter_index = -1;
+  int expected_producers = 0;
+  bool is_query = false;
+  bool is_kv = false;
+  if (column < q_end) {
+    weight = query_weight;
+    projection_out = query;
+    local_column = column;
+    counter_index = local_column / head_dim;
+    expected_producers = static_cast<int>(head_dim);
+    is_query = true;
+  } else if (column < k_end) {
+    weight = key_weight;
+    projection_out = key;
+    local_column = column - q_end;
+    counter_index = num_q_heads + local_column / head_dim;
+    expected_producers = static_cast<int>(2 * head_dim);
+    is_kv = true;
+  } else if (column < v_end) {
+    weight = value_weight;
+    projection_out = value;
+    local_column = column - k_end;
+    counter_index = num_q_heads + local_column / head_dim;
+    expected_producers = static_cast<int>(2 * head_dim);
+    is_kv = true;
+  } else {
+    weight = gate_weight;
+    projection_out = gate;
+    local_column = column - v_end;
+  }
+
+  float acc = 0.0f;
+#pragma unroll
+  for (int k = threadIdx.x; k < input_width; k += 256) {
+    acc += laguna_bf16_bits_to_float(x[k]) *
+           static_cast<float>(weight[local_column * input_width + k]);
+  }
+  const float total = laguna_f16_projection_block_sum_thread0(acc);
+  if (threadIdx.x == 0) {
+    projection_out[local_column] = total;
+  }
+  __syncthreads();
+  if (!is_query && !is_kv) {
+    return;
+  }
+
+  __shared__ int last_producer;
+  if (threadIdx.x == 0) {
+    __threadfence();
+    const int prior = atomicAdd(completion_counters + counter_index, 1);
+    last_producer = prior + 1 == expected_producers ? 1 : 0;
+  }
+  __syncthreads();
+  if (last_producer == 0) {
+    return;
+  }
+  __threadfence();
+
+  const int64_t local_head =
+      is_query ? local_column / head_dim : counter_index - num_q_heads;
+  const int64_t offset = local_head * head_dim;
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float head_partial[];
+  if (is_query) {
+    laguna_head_rmsnorm_partial_rotary_f32_weight_row(
+        query + offset,
+        q_norm_weight,
+        cos,
+        sin,
+        query_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        head_partial);
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      atomicExch(completion_counters + counter_index, 0);
+    }
+    return;
+  }
+
+  int64_t logical_slot = -1;
+  int64_t physical_slot = -1;
+  bool cache_valid = false;
+  if constexpr (GlobalSpans) {
+    if (position < capacity && position / block_size < block_table_len) {
+      logical_slot = position;
+      physical_slot =
+          laguna_global_physical_slot(base_offsets, position, block_size);
+      cache_valid =
+          physical_slot >= 0 && physical_slot < block_table_len * block_size;
+    }
+  } else {
+    logical_slot = position % capacity;
+    physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    cache_valid = physical_slot >= 0 && physical_slot < capacity;
+  }
+  const int64_t cache_offset =
+      (physical_slot * num_kv_heads + local_head) * head_dim;
+  laguna_head_rmsnorm_partial_rotary_write_kv_f32_weight_row(
+      key + offset,
+      value + offset,
+      k_norm_weight,
+      cos,
+      sin,
+      key_out + offset,
+      key_cache,
+      value_cache,
+      eps,
+      head_dim,
+      rotary_dim,
+      cache_offset,
+      cache_valid,
+      head_partial);
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    if (local_head == 0 && cache_valid) {
+      const bool slot_was_live =
+          evict_mask[logical_slot] == 0 && token_positions[logical_slot] >= 0;
+      token_positions[logical_slot] = position;
+      evict_mask[logical_slot] = 0;
+      const int64_t old_count = live_counts[0];
+      const int64_t position_count =
+          position + 1 < capacity ? position + 1 : capacity;
+      const int64_t candidate_count = slot_was_live ? old_count : position_count;
+      live_counts[0] =
+          old_count > candidate_count ? old_count : candidate_count;
+    }
+    atomicExch(completion_counters + counter_index, 0);
   }
 }
 
@@ -6692,6 +6911,246 @@ extern "C" int hipengine_laguna_swa_head_rmsnorm_rope_write_kv_f32_bf16_spans(
       rotary_dim,
       max_positions);
   return hipGetLastError();
+}
+
+template <bool GlobalSpans>
+int launch_laguna_f16_projection_head_kv_bf16_spans(
+    const uint16_t* x,
+    const laguna_half_t* query_weight,
+    const laguna_half_t* key_weight,
+    const laguna_half_t* value_weight,
+    const laguna_half_t* gate_weight,
+    float* query,
+    float* key,
+    float* value,
+    float* gate,
+    const float* q_norm_weight,
+    const float* k_norm_weight,
+    const float* cos_table,
+    const float* sin_table,
+    float* query_out,
+    float* key_out,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    int32_t* completion_counters,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  if (x == nullptr || query_weight == nullptr || key_weight == nullptr ||
+      value_weight == nullptr || gate_weight == nullptr || query == nullptr ||
+      key == nullptr || value == nullptr || gate == nullptr ||
+      q_norm_weight == nullptr || k_norm_weight == nullptr ||
+      cos_table == nullptr || sin_table == nullptr || query_out == nullptr ||
+      key_out == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      completion_counters == nullptr || base_offsets == nullptr ||
+      live_counts == nullptr || token_positions == nullptr ||
+      evict_mask == nullptr || row_positions == nullptr || capacity <= 0 ||
+      (num_q_heads != 48 && num_q_heads != 72) || num_kv_heads != 8 ||
+      head_dim != 128 || rotary_dim <= 0 || rotary_dim > head_dim ||
+      max_positions <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if constexpr (GlobalSpans) {
+    if (num_q_heads != 48 || block_size != 256 || block_table_len <= 0) {
+      return static_cast<int>(hipErrorInvalidValue);
+    }
+  } else {
+    if (num_q_heads != 72) {
+      return static_cast<int>(hipErrorInvalidValue);
+    }
+  }
+  constexpr int threads = 256;
+  const int64_t total_columns =
+      num_q_heads * head_dim + 2 * num_kv_heads * head_dim + num_q_heads;
+  laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel<
+      GlobalSpans><<<static_cast<unsigned int>(total_columns),
+                     threads,
+                     static_cast<size_t>(threads) * sizeof(float),
+                     stream>>>(
+      x,
+      query_weight,
+      key_weight,
+      value_weight,
+      gate_weight,
+      query,
+      key,
+      value,
+      gate,
+      q_norm_weight,
+      k_norm_weight,
+      cos_table,
+      sin_table,
+      query_out,
+      key_out,
+      key_cache,
+      value_cache,
+      completion_counters,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      eps,
+      capacity,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      rotary_dim,
+      max_positions);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_f16_projection_head_kv_bf16_f32_spans(
+    const uint16_t* x,
+    const laguna_half_t* query_weight,
+    const laguna_half_t* key_weight,
+    const laguna_half_t* value_weight,
+    const laguna_half_t* gate_weight,
+    float* query,
+    float* key,
+    float* value,
+    float* gate,
+    const float* q_norm_weight,
+    const float* k_norm_weight,
+    const float* cos_table,
+    const float* sin_table,
+    float* query_out,
+    float* key_out,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    int32_t* completion_counters,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  return launch_laguna_f16_projection_head_kv_bf16_spans<true>(
+      x,
+      query_weight,
+      key_weight,
+      value_weight,
+      gate_weight,
+      query,
+      key,
+      value,
+      gate,
+      q_norm_weight,
+      k_norm_weight,
+      cos_table,
+      sin_table,
+      query_out,
+      key_out,
+      key_cache,
+      value_cache,
+      completion_counters,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      eps,
+      capacity,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions,
+      stream);
+}
+
+extern "C" int
+hipengine_laguna_swa_f16_projection_head_kv_bf16_f32_spans(
+    const uint16_t* x,
+    const laguna_half_t* query_weight,
+    const laguna_half_t* key_weight,
+    const laguna_half_t* value_weight,
+    const laguna_half_t* gate_weight,
+    float* query,
+    float* key,
+    float* value,
+    float* gate,
+    const float* q_norm_weight,
+    const float* k_norm_weight,
+    const float* cos_table,
+    const float* sin_table,
+    float* query_out,
+    float* key_out,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    int32_t* completion_counters,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  return launch_laguna_f16_projection_head_kv_bf16_spans<false>(
+      x,
+      query_weight,
+      key_weight,
+      value_weight,
+      gate_weight,
+      query,
+      key,
+      value,
+      gate,
+      q_norm_weight,
+      k_norm_weight,
+      cos_table,
+      sin_table,
+      query_out,
+      key_out,
+      key_cache,
+      value_cache,
+      completion_counters,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      eps,
+      capacity,
+      0,
+      0,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions,
+      stream);
 }
 
 extern "C" int hipengine_laguna_global_write_kv_f32_bf16_spans(

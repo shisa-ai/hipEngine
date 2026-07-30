@@ -65,6 +65,11 @@ LAGUNA_F16_DECODE_FIXEDK = True
 # output column's fixed-K reduction order. Seven same-resident p512/d128 pairs
 # are exact and all positive; triple-plus-single remains the unfused fallback.
 LAGUNA_F16_ATTENTION_QUAD_DECODE = True
+# Exact last-producer projection/head/KV fusion keeps every fixed-K dot and
+# head RMSNorm/RoPE association, removes another 48 launches/token, and is
+# byte-exact on global/SWA state. The seven-pair gate is throughput-flat but
+# mechanically positive; the quad plus registered head/KV remains rollback.
+LAGUNA_F16_PROJECTION_HEAD_KV_DECODE = True
 # Exact K3072/N1024 gate/up and K1024/N3072 down siblings preserve the
 # production local128 grid and reduction order while compile-time-specializing
 # only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
@@ -859,6 +864,7 @@ __all__ = [
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
     "LAGUNA_F16_ATTENTION_QUAD_DECODE",
+    "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE",
     "LAGUNA_F16_DECODE_FIXEDK",
     "LAGUNA_F16_DECODE_ONEBARRIER",
     "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",

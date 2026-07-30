@@ -73,6 +73,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
     LAGUNA_DENSE_Q4_PREFILL_MODE,
     LAGUNA_F16_ATTENTION_QUAD_DECODE,
+    LAGUNA_F16_PROJECTION_HEAD_KV_DECODE,
     LAGUNA_F16_BOUNDARY_FUSION,
     LAGUNA_F16_DECODE_FIXEDK,
     LAGUNA_F16_DECODE_ONEBARRIER,
@@ -298,6 +299,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_range_direct"
     assert LAGUNA_F16_BOUNDARY_FUSION is True
     assert LAGUNA_F16_ATTENTION_QUAD_DECODE is True
+    assert LAGUNA_F16_PROJECTION_HEAD_KV_DECODE is True
     assert LAGUNA_F16_DECODE_FIXEDK is True
     assert LAGUNA_F16_DECODE_ONEBARRIER is True
     assert LAGUNA_Q4_PACK8_DUAL_SILU_DECODE is True
@@ -382,6 +384,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_F16_ATTENTION_QUAD_DECODE", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE", None
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE", None
     ) is None
     assert (
         backend_package_capability(

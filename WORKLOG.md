@@ -193749,3 +193749,38 @@ Vulkan local sizes verbatim will close the measured gap.
   passed. The session constructor override remains for explicit rollback and
   tests; gfx1151 capability selection, the registered quad, peer-backend
   behavior, and the exact unfused fallback are unchanged.
+
+## 2026-07-30 20:05 JST — Provisionally retain exact F16 projection/head/KV
+
+- Added a separately registered rows-one composite that keeps one current
+  exact local256 fixed-K block per Q/K/V/gate output and lets only the final
+  producer for each head execute the established RMSNorm/RoPE/BF16-KV body.
+  A bounded **320-byte** resident completion-counter array replaces the
+  quad→head/KV boundary, removing another **48 launches/token** while the
+  registered quad plus head/KV route remains the exact fallback.
+- RED was the absent wrapper import. Natural global Q48 and SWA Q72 device
+  fixtures match every projection F32 bit, rotated F32 bit, BF16 K/V byte,
+  `KVLiveSpans` field, and reset counter. The complete focused fusion bundle
+  passes **10 tests**. The broad runner/profile pass established **80
+  unaffected nodes passed**; two mock-lifecycle failures from unconditional
+  counter initialization were repaired, and both repaired nodes plus the new
+  resident-ABI node pass focused.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel`
+  for global/SWA at local256/VGPR24/SGPR128/LDS512/scratch0; no compiler ran
+  under the profiler. Synthetic natural-shape leaf medians are
+  **0.226154 -> 0.226124 ms (-0.0136%)** global and
+  **0.308669 -> 0.307169 ms (-0.4859%)** SWA.
+- Seven alternating same-resident p512/d128 pairs preserve tokens
+  **2930/74107**, trajectory `94f803f7...bda32`, final position 638,
+  determinism, metadata, and complete allocation recovery. Endpoint medians
+  are **22.016010 -> 22.017120 tok/s (+0.00504%)**; paired-median saving is
+  **0.002932 ms/token** with five of seven wins. This is provisionally
+  promoted under the repository's exact launch-reduction rule, but remains
+  pending tracked-clean selector-unset production and a complete
+  127-transition dispatch census.
+- `py_compile`, JSON validation, and `git diff --check` pass. Ruff is not
+  installed. Required lineage inspection remains blocked before execution by
+  missing read-only `/home/lhl/amd-gpu-tuning/reference/atlas`; no external
+  source was copied. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json`.
