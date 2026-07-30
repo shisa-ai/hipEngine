@@ -210,6 +210,18 @@ def test_gguf_q4_k_q8_1_selected_prefill_registry_and_build_plan() -> None:
         resolve(
             backend="hip_gfx1100",
             layer="moe_linear",
+            quant="gguf_q4_k_t16_dual_interleaved_v1",
+            variant=(
+                "selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_"
+                "direct_doublebuf_prefill_compact32_bf16_bf16_out"
+            ),
+        )
+        is gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
             quant="gguf_q4_k_t16_v1",
             variant="selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out",
         )

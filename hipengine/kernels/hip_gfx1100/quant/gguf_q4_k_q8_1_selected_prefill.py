@@ -2025,6 +2025,19 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
     register(
         KernelKey(
             backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k_t16_dual_interleaved_v1",
+            variant=(
+                "selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_"
+                "direct_doublebuf_prefill_compact32_bf16_bf16_out"
+            ),
+        ),
+        gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
             layer="activation_quant",
             quant="q8_1_ds4x3",
             variant="bf16",

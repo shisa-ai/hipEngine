@@ -472,6 +472,22 @@ launches/token**, so gfx1151 promotes the fused route. Evidence:
 [`tile8 parallel-tail SiLU leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-leaf.json),
 [`retained resident gate`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-tile8-parallel-silu-retained.json).
 
+The routed Q4 expert gate/up catalog now also registers decode and prefill
+consumers for quant key `gguf_q4_k_t16_dual_interleaved_v1`. One 4,736-byte
+tile interleaves the two former 2,368-byte T16 records and replaces both
+resident allocations. The c=1 fused tile8 decoder and generalized rows 2-31
+fallback preserve each ordinary projection's exact K/FMA/reduction/BF16
+boundary; M32+ uses the exact D8
+MMQ128x32/wave-column/direct/double-buffer prefill owner. Materialization,
+profile accounting, ownership, and teardown are covered by direct device
+tests. Cached tracing reports local128/VGPR80/LDS512/scratch0 for the exact
+short-row decoder and local128/VGPR96/LDS3072/scratch0 for production MMQ.
+Same-revision production improves decode
+**22.130173 -> 22.260802 tok/s (+0.59027%)** and pp512
+**654.569 -> 655.535 tok/s (+0.14757%)** with unchanged
+**79,022,522,196-byte** residency:
+[`paired expert production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
+
 An exact local32 replay is rejected and removed. One physical wave
 reconstructed the retained local128 tile8 body's four logical wave32 K/FMA
 chains and reductions in order, deleting 512 B of LDS and the block barrier

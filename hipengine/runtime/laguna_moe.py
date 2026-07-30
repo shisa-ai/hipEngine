@@ -24,7 +24,10 @@ from hipengine.loading.laguna_gguf_materialize import (
     LAYOUT_RAW_GGUF,
     LagunaGGUFResidentLayerWeights,
 )
-from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES,
+)
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
 from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
@@ -68,12 +71,20 @@ _SELECTED_DUAL_NATURAL_TILE8_PARALLEL_VARIANT = (
 _SELECTED_DUAL_NATURAL_TILE8_PARALLEL_SILU_VARIANT = (
     "selected_dual_t16_natural_tile8_parallel_silu_gemv_decode_bf16_bf16_out"
 )
+_SELECTED_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_VARIANT = (
+    "selected_dual_t16_natural_tile8_parallel_silu_"
+    "gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DUAL_MMQ32_D4X3_VARIANT = (
     "selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_DUAL_MMQ64X32_D4X3_F32_VARIANT = (
     "selected_dual_q8_1_ds4x3_f32_mmq64x32_"
     "prefill_compact32_bf16_bf16_out"
+)
+_SELECTED_DUAL_INTERLEAVED_MMQ128X32_D8_F32_VARIANT = (
+    "selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_"
+    "direct_doublebuf_prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_NATURAL_VARIANT = (
@@ -394,6 +405,7 @@ class LagunaMoEKernelPlan:
     selected_gate_up_prefill_key: KernelKey
     activation_quant_key: KernelKey
     selected_gate_up_prefill_f32_key: KernelKey
+    selected_gate_up_prefill_f32_interleaved_key: KernelKey
     activation_quant_f32_key: KernelKey
     selected_down_prefill_key: KernelKey
     selected_down_prefill_q4_key: KernelKey
@@ -419,6 +431,7 @@ class LagunaMoEKernelPlan:
     natural_tile8_parallel_silu_selected_gate_up_routes: Mapping[
         str, LagunaMoESelectedRoute
     ]
+    interleaved_natural_selected_gate_up_route: LagunaMoESelectedRoute
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -462,6 +475,7 @@ class LagunaMoEKernelPlan:
     selected_gate_up_prefill: Callable
     activation_quant: Callable
     selected_gate_up_prefill_f32: Callable
+    selected_gate_up_prefill_f32_interleaved: Callable
     activation_quant_f32: Callable
     selected_down_prefill: Callable
     selected_down_prefill_q4: Callable
@@ -499,6 +513,7 @@ class LagunaMoEKernelPlan:
             self.selected_gate_up_prefill_key,
             self.activation_quant_key,
             self.selected_gate_up_prefill_f32_key,
+            self.selected_gate_up_prefill_f32_interleaved_key,
             self.activation_quant_f32_key,
             self.selected_down_prefill_key,
             self.selected_down_prefill_q4_key,
@@ -513,6 +528,7 @@ class LagunaMoEKernelPlan:
             *tuple(
                 self.natural_tile8_parallel_silu_selected_gate_up_keys.values()
             ),
+            self.interleaved_natural_selected_gate_up_route.key,
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -802,6 +818,12 @@ def resolve_laguna_moe_plan(
             "moe_linear",
             "gguf_q4_k_t16_v1",
             _SELECTED_DUAL_MMQ64X32_D4X3_F32_VARIANT,
+        ),
+        "selected_gate_up_prefill_f32_interleaved": KernelKey(
+            backend,
+            "moe_linear",
+            "gguf_q4_k_t16_dual_interleaved_v1",
+            _SELECTED_DUAL_INTERLEAVED_MMQ128X32_D8_F32_VARIANT,
         ),
         "activation_quant_f32": KernelKey(
             backend,
@@ -1099,6 +1121,19 @@ def resolve_laguna_moe_plan(
             )
         }
     )
+    interleaved_natural_selected_gate_up_key = KernelKey(
+        backend,
+        "moe_linear",
+        "gguf_q4_k_t16_dual_interleaved_v1",
+        _SELECTED_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_VARIANT,
+    )
+    interleaved_natural_selected_gate_up_route = LagunaMoESelectedRoute(
+        key=interleaved_natural_selected_gate_up_key,
+        function=_resolve_exact(interleaved_natural_selected_gate_up_key),
+        abi="t16_dual_silu",
+        allocation_name="tiles_dual",
+        library_key="selected_gate_up",
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1276,6 +1311,9 @@ def resolve_laguna_moe_plan(
         selected_gate_up_prefill_f32_key=keys[
             "selected_gate_up_prefill_f32"
         ],
+        selected_gate_up_prefill_f32_interleaved_key=keys[
+            "selected_gate_up_prefill_f32_interleaved"
+        ],
         activation_quant_f32_key=keys["activation_quant_f32"],
         selected_down_prefill_key=keys["selected_down_prefill"],
         selected_down_prefill_q4_key=keys["selected_down_prefill_q4"],
@@ -1304,6 +1342,9 @@ def resolve_laguna_moe_plan(
         ),
         natural_tile8_parallel_silu_selected_gate_up_routes=(
             natural_tile8_parallel_silu_selected_gate_up_routes
+        ),
+        interleaved_natural_selected_gate_up_route=(
+            interleaved_natural_selected_gate_up_route
         ),
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
@@ -1340,6 +1381,9 @@ def resolve_laguna_moe_plan(
         activation_quant=functions["activation_quant"],
         selected_gate_up_prefill_f32=functions[
             "selected_gate_up_prefill_f32"
+        ],
+        selected_gate_up_prefill_f32_interleaved=functions[
+            "selected_gate_up_prefill_f32_interleaved"
         ],
         activation_quant_f32=functions["activation_quant_f32"],
         selected_down_prefill=functions["selected_down_prefill"],
@@ -1613,10 +1657,36 @@ def validate_laguna_moe_layer(
         "gguf_iq2_xs": gate_weight.spec.source.nbytes,
         "gguf_iq3_xxs": gate_weight.spec.source.nbytes,
     }[gate_weight.spec.quant_key]
-    for name in ("ffn_gate_exps", "ffn_up_exps"):
-        allocation = layer.weight(name).allocation(gate_up_route.allocation_name)
-        if allocation.buffer.nbytes != gate_up_nbytes:
-            raise ValueError(f"{name} allocation does not match rank-3 expert stride")
+    if "tiles_dual" in gate_weight.allocations:
+        if gate_weight.spec.quant_key != "gguf_q4_k_t16_v1":
+            raise ValueError(
+                "dual-interleaved expert allocation requires Q4 T16"
+            )
+        paired_nbytes = (
+            e
+            * (f // _T16_COLUMNS)
+            * (h // _QK_K)
+            * GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES
+        )
+        if gate_weight.allocation("tiles_dual").buffer.nbytes != paired_nbytes:
+            raise ValueError(
+                "ffn_gate_exps dual allocation does not match paired "
+                "rank-3 expert stride"
+            )
+        if up_weight.allocations:
+            raise ValueError(
+                "ffn_up_exps must not own a second allocation beside "
+                "dual-interleaved gate/up"
+            )
+    else:
+        for name in ("ffn_gate_exps", "ffn_up_exps"):
+            allocation = layer.weight(name).allocation(
+                gate_up_route.allocation_name
+            )
+            if allocation.buffer.nbytes != gate_up_nbytes:
+                raise ValueError(
+                    f"{name} allocation does not match rank-3 expert stride"
+                )
 
     selected_down = layer.weight("ffn_down_exps")
     try:
@@ -1773,6 +1843,9 @@ def _launch_selected_gate_up(
     try:
         retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
         route = (
+            plan.interleaved_natural_selected_gate_up_route
+            if "tiles_dual" in gate.allocations
+            else
             plan.natural_tile8_parallel_silu_selected_gate_up_routes.get(
                 gate.spec.quant_key,
                 retained_route,
@@ -1816,11 +1889,17 @@ def _launch_selected_gate_up(
         raise ValueError(
             f"no Laguna selected gate/up route for {gate.spec.quant_key!r}"
         ) from exc
+    gate_ptr = gate.allocation(route.allocation_name).tensor.ptr
+    up_ptr = (
+        gate_ptr
+        if route.allocation_name == "tiles_dual"
+        else up.allocation(route.allocation_name).tensor.ptr
+    )
     launch(
         route,
         plan,
-        gate.allocation(route.allocation_name).tensor.ptr,
-        up.allocation(route.allocation_name).tensor.ptr,
+        gate_ptr,
+        up_ptr,
         hidden_ptr,
         scratch.selected_experts.ptr,
         scratch,
@@ -1881,11 +1960,22 @@ def _launch_selected_gate_up_mmq32_d4x3(
     gate = layer.weight("ffn_gate_exps")
     up = layer.weight("ffn_up_exps")
     down = layer.weight("ffn_down_exps")
+    use_interleaved_prefill = "tiles_dual" in gate.allocations
     if (
         x_rows < _SELECTED_MMQ32_MIN_ROWS
         or gate.spec.quant_key != "gguf_q4_k_t16_v1"
         or up.spec.quant_key != "gguf_q4_k_t16_v1"
         or down.spec.quant_key not in plan.grouped_smallm_downs
+    ):
+        return False
+    if use_interleaved_prefill and not (
+        f32_wide
+        and residual_passes == 1
+        and split16
+        and rowvec
+        and wave_cols
+        and direct_wave_decode
+        and double_buffer_activation
     ):
         return False
 
@@ -1931,7 +2021,9 @@ def _launch_selected_gate_up_mmq32_d4x3(
         plan.activation_quant_f32 if f32_wide else plan.activation_quant
     )
     selected_prefill = (
-        plan.selected_gate_up_prefill_f32
+        plan.selected_gate_up_prefill_f32_interleaved
+        if use_interleaved_prefill
+        else plan.selected_gate_up_prefill_f32
         if f32_wide
         else plan.selected_gate_up_prefill
     )
@@ -1954,57 +2046,85 @@ def _launch_selected_gate_up_mmq32_d4x3(
             runtime=active_runtime,
         ),
     )
-    selected_prefill(
-        scratch.activation_q8.ptr,
-        scratch.grouped_lane_to_row.ptr,
-        scratch.grouped_expert_start.ptr,
-        scratch.grouped_expert_start_mmq32.ptr,
-        scratch.grouped_sorted_experts.ptr,
-        gate.allocation("tiles").tensor.ptr,
-        up.allocation("tiles").tensor.ptr,
-        (
-            scratch.expert_down.ptr
-            if defer_silu_pack
-            else scratch.expert_gate_up.ptr
-        ),
-        lanes,
-        x_rows,
-        plan.hidden_size,
-        plan.expert_ffn_size,
-        plan.expert_ffn_size,
-        plan.expert_count,
-        mmq_total_rows,
-        **({"residual_passes": residual_passes} if f32_wide else {}),
-        **({"split16": True} if split16 else {}),
-        **({"rowvec": True} if rowvec else {}),
-        **({"wave_cols": True} if wave_cols else {}),
-        **({"direct_wave_decode": True} if direct_wave_decode else {}),
-        **(
-            {"double_buffer_activation": True}
-            if double_buffer_activation
-            else {}
-        ),
-        **(
-            {"raw_weight_prefetch_packs": raw_weight_prefetch_packs}
-            if raw_weight_prefetch_packs
-            else {}
-        ),
-        **(
-            {
-                "precomputed_activation_sums_ptr": (
-                    scratch.activation_q8_half_sums.ptr
-                )
-            }
-            if precomputed_activation_sums
-            else {}
-        ),
-        **_stage_kwargs(
-            "selected_gate_up_prefill",
-            libraries,
-            stream=stream,
-            runtime=active_runtime,
-        ),
-    )
+    if use_interleaved_prefill:
+        selected_prefill(
+            scratch.activation_q8.ptr,
+            scratch.grouped_lane_to_row.ptr,
+            scratch.grouped_expert_start.ptr,
+            scratch.grouped_expert_start_mmq32.ptr,
+            scratch.grouped_sorted_experts.ptr,
+            gate.allocation("tiles_dual").tensor.ptr,
+            (
+                scratch.expert_down.ptr
+                if defer_silu_pack
+                else scratch.expert_gate_up.ptr
+            ),
+            lanes,
+            x_rows,
+            plan.hidden_size,
+            plan.expert_ffn_size,
+            plan.expert_ffn_size,
+            plan.expert_count,
+            mmq_total_rows,
+            **_stage_kwargs(
+                "selected_gate_up_prefill",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
+    else:
+        selected_prefill(
+            scratch.activation_q8.ptr,
+            scratch.grouped_lane_to_row.ptr,
+            scratch.grouped_expert_start.ptr,
+            scratch.grouped_expert_start_mmq32.ptr,
+            scratch.grouped_sorted_experts.ptr,
+            gate.allocation("tiles").tensor.ptr,
+            up.allocation("tiles").tensor.ptr,
+            (
+                scratch.expert_down.ptr
+                if defer_silu_pack
+                else scratch.expert_gate_up.ptr
+            ),
+            lanes,
+            x_rows,
+            plan.hidden_size,
+            plan.expert_ffn_size,
+            plan.expert_ffn_size,
+            plan.expert_count,
+            mmq_total_rows,
+            **({"residual_passes": residual_passes} if f32_wide else {}),
+            **({"split16": True} if split16 else {}),
+            **({"rowvec": True} if rowvec else {}),
+            **({"wave_cols": True} if wave_cols else {}),
+            **({"direct_wave_decode": True} if direct_wave_decode else {}),
+            **(
+                {"double_buffer_activation": True}
+                if double_buffer_activation
+                else {}
+            ),
+            **(
+                {"raw_weight_prefetch_packs": raw_weight_prefetch_packs}
+                if raw_weight_prefetch_packs
+                else {}
+            ),
+            **(
+                {
+                    "precomputed_activation_sums_ptr": (
+                        scratch.activation_q8_half_sums.ptr
+                    )
+                }
+                if precomputed_activation_sums
+                else {}
+            ),
+            **_stage_kwargs(
+                "selected_gate_up_prefill",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
     if not defer_silu_pack:
         plan.selected_dual_silu(
             scratch.expert_gate_up.ptr,

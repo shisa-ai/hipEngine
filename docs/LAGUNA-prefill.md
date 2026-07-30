@@ -3702,9 +3702,9 @@ a valid smaller win:
 | Streaming-family floor | >=70% of measured read roof | About 155 GB/s if the same-host anchor is 221 GB/s; report each mapped family. |
 | Roofline system target | Set by LAP-BW0 | Exact active-byte ledger plus non-streaming wall; the review's ~650–750 tok/s range is a hypothesis until measured. |
 
-The 350 and 500 production targets are achieved and current production is
-**654.249 tok/s**. The 700 stretch and stronger streaming/roofline rows remain
-active targets.
+The 350 and 500 production targets are achieved and current pp512 production
+is **655.535 tok/s**. The 700 stretch and stronger streaming/roofline rows
+remain active targets.
 
 All headline rows also report canonical category-weighted prefill and
 128/1K/4K behavior. A repeated-token 512 number cannot promote a path by itself.
@@ -3719,12 +3719,13 @@ two-queue policy, but their timing scopes are not interchangeable.
 
 | Metric | Current result | Protocol / status |
 | --- | ---: | --- |
-| Repeated short prefill, 512/1K/4K | **654.249 / 579.699 / 468.608 tok/s** | Retained selector-unset production headline |
-| One-pass capacity sweep, 512/1K/4K/32K/64K/128K | **614.031 / 666.901 / 609.879 / 365.481 / 247.408 / 149.308 tok/s** | Clean anti-overtuning closure; exact positions and lifecycle |
-| Simple p512/d128 eager c=1 decode | **14.740 tok/s** | Native head/KV, exact split attention, D9 MoE-tail/RMS fusion, and gfx1151 GQA3 SWA score ownership; **+28.551%** from post-merge 11.467; exactly 127 timed `forward_token` calls |
-| Prefill paired with the decode snapshot | **651.504 tok/s** | Median of three; within normal variance of the canonical 654.249 pp512 headline |
+| Repeated short prefill, 512/1K/4K | **655.535 / 579.699 / 468.608 tok/s** | Paired-layout pp512 production; 1K/4K carry the prior repeated closure |
+| Canonical clean one-pass capacity sweep, 512/1K/4K/32K/64K/128K | **614.031 / 666.901 / 609.879 / 365.481 / 247.408 / 149.308 tok/s** | Clean anti-overtuning closure; exact positions and lifecycle |
+| Post-pair one-pass capacity confirmation, same shapes | **597.902 / 664.805 / 606.498 / 365.623 / 246.748 / 148.780 tok/s** | Candidate-tree confirmation; 32K/64K/128K are **+0.039%/-0.267%/-0.354%** versus clean closure, with exact positions/lifecycle |
+| Simple p512/d128 eager c=1 decode | **22.260802 tok/s** | Current exact byte-neutral paired expert production; exactly 127 timed `forward_token` calls |
+| Prefill paired with the decode snapshot | **655.535 tok/s** | Same three-run production packet; ordinary-layout control is 654.569 tok/s |
 | Absolute quality | **0.049542582 max KL; 316/320 top-1** | Complete ten-prompt all-exact gate passes |
-| Next short-prefill target | **700 tok/s / 731.429 ms** | Current canonical wall **782.577 ms**; **51.148 ms** remains |
+| Next short-prefill target | **700 tok/s / 731.429 ms** | Current pp512 wall **781.041 ms**; **49.612 ms** remains |
 
 All three p512/d128 production runs produce token **2930** first, token
 **74107** last, position **638**, and the same complete 128-token hash.
@@ -3737,7 +3738,15 @@ reverse-order rollback of **14.525706 tok/s**, and removes 94 launches/token.
 The subsequent gfx1151-native GQA3 SWA score owner moves its same-commit
 rollback **14.563678 -> 14.740486 tok/s (+1.214%)** without changing the
 trajectory.
-The current eager
+The subsequent exact decode campaign advances this same protocol to
+**22.260802 tok/s**. Its latest byte-neutral step replaces both ordinary
+routed-expert T16 allocations with one paired allocation and independently
+improves same-revision decode **0.59027%** plus pp512 **0.14757%** without
+changing resident bytes or state. A fresh 128K-capacity anti-overtuning pass
+confirms **597.902/664.805/606.498/365.623/246.748/148.780 tok/s** at
+512/1K/4K/32K/64K/128K. The long-context tail stays within **0.354%** of the
+prior clean closure; the singleton 512 row is **-2.627%** and remains
+subordinate to the positive repeated pp512 A/B. The current eager
 global-attention ABI admits cache capacity only
 through 4,096, so the 1K–128K publication remains prefill-only; no
 long-context decode number is inferred.
@@ -3749,6 +3758,7 @@ Evidence:
 [`retained head/KV fusion`](../benchmarks/results/2026-07-28-gfx1151-laguna-head-kv-fusion-retained.json) ·
 [`pre-transfer p512/d128 snapshot`](../benchmarks/results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json) ·
 [`short production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json) ·
+[`paired expert production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json) ·
 [`final six-shape sweep`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
 
 ### gfx1100 decode transfer closure

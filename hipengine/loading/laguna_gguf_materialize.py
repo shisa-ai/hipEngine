@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import os
@@ -33,6 +33,7 @@ from hipengine.loading.materialize import (
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES,
     interleave_gguf_q4_k_tile16_dual,
     repack_gguf_q4_k_pack8,
     repack_gguf_q4_k_tile16,
@@ -319,6 +320,7 @@ class LagunaGGUFResidentWeights:
     q6_qmicro: bool = False
     q6_qmicro_planar: bool = False
     q4_decode_t16_sidecar: bool = False
+    q4_expert_t16_dual_interleaved: bool = False
 
     def root(self, slot: str) -> LagunaGGUFDeviceWeight:
         return self.root_weights[slot]
@@ -677,6 +679,7 @@ def materialize_laguna_gguf_weights(
     q6_qmicro: bool | None = None,
     q6_qmicro_planar: bool | None = None,
     q4_decode_t16_sidecar: bool | None = None,
+    q4_expert_t16_dual_interleaved: bool | None = None,
 ) -> LagunaGGUFResidentWeights:
     """Stream selected or all planned Laguna weights into owned device buffers."""
 
@@ -733,6 +736,15 @@ def materialize_laguna_gguf_weights(
             False,
         )
     )
+    selected_q4_expert_dual_interleaved = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED",
+            False,
+        )
+        if q4_expert_t16_dual_interleaved is None
+        else q4_expert_t16_dual_interleaved
+    )
     specs_by_path = {spec.slot_path: spec for spec in plan.specs}
     selected = (
         None
@@ -751,6 +763,32 @@ def materialize_laguna_gguf_weights(
     selected_specs_by_path = {
         spec.slot_path: spec for spec in selected_specs
     }
+    expert_dual_pairs: dict[str, str] = {}
+    expert_dual_up_paths: set[str] = set()
+    expert_dual_loader_transient_nbytes = 0
+    if selected_q4_expert_dual_interleaved:
+        for gate_path, gate_spec in selected_specs_by_path.items():
+            if not gate_path.endswith(".ffn_gate_exps"):
+                continue
+            up_path = gate_path.removesuffix(
+                ".ffn_gate_exps"
+            ) + ".ffn_up_exps"
+            up_spec = selected_specs_by_path.get(up_path)
+            if (
+                up_spec is None
+                or gate_spec.layout != LAYOUT_GGUF_Q4_K_T16
+                or up_spec.layout != LAYOUT_GGUF_Q4_K_T16
+            ):
+                continue
+            expert_dual_pairs[gate_path] = up_path
+            expert_dual_up_paths.add(up_path)
+            pair_nbytes = gate_spec.resident_nbytes + up_spec.resident_nbytes
+            expert_dual_loader_transient_nbytes = max(
+                expert_dual_loader_transient_nbytes,
+                int(gate_spec.source.nbytes)
+                + int(up_spec.source.nbytes)
+                + 2 * pair_nbytes,
+            )
     dual_interleaved_nbytes = 0
     dual_interleaved_loader_transient_nbytes = 0
     dual_interleaved_paths: set[str] = set()
@@ -807,6 +845,7 @@ def materialize_laguna_gguf_weights(
     auxiliary_loader_transient_nbytes = max(
         auxiliary_loader_transient_nbytes,
         dual_interleaved_loader_transient_nbytes,
+        expert_dual_loader_transient_nbytes,
     )
     if available_bytes is None:
         try:
@@ -862,6 +901,30 @@ def materialize_laguna_gguf_weights(
             layer_weights: dict[str, LagunaGGUFDeviceWeight] = {}
             for slot, spec in plan.layer_specs[layer.layer_id].items():
                 if selected is not None and spec.slot_path not in selected:
+                    continue
+                if spec.slot_path in expert_dual_up_paths:
+                    continue
+                up_path = expert_dual_pairs.get(spec.slot_path)
+                if up_path is not None:
+                    up_slot = "ffn_up_exps"
+                    up_spec = plan.layer_specs[layer.layer_id][up_slot]
+                    gate_weight, up_weight = _materialize_q4_t16_dual_pair(
+                        spec,
+                        up_spec,
+                        reader,
+                        device=device,
+                        runtime=active_runtime,
+                        backend=backend,
+                        profile=profile,
+                        repacked_cache=cache,
+                    )
+                    layer_weights[slot] = gate_weight
+                    layer_weights[up_slot] = up_weight
+                    completed.extend((gate_weight, up_weight))
+                    complete_count += 2
+                    if progress is not None:
+                        progress(complete_count - 1, selected_count, spec)
+                        progress(complete_count, selected_count, up_spec)
                     continue
                 weight = _materialize_spec(
                     spec,
@@ -931,6 +994,9 @@ def materialize_laguna_gguf_weights(
         q6_qmicro=selected_q6_qmicro,
         q6_qmicro_planar=selected_q6_qmicro_planar,
         q4_decode_t16_sidecar=selected_q4_decode_sidecar,
+        q4_expert_t16_dual_interleaved=(
+            selected_q4_expert_dual_interleaved
+        ),
     )
 
 
@@ -972,6 +1038,195 @@ def _resident_payloads(
             f"planned={spec.allocation_names} actual={tuple(payloads)}"
         )
     return MappingProxyType(payloads)
+
+
+def _materialize_q4_t16_dual_pair(
+    gate_spec: LagunaGGUFWeightSpec,
+    up_spec: LagunaGGUFWeightSpec,
+    reader: GGUFReader,
+    *,
+    device: Device | None,
+    runtime: HipRuntime,
+    backend: str,
+    profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
+    repacked_cache: LagunaGGUFRepackedCache | None = None,
+) -> tuple[LagunaGGUFDeviceWeight, LagunaGGUFDeviceWeight]:
+    """Replace two ordinary expert T16 allocations with one owning pair."""
+
+    import numpy as np
+
+    if (
+        gate_spec.layout != LAYOUT_GGUF_Q4_K_T16
+        or up_spec.layout != LAYOUT_GGUF_Q4_K_T16
+        or not gate_spec.slot_path.endswith(".ffn_gate_exps")
+        or not up_spec.slot_path.endswith(".ffn_up_exps")
+    ):
+        raise ValueError("dual T16 materialization requires expert Q4 gate/up specs")
+    if gate_spec.source.shape != up_spec.source.shape:
+        raise ValueError("dual T16 expert gate/up source shapes must match")
+
+    total_started = time.perf_counter()
+    total_before = _process_counters() if profile is not None else None
+    source_started = time.perf_counter()
+    source_before = _process_counters() if profile is not None else None
+    gate_cache_hit = repacked_cache is not None and repacked_cache.has(gate_spec)
+    up_cache_hit = repacked_cache is not None and repacked_cache.has(up_spec)
+    gate_raw = None
+    up_raw = None
+    if gate_cache_hit:
+        assert repacked_cache is not None
+        gate_tiles = repacked_cache.payloads(gate_spec)["tiles"].array
+    else:
+        gate_raw = np.ascontiguousarray(
+            reader.tensor_data(gate_spec.source.name)
+        )
+        gate_tiles = None
+    if up_cache_hit:
+        assert repacked_cache is not None
+        up_tiles = repacked_cache.payloads(up_spec)["tiles"].array
+    else:
+        up_raw = np.ascontiguousarray(
+            reader.tensor_data(up_spec.source.name)
+        )
+        up_tiles = None
+    source_map_seconds = time.perf_counter() - source_started
+    source_delta = _counter_delta(
+        source_before,
+        _process_counters() if profile is not None else None,
+    )
+
+    repack_before = _process_counters() if profile is not None else None
+    repack_started = time.perf_counter()
+    if gate_tiles is None:
+        assert gate_raw is not None
+        gate_tiles = repack_gguf_q4_k_tile16(gate_raw).tiles
+    if up_tiles is None:
+        assert up_raw is not None
+        up_tiles = repack_gguf_q4_k_tile16(up_raw).tiles
+    del gate_raw, up_raw
+    paired = interleave_gguf_q4_k_tile16_dual(gate_tiles, up_tiles)
+    del gate_tiles, up_tiles
+    repack_seconds = time.perf_counter() - repack_started
+    repack_delta = _counter_delta(
+        repack_before,
+        _process_counters() if profile is not None else None,
+    )
+
+    expected_nbytes = gate_spec.resident_nbytes + up_spec.resident_nbytes
+    if (
+        paired.shape[-1] != GGUF_Q4_K_TILE16_DUAL_BLOCK_BYTES
+        or int(paired.nbytes) != expected_nbytes
+    ):
+        raise ValueError(
+            "dual T16 expert payload does not preserve pair residency"
+        )
+
+    timed_runtime = (
+        _TimedUploadRuntime(runtime) if profile is not None else runtime
+    )
+    allocation = load_host_array_to_device_as_dtype(
+        f"{gate_spec.source.name}.tiles_dual",
+        paired,
+        DType.INT8,
+        source_dtype="I8",
+        device=device,
+        runtime=timed_runtime,
+    )
+    gate_weight = LagunaGGUFDeviceWeight(
+        spec=gate_spec,
+        allocations=MappingProxyType({"tiles_dual": allocation}),
+        backend=backend,
+    )
+    up_weight = LagunaGGUFDeviceWeight(
+        spec=up_spec,
+        allocations=MappingProxyType({}),
+        backend=backend,
+    )
+    if profile is not None:
+        assert isinstance(timed_runtime, _TimedUploadRuntime)
+        total_seconds = time.perf_counter() - total_started
+        total_delta = _counter_delta(total_before, _process_counters())
+        measured_seconds = (
+            source_map_seconds
+            + repack_seconds
+            + timed_runtime.allocation_seconds
+            + timed_runtime.upload_seconds
+        )
+        rss_bytes = _rss_bytes()
+        max_rss_bytes = max(rss_bytes, _max_rss_bytes())
+        source_kind = (
+            "repacked_cache_dual_interleaved"
+            if gate_cache_hit and up_cache_hit
+            else "gguf_dual_interleaved"
+        )
+        gate_profile = LagunaGGUFMaterializationProfile(
+            slot_path=gate_spec.slot_path,
+            tensor_name=gate_spec.source.name,
+            layout="gguf_q4_k_t16_dual_interleaved_v1",
+            source_kind=source_kind,
+            source_nbytes=gate_spec.source.nbytes + up_spec.source.nbytes,
+            resident_nbytes=expected_nbytes,
+            source_map_seconds=source_map_seconds,
+            repack_seconds=repack_seconds,
+            allocation_seconds=timed_runtime.allocation_seconds,
+            upload_seconds=timed_runtime.upload_seconds,
+            other_seconds=max(0.0, total_seconds - measured_seconds),
+            total_seconds=total_seconds,
+            allocation_count=timed_runtime.allocation_count,
+            upload_count=timed_runtime.upload_count,
+            allocated_nbytes=timed_runtime.allocated_nbytes,
+            uploaded_nbytes=timed_runtime.uploaded_nbytes,
+            source_map_minor_faults=source_delta.minor_faults,
+            source_map_major_faults=source_delta.major_faults,
+            source_map_read_bytes=source_delta.read_bytes,
+            repack_minor_faults=repack_delta.minor_faults,
+            repack_major_faults=repack_delta.major_faults,
+            repack_read_bytes=repack_delta.read_bytes,
+            upload_minor_faults=timed_runtime.upload_delta.minor_faults,
+            upload_major_faults=timed_runtime.upload_delta.major_faults,
+            upload_read_bytes=timed_runtime.upload_delta.read_bytes,
+            minor_faults=total_delta.minor_faults,
+            major_faults=total_delta.major_faults,
+            read_bytes=total_delta.read_bytes,
+            rss_bytes=rss_bytes,
+            max_rss_bytes=max_rss_bytes,
+        )
+        empty_profile = replace(
+            gate_profile,
+            slot_path=up_spec.slot_path,
+            tensor_name=up_spec.source.name,
+            source_nbytes=0,
+            resident_nbytes=0,
+            source_map_seconds=0.0,
+            repack_seconds=0.0,
+            allocation_seconds=0.0,
+            upload_seconds=0.0,
+            other_seconds=0.0,
+            total_seconds=0.0,
+            allocation_count=0,
+            upload_count=0,
+            allocated_nbytes=0,
+            uploaded_nbytes=0,
+            source_map_minor_faults=0,
+            source_map_major_faults=0,
+            source_map_read_bytes=0,
+            repack_minor_faults=0,
+            repack_major_faults=0,
+            repack_read_bytes=0,
+            upload_minor_faults=0,
+            upload_major_faults=0,
+            upload_read_bytes=0,
+            minor_faults=0,
+            major_faults=0,
+            read_bytes=0,
+        )
+        try:
+            profile(gate_profile)
+            profile(empty_profile)
+        except Exception:
+            gate_weight.free(runtime=runtime)
+            raise
+    return gate_weight, up_weight
 
 
 def _attach_q4_decode_t16_dual_interleaved(

@@ -1453,8 +1453,10 @@ void q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel(
     const int64_t* __restrict__ selected,
     const uint8_t* __restrict__ tiles_dual,
     scalar_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
     int64_t num_experts) {
-  constexpr int kRows = 10;
+  constexpr int kTopK = 10;
   constexpr int kInFeatures = 3072;
   constexpr int kOutFeatures = 1024;
   constexpr int kBlocksPerRow = kInFeatures / QK_K;
@@ -1463,7 +1465,9 @@ void q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel(
   const int64_t out_group = blockIdx.x;
   const int64_t row = blockIdx.y;
   const int tid = threadIdx.x;
-  if (row >= kRows) return;
+  if (row >= rows) return;
+  const int64_t source_row = row / kTopK;
+  if (source_row >= x_rows) return;
   const int64_t expert_id = selected[row];
   if (expert_id < 0 || expert_id >= num_experts) return;
   const int64_t out_tile = out_group >> 1;
@@ -1487,7 +1491,8 @@ void q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel(
          k_in_block < QK_K;
          k_in_block += blockDim.x) {
       const float xv =
-          scalar_to_float<scalar_t>(x[k_base + k_in_block]);
+          scalar_to_float<scalar_t>(
+              x[source_row * kInFeatures + k_base + k_in_block]);
       const int sb = k_in_block >> 5;
       const int lane32 = k_in_block & 31;
       const uint64_t q_dual = *reinterpret_cast<const uint64_t*>(
@@ -3506,12 +3511,12 @@ int launch_q4_dual_interleaved_natural_tile8_parallel_silu(
     int64_t num_experts,
     hipStream_t stream) {
   if (!x || !selected || !tiles_dual || !out ||
-      x_rows != 1 || rows != 10 || in_features != 3072 ||
+      x_rows <= 0 || rows != x_rows * 10 || in_features != 3072 ||
       out_features != 1024 || num_experts <= 0) {
     return hipErrorInvalidValue;
   }
   const dim3 block(128);
-  const dim3 grid(1024 / 8, 10);
+  const dim3 grid(1024 / 8, static_cast<uint32_t>(rows));
   hipLaunchKernelGGL(
       (q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel<
           scalar_t>),
@@ -3523,6 +3528,8 @@ int launch_q4_dual_interleaved_natural_tile8_parallel_silu(
       reinterpret_cast<const int64_t*>(selected),
       reinterpret_cast<const uint8_t*>(tiles_dual),
       reinterpret_cast<scalar_t*>(out),
+      x_rows,
+      rows,
       num_experts);
   return hipGetLastError();
 }

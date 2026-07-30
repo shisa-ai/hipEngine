@@ -2329,6 +2329,7 @@ class LagunaGGUFResidentSession:
         use_q4_pack8_dual_silu_decode: bool | None = None,
         use_q4_decode_t16_sidecar: bool | None = None,
         use_q4_decode_t16_dual_interleaved: bool | None = None,
+        use_q4_expert_t16_dual_interleaved: bool | None = None,
         use_shared_down_moe_tail_host_batch: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -2554,6 +2555,24 @@ class LagunaGGUFResidentSession:
             )
             if use_q4_decode_t16_dual_interleaved is None
             else use_q4_decode_t16_dual_interleaved
+        )
+        self.use_q4_expert_t16_dual_interleaved = bool(
+            getattr(
+                resident_weights,
+                "q4_expert_t16_dual_interleaved",
+                False,
+            )
+            if (
+                use_q4_expert_t16_dual_interleaved is None
+                and resident_weights is not None
+            )
+            else backend_package_capability(
+                self.backend,
+                "LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED",
+                False,
+            )
+            if use_q4_expert_t16_dual_interleaved is None
+            else use_q4_expert_t16_dual_interleaved
         )
         self.use_shared_down_moe_tail_host_batch = bool(
             backend_package_capability(
@@ -3016,9 +3035,24 @@ class LagunaGGUFResidentSession:
                     repacked_cache_source_sha256=model_sha256,
                     q6_qmicro=self.q6_qmicro,
                     q6_qmicro_planar=self.q6_qmicro_planar,
+                    q4_expert_t16_dual_interleaved=(
+                        self.use_q4_expert_t16_dual_interleaved
+                    ),
                 )
             else:
                 self.weights = resident_weights
+                if (
+                    getattr(
+                        self.weights,
+                        "q4_expert_t16_dual_interleaved",
+                        False,
+                    )
+                    != self.use_q4_expert_t16_dual_interleaved
+                ):
+                    raise ValueError(
+                        "resident expert T16 layout does not match the "
+                        "requested Laguna session layout"
+                    )
 
             self._validate_resident_weights()
             if self.f16_prefill_mode == "hipblaslt_norm_direct":

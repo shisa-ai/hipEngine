@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T01:20:00+09:00",
+  "status": "accepted_production_default",
+  "kind": "gfx1151_laguna_q4_t16_dual_interleaved_production",
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv": "BF16"
+  },
+  "change": {
+    "control": "two ordinary resident expert gate/up T16 allocations",
+    "candidate": "one owning byte-neutral dual-interleaved expert gate/up T16 allocation",
+    "quant_key": "gguf_q4_k_t16_dual_interleaved_v1",
+    "decode": "exact fused tile8 c=1; exact generalized rows 2-31 fallback",
+    "prefill": "exact D8 MMQ128x32 wave-column direct double-buffer consumer from M32",
+    "resident_delta_bytes": 0
+  },
+  "protocol": {
+    "workload": "resident p512/d128 eager c=1",
+    "timed_decode_forward_calls": 127,
+    "repetitions": 3,
+    "chunk_size": 2048,
+    "load_excluded": true,
+    "control_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --ordinary-q4-expert-t16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-dual-interleaved-current-control-3.json",
+    "candidate_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-dual-interleaved-current-candidate-3.json",
+    "control_raw_sha256": "e3af30d64906a537970e995dbed568cf8089305e3d1afbe30363979867543c57",
+    "candidate_raw_sha256": "362aa0540b0bb363a5f3d36f839a041fe5307dc3b0c4b9fa9a669636c045faf5",
+    "publication_qualification": "same-revision tracked-dirty A/B; a clean selector-unset repetition follows this implementation checkpoint"
+  },
+  "results": {
+    "decode": {
+      "control_samples_tok_s": [22.1286606, 22.1301731, 22.1488034],
+      "candidate_samples_tok_s": [22.2374498, 22.2608017, 22.2624865],
+      "control_median_tok_s": 22.1301730542,
+      "candidate_median_tok_s": 22.2608017348,
+      "control_ms_per_token": 45.1871748834,
+      "candidate_ms_per_token": 44.9220118806,
+      "delta_percent": 0.590274,
+      "delta_ms_per_token": -0.2651630028,
+      "prior_production_tok_s": 22.141787,
+      "delta_vs_prior_production_percent": 0.537511
+    },
+    "prefill_512": {
+      "control_samples_tok_s": [625.1915, 654.5694, 654.5771],
+      "candidate_samples_tok_s": [619.4302, 657.6796, 655.5353],
+      "control_median_tok_s": 654.5693883,
+      "candidate_median_tok_s": 655.535342,
+      "control_wall_ms": 782.193621,
+      "candidate_wall_ms": 781.041032,
+      "delta_percent": 0.147571,
+      "delta_wall_ms": -1.152589
+    },
+    "load_excluded": {
+      "control_seconds": 92.0840282,
+      "candidate_seconds": 142.9017288,
+      "delta_seconds": 50.8177006,
+      "reason": "the existing versioned cache stores ordinary T16 payloads; the loader performs a one-time host interleave"
+    },
+    "resident_nbytes": {
+      "control": 79022522196,
+      "candidate": 79022522196,
+      "delta": 0
+    },
+    "same_gguf_llamacpp_vulkan": {
+      "tok_s": 23.348381,
+      "ms_per_token": 42.829522,
+      "candidate_throughput_gap_percent": -4.65805,
+      "candidate_wall_gap_ms_per_token": 2.0924899
+    }
+  },
+  "anti_overtuning": {
+    "protocol": "one resident 128K-capacity session; one pass per shape; chunk size 2048; selector default on",
+    "lengths": [512, 1024, 4096, 32768, 65536, 131072],
+    "tok_s": [
+      597.90218266,
+      664.80455094,
+      606.49754939,
+      365.62327439,
+      246.74804422,
+      148.78003712
+    ],
+    "delta_vs_prior_clean_sweep_percent": [
+      -2.626699,
+      -0.314429,
+      -0.554396,
+      0.03906,
+      -0.266866,
+      -0.353638
+    ],
+    "next_token_ids": [2930, 95, 7772, 19306, 69407, 22746],
+    "positions_exact": true,
+    "deterministic": true,
+    "tracked_returned_to_zero": true,
+    "resident_nbytes_at_128k_capacity": 87351445268,
+    "raw_sha256": "e48b18091ae45664af804b406ad265ba5082dabb9a99b18acff5f32cde875996",
+    "decision": "No long-context cliff: 32K/64K/128K remain within 0.354% of the prior clean closure. The one-pass 512 movement is short-session variance and does not replace repeated pp512 evidence."
+  },
+  "correctness": {
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "control_candidate_next_tokens_match": true,
+    "repeat_deterministic": true,
+    "device_c1_rows2_rows3_and_production_prefill_match_ordinary": true,
+    "lifecycle_exact": true
+  },
+  "trace": {
+    "raw_sha256": "cf34c3162448123950772c6ae14a3493ac91f19f3b8811b552926cb7b6f2509b",
+    "decode_kernel": "q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel",
+    "decode_resources": "local128/VGPR80/SGPR128/LDS512/scratch0",
+    "prefill_kernel_template_tail": "<1,false,true,128,true,true,128,true,true,8,false,true>",
+    "prefill_resources": "local128/VGPR96/SGPR128/LDS3072/scratch0"
+  },
+  "known_unrelated_test_debt": {
+    "node": "tests/test_laguna_moe_gpu.py Q6 production-shape parameter",
+    "status": "pre-existing",
+    "evidence": "The same Q6 rows64 versus wavecols-direct 9088/9216 mismatch reproduces on untouched a92280018; the changed Q4 parameter passes."
+  },
+  "decision": {
+    "retained": true,
+    "default": true,
+    "reason": "The paired layout is exact, byte-neutral, faster in same-revision decode and pp512, and flat at long context. Keep the ordinary loader route only as rollback until a paired cache payload removes startup conversion."
+  }
+}

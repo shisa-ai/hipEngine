@@ -194236,3 +194236,61 @@ Vulkan local sizes verbatim will close the measured gap.
   Production remains **22.141787 tok/s** until integration gates pass.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json`.
+
+## 2026-07-31 01:20 JST — Promote paired expert T16 production
+
+- Replace every routed Q4 expert gate/up pair with one owning
+  `gguf_q4_k_t16_dual_interleaved_v1` allocation. The materializer consumes
+  the existing ordinary cache payloads, interleaves them once on the host,
+  uploads `tiles_dual` on gate, and gives up an empty non-owning allocation
+  map. Pair and complete-model residency are byte-neutral:
+  **79,022,522,196 -> 79,022,522,196 bytes**; teardown returns tracked
+  allocations to zero.
+- Register and route the exact c=1/short-row decoder and production D8
+  prefill consumer. c=1 and rows 2/3 match the ordinary two-buffer chain;
+  production Q4 prefill matches at the BF16 boundary. Cached tracing names the
+  decoder at local128/VGPR80/SGPR128/LDS512/scratch0 and MMQ at
+  local128/VGPR96/SGPR128/LDS3072/scratch0. Trace SHA-256 is
+  `cf34c3162448123950772c6ae14a3493ac91f19f3b8811b552926cb7b6f2509b`.
+- Same-revision three-repeat resident p512/d128 A/B improves decode
+  **22.130173 -> 22.260802 tok/s (+0.590274%, -0.265163 ms/token)** and pp512
+  **654.569 -> 655.535 tok/s (+0.147571%, -1.152589 ms)**. All three runs
+  produce first token 2930, final token 74107, position 638, and generated-id
+  SHA-256
+  `94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32`.
+  Candidate/control raw SHA-256 values are
+  `362aa0540b0bb363a5f3d36f839a041fe5307dc3b0c4b9fa9a669636c045faf5`
+  and
+  `e3af30d64906a537970e995dbed568cf8089305e3d1afbe30363979867543c57`.
+- The requested one-resident-session anti-overtuning pass at
+  512/1K/4K/32K/64K/128K measures
+  **597.902/664.805/606.498/365.623/246.748/148.780 tok/s**. Relative to the
+  prior clean closure, deltas are
+  **-2.627%/-0.314%/-0.554%/+0.039%/-0.267%/-0.354%**. Every next token and
+  final position is exact, repeats are deterministic, and all tracked bytes
+  return to zero. The long-context tail is flat; the singleton 512 movement
+  does not override the positive three-repeat pp512 A/B. Raw SHA-256 is
+  `e48b18091ae45664af804b406ad265ba5082dabb9a99b18acff5f32cde875996`.
+- The existing cache format makes load time regress
+  **92.084 -> 142.902 seconds** because interleave is performed at startup.
+  Load is excluded from throughput. Keep the ordinary rollback until a
+  versioned paired cache payload removes the conversion without duplicating
+  the roughly 43.76-GB expert pair.
+- Focused repack/registry, decode, materializer, runner, Q4 production MoE,
+  and trace gates pass. The Q6 production-shape parameter retains a
+  pre-existing rows64-versus-wavecols-direct **9088/9216** mismatch that
+  reproduces on untouched `a92280018`; the changed Q4 parameter passes. The
+  stale runner scratch-size expectation was likewise reproduced on the base
+  and corrected from **1,756,061,728 -> 1,756,062,496 bytes**.
+- The llama.cpp Vulkan `c0bc8591e` review confirms Laguna decode folds each
+  six-/nine-query GQA group into cooperative-matrix N, selecting Br16/Bc64,
+  four subgroup64 groups/local256, online softmax, matrix QK/PV, and split-K.
+  Its requested F16 K/V/default-precision path uses fast F16 accumulation.
+  It does not expose reusable graph plans at this revision; it records command
+  buffers, batches by FLOP budget or at most 100 nodes, and overlaps CPU
+  recording with GPU execution. hipEngine's next attention screen therefore
+  preserves its stricter scalar FP32 association while pipelining K loads;
+  an approximate cooperative port remains closed without an independently
+  valid exact-replay certificate.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json`.
