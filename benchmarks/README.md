@@ -58,8 +58,15 @@ actual M512 outputs are byte-exact. Cached tracing records each exact Q6 produce
 immediately before the expected local128/VGPR136-168/scratch0 consumer at the
 expected grid. Final-source producer-inclusive weighted event/wall falls
 **87.859/81.559 -> 70.756/67.795 ms (-19.466%/-16.876%)**, with all three roles
-winning both clocks. Production remains unchanged pending complete-state,
-integrated-route, and clean 512/1K/4K runtime gates. H5N's separately registered exact dense-first-fill leaf is
+winning both clocks. Default-off runtime qualification is KL0/byte-exact across
+all 48 boundaries and complete state. Cached integration records exact
+**142 H5W + one H5I + three raw** consumers at unchanged **1,862** request /
+**289** Q6
+dispatches, moving Q6/request sum **121.306/1,851.695 -> 92.636/1,803.036 ms
+(-23.635%/-2.628%)**. One-queue clean 512/1K/4K improves
+**266.814/230.134/159.970 -> 271.697/233.568/161.668 tok/s
+(+1.830%/+1.492%/+1.061%)**, 3/3 wins each. Production remains unchanged only
+pending the selector-unset source-default rerun. H5N's separately registered exact dense-first-fill leaf is
 byte-identical to H5M and wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
 stays local32/VGPR72/LDS0/scratch0. Complete state is KL0 and integrated
@@ -376,8 +383,10 @@ event/wall regresses **464.968/466.267 -> 492.423/493.754 ms
 admits three exact Q6 weight-major composites over existing physical symbols.
 Rows17/33/M512 are byte-exact, cached routes retain local128/VGPR136-168/scratch0,
 and all three final-source roles win both clocks; producer-inclusive weighted
-event/wall falls **19.466%/16.876%**. Production is unchanged pending complete-
-state/integrated/clean runtime gates. Wider qrows, cross-head/key-split, source
+event/wall falls **19.466%/16.876%**. Default-off runtime remains KL0, records
+**142 H5W + one H5I + three raw** routes at unchanged **1,862/289** request/Q6
+dispatches, and improves clean 512/1K/4K **+1.830%/+1.492%/+1.061%** with 3/3
+wins each. Production is unchanged only pending selector-unset publication. Wider qrows, cross-head/key-split, source
 MMQ, and changed-association attention stay closed
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5W leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·

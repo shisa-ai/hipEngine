@@ -67,6 +67,13 @@ should be removed or collapsed.
   them; this is naming cleanup only and must not create a second owner.
   Benchmark harnesses use scoped package-policy mutation for exact A/B control;
   production has no per-session selector surface.
+- WPF-H5W adds exactly three eager-library aliases while leaving the H5I Q6
+  package role policy unchanged. Complete state is KL0, cached integration
+  records **142 H5W + one H5I + three raw** consumers at unchanged topology,
+  and default-off clean 512/1K/4K is **+1.830%/+1.492%/+1.061%**. Keep the
+  aliases only through the source-default publication gate: retain them with
+  the promoted three role entries if selector-unset non-regression passes, or
+  remove all three aliases if it fails. Do not add a public/session selector.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 
