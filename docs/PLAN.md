@@ -1836,6 +1836,21 @@ test surface without a runtime gate and retain H6A/H5Y/H5Z
 [H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
+
+Post-H6B decomposition does not justify another Q5 producer or geometry pass:
+the reconciled **245.850-ms** Q5 stack is **214.346 ms / 87.2%** exact H5Y
+consumers, **25.385 / 10.3%** weight producers, **4.567 / 1.9%** activation
+packs, and **1.552 / 0.6%** fallback. Its two dominant consumers already emit
+**188/156** static VOPD sites with aligned scratch-free loads. Instead select
+**WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4**. The one current
+route-major launch costs **32.153 ms** versus exact llama.cpp HIP **0.077 ms**,
+a **32.075-ms** gap and **34.4%** of gate/up residual. Instantiate the existing
+RT1-compatible expert-major template with fused SiLU; reuse raw gate/up segments
+across four sorted rows while preserving every per-row decode, scalar FMA,
+wave32 tree, serial wave-0..7 sum, gate/up BF16 boundary, SiLU expression, and
+BF16 output. Require gather-inclusive exact both-clock actual-layer admission
+before any owner; this is target rationale, not a speed claim
+([H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

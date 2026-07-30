@@ -1049,6 +1049,23 @@ premise
 [H5J production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
 [H5J leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json)).
 
+Post-H6B Q5 decomposition is **214.346-ms H5Y consumers (87.2%)**, **25.385-ms
+producers (10.3%)**, **4.567-ms activation packs (1.9%)**, and **1.552-ms
+fallback (0.6%)**. The dominant BF16 K9216/N3072 and F32 K3072/N9216 leaves
+already emit **188/156** VOPD sites with aligned loads and scratch0, so H6C does
+not repeat Q5 producer, broad geometry, ownership, VOPD, or plane screens.
+**WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4** instead targets
+the one current route-major gate/up launch at **32.153 ms** versus matched
+llama.cpp HIP **0.077 ms**. Add only a separately registered fused-SiLU
+instantiation of the existing expert-major rowbatch template: one block owns an
+expert/output column, reuses exact raw gate/up segments across four compact
+rows, and preserves RT1's scalar FMAs, wave32 trees, serial wave-0..7 sums,
+gate/up BF16 boundaries, SiLU expression, and BF16 output. Require strict
+K3072/N1024/E256 preflight, full output bytes/CPU samples, scratch0, exact
+gather-inclusive actual-layer both-clock wins, and no gfx1151 surface before
+runtime qualification; this is a target, not a measured win
+([H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
