@@ -201,18 +201,20 @@ numbers below.
   byte-exact and wall falls **485.298 -> 469.677 ms (-3.219%)**, but HIP-event
   sum regresses **474.107 -> 475.945 ms (+0.388%)** and only **12/45** layers
   win both clocks. All H5T surfaces are removed; H5Q remains IQ3 production.
-  WPF-H5U's separate exact global cached-source leaf now passes all-start
-  byte/CPU, lifecycle, gfx1151 fail-closed, and cached resource gates at
-  local256/VGPR40/SGPR128/dynamic-LDS16928/scratch0. With equal append cost,
-  starts 0/128/256/384 all improve event and wall; the weighted 48-call model
-  falls **101.535/101.899 -> 84.124/84.622 ms
-  (-17.148%/-16.955%, 1.207x/1.204x)**. This is leaf admission only:
-  production remains **267.205/230.441/160.221 tok/s** pending complete-state,
-  topology, and clean runtime gates.
+  WPF-H5U's exact global cached-source leaf passes all-start byte/CPU, lifecycle,
+  gfx1151 fail-closed, and cached resource gates at local256/VGPR40/SGPR128/
+  dynamic-LDS16928/scratch0. Default-off M512/C4096 is KL0, physical tracing
+  records **48 H5U + 144 H5R** pairs at unchanged **1,862** dispatches, and
+  matched throughput improves **268.331 -> 270.610 tok/s (+0.849%, 5/5 wins)**.
+  Runtime ownership is rejected: the final balanced source-default 1K gate is
+  **230.181 -> 230.175 tok/s (-0.00257%, 2/8 wins)**. All temporary runtime
+  plumbing is removed, the standalone leaf remains, and production stays
+  **267.205/230.441/160.221 tok/s**.
   Both short rows exceed 150 tok/s and H5R 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5U runtime rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
   [H5U global cached-source leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
   [H5U target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
   [H5T IQ3 rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·

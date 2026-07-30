@@ -1654,22 +1654,18 @@ local32/VGPR96/LDS0/scratch0. Actual-weight timing rejects it: event/wall move
 not promote a wall-only result
 ([H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json)).
-**WPF-H5U exact global preappend cached-source local256** now passes standalone
-admission. The separate gfx1100 key preserves production one-row/local256,
-contiguous-four dots, eight-wave max/denominator trees, materialized weights,
-normalized-weight-before-PV order, complete `KVLiveSpans`, base-offset
-translation, division, and stores while reading K/V only from a matching
-preappend. All four starts are byte- and CPU-exact, including explicit prior
-eviction, and cached tracing records four expected local256/VGPR40/SGPR128/
-dynamic-LDS16928/scratch0 calls with no compiler or resource regression. With
-equal append cost, starts 0/128/256/384 all win event and wall; the weighted
-48-call event/wall model moves **101.535/101.899 -> 84.124/84.622 ms
-(-17.148%/-16.955%, 1.207x/1.204x)**. Production remains
-**267.205/230.441/160.221 tok/s**. Next add only a bounded default-off runtime
-map and require complete M512 state, physical **48 H5U + 144 H5R** preappend
-pairs at unchanged topology/ownership, and clean one-queue 512/1K/4K
-non-regression before source default
-([H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
+**WPF-H5U exact global preappend cached-source local256** retains only its
+standalone leaf. All four starts are byte/CPU exact and weighted event/wall moves
+**101.535/101.899 -> 84.124/84.622 ms (-17.148%/-16.955%)**. Default-off runtime
+qualification is exact: M512/C4096 is KL0, physical tracing records **48 H5U +
+144 H5R** pairs at unchanged **1,862** dispatches, global schedule falls
+**15.494%**, and matched M512 improves **268.331 -> 270.610 tok/s (+0.849%, 5/5
+wins)**. Source-default ownership is rejected because the binding balanced
+role-ineligible 1K adjudication is **230.181 -> 230.175 tok/s (-0.00257%, 2/8
+wins)**. Remove the global map/resolver/runner/test seam, retain the leaf, and
+keep production **267.205/230.441/160.221 tok/s**
+([H5U runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
+[H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
 [H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent

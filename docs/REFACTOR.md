@@ -218,15 +218,18 @@ should be removed or collapsed.
   policy while preserving H5M/wave32/global/partial/wrapped/verifier/explicit/
   registration/backend misses. No allocation, workspace, sidecar, or public
   selector was added. The earlier uncapped speed packet is superseded.
-- WPF-H5U temporarily adds the empty-by-default gfx1100
-  `LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS` map plus independent global
-  selector plumbing. If complete-state, integrated **48 H5U + 144 H5R**
-  physical-call/topology, or clean 512/1K/4K gates reject runtime ownership,
-  remove the empty map, global role candidate/resolver branch, allocator
-  `prefill_global_preappend_package_default` argument, and runner bookkeeping;
-  retain the separately admitted leaf. If all gates pass, fill the one bounded
-  M128/C4096/H48 starts-0/128/256/384 role and close this trigger with retained
-  evidence. No allocation, workspace, sidecar, or public selector was added.
+- WPF-H5U's temporary runtime-policy seam is removed. Complete M512 state is
+  KL0/byte-exact, integrated tracing records **48 H5U + 144 H5R** physical
+  preappend pairs at unchanged topology, and active C4096 routes improve.
+  Source-default publication nevertheless misses the binding role-ineligible
+  1K non-regression gate: the balanced eight-pair adjudication is
+  **230.181231 -> 230.175317 tok/s (-0.00257%, 2/8 wins)**. Remove the global
+  package map, role candidate/resolver branch, allocator argument, runner
+  bookkeeping, and runtime-policy test; retain only the separately admitted
+  leaf. Reopen ownership only with a materially different package-scoping
+  premise and a fresh complete 512/1K/4K gate. No allocation, workspace,
+  sidecar, or public selector remains
+  ([runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json)).
 
 ## Laguna source-IQ selected-down MMQ selector
 
