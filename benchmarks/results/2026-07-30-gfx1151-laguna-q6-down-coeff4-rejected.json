@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:05:00+09:00",
+  "kind": "hipengine_laguna_gfx1151_q6_down_coeff4_rejected",
+  "status": "rejected_at_resident_gate",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "cd744ce34a5e7d5c21045d42084fcc7275e894de",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "resident_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "leaf_weight": "blk.1.ffn_down_exps.weight",
+    "layout": "gguf_q6_k_t16_v1 qmicro-planar"
+  },
+  "shape": {
+    "x_rows": 10,
+    "selected_rows": 10,
+    "experts": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "threads_per_block": 128
+  },
+  "candidate": {
+    "description": "Load four adjacent fp16 d values through one aligned uint64 and four signed scale bytes through one uint32 per existing qmicro quant quartet, preserving quant decode and every ordered F32 update.",
+    "leaf_9x50": {
+      "control_median_ms": 0.07256643772125244,
+      "candidate_median_ms": 0.0676500415802002,
+      "latency_change_percent": -6.7750275408825615,
+      "bf16_mismatches": 0,
+      "raw_sha256": "f9fc29c663e03e22a40d8e1b8614eef21940910cf4efe3bb9286257834f75684"
+    },
+    "leaf_21x100": {
+      "control_median_ms": 0.0729232120513916,
+      "candidate_median_ms": 0.0701043176651001,
+      "latency_change_percent": -3.8655653076621554,
+      "bf16_mismatches": 0,
+      "raw_sha256": "60a94c0f4b6684198beaa09cbcd4ca3f8084d9eee5cd37acc5e71b9307081dc5"
+    },
+    "trace": {
+      "control_template_tail": "true, false",
+      "candidate_template_tail": "true, true",
+      "grid": 10,
+      "local_size": 128,
+      "control_allocated_vgpr": 80,
+      "candidate_allocated_vgpr": 64,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "trace_sha256": "b481b9d7cfc288db09464c7ee5d812df654c8521bb86d13b4a23a9077caaca0b",
+      "child_sha256": "c4d40e3fafbcbccaec359f4f0ee3568e95f6405b8c4b3195d399763d6aa17534"
+    }
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, one resident model session, seven counterbalanced control/candidate pairs",
+    "control_median_tok_s": 20.982269097000408,
+    "candidate_median_tok_s": 20.979905166279533,
+    "throughput_change_percent": -0.011266325438619162,
+    "control_median_ms_per_token": 47.65928772417462,
+    "candidate_median_ms_per_token": 47.66465777963928,
+    "median_paired_saving_ms_per_token": -0.018056654407987444,
+    "mean_paired_saving_ms_per_token": -0.00944063072674253,
+    "candidate_pair_wins": 2,
+    "pairs": 7,
+    "generated_ids_match": true,
+    "tokens": [
+      2930,
+      74107
+    ],
+    "trajectory_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "allocation_recovery": true,
+    "raw_sha256": "e8874ff200402c529576d5e077d9f3da03b0f696ceb6b0f7ca5456b86f2f0d36"
+  },
+  "protocol": {
+    "leaf_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --down-candidate q6-coeff4 --samples 21 --warmups 8 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q6-down-coeff4-21x100.json",
+    "trace_command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --stats --output-format csv --output-directory /tmp/laguna-q6-coeff4-trace.B01GGV --output-file trace -- .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --down-candidate q6-coeff4 --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q6-coeff4-trace-child.json",
+    "resident_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-q6-selected-down-coeff4-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-q6-coeff4-ab.json"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "comparison_route_removed": true,
+    "production_tok_s": 20.965807,
+    "reason": "The exact coefficient contraction is a repeatable 3.87-6.78% isolated Q6 leaf win and lowers allocated VGPR, but it loses five of seven full-model pairs and regresses both median throughput and paired wall time under the production two-queue schedule.",
+    "next": "Keep scalar coefficient loads in Q6 natural down. Require a larger selected-down topology change that reduces complete-family traffic or launches rather than a per-layer transport contraction below the concurrent scheduling noise floor."
+  }
+}

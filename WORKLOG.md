@@ -192922,3 +192922,32 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **20.965807 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-down-paired-loads-rejected.json`.
+
+## 2026-07-30 13:08 JST — Reject Q6 coefficient-quartet decode
+
+- Screen a Q6-only exact transport contraction after Q4 selected-down paired
+  loads failed. The planar qmicro record already groups four columns, so the
+  candidate loads four fp16 `d` values through one aligned `uint64` and four
+  signed scale bytes through one `uint32`. Quant reconstruction, K ownership,
+  four ordered F32 updates, parallel tail, resident bytes, and BF16 output are
+  unchanged.
+- RED fails on the missing wrapper. GREEN passes the natural production-bit
+  fixture with zero BF16 mismatches. The actual layer-1 Q6 down leaf improves
+  **0.072566 -> 0.067650 ms (-6.775%)** at 9x50 and
+  **0.072923 -> 0.070104 ms (-3.866%)** at 21x100.
+- Cache-only native tracing names the intended grid10/local128 control
+  `<...,true,false>` and candidate `<...,true,true>` templates. Allocated VGPR
+  falls **80 -> 64**; LDS512 and scratch0 are unchanged. No compiler runs under
+  the profiler.
+- Seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M BF16-KV
+  p512/d128 pairs reject the candidate. Median decode moves
+  **20.982269 -> 20.979905 tok/s (-0.01127%)**; only **2/7** pairs win,
+  median paired saving is **-0.018057 ms/token**, and mean paired saving is
+  **-0.009441 ms/token**.
+- Every resident run preserves tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, and complete
+  allocation recovery. Remove the kernel/export/wrapper/registry/test/harness
+  candidate plus backend/runtime/profile comparison plumbing and its temporary
+  refactor entry. Production remains **20.965807 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-coeff4-rejected.json`.

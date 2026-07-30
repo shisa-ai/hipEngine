@@ -6288,6 +6288,29 @@ The remaining attention sequence is:
     **20.965807 tok/s**. Keep scalar Q4 down; Q6 qmicro-planar remains a
     distinct candidate because its quant payload is already quartet-packed:
     [`paired-load rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-down-paired-loads-rejected.json).
+98. Load each Q6 qmicro-planar coefficient quartet with one aligned vector.
+    **Rejected at the resident gate and removed:** the diagnostic replaces four
+    scalar fp16 `d` loads with one aligned `uint64` and four signed-scale byte
+    loads with one `uint32` for each already-quartet-packed quant record. Quant
+    reconstruction, K ownership, all four ordered F32 updates, the parallel
+    tail, resident bytes, launch count, and BF16 store remain unchanged.
+
+    RED fails importing the absent wrapper. GREEN is byte-identical to the
+    current Q6 natural-parallel owner. Actual layer-1 event timing improves
+    **0.072566 -> 0.067650 ms (-6.775%)** at 9x50 and
+    **0.072923 -> 0.070104 ms (-3.866%)** at 21x100. Cache-only native tracing
+    names the intended grid10/local128 sibling and allocated VGPR falls
+    **80 -> 64** with LDS512/scratch0 unchanged.
+
+    The mandatory seven-pair resident p512/d128 gate reverses that leaf:
+    median decode moves **20.982269 -> 20.979905 tok/s (-0.01127%)**, only
+    **2/7** pairs win, and median paired saving is
+    **-0.018057 ms/token**. Every run preserves tokens **2930/74107**,
+    trajectory SHA `94f803f7...bda32`, final position 638, determinism, and
+    allocation recovery. Remove the kernel axis, export, wrapper, registry
+    route, test/harness calls, backend capability, session selector, profile
+    switch, and refactor entry. Production remains **20.965807 tok/s**:
+    [`Q6 coefficient-quartet rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-coeff4-rejected.json).
 
 Current exact decode checkpoint:
 
