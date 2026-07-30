@@ -7017,6 +7017,33 @@ The remaining attention sequence is:
      active-output denominator owner; the retained idle-wave producer is
      already the correct exact schedule:
      [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-active-denominator-owner-rejected.json).
+126. Make the byte-neutral selected gate/up dual-interleave consumable by the
+     production D8 prefill path. **Retained at the leaf gate; resident
+     integration is next:** add a production-geometry
+     MMQ128x32/wave-column/direct/double-buffer/P8 specialization that reads
+     one 4,736-byte paired tile. It extracts the requested gate or up half
+     without transposing back to two ordinary T16 matrices, so the same bytes
+     remain usable by the already-positive fused decode owner.
+
+     RED fails on the absent wrapper. GREEN reproduces every control BF16 bit
+     on the uneven/empty-expert fixture and passes the existing independent
+     CPU-reference KL/top-1 gate. On actual layer-1 K3072/N1024 weights and
+     frozen natural routes, inclusive producer-pack plus gate/up medians improve
+     at every primary shape: M128
+     **3.745055 -> 3.652909 ms (-2.460%)**, M256
+     **4.397322 -> 4.307888 (-2.034%)**, and M512
+     **6.698859 -> 6.619322 (-1.187%)**. Pair residency remains exactly
+     **931,135,488 bytes**. Cached tracing names the distinct specialization
+     at local128/VGPR96/SGPR128/LDS3072/scratch0.
+
+     This removes item 116's prefill blocker. Keep both exact leaf owners and
+     proceed to one paired materializer/cache allocation per expert gate/up
+     pair. The integration must remove the two old allocations rather than
+     aliasing or duplicating ownership, and must preserve complete resident
+     bytes and lifecycle recovery. Production remains **22.141787 tok/s**
+     until that byte-neutral integration passes full-state decode and the
+     prefill sweep:
+     [`retained prefill consumer`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json).
 
 Current exact decode checkpoint:
 

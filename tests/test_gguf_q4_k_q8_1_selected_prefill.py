@@ -15,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3,
     gguf_q8_1_mmq_ds4_f32_pack_dual_silu_bf16_d4x3,
     gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
@@ -40,6 +41,7 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_SUBBLOCK,
     GGUF_Q4_K_SUBBLOCKS,
     gguf_q4_k_mmq_tile16_preview_matmul,
+    interleave_gguf_q4_k_tile16_dual,
     pack_gguf_q4_k_mmq_tile16_preview,
     pack_q8_1_mmq_ds4_from_bf16,
     repack_gguf_q4_k_tile16,
@@ -2121,30 +2123,35 @@ def test_q6_k_t16_ds4x3_f32_mmq64x32_matches_cpu_quality_gate(
         "raw_weight_prefetch_packs",
         "single_raw_weight_prefetch_packs",
         "precomputed_activation_sums",
+        "dual_interleaved",
     ),
     [
-        (1, False, False, False, False, False, False, False, 0, 0, False),
-        (2, False, False, False, False, False, False, False, 0, 0, False),
-        (3, False, False, False, False, False, False, False, 0, 0, False),
-        (1, False, True, False, False, False, False, False, 0, 0, False),
-        (1, False, True, False, True, False, False, False, 0, 0, False),
-        (1, False, True, False, True, False, False, True, 0, 0, False),
+        (1, False, False, False, False, False, False, False, 0, 0, False, False),
+        (2, False, False, False, False, False, False, False, 0, 0, False, False),
+        (3, False, False, False, False, False, False, False, 0, 0, False, False),
+        (1, False, True, False, False, False, False, False, 0, 0, False, False),
+        (1, False, True, False, True, False, False, False, 0, 0, False, False),
+        (1, False, True, False, True, False, False, True, 0, 0, False, False),
         pytest.param(
-            1, False, True, False, True, False, False, True, 0, 8, False,
+            1, False, True, False, True, False, False, True, 0, 8, False, False,
             id="single-raw-weight-prefetch-p8",
         ),
-        (1, True, False, False, False, False, False, False, 0, 0, False),
-        (1, True, True, False, False, False, False, False, 0, 0, False),
-        (1, True, True, True, False, False, False, False, 0, 0, False),
-        (1, True, True, True, False, True, False, False, 0, 0, False),
-        (1, True, True, True, False, True, True, False, 0, 0, False),
+        (1, True, False, False, False, False, False, False, 0, 0, False, False),
+        (1, True, True, False, False, False, False, False, 0, 0, False, False),
+        (1, True, True, True, False, False, False, False, 0, 0, False, False),
+        (1, True, True, True, False, True, False, False, 0, 0, False, False),
+        (1, True, True, True, False, True, True, False, 0, 0, False, False),
         pytest.param(
-            1, True, True, True, False, True, True, False, 8, 0, False,
+            1, True, True, True, False, True, True, False, 8, 0, False, False,
             id="raw-weight-prefetch-p8",
         ),
         pytest.param(
-            1, True, True, True, False, True, True, False, 8, 0, True,
+            1, True, True, True, False, True, True, False, 8, 0, True, False,
             id="raw-weight-prefetch-p8-precomputed-activation-sums",
+        ),
+        pytest.param(
+            1, True, True, True, False, True, True, False, 8, 0, False, True,
+            id="dual-interleaved-raw-weight-prefetch-p8",
         ),
     ],
 )
@@ -2160,6 +2167,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     raw_weight_prefetch_packs: int,
     single_raw_weight_prefetch_packs: int,
     precomputed_activation_sums: bool,
+    dual_interleaved: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -2193,6 +2201,7 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     tiles_b = np.ascontiguousarray(
         repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
     )
+    tiles_dual = interleave_gguf_q4_k_tile16_dual(tiles_a, tiles_b)
 
     runtime = get_hip_runtime()
     library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
@@ -2240,6 +2249,13 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
         q8_dev = malloc(q8_bytes, runtime=runtime)
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend((q8_dev, out_dev))
+        tiles_dual_dev = malloc(tiles_dual.nbytes, runtime=runtime)
+        copy_host_to_device(
+            tiles_dual_dev,
+            host_array_ptr(tiles_dual),
+            runtime=runtime,
+        )
+        bufs.append(tiles_dual_dev)
         activation_sums_dev = (
             malloc(
                 fixture.compact_rows
@@ -2268,37 +2284,57 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
             library=library,
             runtime=runtime,
         )
-        gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
-            q8_dev.ptr,
-            bufs[1].ptr,
-            bufs[2].ptr,
-            bufs[3].ptr,
-            bufs[4].ptr,
-            bufs[5].ptr,
-            bufs[6].ptr,
-            out_dev.ptr,
-            fixture.compact_rows,
-            fixture.compact_rows,
-            fixture.in_features,
-            fixture.out_features_a,
-            fixture.out_features_b,
-            fixture.num_experts,
-            mmq_total_rows,
-            residual_passes=residual_passes,
-            split16=split16,
-            rowvec=rowvec,
-            wave_cols=wave_cols,
-            direct_wave_decode=direct_wave_decode,
-            double_buffer_activation=double_buffer_activation,
-            raw_weight_prefetch_packs=raw_weight_prefetch_packs,
-            precomputed_activation_sums_ptr=(
-                activation_sums_dev.ptr
-                if activation_sums_dev is not None
-                else 0
-            ),
-            library=library,
-            runtime=runtime,
-        )
+        if dual_interleaved:
+            gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+                q8_dev.ptr,
+                bufs[1].ptr,
+                bufs[2].ptr,
+                bufs[3].ptr,
+                bufs[4].ptr,
+                tiles_dual_dev.ptr,
+                out_dev.ptr,
+                fixture.compact_rows,
+                fixture.compact_rows,
+                fixture.in_features,
+                fixture.out_features_a,
+                fixture.out_features_b,
+                fixture.num_experts,
+                mmq_total_rows,
+                library=library,
+                runtime=runtime,
+            )
+        else:
+            gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+                q8_dev.ptr,
+                bufs[1].ptr,
+                bufs[2].ptr,
+                bufs[3].ptr,
+                bufs[4].ptr,
+                bufs[5].ptr,
+                bufs[6].ptr,
+                out_dev.ptr,
+                fixture.compact_rows,
+                fixture.compact_rows,
+                fixture.in_features,
+                fixture.out_features_a,
+                fixture.out_features_b,
+                fixture.num_experts,
+                mmq_total_rows,
+                residual_passes=residual_passes,
+                split16=split16,
+                rowvec=rowvec,
+                wave_cols=wave_cols,
+                direct_wave_decode=direct_wave_decode,
+                double_buffer_activation=double_buffer_activation,
+                raw_weight_prefetch_packs=raw_weight_prefetch_packs,
+                precomputed_activation_sums_ptr=(
+                    activation_sums_dev.ptr
+                    if activation_sums_dev is not None
+                    else 0
+                ),
+                library=library,
+                runtime=runtime,
+            )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
         if rowvec:

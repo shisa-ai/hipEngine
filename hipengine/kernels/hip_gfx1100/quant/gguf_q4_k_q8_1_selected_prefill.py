@@ -212,6 +212,11 @@ _SYMBOL_Q4_T16_RAW_PREFETCH_PRECOMPUTED_SUMS_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_D
     "selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_"
     "doublebuf_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q4_T16_DUAL_INTERLEAVED_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16 = (
+    "hipengine_gguf_q4_k_t16_dual_interleaved_raw_prefetch_p8_"
+    "selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_"
+    "doublebuf_prefill_compact32_bf16_bf16_out"
+)
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
 
@@ -820,6 +825,74 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_b
         ]
     )
     err = fn(*args)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_dual_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    source_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch production D8 prefill from one byte-neutral dual T16 layout."""
+
+    _check_positive(source_rows, "source_rows")
+    _check_mmq32_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+    )
+    if out_features_a != out_features_b:
+        raise ValueError("dual-interleaved gate/up features must match")
+    if out_features_a % 128 != 0:
+        raise ValueError("out_features must be multiples of 128")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_Q4_T16_DUAL_INTERLEAVED_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_DOUBLEBUF_BF16,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 7
+        + [ctypes.c_int64] * 7
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(compact_to_source_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq32_ptr),
+        ctypes.c_void_p(mmq_tile_expert_ptr),
+        ctypes.c_void_p(qweight_dual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(source_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
+        ctypes.c_void_p(stream),
+    )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
