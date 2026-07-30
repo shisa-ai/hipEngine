@@ -194058,3 +194058,12 @@ Vulkan local sizes verbatim will close the measured gap.
   and exact separate-call fallback. Remove the admitted comparison seam next.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json`.
+
+## 2026-07-30 22:31 JST — Remove admitted shared-down/D9 probe
+
+- Removed `--compare-shared-down-moe-tail-host-batch`, its same-resident
+  session setter, comparison bookkeeping, and focused setter test after
+  tracked-clean publication and the complete dispatch census passed.
+- The constructor rollback, gfx1151 capability, four-axis Q4/Q6 batch
+  registrations, native host shim, and exact separate-call fallback remain
+  unchanged.

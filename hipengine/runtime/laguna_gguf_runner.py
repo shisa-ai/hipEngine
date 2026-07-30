@@ -3395,11 +3395,6 @@ class LagunaGGUFResidentSession:
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
 
-    def set_shared_down_moe_tail_host_batch(self, enabled: bool) -> None:
-        """Batch unchanged shared-down and D9 launches in one native host call."""
-
-        self.use_shared_down_moe_tail_host_batch = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 
