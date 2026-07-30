@@ -3367,14 +3367,6 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_tile8_decode = bool(enabled)
 
-    def set_selected_down_natural_parallel_weighted_decode(
-        self,
-        enabled: bool,
-    ) -> None:
-        """Fuse exact route-parallel selected down with its weighted reducer."""
-
-        self.use_selected_down_natural_parallel_weighted_decode = bool(enabled)
-
     def set_q4_decode_t16_sidecar(self, enabled: bool) -> None:
         """Select compact exact Q4 dense/shared decode tiles or pack8."""
 

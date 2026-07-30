@@ -193958,3 +193958,12 @@ Vulkan local sizes verbatim will close the measured gap.
   production default. Retain the constructor override and registered exact
   two-launch fallback; remove the admitted session setter next. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-production.json`.
+
+## 2026-07-30 21:31 JST — Remove admitted weighted-down session probe
+
+- Removed
+  `LagunaGGUFResidentSession.set_selected_down_natural_parallel_weighted_decode(...)`
+  after tracked-clean publication and the complete dispatch census passed.
+  The constructor rollback, gfx1151 capability, registered composite,
+  tile-local counter scratch, peer-backend behavior, and exact route-parallel
+  projection plus standalone weighted-sum fallback are unchanged.

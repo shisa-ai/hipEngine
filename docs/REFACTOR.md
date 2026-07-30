@@ -2316,3 +2316,6 @@ should be boring.
 - Publication and census pass at **22.119461 tok/s** and exactly
   **482 dispatches/token**. The session setter is now eligible for immediate
   removal.
+- The session setter is removed. Retain only the constructor rollback,
+  architecture capability, composite registrations, bounded counter scratch,
+  and exact two-launch fallback.
