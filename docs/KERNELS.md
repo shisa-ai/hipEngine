@@ -919,8 +919,19 @@ confirms **+0.531%/+0.310%/+0.327%**, again 3/3 each, promoting
 **273.366/235.061/162.533 tok/s (+0.678%/+0.445%/+0.421% over H5W)** and
 narrowing matched M512 to **2.53940x**. Retain four eager aliases and promoted
 role entries while preserving two H5L roles, N48/N72 H5G, all Q6 routes, and
-every miss; H5X is package production
-([H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+every miss; H5X is package production. The corrected external-comparator trace
+uses C4096/direct M512 and measures **278.062 tok/s**, with **1,831.568 ms /
+1,862 dispatches** versus llama.cpp HIP **724.299 ms**. Q5 remains the largest
+**407.137-ms** gap and rowbatch8/10 own **346.501 ms**. Current ISA confirms one
+scalar BF16 activation load per logical row even where H5X already vectorizes
+weights. **WPF-H5Y** therefore freezes each role's H5X/H5L weight layout and
+arithmetic but packs exact BF16 bits as aligned `[row_group][k][row_slot]`
+records. Static load instances model **4.521B -> 0.920B (-79.65%)** at maximum
+**10,125,312-byte** transient cost. Before runtime ownership, require rows17/33/
+512 plane and output bytes, physical width-matched vector loads, scratch0, and
+pack-inclusive producer+consumer both-clock wins across all six actual roles
+([post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+[H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·

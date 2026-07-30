@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-31
+
+- [accepted matched gfx1100 Laguna Q2 XL post-H5X residual / WPF-H5Y target] Radeon Pro W7900 / exact comparator-shaped C4096/direct-M512 H5X improves campaign-start **169.516 -> 278.062 tok/s (+64.03%)** and narrows llama.cpp HIP **694.184** to a **2.49651x** wall gap. Five cached requests reconcile **1,831.568 ms / 1,862 dispatches** versus llama.cpp **724.299 ms**; gaps rank Q5/IQ-down/attention/Q6/gate-up at **407.137/326.998/234.055/77.436/59.236 ms**. Select exact tile-K-row BF16 activation packing over unchanged H5X/H5L weights; its static load model is **4.521B -> 0.920B (-79.65%)** with a bounded **10,125,312-byte** transient plane, explicitly not yet a speed claim; `benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json`.
+
 ## 2026-07-30
 
 - [promoted exact gfx1100 Laguna Q2 XL WPF-H5X tile-K-col Q5 production] Radeon Pro W7900 / selector-unset one-queue 512/1K/4K improves scoped H5L/H5G **271.922/234.334/162.004 -> 273.366/235.061/162.533 tok/s (+0.531%/+0.310%/+0.327%)**, 3/3 wins each with exact state, unchanged **150,994,944-byte** workspace, and lifecycle recovery. Canonical throughput improves H5W **+0.678%/+0.445%/+0.421%** and narrows matched M512 **2.55661x -> 2.53940x**; `benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json`.

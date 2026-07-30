@@ -1731,9 +1731,22 @@ segments record exact **151 H5X + 37 H5L + 47 H5G** ownership at unchanged
 **273.366/235.061/162.533 tok/s (+0.678%/+0.445%/+0.421% over H5W)** and narrow
 matched M512 **2.55661x -> 2.53940x**. Retain four eager aliases and promoted
 role entries; preserve two H5L roles, N48/N72 H5G, all Q6 routes, and every
-miss. Next reclassify the production-identical trace and select a genuinely
-new exact residual target
-([H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+miss. The corrected production H5X external-comparator trace uses C4096/direct
+M512 rather than the earlier C512 integration allocation. Five exact wall
+samples yield **278.062 tok/s (+64.03% over campaign-start 169.516)** and narrow
+llama.cpp HIP **694.184** to **2.49651x**. Five request traces reconcile
+**1,831.568 ms / 1,862 dispatches** versus llama.cpp **724.299 ms**; gaps rank
+Q5/IQ-down/attention/Q6/gate-up at **407.137/326.998/234.055/77.436/59.236
+ms**. Q5's rowbatch8/10 roles own **346.501 ms**, and current ISA still issues
+one scalar BF16 activation load per logical row. Select **WPF-H5Y exact
+tile-K-row BF16 activation AoSoA**: a bounded projection-local bit-copy plane
+feeds width-matched aligned records while every H5X/H5L weight layout,
+geometry, four-wave K/FMA/reduction/store boundary, and fallback remains fixed.
+The static six-role load model is **4.521B -> 0.920B (-79.65%)** with at most
+**10,125,312 bytes** of new transient workspace; this is rationale only and
+requires pack-inclusive both-clock wins
+([post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+[H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,

@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_post_h5x_matched_residual_target",
+  "date": "2026-07-31",
+  "status": "accepted_matched_production_reprofile_and_exact_target_selection",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22",
+    "vram_bytes": 48301604864
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "production_revision": "caba6df299b1186f0f494e41ad6f450bc9a8f1b2",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json",
+    "production_artifact_sha256": "a5947ddc2a4fbc33fb1e3fbab25dce6d85e6a8726be3de495ad7580da91729b9",
+    "campaign_start_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json",
+    "campaign_start_artifact_sha256": "1d1e9fc1486523b01a744ea9b7fce8b1e6122a1b84d7fdbb1a03bd348b621a81",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "kernel_lineage_output_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "3ccaa3dea0d5c142669f6cdbc4dba02bdb0d7f45e5b787c931048353a5834bfd",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "08e3c75886bff1197627a35ad3a0fe2064da0a0350999343245fa8577fb9e4f3",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d96896a52a48ccf00345f0aca031cdcb151125a9bf8eae9321fdd05222f129ff",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "86be3c87c05c09f3bad54beab015d56f0efab1d92461afe2bd180d7422291110"
+    }
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "context_length": 4096,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "flash_attention": true,
+    "output": "one synchronized last-row first-token projection",
+    "wall_repetitions": 5,
+    "trace_repetitions": 5,
+    "warmup_rows": 128,
+    "token_source": {
+      "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "token_stream_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786"
+    },
+    "matched_axes": "same model bytes, fixed 512 token IDs, context4096, direct M512, package matrix rows, attention128, FlashAttention, BF16 K/V, one W7900/queue, and one last-row projection",
+    "wall_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h5x-matched-c4096-m512.json",
+    "profile_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-h5x-matched-c4096-m512-rocprof -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h5x-matched-c4096-m512-rocprof-child.json"
+  },
+  "matched_wall": {
+    "campaign_start": {
+      "median_tok_s": 169.51647248706007,
+      "median_seconds": 3.020355440909043
+    },
+    "current_h5x": {
+      "median_tok_s": 278.06211302104924,
+      "median_seconds": 1.84131521708332,
+      "samples_tok_s": [
+        279.08727931340303,
+        278.51252787953746,
+        278.06211302104924,
+        277.9105323642609,
+        276.88397655545344
+      ],
+      "next_tokens": [2930, 2930, 2930, 2930, 2930],
+      "final_position": 511,
+      "deterministic": true,
+      "tracked_allocation_recovered": true,
+      "gain_over_campaign_start_percent": 64.03250311988114
+    },
+    "llamacpp_hip": {
+      "median_tok_s": 694.184,
+      "median_seconds": 0.737556105,
+      "next_token": 2930
+    },
+    "current_gap": 2.496506958312046,
+    "note": "The canonical package dashboard remains 273.366/235.061/162.533 tok/s at independently allocated 512/1K/4K sessions. This 278.062 row is the binding apples-to-apples C4096/direct-M512 external-comparator shape."
+  },
+  "matched_component_table_ms": [
+    {
+      "family": "q5",
+      "campaign_start_ms": 1270.457977,
+      "current_h5x_ms": 466.08821499999954,
+      "current_vs_start_percent": -63.31337018319973,
+      "llamacpp_hip_ms": 58.95103,
+      "current_over_llamacpp": 7.906362535141447,
+      "remaining_gap_ms": 407.13718499999953
+    },
+    {
+      "family": "iq_down",
+      "campaign_start_ms": 557.09136,
+      "current_h5x_ms": 482.493095,
+      "current_vs_start_percent": -13.390669889405583,
+      "llamacpp_hip_ms": 155.495249,
+      "current_over_llamacpp": 3.102944289957052,
+      "remaining_gap_ms": 326.997846
+    },
+    {
+      "family": "attention",
+      "campaign_start_ms": 488.304264,
+      "current_h5x_ms": 255.7803539999999,
+      "current_vs_start_percent": -47.618652373676615,
+      "llamacpp_hip_ms": 21.725298,
+      "current_over_llamacpp": 11.773387596340447,
+      "remaining_gap_ms": 234.0550559999999
+    },
+    {
+      "family": "q6",
+      "campaign_start_ms": 157.072613,
+      "current_h5x_ms": 92.35538799999999,
+      "current_vs_start_percent": -41.20210631499459,
+      "llamacpp_hip_ms": 14.919865,
+      "current_over_llamacpp": 6.190095419764186,
+      "remaining_gap_ms": 77.43552299999999
+    },
+    {
+      "family": "gate_up",
+      "campaign_start_ms": 460.143234,
+      "current_h5x_ms": 464.21375600000005,
+      "current_vs_start_percent": 0.8846206353215536,
+      "llamacpp_hip_ms": 404.977857,
+      "current_over_llamacpp": 1.1462694761605203,
+      "remaining_gap_ms": 59.235899000000074
+    },
+    {
+      "family": "remaining",
+      "campaign_start_ms": 68.622802,
+      "current_h5x_ms": 70.63673700000001,
+      "current_vs_start_percent": 2.9347898093697866,
+      "llamacpp_hip_ms": 68.22926800000005,
+      "current_over_llamacpp": 1.0352849894271172,
+      "remaining_gap_ms": 2.4074689999999634
+    },
+    {
+      "family": "kernel_sum",
+      "campaign_start_ms": 3001.69225,
+      "current_h5x_ms": 1831.567545,
+      "current_vs_start_percent": -38.982167642269125,
+      "llamacpp_hip_ms": 724.298567,
+      "current_over_llamacpp": 2.5287466087172303,
+      "remaining_gap_ms": 1107.268978
+    }
+  ],
+  "current_trace": {
+    "request_segment": "dispatch-ID-bounded Q5 embedding through argmax stage 2",
+    "request_samples_kernel_sum_ms": [
+      1825.230327,
+      1829.0991510000001,
+      1831.567545,
+      1835.179922,
+      1837.920496
+    ],
+    "request_samples_kernel_span_ms": [
+      1849.07396,
+      1848.639058,
+      1850.996065,
+      1854.65036,
+      1857.159297
+    ],
+    "representative_kernel_sum_ms": 1831.567545,
+    "median_kernel_span_ms": 1850.996065,
+    "span_minus_sum_ms": 19.428519999999935,
+    "span_minus_sum_percent": 1.0496251379118915,
+    "dispatches": 1862,
+    "q5_dispatches": 470,
+    "q6_dispatches": 289,
+    "q5_routes": {
+      "tile_k_col_producers": 151,
+      "row_major_producers": 84,
+      "h5x_consumers": 151,
+      "h5l_consumers": 37,
+      "h5g_consumers": 47
+    },
+    "q6_routes": {
+      "exact_producers": 143,
+      "h5w_consumers": 142,
+      "h5i_consumers": 1,
+      "raw_fallback_consumers": 3
+    },
+    "all_producers_immediately_precede_expected_consumers": true,
+    "no_compiler_under_profile": true,
+    "named_family_gap_explained_percent": 99.78257595509005,
+    "protocol_correction": "The H5W/H5X integration traces used a C512 session allocation. They remain valid integrated A/B evidence, but not apples-to-apples external attribution. This C4096 trace replaces them for per-family comparison with llama.cpp HIP."
+  },
+  "current_q5_roles": [
+    {
+      "role": "bf16_k3072_n1024",
+      "calls": 92,
+      "geometry": "coltile8_rowbatch4",
+      "weight_layout": "tile_k_col",
+      "consumer_ms": 31.927202,
+      "weighted_workgroups": 1507328,
+      "static_activation_loads_current": 578813952,
+      "static_activation_loads_candidate": 144703488
+    },
+    {
+      "role": "bf16_k3072_n12288",
+      "calls": 2,
+      "geometry": "coltile8_rowbatch12",
+      "weight_layout": "row_major",
+      "consumer_ms": 14.598911999999999,
+      "weighted_workgroups": 132096,
+      "static_activation_loads_current": 152174592,
+      "static_activation_loads_candidate": 25362432
+    },
+    {
+      "role": "bf16_k6144_n3072",
+      "calls": 12,
+      "geometry": "coltile16_rowbatch5",
+      "weight_layout": "tile_k_col",
+      "consumer_ms": 24.139623000000004,
+      "weighted_workgroups": 237312,
+      "static_activation_loads_current": 227819520,
+      "static_activation_loads_candidate": 91127808
+    },
+    {
+      "role": "bf16_k9216_n3072",
+      "calls": 35,
+      "geometry": "coltile12_rowbatch8",
+      "weight_layout": "row_major",
+      "consumer_ms": 187.758037,
+      "weighted_workgroups": 573440,
+      "static_activation_loads_current": 1321205760,
+      "static_activation_loads_candidate": 165150720
+    },
+    {
+      "role": "f32_k3072_n6144",
+      "calls": 12,
+      "geometry": "coltile16_rowbatch5",
+      "weight_layout": "tile_k_col",
+      "consumer_ms": 22.097407999999998,
+      "weighted_workgroups": 474624,
+      "static_activation_loads_current": 227819520,
+      "static_activation_loads_candidate": 91127808
+    },
+    {
+      "role": "f32_k3072_n9216",
+      "calls": 35,
+      "geometry": "coltile8_rowbatch10",
+      "weight_layout": "tile_k_col",
+      "consumer_ms": 158.742496,
+      "weighted_workgroups": 2096640,
+      "static_activation_loads_current": 2012774400,
+      "static_activation_loads_candidate": 402554880
+    }
+  ],
+  "selected_target": {
+    "id": "WPF-H5Y",
+    "name": "exact tile-K-row BF16 activation AoSoA",
+    "reason": "Every production Q5 consumer still issues one scalar global BF16 activation load per logical output row at each lane/K iteration. The two 35-call rowbatch8/10 roles alone own 346.501 ms, while current weight layouts and arithmetic are already independently qualified.",
+    "candidate_layout": "For each unchanged row group, copy input BF16 bits into [row_group][k][row_slot], padding row slots to 8 or 16 only to align each K record. Consumers read only live BF16 values through width-matched aligned records: b64 for rowbatch4, b64+u16 for rowbatch5, b128 for rowbatch8, b128+b32 for rowbatch10, and b128+b64 for rowbatch12.",
+    "candidate_producer": "A separately registered linear exact BF16-bit pack writes the projection-local activation plane. The first screen includes its launch and bytes; producer fusion is not presumed and may be attempted only with the unfused primitive retained as fallback.",
+    "candidate_consumer": "Reuse each role's current H5X tile-K-col or H5L row-major F32 weight plane, local128/four-wave K ownership, accumulator geometry, scalar fmaf order, wave32 tree, serial wave sum, and output store; only activation addresses/load width change.",
+    "roles": 6,
+    "production_invocations": 188,
+    "current_two_dominant_role_ms": 346.500533,
+    "current_activation_global_load_instruction_instances": 4520607744,
+    "candidate_activation_global_load_instruction_instances": 920027136,
+    "modeled_instruction_reduction_percent": 79.64815378593485,
+    "current_weight_plane_bytes": 150994944,
+    "maximum_activation_plane_bytes": 10125312,
+    "candidate_total_workspace_bytes": 161120256,
+    "additional_workspace_bytes": 10125312,
+    "additional_workspace_percent": 6.705729166666667,
+    "new_launches_per_candidate_projection_initially": 1,
+    "new_persistent_weight_sidecar_bytes": 0,
+    "production_policy_changed": false,
+    "gfx1151_policy_changed": false,
+    "preserved": "every input BF16 bit, reconstructed F32 weight bit, current role weight layout, geometry, workgroup order/count, local128 four-wave K ownership, each scalar fmaf, wave32 shuffle tree, serial wave-0..3 sum, BF16/F32 store, raw-Q5 producer, and all fallback behavior"
+  },
+  "instruction_model": {
+    "scope": "six production Q5 roles / 188 actual M512 calls / 5,021,440 workgroups",
+    "current_isa_finding": "every production Q5 consumer has one global_load_ushort per logical row in its unrolled row loop; current H5X weight loads are already global_load_b128 while H5L fallback weights remain global_load_b32",
+    "current_isa_sha256": "0e7e61ac15157d12d23269489917df0564fbacdac9fee44490b4404b194ae8cb",
+    "analysis_sha256": "582a1891cf713f093e60f7a634fae75dffbc2f66813b8f27ad3cc0abf1bc8a4e",
+    "interpretation": "Counts are static wave-issued load instruction instances from exact workgroup/K/row geometry, not hardware counters, bandwidth, cache-traffic, or speed claims. The added pack, alignment padding, compiler codegen, register pressure, event time, and synchronized wall decide admission."
+  },
+  "closed_predecessors": {
+    "h5x_weight_layout": "H5X vectorized adjacent exact F32 weights. H5Y keeps the selected H5X/H5L weight layout fixed and vectorizes the independent BF16 activation-row dimension.",
+    "h5p_geometry": "H5P cross-screened accumulator geometries. H5Y keeps every production COL_TILE/ROW_BATCH unchanged.",
+    "h5s_persistence": "H5S looped row groups inside long-lived workgroups and lost every role. H5Y keeps one row group per workgroup and current parallelism.",
+    "h5v_k_ownership": "H5V collapsed four-wave K ownership and lost every role. H5Y keeps all four waves and logical K ownership unchanged.",
+    "h5o_representation": "H5O reconstructed weights from compressed coefficients. H5Y leaves full exact F32 weights and adds only a bit-copy activation plane.",
+    "source_mmq_sgemm": "Q8_1/WMMA and SGEMM reassociation fail complete quality. H5Y preserves every production scalar FMA and reduction boundary."
+  },
+  "required_gates": [
+    "RED before implementation for six separate gfx1100 activation-pack producer, F32-weight primitive, and Q5 composite role keys; unchanged package policy and gfx1151 absence",
+    "rows17/33/512 activation-plane BF16-bit permutation and output byte identity against each current H5X/H5L control, including partial final row groups and allocation recovery",
+    "cached-only ISA/resource trace proving aligned width-matched activation loads, unchanged current weight-load class, local128, scratch0, expected grids, bounded VGPR growth, and no compiler under rocprofv3",
+    "actual-weight six-role/188-call screen with five warmups, 15 counter-rotated samples, five launches/sample, pack+weight-producer+consumer inclusive HIP-event and synchronized-wall medians, complete output bytes, and lifecycle recovery",
+    "retain only roles that improve both clocks; require the final selected weighted aggregate to improve both clocks before any runtime owner",
+    "only after standalone admission, add bounded default-off activation-plane ownership and require complete natural-M512 state, exact integrated route/launch/workspace inventory, and clean one-queue 512/1K/4K non-regression before source default"
+  ],
+  "inputs_sha256": {
+    "/tmp/laguna-post-h5x-matched-c4096-m512.json": "8f3b2b3cfed61a41857e3575449af408d9cc894a777b16aa92adb04a81f55577",
+    "/tmp/laguna-post-h5x-matched-c4096-m512.stderr": "77998672b5884aaa1b955d41cdfe2f68a191ee0b7767acf1114da1816d68b5d1",
+    "/tmp/laguna-post-h5x-matched-c4096-m512-rocprof-child.json": "49cc449981239b328edaf0725428af5584062ea2a25afdb69031c04f6a2da1bc",
+    "/tmp/laguna-post-h5x-matched-c4096-m512-rocprof/post-h5x_kernel_trace.csv": "ab27b47d4d03288da93519a0cdb296ea7fd5d1c055e7279b8df93e4dac8f3fcc",
+    "/tmp/laguna-post-h5x-matched-c4096-m512-trace-summary.json": "c5a9cae05b7f0ba69b3370827656f63a6e377839389e84c4898e5877e7b8d0fc",
+    "/tmp/analyze_laguna_post_h5x_matched.py": "65e0b111d810730f6fcb242c89391533910bbbf727ba328513f87fe13c12a064",
+    "/tmp/laguna-post-h5x-q5-isa-loads.json": "582a1891cf713f093e60f7a634fae75dffbc2f66813b8f27ad3cc0abf1bc8a4e",
+    "/tmp/laguna-post-h5x-q5-gfx1100-isa.txt": "0e7e61ac15157d12d23269489917df0564fbacdac9fee44490b4404b194ae8cb"
+  },
+  "decision": {
+    "production_changed": false,
+    "matched_attribution_replaced": true,
+    "target_selected": true,
+    "next_action": "Freeze H5Y RED and implement separately registered exact tile-K-row BF16 activation pack/consumer composites without changing package policy."
+  }
+}
