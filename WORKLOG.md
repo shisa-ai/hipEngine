@@ -193880,3 +193880,12 @@ Vulkan local sizes verbatim will close the measured gap.
   add/RMSNorm fallback remain; remove only the admitted comparison seam.
   Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json`.
+
+## 2026-07-30 20:51 JST — Remove admitted output/add-norm probe
+
+- Removed `--compare-f16-output-add-rmsnorm-decode`, its same-resident session
+  setter, and comparison-protocol bookkeeping after tracked-clean publication
+  and the complete dispatch census passed. The constructor override remains
+  for explicit rollback; gfx1151 capability selection, composite
+  registration, shared counter scratch, peer-backend behavior, and the exact
+  fixed-K projection plus add/RMSNorm fallback are unchanged.
