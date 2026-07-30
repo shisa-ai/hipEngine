@@ -2170,11 +2170,13 @@ should be boring.
   harness mode. It is byte-neutral only when it replaces both resident
   gate/up T16 matrices; keeping it as a sidecar would add about **43.76 GB**
   across 47 routed layers.
-- Keep it only while a paired Laguna materializer/cache contract and the
-  production D8 MMQ128x32 prefill consumer are plausible next work. Remove the
-  dual-layout host helpers, HIP symbol/wrapper, leaf mode, and focused fixture
-  if that shared resident-layout task is declined or a prefill gate rejects
-  the layout. Never add a decode-only production sidecar for this primitive.
+- The exact byte-neutral D8 MMQ128x32 prefill consumer now wins M128/M256/M512
+  **2.460%/2.034%/1.187%**, so keep the dual-layout host helpers, decode and
+  prefill symbols/wrappers, leaf modes, and focused fixtures through resident
+  integration. Remove the two ordinary expert gate/up allocations when the
+  paired allocation becomes canonical; never add a decode-only production
+  sidecar. Remove the temporary comparison selectors and legacy cache
+  acceptance after tracked-clean decode plus the prefill sweep publish.
 
 ## Laguna gfx1151 dense/shared dual-interleaved T16 selector
 

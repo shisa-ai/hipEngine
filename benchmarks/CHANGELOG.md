@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-31
+
+- [retained unintegrated gfx1151 Laguna byte-neutral selected gate/up layout] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M / actual layer-1 natural M128/M256/M512 selected prefill: the dual-interleaved resident candidate is BF16-bit exact and improves inclusive D8 gate/up **3.745055/4.397322/6.698859 -> 3.652909/4.307888/6.619322 ms (-2.460%/-2.034%/-1.187%)** at unchanged pair bytes, removing the prefill blocker for the prior **5.705%** decode leaf win; `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json`.
+
 ## 2026-07-30
 
 - [accepted production/default gfx1151 Laguna exact shared-down/D9 host-call batching] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 / tracked-clean decode improves **22.119461 -> 22.141787 tok/s (+0.10093%, -0.045586 ms/token)**; cache-only tracing preserves exactly **482 model kernels/token**, with 24 Q4 plus 23 Q6 shared-down→D9 pairs and 47 unchanged local256 D9 calls; `benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json`.

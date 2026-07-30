@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-07-30**
+Last updated: **2026-07-31**
 
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -61,6 +61,15 @@ publication improves the preceding checkpoint
 cache-only census preserves exactly **482 model kernels/token**, including
 24 Q4 plus 23 Q6 shared-down→D9 pairs and 47 unchanged D9 calls.
 [`shared-down plus D9 host batching production`](results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json).
+
+The selected gate/up dual-interleave is now cleared for byte-neutral resident
+integration. Its production-geometry D8 prefill consumer is BF16-bit exact and
+improves actual layer-1 inclusive M128/M256/M512 leaves
+**2.460%/2.034%/1.187%** at unchanged bytes. This removes the only blocker on
+the existing **5.705%** selected-decode leaf win; the production topline is
+unchanged until paired materialization, lifecycle, full-state decode, and the
+prefill sweep pass.
+[`dual-interleaved prefill consumer`](results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json).
 
 The same exact boundary's resident A/B gate independently retained the final
 attention-output projection producer runs the established residual-add/RMSNorm

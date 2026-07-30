@@ -33,6 +33,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
+    gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
@@ -52,6 +53,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf_q4_k import interleave_gguf_q4_k_tile16_dual
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +77,7 @@ MODES = (
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8",
     "t16-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8-precomputed-sums",
+    "t16-dual-interleaved-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8",
 )
 HIDDEN = 3_072
 OUT_FEATURES = 1_024
@@ -373,6 +376,14 @@ def main() -> None:
     tiles_up, up_entry = _cache_tiles(
         args.repacked_cache, layer=args.layer, slot="ffn_up_exps"
     )
+    needs_dual_interleaved = any(
+        mode.startswith("t16-dual-interleaved-") for mode in args.modes
+    )
+    tiles_dual = (
+        interleave_gguf_q4_k_tile16_dual(tiles_gate, tiles_up)
+        if needs_dual_interleaved
+        else None
+    )
 
     runtime = get_hip_runtime()
     reset_memory_stats()
@@ -396,6 +407,11 @@ def main() -> None:
         resident_buffers.extend(
             (raw_gate_dev, raw_up_dev, tiles_gate_dev, tiles_up_dev)
         )
+        tiles_dual_dev = (
+            _upload(runtime, tiles_dual) if tiles_dual is not None else None
+        )
+        if tiles_dual_dev is not None:
+            resident_buffers.append(tiles_dual_dev)
         x8_gate_dev = _upload(runtime, x8_gate) if x8_gate is not None else None
         x8_up_dev = _upload(runtime, x8_up) if x8_up is not None else None
         if x8_gate_dev is not None and x8_up_dev is not None:
@@ -733,6 +749,37 @@ def main() -> None:
                         runtime=runtime,
                     )
 
+                def t16_dual_interleaved_mmq128_d8_f32() -> None:
+                    assert tiles_dual_dev is not None
+                    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+                        source_x_dev.ptr,
+                        q8_dev.ptr,
+                        rows,
+                        HIDDEN,
+                        residual_passes=1,
+                        split16=True,
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+                    gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out(
+                        q8_dev.ptr,
+                        compact_to_source_dev.ptr,
+                        starts_dev.ptr,
+                        starts32_dev.ptr,
+                        tile_expert32_dev.ptr,
+                        tiles_dual_dev.ptr,
+                        out_dual_dev.ptr,
+                        compact_rows,
+                        rows,
+                        HIDDEN,
+                        OUT_FEATURES,
+                        OUT_FEATURES,
+                        EXPERTS,
+                        int(metadata["total32"]),
+                        library=mmq_library,
+                        runtime=runtime,
+                    )
+
                 launchers = {
                     "retained-direct": retained_direct,
                     "t16-wmma": t16_wmma,
@@ -776,6 +823,9 @@ def main() -> None:
                             raw_weight_prefetch_packs=8,
                             precomputed_activation_sums=True,
                         )
+                    ),
+                    "t16-dual-interleaved-mmq128x32-d8-f32-wavecols-direct-doublebuf-rawprefetch-p8": (
+                        t16_dual_interleaved_mmq128_d8_f32
                     ),
                 }
                 for threshold, hybrid in mixed_metadata.items():

@@ -194211,3 +194211,28 @@ Vulkan local sizes verbatim will close the measured gap.
   **22.141787 tok/s / 45.163473 ms/token / 482 model kernels/token**. Do not
   retry an active-output denominator owner. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-active-denominator-owner-rejected.json`.
+
+## 2026-07-31 00:06 JST — Retain byte-neutral dual-interleaved D8 prefill consumer
+
+- The exact selected gate/up dual-interleave previously improved c=1 decode
+  **5.705%** but could not replace the shared resident T16 pair until prefill
+  consumed it without a transpose or sidecar. Add a production-geometry
+  D8/MMQ128x32/wave-column/direct/double-buffer/P8 specialization that reads
+  the single 4,736-byte paired tile and extracts the requested matrix half.
+- RED fails on the missing wrapper. GREEN reproduces every retained BF16 bit
+  on the uneven/empty-expert K512/N128+128 fixture and passes the existing CPU
+  KL/top-1 gate.
+- Actual layer-1 K3072/N1024 natural-route inclusive medians improve at every
+  primary shape: M128 **3.745055 -> 3.652909 ms (-2.460%)**, M256
+  **4.397322 -> 4.307888 (-2.034%)**, M512
+  **6.698859 -> 6.619322 (-1.187%)**. Nine counter-rotated samples use two
+  warmups and burst three; raw SHA-256 is
+  `de7378a03e09552d9ef480cc2c72bf9117cf791870190b9ebfa7426ceab8bf13`.
+- Cached-only tracing names template tail `<...,8,false,true>` at
+  local128/VGPR96/SGPR128/LDS3072/scratch0. Trace CSV SHA-256 is
+  `4e75fc550c98d1b5f66adcd5a6a47f5b97b8fb1241ad4c8721b989e254d9de59`.
+  Pair bytes remain exactly **931,135,488**. Retain the consumer and proceed to
+  one owning paired materializer allocation; do not add a 43.76-GB sidecar.
+  Production remains **22.141787 tok/s** until integration gates pass.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json`.
