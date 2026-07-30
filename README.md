@@ -209,18 +209,16 @@ numbers below.
   Runtime ownership is rejected: the final balanced source-default 1K gate is
   **230.181 -> 230.175 tok/s (-0.00257%, 2/8 wins)**. All temporary runtime
   plumbing is removed, the standalone leaf remains, and production stays
-  **267.205/230.441/160.221 tok/s**. H5V returns to Q5, now the largest exact
-  residual at **482.339 ms** versus llama.cpp HIP **58.951 ms**. Its separate
-  unmeasured local32 leaf will replay H5L's original K partitions 0..3
-  sequentially, reuse one accumulator plane, and keep only reduced partition
-  totals in the existing LDS shape while preserving every production
-  FMA/shuffle/serial-sum/store boundary. The **4x** wave-scheduling-instance
-  model is rationale only; production is unchanged pending exact and
-  producer-inclusive both-clock gates.
-  Both short rows exceed 150 tok/s and H5R 4K
-  remains positive; 16K+ stays closed
-  below the 800/700 stretch target
+  **267.205/230.441/160.221 tok/s**. H5V then tests Q5's distinct exact
+  local32 sequential K-partition schedule. All six H5L roles remain byte-exact;
+  cached symbols are local32/SGPR128/scratch0 with unchanged LDS and +8 VGPR.
+  But **0/6** roles wins both clocks, and producer-inclusive weighted event/wall
+  regresses **464.968/466.267 -> 492.423/493.754 ms
+  (+5.905%/+5.895%)**. All H5V code/tests are removed and H5L/H5G remain.
+  Both short rows exceed 150 tok/s and H5R 4K remains positive; 16K+ stays
+  closed below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5V rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
   [H5V target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
   [H5U runtime rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
   [H5U global cached-source leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·

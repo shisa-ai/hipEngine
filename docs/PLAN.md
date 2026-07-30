@@ -1667,21 +1667,18 @@ keep production **267.205/230.441/160.221 tok/s**
 ([H5U runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
 [H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
 [H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json)).
-**WPF-H5V exact Q5 one-wave sequential K-partition replay** returns to the
-largest retained residual: Q5 is **482.339 ms** versus matched llama.cpp HIP
-**58.951 ms**, a **423.388-ms / 8.182x** gap. One local32 wave keeps one H5L
-output-tile/row-group workgroup and sequentially replays original logical
-partitions 0..3. It reuses one unchanged accumulator register plane, writes
-only each partition's reduced tile into the existing four-plane LDS shape, then
-performs the same serial 0..3 sum and BF16/F32 store. H5L's producer/plane,
-role geometry, weight-major order, per-lane K/FMA sequence, wave reduction,
-workgroup count, workspace, and fallbacks remain unchanged. The schedule model
-reduces physical wave instances **20,085,760 -> 5,021,440** and removes
-**5,021,440** whole-block barriers across the six-role/188-call inventory, but
-that is rationale rather than a speed claim. Production is unchanged pending
-RED, exact bytes, cached local32/scratch0 resources, and producer-inclusive
-both-clock actual-role timing
-([H5V target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json)).
+**WPF-H5V exact Q5 one-wave sequential K-partition replay** preserves all six
+H5L role outputs byte-for-byte at rows17/33/M512. Cached symbols are
+local32/SGPR128/scratch0 with unchanged LDS and only +8 VGPR. The binding
+producer-inclusive 188-call screen nevertheless rejects every role on both
+clocks: weighted event/wall regresses **464.968/466.267 -> 492.423/493.754 ms
+(+5.905%/+5.895%, 0.944x/0.944x)**. Sequential replay removes a block barrier
+but loses four-wave K parallelism without reducing useful dot work. Remove the
+body, exports, wrappers, registry keys, gfx1151 exclusions, and focused test;
+retain H5L/H5G and do not retry this schedule without a new operation or
+cross-tile reuse premise
+([H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
+[H5V target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, and P6/repair routes remain closed.
