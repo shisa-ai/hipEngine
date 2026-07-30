@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T10:50:31+09:00",
+  "kind": "hipengine_laguna_q4_t16_pairq_decode_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "ef9eac703a03de45169631747ab925ce526f6ce4",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "weights": "actual layer-1 selected gate/up",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "leaf": "c=1/top-10, K3072/N1024, dual gate/up plus fused SiLU",
+    "whole_model": "p512/d128 eager c=1",
+    "experts": 256,
+    "selected_experts": [
+      17,
+      3,
+      91,
+      42,
+      7,
+      128,
+      201,
+      55,
+      240,
+      12
+    ],
+    "selected_sha256": "a9ee5d850f365847d74c43ff04c942df4ac8b46346c9a54a1222bbf4f514ceff"
+  },
+  "change": {
+    "description": "Load each existing T16 packed-Q byte once per adjacent output-column pair and extract its low/high nibbles. Preserve resident T16, coefficient loads, K ownership, FMA order, wave32 reduction, wave merge, BF16 gate/up boundaries, SiLU expression, and BF16 output.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": false,
+    "launch_count_changed": false,
+    "rollback_variant": "selected_dual_t16_natural_tile8_parallel_silu_scalarq_gemv_decode_bf16_bf16_out"
+  },
+  "leaf": {
+    "protocol": "actual-weight counterbalanced 21x100 HIP-event screen after five warmups",
+    "control_median_ms": 0.13176109313964843,
+    "candidate_median_ms": 0.1291987419128418,
+    "latency_change_percent": -1.9446948759683447,
+    "bf16_mismatches": 0,
+    "tracked_allocations_returned_to_zero": true,
+    "raw_sha256": "e876fe8fc3a53f8132321bf2319c373b7ba5e4be4e6e20acf430339c7079c620"
+  },
+  "whole_model": {
+    "protocol": "seven counterbalanced control/candidate p512/d128 pairs; cached build; candidate worktree disclosed",
+    "control_decode_tok_s": [
+      20.79489814928464,
+      20.81251962217757,
+      20.81153935351495,
+      20.800544485824506,
+      20.809916391252045,
+      20.81289054443163,
+      20.814198528928546
+    ],
+    "candidate_decode_tok_s": [
+      20.82066437243891,
+      20.81801784246879,
+      20.822978987657205,
+      20.819523380899415,
+      20.821896432080493,
+      20.826487862825985,
+      20.818064529679887
+    ],
+    "control_median_tok_s": 20.81153935351495,
+    "candidate_median_tok_s": 20.82066437243891,
+    "throughput_change_percent": 0.043845958575960964,
+    "control_median_ms_per_token": 48.05026591322788,
+    "candidate_median_ms_per_token": 48.0292070470017,
+    "saving_ms_per_token": 0.021058866226184136,
+    "median_paired_saving_ms_per_token": 0.02764825210503119,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "be165dd438a7626a702903b227d4ca0a1bf9506cc3c96e0b59bd2797874c2f1f"
+  },
+  "correctness": {
+    "leaf_bf16_byte_exact": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with cache warmed outside profiler",
+    "control_symbol": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true, false>",
+    "candidate_symbol": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true, true>",
+    "grid_x": 16384,
+    "local_x": 128,
+    "control": {
+      "vgpr_count": 96,
+      "sgpr_count": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "vgpr_count": 96,
+      "sgpr_count": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "ae57dca88c4c79943fe7146ae373cd75c4115d253964036f01876eb16c33c166",
+    "bench_sha256": "d67f9f84f43a94a0d2b63c678b7635f6892a1b6baaa55b0663b7b819a416a42a"
+  },
+  "validation": {
+    "red": "Import of the absent pair-Q wrapper failed before implementation.",
+    "green": "Focused natural-weight exactness, registry resolution, and gfx1151 backend tests pass (25 tests).",
+    "lineage_check": "scripts/check_lineage.py could not complete because the configured external parent /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external code was copied."
+  },
+  "gate": {
+    "correctness": "pass",
+    "leaf": "pass; exact and 1.945% faster",
+    "whole_model": "pass; 7/7 pairs faster and exact",
+    "resources": "pass; no resource growth or scratch",
+    "decision": "Promote pair-Q payload reuse behind the existing production variant name. Retain scalar-Q as the explicit short-lived compiler/codegen rollback pending clean publication and one later wall census."
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-pairq --gate-only --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-t16-pairq-21x100.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-t16-pairq-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-t16-pairq-model-7pair.json",
+    "tracked_base_clean": true,
+    "candidate_worktree_disclosed": true,
+    "require_cached_build": true
+  }
+}

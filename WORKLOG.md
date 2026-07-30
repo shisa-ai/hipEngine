@@ -192670,3 +192670,34 @@ Vulkan local sizes verbatim will close the measured gap.
   only and retain T16 production **20.800509 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-qmicro-tile8-silu-rejected.json`.
+
+## 2026-07-30 10:50 JST — Retain adjacent-column T16 Q-payload reuse
+
+- RED fails importing the absent pair-Q production wrapper. GREEN extends the
+  natural actual-weight oracle so the pair-Q production owner and scalar-Q
+  rollback must produce identical BF16 bytes.
+- T16 already stores two adjacent output-column Q4 nibbles in one byte. The
+  candidate loads that byte once and extracts low/high nibbles while preserving
+  resident bytes, coefficient loads, K ownership, FMA order, wave reduction,
+  BF16 gate/up boundaries, SiLU, and output.
+- The counterbalanced actual layer-1 21x100 leaf improves
+  **0.131761 -> 0.129199 ms (-1.945%)** with zero BF16 mismatches. Raw SHA-256
+  is `e876fe8f...c620`.
+- Cache-only native tracing names scalar-Q `<...,false>` and pair-Q
+  `<...,true>` at identical grid16384/local128/VGPR96/SGPR128/LDS512/scratch0.
+  No compiler runs under the profiler. Trace/bench hashes are
+  `ae57dca8...c166` and `d67f9f84...a42a`.
+- All seven counterbalanced p512/d128 model pairs improve. Median decode moves
+  **20.811539 -> 20.820664 tok/s (+0.04385%, -0.02106 ms/token)**; median
+  paired saving is **0.02765 ms/token**. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, and allocation
+  recovery are exact. Raw SHA-256 is `be165dd4...c2f1f`.
+- Promote pair-Q behind the existing production variant name. Keep scalar-Q as
+  the explicit short-lived compiler/codegen rollback through clean publication
+  and one later wall census. Focused natural exactness, registry, and gfx1151
+  backend validation passes **25 tests**.
+- `scripts/check_lineage.py` cannot complete because configured external parent
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; no external code was
+  copied.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json`.

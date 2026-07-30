@@ -2119,6 +2119,17 @@ leaf by **27.408%/21.124%/46.396%** respectively. The 2.778% resident-byte
 reduction cannot amortize scale/min unpack at c=1. The candidate and all
 comparison plumbing are removed; T16 remains the production layout:
 [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-qmicro-tile8-silu-rejected.json).
+The retained T16 consumer now exploits the locality already present in its Q
+plane: one packed byte supplies both adjacent output-column nibbles. This
+changes neither layout nor arithmetic boundaries. The exact actual-weight
+21x100 leaf improves **0.131761 -> 0.129199 ms (-1.945%)**, and seven
+resident p512/d128 pairs improve **20.811539 -> 20.820664 tok/s
+(+0.04385%)** with **7/7** wins. Cached tracing keeps both scalar-Q and
+pair-Q specializations at local128/VGPR96/SGPR128/LDS512/scratch0. Pair-Q is
+the gfx1151 production owner behind the existing variant name; the registered
+`...parallel_silu_scalarq...` sibling is the short-lived exact
+compiler/codegen rollback:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace
