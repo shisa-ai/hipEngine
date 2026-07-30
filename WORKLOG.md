@@ -192585,3 +192585,32 @@ Vulkan local sizes verbatim will close the measured gap.
   and hipEngine is **10.912%** lower in throughput.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-production.json`.
+
+## 2026-07-30 10:08 JST — Reject parallel output-sharded producer-max replay
+
+- Screen one exact source-grounded SWA scheduling seam: replace the active
+  output wave's lane-0 replay of sixteen published score-wave maxima with a
+  wave32 shuffle tree over lanes 0-15. Keep score production, scalar F32 QK,
+  denominator, PV, gate, store, launch count, and resident layout unchanged.
+- RED fails on the absent wrapper. GREEN passes the wrapped/evicted
+  CPU-reference oracle with byte-identical F32 context and gated BF16 output.
+- Cached 9x50 and 21x100 leaves improve
+  **0.029815 -> 0.028933 ms (-2.957%, 9/9 wins)** and
+  **0.029644 -> 0.028706 ms (-3.166%, 21/21 wins)**. Raw hashes are
+  `6ed33960...50c9` and `1045d4c6...24a`.
+- Cache-only `rocprofv3 --kernel-trace` names the candidate at
+  grid40/local512. Candidate/control remain
+  **VGPR176/SGPR128/LDS43,008/scratch0**, and no compiler runs under the
+  profiler. Trace SHA-256 is `fb62c1a4...e8a`.
+- Seven counterbalanced actual-model p512/d128 pairs reject the schedule:
+  median decode moves **20.815600 -> 20.813188 tok/s
+  (-0.01159%, +0.00557 ms/token)** with only **1/7** wins. Median paired
+  saving is **-0.70697 ms/sample**. Every row preserves tokens
+  **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+  repeat determinism, and allocation teardown.
+- Remove the kernel, wrapper, oracle extension, leaf seam, and comparison
+  route before commit. Production remains **20.800509 tok/s**. Close
+  maximum-replay-only scheduling unless a larger score-production or
+  synchronization topology changes.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-parallel-max-rejected.json`.

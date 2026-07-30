@@ -2093,6 +2093,15 @@ Tracked-clean selector-unset production at `a8a91efab` is
 **+81.399%** over sprint start. Retention rests on the exact leaf and
 seven-pair evidence rather than the noisy three-run publication:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-production.json).
+Parallel wave32 replay of the sixteen output-sharded producer maxima is
+removed after the complete-model gate. It is byte-exact and improves the
+9x50/21x100 leaves **2.957%/3.166%** with all pairs positive, but unchanged
+grid40/local512/VGPR176/LDS43,008/scratch0 resources do not transfer to
+resident decode: seven p512/d128 pairs move
+**20.815600 -> 20.813188 tok/s (-0.01159%)** with only **1/7** wins. Keep
+lane-0 serial maximum replay and do not retry this isolated schedule without a
+larger score-production or synchronization change:
+[`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-parallel-max-rejected.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace

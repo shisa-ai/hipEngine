@@ -6026,6 +6026,31 @@ The remaining attention sequence is:
     exact **4.976%** leaf win and **7/7** positive interleaved full-model pairs,
     not this noisy three-run publication. Exact repeated state/lifecycle pass:
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-production.json).
+87. Parallelize the output-sharded producer-maximum replay.
+    **Complete, rejected, and removed:** lanes 0-15 load the sixteen score-wave
+    maxima and replay their exact maximum through a wave32 shuffle tree instead
+    of lane 0 reading them serially. The score maximum, scalar F32 QK,
+    denominator, PV, gate, store, launch, and resident boundaries are
+    unchanged.
+
+    RED fails importing the absent wrapper. GREEN is byte-identical for F32
+    context and gated BF16 through wrap and explicit eviction. The 9x50 leaf
+    improves **0.029815 -> 0.028933 ms (-2.957%, 9/9 wins)**; the stronger
+    21x100 leaf improves
+    **0.029644 -> 0.028706 ms (-3.166%, 21/21 wins)**. Cache-only tracing
+    names the intended final-`true` specialization at grid40/local512, but
+    both variants remain **VGPR176/SGPR128/LDS43,008/scratch0**.
+
+    Seven counterbalanced actual-model p512/d128 pairs reject the candidate:
+    median decode moves **20.815600 -> 20.813188 tok/s
+    (-0.01159%, +0.00557 ms/token)**, with only **1/7** wins and a negative
+    **-0.70697 ms/sample** median paired saving. Tokens **2930/74107**,
+    trajectory SHA `94f803f7...bda32`, final position 638, repeat
+    determinism, and allocation teardown remain exact. Remove the kernel,
+    wrapper, test extension, leaf seam, and comparison route. Production
+    remains **20.800509 tok/s**. Maximum-replay-only scheduling is closed
+    unless a larger score-production or synchronization topology changes:
+    [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-parallel-max-rejected.json).
 
 Current exact decode checkpoint:
 
