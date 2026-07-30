@@ -967,9 +967,9 @@ class LagunaKVCache:
             ):
                 variant = (
                     "swa_context_fused_exact_gated_mixed40_local512_exp32_"
-                    "producer_max_gate_stage_pcache_tail_producer_value_tail_"
-                    "idle_vec4_denom_probability_vstage128_vec16_direct_assume_"
-                    "exp_fixed512_spans"
+                    "producer_max_gate_stage_pcache_dual_tail_producer_value_"
+                    "tail_idle_vec4_denom_probability_vstage128_vec16_direct_"
+                    "assume_exp_fixed512_spans"
                 )
             fn = self._resolve("laguna_attention_decode", variant)
             gated_args = (
@@ -2860,9 +2860,9 @@ def _validate_split_backend(
                 swa_tile16_threshold,
                 (
                     "swa_context_fused_exact_gated_mixed40_local512_exp32_"
-                    "producer_max_gate_stage_pcache_tail_producer_value_tail_"
-                    "idle_vec4_denom_probability_vstage64_vec16_direct_assume_"
-                    "exp_fixed512_spans"
+                    "producer_max_gate_stage_pcache_dual_tail_producer_value_"
+                    "tail_idle_vec4_denom_probability_vstage128_vec16_direct_"
+                    "assume_exp_fixed512_spans"
                 ),
             )
         )

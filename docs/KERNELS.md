@@ -2058,6 +2058,18 @@ Tracked-clean selector-unset production is
 **20.744351 tok/s (48.20589 ms/token)**, **+0.06145% / -0.02962 ms/token**
 over the preceding clean packet and **+80.910%** over sprint start:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-local512-vstage128-production.json).
+The exact dual-tail-producer successor keeps that V128 body and all eight
+pair-block PV waves, but assigns two independent exponent waves to each query.
+Each producer evaluates two 32-slot chunks per stage instead of four; ordered
+denominator replay and every PV FMA are unchanged. The byte-exact 21x100 leaf
+improves **0.030752 -> 0.029131 ms (-5.271%)**. Native tracing remains
+grid40/local512 at **VGPR176/SGPR128/LDS43,008/scratch0**. Seven resident
+p512/d128 pairs move **20.806774 -> 20.809401 tok/s
+(+0.01262%, -0.00607 ms/token)** with **5/7** wins and exact
+trajectory/state/lifecycle. gfx1151 promotes the dual producer at the
+saturated natural shape; single-producer V128 remains registered rollback and
+peer backend selection is unchanged:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-retained.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace
