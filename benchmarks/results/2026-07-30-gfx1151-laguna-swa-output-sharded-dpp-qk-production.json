@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:34:38+09:00",
+  "kind": "hipengine_laguna_swa_output_sharded_dpp_qk_decode_production",
+  "status": "accepted_tracked_clean_production",
+  "performance_claim": true,
+  "source_revision": "30776074fc41617f93d95902eaa334f22b1397ed",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_forward_calls_per_run": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "matrix_rows": 2048,
+    "attention_rows": 128
+  },
+  "production": {
+    "decode_samples_tok_s": [
+      20.99494365122179,
+      21.007907976586022,
+      21.01474194542389
+    ],
+    "decode_median_tok_s": 21.007907976586022,
+    "decode_median_ms_per_token": 47.601122449438165,
+    "prior_clean_tok_s": 20.965807,
+    "change_from_prior_clean_percent": 0.20080780380178354,
+    "saving_from_prior_clean_ms_per_token": 0.09558676857571413,
+    "sprint_start_tok_s": 11.466687,
+    "change_from_sprint_start_percent": 83.20817492084697,
+    "same_gguf_vulkan_tok_s": 23.348381,
+    "remaining_vulkan_gap_ms_per_token": 4.771600351096531,
+    "throughput_below_vulkan_percent": 10.024134107688143
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "provenance": {
+    "tracked_clean": true,
+    "selector_unset": true,
+    "dpp_qk_capability_active": true,
+    "raw_sha256": "84bf38b394c90b63ff250e822930517d715458b0fd7e90c873d6f6b83c390d45"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-swa-output-sharded-dpp-qk-production-3run.json"
+  },
+  "interpretation": {
+    "aggregate": "The tracked-clean median is 0.2008% above the preceding clean checkpoint and saves 0.0956 ms/token.",
+    "retention_basis": "The exact leaf improves 5.349% and all seven counterbalanced resident candidates beat their paired controls.",
+    "decision": "Keep DPP QK transport as the gfx1151 production default and the output-sharded shuffle body as exact rollback."
+  }
+}
