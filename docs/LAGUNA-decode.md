@@ -7133,20 +7133,20 @@ Next attention-core attack:
 
 1. **Done:** the cached paired-production census records **43.500661-ms**
    kernel sum, **45.173501-ms** span, and the attention-first ranking above.
-2. Screen an exact one-slot-ahead K register pipeline in the retained
-   dense-ring SWA DPP-QK owner, then the dense-prefix global owner. Keep query
-   ownership, four ordered products, the exact DPP reduction tree, score
-   plane, softmax, PV, gate, and stores fixed. RED/GREEN uses wrapped and
-   live513/576/639 byte oracles before timing.
-3. Require a positive 21x100 leaf with unchanged scratch and no material VGPR
-   occupancy loss, then seven exact p512/d128 pairs and a cached trace. Reject
-   at the first failed gate; do not compound a negative leaf.
-4. If explicit K pipelining is neutral or the compiler already schedules the
-   loads, stop exact scalar schedule tuning. The next admissible cooperative
-   attempt must begin with a tighter output-rounding certificate that predicts
-   sparse exact replay; the already-rejected standard gamma bound, BF16
-   midpoint repair, extra decomposition terms, and full component replay are
-   not new premises.
+2. **Done and rejected:** an exact one-slot-ahead K register pipeline preserved
+   every context F32 and gated BF16 byte at the real dense-ring wrap, but the
+   21x100 saturated-SWA leaf regressed **0.021327 -> 0.021989 ms/layer
+   (+3.104%)**. The extra live K bank loses before any whole-model gate.
+   Remove the candidate and do not transfer the same register-live-range
+   strategy to dense-prefix global attention:
+   [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-swa-key-pipeline-rejected.json).
+3. **Closed:** exact scalar load-schedule tuning now has a measured negative
+   endpoint. Do not retry prefetch distance, pragma-only unrolling, or the same
+   K double-bank under another name.
+4. Next require a structural cooperative attempt to begin with a tighter
+   output-rounding certificate that predicts sparse exact replay. The
+   already-rejected standard gamma bound, BF16 midpoint repair, extra
+   decomposition terms, and full component replay are not new premises.
 
 The Vulkan review changes the next move from another attention-math rewrite
 to exact device-dispatch contraction. llama.cpp does not expose a reusable
