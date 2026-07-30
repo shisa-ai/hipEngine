@@ -195145,3 +195145,28 @@ Vulkan local sizes verbatim will close the measured gap.
   and scalar-column fallback.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json`.
+
+## 2026-07-31 08:27 JST — Reject exact paired-row source-F16 output projection
+
+- Reviewed llama.cpp Vulkan `c0bc8591e881` non-quant GEMV. Its aligned path
+  reads activation `vec4`s and specializes `NUM_ROWS` up to eight so one
+  workgroup accumulates multiple output rows.
+- Implemented the bounded exact transfer for Laguna's fused attention-output
+  projection: one local256 workgroup owned two adjacent columns and shared
+  only the BF16 activation conversion. Each column retained its original F32
+  FMA order, eight-wave reduction, BF16 store, and add/RMSNorm boundary.
+- RED failed on the absent wrapper. GREEN natural K6144/N3072 and
+  K9216/N3072 fixtures matched every projection/residual/norm BF16 byte and
+  returned both completion counters to zero. Cache-only tracing showed the
+  intended grid contraction **786,432 -> 393,216** threads, but allocated
+  VGPRs rose **24 -> 32** at local256/SGPR128/LDS512/scratch0.
+- Eleven counterbalanced 20-launch bursts reject both shapes:
+  **0.170657 -> 0.181557 ms (+6.387%)** at K6144 and
+  **0.254205 -> 0.258433 ms (+1.663%)** at K9216. The 12-global/36-SWA
+  weighting adds **0.283009 ms/token**.
+- Removed the candidate kernel, wrapper, harness, and test additions before
+  runtime integration. Production remains **22.780604 tok/s /
+  43.896992 ms/token**. Reopen only with weight-transaction reduction that
+  preserves the exact per-column arithmetic tree.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-pair2-rejected.json`.

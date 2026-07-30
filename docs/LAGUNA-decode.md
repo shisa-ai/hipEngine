@@ -7490,6 +7490,31 @@ The remaining attention sequence is:
      `false` rollback and registered scalar-column weighted owner:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
+142. Transfer llama.cpp Vulkan's multi-output-row F16 GEMV ownership into the
+     retained attention-output projection composite.
+     **Rejected at the production-shape leaf gate and completely removed.**
+     Vulkan's aligned non-quant shader loads a `vec4` activation and specializes
+     `NUM_ROWS` up to eight, amortizing activation transport and reduction
+     machinery across output rows. The bounded exact transfer owns two
+     adjacent Laguna output columns per local256 workgroup, shares only the
+     BF16 activation conversion, and preserves each column's original F32 FMA
+     order, eight-wave tree, BF16 store, and fused add/RMSNorm boundary.
+
+     RED fails on the absent pair wrapper. GREEN is byte-exact at natural
+     K6144/N3072 global and K9216/N3072 SWA shapes for projection, residual,
+     norm output, and counter reset. The candidate halves grid threads
+     **786,432 -> 393,216**, but raises allocated VGPRs **24 -> 32** while
+     retaining local256/SGPR128/LDS512/scratch0.
+
+     Eleven counterbalanced 20-launch bursts reject both shapes:
+     K6144 regresses **0.170657 -> 0.181557 ms (+6.387%)** and K9216
+     regresses **0.254205 -> 0.258433 ms (+1.663%)**. The 12-global/36-SWA
+     production weighting adds **0.283009 ms/token**. Streaming F16 weight
+     bytes dominate; halving workgroups saves no weight traffic and the second
+     live accumulator/reduction loses occupancy. Remove the kernel, wrapper,
+     harness, and RED/GREEN additions before runtime integration. Production
+     remains **22.780604 tok/s / 43.896992 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-pair2-rejected.json).
 
 Current exact decode checkpoint:
 
