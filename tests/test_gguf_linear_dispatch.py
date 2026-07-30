@@ -23,7 +23,9 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
     GGUF_OUTPUT_FP16,
+    launch_gguf_q4_t16_sidecar_decode,
     launch_gguf_linear,
+    launch_gguf_linear_moe_tail_host_batch,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_pair_silu,
@@ -78,6 +80,7 @@ def _fake_weight(
     class Weight:
         def __init__(self) -> None:
             self.spec = SimpleNamespace(layout=layout, quant_key=quant_key)
+            self.allocations = allocations
 
         def allocation(self, name: str = "raw"):
             return allocations[name]
@@ -1674,6 +1677,155 @@ def test_gfx1151_q4_k_decode_sidecar_pair_silu_uses_t16_owner() -> None:
         (
             (100, 15, 15, 400, 1, 3072, 1024),
             {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_q4_k_decode_sidecar_single_uses_t16_owner() -> None:
+    """The single-output helper selects exact T16 or declines cleanly."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_single_local32_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_single(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_single, replace=True)
+    try:
+        assert launch_gguf_q4_t16_sidecar_decode(
+            weight,
+            x_ptr=100,
+            out_ptr=400,
+            rows=1,
+            in_features=1024,
+            out_features=3072,
+            backend="hip_gfx1151",
+            stream=7,
+            runtime="runtime-sentinel",
+            enabled=True,
+        )
+        assert not launch_gguf_q4_t16_sidecar_decode(
+            weight,
+            x_ptr=100,
+            out_ptr=400,
+            rows=1,
+            in_features=1024,
+            out_features=3072,
+            backend="hip_gfx1151",
+            enabled=False,
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 15, 400, 1, 1024, 3072),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_q4_k_t16_shared_down_selects_native_tail_batch() -> None:
+    """The production tail boundary consumes the resident T16 sidecar."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear+moe_tail+next_rmsnorm_host_batch",
+        "gguf_q4_k_t16_v1",
+        "dense_single_local32_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_batch(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    fake_batch.projection_symbol = "projection"
+    fake_batch.tail_symbol = "tail"
+    register(key, fake_batch, replace=True)
+    libraries = {
+        "gguf_q4_k_t16_v1": SimpleNamespace(projection="projection-fn"),
+        "launch_batch": "batch-library",
+        "moe_tail": SimpleNamespace(tail="tail-fn"),
+    }
+    try:
+        assert launch_gguf_linear_moe_tail_host_batch(
+            weight,
+            x_ptr=100,
+            shared_out_ptr=200,
+            routed_ptr=300,
+            post_attention_ptr=400,
+            norm_weight_ptr=500,
+            norm_out_ptr=600,
+            hidden_out_ptr=700,
+            rows=1,
+            in_features=1024,
+            out_features=3072,
+            eps=1e-6,
+            backend="hip_gfx1151",
+            stream=7,
+            libraries=libraries,
+            runtime="runtime-sentinel",
+            use_q4_t16_sidecar=True,
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (
+                "projection-fn",
+                "tail-fn",
+                100,
+                15,
+                200,
+                300,
+                400,
+                500,
+                600,
+                700,
+                1,
+                1024,
+                3072,
+            ),
+            {
+                "eps": 1e-6,
+                "stream": 7,
+                "library": "batch-library",
+                "runtime": "runtime-sentinel",
+            },
         )
     ]
 

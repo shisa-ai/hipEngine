@@ -194592,3 +194592,33 @@ Vulkan local sizes verbatim will close the measured gap.
   Runtime sidecar admission, exact model gating, and production promotion
   remain next. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-leaf.json`.
+
+## 2026-07-31 03:01 JST — Retain exact Q4T16 shared-down decode
+
+- Attach a compact T16 `decode_tiles` sidecar to the 24 Q4
+  `ffn_down_shexp` weights and register both the standalone rows-one linear
+  owner and a native shared-down-to-D9 host-batch sibling. The existing
+  expanded-pack8 projection remains the exact rollback and prefill owner.
+- RED first covered the absent native ABI/registry route. GREEN reports
+  **110 focused passes**, including the live-GPU native batch, materializer,
+  gfx1151 alias/capability, session rollback, dispatch ownership, and
+  production-shape Q4 MoE oracle. A broader focused bundle recorded two
+  unrelated pre-existing failures: the rows-three experimental Q6 kernel
+  equivalence assertion and a stale prefill scratch-byte literal. Per the
+  focused-repair rule, neither was changed or rerun.
+- One resident load and seven alternating p512/d128 pairs all improve:
+  **22.377298 -> 22.563488 tok/s (+0.832048%)**, saving
+  **0.368759 ms/token** by independent medians and
+  **0.373822 ms/token** by paired median. Candidate wins are **7/7**.
+- Every arm preserves next/final tokens **2930/74107**, final position 638,
+  generated-ID SHA-256 `94f803f7...bda32`, deterministic repeats, and
+  complete allocation recovery. Sidecars add exactly **43,646,976 bytes**,
+  raising resident bytes **79,022,522,196 -> 79,066,169,172**. Excluded load
+  is 141.236 seconds and no compiler runs inside the cached-only benchmark.
+- Raw SHA-256 is
+  `e092592527356a486ba44955af585d3269a3b934d83ea61d83704caf9023db24`.
+  Promote the gfx1151 capability and next run tracked-clean selector-unset
+  production plus a cached 127-transition census before removing the
+  comparison seam.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-retained.json`.

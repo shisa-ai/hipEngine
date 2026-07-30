@@ -2399,3 +2399,19 @@ should be boring.
 - The comparison CLI, setter, and protocol fields are removed. Retain the
   constructor rollback, gfx1151 capability, four-axis host-batch
   registrations, native shim, and exact separate-call fallback.
+
+## Laguna gfx1151 Q4T16 shared-down selector
+
+- Added 2026-07-31 as
+  `LagunaGGUFResidentSession.set_q4_shared_down_t16_decode(...)` and
+  `--compare-q4-shared-down-t16-decode`. The gfx1151 capability defaults on;
+  false restores the exact expanded-pack8 projection while preserving the
+  retained native shared-down-to-D9 host batch.
+- All seven same-resident p512/d128 candidates win
+  **22.377298 -> 22.563488 tok/s (+0.83205%)** with exact trajectory,
+  state, residency, and lifecycle. The 24 sidecars add **43,646,976 bytes**.
+- Remove the comparison CLI and session setter after tracked-clean
+  selector-unset production plus the first cached 127-transition census.
+  Retain the constructor rollback, architecture capability, sidecar
+  materialization, registered T16 single-output and host-batch keys, and
+  expanded-pack8 fallback.

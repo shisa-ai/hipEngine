@@ -21,12 +21,16 @@ from hipengine.kernels.backends import (
 from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
     build_laguna_launch_batch,
     laguna_q4_shared_down_tail_batch,
+    laguna_q4_t16_shared_down_tail_batch,
     laguna_q6_shared_down_tail_batch,
     plan_laguna_launch_batch_build,
 )
 from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.loading.materialize import float_array_to_bf16_bits
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
+from hipengine.quant.gguf_q4_k import (
+    repack_gguf_q4_k_pack8,
+    repack_gguf_q4_k_tile16,
+)
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q6_k_weight
 
 
@@ -55,8 +59,9 @@ def test_laguna_launch_batch_build_plan_is_dry_run_safe() -> None:
     assert dry.output_path == plan.output_path
 
 
-def test_laguna_launch_batch_exports_both_shared_down_abis() -> None:
+def test_laguna_launch_batch_exports_shared_down_abis() -> None:
     assert callable(laguna_q4_shared_down_tail_batch)
+    assert callable(laguna_q4_t16_shared_down_tail_batch)
     assert callable(laguna_q6_shared_down_tail_batch)
 
 
@@ -83,6 +88,14 @@ def test_gfx1151_registers_both_native_launch_batch_keys() -> None:
             "pack8_gemv_decode_bf16_bf16_out",
         )
     )
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear+moe_tail+next_rmsnorm_host_batch",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        )
+    )
 
 
 def _upload(array: np.ndarray):
@@ -99,8 +112,8 @@ def _download_u16(buffer, shape: tuple[int, ...]) -> np.ndarray:
 
 
 @requires_hip
-@pytest.mark.parametrize("quant", ["q4", "q6"])
-def test_native_shared_down_tail_batch_preserves_both_existing_launches(
+@pytest.mark.parametrize("quant", ["q4", "q4_t16", "q6"])
+def test_native_shared_down_tail_batch_preserves_existing_launches(
     quant: str,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
@@ -112,7 +125,8 @@ def test_native_shared_down_tail_batch_preserves_both_existing_launches(
     from hipengine.kernels.hip_gfx1100.quant import gguf_q6_k_pack8_gemv
 
     rows, in_features, hidden = 1, 1024, 3072
-    rng = np.random.default_rng(0xBA7C + (4 if quant == "q4" else 6))
+    quant_seed = {"q4": 4, "q4_t16": 5, "q6": 6}[quant]
+    rng = np.random.default_rng(0xBA7C + quant_seed)
     x = float_array_to_bf16_bits(
         rng.standard_normal((rows, in_features)).astype(np.float32) * 0.2
     )
@@ -138,6 +152,23 @@ def test_native_shared_down_tail_batch_preserves_both_existing_launches(
         projection_function = getattr(
             projection_library,
             "hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out",
+        )
+    elif quant == "q4_t16":
+        from hipengine.kernels.hip_gfx1100.quant import (
+            gguf_t16_selected_gemv,
+        )
+
+        tiles = repack_gguf_q4_k_tile16(
+            make_q4_k_weight(hidden, in_features)[None, ...]
+        ).tiles
+        weight_arrays = (tiles,)
+        projection_library = (
+            gguf_t16_selected_gemv.build_gguf_t16_selected_gemv(load=True)
+        )
+        projection_function = getattr(
+            projection_library,
+            "hipengine_gguf_q4_k_t16_dense_single_local32_gemv_"
+            "bf16_bf16_out",
         )
     else:
         weight_arrays = (make_q6_k_weight(hidden, in_features),)
@@ -181,6 +212,21 @@ def test_native_shared_down_tail_batch_preserves_both_existing_launches(
                 library=projection_library,
                 runtime=runtime,
             )
+        elif quant == "q4_t16":
+            (tiles_d,) = device_inputs[1:2]
+            (
+                gguf_t16_selected_gemv
+                .gguf_q4_k_t16_dense_single_local32_bf16_bf16_out
+            )(
+                x_d.ptr,
+                tiles_d.ptr,
+                control_shared_d.ptr,
+                rows,
+                in_features,
+                hidden,
+                library=projection_library,
+                runtime=runtime,
+            )
         else:
             (qweight_d,) = device_inputs[1:2]
             gguf_q6_k_pack8_gemv.gguf_q6_k_pack8_gemv_decode_bf16_bf16_out(
@@ -213,6 +259,24 @@ def test_native_shared_down_tail_batch_preserves_both_existing_launches(
                 qweight_d.ptr,
                 scales_d.ptr,
                 mins_d.ptr,
+                batch_shared_d.ptr,
+                routed_d.ptr,
+                post_d.ptr,
+                norm_weight_d.ptr,
+                batch_norm_d.ptr,
+                batch_hidden_d.ptr,
+                rows,
+                in_features,
+                hidden,
+                library=batch_library,
+                runtime=runtime,
+            )
+        elif quant == "q4_t16":
+            laguna_q4_t16_shared_down_tail_batch(
+                projection_function,
+                tail_function,
+                x_d.ptr,
+                tiles_d.ptr,
                 batch_shared_d.ptr,
                 routed_d.ptr,
                 post_d.ptr,

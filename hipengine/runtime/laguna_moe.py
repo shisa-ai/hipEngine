@@ -30,6 +30,7 @@ from hipengine.quant.gguf_q4_k import (
 )
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
 from hipengine.runtime.gguf_linear import (
+    launch_gguf_q4_t16_sidecar_decode,
     launch_gguf_linear,
     launch_gguf_linear_moe_tail_host_batch,
     launch_gguf_linear_pair,
@@ -2754,6 +2755,7 @@ def run_laguna_moe_c1_components(
     use_q4_pack8_dual_silu_decode: bool = False,
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
+    use_q4_shared_down_t16_decode: bool = False,
     tail_context: LagunaMoETailHostBatchContext | None = None,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
@@ -2945,9 +2947,10 @@ def run_laguna_moe_c1_components(
             runtime=runtime,
             libraries=libraries,
             use_gemv_decode=True,
+            use_q4_t16_sidecar=use_q4_shared_down_t16_decode,
         )
     if tail_context is None or not tail_context.fused:
-        launch_gguf_linear(
+        t16_shared_down = launch_gguf_q4_t16_sidecar_decode(
             shared_down,
             scratch.shared_intermediate.ptr,
             scratch.shared_output.ptr,
@@ -2958,9 +2961,23 @@ def run_laguna_moe_c1_components(
             stream=stream,
             runtime=runtime,
             libraries=libraries,
-            use_wmma_prefill=False,
-            use_gemv_decode=True,
+            enabled=use_q4_shared_down_t16_decode,
         )
+        if not t16_shared_down:
+            launch_gguf_linear(
+                shared_down,
+                scratch.shared_intermediate.ptr,
+                scratch.shared_output.ptr,
+                1,
+                sf,
+                h,
+                backend=plan.backend,
+                stream=stream,
+                runtime=runtime,
+                libraries=libraries,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+            )
     return scratch.routed_output, scratch.shared_output
 
 
@@ -2977,6 +2994,7 @@ def run_laguna_moe_c1(
     use_q4_pack8_dual_silu_decode: bool = False,
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
+    use_q4_shared_down_t16_decode: bool = False,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -2994,6 +3012,7 @@ def run_laguna_moe_c1(
         use_q4_decode_t16_dual_interleaved=(
             use_q4_decode_t16_dual_interleaved
         ),
+        use_q4_shared_down_t16_decode=use_q4_shared_down_t16_decode,
     )
     scratch.plan.add(
         routed.ptr,

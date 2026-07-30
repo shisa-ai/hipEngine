@@ -7074,6 +7074,24 @@ The remaining attention sequence is:
      the same complete token hash and zero live allocations. Keep the ordinary
      loader rollback while a paired cache format removes that one-time debt:
      [`production gate`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
+128. Consume the existing compact T16 layout for the 24 Q4 shared-down
+     projections. **Retained/default pending clean publication:** the exact
+     local32/tile8 owner preserves expanded-pack8's K ownership, FP32
+     coefficient products, FMA sequence, wave32 tree, BF16 store, and the
+     retained native shared-down-to-D9 host boundary. Pack8 remains the
+     prefill owner and exact decode rollback.
+
+     All-actual-weight leaves improve **0.171187 -> 0.129045 ms/token
+     (-24.618%)**, with every tensor positive, **215/216** timed pairs
+     positive, and all **73,728** BF16 outputs identical. Seven same-resident
+     p512/d128 candidates all win **22.377298 -> 22.563488 tok/s
+     (+0.83205%, -0.368759 ms/token)**; paired median saving is
+     **0.373822 ms/token**. Every token, trajectory, position, repeat, and
+     lifecycle check is exact. Twenty-four decode-only sidecars add exactly
+     **43,646,976 bytes**, bringing resident bytes to **79,066,169,172**.
+     Next publish a tracked-clean selector-unset packet and cached
+     127-transition census before removing the comparison seam:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-retained.json).
 
 Current exact decode checkpoint:
 
@@ -7092,8 +7110,10 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean SWA local1024 production | **22.335681 tok/s** | **44.771 ms** | **+94.788%** |
 | hipEngine retained exact global local1024 same-resident gate | **22.383414 tok/s** | **44.676 ms** | **+95.204%** |
 | hipEngine current tracked-clean global local1024 production | **22.378602 tok/s** | **44.686 ms** | **+95.162%** |
+| hipEngine retained exact Q4T16 shared-down same-resident gate | **22.563488 tok/s** | **44.319 ms** | **+96.776%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **1.856 ms/token** | hipEngine is **4.154%** below Vulkan throughput |
+| Current tracked-clean wall gap | — | **1.856 ms/token** | hipEngine is **4.154%** below Vulkan throughput |
+| Retained-gate wall gap pending clean publication | — | **1.490 ms/token** | hipEngine is **3.362%** below Vulkan throughput |
 
 The refreshed post-global-local1024 census confirms the second exact
 cooperative-width transfer. Complete hipEngine kernel work is
