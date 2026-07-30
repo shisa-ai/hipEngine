@@ -194659,3 +194659,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-production.json`
   and
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json`.
+
+## 2026-07-31 03:31 JST — Reject gfx1151 last-producer wave-top10 router
+
+- Audited llama.cpp Vulkan's router/execution advantage against the fresh
+  482-dispatch gfx1151 census. The reusable exact D11-derived diagnostic was
+  the only bounded router contraction with a new architecture-local premise:
+  retain all 256 projection blocks, elect the final producer, run exact
+  wave-top10 selection, and remove 47 selector launches/token. The temporary
+  route reused the first word of the self-resetting selected-down completion
+  plane, so it added no resident bytes.
+- RED first failed on the absent gfx1151 alias/plan route. GREEN passed 44
+  focused registry/runtime/live-HIP tests. The mandatory lineage command was
+  attempted before the port but remains environment-blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; no external source was
+  copied or changed.
+- A one-pair directional screen was negative, so the predeclared seven-pair
+  counterbalanced gate decided the route. Candidate loses every pair:
+  **22.557366 -> 22.466261 tok/s (-0.403882%)**, adding
+  **0.179773 ms/token** by independent medians and
+  **0.176215 ms/token** by paired median; wins are **0/7**.
+- Every arm preserves next/final tokens **2930/74107**, final position 638,
+  generated-ID SHA-256 `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete allocation recovery.
+  Raw SHA-256 is
+  `aa41cdc97f1a3096ffed2965ab08cc872387edaceeb88affe86bc139ffdcc0db`.
+- Removed every gfx1151 alias/capability, plan/session, comparison CLI, and
+  test seam. The pre-existing diagnostic primitive remains unchanged and
+  gfx1151-excluded; split projection plus correction-only selection remains
+  production at the clean **22.555437 tok/s** checkpoint. Reopen only for a
+  materially different router schedule or graph-wide submission amortization.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-router-wave-top10-rejected.json`.

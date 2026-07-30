@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T03:31:19+09:00",
+  "kind": "hipengine_gfx1151_laguna_router_wave_top10_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "d4d41ca68d2585ddbaba157f3265ea3814004d41",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "control": "separate 256-block BF16-hidden/F32-weight router projection followed by the exact correction-only top-10 selector",
+    "candidate": "existing exact D11-derived 256-block projection with last-producer wave-top10 selection and a self-resetting completion counter",
+    "new_gfx1151_premise": "remove 47 selector launches/token while preserving all 256 projection workgroups; reuse the already-zero selected-down completion plane so resident bytes do not change",
+    "expected_dispatch_change": "482 -> 435 model dispatches/token",
+    "runtime_state": "all gfx1151 alias, capability, plan, session, comparison, and test seams removed after rejection; diagnostic gfx1100 primitive remains unchanged"
+  },
+  "protocol": {
+    "shape": "p512/d128 eager c=1",
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "decode_forward_calls_per_run": 127,
+    "repetitions": 7,
+    "order": "counterbalanced within one resident session",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-persistent-router-wave-top10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-router-wave-top10-ab7.json",
+    "raw_sha256": "aa41cdc97f1a3096ffed2965ab08cc872387edaceeb88affe86bc139ffdcc0db"
+  },
+  "results": {
+    "control": {
+      "samples_tok_s": [
+        22.53435170274053,
+        22.559481633781875,
+        22.543310794992614,
+        22.558110942272084,
+        22.55849201538952,
+        22.557366036455324,
+        22.556979256132404
+      ],
+      "median_tok_s": 22.557366036455324,
+      "median_ms_per_token": 44.33141699185463
+    },
+    "candidate": {
+      "samples_tok_s": [
+        22.46626079163804,
+        22.465288912108672,
+        22.469268793712363,
+        22.461247472328566,
+        22.454975539989256,
+        22.468056949040704,
+        22.46852263938437
+      ],
+      "median_tok_s": 22.46626079163804,
+      "median_ms_per_token": 44.51118988043621
+    },
+    "relative_change_percent": -0.40388245981400894,
+    "median_ms_per_token_change": 0.17977288858158147,
+    "paired_median_ms_per_token_change": 0.1762145433545582,
+    "candidate_wins": 0,
+    "pairs": 7
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_exact": true,
+    "repeat_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "resident_nbytes": 79066169172
+  },
+  "decision": {
+    "action": "reject and remove",
+    "reason": "The exact launch contraction loses every complete-model pair and reproduces the earlier gfx1100 full-model reversal; a faster isolated router or fewer launches is not sufficient.",
+    "production": "unchanged at the tracked-clean 22.555437 tok/s Q4T16 shared-down checkpoint",
+    "reopen_only_if": "a materially different router schedule improves the complete family without last-producer tail work, or a graph-wide submission mechanism amortizes the unchanged split launches"
+  }
+}

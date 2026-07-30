@@ -7103,6 +7103,28 @@ The remaining attention sequence is:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-production.json),
      [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json).
+129. Re-screen the exact last-producer wave-top10 router on gfx1151.
+     **Rejected and removed:** this was an architecture-local transfer, not a
+     retry of the serialized persistent design. The admitted D11-derived body
+     retained all 256 projection workgroups, elected the last producer with a
+     self-resetting counter, ran the exact wave-top10 selector, and removed 47
+     selector launches/token. The temporary owner reused the first word of the
+     existing selected-down completion plane, so residency stayed exactly
+     **79,066,169,172 bytes**.
+
+     The complete-model gate reverses the isolated/launch-count premise just
+     as it did on gfx1100. Seven counterbalanced resident p512/d128 pairs move
+     **22.557366 -> 22.466261 tok/s (-0.40388%)**, adding
+     **0.179773 ms/token** by independent medians and
+     **0.176215 ms/token** by paired median. Candidate wins are **0/7**.
+     Every arm preserves next/final tokens **2930/74107**, final position 638,
+     generated-ID SHA-256 `94f803f7...bda32`, repeat determinism, and complete
+     allocation recovery. Remove the gfx1151 alias/capability, plan/session
+     route, benchmark comparison, and tests. The split projection plus
+     correction selector remains production; reopen only with graph-wide
+     submission amortization or a router schedule that avoids last-producer
+     tail work:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-wave-top10-rejected.json).
 
 Current exact decode checkpoint:
 
