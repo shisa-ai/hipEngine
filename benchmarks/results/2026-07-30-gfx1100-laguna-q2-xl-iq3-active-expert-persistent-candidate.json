@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_exact_iq3_active_expert_persistent_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_candidate_default_off_runtime_qualified_production_unchanged",
+  "status": "standalone_exact_candidate_resolved_to_production",
   "performance_claim": true,
   "correctness_claim": true,
   "hardware": {
@@ -36,10 +36,11 @@
       "tests/test_gguf_iq3_active_expert_persistent.py": "bc1ddbd07006d09289b4c7f899e4ad8a4c42253743a69b2142e6053c9b0a4e8c"
     },
     "runtime_candidate_implementation_sha256": {
-      "hipengine/kernels/hip_gfx1100/__init__.py": "1d165f929899cb7f0b2623ed6808ae7e87a7ca517fcdd141384f29b341998b6d",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "7e7cb434cc614782f5f989940052a74220200f1e07b0203c3e9bdd1397474e93",
       "hipengine/kernels/hip_gfx1151/__init__.py": "b6d7ad2d89e4c868f6192a40892a33ef109a5406fdf98634030978c6f082915f",
       "hipengine/runtime/laguna_moe.py": "5fcd28dc20615d187fe640a7525cff2d219da71fc7d4bf588b921ed8a10b9a08",
-      "tests/test_laguna_h5q_runtime_policy.py": "c6089d5c0e3dd8fe6ff59558e3dcd86d3237b24550febbbafea0f5c393c775ff"
+      "tests/test_laguna_h5q_runtime_policy.py": "bec7dd8dd01e5d324df728abcbe641faab698fed5c685e798d2416d37da968bd",
+      "tests/test_laguna_moe_gpu.py": "6ead2015248c352c6644ca56d776901cd62529b82d389534dcae065ecb0a02ff"
     }
   },
   "candidate": {
@@ -207,6 +208,21 @@
       "harness_sha256": "c16f353deaa6140470076914c33ec9aabd8ec8aacfd495f45fdade1145f3996a",
       "stdout_sha256": "538f206ff62e7a7a170df393ee9f6ecb322ccc15bead9b0f87731d3baaaecfc1",
       "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    },
+    "clean_package_default_512_1k_4k": {
+      "protocol": "selector-unset H5Q source default versus scoped H5J rollback; one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length",
+      "control_tok_s": [238.40070994967604, 218.71838194582665, 158.27026941281912],
+      "candidate_tok_s": [239.98127440702567, 219.4938686139437, 158.6934171527407],
+      "gain_percent": [0.6629864725164802, 0.35455943904574294, 0.26735769231420736],
+      "paired_candidate_wins": [3, 3, 3],
+      "all_state_exact": true,
+      "all_finite": true,
+      "all_lifecycle_recovered": true,
+      "workspace_bytes": 150994944,
+      "json_sha256": "951cc33596bab5a582d8c557dd0bae4802e7bc31c98719acfd2087892f3653d6",
+      "harness_sha256": "26c50ce38eec068ff3a21fa9b97133a3d9674e245a3515b62dfa6c658ba37e5f",
+      "stdout_sha256": "99d2766899587dfc8cc371205ce778e5592de6dd36fbcafe1075b556ba4bae6c",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
     }
   },
   "commands": {
@@ -216,21 +232,25 @@
     "final_actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python /tmp/laguna_wpfh5q_iq3_active_expert_p64_final_screen.py",
     "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5q_active_expert_package_full_state.py",
     "integrated_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5q-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5q_active_expert_trace_integrated.py",
-    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5q_active_expert_default_off_clean_512_4k.py"
+    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5q_active_expert_default_off_clean_512_4k.py",
+    "package_default_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5q_active_expert_package_default_clean_512_4k.py"
   },
   "production": {
-    "runtime_owner_added": false,
-    "package_policy_changed": false,
-    "m512_tok_s": 238.56489443755876,
-    "m1024_tok_s": 218.1815612145882,
-    "m4096_tok_s": 158.13810004175082,
+    "runtime_owner_added": true,
+    "package_policy_changed": true,
+    "m512_tok_s": 239.98127440702567,
+    "m1024_tok_s": 219.4938686139437,
+    "m4096_tok_s": 158.6934171527407,
+    "preceding_canonical_m512_tok_s": 238.56489443755876,
+    "canonical_m512_gain_percent": 0.5937084636053358,
     "matched_llamacpp_hip_m512_tok_s": 694.184,
-    "matched_gap": 2.909832989621587
+    "matched_gap": 2.8926590281482274
   },
   "decision": {
     "standalone_candidate_admitted": true,
     "default_off_runtime_qualified": true,
-    "runtime_default_changed": false,
-    "next_action": "Attempt the selector-unset one-entry gfx1100 package default and retain it only after an exact clean 512/1K/4K source-default publication gate."
+    "runtime_default_changed": true,
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json",
+    "next_action": "Reprofile the promoted exact M512 request, rerank residual family gaps against matched llama.cpp HIP, and select the next distinct exact target."
   }
 }

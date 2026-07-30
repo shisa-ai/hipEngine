@@ -164,18 +164,14 @@ should be removed or collapsed.
   shape, registration, and backend misses retain rowbatch8/IQ4-auto. gfx1151
   remains empty/fail-closed. There is no public/session selector, new
   allocation, workspace, or sidecar to remove.
-- WPF-H5Q adds package-only `LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS`, initially
-  empty on gfx1100/gfx1151, plus an ABI-table adapter that can pass the existing
-  device active-expert list/count to a registered grouped-down route. Runtime
-  qualification pairs the admitted P64 variant with
-  `grouped_raw_iq_active_experts`; map, ABI, shape, registration, and backend
-  misses retain H5J. Complete M512 state is KL0, tracing selects all 45 calls,
-  and default-off 512/1K/4K is **+0.702%/+0.278%/+0.370%**. Keep the capability
-  through the selector-unset source-default publication attempt. If that gate
-  fails, remove the capability/adapter/policy test while retaining the P64
-  leaf; if it passes, retain one gfx1100 ABI entry and remove this temporary
-  trigger after a release checkpoint. No allocation, producer, sidecar, or
-  public selector is introduced.
+- WPF-H5Q's `LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS` cleanup trigger is closed.
+  Complete M512 state is KL0, tracing selects all **45** P64 IQ3 calls, and
+  default-off 512/1K/4K is **+0.702%/+0.278%/+0.370%**. Selector-unset
+  publication confirms **+0.663%/+0.355%/+0.267%**, 3/3 paired wins at every
+  length. Keep the one gfx1100 variant-to-`grouped_raw_iq_active_experts` entry
+  and ABI-table adapter: they pass the existing device active-expert list/count
+  with no allocation, producer, sidecar, or public selector. Map, ABI, shape,
+  registration, and backend misses retain H5J; gfx1151 stays empty/fail-closed.
 
 ## Laguna exact qrow4 SWA prefill selector
 
