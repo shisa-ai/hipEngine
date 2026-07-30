@@ -541,8 +541,13 @@ projection/residual/norm BF16 byte and the reset counter. Cached gfx1151
 tracing reports local256/VGPR24/SGPR128/LDS512/scratch0. Seven same-resident
 p512/d128 pairs all improve **22.005296 -> 22.062263 tok/s (+0.25888%)**,
 with a **0.113153-ms/token** paired-median saving and unchanged residency.
-gfx1151 selects the exact composite pending tracked-clean publication:
-[`output/add/RMSNorm retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json).
+Tracked-clean production reaches **22.063262 tok/s (+0.25227%)** and the
+complete census proves **577 -> 529 dispatches/token**,
+**45.660100 -> 45.543776 ms/token** span, and
+**1.882766 -> 1.793306 ms/token** span-minus-kernel time. gfx1151 selects the
+exact composite in production:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json),
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json).
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |

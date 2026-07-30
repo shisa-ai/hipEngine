@@ -6822,10 +6822,10 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
 | hipEngine post-dense-interleave production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
 | hipEngine F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
-| hipEngine current projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
-| hipEngine provisional output-projection→add/RMSNorm candidate | **22.062263 tok/s** | **45.326 ms** | **+92.402%** |
+| hipEngine prior projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
+| hipEngine current output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.609 ms/token** | hipEngine is **5.742%** below Vulkan throughput |
+| Remaining wall gap | — | **2.495 ms/token** | hipEngine is **5.504%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -6916,10 +6916,18 @@ local256/VGPR24/SGPR128/LDS512/scratch0. All seven same-resident p512/d128
 pairs win **22.005296 -> 22.062263 tok/s (+0.25888%)**, saving
 **0.117339 ms/token** by median endpoints and **0.113153 ms/token** by paired
 deltas. Every generated trajectory, final position, repeat, allocation, and
-resident byte remains exact. gfx1151 now selects the composite provisionally;
-tracked-clean selector-unset production and a complete dispatch census remain
-the publication gate:
-[`output projection plus add/RMSNorm retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json).
+resident byte remains exact. Tracked-clean selector-unset production confirms
+**22.063262 tok/s (+0.25227%, -0.114340 ms/token)** versus the prior current
+default and **+92.412%** from sprint start. The complete census confirms
+exactly **577 -> 529 dispatches/token**, 48 composite calls, zero separate
+output projections or add/RMSNorm calls, kernel sum
+**43.777334 -> 43.750470 ms/token (-0.0614%)**, span
+**45.660100 -> 45.543776 (-0.2548%)**, and span-minus-kernel time
+**1.882766 -> 1.793306 (-4.75%)**. The fused target family itself falls
+**11.117677 -> 11.083353 ms/token (-0.3087%)**. gfx1151 now selects the
+composite in production:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json),
+[`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json).
 
 Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
