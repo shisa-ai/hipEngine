@@ -29,9 +29,13 @@ reconstruction loses all four starts at **0.636–0.926x** on both clocks and is
 removed. The retained SWA-only leaf preserves every output bit and complete
 `KVLiveSpans` at starts 0/128/256/384, remains local32/VGPR64/LDS0/scratch0, and
 includes the unchanged append cost while moving the actual 144-call event/wall
-sums **337.277/334.031 -> 126.687/125.764 ms (2.662x/2.656x)**. It adds no
-launch/allocation/workspace/sidecar and leaves production unchanged pending
-runtime qualification. H5N's
+sums **337.277/334.031 -> 126.687/125.764 ms (2.662x/2.656x)**. Complete state
+is KL0/byte-exact; integrated tracing records all **144** append-before-H5R
+pairs and cuts the SWA schedule/request sum **63.946%/10.289%** at unchanged
+**1,862** dispatches. Default-off clean 512/1K/4K improves
+**+11.444%/+4.763%/+0.881%**, 3/3 paired wins each, with unchanged ownership.
+It adds no allocation/workspace/sidecar and leaves production H5M pending
+source-default publication. H5N's
 separately registered exact dense-first-fill leaf is byte-identical to H5M and
 wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
@@ -308,10 +312,13 @@ VGPR248/LDS8192 reconstruction loses every start at **0.636–0.926x** and its
 export/key/exclusion/test case is removed. SWA wins all four starts on both
 clocks at local32/VGPR64/LDS0/scratch0. Including equal append cost, its actual
 144-call event/wall sums fall **337.277/334.031 -> 126.687/125.764 ms
-(-62.438%/-62.350%, 2.662x/2.656x)**. Admit only the standalone SWA leaf; no
-runtime owner/default changes before complete state, integrated symbols/counts,
-and clean 512/1K/4K. Wider qrows, cross-head/key-split, source MMQ, and
-changed-association attention stay closed
+(-62.438%/-62.350%, 2.662x/2.656x)**. Complete state is KL0; integrated tracing
+records all **144** write->H5R pairs, preserves the normalized **1,862-dispatch**
+inventory, and cuts the SWA schedule/request sum **63.946%/10.289%**. Default-off
+clean 512/1K/4K is **+11.444%/+4.763%/+0.881%**, 3/3 paired wins each, with
+exact state and unchanged ownership. Runtime ownership is qualified, but H5M
+remains production pending selector-unset source-default publication. Wider
+qrows, cross-head/key-split, source MMQ, and changed-association attention stay closed
 ([H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5Q production](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·

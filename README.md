@@ -180,8 +180,12 @@ numbers below.
   removed. The retained SWA-only leaf is byte-exact at starts 0/128/256/384,
   remains local32/VGPR64/LDS0/scratch0, and includes the unchanged append cost
   while moving the actual 144-call event/wall sums **337.277/334.031 ->
-  126.687/125.764 ms (2.662x/2.656x)**. It adds no launch, allocation,
-  workspace, or sidecar; production is unchanged pending runtime qualification.
+  126.687/125.764 ms (2.662x/2.656x)**. Complete M512 state is KL0/byte-exact;
+  integrated tracing records all **144** append-before-H5R pairs and cuts the
+  SWA schedule/request sum **63.946%/10.289%** at unchanged **1,862**
+  dispatches. Default-off clean 512/1K/4K improves
+  **+11.444%/+4.763%/+0.881% (3/3 paired wins each)**. It adds no allocation,
+  workspace, or sidecar; production stays H5M pending source-default publication.
   Both short rows exceed 150 tok/s and H5Q 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
