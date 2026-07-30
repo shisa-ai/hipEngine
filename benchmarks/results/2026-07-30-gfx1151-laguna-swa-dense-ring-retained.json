@@ -2,7 +2,7 @@
   "schema": 1,
   "created_at": "2026-07-30T13:55:27+09:00",
   "kind": "hipengine_laguna_swa_dense_ring_decode_retention",
-  "status": "retained_default_pending_clean_publication",
+  "status": "retained_default",
   "performance_claim": true,
   "source_revision": "65c88ab44f3ab213de29ea1768f303c34a87e1f8",
   "hardware": {
@@ -121,5 +121,10 @@
     "resources": "pass; grid40/local512/VGPR176/SGPR128/scratch0 unchanged, LDS 43008 -> 40960",
     "whole_model": "pass; +1.01278%, 7/7 pairs, exact state and lifecycle",
     "decision": "Promote only behind the gfx1151 dense-ring capability and runtime metadata-valid qualification; keep generic DPP-QK as exact rollback and explicit-eviction fallback."
+  },
+  "publication": {
+    "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-swa-dense-ring-production.json",
+    "source_revision": "f997113133a4f00fa1c1f44f6d649626bec7d981",
+    "tracked_clean_median_tok_s": 21.234814725918262
   }
 }
