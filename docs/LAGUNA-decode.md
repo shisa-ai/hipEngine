@@ -7294,6 +7294,30 @@ The remaining attention sequence is:
      temporary comparison surface remains:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json).
+135. Delay the complete c=1 shared branch until selected gate/up has been
+     queued, attempting to recover the retained overlap path's measured
+     selected-gate contention. **Rejected and removed.** RED fails on the
+     absent schedule contract; GREEN matches every production-shape Q4 BF16
+     output bit. One resident counterbalanced p512/d128 pair then moves
+     **22.730082 -> 22.714079 tok/s (-0.07041%)**, adding
+     **0.030997 ms/token**, with identical token **2930 -> 74107**, final
+     position 638, generated-ID SHA-256 `94f803f7...bda32`,
+     **79,066,169,172-byte** residency, and complete allocation recovery.
+
+     The retained raw two-queue trace explains the stop. Its secondary branch
+     consists of 47 shared gate/up calls (**3.597354 ms/token** inclusive),
+     23 Q6 shared-down calls (**2.407913 ms/token**), and 24 Q4 shared-down
+     calls (**0.532232 ms/token**). Post-router release already places those
+     completions immediately before primary selected-down progress. Moving
+     all **6.537270 ms/token** of contended work behind selected gate/up makes
+     the event join critical; there is no useful coarse release point between
+     the two schedules.
+
+     Remove the runtime field, setter, comparison CLI, and test seam. Keep
+     post-router release as production. Reopen scheduling only around
+     finer-grained device ownership or a shared-branch kernel that materially
+     reduces bytes:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-delayed-shared-release-rejected.json).
 
 Current exact decode checkpoint:
 
