@@ -793,21 +793,21 @@ integrated tracing selects all 72 calls, cutting qrow4/attention/request sum
 **-0.217%**, and a seven-repeat adjudication confirms **7/7** H5N samples below
 H5M (**158.152 -> 157.832 tok/s, -0.202%**). Remove the temporary role policy,
 retain only the leaf, and keep H5M production. The 508,944,384 source-level
-generic predicates remain diagnostic, not a physical-load claim. WPF-H5O next
+generic predicates remain diagnostic, not a physical-load claim. WPF-H5O then
 returns to Q5's retained **465.660-ms** family/**406.709-ms** matched gap through
-a distinct exact representation premise in the existing
-`quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}` family. Per 256-weight Q5 block,
-the candidate plane stores 256 unpacked quant bytes plus eight F32 scale and
-eight F32 minimum coefficients (**320 bytes**) instead of 256 F32 weights
-(**1,024 bytes**). The consumer must reconstruct every retained producer F32
-bit before executing H5L's unchanged scalar `fmaf`, wave tree, serial wave sum,
-and store. Across the actual eight-shape/**235-call** inventory, the source model
-moves producer+consumer logical bytes **2.034x**; cache effects and added
-reconstruction ALU make this rationale, not measured bandwidth or performance.
-Freeze RED on reconstructed bits and rows17/33 output bytes, add only separate
-gfx1100 keys/symbols, and require producer-inclusive both-clock wins per role;
-H5L/H5G and gfx1151 remain fail-closed fallbacks
-([H5O target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
+a distinct exact representation in
+`quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. Its 64-byte-aligned **320-byte**
+block holds 256 unpacked quant bytes plus eight F32 scale and eight F32 minimum
+coefficients. Every reconstructed F32 bit and rows17/33 H5L/H5G output byte
+matches. Cached tracing is scratch-free: producer/expand VGPR16, consumers
+VGPR80-200/LDS512-1536. Nevertheless **0/8** actual roles win both clocks;
+producer-inclusive weighted event/wall regresses **477.022/473.054 ->
+606.780/614.512 ms (+27.202%/+29.903%)**. The source-level 2.034x logical-byte
+model fails because coefficient loads and reconstruction ALU dominate. Remove
+every H5O symbol/key/test; H5L/H5G and gfx1151 remain unchanged. Do not retry
+coefficient reconstruction without a distinct operation-count premise
+([H5O rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
+[H5O target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
 [H5N runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
 [H5N leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
