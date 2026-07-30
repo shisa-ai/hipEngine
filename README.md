@@ -103,11 +103,16 @@ numbers below.
   gfx1151 retain their preceding exact routes. H5K closes larger resident IQ3
   row ownership: rowbatch12 loses all 45 actual layers by **+6.893%/+5.771%**
   event/wall, and rowbatch16 worsens to **+10.770%/+9.870%** despite exact bytes
-  and zero scratch. All temporary surfaces are removed and H5J is unchanged;
-  the next step is a fresh exact-dataflow residual attribution. The 150-tok/s
-  short gate and restored 4K gate pass, while 16K+ stays closed below the
-  800/700 512/4K stretch target
+  and zero scratch. All temporary surfaces are removed and H5J is unchanged.
+  Post-H5K attribution assigns **919.697 ms** to exact Q5, including **904.399
+  ms** of ordered consumers; two roles own **741.721 ms (82.0%)**. H5L therefore
+  screens exact weight-tile-major workgroup traversal, changing only linear
+  block ownership to revisit each 98–442 KiB weight tile across row batches
+  while preserving every FMA/reduction/store. The locality model is diagnostic,
+  not a speed claim. The 150-tok/s short gate and restored 4K gate pass, while
+  16K+ stays closed below the 800/700 512/4K stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
+  [post-H5K residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
   [H5K rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
   [H5J leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
   [post-H5I residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·

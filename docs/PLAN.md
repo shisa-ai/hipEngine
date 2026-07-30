@@ -1513,9 +1513,17 @@ new allocation/workspace/sidecar; all misses and gfx1151 retain exact fallback.
 The matched M512 gap is now **3.540x**. H5K closes larger resident IQ3 row
 ownership: scratch-free rowbatch12 loses all 45 layers at **+6.893%/+5.771%**
 event/wall, while rowbatch16 worsens to **+10.770%/+9.870%**; every byte and
-lifecycle matches and all temporary surfaces are removed. Reprofile the
-unchanged H5J request and select a distinct exact dataflow. The old rowbatch16
-spill, output-tile regression, and source-MMQ quality failure remain closed. Do
+lifecycle matches and all temporary surfaces are removed. The unchanged H5J
+request reconciles Q5 **919.697 ms**, IQ down **497.145**, attention **468.007**,
+gate/up **466.826**, Q6 **110.293**, and remaining **70.051 ms**. Q5's 235
+ordered consumers own **904.399 ms**; BF16 K9216/N3072 plus F32 K3072/N9216
+alone contribute **741.721 ms (82.0%)**. Select WPF-H5L exact weight-tile-major
+workgroup traversal: replace only the 2D block mapping with a linear row-group-
+inside-output-tile mapping, preserving every scalar FMA, wave reduction, store,
+F32 plane, and fallback. Its optimistic 1.55–2.87x traffic-locality model is a
+diagnostic premise, not a speed claim; require all eight actual Q5 roles and
+both clocks before ownership. The old rowbatch16 spill, output-tile regression,
+and source-MMQ quality failure remain closed. Do
 not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion remains
 deferred at the current **1.012%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
