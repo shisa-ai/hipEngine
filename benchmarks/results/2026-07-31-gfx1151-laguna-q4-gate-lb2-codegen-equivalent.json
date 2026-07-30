@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T08:45:00+09:00",
+  "kind": "hipengine_laguna_q4_gate_launch_bounds_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "551bad66222504ec0c9a75fb0324aa1ecf6327c3",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "kernel": "q4_k_t16_selected_dual_interleaved_natural_tile8_silu_gemv_kernel<unsigned short>",
+    "control_launch_bounds": "__launch_bounds__(128, 4)",
+    "candidate_launch_bounds": "__launch_bounds__(128, 2)",
+    "invariants": "Resident T16 bytes, grid, Q/metadata transport, F32 dequantization and FMA order, reduction, BF16 boundary, and fused SiLU are unchanged."
+  },
+  "correctness": {
+    "red": "ImportError on the absent launch-bounds-2 wrapper.",
+    "green": "Synthetic production-shape coverage and the actual layer-1 E256/K3072/N1024/top-10 leaf match every BF16 output byte.",
+    "actual_leaf_bf16_mismatches": 0,
+    "pass": true
+  },
+  "leaf": {
+    "shape": "actual layer-1 E256/K3072/N1024/top10 Q4 gate+up, fused SiLU",
+    "protocol": "21 counterbalanced samples, five warmups, 100 launches/timing burst",
+    "control_median_ms": 0.11786382675170898,
+    "candidate_median_ms": 0.11785614967346192,
+    "candidate_change_percent": -0.0065135151798845214,
+    "raw_sha256": "7f08821d382b0784143aef40c7c9df27df2350b3b6108e797a62409f4191ddaf"
+  },
+  "trace_and_isa": {
+    "control_vgpr_count": 80,
+    "candidate_vgpr_count": 80,
+    "control_sgpr_count": 128,
+    "candidate_sgpr_count": 128,
+    "local_x": 128,
+    "grid_threads": 16384,
+    "lds_block_bytes": 512,
+    "scratch_bytes": 0,
+    "control_static_code_bytes": 3360,
+    "candidate_static_code_bytes": 3360,
+    "control_normalized_instruction_count": 574,
+    "candidate_normalized_instruction_count": 574,
+    "normalized_instruction_lists_equal": true,
+    "trace_sha256": "84b5e3ba9e4781305dbf2b57a6bc83081ac0cfaf213b19f11951749a3ea5afa1"
+  },
+  "decision": {
+    "result": "reject and remove before runtime integration",
+    "reason": "The two launch-bounds annotations compile to identical gfx1151 machine code and resource allocation. The -0.007% leaf difference is noise, not an executable optimization.",
+    "production": "unchanged at 22.780604 tok/s / 43.896992 ms/token",
+    "reopen_only_if": "A source change makes the occupancy constraint alter register allocation or the generated instruction stream."
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "leaf": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-lb2 --gate-only --samples 21 --warmups 5 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-gate-lb2-leaf.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-gate-lb2-trace.NIagoz --output-file trace -- .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits"
+  }
+}

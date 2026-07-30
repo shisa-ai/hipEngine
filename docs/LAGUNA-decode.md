@@ -7537,6 +7537,28 @@ The remaining attention sequence is:
      vector instruction. Production remains **22.780604 tok/s /
      43.896992 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-uniform-meta-rejected.json).
+144. Relax the exact selected gate/up owner's launch-bounds occupancy
+     constraint from four to two workgroups per CU.
+     **Rejected as codegen-equivalent and completely removed.**
+     The bounded candidate changes only `__launch_bounds__(128, 4)` to
+     `__launch_bounds__(128, 2)`; resident T16 bytes, grid, transport,
+     dequantization/FMA order, reduction, BF16 boundary, and fused SiLU remain
+     unchanged.
+
+     RED fails on the absent wrapper. GREEN and the actual layer-1
+     E256/K3072/N1024/top-10 leaf have zero BF16 mismatches. Both variants use
+     local128/VGPR80/SGPR128/LDS512/scratch0, both occupy **3,360 static
+     bytes**, and normalized disassembly is exactly the same **574
+     instructions**.
+
+     Twenty-one counterbalanced 100-launch bursts are correspondingly flat:
+     **0.117864 -> 0.117856 ms (-0.007%)**. Remove the candidate kernel
+     specialization, wrapper, harness selector, and test addition before
+     runtime integration. Reopen launch bounds only after another source
+     change makes the occupancy contract alter resource allocation or emitted
+     instructions. Production remains **22.780604 tok/s /
+     43.896992 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-lb2-codegen-equivalent.json).
 
 Current exact decode checkpoint:
 
