@@ -2337,3 +2337,6 @@ should be boring.
 - Publication and census pass at **22.141787 tok/s** and exactly **482 model
   kernels/token**. The comparison CLI, setter, and protocol fields are now
   eligible for immediate removal.
+- The comparison CLI, setter, and protocol fields are removed. Retain the
+  constructor rollback, gfx1151 capability, four-axis host-batch
+  registrations, native shim, and exact separate-call fallback.

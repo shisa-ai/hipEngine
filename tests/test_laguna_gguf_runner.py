@@ -311,17 +311,6 @@ def test_laguna_selected_natural_tile8_decode_switch_is_session_scoped() -> None
     assert session.use_selected_natural_tile8_decode is False
 
 
-def test_laguna_shared_down_moe_tail_host_batch_switch_is_session_scoped() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.use_shared_down_moe_tail_host_batch = False
-
-    session.set_shared_down_moe_tail_host_batch(True)
-    assert session.use_shared_down_moe_tail_host_batch is True
-
-    session.set_shared_down_moe_tail_host_batch(False)
-    assert session.use_shared_down_moe_tail_host_batch is False
-
-
 def test_laguna_swa_assume_exp_switch_is_session_scoped() -> None:
     session = object.__new__(runner_module.LagunaGGUFResidentSession)
     session.kv_cache = SimpleNamespace(
