@@ -546,9 +546,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None
+        )
+        is True
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_GLOBAL_PREFILL_VARIANT", None

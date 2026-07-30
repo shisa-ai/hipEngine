@@ -17,11 +17,17 @@ LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_sourcequal_exact_spans"
     ),
 }
-# WPF-H5R's exact cached-only SWA leaf remains default-off until complete-state,
-# integrated-call, and clean 512/1K/4K qualification. A package-only role map
-# lets the runtime reorder only admitted append-before-attention tiles while an
-# empty map leaves the production H5M schedule unchanged.
-LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS = {}
+# WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
+# all 144 physical append-before-attention calls, and positive default-off clean
+# 512/1K/4K timing. The package-only role map restricts schedule reordering to
+# complete no-wrap M128 starts; global, partial, wrapped, explicit, missing, and
+# unsupported routes retain attend-before-append fallbacks.
+LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS = {
+    "swa_qrow4_m128_c512_no_wrap_exact": (
+        "swa_context_rows_qrow4_cached_exact_spans"
+    ),
+}
+LAGUNA_PREFILL_KV_PREAPPEND = True
 # Clean W7900 D12 leaf/profile/category evidence admits the exact local32
 # two-output Q5 schedules for c=1 attention output and query/gate projection.
 # Other backends retain the separately registered pack8 fallbacks.
@@ -234,6 +240,7 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
+    "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS",
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
