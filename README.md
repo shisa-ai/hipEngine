@@ -324,13 +324,16 @@ numbers below.
   with the user's **714.07**. The exact matched gap is **2.13488x**. Current
   kernel sum is **1,568.190 ms** versus llama.cpp **718.241 ms**; residuals rank
   IQ-down/Q5/attention/gate-up/Q6 at
-  **336.609/187.223/147.249/93.203/79.112 ms**. **WPF-H6B** therefore selects a
-  new exact active-IQ3 signed-magnitude/scale plane, not another tile sweep:
-  one aligned 16-byte record per group8 preserves H5Z's scalar dot/reduction
-  order while moving decode out of repeated rowbatch8 consumers. Its fixed
-  worst-case plane/combined-workspace bounds are **1,610,612,736 /
-  1,771,732,992 bytes**, not a speed claim
-  ([post-H6A matched residual / comparator correction / H6B target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
+  **336.609/187.223/147.249/93.203/79.112 ms**. **WPF-H6B** screens a
+  genuinely new active-IQ3 signed-magnitude/scale plane. Its 16-byte records
+  and all **45/45** actual-layer outputs are exact, but producer-inclusive H5Z
+  -> H6B event/wall regresses **462.301/450.204 -> 575.804/587.342 ms
+  (+24.552%/+30.461%)** with **0/45** both-clock wins. The consumer also
+  compiles one b96 rather than the required b128 record load. Remove every H6B
+  source/key/test surface, retain H6A/H5Y/H5Z production, and treat immediate
+  IQ3 ownership/tile/source-MMQ/segment-plane premises as closed
+  ([H6B rejection](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json) ·
+  [post-H6A matched residual / H6B target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
   [H6A production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
   [H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). Both short
   rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed below

@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6b_exact_iq3_signed_magnitude_segment_plane_rejected",
+  "status": "rejected_leaf_all_candidate_surfaces_removed",
+  "date": "2026-07-31",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "scope": "Exact active-IQ3 signed-magnitude segment-plane producer and H5Z-derived consumer on all 45 natural-M512 IQ3 layers of Laguna S 2.1 UD-Q2_K_XL on one Radeon Pro W7900 queue",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "tensor_bytes": 39680849600,
+    "logical_parameters": 117561977600
+  },
+  "baseline": {
+    "production_revision": "adec3b539",
+    "iq3_route": "H5Z exact K1024/N3072/E256 active-expert P64, activation-resident output P256, rowbatch8 BF16-to-BF16",
+    "matched_c4096_direct_m512_tok_s": 326.17366882456315,
+    "exact_llamacpp_hip_tok_s": 696.342,
+    "matched_gap": 2.134881097267655,
+    "artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json",
+    "artifact_sha256": "50117c11a1ea54d4456465c29221de8168978c652d58e25352d727baf1689429"
+  },
+  "candidate": {
+    "id": "WPF-H6B",
+    "operation": "One producer writes an active-index-major [output][group8] plane whose aligned 16-byte records hold the exact current F32 scale, eight exact signed int8 magnitudes, and four zero padding bytes; an H5Z-derived consumer converts those integers exactly to F32 and replays the unchanged scalar BF16 dot, scale, wave tree, serial wave sum, rowbatch8/P64/P256 ownership, and BF16 store.",
+    "record_bytes": 16,
+    "plane_bytes_per_expert": 6291456,
+    "natural_m512_max_active_experts": 239,
+    "natural_m512_max_live_plane_bytes": 1503657984,
+    "max_active_experts": 256,
+    "max_plane_bytes": 1610612736,
+    "max_combined_workspace_bytes": 1771732992,
+    "persistent_sidecar_bytes": 0,
+    "red_commit": "24bc82732",
+    "red_test_sha256": "1ef2446138bf23cada4bd69c75d2d5bc1b08c90a4f8f707432a34f631d22ebf5"
+  },
+  "correctness": {
+    "focused_green": "5/5 before rejection cleanup",
+    "record_contract": "Complete records for reordered active experts match the pinned IQ3 grids/sign selectors and current two-multiply F32 scale expression byte-for-byte, including zero padding.",
+    "output_contract": "Complete candidate BF16 outputs match H5Z for reversed P64/P65 active lists and rowbatch/output tails; sampled rows/columns match the independent NumPy GGUF IQ3 oracle; empty active lists preserve output.",
+    "actual_layer_outputs": "45/45 complete outputs byte-exact",
+    "all_finite": true,
+    "tracked_allocations_recovered": true,
+    "gfx1151_excluded_during_screen": true,
+    "production_policy_unchanged": true,
+    "focused_green_stdout_sha256": "4d2df7a96ce4a667da3ccf295f2d16c728a65ed0e861a3baa919f7bb469b02b5",
+    "focused_green_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "protocol": {
+    "rows": 512,
+    "compact_rows": 5120,
+    "top_k": 10,
+    "in_features": 1024,
+    "out_features": 3072,
+    "num_experts": 256,
+    "iq3_layers": 45,
+    "natural_active_layer_expert_instances": 9844,
+    "active_experts_per_layer_min": 197,
+    "active_experts_per_layer_max": 239,
+    "actual_weights": true,
+    "actual_natural_routing": true,
+    "deterministic_bf16_compact_input": true,
+    "warmups": 5,
+    "repetitions": 15,
+    "launches_per_sample": 5,
+    "order": "counter-rotated with alternate reversal",
+    "timing": "producer-inclusive HIP events and synchronized host wall",
+    "queues": 1
+  },
+  "performance": {
+    "layers": 45,
+    "both_clock_positive_layers": 0,
+    "all_layers_both_clock_positive": false,
+    "event": {
+      "h5z_sum_ms": 462.3006484985353,
+      "candidate_sum_ms": 575.8041511535645,
+      "candidate_percent_change": 24.551880475112252,
+      "speedup": 0.8028782834794842,
+      "per_layer_speedup_min": 0.7923804461019955,
+      "per_layer_speedup_median": 0.8030273655498751,
+      "per_layer_speedup_max": 0.8168896938009069,
+      "winning_layers": 0
+    },
+    "wall": {
+      "h5z_sum_ms": 450.20350255072117,
+      "candidate_sum_ms": 587.3415479902178,
+      "candidate_percent_change": 30.461345738652113,
+      "speedup": 0.7665105662816473,
+      "per_layer_speedup_min": 0.7526589440067909,
+      "per_layer_speedup_median": 0.7665975600271179,
+      "per_layer_speedup_max": 0.7772599933291662,
+      "winning_layers": 0
+    }
+  },
+  "physical": {
+    "producer": {
+      "workgroup": [256, 1, 1],
+      "grid": [393216, 256, 1],
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "record_store": "one global_store_b128 static site"
+    },
+    "consumer": {
+      "workgroup": [128, 1, 1],
+      "grid": [32768, 64, 1],
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "activation_loads": "eight global_load_b128 static sites, matching H5Z activation residency",
+      "record_load": "one global_load_b96 static site; LLVM elided the unused four-byte padding, so the frozen one-b128 record-load gate failed"
+    },
+    "no_compiler_under_profile": true,
+    "profiled_candidate_calls": 2,
+    "trace_sha256": "437a589074c8184592a9ab708c5d90a5e7b3bf6e7dc0089de23a69fa8b454cd4",
+    "trace_summary_sha256": "f62ca8768714ca848bb1c8cd56c733942fb2ebbf71eef7675f4ac094f023d57b",
+    "isa_sha256": "87be5ea6268f32059be078be0217519237df5d553378a31b246bc9364136fa0b",
+    "isa_summary_sha256": "4b6cf58386dc8d5fa1511d64f4b4ad00d69bc7d92d50d67d3d058b95ef5d38cf",
+    "candidate_library_sha256": "d7399d10a21eae454780804ebb917c26114ce7080639e0dc33d1fdddc313c244",
+    "candidate_code_object_sha256": "02d5dcf4a987ad933e4023e42f6b53989963426a38c6758872ee65518c7d52c6"
+  },
+  "decision": {
+    "admitted": false,
+    "reason": "The candidate fails both required performance clocks on every actual IQ3 layer and also misses the one-b128 physical record-load contract because dead padding is compiled away.",
+    "candidate_surfaces_removed": true,
+    "runtime_gate_run": false,
+    "runtime_gate_disposition": "not run because standalone producer-inclusive admission failed",
+    "production_changed": false,
+    "production_after": "H6A/H5Y/H5Z",
+    "next_action": "Rerank the unchanged post-H6A exact residual while treating immediate IQ3 ownership/tile/source-MMQ/segment-plane premises as closed; select a materially different exact operation before another RED."
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6b_iq3_signed_magnitude_segment_plane.py",
+    "actual_layer_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6b_iq3_signed_magnitude_segment_plane_actual_screen.py",
+    "profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6b-leaf-rocprof --output-file h6b-leaf -- uv run pytest -q tests/test_laguna_h6b_iq3_signed_magnitude_segment_plane.py::test_h6b_complete_outputs_match_h5z_and_cpu_at_p64_boundary_and_tails"
+  },
+  "lineage": {
+    "post_cleanup_hip_source_sha256": "72ca5e04c3ec01efe467bb2486ed90daf75c80218e6022be517c707959c95cbd",
+    "post_cleanup_python_source_sha256": "a3cede39f35db9e9d87dca653e8420a15b451d216c4c09e89dfb0fe8cee358d3",
+    "post_cleanup_gfx1100_package_sha256": "4908716c3fb2ca3cd87d1dcad280de8474650aeb20b55da17d6f14f3d902d4ad",
+    "candidate_source_disposition": "removed",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "raw_evidence_sha256": {
+    "actual_layer_json": "cdbaba546fc7662401017cef2a8625f33432a27c26ef225c3aafacb568cbca2f",
+    "actual_layer_harness": "46026f8292f0b2600356a99cd22c6100afec9ed78b21b5b5c9313637919c744f",
+    "actual_layer_stdout": "42471b051a66be0305c0b97885031bc9ff10514d3a23ce58ba020cb777e37961",
+    "actual_layer_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "profile_stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "profile_stderr": "40e5725819fee917b85d37579479e0e3636bbc454d9a158a480f4e2b8c3d3104"
+  }
+}
