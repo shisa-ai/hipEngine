@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T10:08:00+09:00",
+  "kind": "hipengine_laguna_swa_output_sharded_parallel_max_rejection",
+  "status": "rejected_removed",
+  "performance_claim": true,
+  "source_revision": "6de63caf4b8e4ca4af0318b6550a4b62da20438c",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "control": "retained exact output-sharded-probability V128 SWA",
+    "candidate": "have lanes 0-15 replay the sixteen producer maxima and reduce them with a wave32 fmax shuffle tree instead of a lane-0 serial replay",
+    "arithmetic": "unchanged finite-score maximum, scalar-F32 QK, softmax, denominator, and PV association",
+    "scope": "36 saturated SWA decode layers"
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "nine_by_fifty": {
+      "control_median_ms": 0.029814920425415038,
+      "candidate_median_ms": 0.028933279514312744,
+      "latency_change_percent": -2.957045997515928,
+      "paired_candidate_wins": 9,
+      "paired_samples": 9,
+      "median_paired_saving_ms": 0.0008672213554382323,
+      "raw_sha256": "6ed339605b6d9b0cd695a013789fe2d24f61f5e647b27a8c5cf42a63e8350c9b"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.02964426040649414,
+      "candidate_median_ms": 0.028705780506134034,
+      "latency_change_percent": -3.165806424215978,
+      "paired_candidate_wins": 21,
+      "paired_samples": 21,
+      "median_paired_saving_ms": 0.0009469699859619152,
+      "raw_sha256": "1045d4c6c9dc34d440fe214295ed4c04a4f6a4162f0e7b7eae3eb0d297ee724a"
+    },
+    "correctness": {
+      "context_f32_byte_exact": true,
+      "gated_bf16_byte_exact": true,
+      "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+      "cpu_reference_result": "1 passed"
+    }
+  },
+  "trace": {
+    "control_vgpr": 176,
+    "candidate_vgpr": 176,
+    "control_sgpr": 128,
+    "candidate_sgpr": 128,
+    "control_lds_bytes": 43008,
+    "candidate_lds_bytes": 43008,
+    "scratch_bytes": 0,
+    "workgroups": 40,
+    "workgroup_threads": 512,
+    "compiler_spawned_under_profiler": false,
+    "raw_sha256": "fb62c1a415c4aa20c074e95eb67fb9ad78edfaca29e6c57727363235433f5e8a"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions_per_mode": 7,
+    "order": "AB/BA counterbalanced",
+    "control_median_tok_s": 20.815600194373868,
+    "candidate_median_tok_s": 20.81318848904539,
+    "throughput_change_percent": -0.011586047512235353,
+    "control_ms_per_token": 48.0408919590166,
+    "candidate_ms_per_token": 48.04645864454311,
+    "regression_ms_per_token": 0.005566685526507107,
+    "paired_candidate_wins": 1,
+    "paired_samples": 7,
+    "median_paired_saving_ms_per_sample": -0.7069690618664026,
+    "mean_paired_saving_ms_per_sample": -0.40275310831410543,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-output-sharded-parallel-max-vstage128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-output-sharded-parallel-max-vstage128-resident-7pairs.json",
+    "raw_sha256": "ba1997420fea35e99b9ea9f08dbb885074e3efbb8fd3ce93b22bfc68a7545482"
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "cleanup": {
+    "kernel_removed": true,
+    "wrapper_removed": true,
+    "runtime_route_removed": true,
+    "comparison_cli_removed": true,
+    "leaf_harness_seam_removed": true,
+    "oracle_extension_removed": true,
+    "production_tok_s": 20.8005085832745
+  },
+  "decision": "Reject and remove. Parallel wave32 maximum replay is a repeatable exact leaf win, but unchanged resources and synchronization leave no complete-model benefit; it loses six of seven resident pairs. Do not retry maximum-replay-only scheduling without a larger score-production or synchronization topology change."
+}
