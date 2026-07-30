@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_global_preappend_cached_source_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_exact_leaf_admitted",
+  "performance_claim": true,
+  "performance_claim_scope": "deterministic exact-shape 48-call global-attention leaf model with equal append cost; not integrated request throughput",
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16",
+    "role_inventory": "12 global layers at starts 0/128/256/384 = 48 M512 calls",
+    "screen_operand_fixture": "deterministic random F32 query/K/V at production shapes; K/V rounded by the production append writer"
+  },
+  "lineage": {
+    "base_revision": "58a991da9",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json",
+    "target_artifact_sha256": "8ff13bf909e601935409a3c6a573eeaac9a17cce23d857f911114e5adea21277",
+    "source": "net-new in-tree cached-source specialization of the retained local256 global prefill arithmetic; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "candidate": {
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_attention_prefill",
+      "bf16",
+      "global_context_rows_cached_exact_spans"
+    ],
+    "symbol": "hipengine_laguna_global_attention_prefill_cached_exact_bf16_spans",
+    "physical_kernel": "laguna_global_attention_prefill_cached_exact_bf16_kernel",
+    "strict_shape": "M128/C4096/H48/KV8/D128 at starts 0/128/256/384 after matching global BF16 preappend",
+    "change": "read every visible K/V element from the preappended BF16 cache while retaining the production current-row visibility rule and all arithmetic associations",
+    "preserved": "one-row/local256 ownership, score/query dynamic LDS, contiguous-four dots, wave32 shuffles, eight-wave max and denominator trees, materialized scores, normalized-weight-before-PV accumulation, F32 division/store, causal visibility, complete KVLiveSpans, and base-offset translation",
+    "new_attention_launches": 0,
+    "new_allocation_bytes": 0,
+    "new_workspace_bytes": 0,
+    "new_sidecar_bytes": 0,
+    "runtime_owner_added": false,
+    "package_preappend_role_map_changed": false,
+    "gfx1151_fail_closed": true,
+    "fallback": "unchanged attend-before-write global_context_rows_spans for all production routes until a separate runtime gate"
+  },
+  "correctness": {
+    "focused_tests_passed": 5,
+    "retained_attention_and_backend_tests_passed": 59,
+    "registry_build_cpu_tests_passed": 25,
+    "starts": [
+      0,
+      128,
+      256,
+      384
+    ],
+    "candidate_f32_bit_mismatches": {
+      "0": 0,
+      "128": 0,
+      "256": 0,
+      "384": 0
+    },
+    "candidate_max_abs": 0.0,
+    "sampled_cpu_bf16_rows": [
+      0,
+      63,
+      127
+    ],
+    "explicit_prior_eviction_fixture": "start384 with position17 evicted",
+    "complete_kv_live_spans_equal_after_matching_append": true,
+    "allocation_recovered": true,
+    "gfx1151_absent": true,
+    "h5r_package_role_map_unchanged": true
+  },
+  "implementation_iterations": {
+    "metadata_for_all_visible_tokens": {
+      "status": "rejected_before_leaf_admission",
+      "reason": "consulting token metadata for preappended current rows did not preserve production's intrinsic-current visibility seam and missed the start-0 event gate",
+      "start0_event_speedup": 0.9966706162768608,
+      "start0_wall_speedup": 1.0007658643326038,
+      "weighted_event_speedup": 1.1979343491295447,
+      "weighted_wall_speedup": 1.196184783293047,
+      "raw_json_sha256": "0f09304a181f02835adc2432b92f6f88283bea10619bdcfab06bcbad020b8181"
+    },
+    "production_visibility_cached_source": {
+      "status": "admitted",
+      "change": "current rows retain production intrinsic visibility; only historical rows consult token_positions/evict_mask; all K/V addressing remains unconditional cache/base-offset"
+    }
+  },
+  "cached_trace": {
+    "compiler_spawned_under_profiler": false,
+    "candidate": {
+      "observed_calls": 4,
+      "duration_us": [
+        433.121,
+        1309.441,
+        2186.243,
+        3124.204
+      ],
+      "local_size": 256,
+      "vgpr_count": 40,
+      "sgpr_count": 128,
+      "static_lds_bytes_reported": 0,
+      "dynamic_lds_bytes_from_launch": 16928,
+      "scratch_bytes": 0,
+      "grid_size_x_threads": 12288,
+      "grid_size_y_blocks": 128,
+      "logical_grid": "dim3(48 query heads, 128 rows) at local256"
+    },
+    "control": {
+      "observed_calls": 4,
+      "duration_us": [
+        447.04,
+        1516.921,
+        2666.444,
+        3863.045
+      ],
+      "local_size": 256,
+      "vgpr_count": 40,
+      "sgpr_count": 128,
+      "static_lds_bytes_reported": 0,
+      "dynamic_lds_bytes_from_launch": 16928,
+      "scratch_bytes": 0
+    },
+    "resource_regression": false,
+    "raw_csv_sha256": "3e24193507c8c507e527d79d83971bb2fe48a422d5ecf5c9c08758ca407bd45f",
+    "smoke_json_sha256": "394131e854f734a81c3505cc82173a3ec3adbbed7cf0bca8a3a799c290c67dba",
+    "stdout_sha256": "39f70ebc7aee2ae792a9d5388fd5048b6cc4a6e6e4e9cf1627d7f02cb4ac5f29",
+    "stderr_sha256": "220f63286a5c74b964249b33d53343cca5d1479529a716841f2ed60849dc81eb"
+  },
+  "final_48_call_leaf_screen": {
+    "protocol": {
+      "rows": 128,
+      "capacity": 4096,
+      "starts": [
+        0,
+        128,
+        256,
+        384
+      ],
+      "global_layer_multiplier_per_start": 12,
+      "warmups": 5,
+      "samples": 15,
+      "launches_per_sample": 5,
+      "counter_rotated_modes": true,
+      "counter_rotated_clocks": true,
+      "append_cost_included_equally": true
+    },
+    "all_outputs_bit_exact": true,
+    "all_positions_event_positive": true,
+    "all_positions_wall_positive": true,
+    "positions": [
+      {
+        "start_position": 0,
+        "event_control_ms": 0.5089549958705902,
+        "event_candidate_ms": 0.48884300589561464,
+        "event_speedup": 1.0411420225561543,
+        "wall_control_ms": 0.5167351569980383,
+        "wall_candidate_ms": 0.499444967135787,
+        "wall_speedup": 1.0346188088777968,
+        "output_sha256": "2b72221d01f50894181469964216ccaa776009addef963373c151b096a34fcf2",
+        "mismatches": 0
+      },
+      {
+        "start_position": 128,
+        "event_control_ms": 1.5381717547774314,
+        "event_candidate_ms": 1.3226425990462303,
+        "event_speedup": 1.1629534357101619,
+        "wall_control_ms": 1.5468616038560867,
+        "wall_candidate_ms": 1.332512591034174,
+        "wall_speedup": 1.1608607785503586,
+        "output_sha256": "3710ed8de529e90b9668ab2ed7951616c95ff9ba61c0cc9e0fb0cc482b7b7d6f",
+        "mismatches": 0
+      },
+      {
+        "start_position": 256,
+        "event_control_ms": 2.6018218442797663,
+        "event_candidate_ms": 2.172123281657696,
+        "event_speedup": 1.197824205582907,
+        "wall_control_ms": 2.605842612683773,
+        "wall_candidate_ms": 2.183808572590351,
+        "wall_speedup": 1.1932559682155754,
+        "output_sha256": "57bac173e84b4612bf5054a6f1b53d4da7f4ae4ac6a08352511cee661c554d48",
+        "mismatches": 0
+      },
+      {
+        "start_position": 384,
+        "event_control_ms": 3.812315386533737,
+        "event_candidate_ms": 3.0267416179180144,
+        "event_speedup": 1.2595443773479713,
+        "wall_control_ms": 3.8221295922994614,
+        "wall_candidate_ms": 3.036066610366106,
+        "wall_speedup": 1.258908345175789,
+        "output_sha256": "f552b767ca8f1525baa8a8c8a1b7a9206d2da400a0a98615ead5f161f9074ece",
+        "mismatches": 0
+      }
+    ],
+    "event_control_ms": 101.5351677775383,
+    "event_candidate_ms": 84.12420605421066,
+    "event_reduction_percent": 17.147715520079455,
+    "event_speedup": 1.2069673229618096,
+    "wall_control_ms": 101.89882759004831,
+    "wall_candidate_ms": 84.62199289351702,
+    "wall_reduction_percent": 16.954890556776725,
+    "wall_speedup": 1.2041648288556779,
+    "lifecycle_recovered": true,
+    "workload_counts_are_rationale_not_request_performance_claim": true,
+    "raw_json_sha256": "b2c4c939e0209ed2188bb32e32e40582af9d5692ca9d006218c8449ab7597417",
+    "harness_sha256": "f469b5bb5323ee7b856b4f6c4fb7e2682c2afd31e5ec3f9704ec016355f7eca0"
+  },
+  "production": {
+    "runtime_owner_added": false,
+    "package_policy_changed": false,
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157,
+    "unchanged": true
+  },
+  "source_artifacts": {
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "8d8810cce1be2850dd822aeb5113989e2a77e2a490d9681e16e86f42338f37b0",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "5afeb7d0541c44ae42aac255a68729a34cb1674e340ba053c35abaccbe6f2a53",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "2a7cf30ee1521b0450b05f907f72f5a44e39089f90bc4a350fbf6014233e1c57",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a9c9c4a05d4ef8bc875d4dfb440803f32784b29d81c00cfe6c0dab9c6cb1bb8e",
+      "tests/test_laguna_h5u_global_cached_exact.py": "54c946c24e160a6fc92e5c8645144fd8428cf6b8e7c8b8bae237e03eb7af19e6"
+    },
+    "harness_sha256": "f469b5bb5323ee7b856b4f6c4fb7e2682c2afd31e5ec3f9704ec016355f7eca0"
+  },
+  "commands": {
+    "exactness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_laguna_h5u_global_cached_exact.py",
+    "retained": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_h5n_dense_first_fill.py tests/test_laguna_h5r_cached_exact.py tests/test_laguna_h5u_global_cached_exact.py tests/test_gfx1151_backend.py",
+    "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5u_global_cached_exact_screen.py --output /tmp/laguna-wpfh5u-global-cached-exact-screen-v2.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5u-resource-rocprof-20260730-3 -- uv run python -u /tmp/laguna_wpfh5u_global_cached_exact_screen.py --trace-smoke",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "decision": {
+    "standalone_global_leaf_admitted": true,
+    "runtime_owner_added": false,
+    "production_changed": false,
+    "next_action": "Add a bounded default-off global preappend role map, then require complete natural-M512 state, exactly 48 append-before-candidate calls plus unchanged 144 H5R SWA calls, unchanged topology/ownership, and clean one-queue 512/1K/4K non-regression before promotion."
+  }
+}

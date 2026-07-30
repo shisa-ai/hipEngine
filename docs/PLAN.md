@@ -1654,21 +1654,23 @@ local32/VGPR96/LDS0/scratch0. Actual-weight timing rejects it: event/wall move
 not promote a wall-only result
 ([H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json)).
-Advance to **WPF-H5U exact global preappend cached-source local256**. Current
-global attention is **83.324 ms / 48 calls**, or **38.306%** of the retained
-attention slice. This does not repeat H5R's rejected local32/VGPR248 qrow4
-reconstruction: instantiate the existing one-row/local256/VGPR40 body with a
-compile-time cached-only source after matching preappend. Preserve score/query
-scratch, contiguous-four dots, eight-wave max and denominator trees,
-materialized weights, normalized-weight-before-PV order, complete
-`KVLiveSpans`, base-offset translation, division, and stores; remove only
-current-vs-cache address/source selection and F32->BF16->F32 current K/V
-roundtrips. The dense-M512 source model counts **4,869,586,944** such element
-roundtrips across 12 layers and four starts, explicitly not an instruction,
-HBM, or speed claim. Require all-start byte/CPU identity, local256 with dynamic
-LDS16928/scratch0 and no VGPR/resource regression, then both HIP-event and wall
-wins at starts 0/128/256/384 before any runtime map
-([H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json)).
+**WPF-H5U exact global preappend cached-source local256** now passes standalone
+admission. The separate gfx1100 key preserves production one-row/local256,
+contiguous-four dots, eight-wave max/denominator trees, materialized weights,
+normalized-weight-before-PV order, complete `KVLiveSpans`, base-offset
+translation, division, and stores while reading K/V only from a matching
+preappend. All four starts are byte- and CPU-exact, including explicit prior
+eviction, and cached tracing records four expected local256/VGPR40/SGPR128/
+dynamic-LDS16928/scratch0 calls with no compiler or resource regression. With
+equal append cost, starts 0/128/256/384 all win event and wall; the weighted
+48-call event/wall model moves **101.535/101.899 -> 84.124/84.622 ms
+(-17.148%/-16.955%, 1.207x/1.204x)**. Production remains
+**267.205/230.441/160.221 tok/s**. Next add only a bounded default-off runtime
+map and require complete M512 state, physical **48 H5U + 144 H5R** preappend
+pairs at unchanged topology/ownership, and clean one-queue 512/1K/4K
+non-regression before source default
+([H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
+[H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave ownership, and P6/repair routes remain closed. Launch
