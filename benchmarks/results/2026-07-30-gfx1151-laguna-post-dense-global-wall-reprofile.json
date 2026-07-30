@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T14:30:11+09:00",
+  "kind": "hipengine_laguna_post_dense_global_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "6a65839590d671620b0bd0f1df55855cc31870bf",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 45.08836,
+    "kernel_span": 47.139237,
+    "source_f16_projection": 24.041438,
+    "selected_q4_gate_up": 7.974409,
+    "selected_q4_q6_down": 4.790823,
+    "dense_shared_quant_projection": 3.517759,
+    "router": 1.065326,
+    "attention_total": 1.383152,
+    "swa_attention": 0.877243,
+    "global_attention": 0.505909,
+    "norm_rope_gate": 1.057468,
+    "activation_reduce_residual": 0.121628,
+    "lm_head_argmax": 1.118418,
+    "embedding": 0.002324
+  },
+  "change_from_post_dense_ring_census": {
+    "kernel_sum_ms_per_token": -0.154051,
+    "kernel_sum_percent": -0.340501,
+    "kernel_span_ms_per_token": -0.156104,
+    "kernel_span_percent": -0.330062,
+    "attention_ms_per_token": -0.159507,
+    "attention_percent": -10.339745,
+    "swa_ms_per_token": -0.005898,
+    "swa_percent": -0.667844,
+    "global_ms_per_token": -0.149322,
+    "global_percent": -22.789215
+  },
+  "same_gguf_vulkan_comparison_ms_per_token": {
+    "source_f16_projection_delta": -0.71713,
+    "attention_delta": 0.473729,
+    "selected_q4_gate_up_delta": 0.510319,
+    "selected_q4_q6_down_delta": 0.265733,
+    "gate_up_share_of_remaining_clean_wall_gap_percent": 12.421327,
+    "attention_share_of_remaining_clean_wall_gap_percent": 11.530715
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-dense-global-wall.V95lA4 --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-dense-global-wall.V95lA4/bench.json",
+    "segmentation": "The established decode-census procedure classifies the final 127 length-one request segments emitted after the warmup and pp512 segments.",
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "4fe004f53c1164dff7d3f62608f496f9340aa1624e10557a62f43d44d4adcc38",
+    "bench_sha256": "a5afb7a9e29b023f196db11b7ed048c7e87628e41418dd7bd9fcbc9c9d6423fa",
+    "decode_summary_sha256": "f70ca5f450988b4861e9abea6494c674e37800178c63c1c0e7b6d3df6453ce15"
+  },
+  "interpretation": {
+    "result": "Dense-prefix qualification transfers directly: global attention falls 22.79%, complete attention falls 10.34%, and the 0.156-ms dispatch-span reduction matches tracked-clean production.",
+    "next": "Selected Q4 gate/up is now the largest named Vulkan gap at 0.510 ms/token, narrowly ahead of attention at 0.474 ms/token. Pivot the next bounded implementation screen to the exact T16 gate/up consumer; revisit attention only with another materially state-proven traffic or synchronization contraction."
+  }
+}

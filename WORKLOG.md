@@ -193160,3 +193160,23 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked-clean worktree; shared unrelated untracked artifacts are excluded.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-production.json`.
+
+## 2026-07-30 14:31 JST — Re-profile post-dense-global wall
+
+- A tracked-clean cached-build `rocprofv3` run on `6a6583959` records 127
+  exact one-token segments at **673 dispatches/token**. Median kernel sum is
+  **45.088360 ms/token** and span is **47.139237 ms/token**.
+- Against the post-dense-ring census, global attention falls
+  **0.655231 -> 0.505909 ms/token (-22.789%)**, total attention falls
+  **1.542659 -> 1.383152 (-10.340%)**, kernel sum falls
+  **0.154051 ms/token**, and span falls **0.156104 ms/token**. SWA and
+  non-attention families are stable.
+- Current named same-GGUF Vulkan gaps are selected gate/up
+  **+0.510319 ms/token**, attention **+0.473729**, and selected down
+  **+0.265733**; source-F16 is **0.717130 ms/token faster**. Gate/up is now
+  the largest named gap and **12.42%** of the complete clean wall gap.
+- The trace preserves tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, position 638, and allocation recovery. No compiler runs
+  under the profiler.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-global-wall-reprofile.json`.
