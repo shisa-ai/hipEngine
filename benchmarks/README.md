@@ -52,17 +52,15 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.119461 tok/s / 45.209 ms/token**, up **92.902%** from the
-**11.466687 tok/s** sprint start. The route-parallel Q4/planar-Q6
-selected-down producers now own their exact slot-order weighted reduction,
-removing **47 launches/token** for 1,536 resident bytes. Tracked-clean
-throughput improves
-**22.063262 -> 22.119461 tok/s (+0.25472%, -0.115155 ms/token)**. The complete
-census confirms **529 -> 482 dispatches/token**, kernel sum
-**43.750470 -> 43.676468 ms/token**, and span
-**45.543776 -> 45.386060 ms/token**. Kernel work is now only
-**0.017268 ms/token (0.0396%)** above the same-GGUF Vulkan logger.
-[`route-parallel selected down plus weighting production`](results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-production.json).
+**22.141787 tok/s / 45.163 ms/token**, up **93.097%** from the
+**11.466687 tok/s** sprint start. A native host shim now invokes the unchanged
+Q4/Q6 shared-down and local256 D9 wrappers back-to-back. The seven-pair exact
+gate wins 7/7 at **22.146074 -> 22.154405 tok/s**, and tracked-clean
+publication improves the preceding checkpoint
+**22.119461 -> 22.141787 tok/s (+0.10093%, -0.045586 ms/token)**. The
+cache-only census preserves exactly **482 model kernels/token**, including
+24 Q4 plus 23 Q6 shared-down→D9 pairs and 47 unchanged D9 calls.
+[`shared-down plus D9 host batching production`](results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json).
 
 The same exact boundary's resident A/B gate independently retained the final
 attention-output projection producer runs the established residual-add/RMSNorm

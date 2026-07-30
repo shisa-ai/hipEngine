@@ -6874,7 +6874,7 @@ The remaining attention sequence is:
      physical tail ownership:
      [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-moe-tail-rejected.json).
 120. Batch the unchanged shared-down and D9 launch wrappers in one native host
-     call. **Retained pending tracked-clean publication:** unlike item 119,
+     call. **Retained, cleanly published, and default:** unlike item 119,
      this does not move D9 arithmetic into the projection. The production Q4/
      Q6 shared-down grids and the local256 D9 kernel are unchanged; only their
      two host wrapper calls execute back-to-back before returning to Python.
@@ -6893,6 +6893,16 @@ The remaining attention sequence is:
      the unchanged **482-dispatch/token** topology:
      [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-retained.json).
 
+     Publication passes at
+     **22.128761/22.141787/22.157023 tok/s**, median
+     **22.141787 tok/s (45.163473 ms/token)**. This improves the preceding
+     clean checkpoint by **0.10093% / 0.045586 ms/token** and reaches
+     **+93.097%** over sprint start. The cache-only census retains exactly
+     **482 model kernels/token** and proves each token still executes 24 Q4
+     plus 23 Q6 shared-down→D9 pairs and 47 local256 D9 calls. No compiler ran
+     under the profiler. Remove only the admitted comparison seam:
+     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -6903,9 +6913,10 @@ Current exact decode checkpoint:
 | hipEngine F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
 | hipEngine prior projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
 | hipEngine prior output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
-| hipEngine current route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
+| hipEngine prior route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
+| hipEngine current shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.380 ms/token** | hipEngine is **5.263%** below Vulkan throughput |
+| Remaining wall gap | — | **2.334 ms/token** | hipEngine is **5.168%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
