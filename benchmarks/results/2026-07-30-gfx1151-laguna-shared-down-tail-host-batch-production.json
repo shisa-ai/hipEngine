@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:26:44.635071+00:00",
+  "kind": "hipengine_laguna_gfx1151_shared_down_tail_host_batch_production",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "source_revision": "4c0f81148d9da5d9f731faffd66fc57b4a1fc5a3",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79022522196
+  },
+  "production": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "samples_tok_s": [
+      22.128761222939715,
+      22.14178719209094,
+      22.157022584433324
+    ],
+    "median_tok_s": 22.14178719209094,
+    "median_ms_per_token": 45.163472637710136,
+    "prior_median_tok_s": 22.119461,
+    "prior_ms_per_token": 45.209059,
+    "throughput_change_percent": 0.10093461179248031,
+    "wall_change_ms_per_token": -0.045586362289867566,
+    "sprint_start_tok_s": 11.466687,
+    "improvement_from_sprint_start_percent": 93.09663891663686,
+    "tracked_clean": true,
+    "raw_sha256": "03c35ee2c93952378eecdbe9308d1b84bc0c885752dd252fdf503fdb502e1e09"
+  },
+  "wall_trace": {
+    "workload": "same p512/d128 protocol under cache-only rocprofv3; final 127 length-one segments selected by embedding-start timestamps",
+    "model_dispatches_per_token": 482,
+    "runtime_copy_dispatches_per_complete_token": 5,
+    "q4_shared_down_immediate_predecessors_per_token": 24,
+    "q6_shared_down_immediate_predecessors_per_token": 23,
+    "d9_calls_per_token": 47,
+    "median_kernel_sum_ms_per_token": 43.698173,
+    "prior_median_kernel_sum_ms_per_token": 43.676468,
+    "median_kernel_span_ms_per_token": 46.046263,
+    "prior_median_kernel_span_ms_per_token": 45.38606,
+    "shared_down_to_d9_gap_sum_median_us_per_token": 91.286,
+    "prior_shared_down_to_d9_gap_sum_median_us_per_token": 91.419,
+    "trace_sha256": "e7f1e2a96e47d3e7e22060d1671f735d1847f4d1337f07fb31c2ba9f0b3e3906",
+    "child_sha256": "0cf88453810cc5909d03059f6478711a9e157483422ba84b045f20fa72e6af79",
+    "compiler_processes_under_profiler": 0,
+    "interpretation": "Topology is exactly unchanged and both established kernels remain present. The one-process profiled span is not the performance gate because profiler perturbation exceeds this host-only candidate's 0.02 ms/token signal; admission comes from seven counterbalanced pairs plus tracked-clean production."
+  },
+  "same_gguf_vulkan": {
+    "revision": "c0bc8591e",
+    "tok_s": 23.348381,
+    "ms_per_token": 42.829522,
+    "remaining_wall_gap_ms_per_token": 2.3339506377101387,
+    "hipengine_below_vulkan_percent": 5.167783615956322
+  },
+  "correctness": {
+    "q4_shared_hidden_norm_bf16_bit_exact": true,
+    "q6_shared_hidden_norm_bf16_bit_exact": true,
+    "next_token_ids": [
+      2930,
+      2930,
+      2930
+    ],
+    "final_token_ids": [
+      74107,
+      74107,
+      74107
+    ],
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "deterministic": true,
+    "tracked_allocations_recovered": true
+  },
+  "protocol": {
+    "production_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-shared-down-tail-host-batch-production.json",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-shared-down-host-batch-wall.yQKF5h --output-file trace -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-shared-down-host-batch-wall.yQKF5h/child.json"
+  },
+  "decision": {
+    "retained": true,
+    "default": true,
+    "reason": "Seven exact paired runs win 7/7 and tracked-clean production improves the previous default. The cache-only trace proves the two original GPU kernels and 482-dispatch topology are unchanged.",
+    "fallback": "The constructor override selects the original separate registered wrapper calls.",
+    "cleanup": "Remove only the admitted comparison CLI, session setter, and protocol bookkeeping."
+  }
+}

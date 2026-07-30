@@ -194028,3 +194028,33 @@ Vulkan local sizes verbatim will close the measured gap.
   the read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
   No external kernel source was copied; this unit adds only a host-call shim
   around already-retained in-tree launch wrappers.
+
+## 2026-07-30 22:27 JST — Publish shared-down/D9 native host batching
+
+- Committed candidate `4c0f81148` and ran the selector-unset tracked-clean
+  p512/d128 protocol. Samples are
+  **22.128761/22.141787/22.157023 tok/s**, median
+  **22.141787 tok/s / 45.163473 ms/token**. This improves the preceding
+  **22.119461** default by **0.10093% / 0.045586 ms/token** and reaches
+  **+93.097%** over the **11.466687** sprint start.
+- All runs preserve tokens **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, deterministic repeats, and complete
+  recovery of **79,022,522,196 resident bytes**. Raw SHA-256 is
+  `03c35ee2...1e09`.
+- The cache-only complete wall trace records exactly **482 model
+  kernels/token**. Each of 127 transitions has 24 Q4 plus 23 Q6
+  shared-down→D9 predecessor pairs and **47 unchanged local256 D9 calls**; the
+  nominal five runtime copies are unchanged. No compiler ran under profiling.
+  Trace/child SHA-256 values are `e7f1e2a9...3906` and
+  `0cf88453...f79`.
+- The one-process trace's **43.698173-ms** kernel sum is flat to the prior
+  **43.676468 ms/token**; its perturbed span is **46.046263 ms/token** and is
+  recorded but not used to override the seven-pair exact wall gate and
+  tracked-clean production. The directly targeted projection→D9 GPU-start
+  gaps are likewise trace-flat (**91.419 -> 91.286 us/token**), consistent
+  with a host-orchestration rather than device-kernel change.
+- Publish `LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH` as the gfx1151 default.
+  Retain the constructor rollback, four-axis batch registrations, native shim,
+  and exact separate-call fallback. Remove the admitted comparison seam next.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json`.
