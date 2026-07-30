@@ -6125,6 +6125,40 @@ The remaining attention sequence is:
     over sprint start. All repetitions preserve exact trajectory/state and
     allocation teardown:
     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-production.json).
+91. Certify a BF16-bin repair screen for cooperative PV.
+    **Complete, rejected analytically, and not rebuilt:** apply the standard
+    F32 `gamma_512` error bound to every component of the deterministic
+    wrapped full-ring SWA512 fixture, using a favorable four-term multiplier
+    and omitting QK, exponential, normalization, and decomposition errors.
+    Even this optimistic bound marks **7,795/9,216 components (84.581%)**
+    uncertain and sends **all 72 query heads** to scalar replay. Each head has
+    **97-119** uncertain components (median **108**).
+
+    The already-measured complete component-repair topology is
+    **124.398% slower** than retained exact attention. A mathematically valid
+    interval therefore does not rescue output repair: it degenerates to
+    almost-full scalar replay before accounting for the omitted error sources.
+    Do not rebuild the removed tensor path without a materially tighter
+    certified mechanism:
+    [`bound rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-attention-bf16-bin-bound-rejected.json).
+92. Fuse the separate SWA head RMSNorm/RoPE/KV producer into exact attention.
+    **Complete, rejected, and removed:** one cooperative local512/grid40
+    launch uses two independent 256-thread cohorts per block to reproduce the
+    old local256/grid80 head producer, performs a grid synchronization, then
+    executes the unchanged output-sharded V128 attention body. This would
+    eliminate **36 dispatches/token** without changing the reduction tree,
+    RoPE, BF16 K/V bytes, metadata, QK, softmax, denominator, scalar F32 PV,
+    gate, or stores.
+
+    RED fails on the absent wrapper and GREEN passes all three focused
+    head/KV fusion tests with byte-identical F32 context and gated BF16 output.
+    The combined-chain 9x50 leaf rejects the design:
+    **0.034534 -> 0.039296 ms (+13.788%)**, with **0/9** candidate wins.
+    The cooperative launch and grid barrier cost more than the removed producer
+    dispatch. Remove the kernel, wrapper, cooperative launcher, test extension,
+    harness seam, and comparison path before runtime integration. Production
+    remains **20.830515 tok/s**:
+    [`fusion rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-head-kv-attention-fusion-rejected.json).
 
 Current exact decode checkpoint:
 

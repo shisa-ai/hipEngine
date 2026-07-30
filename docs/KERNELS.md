@@ -2280,6 +2280,23 @@ on roles 1/2/3 reaches max KL **1.590854/1.690376/4.873391** over the same
 to current main. Tensorized PV is therefore inadmissible even at one-third
 structural depth; do not retry arbitrary layer subsets:
 [`rejected structural-role tensorized PV`](../benchmarks/results/2026-07-29-gfx1151-laguna-swa-tensorized-pv-role-rejected.json).
+A rigorous full-ring BF16-bin screen also closes certified output repair.
+Using a favorable PV-only `gamma_512` interval while omitting every upstream
+error still marks **7,795/9,216 components (84.581%)** and all **72** query
+heads uncertain. The measured full component-replay path is already
+**124.398% slower** than retained exact attention, so do not rebuild the
+cooperative tensor path around this repair oracle:
+[`BF16-bin bound rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-attention-bf16-bin-bound-rejected.json).
+The exact head-producer fusion seam is closed too. A cooperative
+local512/grid40 kernel reproduces the separate local256/grid80 head
+RMSNorm/RoPE/KV write with two 256-thread cohorts, grid-synchronizes, and then
+runs unchanged output-sharded V128 attention. F32 context and gated BF16 bytes
+are exact, but the combined 9x50 leaf regresses
+**0.034534 -> 0.039296 ms (+13.788%)**, losing all pairs. Remove the complete
+candidate before runtime integration. llama.cpp's remaining advantage is in
+its cooperative-matrix QK/PV tile and precision/association contract, not a
+scalar producer/attention launch fusion:
+[`head/KV fusion rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-head-kv-attention-fusion-rejected.json).
 
 The clean post-promotion census keeps **816 dispatches/token** and measures
 **49.432 ms/token** kernel sum / **51.982 ms/token** span. Attention falls
