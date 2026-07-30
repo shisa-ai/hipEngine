@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T02:10:21+09:00",
+  "kind": "hipengine_laguna_global_local1024_leaf",
+  "status": "retained_primitive_pending_runtime_gate",
+  "performance_claim": false,
+  "source_revision": "7641f4c24c1c705310ce594112357ddbed904d40",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "wavefront_size": 32,
+    "max_waves_per_cu": 32,
+    "max_workgroup_size": 1024,
+    "compute_units": 40
+  },
+  "scope": {
+    "model": "Poolside Laguna S 2.1",
+    "attention": "48 query heads / 8 KV heads / D128 dense-prefix global decode",
+    "kv_dtype": "bf16",
+    "control": "exact mixed40 dense-prefix idle-double-buffer local512",
+    "candidate": "same exact owner with local1024 QK/value transport",
+    "arithmetic_changes": false,
+    "dispatch_changes": 0,
+    "resident_byte_changes": 0
+  },
+  "correctness": {
+    "red": "focused live-HIP oracle failed to import the absent local1024 wrapper",
+    "green": "focused live-HIP oracle passed at live lengths 513, 576, and 639",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "eviction_fallback_still_passes": true
+  },
+  "leaf": {
+    "protocol": "5 warmups, 21 counterbalanced samples, burst 100",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_local512_median_ms": 0.031837019920349124,
+        "candidate_local1024_median_ms": 0.031160159111022948,
+        "latency_change_percent": -2.12601811042481
+      },
+      {
+        "live_count": 576,
+        "control_local512_median_ms": 0.035141870975494385,
+        "candidate_local1024_median_ms": 0.03379856109619141,
+        "latency_change_percent": -3.8225337525133907
+      },
+      {
+        "live_count": 639,
+        "control_local512_median_ms": 0.038120319843292234,
+        "candidate_local1024_median_ms": 0.036535720825195316,
+        "latency_change_percent": -4.156835579058626
+      }
+    ],
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed40-local1024-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-local1024-leaf.json",
+    "raw_sha256": "197dc5a85b2d4e0d3cbd95fa535ca428a813ca1786cfc5db42e755801c7898ee"
+  },
+  "trace": {
+    "grid_workgroups": 40,
+    "workgroup_threads": 1024,
+    "vgpr_count": 48,
+    "sgpr_count": 128,
+    "reported_lds_bytes": 512,
+    "scratch_bytes": 0,
+    "compiler_spawned_under_profiler": false,
+    "csv_sha256": "008a2baaf0c82ca9b3a0afacd8fb164ca6fabccd3d4f590b34a1426777bda922"
+  },
+  "lineage": {
+    "kind": "in_tree_specialization_of_retained_exact_global_owner",
+    "external_source_copied": false,
+    "check_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "check_status": "blocked_before_diff",
+    "blocker": "configured unrelated /home/lhl/amd-gpu-tuning/reference/atlas checkout is absent"
+  },
+  "decision": {
+    "retained": true,
+    "runtime_selected": false,
+    "next": "add an explicit default-off gfx1151 capability and run same-resident p512/d128 control/candidate pairs"
+  }
+}

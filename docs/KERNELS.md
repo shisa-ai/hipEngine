@@ -56,6 +56,16 @@ global/SWA wraps and prove the gated/wave-local reducers bit-exact to their
 registered unfused/retained chains. Cached tracing observes all required
 producer/reducer families with zero kernel scratch.
 
+The exact dense-prefix global owner now also has a separately registered
+local1024 diagnostic. It preserves the retained eight-wave denominator tree
+and every scalar FP32 operation while widening only independent QK and
+double-buffered value transport from 16 to 32 wave32s. Live lengths
+513/576/639 are F32- and gated-BF16-byte exact to local512 and improve the
+21x100 leaf **2.126%/3.823%/4.157%**. Cached gfx1151 tracing names
+grid40/local1024, VGPR48, SGPR128, reported LDS512, and scratch0. This is a
+primitive admission, not a runtime/default claim:
+[`global local1024 leaf`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-leaf.json).
+
 The gfx1151-only
 `linear_pair/gguf_q4_k/pack8_dual_decode_bf16_bf16_out` key now reuses the
 existing exact local32 pack8 dual body for Laguna c=1 gate/up. It owns all

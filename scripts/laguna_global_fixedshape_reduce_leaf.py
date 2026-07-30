@@ -35,6 +35,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+    laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
     laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
@@ -79,6 +80,7 @@ def _parse_args() -> argparse.Namespace:
             "fused-mixed40-local512-exp32-producer-max-dpp-qk-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
             "fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
             "fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
+            "fused-mixed40-local1024-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
             "wmma-qk-three-term-mixed32-exact-pv",
             "wmma-gqa6-k64-three-term-raw-numerator",
         ),
@@ -247,6 +249,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-mixed40-local512-exp32-producer-max-dpp-qk-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
                 "fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
                 "fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
+                "fused-mixed40-local1024-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp",
                 "wmma-qk-three-term-mixed32-exact-pv",
                 "wmma-gqa6-k64-three-term-raw-numerator",
             ):
@@ -303,6 +306,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
                 elif (
                     args.candidate
+                    == "fused-mixed40-local1024-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp"
+                ):
+                    control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
+                elif (
+                    args.candidate
                     == "wmma-qk-three-term-mixed32-exact-pv"
                 ):
                     control_kernel = laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans
@@ -340,6 +348,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "fused-mixed40-local512-exp32-producer-max-dpp-qk-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+                "fused-mixed40-local1024-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp": laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
                 "wmma-qk-three-term-mixed32-exact-pv": laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans,
                 "wmma-gqa6-k64-three-term-raw-numerator": laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
             }[args.candidate]
