@@ -192878,3 +192878,29 @@ Vulkan local sizes verbatim will close the measured gap.
   **10.2045%** throughput gap.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-production.json`.
+
+## 2026-07-30 12:35 JST — Reject split-barrier SWA V prefetch
+
+- Audit the same-GGUF llama.cpp Vulkan FlashAttention shader at
+  `/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e`: its transferable transport
+  premise is to stage the next K/V tile while cooperative work proceeds, but
+  its tensorized F16 accumulation/output contract remains inadmissible for
+  Laguna's BF16-KV/scalar-F32 recurrent boundary.
+- Build an exact retained-body diagnostic that replaces each trailing
+  full-block barrier with a workgroup split barrier. Early waves signal
+  completion, load four next-stage `uint4` V vectors while later waves finish
+  the unchanged scalar PV chain, wait for all waves, and then publish into the
+  reused LDS V plane.
+- RED fails importing the absent wrapper. GREEN passes the focused wrapped and
+  explicitly evicted SWA CPU-reference fixture with byte-identical F32 context
+  and gated BF16 output.
+- The cache-only paired 9x50 leaf rejects the candidate:
+  **0.029764 -> 0.033705 ms (+13.241%)**. The register window and early memory
+  pressure cost more than the overlap. This is consistent with the earlier
+  depth-two source-prefetch **+22.106%** and full-LDS double-buffer
+  **+10.219%** failures.
+- Remove the template axis, export, wrapper, registry/export, test call, and
+  harness selector before runtime integration. Production remains
+  **20.965807 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-splitbarrier-v-prefetch-rejected.json`.

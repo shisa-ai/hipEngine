@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T12:34:38+09:00",
+  "kind": "hipengine_laguna_gfx1151_swa_splitbarrier_v_prefetch_rejected",
+  "status": "rejected_at_leaf",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "b2ef3096897dab27271ad4af756e61a7a69ce523",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "shape": {
+    "capacity": 512,
+    "sliding_window": 512,
+    "query_heads": 72,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "owner_blocks": 40,
+    "threads_per_block": 512,
+    "value_stage": 128
+  },
+  "candidate": {
+    "description": "Replace each trailing full-block barrier with workgroup barrier_arrive, prefetch the next V128 tile as four uint4 values per lane while later waves finish exact scalar PV, barrier_wait, then publish the prefetched tile to LDS.",
+    "control": "retained mixed40-local512 output-sharded probability V-stage128 body",
+    "arithmetic_changed": false,
+    "staged_bytes_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "ownership_changed": false,
+    "abi_changed": false
+  },
+  "correctness": {
+    "red": "focused test failed importing the intentionally absent diagnostic wrapper",
+    "green": "focused wrapped and explicitly evicted SWA oracle passed",
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "explicit_eviction": true
+  },
+  "leaf": {
+    "protocol": "paired 9 samples x 50 launches after 5 warmups",
+    "command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-output-sharded-probability-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp-splitbarrier-prefetch --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-splitbarrier-prefetch-9x50.json",
+    "control_median_ms": 0.029763760566711425,
+    "candidate_median_ms": 0.033704659938812255,
+    "latency_change_percent": 13.240596272328698,
+    "control_samples_ms": [
+      0.034213600158691404,
+      0.029852640628814698,
+      0.029777300357818604,
+      0.02970438003540039,
+      0.02971482038497925,
+      0.029765300750732422,
+      0.02975248098373413,
+      0.029761300086975098,
+      0.029763760566711425
+    ],
+    "candidate_samples_ms": [
+      0.034091780185699465,
+      0.03392103910446167,
+      0.03376476049423218,
+      0.03381125926971436,
+      0.03341291904449463,
+      0.03368381977081299,
+      0.033704659938812255,
+      0.03368223905563354,
+      0.03369189977645874
+    ],
+    "raw_sha256": "035ccb149677cbb4788ff3c5049524f6355221da72e50fd8d87093c09dc0cf9f"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "resident_gate_skipped": true,
+    "production_tok_s": 20.965807,
+    "reason": "Same-workgroup split-barrier overlap preserves exact math but regresses the direct leaf by 13.24%; four live uint4 values per lane and early global-memory pressure cost more than the overlapped tail.",
+    "next": "Close next-stage V carry/prefetch on the retained exact body: depth-two source prefetch, full LDS double buffering, and split-barrier register prefetch all regress decisively. Re-rank a materially different traffic-reduction or quality-safe cooperative premise."
+  }
+}
