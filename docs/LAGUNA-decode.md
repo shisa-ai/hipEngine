@@ -6468,15 +6468,20 @@ The remaining attention sequence is:
      recovery are exact. Promote through `LAGUNA_GLOBAL_DENSE_PREFIX`; retain
      generic mixed40/local512 as rollback and explicit-eviction fallback:
      [`dense-prefix retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-retained.json).
+     The tracked-clean selector-unset packet measures
+     **21.294621/21.313207/21.304731 tok/s**, median
+     **21.304731 tok/s (+0.3293%, -0.1545 ms/token)** versus the preceding
+     clean production checkpoint:
+     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **21.234815 tok/s** | **47.092 ms** | **+85.187%** |
+| hipEngine current production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **4.263 ms/token** | hipEngine is **9.052%** below Vulkan throughput |
+| Remaining wall gap | — | **4.108 ms/token** | hipEngine is **8.753%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
