@@ -193613,3 +193613,22 @@ Vulkan local sizes verbatim will close the measured gap.
   external kernel.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-dual-interleaved-retained.json`.
+
+## 2026-07-30 18:58 JST — Publish tracked-clean dense/shared interleave production
+
+- Committed the retained/default paired-sidecar owner as `f5b63ff59`, then
+  rebuilt only its changed JIT library outside measurement and ran the
+  unchanged cached-only selector-unset p512/d128 production protocol.
+- Three exact tracked-clean trajectories measure
+  **21.907532/21.926113/21.927954 tok/s**, median **21.926113 tok/s /
+  45.607720 ms/token**. This improves the preceding clean
+  **21.880056** checkpoint by **0.21050% / 0.096003 ms/token** and reaches
+  **+91.216%** over the **11.466687** sprint start.
+- All runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, deterministic repeats, and complete
+  recovery of all **79,022,520,340 resident bytes**. The prefill median is
+  **653.246 tok/s**.
+- The earlier dirty selector-unset median **21.942208** remains useful
+  diagnostic evidence but is no longer the canonical production headline.
+  Clean artifact SHA-256:
+  `d30d4888ad01d806aada7085396593b3e8d7f333764bfef5b1ff433f54672594`.
