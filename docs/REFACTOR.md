@@ -218,6 +218,15 @@ should be removed or collapsed.
   policy while preserving H5M/wave32/global/partial/wrapped/verifier/explicit/
   registration/backend misses. No allocation, workspace, sidecar, or public
   selector was added. The earlier uncapped speed packet is superseded.
+- WPF-H5U temporarily adds the empty-by-default gfx1100
+  `LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS` map plus independent global
+  selector plumbing. If complete-state, integrated **48 H5U + 144 H5R**
+  physical-call/topology, or clean 512/1K/4K gates reject runtime ownership,
+  remove the empty map, global role candidate/resolver branch, allocator
+  `prefill_global_preappend_package_default` argument, and runner bookkeeping;
+  retain the separately admitted leaf. If all gates pass, fill the one bounded
+  M128/C4096/H48 starts-0/128/256/384 role and close this trigger with retained
+  evidence. No allocation, workspace, sidecar, or public selector was added.
 
 ## Laguna source-IQ selected-down MMQ selector
 
