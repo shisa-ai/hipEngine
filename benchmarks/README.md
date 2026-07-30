@@ -44,12 +44,14 @@ resources fall **VGPR168/LDS1536 -> VGPR136/LDS1024** at scratch0, and its
 29.329/29.898 ms (-6.315%/-3.211%)** with byte-exact output. Complete M512
 state is KL0/byte-exact and tracing selects exactly **12** calls, cutting
 Q5/request sum **0.572%/0.187%**. The first clean 512 row is **-0.189%**, but a
-predeclared seven-repeat adjudication is **+0.176%**; 1K/4K are
-**-0.006%/+0.021%**. Production remains H5M/H5L pending selector-unset package
-publication. Both short rows exceed 150 tok/s and H5M 4K remains positive; 16K+
-stays closed
+predeclared seven-repeat adjudication is **+0.176%**. Source-default 512/1K/4K
+then reaches **+0.093%/-0.019%/-0.054%**; the final frozen 1K/4K adjudication
+remains **-0.030%/+0.014%**, rejecting runtime ownership. Remove the eager owner
+and package change; production remains H5M/H5L and only the exact leaf stays.
+Both short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed
 below the 800/700 gate
 ([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[H5P rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
@@ -274,11 +276,13 @@ schedule/occupancy combination. Four 64-accumulator predecessors lose at least
 one clock and are removed; the retained BF16 K6144/N3072 `16x4` leaf lowers
 VGPR/LDS **168/1536 -> 136/1024** and improves its producer-inclusive 12-call
 event/wall window **6.315%/3.211%** without changing output bytes. Complete
-state/tracing pass; the initial clean 512 conflict (**-0.189%**) resolves
-**+0.176%** in a predeclared seven-repeat adjudication, while 1K/4K are
-**-0.006%/+0.021%**. Package publication remains pending. Wider qrows,
-cross-head/key-split, source MMQ, and changed-association attention stay closed
-([H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
+state/tracing pass and a frozen 512 adjudication is **+0.176%**, but the final
+source-default 1K/4K adjudication is **-0.030%/+0.014%**. Reject runtime
+ownership, remove its eager/package surfaces, and retain only the exact leaf.
+Wider qrows, cross-head/key-split, source MMQ, and changed-association attention
+stay closed
+([H5P rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
+[H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
 [H5O target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·

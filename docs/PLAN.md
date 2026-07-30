@@ -1585,10 +1585,13 @@ event/wall sums fall **31.306/30.890 -> 29.329/29.898 ms
 bounded default-off owner passes complete M512 state at KL0/byte identity and
 tracing selects exactly **12** calls, cutting role/Q5/request sum
 **5.800%/0.572%/0.187%**. The first clean 512 result is **-0.189%**, but a
-predeclared seven-repeat adjudication resolves it at **+0.176%**; 1K/4K are
-**-0.006%/+0.021%**. Production remains H5M/H5L until selector-unset package
-publication. The old wider-qrow, cross-head/key-split, rowbatch16, output-tile,
-source-MMQ, changed-association attention, and P6/repair routes remain closed.
+predeclared seven-repeat adjudication resolves it at **+0.176%**. The
+source-default publication is **+0.093%/-0.019%/-0.054%** at 512/1K/4K and its
+final frozen 1K/4K adjudication remains **-0.030%/+0.014%**. Reject runtime
+ownership under the all-length rule; remove the eager owner/package change,
+retain only the exact leaf, and keep H5M/H5L production. The old wider-qrow,
+cross-head/key-split, rowbatch16, output-tile, source-MMQ, changed-association
+attention, and P6/repair routes remain closed.
 Launch fusion remains
 below its trigger at **1.251%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure

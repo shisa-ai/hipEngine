@@ -155,11 +155,14 @@ numbers below.
   (-6.315%/-3.211%)** with byte-exact output. Complete M512 state is KL0 and
   byte-exact; tracing selects exactly **12** calls and cuts Q5/request sum
   **0.572%/0.187%**. The first clean 512 row is **-0.189%**, but its predeclared
-  seven-repeat adjudication is **+0.176%**; 1K/4K are **-0.006%/+0.021%**.
-  Production stays H5M/H5L pending selector-unset package publication. Both
-  short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed
+  seven-repeat adjudication is **+0.176%**. Source-default 512/1K/4K then reaches
+  **+0.093%/-0.019%/-0.054%**; the final frozen 1K/4K adjudication remains
+  **-0.030%/+0.014%**, rejecting runtime ownership. The eager owner and package
+  change are removed; production remains H5M/H5L and only the exact leaf stays.
+  Both short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  [H5P rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
   [H5P leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
   [H5P target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
   [H5O rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
