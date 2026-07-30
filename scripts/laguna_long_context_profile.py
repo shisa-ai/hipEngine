@@ -190,6 +190,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
+        "--selected-down-q4-paircoeff-weighted-decode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
         "--q6-qmicro-permute",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -617,6 +622,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             q6_qmicro_permute=args.q6_qmicro_permute,
             q6_qmicro_planar=args.q6_qmicro_planar,
             moe_branch_concurrency=args.moe_branch_concurrency,
+            use_selected_down_q4_paircoeff_weighted_decode=(
+                args.selected_down_q4_paircoeff_weighted_decode
+            ),
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
             use_moe_tail_next_rmsnorm=args.moe_tail_next_rmsnorm,

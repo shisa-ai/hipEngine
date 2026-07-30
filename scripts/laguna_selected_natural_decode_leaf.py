@@ -38,6 +38,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
@@ -92,7 +93,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--gate-only", action="store_true")
     parser.add_argument(
         "--down-candidate",
-        choices=("natural", "parallel-tail", "parallel-weighted"),
+        choices=(
+            "natural",
+            "parallel-tail",
+            "parallel-weighted",
+            "paircoeff-weighted",
+        ),
         default="natural",
     )
     parser.add_argument("--compiler-version-file", type=Path)
@@ -661,6 +667,7 @@ def _screen_single_weighted(
     warmups: int,
     samples: int,
     burst: int,
+    control_is_weighted: bool = False,
 ) -> dict:
     buffers = []
     try:
@@ -689,28 +696,46 @@ def _screen_single_weighted(
         )
 
         def control_launch() -> None:
-            control(
-                x_dev.ptr,
-                selected_dev.ptr,
-                tiles_dev.ptr,
-                control_down_dev.ptr,
-                int(x.shape[0]),
-                TOP_K,
-                EXPERTS,
-                in_features,
-                out_features,
-                library=library,
-                runtime=runtime,
-            )
-            weighted_sum_out_bf16_f32w(
-                control_down_dev.ptr,
-                routing_weights_dev.ptr,
-                control_routed_dev.ptr,
-                TOP_K,
-                out_features,
-                library=combine_library,
-                runtime=runtime,
-            )
+            if control_is_weighted:
+                control(
+                    x_dev.ptr,
+                    selected_dev.ptr,
+                    tiles_dev.ptr,
+                    control_down_dev.ptr,
+                    routing_weights_dev.ptr,
+                    control_routed_dev.ptr,
+                    counter_dev.ptr,
+                    int(x.shape[0]),
+                    TOP_K,
+                    EXPERTS,
+                    in_features,
+                    out_features,
+                    library=library,
+                    runtime=runtime,
+                )
+            else:
+                control(
+                    x_dev.ptr,
+                    selected_dev.ptr,
+                    tiles_dev.ptr,
+                    control_down_dev.ptr,
+                    int(x.shape[0]),
+                    TOP_K,
+                    EXPERTS,
+                    in_features,
+                    out_features,
+                    library=library,
+                    runtime=runtime,
+                )
+                weighted_sum_out_bf16_f32w(
+                    control_down_dev.ptr,
+                    routing_weights_dev.ptr,
+                    control_routed_dev.ptr,
+                    TOP_K,
+                    out_features,
+                    library=combine_library,
+                    runtime=runtime,
+                )
 
         def candidate_launch() -> None:
             candidate(
@@ -868,7 +893,7 @@ def main() -> int:
             load=True,
             require_cached=args.require_cached_build,
         )
-        if args.down_candidate == "parallel-weighted"
+        if args.down_candidate in ("parallel-weighted", "paircoeff-weighted")
         else None
     )
     silu_library = (
@@ -952,7 +977,35 @@ def main() -> int:
         "q4_gate_up": gate_result,
     }
     if not args.gate_only:
-        if args.down_candidate == "parallel-weighted":
+        if args.down_candidate == "paircoeff-weighted":
+            assert combine_library is not None
+            route_weights = rng.normal(
+                0.1,
+                0.3,
+                size=TOP_K,
+            ).astype(np.float32)
+            results.update(
+                {
+                    "q4_down": _screen_single_weighted(
+                        runtime=runtime,
+                        library=library,
+                        combine_library=combine_library,
+                        control=gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
+                        candidate=gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out,
+                        x=x_down,
+                        selected=selected,
+                        tiles=q4_down,
+                        routing_weights=route_weights,
+                        in_features=1024,
+                        out_features=3072,
+                        warmups=args.warmups,
+                        samples=args.samples,
+                        burst=args.burst,
+                        control_is_weighted=True,
+                    ),
+                }
+            )
+        elif args.down_candidate == "parallel-weighted":
             assert combine_library is not None
             route_weights = rng.normal(
                 0.1,
@@ -1019,7 +1072,7 @@ def main() -> int:
                 gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
             )
             q6_control_kwargs = {"qmicro": True, "qmicro_planar": True}
-        if args.down_candidate != "parallel-weighted":
+        if args.down_candidate not in ("parallel-weighted", "paircoeff-weighted"):
             results.update(
                 {
                     "q4_down": _screen_single(

@@ -70,6 +70,10 @@ _Q4_SINGLE_NATURAL_PARALLEL_WEIGHTED_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_"
     "bf16_bf16_out"
 )
+_Q4_SINGLE_NATURAL_PARALLEL_PAIRCOEFF_WEIGHTED_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_"
+    "gemv_bf16_bf16_out"
+)
 _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_SINGLE_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out"
@@ -1092,6 +1096,55 @@ def gguf_q4_k_t16_selected_gemv_fp16_fp16_out(
         selected_ptr,
         tiles_ptr,
         out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    routing_weights_ptr: int,
+    routed_out_ptr: int,
+    completion_counter_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch paired-payload natural Q4T16 down plus exact weighted tail."""
+
+    _check_laguna_natural_selected_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_features,
+        expected_x_rows=10,
+        expected_in=1024,
+        expected_out=3072,
+    )
+    _launch_single_direct_weighted(
+        _Q4_SINGLE_NATURAL_PARALLEL_PAIRCOEFF_WEIGHTED_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        routing_weights_ptr,
+        routed_out_ptr,
+        completion_counter_ptr,
         x_rows,
         rows,
         num_experts,
@@ -2725,6 +2778,18 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear+weighted_sum",
+            "gguf_q4_k_t16_v1",
+            "selected_t16_natural_parallel_paircoeff_weighted_"
+            "gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+
     for quant_key, grouped_smallm_fn in (
         (
             "gguf_q4_k_t16_v1",
@@ -2823,6 +2888,8 @@ __all__ = [
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out",

@@ -2678,7 +2678,8 @@ template <
     bool qmicro = false,
     bool qmicro_planar = false,
     bool parallel_tail = false,
-    bool weighted_tail = false>
+    bool weighted_tail = false,
+    bool pair_coeff_payload = false>
 __global__ __launch_bounds__(128, 4)
 void qk_t16_selected_natural_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -2695,6 +2696,8 @@ void qk_t16_selected_natural_gemv_kernel(
                 "planar qmicro requires qmicro layout");
   static_assert(!weighted_tail || parallel_tail,
                 "weighted natural tail requires parallel output stores");
+  static_assert(!pair_coeff_payload || qtype == 4,
+                "paired coefficients apply only to natural Q4");
   constexpr int kRows = 10;
   constexpr int kInFeatures = 1024;
   constexpr int kOutFeatures = 3072;
@@ -2733,11 +2736,48 @@ void qk_t16_selected_natural_gemv_kernel(
       const float xv =
           scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
       if constexpr (qtype == 4) {
+        if constexpr (pair_coeff_payload) {
+          const int sb = k_in_block >> 5;
+          const int lane32 = k_in_block & 31;
 #pragma unroll
-        for (int col = 0; col < T16_COLS; ++col) {
-          const float wv =
-              t16_q4_weight(tile, k_in_block, col);
-          acc[col] += xv * wv;
+          for (int pair = 0; pair < T16_COLS / 2; ++pair) {
+            const int col0 = pair * 2;
+            const int col1 = col0 + 1;
+            const uint8_t packed =
+                tile[Q4_T16_Q_OFFSET +
+                     (sb * Q4_SUBBLOCK + lane32) *
+                         (T16_COLS / 2) +
+                     pair];
+            const uint32_t d = *reinterpret_cast<const uint32_t*>(
+                tile + Q4_T16_D_OFFSET + col0 * 2);
+            const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+                tile + Q4_T16_DMIN_OFFSET + col0 * 2);
+            const uint16_t scale = *reinterpret_cast<const uint16_t*>(
+                tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+            const uint16_t minv = *reinterpret_cast<const uint16_t*>(
+                tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+            const float wv0 =
+                fp16_bits_to_float(static_cast<uint16_t>(d)) *
+                    static_cast<float>(scale & 0xFFu) *
+                    static_cast<float>(packed & 0x0Fu) -
+                fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+                    static_cast<float>(minv & 0xFFu);
+            const float wv1 =
+                fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+                    static_cast<float>(scale >> 8) *
+                    static_cast<float>(packed >> 4) -
+                fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+                    static_cast<float>(minv >> 8);
+            acc[col0] += xv * wv0;
+            acc[col1] += xv * wv1;
+          }
+        } else {
+#pragma unroll
+          for (int col = 0; col < T16_COLS; ++col) {
+            const float wv =
+                t16_q4_weight(tile, k_in_block, col);
+            acc[col] += xv * wv;
+          }
         }
       } else {
         const int g16 = k_in_block >> 4;
@@ -3911,7 +3951,8 @@ template <
     typename scalar_t,
     int qtype,
     bool qmicro = false,
-    bool qmicro_planar = false>
+    bool qmicro_planar = false,
+    bool pair_coeff_payload = false>
 int launch_qk_natural_parallel_weighted(
     const void* x,
     const void* selected,
@@ -3935,7 +3976,13 @@ int launch_qk_natural_parallel_weighted(
   const dim3 grid(3072 / T16_COLS, 10);
   hipLaunchKernelGGL(
       (qk_t16_selected_natural_gemv_kernel<
-          scalar_t, qtype, qmicro, qmicro_planar, true, true>),
+          scalar_t,
+          qtype,
+          qmicro,
+          qmicro_planar,
+          true,
+          true,
+          pair_coeff_payload>),
       grid,
       block,
       0,
@@ -4225,6 +4272,18 @@ hipengine_gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out(
     int64_t x_rows, int64_t rows, int64_t num_experts,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_qk_natural_parallel_weighted<uint16_t, 4>(
+      x, selected, tiles, out, routing_weights, routed_out,
+      completion_counter, x_rows, rows, in_features, out_features,
+      num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    const void* routing_weights, void* routed_out, void* completion_counter,
+    int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_qk_natural_parallel_weighted<uint16_t, 4, false, false, true>(
       x, selected, tiles, out, routing_weights, routed_out,
       completion_counter, x_rows, rows, in_features, out_features,
       num_experts, stream);
