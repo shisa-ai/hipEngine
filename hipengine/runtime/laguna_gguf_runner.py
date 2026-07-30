@@ -4336,7 +4336,7 @@ class LagunaGGUFResidentSession:
             preappend = (
                 self.prefill_kv_preappend
                 and not stage_verifier_kv
-                and self.kv_cache.can_preappend_prefill(
+                and self.kv_cache.can_preappend_attention_prefill(
                     layer_id,
                     attention_rows,
                     row_offset=row_offset,
