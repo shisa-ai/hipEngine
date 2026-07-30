@@ -73,6 +73,15 @@ Tracked-clean selector-unset publication at `1bc5f7405` reproduces
 **22.262504 tok/s** decode and **656.990 tok/s** pp512.
 [`paired expert production`](results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
 
+The committed post-pair wall census records **43.500661 ms/token** of summed
+kernel work and a **45.173501-ms** kernel span at 482 model dispatches/token.
+Summed hipEngine kernels are now **0.158539 ms/token below** the same-GGUF
+Vulkan logger, although tracked-clean production wall remains
+**2.089054 ms/token slower**. Attention is the largest remaining comparable
+family gap at **+0.437941 ms/token**; the trace exposes another
+**1.674612 ms/token** between kernel sum and span.
+[`post-pair wall census`](results/2026-07-31-gfx1151-laguna-post-paired-expert-wall-reprofile.json).
+
 The same exact boundary's resident A/B gate independently retained the final
 attention-output projection producer runs the established residual-add/RMSNorm
 tree, removing another **48 launches/token** without adding resident bytes.
