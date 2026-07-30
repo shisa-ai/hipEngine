@@ -23,14 +23,18 @@ public selector is added. The production-identical H5W trace reconciles
 **1,803.036 ms / 1,862 dispatches** in a **1,829.763-ms** span against
 llama.cpp HIP's **724.299 ms**. Exact matched gaps now rank Q5 **417.482 ms**,
 IQ down **327.846 ms**, attention **192.029 ms**, Q6 **77.716 ms**, and gate/up
-**60.898 ms**; span-minus-sum remains only **26.726 ms / 1.461%**. H5X selects
-the next exact Q5 dataflow: six H5L roles own **188 calls / 459.232 ms**, and a
-full-F32 `[tile][k][col]` plane lets the unchanged local128 arithmetic consume
-aligned `float4` records. The static source model moves **6.309B -> 1.577B**
-weight-load instruction instances (**-75%**) across unchanged bytes,
-**5,021,440** workgroups, geometry, workspace, and useful FMAs. This is target
-rationale only; production remains H5W pending plane-byte, ISA/resource, and
-all-role both-clock gates. WPF-H5S screens the distinct persistent row-group Q5
+**60.898 ms**; span-minus-sum remains only **26.726 ms / 1.461%**. H5X now
+admits an exact standalone Q5 tile-K-col leaf. Rows17/33 plane permutations and
+all six actual M512 outputs are byte-exact. Physical ISA replaces each H5L
+consumer's **8/12/16 `global_load_b32`** weight instructions with **2/3/4
+`global_load_b128`**, while local128 VGPR/LDS/scratch0 remains identical and the
+linear producer is local256/VGPR16/scratch0. Four roles / **151 calls** win both
+clocks; remove the two losing surfaces and retain H5L for their **37** calls.
+The six-role selected event/wall model moves **465.863/467.511 ->
+458.615/459.712 ms (-1.556%/-1.668%)**. Final-source winners independently move
+**265.784/266.992 -> 258.653/258.959 ms (-2.683%/-3.009%)**. Production remains
+H5W **271.526/234.020/161.853 tok/s** pending complete-state, integrated, and
+clean runtime gates. WPF-H5S screens the distinct persistent row-group Q5
 dimension at partitions **1/2/4/8/16/32**. All candidate outputs are byte-exact, all 36 symbols are
 scratch-free, and resource classes rise only eight VGPR, but **0/6** actual
 roles win both clocks. Even P32 regresses producer-inclusive weighted event/wall
@@ -98,7 +102,8 @@ remains **-0.030%/+0.014%**, rejecting runtime ownership. Remove the eager owner
 and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5W 4K remains positive; 16K+ stays closed
 below the 800/700 gate
-([post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+([H5X candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+[post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5W candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
@@ -397,13 +402,15 @@ dispatches, and improves clean 512/1K/4K **+1.830%/+1.492%/+1.061%** with 3/3
 wins each. Selector-unset confirms **+1.785%/+1.532%/+1.100%**, promoting
 **271.526/234.020/161.853 tok/s** and narrowing matched M512 to **2.55661x**.
 The production-identical trace ranks Q5 first at **476.433 ms** versus llama.cpp
-HIP **58.951 ms**. H5X keeps H5L's exact full-F32 values, local128 ownership,
-geometry, and all arithmetic, but swizzles the internal plane to
-`[tile][k][col]` for aligned `float4` loads. The static **6.309B -> 1.577B**
-load-instruction model is not a speed claim; byte/layout/ISA and both-clock
-all-role gates precede any owner. Wider qrows, cross-head/key-split, source MMQ,
-and changed-association attention stay closed
-([post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+HIP **58.951 ms**. H5X realizes the exact full-F32 `[tile][k][col]` plane and
+aligned `global_load_b128` consumers with unchanged H5L arithmetic/resources.
+All six screened outputs are exact; four roles / **151 calls** win both clocks,
+and the two losing roles are removed. Selected six-role event/wall falls
+**1.556%/1.668%**; the four final-source winners fall **2.683%/3.009%** with
+4/4 wins. No package owner exists yet. Wider qrows, cross-head/key-split, source
+MMQ, and changed-association attention stay closed
+([H5X candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+[post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5W candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·

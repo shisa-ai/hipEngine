@@ -900,17 +900,21 @@ dispatches; Q6/request sum falls **121.306/1,851.695 -> 92.636/1,803.036 ms
 narrowing matched M512 **2.59795x -> 2.55661x**. Preserve H5I F32-N72 and raw
 long-K/wide-N fallbacks; H5W is package production. Post-H5W attribution
 reconciles **1,803.036 ms / 1,862 dispatches** and returns to Q5, now
-**476.433 ms** versus llama.cpp HIP **58.951 ms**. H5X selects a distinct exact
-plane layout rather than persistence, geometry, compression, or K-ownership:
-a geometry-specific producer stores each H5L tile as full-F32 `[k][col]`, and
-the matching local128 consumer uses aligned `float4` records while replaying
-unchanged scalar FMAs and reductions. The six roles own **188 calls / 459.232
-ms**. The static source model moves **6.309B -> 1.577B** weight-load instruction
-instances (**-75%**) across unchanged bytes/workgroups; actual ISA and both
-clocks decide. Add separate gfx1100 keys only, keep the row-major H5L/H5G chain
-as fallback, and require permutation/output exactness plus cached scratch0/
-dwordx4 evidence before timing or ownership
-([post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+**476.433 ms** versus llama.cpp HIP **58.951 ms**. H5X admits a distinct exact
+plane layout rather than persistence, geometry, compression, or K-ownership.
+The linear local256/VGPR16/scratch0 producer stores full-F32 `[tile][k][col]`;
+matching local128 consumers replay unchanged scalar FMAs/reductions with the
+same VGPR/LDS/scratch0 while physical ISA moves **8/12/16 `global_load_b32` ->
+2/3/4 `global_load_b128`** per K iteration. Rows17/33 plane bits and all six
+actual M512 outputs are exact. Four roles / **151 calls** win both clocks; remove
+BF16 K3072/N12288 and K9216/N3072 surfaces and retain H5L for their **37**
+calls. Six-role selected event/wall falls **465.863/467.511 -> 458.615/459.712
+ms (-1.556%/-1.668%)**; final-source winners fall **265.784/266.992 ->
+258.653/258.959 (-2.683%/-3.009%)** with 4/4 wins. No package owner exists yet;
+next require complete state, exact **151 H5X + 37 H5L + 47 H5G** topology, and
+clean 512/1K/4K before source default
+([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+[post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5W candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·

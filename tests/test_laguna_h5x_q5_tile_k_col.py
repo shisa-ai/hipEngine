@@ -26,11 +26,13 @@ from tests.test_gguf_q5_k_f32_rocblas_prefill import (
 
 _CANDIDATES = (
     (8, 4, "bf16"),
-    (8, 12, "bf16"),
     (16, 5, "bf16"),
-    (12, 8, "bf16"),
     (16, 5, "f32"),
     (8, 10, "f32"),
+)
+_REJECTED = (
+    (8, 12, "bf16"),
+    (12, 8, "bf16"),
 )
 _Q5_PRODUCTION_POLICY = {
     ("bf16", 3072, 1024): "weight_major_coltile8_rowbatch4",
@@ -172,6 +174,34 @@ def test_h5x_registry_scope_and_production_immutability() -> None:
         for key, _ in candidate_keys:
             assert not is_registered(
                 KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
+            )
+
+    for col_tile, row_batch, output_dtype in _REJECTED:
+        suffix = _suffix(col_tile, row_batch, output_dtype)
+        for name in _candidate_names(col_tile, row_batch, output_dtype):
+            assert not hasattr(q5_f32, name)
+        for layer, quant, variant in (
+            (
+                "dequant",
+                "gguf_q5_k",
+                f"raw_f32_exact_tile_k_col_{suffix}",
+            ),
+            (
+                "linear",
+                "f32_weight",
+                f"ordered_weight_major_tile_k_col_{suffix}",
+            ),
+            (
+                "linear",
+                "gguf_q5_k",
+                f"f32_ordered_weight_major_tile_k_col_{suffix}",
+            ),
+        ):
+            assert not is_registered(
+                KernelKey("hip_gfx1100", layer, quant, variant)
+            )
+            assert not is_registered(
+                KernelKey("hip_gfx1151", layer, quant, variant)
             )
 
 
