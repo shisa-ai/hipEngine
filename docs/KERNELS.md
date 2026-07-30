@@ -56,24 +56,27 @@ global/SWA wraps and prove the gated/wave-local reducers bit-exact to their
 registered unfused/retained chains. Cached tracing observes all required
 producer/reducer families with zero kernel scratch.
 
-The exact dense-prefix global owner now also has a separately registered
-local1024 diagnostic. It preserves the retained eight-wave denominator tree
+The exact dense-prefix global owner now also has a retained/default
+local1024 specialization. It preserves the eight-wave denominator tree
 and every scalar FP32 operation while widening only independent QK and
 double-buffered value transport from 16 to 32 wave32s. Live lengths
 513/576/639 are F32- and gated-BF16-byte exact to local512 and improve the
 21x100 leaf **2.126%/3.823%/4.157%**. Cached gfx1151 tracing names
-grid40/local1024, VGPR48, SGPR128, reported LDS512, and scratch0. This is a
-primitive admission, not a runtime/default claim:
+grid40/local1024, VGPR48, SGPR128, reported LDS512, and scratch0:
 [`global local1024 leaf`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-leaf.json).
-The four-axis key now also has a default-off gfx1151 runtime capability and
-profile comparison seam. Fake-owner selection proves that only dense-prefix
-idle-buffer requests reach local1024 and that local512 remains the exact
-fallback; production remains unchanged pending the same-resident model gate:
+Fake-owner selection proves that only dense-prefix idle-buffer requests reach
+local1024 and that local512 remains the exact fallback:
 [`runtime admission`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-runtime-correctness.json).
-That gate now passes: all seven exact p512/d128 candidate runs win
+All seven exact p512/d128 candidate runs win
 **22.358675 -> 22.383414 tok/s (+0.11065%)** with unchanged state and
-residency, so gfx1151 promotes the capability. Tracked-clean selector-unset
-publication and the next attention census remain:
+residency. Tracked-clean selector-unset production reaches
+**22.378602 tok/s**, and the 127-transition census cuts global attention
+**0.453932 -> 0.402996 ms/token (-11.221%)** and complete kernel work
+**0.049632 ms/token**. gfx1151 defaults local1024; the comparison-only profile
+seam is removed and local512 remains the exact non-dense/eviction/peer
+fallback:
+[`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-production.json),
+[`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json),
 [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-retained.json).
 
 The gfx1151-only

@@ -194511,3 +194511,48 @@ Vulkan local sizes verbatim will close the measured gap.
   census remain.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-retained.json`.
+
+## 2026-07-31 02:27 JST — Publish and census exact global local1024
+
+- A tracked-clean selector-unset three-run production packet on retained
+  `01b4a659f` measures decode
+  **22.355972/22.378602/22.381994 tok/s**, median
+  **22.378602 tok/s / 44.685545 ms/token**, with steady pp512 median
+  **655.796 tok/s**. Relative to the clean SWA-local1024 checkpoint this is
+  **22.335681 -> 22.378602 tok/s (+0.192160%)**, saving
+  **0.085868 ms/token** and reaching **+95.161877%** over sprint start.
+- Every repetition preserves tokens 2930/74107, trajectory
+  `94f803f7...bda32`, position 638, deterministic repeats,
+  **79,022,522,196-byte** residency, allocation recovery, and tracked-clean
+  provenance. The same-GGUF Vulkan gap is now **1.856022 ms/token** or
+  **4.153519%** throughput. Raw production SHA-256 is
+  `5713374cc30307006a80771811414fd1e1a0e717cd4242ecdefc740633c67f01`.
+- A separate require-cached `rocprofv3` run over 127 steady-state one-token
+  segments records **482 dispatches/token**, **43.248078-ms** kernel sum,
+  **44.927596-ms** span, and **1.679518 ms/token** span minus summed kernels.
+  Global attention falls **0.453932 -> 0.402996 ms/token (-11.221064%)**;
+  total attention falls **1.175727 -> 1.124268 (-4.376781%)** and complete
+  kernel work falls **0.049632 ms/token**. SWA remains
+  **0.721272 ms/token**.
+- The retained global resource is grid40/local1024,
+  VGPR48/SGPR128/reported-LDS512/scratch0; SWA remains grid40/local1024,
+  VGPR32/SGPR128/LDS40,960/scratch0. Trace and profiled-benchmark SHA-256
+  values are
+  `a66feb6e55b6c3310e3f993ce8e57bc6935419e3a99cd2f259e616d70095fd17`
+  and
+  `770cb5ce9035d0dd9b0cdaf42920fd9f55cf2ddee9c4685586d1810117878990`.
+  The generic trace-summary CLI intentionally rejects the decode child order;
+  use its checked segmenter/classifiers over the final 127 segments, as in
+  the previous accepted decode censuses.
+- Complete hipEngine kernel work is now **0.411122 ms/token below** Vulkan's
+  logged GPU sum. Like-for-like positive family gaps rank dense/shared
+  **+0.350957**, selected gate/up **+0.321657**, selected down
+  **+0.274700**, attention **+0.214845**, and router
+  **+0.107659 ms/token**. The dominant whole-wall target is therefore exact
+  submission/dispatch contraction, not another attention arithmetic rewrite.
+- Remove the dedicated `--compare-global-local1024` seam after publication.
+  Keep local512 as the exact non-dense, explicit-eviction, and peer fallback.
+  Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-production.json`
+  and
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json`.

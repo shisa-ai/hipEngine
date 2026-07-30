@@ -88,7 +88,6 @@ COMPARISON_ARGUMENTS = (
     "compare_global_assume_exp",
     "compare_global_exp32",
     "compare_global_mixed32",
-    "compare_global_local1024",
     "compare_selected_natural_decode",
     "compare_selected_natural_tile8_decode",
     "compare_q4_decode_t16_sidecar",
@@ -337,11 +336,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-global-mixed32",
         action="store_true",
         help="counterbalance exact 24-owner GQA2 and 32-owner mixed global attention",
-    )
-    parser.add_argument(
-        "--compare-global-local1024",
-        action="store_true",
-        help="counterbalance exact dense-prefix global local512 against local1024",
     )
     parser.add_argument(
         "--compare-selected-natural-decode",
@@ -926,8 +920,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_decode_global_exp32(mode == "candidate")
                     if args.compare_global_mixed32:
                         owner.set_decode_global_mixed32(mode == "candidate")
-                    if args.compare_global_local1024:
-                        owner.kv_cache.global_local1024 = mode == "candidate"
                     if args.compare_selected_natural_decode:
                         owner.set_selected_natural_decode(
                             mode == "candidate"
@@ -1190,7 +1182,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_global_assume_exp": args.compare_global_assume_exp,
             "compare_global_exp32": args.compare_global_exp32,
             "compare_global_mixed32": args.compare_global_mixed32,
-            "compare_global_local1024": args.compare_global_local1024,
             "compare_selected_natural_decode": (
                 args.compare_selected_natural_decode
             ),

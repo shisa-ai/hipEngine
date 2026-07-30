@@ -7089,33 +7089,35 @@ Current exact decode checkpoint:
 | hipEngine prior shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
 | hipEngine prior byte-neutral expert dual-interleave production | **22.262504 tok/s** | **44.919 ms** | **+94.151%** |
 | hipEngine retained exact SWA local1024 same-resident gate | **22.356330 tok/s** | **44.730 ms** | **+94.968%** |
-| hipEngine current tracked-clean SWA local1024 production | **22.335681 tok/s** | **44.771 ms** | **+94.788%** |
+| hipEngine prior tracked-clean SWA local1024 production | **22.335681 tok/s** | **44.771 ms** | **+94.788%** |
+| hipEngine retained exact global local1024 same-resident gate | **22.383414 tok/s** | **44.676 ms** | **+95.204%** |
+| hipEngine current tracked-clean global local1024 production | **22.378602 tok/s** | **44.686 ms** | **+95.162%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **1.942 ms/token** | hipEngine is **4.337%** below Vulkan throughput |
+| Remaining wall gap | — | **1.856 ms/token** | hipEngine is **4.154%** below Vulkan throughput |
 
-The refreshed post-local1024 census confirms the exact cooperative-width
-transfer. Complete hipEngine kernel work is **43.297710 ms/token**, already
-**0.361490 ms/token below** Vulkan's logged GPU sum, while tracked-clean
-production remains **1.941890 ms/token** slower in wall time. SWA falls
-**0.893032 -> 0.721795 ms/token (-19.175%)**; total attention falls
-**1.347364 -> 1.175727 (-12.739%)** and is now only
-**+0.266304 ms/token** above Vulkan. The like-for-like positive family gaps
-now rank dense/shared **+0.356052**, paired selected gate/up **+0.312067**,
-selected down **+0.278490**, attention **+0.266304**, and router
-**+0.112037 ms/token**. The trace retains **482 model dispatches/token** and
-shows **1.673554 ms/token** between summed kernels and kernel span:
-[`post-local1024 census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json).
+The refreshed post-global-local1024 census confirms the second exact
+cooperative-width transfer. Complete hipEngine kernel work is
+**43.248078 ms/token**, already **0.411122 ms/token below** Vulkan's logged
+GPU sum, while tracked-clean production remains **1.856022 ms/token** slower
+in wall time. Cumulatively, SWA is **0.721272 ms/token** and global falls
+**0.453932 -> 0.402996 (-11.221%)**; total attention is now
+**1.124268 ms/token**, only **+0.214845 ms/token** above Vulkan. The
+like-for-like positive family gaps now rank dense/shared **+0.350957**,
+paired selected gate/up **+0.321657**, selected down **+0.274700**,
+attention **+0.214845**, and router **+0.107659 ms/token**. The trace retains
+**482 model dispatches/token** and shows **1.679518 ms/token** between summed
+kernels and kernel span:
+[`post-global-local1024 census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json).
 
 The producer-max and local1024 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
 the data, and a block should expose enough independent work to cover the
 machine. The device audit disproved the earlier local512 endpoint assumption:
-gfx1151 admits 32 wave32s/CU and local1024, and the exact SWA body benefits
-from doubling independent QK and value-transport waves even though it adds no
-logical score ownership. Global remains at local512 and is the next direct
-transfer gate, with its existing denominator tree held fixed. The earlier
-post-pair census remains historical evidence, but its family ranking is
-superseded by the post-local1024 result above.
+gfx1151 admits 32 wave32s/CU and local1024, and both exact SWA and global
+bodies benefit from doubling independent QK and value-transport waves even
+though this adds no logical score ownership. The earlier post-pair and
+post-SWA censuses remain historical evidence, but their family rankings are
+superseded by the post-global-local1024 result above.
 
 The refreshed comparator audit makes the attention trade explicit. At
 llama.cpp Vulkan `c0bc8591e`, Laguna's decode sequence length is one, but
@@ -7167,8 +7169,8 @@ Next attention-core attack:
    **0.203804 ms/token**:
    [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-production.json),
    [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json).
-6. **Retained/default pending clean publication:** transfer only this measured
-   width premise to dense-prefix global attention. The candidate keeps its
+6. **Retained/default and published:** transfer only this measured width
+   premise to dense-prefix global attention. The candidate keeps its
    exact scalar FP32 association, eight-wave denominator tree, 40 workgroups,
    and local512 rollback while doubling QK/value transport waves. F32 and
    gated-BF16 outputs are byte-exact at live lengths 513/576/639; the 21x100
@@ -7176,17 +7178,24 @@ Next attention-core attack:
    p512/d128 candidates win **22.358675 -> 22.383414 tok/s (+0.11065%)**,
    saving **0.059368 ms/token** by paired median at unchanged residency:
    [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-retained.json).
-   Next publish tracked-clean selector-unset production and refresh the
-   127-transition attention census.
+   Tracked-clean selector-unset production reaches
+   **22.378602 tok/s / 44.686 ms/token**, up **0.19216%** from the SWA-only
+   checkpoint. The 127-transition census cuts global
+   **0.453932 -> 0.402996 ms/token (-11.221%)**, total attention
+   **4.377%**, kernel sum **0.049632 ms/token**, and span
+   **0.042101 ms/token**:
+   [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-production.json),
+   [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json).
 
 The Vulkan review changes the next move from another attention-math rewrite
 to exact device-dispatch contraction. llama.cpp does not expose a reusable
 Vulkan graph plan at this revision: it records each evaluation into command
 buffers, batches submission by a FLOP budget or at most 100 nodes, and overlaps
 CPU command recording with GPU execution. Its shader count is therefore not
-one synchronous host round trip per shader. hipEngine's measured kernel sum is already
-within **0.164082 ms/token** of Vulkan, but every one of the 48 attention
-layers launches the source-F16 Q/K/V triple and then a tiny same-input gate
+one synchronous host round trip per shader. hipEngine's latest measured
+kernel sum is **0.411122 ms/token below** Vulkan, while its kernel span still
+contains **1.679518 ms/token** beyond summed kernels. Every one of the 48
+attention layers launches the source-F16 Q/K/V triple and then a tiny same-input gate
 projection. Their dependency boundary alone costs **0.26638 ms/token**.
 
 The retained `linear_quad/fixedk_onebarrier_bf16_f32_out` sibling flattens
