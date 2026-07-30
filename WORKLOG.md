@@ -193494,3 +193494,41 @@ Vulkan local sizes verbatim will close the measured gap.
   arithmetic or traffic-removal premise.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-half-stage-prefetch-rejected.json`.
+
+## 2026-07-30 18:05 JST — Reject reusable gfx1151 Laguna decode graph
+
+- Review llama.cpp Vulkan `c0bc8591e` around graph recording/submission. It
+  records evaluation nodes into Vulkan command buffers and groups up to
+  `max_nodes_per_submit=100` before queue submission. Its 1,150 logged shader
+  operations therefore do not pay 1,150 independent host submissions. This is
+  within-evaluation batching, not reuse of one token graph across changing
+  decode state.
+- Test the closest bounded HIP mechanism against the current **673-dispatch**
+  Laguna step: capture one device-token-fed graph, preserve every current
+  model kernel, and fuse both equal position increments into the exact argmax
+  stage-2 owner so the candidate adds no model dispatch.
+- Focused RED fails importing the absent fused tail; GREEN passes all
+  `tests/test_lm_head_plan.py` nodes (**6 passed**). The first end-to-end
+  capture identifies a correctness landmine: global attention's host-selected
+  scan limit freezes at 513. Reserve the complete p512/d128 replay horizon
+  (639) while the kernel continues to clamp actual visibility from device
+  `KVLiveSpans.live_counts`; this restores the exact trajectory and complete
+  hidden/final-norm/KV-payload/KV-metadata SHA.
+- The corrected one-run rejection gate measures
+  **21.863939 -> 21.756761 tok/s (-0.49020%)**, or
+  **45.737413 -> 45.962724 ms/token (+0.225311 ms)**. A preceding corrected
+  pair is also negative at **21.862435 -> 21.759527 tok/s**. Both produce
+  next/final tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, and
+  final position 638; the artifacted pair also has identical full-state SHA
+  `d81b1b71...e6d4` and complete allocation recovery.
+- Remove the graph module, fused tail/export/wrapper/test, and diagnostic
+  screen. Production source and the tracked-clean checkpoint remain unchanged
+  at **21.880056 tok/s**. Do not treat persistent graph replay as Vulkan's
+  submission design; successors need profitable exact kernel fusion or a real
+  lower-overhead within-token batching primitive.
+- `scripts/check_lineage.py --kind kernel --diff stat` could not complete
+  because the configured external reference
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; no external kernel was
+  ported in this unit.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-decode-graph-rejected.json`.

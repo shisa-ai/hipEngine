@@ -6722,6 +6722,33 @@ The remaining attention sequence is:
      **21.880056 tok/s**. This closes extra-LDS SWA overlap even when nominal
      one-block-per-CU occupancy is unchanged:
      [`half-stage-prefetch rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-half-stage-prefetch-rejected.json).
+115. Test whether reusable HIP graph replay removes the measured submission
+     wall without changing model arithmetic. **Rejected and removed:** one
+     captured token step feeds embedding directly from the previous device
+     argmax, replays all current exact kernels, and advances both equal
+     position scalars in the unchanged argmax stage-2 owner. The eager fallback
+     remains untouched and the candidate adds no model dispatch.
+
+     The first capture exposed a real dynamic-state requirement: global
+     attention's host-selected scan bound was frozen at the first replay's 513
+     slots. Reserving the complete bounded horizon at capture (639 slots for
+     p512/d128) restores the exact 128-token trajectory and a full hash of
+     hidden, final norm, all KV payloads, and KV metadata.
+
+     The corrected graph still regresses the complete wall:
+     **21.863939 -> 21.756761 tok/s (-0.49020%)**, or
+     **45.737413 -> 45.962724 ms/token (+0.225311 ms)**. A preceding corrected
+     pair is independently negative at **21.862435 -> 21.759527 tok/s**.
+     Remove the graph module, fused tail, wrappers, test, and screen. Production
+     remains **21.880056 tok/s**.
+
+     This also sharpens the llama.cpp comparison. Vulkan revision `c0bc8591e`
+     records evaluation nodes into command buffers and groups up to
+     `max_nodes_per_submit=100` before queue submission; it does not persist
+     and replay one changing token graph. A reusable HIP graph is therefore
+     not the equivalent scheduling primitive. Any successor needs genuine
+     within-token batching or profitable exact fusion:
+     [`graph rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-decode-graph-rejected.json).
 
 Current exact decode checkpoint:
 
@@ -6740,11 +6767,21 @@ machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
 cover one logical token each; larger blocks add no score ownership. Global
 local512 confirms that the same saturation axis transfers when the original
 eight-wave denominator tree is held fixed: the extra waves help only the
-independent QK and value-transport phases. The post-fusion census leaves SWA
-as the dominant exact-attention family at **1.468158 ms/token**. Total
-attention is **2.129354 ms/token**, or **2.341x** llama.cpp Vulkan's logged
-**0.909423 ms/token**, a **1.219931-ms/token** gap representing **23.28%** of
-the complete remaining wall gap. Device-code inspection now closes
+independent QK and value-transport phases. The current census measures SWA at
+**0.876125 ms/token**, global attention at **0.452528**, and complete attention
+at **1.328653** versus llama.cpp Vulkan's logged **0.909423-ms** family. The
+remaining attention gap is **0.419230 ms/token**; selected gate/up is now the
+larger named gap at **0.526945 ms/token**.
+
+Complete hipEngine kernel work is only **0.275892 ms/token** above Vulkan's
+logged GPU total, while hipEngine still exposes **2.035796 ms/token** of
+single-queue submission idle. Reusable whole-token HIP graph replay is now
+closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
+within-evaluation command-buffer recording/submission, not cross-token graph
+reuse. Scheduling remains valuable, but it now requires lower-overhead
+within-token batching or fusion rather than another persistent-graph variant.
+
+Device-code inspection now closes
 pragma-only register/stage tuning:
 V128 is **35 logical VGPR with no spills**, not 176 live registers, and its
 grid already maps one workgroup to each of the 40 CUs. The first selected-MoE
@@ -6755,11 +6792,14 @@ removing 48 launches/token and exact temporary BF16 traffic; tracked-clean
 production confirms the complete-model win. Quad-local metadata broadcast
 remains closed by decisive natural-shape regressions. Exact T16 selected down
 plus routing weighting is also closed: serial top-10 ownership regresses
-complete decode by **0.8364%** despite an isolated planar-Q6 leaf win. Return
-to attention only for a materially new exact-association or quality-safe
-cooperative premise:
-both SWA and global stage-width successors win isolated leaves but fail to
-produce a reliable complete-model improvement.
+complete decode by **0.8364%** despite an isolated planar-Q6 leaf win.
+Attention should reopen only for a materially new exact-association or
+quality-safe cooperative premise: both SWA and global stage-width successors
+win isolated leaves but fail to produce a reliable complete-model improvement.
+The next bounded kernel target is instead the larger measured selected
+gate/up gap (**+0.526945 ms/token**), followed by dense/shared
+(**+0.411714**) and selected down (**+0.252713**) if their exact leaf wins
+survive the resident wall.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
