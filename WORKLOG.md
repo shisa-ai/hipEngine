@@ -193180,3 +193180,22 @@ Vulkan local sizes verbatim will close the measured gap.
   under the profiler.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-global-wall-reprofile.json`.
+
+## 2026-07-30 14:43 JST — Reject exact T16 tile16 pair-coefficient gate/up retry
+
+- The retained adjacent Q/coefficient loads lowered production tile8 from
+  allocated VGPR96 to VGPR72, creating a materially new reason to retry the
+  exact full 16-column owner. The candidate halves workgroups and reuses each
+  activation across the full resident tile without changing K ownership,
+  per-column FMA/reduction order, BF16 boundaries, fused SiLU, resident bytes,
+  or dispatch count.
+- RED fails on the absent wrapper. GREEN passes the focused natural-shape
+  production-bit oracle with zero BF16 mismatches.
+- The actual layer-1 counterbalanced 9x50 leaf regresses
+  **0.110893 -> 0.112941 ms (+1.847%)** and wins only **1/9** pairs. Cached
+  native tracing records global work size **16384 -> 8192 threads** but
+  allocated VGPR **72 -> 96**, with local128/SGPR128/reported-LDS512/scratch0.
+- Reject at the mandatory leaf stop. Remove the complete candidate and keep
+  exact tile8 pair-coefficient production at **21.304731 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-tile16-rejected.json`.
