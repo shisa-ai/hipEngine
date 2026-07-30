@@ -44,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
@@ -1430,6 +1431,20 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     np.testing.assert_array_equal(q4_fused_down, q4_parallel)
     np.testing.assert_array_equal(q4_weighted, q4_weighted_ref)
     assert q4_counter == 0
+    q4_pair_down, q4_pair_weighted, q4_pair_counter = (
+        _run_direct_parallel_weighted(
+            gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out,
+            down_x,
+            selected,
+            q4_tiles,
+            route_weights,
+            down_out,
+            t16_selected_library,
+        )
+    )
+    np.testing.assert_array_equal(q4_pair_down, q4_parallel)
+    np.testing.assert_array_equal(q4_pair_weighted, q4_weighted_ref)
+    assert q4_pair_counter == 0
 
     q6_down = _stack_experts(
         make_q6_k_weight,

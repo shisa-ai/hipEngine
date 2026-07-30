@@ -2437,3 +2437,17 @@ should be boring.
 - Tracked-clean publication passes at **22.581875 tok/s**. The comparison CLI,
   setter, and protocol fields are removed. Retain only constructor rollback,
   the gfx1151 capability, registered wave-level owner, and scalar fallback.
+
+## Laguna gfx1151 Q4 selected-down paired-coefficient selector
+
+- Added 2026-07-31 as the constructor override
+  `use_selected_down_q4_paircoeff_weighted_decode` and direct profiling flag
+  `--selected-down-q4-paircoeff-weighted-decode`. The gfx1151 capability
+  defaults on; `false` restores the exact scalar-column route-parallel weighted
+  Q4 owner.
+- The exact actual-weight leaf improves **0.967%**, profiling contracts
+  allocated VGPR **104 -> 80**, and seven same-resident p512/d128 pairs improve
+  **22.762554 -> 22.793632 tok/s (+0.13653%, 5/7 wins)**.
+- Remove the direct profiling flag after tracked-clean selector-unset
+  publication. Retain the constructor rollback, gfx1151 capability, both
+  four-axis registrations, and exact scalar-column fallback.

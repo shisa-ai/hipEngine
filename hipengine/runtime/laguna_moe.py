@@ -98,6 +98,10 @@ _SELECTED_DOWN_NATURAL_PARALLEL_VARIANT = (
 _SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_VARIANT = (
     "selected_t16_natural_parallel_weighted_gemv_decode_bf16_bf16_out"
 )
+_SELECTED_DOWN_NATURAL_PARALLEL_PAIRCOEFF_WEIGHTED_VARIANT = (
+    "selected_t16_natural_parallel_paircoeff_weighted_"
+    "gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DOWN_MMQ64X32_D4X3_F32_VARIANT = (
     "selected_q8_1_ds4x3_f32_mmq64x32_"
     "prefill_compact32_bf16_bf16_out"
@@ -450,6 +454,12 @@ class LagunaMoEKernelPlan:
     natural_parallel_weighted_selected_down_routes: Mapping[
         str, LagunaMoESelectedRoute
     ]
+    natural_parallel_paircoeff_weighted_selected_down_keys: Mapping[
+        str, KernelKey
+    ]
+    natural_parallel_paircoeff_weighted_selected_down_routes: Mapping[
+        str, LagunaMoESelectedRoute
+    ]
     selected_weighted_down_keys: Mapping[str, KernelKey]
     selected_weighted_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
@@ -539,6 +549,9 @@ class LagunaMoEKernelPlan:
             *tuple(self.natural_parallel_selected_down_keys.values()),
             *tuple(
                 self.natural_parallel_weighted_selected_down_keys.values()
+            ),
+            *tuple(
+                self.natural_parallel_paircoeff_weighted_selected_down_keys.values()
             ),
             *tuple(self.selected_weighted_down_keys.values()),
             self.routed_sum_key,
@@ -1273,6 +1286,32 @@ def resolve_laguna_moe_plan(
             )
         }
     )
+    natural_parallel_paircoeff_weighted_selected_down_keys = MappingProxyType(
+        {
+            "gguf_q4_k_t16_v1": KernelKey(
+                backend,
+                "moe_linear+weighted_sum",
+                "gguf_q4_k_t16_v1",
+                _SELECTED_DOWN_NATURAL_PARALLEL_PAIRCOEFF_WEIGHTED_VARIANT,
+            )
+        }
+    )
+    natural_parallel_paircoeff_weighted_selected_down_routes = (
+        MappingProxyType(
+            {
+                quant: LagunaMoESelectedRoute(
+                    key=key,
+                    function=_resolve_exact(key),
+                    abi="t16_natural_weighted",
+                    allocation_name="tiles",
+                    library_key="selected_down",
+                )
+                for quant, key in (
+                    natural_parallel_paircoeff_weighted_selected_down_keys.items()
+                )
+            }
+        )
+    )
     selected_weighted_down_keys = MappingProxyType(
         {
             "gguf_iq3_xxs": KernelKey(
@@ -1374,6 +1413,12 @@ def resolve_laguna_moe_plan(
         ),
         natural_parallel_weighted_selected_down_routes=(
             natural_parallel_weighted_selected_down_routes
+        ),
+        natural_parallel_paircoeff_weighted_selected_down_keys=(
+            natural_parallel_paircoeff_weighted_selected_down_keys
+        ),
+        natural_parallel_paircoeff_weighted_selected_down_routes=(
+            natural_parallel_paircoeff_weighted_selected_down_routes
         ),
         selected_weighted_down_keys=selected_weighted_down_keys,
         selected_weighted_down_routes=selected_weighted_down_routes,
@@ -2324,6 +2369,7 @@ def _launch_weighted_selected_down(
     use_natural: bool = False,
     use_natural_parallel: bool = False,
     use_natural_parallel_weighted: bool = False,
+    use_q4_paircoeff_weighted: bool = False,
 ) -> bool:
     # The composite is a c=1 decode schedule. Bulk rows retain the independent
     # selected projection plus row-wise weighted-sum fallback until measured.
@@ -2334,7 +2380,12 @@ def _launch_weighted_selected_down(
     if use_natural and use_natural_parallel_weighted:
         try:
             weighted_route = (
-                plan.natural_parallel_weighted_selected_down_routes[
+                plan.natural_parallel_paircoeff_weighted_selected_down_routes[
+                    weight.spec.quant_key
+                ]
+                if use_q4_paircoeff_weighted
+                and weight.spec.quant_key == "gguf_q4_k_t16_v1"
+                else plan.natural_parallel_weighted_selected_down_routes[
                     weight.spec.quant_key
                 ]
             )
@@ -2912,6 +2963,7 @@ def run_laguna_moe_c1_components(
     use_selected_natural_tile8_parallel_silu_decode: bool = False,
     use_selected_down_natural_parallel_decode: bool = False,
     use_selected_down_natural_parallel_weighted_decode: bool = False,
+    use_selected_down_q4_paircoeff_weighted_decode: bool = False,
     use_q4_pack8_dual_silu_decode: bool = False,
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
@@ -3053,6 +3105,9 @@ def run_laguna_moe_c1_components(
         ),
         use_natural_parallel_weighted=(
             use_selected_down_natural_parallel_weighted_decode
+        ),
+        use_q4_paircoeff_weighted=(
+            use_selected_down_q4_paircoeff_weighted_decode
         ),
     )
     if not routed_down_weighted:

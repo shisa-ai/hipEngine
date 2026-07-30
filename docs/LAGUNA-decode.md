@@ -7458,6 +7458,32 @@ The remaining attention sequence is:
      Vulkan's command-buffer batching; do not reopen fine-grained event
      choreography around the same boundary:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-prequeue-rejected.json).
+141. Transfer adjacent-column Q/scale transport from the retained Q4 gate/up
+     owner into the exact route-parallel weighted Q4 down projection.
+     **Retained as the gfx1151 default pending tracked-clean publication.**
+     Every pair of neighboring output columns shares one nibble byte, one
+     aligned FP16 `d` pair, one aligned FP16 `dmin` pair, and scale/min byte
+     pairs. Each column still executes its original F32 FMA chain, four-wave
+     reduction, BF16 route store, and the existing slot-order weighted tail.
+     The resident T16 layout, bytes, workgroup grid, launch count, and scratch
+     do not change.
+
+     The actual layer-10 E256/K1024/N3072/top-10 leaf is byte-exact for both
+     per-route and weighted output, with a zero completion counter, and improves
+     **0.058665 -> 0.058097 ms (-0.967%, 17/21 wins)**. Cache-only profiling
+     names distinct control/candidate symbols, moves the kernel median
+     **57.107 -> 56.827 us**, and contracts allocated VGPRs **104 -> 80** at
+     unchanged local128/SGPR128/LDS512/scratch0.
+
+     Seven counterbalanced same-resident p512/d128 pairs preserve token
+     **2930 -> 74107**, final position **638**, generated-ID SHA-256
+     `94f803f7...bda32`, **79,066,169,172-byte** residency, determinism, and
+     allocation recovery. Median decode improves
+     **22.762554 -> 22.793632 tok/s (+0.13653%)**, saving
+     **0.059899 ms/token**, with five of seven paired wins. Retain the
+     constructor `false` rollback; remove the direct diagnostic CLI after
+     tracked-clean selector-unset publication:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json).
 
 Current exact decode checkpoint:
 

@@ -546,6 +546,21 @@ reaches **22.119461 tok/s (+0.25472%)** and the complete census proves
 **4.888128 -> 4.819087 ms/token (-1.412%)**:
 [`parallel weighted retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
 
+The gfx1151 Q4 selected-down weighted owner now pairs adjacent-column payload
+transport without changing arithmetic ownership. One nibble byte, aligned
+`d`/`dmin` FP16 pairs, and scale/min byte pairs feed two unchanged per-column
+F32 FMA chains; the four-wave sums, BF16 route outputs, completion-counter
+ownership, and slot-order weighted result remain byte-exact. The actual
+E256/K1024/N3072/top-10 leaf improves
+**0.058665 -> 0.058097 ms (-0.967%)**. Cache-only tracing records
+**57.107 -> 56.827 us**, local128/SGPR128/LDS512/scratch0, and allocated VGPR
+**104 -> 80**. Seven same-resident p512/d128 pairs improve
+**22.762554 -> 22.793632 tok/s (+0.13653%, 5/7 wins)** with exact trajectory,
+unchanged **79,066,169,172-byte** residency, and complete lifecycle recovery.
+gfx1151 defaults the paired payload; the scalar-column registered weighted
+owner is the explicit constructor rollback:
+[`paired Q4 down retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 The source-F16 catalog now also includes a separately registered

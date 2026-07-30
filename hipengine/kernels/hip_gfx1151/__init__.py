@@ -91,6 +91,10 @@ LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = True
 # every BF16 projection boundary, and the slot-order weighted FMA chain while
 # removing the standalone reducer launch. Seven same-resident pairs all win.
 LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE = True
+# Reuse each adjacent Q4 selected-down nibble byte and aligned coefficient
+# pair. Exact p512/d128 wins 5/7 pairs at +0.1365%; explicit false retains the
+# preceding scalar-payload weighted route for rollback.
+LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE = True
 # Preserve the production Q4/Q6 shared-down grids and D9 local256 tree while
 # enqueueing both unchanged launch wrappers inside one native host call. Seven
 # exact same-resident p512/d128 pairs win 7/7; peer backends retain separate
@@ -904,6 +908,7 @@ __all__ = [
     "LAGUNA_SELECTED_NATURAL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE",
+    "LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE",

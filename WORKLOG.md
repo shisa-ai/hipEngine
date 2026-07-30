@@ -195099,3 +195099,30 @@ Vulkan local sizes verbatim will close the measured gap.
   artifact; raw result SHA-256 is `412a45eb...b19`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-prequeue-rejected.json`.
+
+## 2026-07-31 08:10 JST — Retain exact paired-coefficient Q4 selected down
+
+- Transferred the retained adjacent-column Q/coefficient transport into the
+  route-parallel weighted Q4 selected-down owner. Neighboring columns share one
+  nibble byte plus aligned `d`/`dmin` FP16 pairs and scale/min byte pairs while
+  preserving each column's F32 FMA sequence, four-wave reduction, BF16 route
+  store, completion ownership, and slot-order weighted tail. Resident T16
+  bytes, grid, launch count, and scratch are unchanged.
+- The actual layer-10 E256/K1024/N3072/top-10 21x100 leaf is byte-exact for
+  per-route and weighted output and improves
+  **0.058665 -> 0.058097 ms (-0.967%, 17/21 wins)**. Cache-only tracing names
+  both template symbols and moves **57.107 -> 56.827 us**, with control
+  local128/VGPR104/SGPR128/LDS512/scratch0 and candidate
+  local128/VGPR80/SGPR128/LDS512/scratch0. No compiler ran under the profiler.
+- Seven counterbalanced same-resident p512/d128 pairs improve
+  **22.762554 -> 22.793632 tok/s (+0.13653%)**, saving
+  **0.059899 ms/token**, with five of seven wins. All arms preserve token
+  **2930 -> 74107**, position **638**, generated-ID SHA
+  `94f803f7...bda32`, **79,066,169,172-byte** residency, determinism, and
+  allocation recovery.
+- Focused validation passes the production-shape GPU byte oracle, weighted
+  route selection, gfx1151 capability/export contract, and runner behavior.
+  The new path is the gfx1151 default with constructor `false` rollback.
+  Tracked-clean selector-unset publication remains next.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json`.

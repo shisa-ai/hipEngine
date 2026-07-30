@@ -196,6 +196,68 @@ def test_route_parallel_weighted_down_owns_the_reducer_boundary() -> None:
     assert kwargs["stream"] == 11
 
 
+def test_q4_paircoeff_weighted_down_selects_the_exact_sibling() -> None:
+    calls: list[str] = []
+
+    def retained(*_args, **_kwargs) -> None:
+        calls.append("retained")
+
+    def paircoeff(*_args, **_kwargs) -> None:
+        calls.append("paircoeff")
+
+    route_kwargs = {
+        "abi": "t16_natural_weighted",
+        "allocation_name": "tiles",
+        "library_key": "selected_down",
+    }
+    plan = SimpleNamespace(
+        top_k=10,
+        expert_count=256,
+        expert_ffn_size=1_024,
+        hidden_size=3_072,
+        natural_parallel_weighted_selected_down_routes={
+            "gguf_q4_k_t16_v1": SimpleNamespace(
+                function=retained,
+                **route_kwargs,
+            )
+        },
+        natural_parallel_paircoeff_weighted_selected_down_routes={
+            "gguf_q4_k_t16_v1": SimpleNamespace(
+                function=paircoeff,
+                **route_kwargs,
+            )
+        },
+    )
+    scratch = SimpleNamespace(
+        plan=plan,
+        expert_intermediate=_buffer(1),
+        selected_experts=_buffer(2),
+        expert_down=_buffer(3),
+        scaled_routing_weights=_buffer(4),
+        routed_output=_buffer(5),
+        selected_down_completion=_buffer(6),
+    )
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(quant_key="gguf_q4_k_t16_v1"),
+        allocation=lambda _name: SimpleNamespace(tensor=_buffer(7)),
+    )
+    layer = SimpleNamespace(weight=lambda _name: weight)
+
+    assert moe_module._launch_weighted_selected_down(
+        layer,
+        scratch,
+        tokens=1,
+        stream=0,
+        runtime=None,
+        libraries=None,
+        use_natural=True,
+        use_natural_parallel=True,
+        use_natural_parallel_weighted=True,
+        use_q4_paircoeff_weighted=True,
+    )
+    assert calls == ["paircoeff"]
+
+
 def test_weighted_hidden_cli_is_removed_after_clean_rejection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

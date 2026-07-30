@@ -2352,6 +2352,7 @@ class LagunaGGUFResidentSession:
         use_selected_natural_tile8_parallel_silu_decode: bool | None = None,
         use_selected_down_natural_parallel_decode: bool | None = None,
         use_selected_down_natural_parallel_weighted_decode: bool | None = None,
+        use_selected_down_q4_paircoeff_weighted_decode: bool | None = None,
         use_q4_pack8_dual_silu_decode: bool | None = None,
         use_q4_decode_t16_sidecar: bool | None = None,
         use_q4_decode_t16_dual_interleaved: bool | None = None,
@@ -2556,6 +2557,15 @@ class LagunaGGUFResidentSession:
             )
             if use_selected_down_natural_parallel_weighted_decode is None
             else use_selected_down_natural_parallel_weighted_decode
+        )
+        self.use_selected_down_q4_paircoeff_weighted_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE",
+                False,
+            )
+            if use_selected_down_q4_paircoeff_weighted_decode is None
+            else use_selected_down_q4_paircoeff_weighted_decode
         )
         self.use_q4_pack8_dual_silu_decode = bool(
             backend_package_capability(
@@ -5553,6 +5563,9 @@ class LagunaGGUFResidentSession:
             ),
             use_selected_down_natural_parallel_weighted_decode=(
                 self.use_selected_down_natural_parallel_weighted_decode
+            ),
+            use_selected_down_q4_paircoeff_weighted_decode=(
+                self.use_selected_down_q4_paircoeff_weighted_decode
             ),
             use_q4_pack8_dual_silu_decode=(
                 self.use_q4_pack8_dual_silu_decode

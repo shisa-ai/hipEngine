@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_decode_kernel_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "created_at": "2026-07-31T08:10:00+09:00",
+  "scope": "gfx1151 Poolside Laguna S 2.1 Q4_K_M BF16-KV eager c=1 selected Q4 down projection",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "change": {
+    "description": "Load adjacent Q4 T16 columns' packed nibble, aligned d/dmin FP16 pairs, and scale/min byte pairs once while preserving each column's original F32 FMA, four-wave reduction, BF16 route store, and slot-order weighted output.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": 0,
+    "launch_count_changed": 0,
+    "rollback": "LagunaGGUFResidentSession(use_selected_down_q4_paircoeff_weighted_decode=False)"
+  },
+  "correctness": {
+    "production_shape_per_route_bf16_mismatches": 0,
+    "production_shape_weighted_bf16_mismatches": 0,
+    "completion_counter_nonzero": 0,
+    "full_decode_generated_ids_exact": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "kl": 0.0,
+    "top1_agreement_percent": 100.0,
+    "lifecycle_recovered": true
+  },
+  "leaf": {
+    "tensor": "blk.10.ffn_down_exps.weight",
+    "shape": "E256/K1024/N3072/top10",
+    "protocol": "21 counterbalanced samples x 100 launches after 5 warmups",
+    "control_median_ms": 0.05866487026214599,
+    "candidate_median_ms": 0.05809741020202637,
+    "delta_percent": -0.9672910850802352,
+    "paired_wins": 17,
+    "pairs": 21
+  },
+  "same_resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix rows 2048, attention rows 128",
+    "protocol": "seven counterbalanced pairs in one resident session; load excluded",
+    "control_median_tok_s": 22.762553782076733,
+    "candidate_median_tok_s": 22.793632103731664,
+    "throughput_delta_percent": 0.13653266655608842,
+    "control_ms_per_token": 43.93180174657737,
+    "candidate_ms_per_token": 43.871902268541255,
+    "wall_delta_ms_per_token": -0.05989947803611528,
+    "paired_wins": 5,
+    "pairs": 7
+  },
+  "trace": {
+    "protocol": "cache-only rocprofv3 kernel trace; no compiler under profiler",
+    "control_kernel_median_us": 57.107,
+    "candidate_kernel_median_us": 56.827,
+    "control_resources": "local128/VGPR104/SGPR128/LDS512/scratch0",
+    "candidate_resources": "local128/VGPR80/SGPR128/LDS512/scratch0",
+    "distinct_template_symbols": true
+  },
+  "commands": {
+    "leaf": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved --down-candidate paircoeff-weighted --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-q4-down-paircoeff-weighted-leaf.json",
+    "model_gate": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-down-q4-paircoeff-weighted-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-q4-down-paircoeff-sevenpair.json",
+    "focused_tests": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits tests/test_laguna_weighted_hidden_split_runtime.py tests/test_gfx1151_backend.py"
+  },
+  "raw_sha256": {
+    "leaf": "d332fdae92c57b8dfa2090d1a711d00ec4c9bb9a18ce9924ad19fdfa3679380e",
+    "directional_pair": "7bbdf048b4b3c4b13e8f5b5117d69eb50f83f6b51c9855f6cbf88ae37d0eb14f",
+    "seven_pair": "6b60d9df54e798537d436e0433974ff76b21052d0482a85a4c03a4375e1ee1e0",
+    "kernel_trace_csv": "e04ec77f03c4bb2cad3fdb8248c19e61c84d15578751d565ff0f69d62eb4a479"
+  },
+  "decision": "Retain as the gfx1151 default. Exact leaf output, lower kernel median, VGPR contraction, positive median wall, and five of seven paired wins agree. Publish a tracked-clean selector-unset production run before updating the canonical topline."
+}
