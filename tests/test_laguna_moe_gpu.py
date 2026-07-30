@@ -349,12 +349,19 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "token_tile_4",
         "token_tile_8",
         "token_tile_16",
+        "wave0_tree",
     }
     assert plan.router_logits_keys["token_tile_8"] == KernelKey(
         "hip_gfx1151",
         "router_logits",
         "f32",
         "bf16_hidden_token_tile_8",
+    )
+    assert plan.router_logits_keys["wave0_tree"] == KernelKey(
+        "hip_gfx1151",
+        "router_logits",
+        "f32",
+        "bf16_hidden_wave0_tree",
     )
     assert (plan.routed_sum_rows_key.layer, plan.routed_sum_rows_key.variant) == (
         "weighted_sum",

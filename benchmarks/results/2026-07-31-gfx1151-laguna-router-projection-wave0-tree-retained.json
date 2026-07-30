@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "date": "2026-07-31",
+  "status": "retained_pending_clean_publication",
+  "decision": {
+    "retain": true,
+    "default_backend": "hip_gfx1151",
+    "default_enabled": true,
+    "scope": "Laguna c=1 BF16-hidden/F32-weight router projection",
+    "fallback": "bf16_hidden local256 scalar reduction"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "implementation": {
+    "candidate_key": "hip_gfx1151/router_logits/f32/bf16_hidden_wave0_tree",
+    "candidate_kernel": "qwen35_router_logits_bf16_f32w_wave0_tree_kernel",
+    "shape": {
+      "tokens": 1,
+      "hidden": 3072,
+      "experts": 256,
+      "local_size": 256,
+      "blocks": 256
+    },
+    "preserved": [
+      "one expert per workgroup",
+      "BF16 hidden conversion and F32 weight reads",
+      "eight-term source accumulation order",
+      "K traversal and per-thread partials",
+      "retained stride-128/64/32 additions",
+      "F32 logit store",
+      "separate exact correction-bias top-10 selector"
+    ],
+    "changed": "After one workgroup publication, wave 0 completes the retained tree with five wave32 shuffle-down additions.",
+    "resident_bytes_delta": 0,
+    "launches_per_token_delta": 0
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "warmup_rows": 128,
+    "repetitions": 7,
+    "ordering": "counterbalanced control/candidate in one resident session",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-router-projection-wave0-tree --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-router-projection-wave0-ab7.json",
+    "raw_path": "/tmp/laguna-p512-d128-router-projection-wave0-ab7.json",
+    "raw_sha256": "2a8b0c727440d4a9fca209a0e368399eb6c78efc15664f2ba7cb6f754a3efe56"
+  },
+  "performance": {
+    "control_decode_tok_s": 22.572872553554397,
+    "candidate_decode_tok_s": 22.5790292857448,
+    "decode_delta_pct": 0.02727491672047666,
+    "control_ms_per_token": 44.30096336332421,
+    "candidate_ms_per_token": 44.28888360720392,
+    "independent_median_delta_ms_per_token": -0.012079756120286333,
+    "paired_median_delta_ms_per_token": -0.012079756120286333,
+    "candidate_pair_wins": 6,
+    "pairs": 7,
+    "paired_delta_ms_per_token": [
+      -0.047105709,
+      -0.012079756,
+      -0.338281292,
+      -0.007425285,
+      0.008347567,
+      -0.005136345,
+      -0.013462741
+    ],
+    "directional_screen": {
+      "control_decode_tok_s": 22.538738571249972,
+      "candidate_decode_tok_s": 22.555886005637095,
+      "delta_ms_per_token": -0.0337294805,
+      "raw_sha256": "fbbd92d4a3afc499a0489c556f70a3842fff839fcfa8c84534dc4e92d1b27256"
+    }
+  },
+  "correctness": {
+    "control_candidate_next_tokens": [2930, 2930],
+    "control_candidate_final_tokens": [74107, 74107],
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "control_candidate_trajectory_exact": true,
+    "resident_nbytes": 79066169172,
+    "allocation_recovery": true,
+    "primitive_gate": {
+      "fixtures": ["hidden17/expert19", "hidden3072/expert17"],
+      "candidate_vs_retained": "F32-bit exact",
+      "cpu_reference": "KL <= 0.05 and top-1 >= 90%"
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-router-wave0-trace.qpYQry --output-file router -- .venv/bin/python3 -m pytest tests/test_laguna_router_projection_wave0_tree.py::test_router_projection_wave0_tree_matches_retained_and_cpu_edges -q",
+    "path": "/tmp/laguna-router-wave0-trace.qpYQry/router_kernel_trace.csv",
+    "sha256": "77e18fa645c7fd2e6136492a80b7d3e06055d9b34655cc067e073b8b864dbf0d",
+    "candidate_named": true,
+    "candidate_samples": [
+      {
+        "grid": 4864,
+        "local": 256,
+        "duration_ns": 1282,
+        "vgpr": 24,
+        "sgpr": 128,
+        "scratch": 0
+      },
+      {
+        "grid": 4352,
+        "local": 256,
+        "duration_ns": 1402,
+        "vgpr": 24,
+        "sgpr": 128,
+        "scratch": 0
+      }
+    ],
+    "compiler_under_profiler": false
+  },
+  "validation": {
+    "red": "3/3 runtime-contract tests failed before integration",
+    "green": "44 focused tests passed",
+    "broad_result": "Two known unrelated failures remain: stale prefill scratch-byte literal and rows-three experimental Q6 equivalence assertion.",
+    "lineage": "The mandatory lineage command remains environment-blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external source was copied."
+  },
+  "next_action": "Commit the retained default, then run tracked-clean selector-unset production and remove the temporary comparison setter/CLI after publication."
+}
