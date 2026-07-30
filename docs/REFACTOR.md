@@ -2289,5 +2289,9 @@ should be boring.
   reject the default. If retained, keep the constructor override, four-axis
   composite registration, gfx1151 capability, shared completion scratch, and
   exact fixed-K projection plus add/RMSNorm fallback.
+- Publication passes at **22.063262 tok/s (+0.25227%)** and exactly
+  **529 dispatches/token**, with kernel span
+  **45.660100 -> 45.543776 ms/token**. The comparison CLI, setter, and
+  protocol fields are now eligible for immediate removal.
   Retain the constructor override for explicit rollback, gfx1151 capability,
   four-axis registrations, counter scratch, and exact unfused fallback.

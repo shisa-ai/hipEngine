@@ -193852,3 +193852,31 @@ Vulkan local sizes verbatim will close the measured gap.
   read-only `/home/lhl/amd-gpu-tuning/reference/atlas`; no external code was
   copied. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json`.
+
+## 2026-07-30 20:48 JST — Publish F16 output/add/RMSNorm production
+
+- Committed candidate `95a65d756` and ran the cached selector-unset
+  tracked-clean p512/d128 protocol. Samples are
+  **22.046823/22.063262/22.078722 tok/s**, median
+  **22.063262 tok/s / 45.324214 ms/token**. This improves the current
+  **22.007742** default by **0.25227% / 0.114340 ms/token** and reaches
+  **+92.412%** over the **11.466687** sprint start.
+- All runs preserve tokens **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, deterministic repeats, and complete
+  recovery of **79,022,520,660 resident bytes**. Raw SHA-256 is
+  `53e9cd84...445c`.
+- The cached complete wall trace records exactly
+  **529 dispatches/token**, down from 577. Each token has **48 composite**
+  calls, zero old output-projection calls, and zero separate add/RMSNorm
+  calls. No compiler ran under the profiler.
+- The fused family improves
+  **11.117677 -> 11.083353 ms/token (-0.3087%)**, kernel sum improves
+  **43.777334 -> 43.750470 (-0.0614%)**, and span improves
+  **45.660100 -> 45.543776 (-0.2548%)**. Span minus kernel sum falls
+  **1.882766 -> 1.793306 ms/token (-4.75%)**. Trace/child SHA-256 values are
+  `41030d9d...ff3f` and `97c89fd7...6bf`.
+- Publish `LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE` as the gfx1151 production
+  default. The constructor override and registered fixed-K projection plus
+  add/RMSNorm fallback remain; remove only the admitted comparison seam.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json`.
