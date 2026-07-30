@@ -193376,3 +193376,37 @@ Vulkan local sizes verbatim will close the measured gap.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-geometry-rejected.json`.
   Next: return to the remaining exact attention gap.
+
+## 2026-07-30 17:00 JST — Retain exact global idle-wave V ping-pong
+
+- Return to the remaining attention gap with a new exact scheduling seam.
+  On the qualified dense global prefix, stage V64 buffer zero cooperatively,
+  then let waves idle during current scalar PV load the next V64 plane into a
+  second LDS buffer. The existing stage-end barrier is the load/compute
+  rendezvous, reducing two full barriers per V64 stage to one without changing
+  QK, softmax, denominator, PV, gate, BF16, ownership, or launch arithmetic.
+- RED fails on the absent wrapper. GREEN matches the CPU oracle and retained
+  dense-prefix owner byte-for-byte at live 513/576/639. The 21x100 cache-only
+  leaves improve **5.754%/3.577%/6.057%**, with **21/21** wins at every
+  shape.
+- Cached `rocprofv3 --kernel-trace` names the expected `true` template sibling
+  at grid40/local512, VGPR48, SGPR128, reported static LDS512, and scratch0.
+  Calculated dynamic LDS is **36,912/37,392/37,904 bytes** across the three
+  live shapes; no compiler ran under the profiler. Trace and leaf SHA-256 are
+  `92955eab...74fc` and `9e851b8c...ace9`.
+- All seven counterbalanced same-resident p512/d128 pairs win:
+  **21.865315 -> 21.891144 tok/s (+0.11813%)**, saving
+  **0.053962 ms/token** by median endpoints and **0.066014 ms/token** by
+  median paired delta. All 14 runs preserve next/final tokens **2930/74107**,
+  generated SHA `94f803f7...bda32`, position 638, determinism, and allocation
+  recovery. Raw comparison SHA-256 is `43217295...092`.
+- Promote through
+  `LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER`; keep single-buffer
+  dense-prefix for peers and non-dense/evicted states. Remove the temporary
+  comparison CLI before commit. Focused GPU/backend/dispatch/profile
+  validation passes **61 tests**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-retained.json`.
+  Next: commit the retained unit, publish a tracked-clean selector-unset
+  p512/d128 packet, then refresh attention attribution before choosing the
+  next exact seam.

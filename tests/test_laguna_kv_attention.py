@@ -4075,6 +4075,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
@@ -4187,7 +4188,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
                 library=library,
                 runtime=runtime,
             )
-            laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+            laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
                 *common,
                 candidate_out.ptr,
                 gate_device.ptr,
@@ -4698,6 +4699,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             is True
         )
         assert gfx1151_cache.global_dense_prefix is True
+        assert gfx1151_cache.global_dense_prefix_idle_double_buffer is True
         assert gfx1151_cache.swa_split_wave_local
         assert gfx1151_cache.swa_split_gqa3_scores
         assert gfx1151_cache.swa_split_fixed512_reduce
@@ -4927,9 +4929,9 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
                 "laguna_attention_decode",
                 (
                     "global_context_fused_exact_gated_mixed40_local512_"
-                    "exp32_producer_max_dpp_qk_dense_prefix_probability_"
-                    "vec4_prenorm_vstage64_vec16_direct_assume_exp_"
-                    "fixedshape_spans"
+                    "exp32_producer_max_dpp_qk_dense_prefix_idle_double_"
+                    "buffer_probability_vec4_prenorm_vstage64_vec16_"
+                    "direct_assume_exp_fixedshape_spans"
                 ),
             ),
             (

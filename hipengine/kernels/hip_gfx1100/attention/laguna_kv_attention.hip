@@ -1350,7 +1350,8 @@ template <
     bool kPreNormalizeProbability = false,
     int kLocalThreads = 256,
     bool kMixed40Owners = false,
-    bool kDensePrefix = false>
+    bool kDensePrefix = false,
+    bool kIdleDoubleBufferValue = false>
 __global__ __launch_bounds__(kLocalThreads)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1386,6 +1387,11 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   static_assert(
       !kDensePrefix || (!kWmmaThreeTermQk && kMixed40Owners),
       "dense-prefix specialization requires the exact mixed40 owner");
+  static_assert(
+      !kIdleDoubleBufferValue ||
+          (kDensePrefix && kVectorValueStage && kDirectVectorStore &&
+           kValueStage == 64 && kLocalThreads == 512),
+      "idle-wave V ping-pong requires dense-prefix local512 V64 direct loads");
   constexpr int kOwnersPerKv =
       kMixed40Owners ? 5 : (kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries);
   constexpr int kNumWarps = kLocalThreads / 32;
@@ -1761,13 +1767,70 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   const int q_head = q_head_base + q_local;
   float acc = 0.0f;
   if constexpr (kValueStage > 0) {
+    if constexpr (kIdleDoubleBufferValue) {
+      constexpr int kValuesPerVector =
+          static_cast<int>(sizeof(uint4) / sizeof(uint16_t));
+      constexpr int kVectorsPerSlot = kHeadDim / kValuesPerVector;
+      const int first_stage_count =
+          context_len < kValueStage ? context_len : kValueStage;
+      auto* first_stage_vectors = reinterpret_cast<uint4*>(shared_value);
+      for (int vector_idx = tid;
+           vector_idx < first_stage_count * kVectorsPerSlot;
+           vector_idx += static_cast<int>(blockDim.x)) {
+        const int stage_token = vector_idx / kVectorsPerSlot;
+        const int vector_in_slot =
+            vector_idx - stage_token * kVectorsPerSlot;
+        const int value_offset =
+            (stage_token * kNumKvHeads + kv_head) * kHeadDim +
+            vector_in_slot * kValuesPerVector;
+        first_stage_vectors[vector_idx] =
+            *reinterpret_cast<const uint4*>(value_cache + value_offset);
+      }
+      __syncthreads();
+    }
     for (int stage_base = 0; stage_base < context_len;
          stage_base += kValueStage) {
       const int stage_count =
           context_len - stage_base < kValueStage
               ? context_len - stage_base
               : kValueStage;
-      if constexpr (kVectorValueStage) {
+      uint16_t* stage_value = shared_value;
+      if constexpr (kIdleDoubleBufferValue) {
+        const int stage_parity = (stage_base / kValueStage) & 1;
+        stage_value += stage_parity * kValueStage * kHeadDim;
+        const int next_stage_base = stage_base + kValueStage;
+        if (!active_output && next_stage_base < context_len) {
+          constexpr int kValuesPerVector =
+              static_cast<int>(sizeof(uint4) / sizeof(uint16_t));
+          constexpr int kVectorsPerSlot = kHeadDim / kValuesPerVector;
+          const int active_threads = owned_queries * 4 * 32;
+          const int loader_tid = tid - active_threads;
+          const int loader_threads =
+              static_cast<int>(blockDim.x) - active_threads;
+          const int next_stage_count =
+              context_len - next_stage_base < kValueStage
+                  ? context_len - next_stage_base
+                  : kValueStage;
+          auto* next_stage_vectors = reinterpret_cast<uint4*>(
+              shared_value +
+              (stage_parity ^ 1) * kValueStage * kHeadDim);
+          for (int vector_idx = loader_tid;
+               vector_idx >= 0 &&
+               vector_idx < next_stage_count * kVectorsPerSlot;
+               vector_idx += loader_threads) {
+            const int stage_token = vector_idx / kVectorsPerSlot;
+            const int vector_in_slot =
+                vector_idx - stage_token * kVectorsPerSlot;
+            const int value_offset =
+                ((next_stage_base + stage_token) * kNumKvHeads + kv_head) *
+                    kHeadDim +
+                vector_in_slot * kValuesPerVector;
+            next_stage_vectors[vector_idx] =
+                *reinterpret_cast<const uint4*>(
+                    value_cache + value_offset);
+          }
+        }
+      } else if constexpr (kVectorValueStage) {
         constexpr int kValuesPerVector =
             static_cast<int>(sizeof(uint4) / sizeof(uint16_t));
         constexpr int kVectorsPerSlot = kHeadDim / kValuesPerVector;
@@ -1826,7 +1889,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
           shared_value[idx] = value;
         }
       }
-      __syncthreads();
+      if constexpr (!kIdleDoubleBufferValue) {
+        __syncthreads();
+      }
       if (active_output) {
         if constexpr (kVectorProbabilityReplay) {
           const auto* probability_vectors =
@@ -1855,7 +1920,7 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
               const float weight = weights[item];
               if (!(weight > 0.0f)) continue;
               acc += weight * laguna_bf16_bits_to_float(
-                  shared_value[
+                  stage_value[
                       (stage_token + item) * kHeadDim + dim]);
             }
           }
@@ -1868,7 +1933,7 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
                           warp_buf[q_local][0];
             if (!(weight > 0.0f)) continue;
             acc += weight * laguna_bf16_bits_to_float(
-                shared_value[stage_token * kHeadDim + dim]);
+                stage_value[stage_token * kHeadDim + dim]);
           }
         } else {
           for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
@@ -1878,7 +1943,7 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
                 warp_buf[q_local][0];
             if (!(weight > 0.0f)) continue;
             acc += weight * laguna_bf16_bits_to_float(
-                shared_value[stage_token * kHeadDim + dim]);
+                stage_value[stage_token * kHeadDim + dim]);
           }
         }
       }
@@ -8182,6 +8247,93 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp3
           true,
           true,
           kLocalThreads,
+          true,
+          true>),
+      dim3(40),
+      dim3(kLocalThreads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  constexpr int kLocalThreads = 512;
+  const int64_t score_stride = (scan_slots + 3) & ~int64_t{3};
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * score_stride) * sizeof(float) +
+      sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(2 * kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          true,
+          true,
+          true,
+          kLocalThreads,
+          true,
           true,
           true>),
       dim3(40),
