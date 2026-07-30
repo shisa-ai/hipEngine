@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T10:20:00+09:00",
+  "kind": "hipengine_laguna_output_sharded_decode_wall_reprofile",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "36cfef876b42e25286cf7518f815df917f79b0c7",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "protocol": "p512/d128 eager c=1 matrix2048 attention128",
+    "context_capacity": 4096,
+    "decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "profiled_wall_tok_s": 20.199352,
+    "profiled_wall_is_attribution_only": true
+  },
+  "correctness": {
+    "tokens": [
+      2930,
+      74107
+    ],
+    "trajectory_sha256": "94f803f7bfad9142a03eecc0b793b83e7a9a00b9019722256c364941151bda32",
+    "final_position": 638,
+    "allocator_recovered": true,
+    "pass": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 46.214841,
+    "kernel_span": 48.262162,
+    "embedding": 0.002285,
+    "source_f16_projection": 24.046884,
+    "selected_q4_gate_up": 8.386938,
+    "selected_q4_q6_down": 4.797364,
+    "dense_shared_quant_projection": 3.518958,
+    "attention_total": 2.093607,
+    "attention_swa": 1.428844,
+    "attention_global": 0.659514,
+    "router": 1.055096,
+    "norm_rope_gate": 1.05915,
+    "activation_reduce_residual": 0.125031,
+    "lm_head_argmax": 1.118699
+  },
+  "calls_per_token": {
+    "source_f16_projection": 144,
+    "selected_q4_gate_up": 47,
+    "selected_q4_q6_down": 47,
+    "dense_shared_quant_projection": 96,
+    "router": 94,
+    "norm_rope_gate": 145,
+    "activation_reduce_residual": 48,
+    "lm_head_argmax": 3
+  },
+  "change_from_post_q4_silu_census": {
+    "kernel_sum_before_ms": 46.24417,
+    "kernel_sum_change_percent": -0.063422,
+    "kernel_span_before_ms": 48.30088,
+    "kernel_span_change_percent": -0.08016,
+    "attention_before_ms": 2.129354,
+    "attention_change_percent": -1.678772,
+    "swa_before_ms": 1.468158,
+    "swa_change_percent": -2.677777,
+    "global_before_ms": 0.657957,
+    "global_change_percent": 0.236642
+  },
+  "same_gguf_vulkan_comparison_ms_per_token": {
+    "source_f16_projection": {
+      "hipengine": 24.046884,
+      "vulkan": 24.758568,
+      "hipengine_minus_vulkan": -0.711684
+    },
+    "attention": {
+      "hipengine": 2.093607,
+      "vulkan": 0.909423,
+      "hipengine_minus_vulkan": 1.184184
+    },
+    "selected_gate_up": {
+      "hipengine": 8.386938,
+      "vulkan": 7.46409,
+      "hipengine_minus_vulkan": 0.922848
+    },
+    "selected_down": {
+      "hipengine": 4.797364,
+      "vulkan": 4.52509,
+      "hipengine_minus_vulkan": 0.272274
+    }
+  },
+  "q4_gate_up_roofline": {
+    "current_t16_streamed_bytes_per_token": 1709506560,
+    "current_effective_gb_s": 203.829641,
+    "byte_neutral_qmicro_streamed_bytes_per_token": 1663303680,
+    "t16_bytes_over_qmicro_percent": 2.777778,
+    "measured_read_anchor_gb_s": 221.0,
+    "qmicro_floor_at_read_anchor_ms": 7.526261,
+    "interpretation": "The current T16 gate/up path is already a high-bandwidth stream, but its expanded scale/min plane moves 2.778% more bytes than the exact byte-neutral qmicro layout. A production-shaped qmicro consumer is the next bounded gate."
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-output-sharded-wall.1uRlYD --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-output-sharded-wall.1uRlYD/bench.json",
+    "bench_sha256": "37352e3302ea4b9dbc2c6b7a687014b0dca09577664d9ed16594bfd10dfc4bcd",
+    "trace_sha256": "da8969877c1e49810a214b1ab8699babe48a2232b35f21da1d740539863b5a12",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "untracked_artifacts_disclosed": true,
+    "segmentation": "127 length-1 decode segments classified with scripts/laguna_long_context_trace_summary.py family classifiers; the CLI itself expects prefill-only segments and was not used for aggregation"
+  }
+}

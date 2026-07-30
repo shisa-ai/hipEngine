@@ -2102,6 +2102,16 @@ resident decode: seven p512/d128 pairs move
 lane-0 serial maximum replay and do not retry this isolated schedule without a
 larger score-production or synchronization change:
 [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-parallel-max-rejected.json).
+The fresh tracked-clean output-sharded wall census records
+**46.214841 ms/token** device kernel sum and **48.262162 ms/token** span at
+673 dispatches/token. SWA improves **2.678%** versus the post-Q4-SiLU census,
+but total attention remains **1.184184 ms/token** behind same-GGUF Vulkan.
+Selected Q4 gate/up is the next bounded production gate: retained T16 streams
+**1.709507 GB/token** at **203.83 GB/s**, while the already-retained exact
+qmicro primitive is byte-neutral at **1.663304 GB/token**. Extend qmicro to
+the production tile8/parallel-tail/fused-SiLU boundary before considering a
+resident route:
+[`wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-output-sharded-wall-reprofile.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace
