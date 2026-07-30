@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T05:49:00+09:00",
+  "kind": "hipengine_laguna_decode_schedule_rejection",
+  "status": "rejected_performance",
+  "pass": true,
+  "performance_claim": false,
+  "source_revision": "9c7956150c0cf4f2dd465fbd108c3b51fd36ccdb",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "control": "release the exact shared gate/up+SiLU+down branch after router correction selection",
+    "screen": "release the complete shared branch only after selected gate/up is queued, then overlap it with selected down",
+    "motivation": "the retained two-stream trace showed selected gate/up growing by 1.069247 ms/token under contention while the shared branch completed before the primary branch",
+    "production_changed": false,
+    "cleanup": "all temporary runtime, benchmark-selector, and RED/GREEN seams were removed"
+  },
+  "red_green": {
+    "red": "the live production-shape Q4 fixture rejected the absent shared_after_selected_gate_up contract",
+    "green": "the delayed schedule matched every production-shape Q4 BF16 output bit",
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/pytest -q 'tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle[GGMLQuantizationType.Q4_K]'",
+    "result": "passed"
+  },
+  "directional_full_model": {
+    "workload": "p512/d128 eager c=1; 127 timed forward_token calls; one counterbalanced control/candidate pair after one resident load",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-moe-decode-shared-after-selected-gate-up --allow-dirty --output /tmp/laguna-delayed-shared-directional.json",
+    "control_tok_s": 22.73008208849727,
+    "candidate_tok_s": 22.714078648125724,
+    "throughput_delta_percent": -0.07040643456207585,
+    "control_ms_per_token": 43.9945617489018,
+    "candidate_ms_per_token": 44.0255585749905,
+    "candidate_delta_ms_per_token": 0.03099682608869614,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "resident_nbytes": 79066169172,
+    "tracked_allocations_returned_to_zero": true,
+    "raw_sha256": "8325dd95431b7214bce3afd7d8a161d9251beab714ff8df9062903b122a0fb39"
+  },
+  "trace_interpretation": {
+    "source_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json",
+    "retained_secondary_q6_layers": 23,
+    "retained_secondary_q4_layers": 24,
+    "retained_shared_gate_up_ms_per_token_under_overlap": 3.597354,
+    "retained_shared_q6_down_ms_per_token_under_overlap": 2.407913,
+    "retained_shared_q4_down_ms_per_token_under_overlap": 0.532232,
+    "finding": "post-router release already places the secondary Q6/Q4 completion immediately before selected-down progress; delaying the entire 6.537270-ms inclusive branch makes the join critical instead of recovering useful bandwidth"
+  },
+  "decision": {
+    "retain": false,
+    "reason": "the first full-model screen is exact but directionally negative; the trace shows no unused coarse release boundary between post-router and post-selected-gate/up",
+    "production": "22.752894 tok/s / 43.950453 ms/token remains the tracked-clean default",
+    "reopen": "only for finer-grained device scheduling or a shared-branch kernel that materially reduces bytes; do not retry the same coarse release point"
+  }
+}

@@ -194920,3 +194920,31 @@ Vulkan local sizes verbatim will close the measured gap.
   `dc132d3f4e19dce03b0e5a8b933d5282e91ddd41cf678b01a7d8e9e3cde60ac5`.
   Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-production.json`.
+
+## 2026-07-31 05:49 JST — Reject delayed c=1 shared-branch release
+
+- Tested the remaining coarse two-stream release point suggested by the
+  retained overlap trace: keep router projection and correction selection on
+  the caller, finish selected gate/up, then release the complete shared
+  gate/up+SiLU+down branch while selected down runs.
+- RED failed on the absent schedule contract. GREEN matches every
+  production-shape Q4 BF16 output bit. The one-pair resident p512/d128
+  directional gate is exact but negative:
+  **22.730082 -> 22.714079 tok/s (-0.070406%)**, adding
+  **0.030997 ms/token**. Both arms preserve tokens **2930/74107**, final
+  position 638, generated-ID SHA-256 `94f803f7...bda32`,
+  **79,066,169,172-byte** residency, and complete allocation recovery. Raw
+  SHA-256 is
+  `8325dd95431b7214bce3afd7d8a161d9251beab714ff8df9062903b122a0fb39`.
+- The retained raw trace shows why the result is structurally bounded. The
+  secondary queue contains 47 shared gate/up calls (**3.597354 ms/token**),
+  23 Q6 shared-down calls (**2.407913**), and 24 Q4 shared-down calls
+  (**0.532232**). Post-router release already completes them immediately
+  before primary selected-down progress; delaying the full
+  **6.537270-ms/token** inclusive branch makes the event join critical.
+- Removed the runtime field/setter, benchmark comparison selector, and
+  RED/GREEN test call. Production remains tracked-clean at
+  **22.752894 tok/s / 43.950453 ms/token**. Reopen only for finer device
+  ownership or materially fewer shared-branch bytes.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-decode-delayed-shared-release-rejected.json`.
