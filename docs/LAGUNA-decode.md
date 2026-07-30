@@ -6332,6 +6332,32 @@ The remaining attention sequence is:
     test call, and harness selector before any resident integration.
     Production remains **20.965807 tok/s**:
     [`probability-forwarding rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-register-forward-probability-rejected.json).
+100. Replace only the current output-sharded SWA QK wave-reduction transport
+    with its association-identical DPP sequence.
+    **Retained as the gfx1151 default:** the candidate uses the existing
+    `permlanex16` plus DPP wave32 reduction in place of five shuffle-down
+    transports. It preserves every QK product, the original F32 addition
+    tree, softmax, denominator replay, all 512 ordered scalar PV FMAs, gated
+    BF16 store, resident bytes, ABI, ownership, and dispatch count. The
+    preceding DPP rejection applied to the old local384/V64 schedule; the
+    current local512/V128/output-sharded body is a materially different
+    resource and latency schedule.
+
+    RED fails importing the absent diagnostic wrapper. GREEN passes the
+    wrapped and explicitly evicted CPU-reference fixture with byte-identical
+    F32 context and gated BF16 output. The 9x50 leaf improves
+    **0.029922 -> 0.028534 ms (-4.639%)** and the stronger 21x100 gate
+    improves **0.029794 -> 0.028200 ms (-5.349%)**. Cached native tracing
+    names the intended false/true template siblings at unchanged
+    grid40/local512, VGPR176, SGPR128, LDS43,008, and scratch0.
+
+    Seven counterbalanced resident p512/d128 pairs all win, moving median
+    decode **20.988545 -> 21.026420 tok/s (+0.18046%)** and saving
+    **0.085823 ms/token**. Every run preserves tokens **2930/74107**,
+    trajectory SHA `94f803f7...bda32`, final position 638, determinism, and
+    complete allocation recovery. Promote through a gfx1151 capability and
+    retain the preceding shuffle body as exact rollback:
+    [`DPP-QK retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-retained.json).
 
 Current exact decode checkpoint:
 

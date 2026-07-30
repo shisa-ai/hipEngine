@@ -295,6 +295,13 @@ class LagunaKVCache:
                 swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512
             )
         )
+        self.swa_output_sharded_probability_dpp_qk = bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK",
+                False,
+            )
+        )
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -986,7 +993,12 @@ class LagunaKVCache:
                 variant = (
                     "swa_context_fused_exact_gated_mixed40_local512_exp32_"
                     "producer_max_gate_stage_pcache_output_sharded_probability_"
-                    "allwave_value_idle_vec4_denom_probability_vstage128_"
+                    + (
+                        "dpp_qk_allwave_value_idle_vec4_denom_probability_"
+                        if self.swa_output_sharded_probability_dpp_qk
+                        else "allwave_value_idle_vec4_denom_probability_"
+                    )
+                    + "vstage128_"
                     "vec16_direct_assume_exp_fixed512_spans"
                 )
             fn = self._resolve("laguna_attention_decode", variant)

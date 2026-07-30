@@ -192975,3 +192975,31 @@ Vulkan local sizes verbatim will close the measured gap.
   subgroup-only probability transport substitution.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-register-forward-probability-rejected.json`.
+
+## 2026-07-30 13:31 JST — Retain exact DPP QK in current SWA tile
+
+- Re-screen DPP QK transport only after the production SWA body changed from
+  the previously rejected local384/V64 schedule to
+  local512/V128/output-sharded probability replay. Replace five wave32
+  shuffle-down transports with the existing association-identical
+  `permlanex16`/DPP sequence while preserving every product and F32 addition
+  boundary.
+- RED fails importing the absent wrapper. GREEN passes the wrapped and
+  explicitly evicted CPU-reference fixture with byte-identical F32 context
+  and gated BF16 output.
+- The cache-only leaf improves **0.029922 -> 0.028534 ms (-4.639%)** at 9x50
+  and **0.029794 -> 0.028200 ms (-5.349%)** at 21x100. Native tracing names
+  the false/true siblings at unchanged grid40/local512, VGPR176, SGPR128,
+  LDS43,008, and scratch0.
+- All seven counterbalanced resident Poolside Laguna S 2.1 Q4_K_M BF16-KV
+  p512/d128 pairs win. Median decode moves
+  **20.988545 -> 21.026420 tok/s (+0.18046%)**, saving
+  **0.085823 ms/token**. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and allocation recovery
+  are exact.
+- Promote through `LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK`; retain the
+  preceding shuffle body as exact rollback. Remove temporary model-comparison
+  plumbing before the retention commit. Tracked-clean production publication
+  follows the commit.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-dpp-qk-retained.json`.
