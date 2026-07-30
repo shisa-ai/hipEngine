@@ -65,6 +65,11 @@ double-buffered value transport from 16 to 32 wave32s. Live lengths
 grid40/local1024, VGPR48, SGPR128, reported LDS512, and scratch0. This is a
 primitive admission, not a runtime/default claim:
 [`global local1024 leaf`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-leaf.json).
+The four-axis key now also has a default-off gfx1151 runtime capability and
+profile comparison seam. Fake-owner selection proves that only dense-prefix
+idle-buffer requests reach local1024 and that local512 remains the exact
+fallback; production remains unchanged pending the same-resident model gate:
+[`runtime admission`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-runtime-correctness.json).
 
 The gfx1151-only
 `linear_pair/gguf_q4_k/pack8_dual_decode_bf16_bf16_out` key now reuses the

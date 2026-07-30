@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T02:18:00+09:00",
+  "kind": "hipengine_laguna_global_local1024_runtime_correctness",
+  "status": "accepted_default_off_runtime_admission",
+  "performance_claim": false,
+  "source_revision": "0ac76ad51540a81098f3f9cf750236429eb35167",
+  "hardware_target": "gfx1151",
+  "scope": {
+    "capability": "LAGUNA_GLOBAL_LOCAL1024",
+    "default": false,
+    "eligible_path": "dense-prefix global decode with idle-double-buffer, 48Q/8KV/D128/capacity4096/live<=4000",
+    "fallback": "retained exact local512 owner",
+    "peer_backends_unchanged": true
+  },
+  "validation": {
+    "red": "owner-default/dispatch test failed on the absent global_local1024 field",
+    "green_tests": [
+      "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+      "tests/test_laguna_long_context_profile.py"
+    ],
+    "green_result": "37 passed",
+    "candidate_key": "global_context_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "control_key": "global_context_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "allocation_count_unchanged": true,
+    "comparison_cli": "--compare-global-local1024"
+  },
+  "decision": {
+    "runtime_admitted": true,
+    "production_default_changed": false,
+    "next": "run seven same-resident p512/d128 control/candidate pairs with exact state and lifecycle gates"
+  }
+}

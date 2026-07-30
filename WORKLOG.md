@@ -194464,3 +194464,25 @@ Vulkan local sizes verbatim will close the measured gap.
   require all-positive same-resident p512/d128 pairs before promotion.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-leaf.json`.
+
+## 2026-07-31 02:18 JST — Admit default-off global local1024 runtime
+
+- Add gfx1151 capability `LAGUNA_GLOBAL_LOCAL1024=False`. The runtime selects
+  the registered local1024 key only when the request is global, gated,
+  dense-prefix metadata is valid, idle-double-buffer is active, capacity is
+  4096, the shape is 48Q/8KV/D128, and live count is at most 4000. Every
+  other case retains the exact local512/non-dense/fallback chain.
+- RED owner-default/dispatch coverage fails on the absent field. GREEN proves
+  false-by-default control selection, explicit true candidate selection,
+  restoration to local512 after explicit eviction, unchanged allocation
+  count, and peer fallback. The long-context harness adds only
+  `--compare-global-local1024` plus active telemetry.
+- Focused owner plus complete profile-harness validation reports
+  **37 passed**; Python compile and diff checks pass. This is correctness and
+  routing admission only: production/default/topline remain unchanged at
+  **22.335681 tok/s**.
+- Next commit this unit, then run seven same-resident p512/d128 pairs. Require
+  all seven candidate wins with exact token trajectory, positions, residency,
+  and lifecycle before promotion.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-runtime-correctness.json`.

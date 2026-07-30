@@ -236,6 +236,14 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_local1024 = bool(
+            self.global_dense_prefix_idle_double_buffer
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_LOCAL1024",
+                False,
+            )
+        )
         self.swa_split_wave_local = bool(swa_split_wave_local)
         self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
         self.swa_split_fixed512_reduce = bool(swa_split_fixed512_reduce)
@@ -1006,7 +1014,18 @@ class LagunaKVCache:
                 and state.q_heads == 48
             ):
                 variant = (
-                    "global_context_fused_exact_gated_mixed40_local512_exp32_"
+                    "global_context_fused_exact_gated_mixed40_"
+                    + (
+                        "local1024_"
+                        if (
+                            self.global_local1024
+                            and self.global_dense_prefix_idle_double_buffer
+                            and self.global_dense_prefix
+                            and self._dense_initial_metadata_valid
+                        )
+                        else "local512_"
+                    )
+                    + "exp32_"
                     "producer_max_dpp_qk_"
                     + (
                         "dense_prefix_"
