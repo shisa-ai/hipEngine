@@ -193810,3 +193810,12 @@ Vulkan local sizes verbatim will close the measured gap.
   `6b73dac0...df285`. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json`.
   Next: remove the admitted A/B seam, then re-rank the remaining exact gaps.
+
+## 2026-07-30 20:23 JST — Remove admitted projection/head/KV probe
+
+- Removed `--compare-f16-projection-head-kv-decode`, its same-resident session
+  setter, and comparison-protocol bookkeeping after tracked-clean publication
+  and the complete dispatch census passed. The constructor override remains
+  for explicit rollback; gfx1151 capability selection, composite
+  registrations, counter scratch, peer-backend behavior, and the exact
+  quad-plus-head/KV fallback are unchanged.

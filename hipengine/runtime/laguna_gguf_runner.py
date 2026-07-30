@@ -3292,27 +3292,6 @@ class LagunaGGUFResidentSession:
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
 
-    def set_f16_projection_head_kv_decode(self, enabled: bool) -> None:
-        """Select exact source-F16 projection/head/KV launch contraction."""
-
-        selected = bool(enabled)
-        projection_counters = (
-            getattr(self.scratch, "attention_projection_counters", None)
-            if self.scratch is not None
-            else None
-        )
-        if (
-            selected
-            and not self.use_f16_projection_head_kv_decode
-            and projection_counters is not None
-        ):
-            self.runtime.memset(
-                projection_counters.ptr,
-                0,
-                projection_counters.nbytes,
-            )
-        self.use_f16_projection_head_kv_decode = selected
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 
