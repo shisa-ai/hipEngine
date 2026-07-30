@@ -71,6 +71,7 @@ class MoeGraphCache:
         eager: Callable[[int], None],
         out_ptr: int,
         out_nbytes: int,
+        mutable_inputs: tuple[tuple[int, int], ...] = (),
         stream: int,
     ) -> str:
         """Run the capturable unit for ``key``.
@@ -93,7 +94,23 @@ class MoeGraphCache:
             eager(stream)
             self._stats["eager"] += 1
             return "eager"
-        return self._capture(key, eager, int(out_ptr), int(out_nbytes), stream)
+        normalized_inputs = tuple(
+            (int(input_ptr), int(input_nbytes))
+            for input_ptr, input_nbytes in mutable_inputs
+        )
+        if any(
+            input_ptr <= 0 or input_nbytes <= 0
+            for input_ptr, input_nbytes in normalized_inputs
+        ):
+            raise ValueError("mutable graph inputs require positive pointers and byte counts")
+        return self._capture(
+            key,
+            eager,
+            int(out_ptr),
+            int(out_nbytes),
+            normalized_inputs,
+            stream,
+        )
 
     def _capture(
         self,
@@ -101,9 +118,14 @@ class MoeGraphCache:
         eager: Callable[[int], None],
         out_ptr: int,
         out_nbytes: int,
+        mutable_inputs: tuple[tuple[int, int], ...],
         stream: int,
     ) -> str:
         rt = self._runtime
+        input_snapshots = tuple(
+            (input_ptr, self._snapshot(input_ptr, input_nbytes))
+            for input_ptr, input_nbytes in mutable_inputs
+        )
         # 1) Eager reference run on the caller's stream (also warms the
         #    dispatch-resolve cache / JIT so capture launches no host stream ops).
         #    A genuine failure here is a real decode bug -> let it propagate.
@@ -129,6 +151,17 @@ class MoeGraphCache:
             return self._reject(key, graph, None)
 
         # 2) Replay once and validate bit-exact against the eager reference.
+        # Some exact layer units reuse their input scratch for the next layer's
+        # normalized output. Restore the fresh capture input before validation;
+        # ordinary replays receive a freshly produced input from the preceding
+        # eager attention/layer boundary and need no host copy.
+        for input_ptr, snapshot in input_snapshots:
+            rt.memcpy(
+                input_ptr,
+                int(snapshot.ctypes.data),
+                int(snapshot.nbytes),
+                HipMemcpyKind.HOST_TO_DEVICE,
+            )
         rt.graph_launch(graph_exec, stream)
         self._sync(stream)
         got = self._snapshot(out_ptr, out_nbytes)
