@@ -75,6 +75,14 @@ should be removed or collapsed.
   eager aliases and promoted role entries; they add no selector or allocation.
   Keep H5I F32-N72 plus raw exact fallbacks. Do not add a public/session
   selector or duplicate owner.
+- WPF-H5X adds exactly four eager-library aliases while leaving the H5L/H5G Q5
+  package role policy unchanged. Complete state is KL0, four counter-rotated
+  cached requests record **151 H5X + 37 H5L + 47 H5G** consumers at unchanged
+  topology, and default-off clean 512/1K/4K is
+  **+0.439%/+0.468%/+0.518%**, 3/3 wins each. Keep the aliases only through the
+  source-default publication gate: retain them with the four promoted role
+  entries if selector-unset non-regression passes, or remove all four aliases
+  if it fails. Do not add a public/session selector or second workspace owner.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 

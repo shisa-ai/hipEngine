@@ -1717,9 +1717,17 @@ calls** win both clocks. Remove the two losing BF16 surfaces and retain H5L for
 **465.863/467.511 -> 458.615/459.712 ms (-1.556%/-1.668%)**; final-source
 winners fall **265.784/266.992 -> 258.653/258.959 (-2.683%/-3.009%)** with 4/4
 wins. Value bytes, useful work, the **150,994,944-byte** workspace, launches,
-allocation, package policy, and gfx1151 remain unchanged. Next add bounded
-default-off ownership and require complete state, exact **151 H5X + 37 H5L +
-47 H5G** topology, and clean one-queue 512/1K/4K before source default
+allocation, package policy, and gfx1151 remain unchanged. Default-off
+natural-M512 state is KL0 and byte-exact across all 48 boundaries, complete
+logits/KV/`KVLiveSpans`, and repeat. Four counter-rotated cached request
+segments record exact **151 H5X + 37 H5L + 47 H5G** ownership at unchanged
+**1,862/470** request/Q5 dispatches and move median Q5/request/span
+**479.776/1,826.542/1,850.682 -> 470.606/1,814.537/1,834.282 ms
+(-1.911%/-0.657%/-0.886%)**. Clean one-queue 512/1K/4K improves
+**271.744/233.742/161.579 -> 272.936/234.834/162.416 tok/s
+(+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Retain four eager aliases while
+package policy and canonical H5W remain unchanged; next freeze the four-entry
+source-default RED and publish only after selector-unset non-regression
 ([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
