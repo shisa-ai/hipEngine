@@ -14,6 +14,18 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna gfx1151 exact global local1024 selector
+
+- Added 2026-07-31 as a default-off `LAGUNA_GLOBAL_LOCAL1024` capability and
+  `--compare-global-local1024` profile seam after exact 513/576/639
+  correctness, an all-positive 21x100 leaf, and cached resource tracing.
+- If any same-resident p512/d128 pair regresses or changes state, remove the
+  capability field, runtime branch, and comparison switch while retaining the
+  exact registered primitive/leaf route. If every pair improves, promote the
+  gfx1151 capability, publish tracked-clean selector-unset production, and
+  remove the comparison switch after the next attention census. Keep local512
+  as the exact non-dense/eviction/peer rollback.
+
 ## Laguna gfx1151 exact SWA local1024 selector
 
 - Added 2026-07-31 as a default-off runtime capability and
