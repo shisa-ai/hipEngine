@@ -115,9 +115,16 @@ numbers below.
   dispatches. Clean package-default 512/1K/4K reaches
   **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)**,
   narrowing the matched M512 gap **3.540x -> 2.917x**. No allocation, sidecar,
-  arithmetic, or fallback changes. The 150-tok/s short gate and restored 4K
-  gate pass, while 16K+ stays closed below the 800/700 512/4K stretch target
+  arithmetic, or fallback changes. Post-H5L tracing now ranks matched residuals
+  by exact gap: attention **437.720 ms**, Q5 **408.035 ms**, and IQ down
+  **338.619 ms**. Exact SWA qrow4 owns **268.720 ms / 58.49%** of attention.
+  H5M therefore screens a separate two-pass source-qualified qrow4 body that
+  preserves every admitted dot/softmax/PV operation while avoiding unused
+  current/cache K/V loads; its 29.69–37.11% logical-source model is diagnostic,
+  not a speed claim. The 150-tok/s short gate and restored 4K gate pass, while
+  16K+ stays closed below the 800/700 512/4K stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
+  [post-H5L residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
   [H5L leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json) ·
   [H5J production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
   [post-H5K residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·

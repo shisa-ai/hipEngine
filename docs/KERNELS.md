@@ -761,8 +761,15 @@ teardown with no new allocation. Integrated tracing selects **235** producers,
 (-49.224%)** and request kernel sum **2,532.020 -> 2,074.261 ms (-18.079%)** at
 unchanged **1,862** dispatches. Clean package-default 512/1K/4K promotes
 **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)**. The
-matched M512 gap is **2.917x**; every miss and gfx1151 retain exact fallback
-([H5L production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
+matched M512 gap is **2.917x**; every miss and gfx1151 retain exact fallback.
+Post-H5L attribution ranks matched attention/Q5/IQ-down gaps at **437.720/
+408.035/338.619 ms**. Attention's 48 global, 72 SWA-wave32, and 72 SWA-qrow4
+calls consume **80.824/109.901/268.720 ms**. H5M therefore screens a separately
+registered source-qualified exact qrow4 body that chooses required current/
+cache loads before the unchanged two-pass arithmetic. The 29.69–37.11% logical-
+source model is diagnostic only; production remains H5L
+([post-H5L residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
+[H5L production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
 [H5L candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json) ·
 [post-H5K residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
 [H5K rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
