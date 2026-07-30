@@ -300,11 +300,15 @@ numbers below.
   gaps rank IQ-down/attention/Q5/gate-up/Q6 at
   **325.570/235.310/182.882/78.514/77.504 ms**. IQ3 remains first at
   **472.416 ms / 45 calls**, but all immediate exact IQ ownership/geometries are
-  already screened. Select **WPF-H6A exact dense-initial cached-only attention
-  metadata elision** on the second-ranked family: specialize H5R SWA qrow4 and
-  H5U global local256 only for complete preappended first-fill M128 tiles,
-  deriving identity position/no-eviction/physical-slot facts while preserving
-  exact QK, two-pass softmax, PV, allocation, and fallback behavior. Both short
+  already screened. **WPF-H6A exact dense-initial cached-only attention
+  metadata elision** now admits both standalone gfx1100 leaves. Every SWA/global
+  start is byte/CPU exact; equal-append weighted schedules improve SWA
+  **129.170/130.290 -> 100.441/101.007 ms (-22.241%/-22.475%)** and global
+  **84.416/84.884 -> 46.946/47.436 ms (-44.388%/-44.117%)** by event/wall.
+  Cached traces preserve H5R/H5U resources and scratch0, while ISA removes the
+  intended metadata-load classes. Production/runtime ownership is unchanged
+  pending complete-state/topology/clean-length qualification
+  ([H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). Both short
   rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
   ([post-H5Z matched residual / H6A target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·

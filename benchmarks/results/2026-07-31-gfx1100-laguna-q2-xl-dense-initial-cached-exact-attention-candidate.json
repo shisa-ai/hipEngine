@@ -1,0 +1,531 @@
+{
+  "cached_trace": {
+    "compiler_spawned_under_profiler": false,
+    "global_candidate": {
+      "duration_us": [
+        256.361,
+        743.963,
+        1221.645,
+        1682.887
+      ],
+      "kernel_match": "global_attention_prefill_cached_exact_bf16_kernel<true>",
+      "observed_calls": 4,
+      "resources": {
+        "Grid_Size_X": [
+          12288
+        ],
+        "Grid_Size_Y": [
+          128
+        ],
+        "LDS_Block_Size": [
+          0
+        ],
+        "SGPR_Count": [
+          128
+        ],
+        "Scratch_Size": [
+          0
+        ],
+        "VGPR_Count": [
+          40
+        ],
+        "Workgroup_Size_X": [
+          256
+        ]
+      }
+    },
+    "global_control": {
+      "duration_us": [
+        427.322,
+        1312.366,
+        2190.37,
+        3101.974
+      ],
+      "kernel_match": "global_attention_prefill_cached_exact_bf16_kernel<false>",
+      "observed_calls": 4,
+      "resources": {
+        "Grid_Size_X": [
+          12288
+        ],
+        "Grid_Size_Y": [
+          128
+        ],
+        "LDS_Block_Size": [
+          0
+        ],
+        "SGPR_Count": [
+          128
+        ],
+        "Scratch_Size": [
+          0
+        ],
+        "VGPR_Count": [
+          40
+        ],
+        "Workgroup_Size_X": [
+          256
+        ]
+      }
+    },
+    "raw_csv_sha256": "9a1603ba2da723fab8f45484f8fe822845ba664fd90fe68bbb544201ee77713f",
+    "resource_regression": false,
+    "stderr_sha256": "465941f8a2279eb5df53297cf8d559998a4806963d484581c38d39037f9d2f4f",
+    "stdout_sha256": "2f0a02121a8768492f6f3c50335f987c617f108bd9c06020700135aa7f98519d",
+    "swa_candidate": {
+      "duration_us": [
+        207.2,
+        473.72,
+        746.77,
+        1011.774
+      ],
+      "kernel_match": "qrow4_cached_exact_bf16_kernel<false, true>",
+      "observed_calls": 4,
+      "resources": {
+        "Grid_Size_X": [
+          2304
+        ],
+        "Grid_Size_Y": [
+          32
+        ],
+        "LDS_Block_Size": [
+          0
+        ],
+        "SGPR_Count": [
+          128
+        ],
+        "Scratch_Size": [
+          0
+        ],
+        "VGPR_Count": [
+          64
+        ],
+        "Workgroup_Size_X": [
+          32
+        ]
+      }
+    },
+    "swa_control": {
+      "duration_us": [
+        277.241,
+        621.241,
+        964.293,
+        1293.378
+      ],
+      "kernel_match": "qrow4_cached_exact_bf16_kernel<false, false>",
+      "observed_calls": 4,
+      "resources": {
+        "Grid_Size_X": [
+          2304
+        ],
+        "Grid_Size_Y": [
+          32
+        ],
+        "LDS_Block_Size": [
+          0
+        ],
+        "SGPR_Count": [
+          128
+        ],
+        "Scratch_Size": [
+          0
+        ],
+        "VGPR_Count": [
+          64
+        ],
+        "Workgroup_Size_X": [
+          32
+        ]
+      }
+    },
+    "trace_dispatches": 74,
+    "trace_smoke_json_sha256": "6b757760588227e82b8e11a457104505a6a100749dd3e6172db4b1eed6ab052c"
+  },
+  "candidate": {
+    "change": "for complete preappended first-fill tiles, derive token position, no-eviction visibility, and identity physical slot from each dense logical slot instead of loading token_positions, evict_mask, and base_offsets",
+    "gfx1151_fail_closed": true,
+    "new_allocation_bytes": 0,
+    "new_attention_launches": 0,
+    "new_sidecar_bytes": 0,
+    "new_workspace_bytes": 0,
+    "package_preappend_role_map_changed": false,
+    "preserved": "complete KVLiveSpans ABI; H5R qrow4 and H5U local256 ownership; BF16 cached K/V; exact QK products/reductions; materialized-score two-pass max/denominator order; normalized-weight-before-PV association; F32 accumulation/division/store; launch count; allocation; workspace; sidecar; all fallbacks",
+    "registry_keys": {
+      "global": [
+        "hip_gfx1100",
+        "laguna_attention_prefill",
+        "bf16",
+        "global_context_rows_dense_initial_cached_exact_spans"
+      ],
+      "swa": [
+        "hip_gfx1100",
+        "laguna_attention_prefill",
+        "bf16",
+        "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+      ]
+    },
+    "runtime_owner_added": false,
+    "symbols": {
+      "global": "hipengine_laguna_global_attention_prefill_dense_initial_cached_exact_bf16_spans",
+      "swa": "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_cached_exact_bf16_spans"
+    }
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. python3 -m pytest tests/test_laguna_h6a_dense_initial_cached_exact.py -q",
+    "isa": "/opt/rocm/llvm/bin/llvm-objdump --offloading <cached-so>; /opt/rocm/llvm/bin/llvm-objdump -d --no-show-raw-insn <gfx1100-code-object>",
+    "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u /tmp/laguna_wpfh6a_dense_initial_cached_exact_screen.py --output /tmp/laguna-wpfh6a-dense-initial-cached-exact-screen-final.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh6a-resource-rocprof-20260731-final -- python3 -u /tmp/laguna_wpfh6a_dense_initial_cached_exact_screen.py --trace-smoke --output /tmp/laguna-wpfh6a-dense-initial-cached-exact-rocprof-smoke-final.json"
+  },
+  "correctness": {
+    "all_candidate_f32_bytes_equal_controls": true,
+    "allocation_recovered": true,
+    "complete_kv_live_spans_unchanged": true,
+    "controls": {
+      "global": "H5U cached-source local256",
+      "swa": "H5R cached-only qrow4"
+    },
+    "cpu_oracle": "BF16-rounded K/V, FP32 QK/softmax/PV sampled at every role/start",
+    "focused_tests_passed": 3,
+    "gfx1151_absent": true,
+    "h5r_package_role_map_unchanged": true,
+    "sampled_cpu_rows": [
+      0,
+      63,
+      127
+    ],
+    "starts": [
+      0,
+      128,
+      256,
+      384
+    ],
+    "strict_negative_preflight_before_hip_load": true
+  },
+  "correctness_claim": true,
+  "date": "2026-07-31",
+  "decision": {
+    "next_action": "Qualify a bounded default-off H6A role map with complete M512 state, exact 144 SWA plus 48 global append-before-candidate topology at unchanged dispatches/ownership, and clean one-queue 512/1K/4K non-regression before any source promotion.",
+    "production_changed": false,
+    "runtime_owner_added": false,
+    "standalone_global_leaf_admitted": true,
+    "standalone_swa_leaf_admitted": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "isa_audit": {
+    "code_object_sha256": "18c6e4e15b44eb1acfd1f2301d95cef8fa572139224b13e3591a24d66ed9d825",
+    "disassembly_sha256": "aca666baabe6f27f18c543757ff7ef7fea3a963dec1ba1e1152cb615792163dd",
+    "global_candidate": {
+      "global_load_instruction_count": 5,
+      "global_load_opcodes": [
+        "global_load_b32",
+        "global_load_b64",
+        "global_load_u16"
+      ],
+      "global_store_instruction_count": 1,
+      "instruction_count": 974,
+      "num_vgpr": 33,
+      "private_segment_bytes": 0,
+      "scratch_instruction_count": 0
+    },
+    "global_control": {
+      "global_load_instruction_count": 10,
+      "global_load_opcodes": [
+        "global_load_b32",
+        "global_load_b64",
+        "global_load_d16_u8",
+        "global_load_u16"
+      ],
+      "global_store_instruction_count": 1,
+      "instruction_count": 1764,
+      "num_vgpr": 36,
+      "private_segment_bytes": 0,
+      "scratch_instruction_count": 0
+    },
+    "interpretation": "SWA candidate removes global_load_b64/global_load_u8 metadata classes; global candidate removes global_load_d16_u8 and halves static global-load sites. Remaining loads are query/K/V plus one-time row/live guards. Both candidates preserve scratch0 and do not increase code-object VGPRs.",
+    "offload_extract_stdout_sha256": "524a36902211a18b24f145ce40edc3175b356d6f00b05b884371651d43d9b3c1",
+    "shared_library_sha256": "fd423605fa47c7b8d378f195afa153a2b45abc5545ce4b017f7ebd91ffbaa63b",
+    "swa_candidate": {
+      "global_load_instruction_count": 28,
+      "global_load_opcodes": [
+        "global_load_b32",
+        "global_load_u16"
+      ],
+      "global_store_instruction_count": 16,
+      "instruction_count": 1345,
+      "num_vgpr": 64,
+      "private_segment_bytes": 0,
+      "scratch_instruction_count": 0
+    },
+    "swa_control": {
+      "global_load_instruction_count": 40,
+      "global_load_opcodes": [
+        "global_load_b32",
+        "global_load_b64",
+        "global_load_u16",
+        "global_load_u8"
+      ],
+      "global_store_instruction_count": 16,
+      "instruction_count": 1631,
+      "num_vgpr": 64,
+      "private_segment_bytes": 0,
+      "scratch_instruction_count": 0
+    }
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_dense_initial_cached_attention_candidate",
+  "leaf_screen": {
+    "combined_192_role_schedule": {
+      "event_candidate_ms": 147.3874912261963,
+      "event_control_ms": 213.58609371185304,
+      "event_reduction_percent": 30.993872932085488,
+      "event_speedup": 1.4491466808676554,
+      "wall_candidate_ms": 148.44225961714983,
+      "wall_control_ms": 215.1737367734313,
+      "wall_reduction_percent": 31.012835561129304,
+      "wall_speedup": 1.4495450104868375
+    },
+    "harness_sha256": "74049b6217d2c023e211afa451cb6fbfac372d074541523481a7142905e0ed6a",
+    "operand_fixture": "deterministic random F32 query/K/V at exact production shapes; K/V rounded by the production append writer",
+    "protocol": {
+      "append_cost_included_equally": true,
+      "counter_rotated_clocks": true,
+      "counter_rotated_modes": true,
+      "launches_per_sample": 5,
+      "rows": 128,
+      "samples": 15,
+      "starts": [
+        0,
+        128,
+        256,
+        384
+      ],
+      "trace_smoke": false,
+      "warmups": 5
+    },
+    "raw_screen_json_sha256": "a5d1b40c4b31c6c46bd5c97e4823bae8995ca2e37b4b9f0a28a7b78075c2f6b6",
+    "roles": {
+      "global": {
+        "all_bytes_exact": true,
+        "all_positions_event_positive": true,
+        "all_positions_wall_positive": true,
+        "capacity": 4096,
+        "positions": [
+          {
+            "attention_event_candidate_ms": 0.28136980533599854,
+            "attention_event_control_ms": 0.4709792137145996,
+            "attention_event_speedup": 1.6738797297463333,
+            "attention_wall_candidate_ms": 0.2848400268703699,
+            "attention_wall_control_ms": 0.47641261480748653,
+            "attention_wall_speedup": 1.6725620343530612,
+            "mismatches": 0,
+            "output_sha256": "b523952688cae094ec1504fb0ae0191fd940542e4f3853ed7e687260c8a49ff5",
+            "schedule_event_candidate_ms": 0.29696200489997865,
+            "schedule_event_control_ms": 0.4865714132785797,
+            "schedule_event_speedup": 1.6384971991365171,
+            "schedule_wall_candidate_ms": 0.3053322434425354,
+            "schedule_wall_control_ms": 0.496904831379652,
+            "schedule_wall_speedup": 1.6274233791269124,
+            "start_position": 0
+          },
+          {
+            "attention_event_candidate_ms": 0.7353489875793457,
+            "attention_event_control_ms": 1.3013449668884278,
+            "attention_event_speedup": 1.7696970946709978,
+            "attention_wall_candidate_ms": 0.7436561863869429,
+            "attention_wall_control_ms": 1.3062039855867624,
+            "attention_wall_speedup": 1.7564622059193251,
+            "mismatches": 0,
+            "output_sha256": "9b469887c60f298b42497137866d409ba866bba730b4d60dcae3697e0f136a31",
+            "schedule_event_candidate_ms": 0.7520531877875328,
+            "schedule_event_control_ms": 1.318049167096615,
+            "schedule_event_speedup": 1.752600997509481,
+            "schedule_wall_candidate_ms": 0.7641226053237915,
+            "schedule_wall_control_ms": 1.326670404523611,
+            "schedule_wall_speedup": 1.7362009647148757,
+            "start_position": 128
+          },
+          {
+            "attention_event_candidate_ms": 1.188280200958252,
+            "attention_event_control_ms": 2.148727226257324,
+            "attention_event_speedup": 1.8082664547676122,
+            "attention_wall_candidate_ms": 1.1930663604289293,
+            "attention_wall_control_ms": 2.1534916013479233,
+            "attention_wall_speedup": 1.8050057170111673,
+            "mismatches": 0,
+            "output_sha256": "3c060c2ae36490c866255ad917f6050443696e05a0a2ba9ee065ce5d66059c7e",
+            "schedule_event_candidate_ms": 1.2035602003335955,
+            "schedule_event_control_ms": 2.1640072256326675,
+            "schedule_event_speedup": 1.7980049731063399,
+            "schedule_wall_candidate_ms": 1.213674759492278,
+            "schedule_wall_control_ms": 2.174100000411272,
+            "schedule_wall_speedup": 1.791336586187862,
+            "start_position": 256
+          },
+          {
+            "attention_event_candidate_ms": 1.643747329711914,
+            "attention_event_control_ms": 3.0502294540405273,
+            "attention_event_speedup": 1.8556559143278522,
+            "attention_wall_candidate_ms": 1.6492305789142847,
+            "attention_wall_control_ms": 3.055365802720189,
+            "attention_wall_speedup": 1.852600747150581,
+            "mismatches": 0,
+            "output_sha256": "a4473dfd572768ec78d2285c7d9739368191fb94cd1395ab6e03d6142ef970d1",
+            "schedule_event_candidate_ms": 1.6595955297350884,
+            "schedule_event_control_ms": 3.0660776540637014,
+            "schedule_event_speedup": 1.847484883592764,
+            "schedule_wall_candidate_ms": 1.669836975634098,
+            "schedule_wall_control_ms": 3.0759721994400024,
+            "schedule_wall_speedup": 1.8420793432675926,
+            "start_position": 384
+          }
+        ],
+        "query_heads": 48,
+        "role_multiplier_per_start": 12,
+        "weighted_schedule_event_candidate_ms": 46.946051073074344,
+        "weighted_schedule_event_control_ms": 84.41646552085876,
+        "weighted_schedule_event_reduction_percent": 44.38756611827787,
+        "weighted_schedule_event_speedup": 1.798159027038493,
+        "weighted_schedule_wall_candidate_ms": 47.43559900671244,
+        "weighted_schedule_wall_control_ms": 84.88376922905445,
+        "weighted_schedule_wall_reduction_percent": 44.11699735115445,
+        "weighted_schedule_wall_speedup": 1.789452879409046
+      },
+      "swa": {
+        "all_bytes_exact": true,
+        "all_positions_event_positive": true,
+        "all_positions_wall_positive": true,
+        "capacity": 512,
+        "positions": [
+          {
+            "attention_event_candidate_ms": 0.2399049997329712,
+            "attention_event_control_ms": 0.3258336067199707,
+            "attention_event_speedup": 1.358177641494105,
+            "attention_wall_candidate_ms": 0.24482938461005688,
+            "attention_wall_control_ms": 0.3303783945739269,
+            "attention_wall_speedup": 1.3494229669372617,
+            "mismatches": 0,
+            "output_sha256": "0a5f47290dc35ca5426af6cd6968fb96851d651109b53078d7b4b67092bda961",
+            "schedule_event_candidate_ms": 0.25431319922208784,
+            "schedule_event_control_ms": 0.34024180620908734,
+            "schedule_event_speedup": 1.337884967236637,
+            "schedule_wall_candidate_ms": 0.26524574495851994,
+            "schedule_wall_control_ms": 0.35079475492239,
+            "schedule_wall_speedup": 1.3225273603437013,
+            "start_position": 0
+          },
+          {
+            "attention_event_candidate_ms": 0.5488594055175782,
+            "attention_event_control_ms": 0.716188383102417,
+            "attention_event_speedup": 1.3048667398293856,
+            "attention_wall_candidate_ms": 0.5456076003611088,
+            "attention_wall_control_ms": 0.7179480046033859,
+            "attention_wall_speedup": 1.3158687747901865,
+            "mismatches": 0,
+            "output_sha256": "cc0a644b19915f99842e695a7e1924847305f231d94e4fb231edc37c346fd5fb",
+            "schedule_event_candidate_ms": 0.5686896055936814,
+            "schedule_event_control_ms": 0.7360185831785202,
+            "schedule_event_speedup": 1.2942360400805222,
+            "schedule_wall_candidate_ms": 0.5695220082998276,
+            "schedule_wall_control_ms": 0.7418624125421047,
+            "schedule_wall_speedup": 1.302605345764878,
+            "start_position": 128
+          },
+          {
+            "attention_event_candidate_ms": 0.8272693634033204,
+            "attention_event_control_ms": 1.058414840698242,
+            "attention_event_speedup": 1.2794077570381763,
+            "attention_wall_candidate_ms": 0.8229071740061045,
+            "attention_wall_control_ms": 1.0569785721600056,
+            "attention_wall_speedup": 1.2844444738698617,
+            "mismatches": 0,
+            "output_sha256": "ee46aa75cd0f81a2757cc78905ea9970d26cb119e2bf8eccd1094ebf24d684e7",
+            "schedule_event_candidate_ms": 0.8471095636487007,
+            "schedule_event_control_ms": 1.0782550409436225,
+            "schedule_event_speedup": 1.272863732407085,
+            "schedule_wall_candidate_ms": 0.8471075911074877,
+            "schedule_wall_control_ms": 1.0811789892613888,
+            "schedule_wall_speedup": 1.2763183810546213,
+            "start_position": 256
+          },
+          {
+            "attention_event_candidate_ms": 1.1055596351623536,
+            "attention_event_control_ms": 1.4191617965698242,
+            "attention_event_speedup": 1.2836591997693707,
+            "attention_wall_candidate_ms": 1.1040290351957083,
+            "attention_wall_control_ms": 1.4254934154450893,
+            "attention_wall_speedup": 1.2911738459780597,
+            "mismatches": 0,
+            "output_sha256": "805ca49172b831252e8950fcc84dd5d81c16a8cf928448390518d7abbc2c029c",
+            "schedule_event_candidate_ms": 1.1199276357889176,
+            "schedule_event_control_ms": 1.4335297971963883,
+            "schedule_event_speedup": 1.2800200221745202,
+            "schedule_wall_candidate_ms": 1.1238652281463146,
+            "schedule_wall_control_ms": 1.4453296083956957,
+            "schedule_wall_speedup": 1.2860346349353644,
+            "start_position": 384
+          }
+        ],
+        "query_heads": 72,
+        "role_multiplier_per_start": 36,
+        "weighted_schedule_event_candidate_ms": 100.44144015312195,
+        "weighted_schedule_event_control_ms": 129.16962819099427,
+        "weighted_schedule_event_reduction_percent": 22.2406679032891,
+        "weighted_schedule_event_speedup": 1.2860192764468181,
+        "weighted_schedule_wall_candidate_ms": 101.0066606104374,
+        "weighted_schedule_wall_control_ms": 130.28996754437685,
+        "weighted_schedule_wall_reduction_percent": 22.475488700974267,
+        "weighted_schedule_wall_speedup": 1.2899146131251615
+      }
+    },
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "6c061d0a5854959cd3d5af33a3f0d9093147acdd2b114136a1aa883dd683c8b0"
+  },
+  "lineage": {
+    "base_revision": "fb0a219a36987ce21eb2a264e276ca3245d9456c",
+    "h5r_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json",
+    "h5r_production_artifact_sha256": "51914aeeaf2544e80b4c1e4c81dd1291c6bea8b3d34ac6e27759c906361e1df9",
+    "h5u_leaf_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json",
+    "h5u_leaf_artifact_sha256": "505bc3cdc9cc8ef265183094079cdd1e2a7e1bbda0fdb199c42284bc278ca2dc",
+    "source": "net-new in-tree compile-time first-fill specializations of retained H5R/H5U bodies; no external device body copied",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json",
+    "target_artifact_sha256": "ef50de15ab448292234269210c060c48c7b94cca563fe5c6c37aa18505d6814d"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "role_inventory": "36 SWA plus 12 global layers at four starts = 192 M512 attention calls",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "complete preappended M128 first-fill starts 0/128/256/384; SWA C512/H72 and global C4096/H48; KV8/D128"
+  },
+  "performance_claim": true,
+  "performance_claim_scope": "deterministic exact-shape 144-call SWA and 48-call global leaf schedules with equal append cost; not integrated request throughput",
+  "production": {
+    "canonical_tok_s": {
+      "m1024": 259.947,
+      "m4096": 173.562,
+      "m512": 307.658
+    },
+    "matched_direct_m512_tok_s": 311.62218232169033,
+    "matched_gap": 2.2276462953570735,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "package_policy_changed": false,
+    "runtime_owner_added": false,
+    "unchanged": true
+  },
+  "schema": 1,
+  "source_artifacts": {
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "7384229c6253df106a13974e55b51de49483d68ef1f53ecad522d6152cac94d7",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "351d7b1465ef92f946095d94b183ff2ee2941424198cc1394d982f14f115d47d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "707324bcdcb2806393ae37d0fea079350ba50b713cb51216a7c5195af4ff50b9",
+      "tests/test_laguna_h6a_dense_initial_cached_exact.py": "77586bf34d883b76171427281cd509c990366d49faef441d20dbf619e1e35c88"
+    },
+    "raw_harness_sha256": "74049b6217d2c023e211afa451cb6fbfac372d074541523481a7142905e0ed6a"
+  },
+  "status": "standalone_exact_leaves_admitted"
+}
