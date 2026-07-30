@@ -192718,3 +192718,35 @@ Vulkan local sizes verbatim will close the measured gap.
   now **5.17697 ms/token**, and hipEngine is **10.784%** lower in throughput.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-production.json`.
+
+## 2026-07-30 11:29 JST — Close two comparator-derived attention seams
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot complete
+  because configured external parent
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external code was
+  copied.
+- Audit same-GGUF llama.cpp Vulkan at
+  `/home/lhl/llama.cpp/llama.cpp-vulkan@c0bc8591e`: RADV reports wave64 and
+  cooperative-matrix support; the decode shader folds GQA into one cooperative
+  FlashAttention tile, stages K/V once, and tensorizes both QK and PV with an
+  F16 K/V and non-BF16 accumulation/output contract. Its speed is the
+  cooperative tile and reuse, not Vulkan or launch size alone.
+- A rigorous full-ring BF16-bin repair screen applies a favorable PV-only
+  `gamma_512` interval to 9,216 components. It marks **7,795 (84.581%)**
+  uncertain, including all 72 query heads and 97-119 components/head. The
+  previously measured full component-replay topology is **124.398% slower**,
+  so do not rebuild the tensor path around output repair.
+- Build and exact-gate one cooperative local512/grid40 SWA sibling: two
+  256-thread cohorts reproduce the separate local256/grid80 head
+  RMSNorm/RoPE/KV producer, grid-sync, then execute unchanged output-sharded
+  V128 attention. RED fails importing the absent wrapper; GREEN passes all
+  three focused tests with byte-identical F32 context and gated BF16.
+- The 5-warmup, 9-sample, 50-chain combined leaf rejects it:
+  **0.034534 -> 0.039296 ms (+13.788%)**, **0/9** wins. The cooperative launch
+  and grid barrier cost more than the 36 dispatches/token it would remove.
+  Remove the kernel, wrapper, launcher, test/harness seams, and comparison path
+  before runtime integration. Production remains **20.830515 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-attention-bf16-bin-bound-rejected.json`
+  and
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-head-kv-attention-fusion-rejected.json`.

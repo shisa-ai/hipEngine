@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T11:08:00+09:00",
+  "kind": "hipengine_laguna_swa_cooperative_pv_bf16_bin_bound_screen",
+  "status": "rejected_analytical_precondition",
+  "performance_claim": false,
+  "source_revision": "aedb451d0d1a71d4a8aa81a35de309073579bfd3",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "premise": {
+    "goal": "Use a mathematically valid component interval around cooperative PV and replay the scalar chain only when the interval crosses the retained BF16 rounding bin.",
+    "fixture": "deterministic wrapped full-ring SWA512 fixture, 72 query heads x D128",
+    "gamma_512": 3.051850947599719e-05,
+    "bound_multiplier": 4.0,
+    "favorable_scope": "PV-only; QK, exponential, normalization, and decomposition error are omitted."
+  },
+  "screen": {
+    "components": 9216,
+    "uncertain_components": 7795,
+    "uncertain_fraction": 0.8458116319444444,
+    "query_heads": 72,
+    "uncertain_query_heads": 72,
+    "uncertain_components_per_head_min": 97,
+    "uncertain_components_per_head_median": 108,
+    "uncertain_components_per_head_max": 119,
+    "maximum_bound": 1.674e-05
+  },
+  "comparison": {
+    "full_component_repair_vs_retained_percent": 124.39847522378824,
+    "repair_artifact": "benchmarks/results/2026-07-29-gfx1151-laguna-swa-wmma-component-repair-rejected.json",
+    "prior_favorable_bound_artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-attention-pv-bound-screen-rejected.json"
+  },
+  "decision": {
+    "rebuild_tensor_kernel": false,
+    "reason": "The independently valid full-ring interval sends 84.58% of output components and every query head to scalar replay before adding omitted error sources. The measured replay topology is already slower than retained exact attention at complete replay.",
+    "reopen_condition": "A materially tighter certified mechanism such as hardware-directed bounds or a separately cheap error-free transform."
+  }
+}

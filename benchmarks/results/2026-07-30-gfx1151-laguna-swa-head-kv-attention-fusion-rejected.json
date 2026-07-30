@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T11:26:36+09:00",
+  "kind": "hipengine_laguna_swa_head_kv_attention_cooperative_fusion_rejection",
+  "status": "rejected_removed",
+  "performance_claim": true,
+  "source_revision": "aedb451d0d1a71d4a8aa81a35de309073579bfd3",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "BF16"
+  },
+  "change": {
+    "control": "one local256/grid80 exact head RMSNorm+RoPE+KV-write launch followed by retained local512/grid40 output-sharded V128 SWA attention",
+    "candidate": "one cooperative local512/grid40 launch; two 256-thread cohorts per block reproduce all 80 head-prelude owners, grid-sync, then execute the unchanged retained attention body",
+    "expected_decode_dispatch_reduction": 36,
+    "arithmetic": "head reduction tree, RoPE, BF16 KV conversion, metadata, QK, softmax, denominator, scalar F32 PV, gate, and stores are unchanged"
+  },
+  "correctness": {
+    "red": "ImportError on absent fused wrapper",
+    "green_test": "tests/test_laguna_head_kv_fusion.py",
+    "green_result": "3 passed",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "shape": "72Q/8KV/D128/SWA512",
+    "protocol": "5 warmups, 9 counterbalanced samples, 50 launch chains/sample",
+    "control_median_ms": 0.0345342206954956,
+    "candidate_median_ms": 0.0392959189414978,
+    "latency_change_percent": 13.788347181736981,
+    "candidate_wins": 0,
+    "samples": 9,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-fused-head-kv-output-sharded-vstage128 --warmups 5 --samples 9 --burst 50 --allow-dirty --output /tmp/laguna-swa-fused-head-kv-9x50.json",
+    "raw_sha256": "5f3d27ea1d6319f69470dbf9cd4c94b15cdc6449e6d75b0abbec14528245bfd1"
+  },
+  "cleanup": {
+    "kernel_removed": true,
+    "wrapper_removed": true,
+    "cooperative_launch_helper_removed": true,
+    "test_extension_removed": true,
+    "leaf_harness_seam_removed": true,
+    "runtime_route_attempted": false,
+    "production_decode_tok_s": 20.830515
+  },
+  "decision": "Reject at the leaf gate. The cooperative launch and grid-wide barrier cost more than the eliminated head-prelude dispatch. Do not fuse a scalar exact producer around attention without eliminating the grid synchronization boundary."
+}
