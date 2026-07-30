@@ -193224,3 +193224,50 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-rowpair-activation-reuse-rejected.json`.
+
+## 2026-07-30 15:35 JST — Retain exact T16 dense/shared Q4 decode sidecars
+
+- A fresh same-GGUF llama.cpp Vulkan logger audit corrects the next bottleneck
+  ranking: its dense/shared quant chain is about **1.999889 ms/token**, while
+  the post-dense-global hipEngine census spends **3.517759 ms/token** there.
+  The resulting **+1.517870 ms/token** gap is larger than the remaining
+  selected gate/up, attention, or selected-down gaps. Vulkan's compact
+  coefficient consumption, rather than its API, is the actionable difference.
+- Keep the production pack8 layout as prefill owner and materialize additive
+  `q4_k_t16_v1` `decode_tiles` only for the 96 rank-2 Q4 dense/shared gate and
+  up weights on gfx1151. Admission now charges their **214,597,632 bytes**
+  explicitly; tracked resident bytes move
+  **78,807,922,708 -> 79,022,520,340**. Cache fingerprints and peer backends
+  remain unchanged.
+- Add a local32 fused gate/up plus SiLU T16 owner. It preserves the pack8
+  kernel's eight-contiguous-K lane ownership, per-column FMA sequence,
+  wave32 tree, independent BF16 gate/up round trips, and final BF16 output.
+  The registered pack8 owner remains the runtime rollback; prefill continues
+  to use pack8.
+- RED failed on the missing wrapper. GREEN passes the production-shape
+  CPU-reference test and actual-weight BF16-bit gate. Counterbalanced 9x50
+  leaves improve shared M1 K3072/N1024
+  **0.013150 -> 0.010650 ms (-19.010%)** and dense M1 K3072/N12288
+  **0.469125 -> 0.186636 ms (-60.216%)**, with **9/9** wins and zero BF16
+  mismatches at both shapes.
+- A cached-only native trace names
+  `q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>` at
+  local32/VGPR176/SGPR128/LDS0/scratch0. Trace SHA-256 is
+  `dd0543e2...6c2bddd`; no compiler ran under the profiler.
+- All seven same-resident p512/d128 pairs improve:
+  **21.311596 -> 21.852204 tok/s (+2.53669%)**, saving
+  **1.160837 ms/token**. All 14 trajectories preserve next/final tokens
+  **2930/74107**, generated-ID SHA `94f803f7...bda32`, final position 638,
+  deterministic state, and complete allocation recovery. Prefill medians are
+  flat at **651.604/651.866 tok/s**.
+- Validation:
+  `.venv/bin/pytest -q tests/test_gguf_t16_selected_gemv_decode.py` and
+  `.venv/bin/pytest -q tests/test_laguna_gguf_materialize.py
+  tests/test_laguna_gguf_materialize_device.py
+  tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py
+  tests/test_laguna_long_context_profile.py tests/test_laguna_gguf_runner.py`
+  pass (one expected skip in the latter bundle).
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-retained.json`.
+  Next: publish tracked-clean selector-unset production, then re-profile the
+  complete decode wall before choosing the next owner.

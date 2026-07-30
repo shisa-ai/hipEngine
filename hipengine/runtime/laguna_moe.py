@@ -2510,6 +2510,7 @@ def run_laguna_moe_c1_components(
     use_selected_natural_tile8_parallel_silu_decode: bool = False,
     use_selected_down_natural_parallel_decode: bool = False,
     use_q4_pack8_dual_silu_decode: bool = False,
+    use_q4_decode_t16_sidecar: bool = True,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -2615,6 +2616,7 @@ def run_laguna_moe_c1_components(
             libraries=libraries,
             runtime=runtime,
             use_gemv_decode=True,
+            use_q4_t16_sidecar=use_q4_decode_t16_sidecar,
         )
     if not shared_silu_fused:
         shared_pair = launch_gguf_linear_pair(
@@ -2702,6 +2704,7 @@ def run_laguna_moe_c1(
     shared_pair_decode_variant: str | None = None,
     use_selected_natural_decode: bool = False,
     use_q4_pack8_dual_silu_decode: bool = False,
+    use_q4_decode_t16_sidecar: bool = True,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -2715,6 +2718,7 @@ def run_laguna_moe_c1(
         shared_pair_decode_variant=shared_pair_decode_variant,
         use_selected_natural_decode=use_selected_natural_decode,
         use_q4_pack8_dual_silu_decode=use_q4_pack8_dual_silu_decode,
+        use_q4_decode_t16_sidecar=use_q4_decode_t16_sidecar,
     )
     scratch.plan.add(
         routed.ptr,

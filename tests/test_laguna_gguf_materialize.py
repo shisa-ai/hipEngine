@@ -177,6 +177,31 @@ def test_laguna_admission_rejects_peak_over_budget_before_allocation() -> None:
         )
 
 
+def test_laguna_admission_counts_auxiliary_decode_weights_and_transient() -> None:
+    plan = _plan()
+    control = plan_laguna_memory_admission(
+        plan,
+        context_length=4_096,
+        available_bytes=256 * 2**30,
+    )
+    candidate = plan_laguna_memory_admission(
+        plan,
+        context_length=4_096,
+        available_bytes=256 * 2**30,
+        auxiliary_weight_nbytes=123_456,
+        auxiliary_loader_transient_nbytes=654_321,
+    )
+
+    assert candidate.auxiliary_weight_nbytes == 123_456
+    assert candidate.loader_transient_nbytes == 654_321
+    assert candidate.peak_required_nbytes == (
+        control.peak_required_nbytes
+        + 123_456
+        + 654_321
+        - control.loader_transient_nbytes
+    )
+
+
 def test_completed_laguna_q2_xl_dry_plan_covers_814_tensors() -> None:
     if not Q2_XL_MODEL.exists():
         pytest.skip(f"local Laguna Q2 XL GGUF not found: {Q2_XL_MODEL}")

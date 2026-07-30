@@ -32,6 +32,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+    gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+)
 from hipengine.kernels.registry import (
     KernelKey,
     is_registered,
@@ -80,6 +83,10 @@ LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = True
 # boundaries in registers before applying the existing SiLU-product
 # expression. Seven resident p512/d128 pairs are exact and all positive.
 LAGUNA_Q4_PACK8_DUAL_SILU_DECODE = True
+# Exact decode-only T16 consumers stream compact Q4 coefficients beside the
+# retained pack8 prefill layout. Actual shared/dense leaves are BF16 bit-exact
+# and improve 19.0%/60.2%; admission accounts for the bounded auxiliary bytes.
+LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR = True
 # Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
 # 2048-row projection/MoE transactions while attention and physical KV writes
 # remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
@@ -779,6 +786,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
             replace=replace,
         )
+    q4_t16_sidecar_pair_silu_key = KernelKey(
+        BACKEND,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "t16_sidecar_dual_decode_bf16_bf16_out",
+    )
+    if replace or not is_registered(q4_t16_sidecar_pair_silu_key):
+        register(
+            q4_t16_sidecar_pair_silu_key,
+            gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+            replace=replace,
+        )
 
 
 register_gfx1151_kernels()
@@ -816,6 +835,7 @@ __all__ = [
     "LAGUNA_F16_DECODE_FIXEDK",
     "LAGUNA_F16_DECODE_ONEBARRIER",
     "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",
+    "LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR",
     "LAGUNA_SELECTED_NATURAL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
