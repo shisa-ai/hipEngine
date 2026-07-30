@@ -570,8 +570,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k",
             "f32_rocblas_exact_values_bf16_f32_out",
         ),
-        # WPF-H5C/H5I production-ordered F32-weight consumers and raw-Q5/Q6
-        # composites remain gfx1100-only pending an independent gfx1151 gate.
+        # WPF-H5C/H5I production-ordered and H5L weight-major F32 consumers
+        # plus raw-Q5/Q6 composites stay gfx1100-only pending a gfx1151 gate.
         *(
             (
                 "linear",
@@ -599,6 +599,26 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             if quant != "gguf_q6_k"
             or (col_tile, row_batch) in {(8, 4), (16, 4), (16, 5)}
             for output_dtype in ("bf16", "f32")
+        ),
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (8, 4, "bf16"),
+                (8, 12, "bf16"),
+                (16, 5, "bf16"),
+                (12, 8, "bf16"),
+                (16, 5, "f32"),
+                (8, 10, "f32"),
+            )
         ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.

@@ -1,0 +1,235 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_exact_f32_weight_major_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_exact_candidate_admitted_runtime_owner_pending",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "base_revision": "10d4fd9d4",
+    "source": "net-new in-tree workgroup traversal of the retained exact ordered F32-weight body; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "91c10513bc436d5dde95d86b9e75fdcda73d2bb1a0ba3621cd8770522c6217a2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "f3e987c5b4ecc7921403ca44e19640d2d3e1512b218811a030c7d38a724111a5",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "030a791cafe49ab16a3a3a7eb663ee1104ab161011d5699dd0255d57a16f3f9e",
+      "tests/test_gguf_q5_k_f32_rocblas_prefill.py": "71b4d787f1402a0106e8839da4a8601a17b63bf2484f4052fa0cd43ac465c1ad"
+    }
+  },
+  "candidate": {
+    "producer": "unchanged local64 exact raw-Q5-to-row-major-F32 expansion into the existing caller-owned projection-local plane",
+    "consumer": "local128 ordered consumer with row group as the fast linear workgroup dimension, preserving per-thread K ownership, scalar fmaf sequence, wave32 shuffle tree, serial wave-0..3 sum, and BF16/F32 store",
+    "mapping": "row_group = blockIdx.x % row_groups; output_tile = blockIdx.x / row_groups",
+    "retained_variants": [
+      {"output_dtype": "bf16", "columns": 8, "rows": 4},
+      {"output_dtype": "bf16", "columns": 8, "rows": 12},
+      {"output_dtype": "bf16", "columns": 16, "rows": 5},
+      {"output_dtype": "bf16", "columns": 12, "rows": 8},
+      {"output_dtype": "f32", "columns": 16, "rows": 5},
+      {"output_dtype": "f32", "columns": 8, "rows": 10}
+    ],
+    "removed_after_screen": [
+      {"output_dtype": "f32", "columns": 12, "rows": 4, "reason": "N48 wall-clock regression"},
+      {"output_dtype": "f32", "columns": 8, "rows": 4, "reason": "N72 final-source event/wall result conflicted with the first marginal both-clock result"}
+    ],
+    "persistent_weight_sidecar_bytes": 0,
+    "max_projection_local_workspace_bytes": 150994944,
+    "unfused_chain_registered": true,
+    "gfx1151_fail_closed": true,
+    "production_policy_changed": false
+  },
+  "protocol": {
+    "claim_scope": "actual-M512 Q5_K producer-plus-consumer family only; not end-to-end throughput or a production-default claim",
+    "rows": 512,
+    "unique_configurations": 8,
+    "production_invocations": 235,
+    "candidate_invocations": 188,
+    "fallback_invocations": 47,
+    "control": "retained H5G exact ordered F32-weight geometry with output-tile-fast workgroup traversal",
+    "candidate_timing": "inclusive unchanged exact F32 producer plus exact weight-tile-major consumer",
+    "selected_policy": "weight-major on all four BF16 roles and F32 N6144/N9216; retained H5G traversal on F32 N48/N72",
+    "actual_model_weights": true,
+    "deterministic_bf16_input": true,
+    "warmups_per_arm": 5,
+    "counter_rotated_repetitions": 15,
+    "launches_per_sample": 5,
+    "timing": "HIP-event and synchronized-wall medians summed across the actual eight-shape/235-call inventory",
+    "four_k_or_longer_run_performed": false
+  },
+  "aggregate_ms": {
+    "h5g_weighted_event": 882.9626931577922,
+    "selected_policy_weighted_event": 486.8924283415079,
+    "event_speedup": 1.8134656481831326,
+    "event_reduction_percent": 44.85696483956695,
+    "h5g_weighted_wall": 887.3639842960984,
+    "selected_policy_weighted_wall": 474.3483867030591,
+    "wall_speedup": 1.8707009640397196,
+    "wall_reduction_percent": 46.544101958416086,
+    "retained_candidate_roles_faster_on_both_clocks": true,
+    "exact_fallback_configurations": 2,
+    "frozen_h5j_request_kernel_sum_ms": 2532.019736,
+    "modeled_kernel_sum_after_measured_event_delta_ms": 2135.949471183716,
+    "interpretation": "The exact role policy saves 396.070 ms from the final-source Q5 family screen. Applying only that measured family delta models the unchanged H5J request at 2135.949 ms; this is not a tok/s forecast."
+  },
+  "roles": [
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [1024, 3072],
+      "calls": 92,
+      "selected_route": "weight_major_8x4",
+      "h5g_event_ms": 0.6136928081512452,
+      "selected_event_ms": 0.44542717933654785,
+      "event_speedup": 1.37776237423438,
+      "h5g_wall_ms": 0.528021389618516,
+      "selected_wall_ms": 0.44224620796740055,
+      "wall_speedup": 1.1939534587426879,
+      "workspace_bytes": 12582912
+    },
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [12288, 3072],
+      "calls": 2,
+      "selected_route": "weight_major_8x12",
+      "h5g_event_ms": 13.2905029296875,
+      "selected_event_ms": 7.6131103515625,
+      "event_speedup": 1.7457389051190864,
+      "h5g_wall_ms": 13.374784961342812,
+      "selected_wall_ms": 7.510526990517974,
+      "wall_speedup": 1.780805125689376,
+      "workspace_bytes": 150994944
+    },
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [3072, 6144],
+      "calls": 12,
+      "selected_route": "weight_major_16x5",
+      "h5g_event_ms": 3.1846004486083985,
+      "selected_event_ms": 2.9006626129150392,
+      "event_speedup": 1.0978872325340914,
+      "h5g_wall_ms": 3.482630802318454,
+      "selected_wall_ms": 2.6960036251693964,
+      "wall_speedup": 1.2917752668450628,
+      "workspace_bytes": 75497472
+    },
+    {
+      "output_dtype": "bf16",
+      "shape_n_k": [3072, 9216],
+      "calls": 35,
+      "selected_route": "weight_major_12x8",
+      "h5g_event_ms": 10.08783187866211,
+      "selected_event_ms": 5.379082489013672,
+      "event_speedup": 1.8753815170646047,
+      "h5g_wall_ms": 10.16622819006443,
+      "selected_wall_ms": 5.25021543726325,
+      "wall_speedup": 1.9363449579439966,
+      "workspace_bytes": 113246208
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [48, 3072],
+      "calls": 12,
+      "selected_route": "h5g_ordered_12x4",
+      "h5g_event_ms": 0.027968201041221618,
+      "selected_event_ms": 0.027968201041221618,
+      "h5g_wall_ms": 0.03153039142489433,
+      "selected_wall_ms": 0.03153039142489433,
+      "workspace_bytes": 589824
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [72, 3072],
+      "calls": 35,
+      "selected_route": "h5g_ordered_8x4",
+      "h5g_event_ms": 0.040168198943138125,
+      "selected_event_ms": 0.040168198943138125,
+      "h5g_wall_ms": 0.04330058582127094,
+      "selected_wall_ms": 0.04330058582127094,
+      "workspace_bytes": 884736
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [6144, 3072],
+      "calls": 12,
+      "selected_route": "weight_major_16x5",
+      "h5g_event_ms": 3.3835704803466795,
+      "selected_event_ms": 2.8598466873168946,
+      "event_speedup": 1.1831300241906122,
+      "h5g_wall_ms": 3.679509414359927,
+      "selected_wall_ms": 2.621920593082905,
+      "wall_speedup": 1.4033641690244665,
+      "workspace_bytes": 75497472
+    },
+    {
+      "output_dtype": "f32",
+      "shape_n_k": [9216, 3072],
+      "calls": 35,
+      "selected_route": "weight_major_8x10",
+      "h5g_event_ms": 10.465379333496093,
+      "selected_event_ms": 4.901468658447266,
+      "event_speedup": 2.135151739766794,
+      "h5g_wall_ms": 10.525111202150583,
+      "selected_wall_ms": 4.833547584712505,
+      "wall_speedup": 2.1775126897352366,
+      "workspace_bytes": 113246208
+    }
+  ],
+  "correctness": {
+    "all_actual_role_outputs_byte_exact": true,
+    "rows_17_and_33_tail_fixtures_byte_exact": true,
+    "bf16_and_f32_outputs_checked": true,
+    "raw_q5_to_f32_values_unchanged": true,
+    "production_k_fma_wave_and_store_order_preserved": true,
+    "kl_divergence": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "peak_tracked_bytes": 205258752,
+    "peak_allocations": 5,
+    "total_allocated_bytes": 773643776
+  },
+  "cached_trace": {
+    "scope": "complete pre-shrink geometry resource gate",
+    "consumer_resources": "local128/VGPR72-200/SGPR128/LDS512-1536/scratch0, exactly matching each retained H5G geometry",
+    "trace_csv_sha256": "f3c42b19112f7dc3ed8839f6d42c685e6682c7694a709d47e665dfae51c763e1",
+    "no_compiler_under_profile": true
+  },
+  "lifecycle": {
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "promotion_blockers": [
+    "no package role mapping owns the weight-major variants yet",
+    "complete M512 hidden/logit/KV repeat validation has not run",
+    "cached integrated physical-symbol trace has not run",
+    "clean counter-ordered 512/1K/4K timing has not run"
+  ],
+  "source_artifacts": {
+    "initial_eight_role_json_sha256": "b1d70720409f4059d720502cd93ccc9c56d218abcddee7d206f7b8199ca848d9",
+    "initial_eight_role_harness_sha256": "d24c3c281595d3ff48accd4660987e98a6621e9e218797cfdb9b84969bc209ea",
+    "final_six_variant_json_sha256": "0aba3cdf8e8cee0106c3a6eb34f4b0bebf493f84179c7688a10de54424db788a",
+    "final_six_variant_harness_sha256": "0fa1362c4a16343b01b7c0f36ca2ab67d8a21fbf9c1d3bff53a8ed06e7a6b121",
+    "final_six_variant_stdout_sha256": "121f732d0f5b93cbc695b405025412218df99979776ddfd5b4223be7ccac5b23",
+    "final_six_variant_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "commands": {
+    "final_actual_roles": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5l_q5_weight_major_role_screen.py",
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_q5_k_f32_rocblas_prefill.py -k 'registry_build_scope_and_workspace_contract or rejects_invalid_shapes_before_loading_libraries or ordered_geometries_match_raw_coltile_bytes'"
+  },
+  "decision": {
+    "standalone_candidate_admitted": true,
+    "runtime_default_changed": false,
+    "next_action": "Add a bounded default-off package mapping for only the six exact role keys through the existing F32 plane, preserve F32 N48/N72 and every miss on H5G, then run complete M512 state, cached integrated tracing, and clean 512/1K/4K gates."
+  }
+}

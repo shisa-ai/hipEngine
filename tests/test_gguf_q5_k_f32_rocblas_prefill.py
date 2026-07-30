@@ -50,6 +50,14 @@ _ORDERED_GEOMETRIES = (
     (12, 8),
 )
 _Q6_ORDERED_GEOMETRIES = ((8, 4), (16, 4), (16, 5))
+_ORDERED_WEIGHT_MAJOR_GEOMETRIES = (
+    (8, 4, "bf16"),
+    (8, 12, "bf16"),
+    (16, 5, "bf16"),
+    (12, 8, "bf16"),
+    (16, 5, "f32"),
+    (8, 10, "f32"),
+)
 
 
 def _hip_available() -> bool:
@@ -282,6 +290,45 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
                     KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
                 )
 
+    for col_tile, row_batch, output_dtype in _ORDERED_WEIGHT_MAJOR_GEOMETRIES:
+        suffix = (
+            f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+            f"{output_dtype}_out"
+        )
+        primitive = getattr(
+            q5_f32,
+            f"gguf_q5_k_f32_weight_ordered_weight_major_{suffix}",
+        )
+        composite = getattr(
+            q5_f32,
+            f"gguf_q5_k_f32_ordered_weight_major_{suffix}",
+        )
+        primitive_key = KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "f32_weight",
+            f"ordered_weight_major_{suffix}",
+        )
+        composite_key = KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k",
+            f"f32_ordered_weight_major_{suffix}",
+        )
+        for key, function in (
+            (primitive_key, primitive),
+            (composite_key, composite),
+        ):
+            assert resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            ) is function
+            assert not is_registered(
+                KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
+            )
+
     artifact = q5_f32.plan_gguf_q5_k_f32_rocblas_prefill_build(
         compiler_version="test"
     )
@@ -294,6 +341,8 @@ def test_q5_f32_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert "torch::Tensor" not in source
     assert "__global__ void gguf_q5_k_dequantize_f32_exact_kernel" in source
     assert "gguf_q5_k_f32_weight_ordered_coltile_kernel" in source
+    assert "gguf_q5_k_f32_weight_ordered_weight_major_coltile_kernel" in source
+    assert "row_group = workgroup % row_groups" in source
     assert "COL_TILE * ROW_BATCH == 32" in source
     assert "COL_TILE * ROW_BATCH == 48" in source
     assert "COL_TILE * ROW_BATCH == 64" in source
@@ -379,6 +428,10 @@ def test_q5_f32_rocblas_rejects_invalid_shapes_before_loading_libraries() -> Non
         )
     with pytest.raises(ValueError, match="divisible by 4"):
         q5_f32.gguf_q5_k_f32_ordered_coltile4_rowbatch8_bf16_bf16_out(
+            1, 2, 3, 4, 17, 512, 66
+        )
+    with pytest.raises(ValueError, match="divisible by 8"):
+        q5_f32.gguf_q5_k_f32_ordered_weight_major_coltile8_rowbatch4_bf16_bf16_out(
             1, 2, 3, 4, 17, 512, 66
         )
     with pytest.raises(ValueError, match="multiple of 256"):
@@ -641,30 +694,44 @@ def test_q5_f32_ordered_geometries_match_raw_coltile_bytes(rows: int) -> None:
                 runtime=runtime,
             )
             for col_tile, row_batch in _ORDERED_GEOMETRIES:
-                candidate = getattr(
-                    q5_f32,
-                    f"gguf_q5_k_f32_ordered_coltile{col_tile}_"
-                    f"rowbatch{row_batch}_bf16_{output_dtype}_out",
-                )
-                candidate(
-                    x_dev.ptr,
-                    weight_dev.ptr,
-                    actual_dev.ptr,
-                    weight_f32_dev.ptr,
-                    rows,
-                    in_features,
-                    out_features,
-                    library=ordered_library,
-                    runtime=runtime,
-                )
-                runtime.device_synchronize()
-                copy_device_to_host(
-                    host_array_ptr(actual),
-                    actual_dev,
-                    actual.nbytes,
-                    runtime=runtime,
-                )
-                np.testing.assert_array_equal(actual, expected)
+                candidates = [
+                    getattr(
+                        q5_f32,
+                        f"gguf_q5_k_f32_ordered_coltile{col_tile}_"
+                        f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                    )
+                ]
+                if (col_tile, row_batch, output_dtype) in (
+                    _ORDERED_WEIGHT_MAJOR_GEOMETRIES
+                ):
+                    candidates.append(
+                        getattr(
+                            q5_f32,
+                            "gguf_q5_k_f32_ordered_weight_major_"
+                            f"coltile{col_tile}_rowbatch{row_batch}_"
+                            f"bf16_{output_dtype}_out",
+                        )
+                    )
+                for candidate in candidates:
+                    candidate(
+                        x_dev.ptr,
+                        weight_dev.ptr,
+                        actual_dev.ptr,
+                        weight_f32_dev.ptr,
+                        rows,
+                        in_features,
+                        out_features,
+                        library=ordered_library,
+                        runtime=runtime,
+                    )
+                    runtime.device_synchronize()
+                    copy_device_to_host(
+                        host_array_ptr(actual),
+                        actual_dev,
+                        actual.nbytes,
+                        runtime=runtime,
+                    )
+                    np.testing.assert_array_equal(actual, expected)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
