@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_swa_exact_score_recompute_screen",
+  "status": "rejected_removed",
+  "date": "2026-07-30",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Qwen3-Coder-480B-A35B-Instruct",
+    "quant": "Q4_K_M",
+    "gguf": "/data/models/gguf/Qwen3-Coder-480B-A35B-Instruct-Q4_K_M.gguf"
+  },
+  "based_on": {
+    "revision": "6f93be0437cfcf381caa8813a2628b4e75d08867",
+    "production_decode_tok_s": 22.141787,
+    "production_ms_per_token": 45.163473,
+    "production_model_kernels_per_token": 482
+  },
+  "candidate": {
+    "description": "Keep the exact dense-ring local512 mixed40 owner. Compute the exact producer maximum without publishing the 3x512 F32 score plane, then recompute each score exactly once in its output-sharded V128 stage while otherwise-idle waves load V.",
+    "intended_saving": "remove 6144 bytes of score-plane LDS and all later score-plane reads",
+    "preserved": [
+      "ordered F32 QK products and reduction tree",
+      "scaled producer maximum",
+      "compiler expf",
+      "logical-slot denominator order",
+      "per-dimension scalar F32 PV FMA order",
+      "softplus gate and BF16 store"
+    ]
+  },
+  "correctness": {
+    "red": "focused wrapped-ring test failed first on the absent wrapper",
+    "implementation_guard": "the first implementation incorrectly treated wave lanes as independent QK scores; the focused oracle caught it before timing",
+    "green": "the corrected one-score-per-wave recompute passed the wrapped full-ring oracle",
+    "context_f32_byte_exact": true,
+    "context_max_abs_error": 0.0,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "leaf": {
+    "shape": "SWA capacity/window/scan 512, Q72/KV8/D128, 40 workgroups, local512, V-stage128",
+    "protocol": "9 paired samples, 5 warmups, burst 50, cache-only",
+    "control_median_ms_per_layer": 0.02111870050430298,
+    "candidate_median_ms_per_layer": 0.07274727821350098,
+    "latency_change_percent": 244.46853488299897,
+    "result": "decisive regression"
+  },
+  "commands": {
+    "correctness_after_removal": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-dense-ring-recompute-vstage128 --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-swa-dense-ring-recompute-leaf.json"
+  },
+  "raw": {
+    "path": "/tmp/laguna-swa-dense-ring-recompute-leaf.json",
+    "sha256": "dcd166deb597a78efb036fa6206d0fa8a88dfb430e78dd8f0527785caabfe94e"
+  },
+  "decision": {
+    "reason": "The exact second QK pass costs 3.44x the retained leaf. Reduced LDS cannot repay serialized scalar QK recomputation and a second K read.",
+    "action": "remove kernel specialization, export, wrapper, registry entry, test seam, and leaf selector before runtime integration",
+    "do_not_retry": "Do not remove the exact score plane by scalar QK recomputation. Revisit score-plane elimination only with a tensorized online QK/PV consumer that does not repeat scalar dot products.",
+    "production_changed": false
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_report",
+    "reason": "/home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "external_source_copied": false
+  }
+}

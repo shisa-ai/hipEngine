@@ -6946,6 +6946,30 @@ The remaining attention sequence is:
      fused consumer:
      [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-current-gated-only-leaf-rejected.json).
 
+123. Remove the exact SWA score plane by recomputing QK once in the
+     output-sharded V-stage consumer. **Rejected and removed at the leaf
+     stop:** the dense-ring producer still computes the exact scaled maximum,
+     but no longer publishes the **3 x 512 F32 / 6 KiB** score plane. Each
+     output wave instead recomputes its 32-score shard serially while the
+     otherwise-idle waves load the V128 tile. This is distinct from the
+     rejected GQA9/D32 owner: every score is recomputed once, not four times,
+     and query ownership, grid breadth, denominator order, and PV association
+     stay unchanged.
+
+     RED fails on the absent wrapper. The first implementation then exposes a
+     useful correctness constraint: one wave reduces one QK score, not 32
+     independent lane scores. The wrapped-ring oracle catches that error
+     before timing. After correcting the owner to one exact score at a time,
+     F32 context and gated BF16 are byte-exact with zero error/mismatches.
+     Performance is nevertheless decisive:
+     **0.0211187 -> 0.0727473 ms/layer (+244.47%)**. A second exact scalar QK
+     pass and K read overwhelm the 6-KiB LDS saving. Remove the complete
+     specialization/wrapper/registry/test/harness seam before runtime
+     integration; production remains **22.141787 tok/s**. Do not retry scalar
+     score recomputation. Score-plane elimination requires a tensorized online
+     QK/PV consumer that never publishes or recomputes the scalar plane:
+     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-exact-score-recompute-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
