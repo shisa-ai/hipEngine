@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_dense_initial_cached_attention_production",
+  "date": "2026-07-31",
+  "status": "retained_exact_package_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "matrix512/attention128; complete M128 first-fill starts 0/128/256/384; 36 SWA and 12 global layers; BF16 KV"
+  },
+  "lineage": {
+    "target_revision": "d0258060e",
+    "leaf_red_revision": "fb0a219a3",
+    "leaf_revision": "b842eb377",
+    "runtime_red_revision": "35a348c23",
+    "runtime_qualification_revision": "23668fc54",
+    "source_default_red_revision": "3e2229e62",
+    "source": "net-new in-tree compile-time first-fill specializations of retained H5R/H5U exact bodies; no external device body copied",
+    "candidate_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json",
+    "candidate_artifact_sha256": "ae2e637cff99227b3989548d41badc18b1f4d359774842f8df41e1b8edd35e95",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json",
+    "target_artifact_sha256": "ef50de15ab448292234269210c060c48c7b94cca563fe5c6c37aa18505d6814d",
+    "preceding_canonical_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json",
+    "preceding_canonical_artifact_sha256": "9f1fa83e91bee1f35a80261adbecea46bb367b9104f8116f8de91b0a82337799",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "4908716c3fb2ca3cd87d1dcad280de8474650aeb20b55da17d6f14f3d902d4ad",
+      "hipengine/runtime/laguna_gguf_runner.py": "184f3bef57164068fa8f8e9e9227cc43db1774e06550cbfa13c48b2dbe07ae5e",
+      "hipengine/runtime/laguna_kv.py": "dd689394bac9e188e139e1850336fd7723e1f4bf3a9433693f9e3a7f2d4c1728",
+      "tests/test_laguna_h5r_runtime_policy.py": "73e513ed6e68b404c7dd903e3c07e4a4e14ac0ecbd92f1794e4687e6309dd0eb",
+      "tests/test_laguna_h6a_runtime_policy.py": "2f22d617f7b1ebdc52d2ea5d6749ddd2cc24de59bd8a0522f57b7628b0bdb140",
+      "tests/test_laguna_h6a_source_default.py": "e1a474f11db2febca3e8043eda5ec0ddd062a4d60caf394ed440f291e2354dd4"
+    }
+  },
+  "production_policy": {
+    "capability": "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+    "selected_variants": {
+      "global_m128_c4096_first_fill_exact": "global_context_rows_dense_initial_cached_exact_spans",
+      "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+    },
+    "retained_h5r_source_map": {
+      "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_cached_exact_spans"
+    },
+    "retained_h5r_and_h5u_registered_rollbacks": true,
+    "explicit_selector_shape_metadata_registration_backend_misses_fail_closed": true,
+    "gfx1151_fail_closed": true,
+    "public_or_session_selector": false
+  },
+  "ownership": {
+    "new_kernel_bodies_in_promotion": 0,
+    "new_launches_per_request": 0,
+    "new_allocations": 0,
+    "workspace_bytes": 161120256,
+    "persistent_sidecar_bytes": 0
+  },
+  "correctness": {
+    "leaf_all_starts_byte_and_cpu_exact": true,
+    "natural_m512_kl_mean": 0.0,
+    "natural_m512_kl_max": 0.0,
+    "natural_m512_top1_agreement": 1.0,
+    "complete_state_and_repeat_byte_exact": true,
+    "exact_hidden_boundaries": 48,
+    "complete_kv_and_live_spans_exact": true,
+    "selector_unset_all_repetitions_exact": true,
+    "selector_unset_all_finite": true,
+    "all_lifecycles_recovered": true
+  },
+  "production_identical_cached_trace": {
+    "reuse_rationale": "source publication changes only the two dense-initial map values to the same H6A keys used in candidate trace segments",
+    "dispatches_per_request": 2050,
+    "q5_dispatches_per_request": 658,
+    "q6_dispatches_per_request": 289,
+    "h6a_global_calls": 48,
+    "h6a_swa_calls": 144,
+    "attention_median_ms": 169.222282,
+    "attention_schedule_median_ms": 170.0855705,
+    "kernel_sum_median_ms": 1560.816813,
+    "span_median_ms": 1581.620989,
+    "attention_schedule_reduction_percent": 33.2935427522755,
+    "kernel_sum_reduction_percent": 4.108833755566177,
+    "span_reduction_percent": 4.364803175501109,
+    "resources": "global local256/VGPR40/SGPR128/LDS0/scratch0; SWA local32/VGPR64/SGPR128/LDS0/scratch0",
+    "no_compiler_under_profile": true,
+    "trace_sha256": "ddfafc7e7148ff05a2cc76cbd30b6aebbb51c0d4cd2697e03ec9bad4cd7bde17",
+    "summary_sha256": "2cba60af59b908c01247a9c8b466826e870ee091611ece372125843332b56468"
+  },
+  "selector_unset_publication": {
+    "protocol": "source-default H6A versus scoped empty-map H5R/global-baseline rollback; one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length under one process-level HIP queue cap",
+    "control_tok_s": {
+      "512": 307.1577246200327,
+      "1024": 260.1614022060164,
+      "4096": 173.3747918891893
+    },
+    "h6a_tok_s": {
+      "512": 312.78080095348986,
+      "1024": 261.5914009011929,
+      "4096": 173.9969732292464
+    },
+    "same_session_gain_percent": {
+      "512": 1.830680423360076,
+      "1024": 0.5496582825319063,
+      "4096": 0.3588649383670317
+    },
+    "paired_h6a_wins": {
+      "512": 3,
+      "1024": 3,
+      "4096": 3
+    },
+    "exact_all_repetitions": true,
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "workspace_bytes": 161120256
+  },
+  "canonical_dashboard": {
+    "preceding_h5z_tok_s": {
+      "512": 307.65811124387653,
+      "1024": 259.9467772477405,
+      "4096": 173.56200010215073
+    },
+    "current_h6a_tok_s": {
+      "512": 312.78080095348986,
+      "1024": 261.5914009011929,
+      "4096": 173.9969732292464
+    },
+    "gain_percent": {
+      "512": 1.6650592077361637,
+      "1024": 0.6326770698468875,
+      "4096": 0.2506154151482809
+    },
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "preceding_canonical_m512_gap": 2.256348767121337,
+    "current_canonical_m512_gap": 2.2193945340757164,
+    "shape_note": "canonical rows use independently allocated sessions; rerun exact C4096/direct-M512 H6A before updating the comparator-shaped row"
+  },
+  "commands": {
+    "source_default_clean": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u /tmp/laguna_wpfh6a_dense_initial_preappend_source_default_clean_512_4k.py",
+    "complete_state_reused": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u /tmp/laguna_wpfh6a_dense_initial_preappend_m512_full_state.py",
+    "integrated_trace_reused": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6a-integrated-paired-rocprof --output-file h6a-paired -- python3 -u /tmp/laguna_wpfh6a_dense_initial_preappend_trace_integrated_paired.py",
+    "broader_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_h6a_source_default.py tests/test_laguna_h6a_runtime_policy.py tests/test_laguna_h6a_dense_initial_cached_exact.py tests/test_laguna_h5u_global_cached_exact.py tests/test_laguna_h5r_cached_exact.py tests/test_laguna_h5r_runtime_policy.py tests/test_laguna_h5n_dense_first_fill.py tests/test_laguna_kv_attention.py tests/test_gfx1151_backend.py"
+  },
+  "raw_evidence_sha256": {
+    "broader_tests_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "broader_tests_stdout": "19da9087d92935b2064df20f632357e22786ce3e50fd7075c1f2ef56c47433ca",
+    "source_default_harness": "0909a7d335d2573b888bc21abfcc8238465235909c6c4c48770000500e1e2636",
+    "source_default_json": "6369273cc1ca82a4ab099237bec1d16cb07b08d4cf85ba15007e9a51e61271c9",
+    "source_default_stdout": "9371ba3aeeda1328ef7a337ddad4a7e6797ee60f32ed41de7db17278d338a1a5",
+    "source_default_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "runtime_state_json": "0da991d12677c1ccb7ac5f81bd188700ee1c4d372596249e6d29ceb636b9060d",
+    "runtime_trace_csv": "ddfafc7e7148ff05a2cc76cbd30b6aebbb51c0d4cd2697e03ec9bad4cd7bde17",
+    "runtime_trace_summary": "2cba60af59b908c01247a9c8b466826e870ee091611ece372125843332b56468",
+    "runtime_default_off_json": "129aabe0ab8f345f706f9442ad906a691d8504fc7f477ef2ae2dbd246251cec9"
+  },
+  "decision": {
+    "promoted_package_default": true,
+    "runtime_default_changed": true,
+    "retained_h5r_h5u_rollbacks": true,
+    "new_kernel_body_or_allocation": false,
+    "gfx1151_policy_changed": false,
+    "next_action": "Reprofile the promoted comparator-shaped C4096/direct-M512 request, rerank exact family gaps against matched llama.cpp HIP, and select the next distinct exact target."
+  }
+}

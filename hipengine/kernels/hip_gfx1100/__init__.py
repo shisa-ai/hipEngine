@@ -17,11 +17,18 @@ LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_sourcequal_exact_spans"
     ),
 }
-# WPF-H6A's exact dense-initial cached-only leaves are runtime-qualified but
-# remain empty-by-default until the separate selector-unset publication. The
-# map preserves independent global/SWA selector ownership while source
-# production remains on H5R's SWA-only role below.
-LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {}
+# WPF-H6A promotes both exact dense-initial cached-only roles after KL0 complete
+# state, exact 144-SWA/48-global integrated topology, and positive default-off
+# 512/1K/4K gates. H5R/H5U remain registered rollback leaves; explicit global
+# and SWA selectors plus shape/metadata/registration/backend misses fail closed.
+LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
+    "global_m128_c4096_first_fill_exact": (
+        "global_context_rows_dense_initial_cached_exact_spans"
+    ),
+    "swa_qrow4_m128_c512_no_wrap_exact": (
+        "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+    ),
+}
 # WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
 # all 144 physical append-before-attention calls, and positive default-off clean
 # 512/1K/4K timing. The package-only role map restricts schedule reordering to

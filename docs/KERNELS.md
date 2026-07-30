@@ -974,9 +974,14 @@ attention topology, moving attention schedule/request-sum/span
 (-33.294%/-4.109%/-4.365%)**. Resources remain global local256/VGPR40/scratch0
 and SWA local32/VGPR64/scratch0; no compiler runs under profiling. Default-off
 512/1K/4K improves **307.071/259.710/173.388 -> 312.331/261.467/173.954 tok/s
-(+1.713%/+0.677%/+0.326%)**, 3/3 wins each. Source production remains H5R/H5Y/
-H5Z pending the separate selector-unset publication
-([H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
+(+1.713%/+0.677%/+0.326%)**, 3/3 wins each. Selector-unset confirms
+**307.158/260.161/173.375 -> 312.781/261.591/173.997 tok/s
+(+1.831%/+0.550%/+0.359%)**, again 3/3, promoting H6A at canonical
+**312.781/261.591/173.997 tok/s (+1.665%/+0.633%/+0.251% over H5R/H5Y/H5Z)**.
+The canonical M512 gap narrows **2.25635x -> 2.21939x**; matched C4096/M512
+remains pre-promotion **311.622 tok/s** pending immediate reprofile
+([H6A production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
+[H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
 [post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
 [H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
 [H5Z candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
