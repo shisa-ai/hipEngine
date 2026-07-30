@@ -37,6 +37,11 @@ _ORDERED_GEOMETRIES = (
     (12, 8),
 )
 _Q6_ORDERED_GEOMETRIES = frozenset(((8, 4), (16, 4), (16, 5)))
+_Q6_ORDERED_WEIGHT_MAJOR_GEOMETRIES = (
+    (16, 5, "bf16"),
+    (16, 4, "bf16"),
+    (16, 5, "f32"),
+)
 _ORDERED_WEIGHT_MAJOR_GEOMETRIES = (
     (8, 4, "bf16"),
     (8, 12, "bf16"),
@@ -529,6 +534,7 @@ _ORDERED_COMPOSITES = {}
 _Q6_ORDERED_COMPOSITES = {}
 _ORDERED_WEIGHT_MAJOR_PRIMITIVES = {}
 _ORDERED_WEIGHT_MAJOR_COMPOSITES = {}
+_Q6_ORDERED_WEIGHT_MAJOR_COMPOSITES = {}
 _ORDERED_EXPORT_NAMES = []
 for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
     for _output_dtype in ("bf16", "f32"):
@@ -599,6 +605,17 @@ for _col_tile, _row_batch, _output_dtype in _ORDERED_WEIGHT_MAJOR_GEOMETRIES:
     _ORDERED_WEIGHT_MAJOR_PRIMITIVES[_key] = _primitive
     _ORDERED_WEIGHT_MAJOR_COMPOSITES[_key] = _composite
     _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
+    if _key in _Q6_ORDERED_WEIGHT_MAJOR_GEOMETRIES:
+        _q6_composite_name = f"gguf_q6_k_f32_{_variant}"
+        _q6_composite = _make_q_f32_ordered_composite(
+            _primitive,
+            gguf_q6_k_dequantize_f32_exact,
+            col_tile=_col_tile,
+        )
+        _q6_composite.__name__ = _q6_composite_name
+        globals()[_q6_composite_name] = _q6_composite
+        _Q6_ORDERED_WEIGHT_MAJOR_COMPOSITES[_key] = _q6_composite
+        _ORDERED_EXPORT_NAMES.append(_q6_composite_name)
 del _col_tile, _row_batch, _output_dtype, _variant
 del _primitive_name, _composite_name, _q6_composite_name
 del _primitive, _composite, _q6_composite, _key
@@ -772,6 +789,9 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
         composite = _ORDERED_WEIGHT_MAJOR_COMPOSITES[
             (col_tile, row_batch, output_dtype)
         ]
+        q6_composite = _Q6_ORDERED_WEIGHT_MAJOR_COMPOSITES.get(
+            (col_tile, row_batch, output_dtype)
+        )
         variant = _ORDERED_WEIGHT_MAJOR_PRIMITIVE_VARIANT.format(
             col_tile=col_tile,
             row_batch=row_batch,
@@ -792,6 +812,17 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
             composite,
             replace=replace,
         )
+        if q6_composite is not None:
+            register(
+                KernelKey(
+                    "hip_gfx1100",
+                    "linear",
+                    "gguf_q6_k",
+                    _ORDERED_COMPOSITE_VARIANT.format(variant=variant),
+                ),
+                q6_composite,
+                replace=replace,
+            )
 
 
 register_gguf_q5_k_f32_rocblas_prefill_kernels()
