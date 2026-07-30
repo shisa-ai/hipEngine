@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_q6_weight_major_composite_target",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_and_existing_primitive_transfer_target",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "b4a7dd229",
+    "source": "net-new Q6 composite reuse of already-retained in-tree H5L/H5P exact F32-weight primitives; no external device body copied",
+    "h5v_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json",
+    "h5v_rejection_artifact_sha256": "2d24058f294ddd1f36627abae23f3fa462a53ea6feea12e6cd326ea2c4dda13a",
+    "h5i_q6_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json",
+    "h5i_q6_production_artifact_sha256": "b0dc96c3ff67d591c72c5056020f5b0bfaa7245d7748697929910dcb3be03407",
+    "post_h5r_residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json",
+    "post_h5r_residual_artifact_sha256": "78ab0d31b0304e76031e094a368d70b6340aa77c51f8b041dd4b60aadbbed363",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "production_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "e2588d7f8b3aacc9b4f6945bc26a857c7aae7414db716d1efc15076a56767baa",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "2a7cf30ee1521b0450b05f907f72f5a44e39089f90bc4a350fbf6014233e1c57",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a9c9c4a05d4ef8bc875d4dfb440803f32784b29d81c00cfe6c0dab9c6cb1bb8e"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "production": {
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "next_token_id_m512": 2930,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157,
+    "request_kernel_sum_ms": 1851.695368,
+    "request_dispatches": 1862,
+    "production_changed": false
+  },
+  "current_q6_attribution": {
+    "hipengine_ms": 121.306149,
+    "hipengine_dispatches": 289,
+    "matched_llamacpp_ms": 14.919865,
+    "gap_ms": 106.386284,
+    "ratio": 8.130512507988504,
+    "share_of_total_kernel_gap_percent": 9.436454308335394,
+    "exact_q6_producers": 143,
+    "producer_ms": 1.889105,
+    "h5i_ordered_consumers": 143,
+    "h5i_ordered_consumer_ms": 90.888182,
+    "raw_exact_fallback_consumers": 3,
+    "raw_exact_fallback_ms": 28.528862,
+    "screened_role_consumers": 142,
+    "screened_role_consumer_ms": 90.843941,
+    "unscreened_h5i_f32_n72_calls": 1,
+    "unscreened_h5i_f32_n72_consumer_ms": 0.044241
+  },
+  "transfer_screen": {
+    "scope": "three production Q6 roles whose exact geometry/dtype already has an exported H5L/H5P weight-major F32-weight primitive",
+    "rows": 512,
+    "roles": 3,
+    "production_invocations": 142,
+    "control": "one exact Q6-to-F32 producer plus H5I ordered two-dimensional consumer",
+    "candidate": "the identical exact Q6-to-F32 producer plus the already-exported weight-major F32-weight primitive",
+    "warmups": 5,
+    "repetitions": 15,
+    "launches_per_sample": 5,
+    "counter_rotated": true,
+    "event_and_synchronized_wall": true,
+    "all_outputs_byte_exact": true,
+    "all_roles_both_clock_positive": true,
+    "tracked_allocations_recovered": true,
+    "aggregate": {
+      "control_event_weighted_ms": 86.30634927749634,
+      "candidate_event_weighted_ms": 68.53347249031067,
+      "event_speedup": 1.259331333162761,
+      "event_reduction_percent": 20.592780178943098,
+      "control_wall_weighted_ms": 81.78664837032557,
+      "candidate_wall_weighted_ms": 66.58714730292559,
+      "wall_speedup": 1.228264788071679,
+      "wall_reduction_percent": 18.58433053592984
+    },
+    "roles_detail": [
+      {
+        "role": "bf16_k3072_n1024",
+        "calls": 2,
+        "geometry": "coltile16_rowbatch5",
+        "event_speedup": 1.3540144986581797,
+        "wall_speedup": 1.3194886893853595,
+        "byte_exact": true
+      },
+      {
+        "role": "bf16_k1024_n3072",
+        "calls": 46,
+        "geometry": "coltile16_rowbatch4",
+        "event_speedup": 1.069705700438874,
+        "wall_speedup": 1.1882753042229035,
+        "byte_exact": true
+      },
+      {
+        "role": "f32_k3072_n1024",
+        "calls": 94,
+        "geometry": "coltile16_rowbatch5",
+        "event_speedup": 1.4075970030178109,
+        "wall_speedup": 1.2553670025625798,
+        "byte_exact": true
+      }
+    ],
+    "raw_json_sha256": "26f3904efe199ae356ee68c031a4b1ce40e6dcc2f0a4d0f0ccd737a29436e56d",
+    "harness_sha256": "d1b90557ea2c2bbf839200460e8099d9b5b652acd5edb9895eef276e944d85bd",
+    "stdout_sha256": "ca4e627ed7232355b6b6984e99e75e05c3a82f7d6e5d94e3cbc05ab644eac620",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "selected_target": {
+    "id": "WPF-H5W",
+    "name": "exact Q6 weight-major composite reuse",
+    "implementation": "register three Q6 composites that run the retained exact Q6-to-F32 producer followed by already-exported weight-major 16x5 BF16, 16x4 BF16, and 16x5 F32 primitives",
+    "new_device_bodies": 0,
+    "new_physical_symbols": 0,
+    "new_launches": 0,
+    "new_allocations": 0,
+    "new_workspace_bytes": 0,
+    "new_sidecar_bytes": 0,
+    "preserved": "Q6 raw-to-F32 bits, H5I role geometry, each logical thread's K/FMA sequence, wave32 reduction, serial wave-0..3 sum, BF16/F32 store, shared 150,994,944-byte plane, launch count, and all fallbacks",
+    "physical_resources": {
+      "bf16_coltile16_rowbatch5": "local128/VGPR168/SGPR128/LDS1536/scratch0",
+      "bf16_coltile16_rowbatch4": "local128/VGPR136/SGPR128/LDS1024/scratch0",
+      "f32_coltile16_rowbatch5": "local128/VGPR168/SGPR128/LDS1536/scratch0"
+    },
+    "fallback": "retain H5I ordered 8x4 F32 N72 and all three raw exact long-K/wide-N roles; every row/key/shape/registration/backend miss remains unchanged",
+    "modeled_event_delta_ms": 17.77287678718567,
+    "modeled_q6_ms_after_delta": 103.53327221281433,
+    "modeled_request_kernel_sum_ms_after_delta": 1833.9224912128144,
+    "model_is_not_integrated_or_throughput_claim": true
+  },
+  "closed_predecessors": {
+    "h5s_q5_persistence": "rejected all Q5 roles and is unrelated to Q6's still-two-dimensional H5I grid",
+    "h5v_q5_sequential_k": "rejected all Q5 roles; H5W retains local128 four-wave K parallelism",
+    "h5p_q5_geometry": "runtime ownership rejected at 1K; H5W changes no geometry and only reuses its exact physical 16x4 primitive",
+    "h4_q6_f16_rocblas": "changed-association source-F16 Q6 remains complete-quality rejected; H5W preserves exact H5I arithmetic",
+    "distinction": "H5L's exact weight-major workgroup linearization was promoted after H5I and was never registered or screened as a Q6 composite"
+  },
+  "required_gates": [
+    "RED before implementation for exactly three gfx1100 Q6 composite wrappers/keys, Q5 identity, package-policy immutability, and gfx1151 absence",
+    "rows17/33 plus actual-M512 byte identity and lifecycle using the composite ABI rather than direct primitive chaining",
+    "cached-only trace proving exact Q6 producer followed by the expected existing weight-major physical symbol, inherited resources, expected grids, and no compiler under rocprofv3",
+    "repeat the five-warmup/15-sample/five-launch producer-inclusive actual-role both-clock screen from final source",
+    "only after standalone admission, add bounded default-off ownership and require complete M512 state, exact 142 candidate plus one H5I plus three raw-fallback routes, unchanged 289-dispatch Q6 topology, allocation/workspace identity, and clean one-queue 512/1K/4K non-regression before package promotion"
+  ],
+  "commands": {
+    "production_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5r-preappend-queue1-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5r_preappend_trace_integrated.py",
+    "transfer_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_existing_screen.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "decision": {
+    "production_changed": false,
+    "target_selected": true,
+    "next_action": "Freeze RED, register only the three Q6 composites over existing exact weight-major primitives, and repeat exact/resource/final-source actual-role gates before any runtime owner."
+  }
+}

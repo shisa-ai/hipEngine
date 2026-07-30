@@ -51,7 +51,14 @@ VGPR. The binding producer-inclusive screen rejects every role on both clocks:
 weighted event/wall regresses **464.968/466.267 -> 492.423/493.754 ms
 (+5.905%/+5.895%)**. Serial partition replay cannot offset losing the retained
 four-wave K parallelism. Remove every candidate symbol/key/exclusion/test and
-keep H5L/H5G production. H5N's separately registered exact dense-first-fill leaf is
+keep H5L/H5G production. H5W then selects Q6's still-open weight-major axis.
+Current exact Q6 is **121.306 ms** versus matched llama.cpp HIP **14.920 ms**.
+Three already-exported H5L/H5P physical primitives cover **142/143** H5I-selected
+calls without a new device body. The actual-weight transfer screen is byte-exact,
+wins all three roles on both clocks, and moves producer-inclusive weighted
+event/wall **86.306/81.787 -> 68.533/66.587 ms
+(-20.593%/-18.584%)**. Production remains unchanged pending Q6 composite,
+resource, complete-state, and clean runtime gates. H5N's separately registered exact dense-first-fill leaf is
 byte-identical to H5M and wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
 stays local32/VGPR72/LDS0/scratch0. Complete state is KL0 and integrated
@@ -78,6 +85,7 @@ and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5R 4K remains positive; 16K+ stays closed
 below the 800/700 gate
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5W target](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
 [H5V rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
 [H5U runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
@@ -362,10 +370,14 @@ production unchanged. H5V's distinct exact local32 sequential-K4 Q5 body is
 byte-exact for all six H5L roles and remains SGPR128/scratch0 with unchanged LDS
 and only +8 VGPR. Yet **0/6** roles wins both clocks; producer-inclusive weighted
 event/wall regresses **464.968/466.267 -> 492.423/493.754 ms
-(+5.905%/+5.895%)**. Remove every candidate surface and retain H5L/H5G. Wider
-qrows, cross-head/key-split, source MMQ, and changed-association attention stay
-closed
+(+5.905%/+5.895%)**. Remove every candidate surface and retain H5L/H5G. H5W
+selects exact Q6 weight-major composite reuse after three existing primitives
+covering **142/143** selected calls remain byte-exact and both-clock positive;
+producer-inclusive weighted event/wall falls **20.593%/18.584%**. Production is
+unchanged pending composite/resource/runtime gates. Wider qrows, cross-head/key-
+split, source MMQ, and changed-association attention stay closed
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5W target](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
 [H5V rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
 [H5U runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·

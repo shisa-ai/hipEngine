@@ -215,9 +215,17 @@ numbers below.
   But **0/6** roles wins both clocks, and producer-inclusive weighted event/wall
   regresses **464.968/466.267 -> 492.423/493.754 ms
   (+5.905%/+5.895%)**. All H5V code/tests are removed and H5L/H5G remain.
-  Both short rows exceed 150 tok/s and H5R 4K remains positive; 16K+ stays
-  closed below the 800/700 stretch target
+  H5W moves to Q6's still-open weight-major axis: current exact Q6 is
+  **121.306 ms** versus llama.cpp HIP **14.920 ms**. Three already-exported
+  H5L/H5P physical primitives cover **142/143** H5I-selected calls without a
+  new device body. The actual-weight transfer screen is byte-exact, wins all
+  three roles on both clocks, and moves producer-inclusive weighted event/wall
+  **86.306/81.787 -> 68.533/66.587 ms (-20.593%/-18.584%)**. Production stays
+  unchanged pending composite/resource/runtime gates. Both short rows exceed
+  150 tok/s and H5R 4K remains positive; 16K+ stays closed below the 800/700
+  stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5W target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
   [H5V rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
   [H5V target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
   [H5U runtime rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
