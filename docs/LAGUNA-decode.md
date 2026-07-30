@@ -6585,6 +6585,33 @@ The remaining attention sequence is:
      gap. The other positive family gaps are selected gate/up **0.524828**,
      attention **0.473329**, and selected down **0.259006 ms/token**:
      [`post-sidecar census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-t16-sidecar-wall-reprofile.json).
+110. Consume compact raw Q4_K bytes for the 24 shared-down projections.
+     **Rejected and removed at the model gate:** llama.cpp's running Vulkan
+     route uses one wave64 to consume compact source Q4_K bytes for two output
+     rows, with subgroup reduction and no expanded-pack8 metadata staging.
+     Mirroring that ownership is genuinely useful in hipEngine's streaming
+     regime: across all 24 actual M1/K1024/N3072 shared-down matrices, compact
+     local32 improves **0.026292 -> 0.011258 ms/launch (-57.24%)**, while a
+     local128 sibling that reconstructs the retained pack8 accumulation
+     partitions improves **0.026292 -> 0.018443 (-29.85%)**. Compact resident
+     bytes are **42,467,328 vs 56,623,104** for expanded pack8.
+
+     Neither candidate is production-bit exact on the actual family. The
+     local32 and exact-order bodies differ at **14/73,728** and **13/73,728**
+     BF16 values respectively; forcing explicit coefficient and weight
+     rounding does not repair them. A same-resident seven-pair model gate does
+     improve decode **21.860464 -> 21.945198 tok/s (+0.3876%)**, but the
+     deterministic 128-token trajectory changes from final token **74107** /
+     SHA `94f803f7...bda32` to **81** / `4024f51c...d72f1`. The frozen
+     trajectory gate rejects it.
+
+     Remove the raw sidecar, capability/session/CLI route, diagnostic kernels,
+     wrappers, fixtures, and harness. Production remains exact and unchanged
+     at **21.851538 tok/s**. The next down screen must preserve the resident
+     coefficient arithmetic; prioritize Q6's existing compact raw path or an
+     exact coefficient-carrying consumer rather than recomputing Q4
+     coefficients:
+     [`compact-Q4 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-compact-shared-down-rejected.json).
 
 Current exact decode checkpoint:
 

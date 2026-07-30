@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T07:15:05.354452+00:00",
+  "kind": "hipengine_laguna_q4_compact_shared_down_decode",
+  "status": "rejected",
+  "performance_claim": false,
+  "repo_revision": "7cd5b39d44268a825901724f1cda215c273d796f",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "llama_cpp_source_review": {
+    "revision": "c0bc8591e",
+    "route": "mul_mat_vec_q4_k on one wave64 with two output rows",
+    "useful_difference": "compact source bytes, subgroup reduction, and no per-K256 expanded-pack8 metadata staging"
+  },
+  "leaf": {
+    "protocol": "all 24 actual Q4_K shared-down weights, sequential M1 K1024 N3072 launches, 21 counterbalanced samples x 20 cycles",
+    "control": "resident expanded pack8",
+    "control_median_ms_per_launch": 0.026292282342910766,
+    "compact_local32_median_ms_per_launch": 0.011258381605148316,
+    "compact_local32_delta_percent": -57.24189163951774,
+    "compact_local32_bf16_mismatches": 14,
+    "compact_exact_order_local128_median_ms_per_launch": 0.018442742029825845,
+    "compact_exact_order_local128_delta_percent": -29.85492172459272,
+    "compact_exact_order_local128_bf16_mismatches": 13,
+    "compared_bf16_values": 73728,
+    "resident_bytes": {
+      "expanded_pack8": 56623104,
+      "compact_raw": 42467328
+    }
+  },
+  "model_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-q4-decode-raw-sidecar --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-compact-down-ab-7.json",
+    "control_median_tok_s": 21.860464097460692,
+    "candidate_median_tok_s": 21.945197768748777,
+    "candidate_delta_percent": 0.3876114931060659,
+    "saved_ms_per_token": 0.17662702208956915,
+    "control_next_token_id": 2930,
+    "candidate_next_token_id": 2930,
+    "control_final_token_id": 74107,
+    "candidate_final_token_id": 81,
+    "control_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "candidate_generated_ids_sha256": "4024f51c9213ed17648a56daab66f26eaaaaee79d18018040c9f096051bd72f1",
+    "correctness_pass": false,
+    "raw_packet": "/tmp/laguna-q4-compact-down-ab-7.json"
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The compact leaf is materially faster but does not preserve actual-weight BF16 outputs; those one-ULP differences compound into a different deterministic decode trajectory.",
+    "cleanup": "Removed the raw sidecar, runtime/capability/CLI route, diagnostic kernels, wrappers, fixtures, and leaf harness. Production remains unchanged."
+  },
+  "lineage_audit": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_known_missing_read_only_peer",
+    "missing_path": "/home/lhl/amd-gpu-tuning/reference/atlas",
+    "external_source_copied": false
+  }
+}

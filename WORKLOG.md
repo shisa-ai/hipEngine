@@ -193329,3 +193329,28 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next: remove the completed comparison selector and screen compact exact
   Q4/Q6 dense/shared down consumers. Do not repeat unchanged graph replay,
   AQL, or packet mechanisms; those submission mechanisms are already closed.
+
+## 2026-07-30 16:15 JST — Reject compact raw-Q4 shared-down decode
+
+- Reviewed llama.cpp Vulkan at `c0bc8591e`: its running Q4_K matvec consumes
+  compact source blocks with one wave64/two output rows and subgroup reduction,
+  avoiding hipEngine's expanded-pack8 streaming and per-K256 staging.
+- The first bounded local32 consumer improves the all-24 actual-weight stream
+  **0.026292 -> 0.011258 ms/launch (-57.24%)** but differs at **14/73,728**
+  BF16 values. A local128 sibling reconstructing pack8's tid*8+j partitions
+  still improves **0.026292 -> 0.018443 (-29.85%)** but differs at **13/73,728**.
+  Explicit coefficient/weight rounding does not remove the differences.
+- A same-resident seven-pair p512/d128 gate, with retained T16 gate/up enabled
+  in both modes, improves **21.860464 -> 21.945198 tok/s (+0.3876%)** but fails
+  correctness: generated SHA changes `94f803f7...bda32 -> 4024f51c...d72f1`
+  and final token changes **74107 -> 81**. Next token 2930, position 638,
+  determinism within each mode, and allocation recovery remain stable.
+- Reject and remove the raw sidecar, runtime/capability/CLI owner, kernels,
+  wrappers, tests, and leaf harness. Exact production stays **21.851538
+  tok/s**. The required lineage audit again stops at the known missing
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was
+  copied.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-compact-shared-down-rejected.json`.
+  Next: screen the existing compact Q6 raw down owner using the Vulkan
+  wave64/vector4 lessons without changing coefficient arithmetic.
