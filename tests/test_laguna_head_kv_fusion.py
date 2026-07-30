@@ -162,6 +162,70 @@ def test_laguna_p4_head_kv_registry_plan_and_fail_closed_validation() -> None:
         )
 
 
+def test_laguna_f16_projection_head_kv_registry_and_fail_closed_validation() -> None:
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        laguna_global_f16_projection_head_kv_bf16_spans,
+        laguna_swa_f16_projection_head_kv_bf16_spans,
+        register_laguna_kv_attention_kernels,
+    )
+    from hipengine.kernels.registry import resolve
+
+    register_laguna_kv_attention_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="attention_projection+head_rmsnorm+partial_rotary+kv_write",
+            quant="fp16_weight+laguna_f32_weight",
+            variant="global_fixedk_bf16_f32_spans",
+        )
+        is laguna_global_f16_projection_head_kv_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="attention_projection+head_rmsnorm+partial_rotary+kv_write",
+            quant="fp16_weight+laguna_f32_weight",
+            variant="swa_fixedk_bf16_f32_spans",
+        )
+        is laguna_swa_f16_projection_head_kv_bf16_spans
+    )
+
+    common = (0,) * 18
+    with pytest.raises(ValueError, match="uniform"):
+        laguna_global_f16_projection_head_kv_bf16_spans(
+            *common,
+            _fake_ring_spans(),
+            1.0e-6,
+            48,
+            8,
+            128,
+            64,
+            512,
+        )
+    with pytest.raises(ValueError, match="sliding_ring"):
+        laguna_swa_f16_projection_head_kv_bf16_spans(
+            *common,
+            _fake_global_spans(),
+            1.0e-6,
+            72,
+            8,
+            128,
+            128,
+            512,
+        )
+    with pytest.raises(ValueError, match="must be 72"):
+        laguna_swa_f16_projection_head_kv_bf16_spans(
+            *common,
+            _fake_ring_spans(),
+            1.0e-6,
+            64,
+            8,
+            128,
+            128,
+            512,
+        )
+
+
 @pytest.mark.parametrize(
     ("attention_type", "q_heads", "rope", "positions"),
     [
@@ -427,11 +491,299 @@ def test_laguna_p4_fused_head_kv_is_bit_exact_to_registered_chain(
         control.free()
 
 
+@pytest.mark.parametrize(
+    ("attention_type", "q_heads", "rope", "position"),
+    [
+        (
+            FULL_ATTENTION,
+            48,
+            LagunaRopeConfig(
+                rope_type="yarn",
+                rotary_dim=64,
+                freq_base=500000.0,
+                scaling_factor=32.0,
+                original_context_length=8192,
+                yarn_attn_factor=1.0,
+                yarn_beta_fast=32.0,
+                yarn_beta_slow=1.0,
+            ),
+            257,
+        ),
+        (
+            SLIDING_ATTENTION,
+            72,
+            LagunaRopeConfig(rope_type="default", rotary_dim=128, freq_base=10000.0),
+            513,
+        ),
+    ],
+)
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_head_kv_is_bit_exact_to_quad_chain(
+    attention_type: str,
+    q_heads: int,
+    rope: LagunaRopeConfig,
+    position: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+        laguna_global_f16_projection_head_kv_bf16_spans,
+        laguna_global_head_rmsnorm_rope_write_kv_f32_spans,
+        laguna_swa_f16_projection_head_kv_bf16_spans,
+        laguna_swa_head_rmsnorm_rope_write_kv_f32_spans,
+    )
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection,
+        laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
+    )
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+    from hipengine.runtime.laguna_rope import materialize_laguna_rope_tables
+
+    runtime = get_hip_runtime()
+    kv_library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    linear_library = build_laguna_f16_projection(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    config = SimpleNamespace(
+        block_count=2,
+        layer_types=(FULL_ATTENTION, SLIDING_ATTENTION),
+        head_counts=(48, 72),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    control = allocate_laguna_kv_cache(
+        config,
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    candidate = allocate_laguna_kv_cache(
+        config,
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    layer_id = 0 if attention_type == FULL_ATTENTION else 1
+    control_state = control.layer(layer_id)
+    candidate_state = candidate.layer(layer_id)
+    tables = materialize_laguna_rope_tables(position + 1, rope, runtime=runtime)
+    rng = np.random.default_rng(7721 + q_heads)
+    hidden_f32 = rng.standard_normal(3072, dtype=np.float32) * np.float32(0.2)
+    hidden = float_array_to_bf16_bits(hidden_f32)
+    q_width = q_heads * 128
+    kv_width = 8 * 128
+    weights = tuple(
+        (
+            rng.standard_normal((width, 3072), dtype=np.float32)
+            * np.float32(0.01)
+        ).astype(np.float16)
+        for width in (q_width, kv_width, kv_width, q_heads)
+    )
+    q_norm = rng.normal(1.0, 0.05, size=128).astype(np.float32)
+    k_norm = rng.normal(1.0, 0.05, size=128).astype(np.float32)
+    allocations = []
+    try:
+        dx = _upload(hidden, runtime, allocations)
+        dweights = tuple(_upload(weight, runtime, allocations) for weight in weights)
+        dqw = _upload(q_norm, runtime, allocations)
+        dkw = _upload(k_norm, runtime, allocations)
+        control_projection = tuple(
+            _alloc_once((width,), np.float32, runtime, allocations)
+            for width in (q_width, kv_width, kv_width, q_heads)
+        )
+        candidate_projection = tuple(
+            _alloc_once((width,), np.float32, runtime, allocations)
+            for width in (q_width, kv_width, kv_width, q_heads)
+        )
+        control_q = _alloc_once((q_width,), np.float32, runtime, allocations)
+        control_k = _alloc_once((kv_width,), np.float32, runtime, allocations)
+        candidate_q = _alloc_once((q_width,), np.float32, runtime, allocations)
+        candidate_k = _alloc_once((kv_width,), np.float32, runtime, allocations)
+        counters = _alloc_once((q_heads + 8,), np.int32, runtime, allocations)
+        runtime.memset(counters.ptr, 0, counters.nbytes)
+        position_row = np.asarray([position], dtype=np.int64)
+        _copy_array(control_state.spans.row_positions.ptr, position_row, runtime)
+        _copy_array(candidate_state.spans.row_positions.ptr, position_row, runtime)
+
+        laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in dweights),
+            *(output.ptr for output in control_projection),
+            1,
+            3072,
+            q_width,
+            kv_width,
+            kv_width,
+            q_heads,
+            library=linear_library,
+            runtime=runtime,
+        )
+        if attention_type == FULL_ATTENTION:
+            control_head_kv = laguna_global_head_rmsnorm_rope_write_kv_f32_spans
+            fused = laguna_global_f16_projection_head_kv_bf16_spans
+        else:
+            control_head_kv = laguna_swa_head_rmsnorm_rope_write_kv_f32_spans
+            fused = laguna_swa_f16_projection_head_kv_bf16_spans
+        control_head_kv(
+            control_projection[0].ptr,
+            control_projection[1].ptr,
+            control_projection[2].ptr,
+            dqw.ptr,
+            dkw.ptr,
+            tables.cos.tensor.ptr,
+            tables.sin.tensor.ptr,
+            control_q.ptr,
+            control_k.ptr,
+            control_state.key_cache.ptr,
+            control_state.value_cache.ptr,
+            control_state.spans,
+            1.0e-6,
+            q_heads,
+            8,
+            128,
+            rope.rotary_dim,
+            position + 1,
+            library=kv_library,
+            runtime=runtime,
+        )
+        fused(
+            dx.ptr,
+            *(weight.ptr for weight in dweights),
+            *(output.ptr for output in candidate_projection),
+            dqw.ptr,
+            dkw.ptr,
+            tables.cos.tensor.ptr,
+            tables.sin.tensor.ptr,
+            candidate_q.ptr,
+            candidate_k.ptr,
+            candidate_state.key_cache.ptr,
+            candidate_state.value_cache.ptr,
+            counters.ptr,
+            candidate_state.spans,
+            1.0e-6,
+            q_heads,
+            8,
+            128,
+            rope.rotary_dim,
+            position + 1,
+            library=kv_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        for control_output, candidate_output, width in zip(
+            control_projection,
+            candidate_projection,
+            (q_width, kv_width, kv_width, q_heads),
+            strict=True,
+        ):
+            control_host = _download(
+                control_output,
+                (width,),
+                np.float32,
+                runtime,
+            )
+            candidate_host = _download(
+                candidate_output,
+                (width,),
+                np.float32,
+                runtime,
+            )
+            np.testing.assert_array_equal(
+                candidate_host.view(np.uint32),
+                control_host.view(np.uint32),
+            )
+        for control_output, candidate_output, width in (
+            (control_q, candidate_q, q_width),
+            (control_k, candidate_k, kv_width),
+        ):
+            control_host = _download(
+                control_output,
+                (width,),
+                np.float32,
+                runtime,
+            )
+            candidate_host = _download(
+                candidate_output,
+                (width,),
+                np.float32,
+                runtime,
+            )
+            np.testing.assert_array_equal(
+                candidate_host.view(np.uint32),
+                control_host.view(np.uint32),
+            )
+
+        if attention_type == FULL_ATTENTION:
+            physical_slot = position
+            metadata_slot = position
+        else:
+            metadata_slot = position % 512
+            physical_slot = metadata_slot
+        row_nbytes = kv_width * DType.BF16.itemsize
+        for cache_name in ("key_cache", "value_cache"):
+            control_cache = getattr(control_state, cache_name)
+            candidate_cache = getattr(candidate_state, cache_name)
+            control_bits = _download_offset(
+                control_cache.ptr + physical_slot * row_nbytes,
+                (kv_width,),
+                np.uint16,
+                runtime,
+            )
+            candidate_bits = _download_offset(
+                candidate_cache.ptr + physical_slot * row_nbytes,
+                (kv_width,),
+                np.uint16,
+                runtime,
+            )
+            np.testing.assert_array_equal(candidate_bits, control_bits)
+        for name, dtype, count in (
+            ("live_counts", np.int64, 1),
+            ("token_positions", np.int64, control_state.capacity),
+            ("evict_mask", np.bool_, control_state.capacity),
+        ):
+            control_tensor = getattr(control_state.spans, name)
+            candidate_tensor = getattr(candidate_state.spans, name)
+            np.testing.assert_array_equal(
+                _download_offset(candidate_tensor.ptr, (count,), dtype, runtime),
+                _download_offset(control_tensor.ptr, (count,), dtype, runtime),
+            )
+        assert not np.any(
+            _download(counters, (q_heads + 8,), np.int32, runtime)
+        )
+        token_positions = _download_offset(
+            candidate_state.spans.token_positions.ptr,
+            (candidate_state.capacity,),
+            np.int64,
+            runtime,
+        )
+        assert token_positions[metadata_slot] == position
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        tables.free(runtime=runtime)
+        candidate.free()
+        control.free()
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)
     allocations.append(device)
     copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+    return device
+
+
+def _alloc_once(shape, dtype, runtime, allocations):
+    device = malloc(int(np.prod(shape)) * np.dtype(dtype).itemsize, runtime=runtime)
+    allocations.append(device)
     return device
 
 

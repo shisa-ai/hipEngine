@@ -92,6 +92,7 @@ COMPARISON_ARGUMENTS = (
     "compare_selected_natural_tile8_decode",
     "compare_q4_decode_t16_sidecar",
     "compare_q4_decode_t16_dual_interleaved",
+    "compare_f16_projection_head_kv_decode",
 )
 
 
@@ -356,6 +357,11 @@ def _parse_args() -> argparse.Namespace:
         "--compare-q4-decode-t16-dual-interleaved",
         action="store_true",
         help="counterbalance separate and paired T16 dense/shared Q4 decode",
+    )
+    parser.add_argument(
+        "--compare-f16-projection-head-kv-decode",
+        action="store_true",
+        help="counterbalance exact F16 quad+head/KV against one composite",
     )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
@@ -666,6 +672,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_q4_decode_t16_dual_interleaved
                 else None
             ),
+            use_f16_projection_head_kv_decode=(
+                False
+                if args.compare_f16_projection_head_kv_decode
+                else None
+            ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -803,6 +814,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_q4_decode_t16_dual_interleaved = (
             owner.use_q4_decode_t16_dual_interleaved
         )
+        active_f16_projection_head_kv_decode = (
+            owner.use_f16_projection_head_kv_decode
+        )
         active_attention_rows = owner.prefill_attention_chunk_size
         active_global_attention_rows = (
             owner.prefill_global_attention_chunk_size
@@ -920,6 +934,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_q4_decode_t16_dual_interleaved:
                         owner.set_q4_decode_t16_dual_interleaved(
+                            mode == "candidate"
+                        )
+                    if args.compare_f16_projection_head_kv_decode:
+                        owner.set_f16_projection_head_kv_decode(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -1183,6 +1201,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "q4_decode_t16_dual_interleaved": (
                 active_q4_decode_t16_dual_interleaved
+            ),
+            "compare_f16_projection_head_kv_decode": (
+                args.compare_f16_projection_head_kv_decode
+            ),
+            "f16_projection_head_kv_decode": (
+                active_f16_projection_head_kv_decode
             ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,

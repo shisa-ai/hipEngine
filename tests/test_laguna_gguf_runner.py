@@ -973,6 +973,121 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     }
 
 
+def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi() -> None:
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.kernels.registry import register, resolve
+
+    load_backend_kernel_package("hip_gfx1151")
+    key = KernelKey(
+        "hip_gfx1151",
+        "attention_projection+head_rmsnorm+partial_rotary+kv_write",
+        "fp16_weight+laguna_f32_weight",
+        "swa_fixedk_bf16_f32_spans",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    weights = tuple(
+        SimpleNamespace(
+            spec=SimpleNamespace(layout=LAYOUT_DENSE_F16),
+            allocation=lambda name, ptr=ptr: SimpleNamespace(
+                tensor=SimpleNamespace(ptr=ptr)
+            ),
+        )
+        for ptr in (11, 12, 13, 14)
+    )
+    libraries = LagunaEagerLibraries(
+        **{
+            field: SimpleNamespace()
+            for field in LagunaEagerLibraries.__dataclass_fields__
+        }
+    )
+    libraries = replace(libraries, kv_attention="kv-library")
+    rope = SimpleNamespace(
+        cos=SimpleNamespace(tensor=SimpleNamespace(ptr=31)),
+        sin=SimpleNamespace(tensor=SimpleNamespace(ptr=32)),
+        config=SimpleNamespace(rotary_dim=128),
+        max_positions=4096,
+    )
+    spans = object()
+    try:
+        launched = runner_module.launch_laguna_f16_projection_head_kv(
+            *weights,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            33,
+            spans,
+            rope,
+            1.0e-6,
+            72,
+            8,
+            128,
+            "sliding_attention",
+            backend="hip_gfx1151",
+            stream=7,
+            libraries=libraries,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert launched
+    assert calls == [
+        (
+            (
+                20,
+                11,
+                12,
+                13,
+                14,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                31,
+                32,
+                27,
+                28,
+                29,
+                30,
+                33,
+                spans,
+                1.0e-6,
+                72,
+                8,
+                128,
+                128,
+                4096,
+            ),
+            {
+                "stream": 7,
+                "library": "kv-library",
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+
+
 def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     monkeypatch,
 ) -> None:

@@ -18,6 +18,12 @@ _SYMBOL_GLOBAL_HEAD_KV_WAVE0_TREE = (
     "hipengine_laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_bf16_spans"
 )
 _SYMBOL_SWA_HEAD_KV = "hipengine_laguna_swa_head_rmsnorm_rope_write_kv_f32_bf16_spans"
+_SYMBOL_GLOBAL_F16_PROJECTION_HEAD_KV = (
+    "hipengine_laguna_global_f16_projection_head_kv_bf16_f32_spans"
+)
+_SYMBOL_SWA_F16_PROJECTION_HEAD_KV = (
+    "hipengine_laguna_swa_f16_projection_head_kv_bf16_f32_spans"
+)
 _SYMBOL_GLOBAL_WRITE = "hipengine_laguna_global_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE_ROWS = "hipengine_laguna_global_write_kv_rows_f32_bf16_spans"
 _SYMBOL_GLOBAL_ATTENTION = "hipengine_laguna_global_attention_decode_bf16_spans"
@@ -653,6 +659,270 @@ def laguna_swa_head_rmsnorm_rope_write_kv_f32_spans(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def _laguna_f16_projection_head_kv_bf16_spans(
+    symbol: str,
+    x_ptr: int,
+    query_weight_ptr: int,
+    key_weight_ptr: int,
+    value_weight_ptr: int,
+    gate_weight_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    gate_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    completion_counters_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    global_spans: bool,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if global_spans:
+        capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+        if int(num_q_heads) != 48:
+            raise ValueError("num_q_heads must be 48 for Laguna global projection/head/KV")
+    else:
+        capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+        if int(num_q_heads) != 72:
+            raise ValueError("num_q_heads must be 72 for Laguna SWA projection/head/KV")
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    _check_head_kv_rope_shape(rotary_dim, head_dim, max_positions)
+    assert spans.token_positions is not None
+    assert spans.evict_mask is not None
+    assert spans.row_positions is not None
+    _check_nonzero_device_pointers(
+        ("x_ptr", x_ptr),
+        ("query_weight_ptr", query_weight_ptr),
+        ("key_weight_ptr", key_weight_ptr),
+        ("value_weight_ptr", value_weight_ptr),
+        ("gate_weight_ptr", gate_weight_ptr),
+        ("query_ptr", query_ptr),
+        ("key_ptr", key_ptr),
+        ("value_ptr", value_ptr),
+        ("gate_ptr", gate_ptr),
+        ("q_norm_weight_ptr", q_norm_weight_ptr),
+        ("k_norm_weight_ptr", k_norm_weight_ptr),
+        ("cos_ptr", cos_ptr),
+        ("sin_ptr", sin_ptr),
+        ("query_out_ptr", query_out_ptr),
+        ("key_out_ptr", key_out_ptr),
+        ("key_cache_ptr", key_cache_ptr),
+        ("value_cache_ptr", value_cache_ptr),
+        ("completion_counters_ptr", completion_counters_ptr),
+        ("base_offsets_ptr", spans.base_offsets.ptr),
+        ("live_counts_ptr", spans.live_counts.ptr),
+        ("token_positions_ptr", spans.token_positions.ptr),
+        ("evict_mask_ptr", spans.evict_mask.ptr),
+        ("row_positions_ptr", spans.row_positions.ptr),
+    )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    integer_count = 8 if global_spans else 6
+    fn.argtypes = (
+        [ctypes.c_void_p] * 23
+        + [ctypes.c_float]
+        + [ctypes.c_int64] * integer_count
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    arguments = [
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(query_weight_ptr),
+        ctypes.c_void_p(key_weight_ptr),
+        ctypes.c_void_p(value_weight_ptr),
+        ctypes.c_void_p(gate_weight_ptr),
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(q_norm_weight_ptr),
+        ctypes.c_void_p(k_norm_weight_ptr),
+        ctypes.c_void_p(cos_ptr),
+        ctypes.c_void_p(sin_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(key_out_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(completion_counters_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(capacity),
+    ]
+    if global_spans:
+        arguments.extend(
+            (
+                ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+                ctypes.c_int64(spans.base_offsets.numel),
+            )
+        )
+    arguments.extend(
+        (
+            ctypes.c_int64(num_q_heads),
+            ctypes.c_int64(num_kv_heads),
+            ctypes.c_int64(head_dim),
+            ctypes.c_int64(rotary_dim),
+            ctypes.c_int64(max_positions),
+            ctypes.c_void_p(stream),
+        )
+    )
+    err = fn(*arguments)
+    _check_launch(runtime, err)
+
+
+def laguna_global_f16_projection_head_kv_bf16_spans(
+    x_ptr: int,
+    query_weight_ptr: int,
+    key_weight_ptr: int,
+    value_weight_ptr: int,
+    gate_weight_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    gate_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    completion_counters_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse exact global c=1 source-F16 Q/K/V/gate, head norm, and KV append."""
+
+    _laguna_f16_projection_head_kv_bf16_spans(
+        _SYMBOL_GLOBAL_F16_PROJECTION_HEAD_KV,
+        x_ptr,
+        query_weight_ptr,
+        key_weight_ptr,
+        value_weight_ptr,
+        gate_weight_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        gate_ptr,
+        q_norm_weight_ptr,
+        k_norm_weight_ptr,
+        cos_ptr,
+        sin_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        completion_counters_ptr,
+        spans,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        global_spans=True,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_swa_f16_projection_head_kv_bf16_spans(
+    x_ptr: int,
+    query_weight_ptr: int,
+    key_weight_ptr: int,
+    value_weight_ptr: int,
+    gate_weight_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    gate_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    completion_counters_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse exact SWA c=1 source-F16 Q/K/V/gate, head norm, and KV append."""
+
+    _laguna_f16_projection_head_kv_bf16_spans(
+        _SYMBOL_SWA_F16_PROJECTION_HEAD_KV,
+        x_ptr,
+        query_weight_ptr,
+        key_weight_ptr,
+        value_weight_ptr,
+        gate_weight_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        gate_ptr,
+        q_norm_weight_ptr,
+        k_norm_weight_ptr,
+        cos_ptr,
+        sin_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        completion_counters_ptr,
+        spans,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        global_spans=False,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def laguna_global_write_kv_f32_spans(
@@ -7118,6 +7388,27 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
 
+    for variant, kernel in (
+        (
+            "global_fixedk_bf16_f32_spans",
+            laguna_global_f16_projection_head_kv_bf16_spans,
+        ),
+        (
+            "swa_fixedk_bf16_f32_spans",
+            laguna_swa_f16_projection_head_kv_bf16_spans,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "attention_projection+head_rmsnorm+partial_rotary+kv_write",
+                "fp16_weight+laguna_f32_weight",
+                variant,
+            ),
+            kernel,
+            replace=replace,
+        )
+
     registrations = (
         (
             "laguna_kv_write",
@@ -7733,6 +8024,7 @@ __all__ = [
     "laguna_global_attention_prefill_qrow4_m128_online_bf16_spans",
     "laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans",
     "laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans",
+    "laguna_global_f16_projection_head_kv_bf16_spans",
     "laguna_global_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_spans",
     "laguna_global_write_kv_f32_spans",
@@ -7795,6 +8087,7 @@ __all__ = [
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
     "laguna_swa_union_bf16_to_f32_spans",
     "laguna_swa_union_softmax_wave_rows_f32",
+    "laguna_swa_f16_projection_head_kv_bf16_spans",
     "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_swa_write_kv_f32_spans",
     "laguna_swa_write_kv_rows_f32_spans",

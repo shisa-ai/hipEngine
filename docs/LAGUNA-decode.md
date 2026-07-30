@@ -6822,6 +6822,7 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
 | hipEngine post-dense-interleave production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
 | hipEngine current F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
+| projection→head/KV candidate, same-session median | **22.017120 tok/s** | **45.419 ms** | provisional mechanical gate |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **2.559 ms/token** | hipEngine is **5.638%** below Vulkan throughput |
 
@@ -6875,6 +6876,24 @@ checkpoint and **+92.138%** over sprint start. The wall census confirms
 **45.861315 -> 45.699715 (-0.3524%)**. Kernel work is now only
 **0.033553 ms/token (0.077%)** above Vulkan's logged GPU work:
 [`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json).
+
+The next exact contraction now reaches across the remaining
+quad→head/KV boundary. Each projection output preserves the retained
+local256/K3072 accumulation and reduction tree. A 320-byte resident
+completion-counter array lets the last Q producer execute the existing head
+RMSNorm/RoPE body and the last combined K/V producer execute the existing
+K/V norm/RoPE/BF16 append body without another launch. Natural global and SWA
+fixtures match every projection F32 bit, rotated F32 bit, BF16 K/V byte,
+`KVLiveSpans` field, and reset counter. Cached tracing reports
+local256/VGPR24/SGPR128/LDS512/scratch0. Seven alternating same-resident
+p512/d128 pairs measure **22.016010 -> 22.017120 tok/s (+0.00504%)**, saving
+**0.002932 ms/token** by paired median with five of seven wins. This is a
+retained mechanical launch-reduction candidate, not yet a new production
+topline: tracked-clean selector-unset production and a complete
+127-transition census must show exactly 48 composite calls/token and no
+separate head/KV calls before final publication:
+[`projection/head/KV candidate`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json).
+
 Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
 within-evaluation command-buffer recording/submission, not cross-token graph

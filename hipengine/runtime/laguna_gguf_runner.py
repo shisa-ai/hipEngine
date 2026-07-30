@@ -146,6 +146,10 @@ _Q5_SHARED_FIXED_META_VARIANT = "wave32x2_fixed_meta_gemv_decode_bf16_bf16_out"
 _Q4_LM_HEAD_LOCAL32_FIXED_META_VARIANT = (
     "local32_fixed_meta_gemv_decode_bf16_f32_out"
 )
+_F16_PROJECTION_HEAD_KV_LAYER = (
+    "attention_projection+head_rmsnorm+partial_rotary+kv_write"
+)
+_F16_PROJECTION_HEAD_KV_QUANT = "fp16_weight+laguna_f32_weight"
 
 
 def _validate_laguna_context_length(
@@ -340,6 +344,7 @@ class LagunaEagerScratch:
     query_rotated: DeviceBuffer
     key_rotated: DeviceBuffer
     gate_logits: DeviceBuffer
+    attention_projection_counters: DeviceBuffer
     context: DeviceBuffer
     gated_context: DeviceBuffer
     attention_output: DeviceBuffer
@@ -381,6 +386,7 @@ class LagunaEagerScratch:
             max_query_width * _F32_NBYTES,
             kv_width * _F32_NBYTES,
             max_heads * _F32_NBYTES,
+            (max_heads + int(config.head_count_kv)) * _I32_NBYTES,
             max_query_width * _F32_NBYTES,
             max_query_width * _BF16_NBYTES,
             hidden * _BF16_NBYTES,
@@ -418,6 +424,7 @@ class LagunaEagerScratch:
             self.query_rotated,
             self.key_rotated,
             self.gate_logits,
+            self.attention_projection_counters,
             self.context,
             self.gated_context,
             self.attention_output,
@@ -1431,6 +1438,103 @@ def launch_laguna_attention_projections(
     return q_gate_fused and kv_fused
 
 
+def launch_laguna_f16_projection_head_kv(
+    q_weight,
+    k_weight,
+    v_weight,
+    gate_weight,
+    x_ptr: int,
+    q_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    gate_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    completion_counters_ptr: int,
+    spans,
+    rope: LagunaDeviceRoPETables,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    attention_type: str,
+    *,
+    backend: str,
+    stream: int,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None,
+) -> bool:
+    """Launch the exact c=1 source-F16 projection/head/KV composite."""
+
+    if (
+        attention_type not in {FULL_ATTENTION, SLIDING_ATTENTION}
+        or head_dim != 128
+        or num_kv_heads != 8
+        or any(
+            weight.spec.layout != LAYOUT_DENSE_F16
+            for weight in (q_weight, k_weight, v_weight, gate_weight)
+        )
+    ):
+        return False
+    expected_q_heads = 48 if attention_type == FULL_ATTENTION else 72
+    if num_q_heads != expected_q_heads:
+        return False
+    variant = (
+        "global_fixedk_bf16_f32_spans"
+        if attention_type == FULL_ATTENTION
+        else "swa_fixedk_bf16_f32_spans"
+    )
+    key = KernelKey(
+        backend,
+        _F16_PROJECTION_HEAD_KV_LAYER,
+        _F16_PROJECTION_HEAD_KV_QUANT,
+        variant,
+    )
+    if not is_registered(key):
+        return False
+    fn = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    fn(
+        x_ptr,
+        q_weight.allocation("raw").tensor.ptr,
+        k_weight.allocation("raw").tensor.ptr,
+        v_weight.allocation("raw").tensor.ptr,
+        gate_weight.allocation("raw").tensor.ptr,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        gate_ptr,
+        q_norm_weight_ptr,
+        k_norm_weight_ptr,
+        rope.cos.tensor.ptr,
+        rope.sin.tensor.ptr,
+        query_out_ptr,
+        key_out_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        completion_counters_ptr,
+        spans,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rope.config.rotary_dim,
+        rope.max_positions,
+        stream=stream,
+        library=libraries.kv_attention,
+        runtime=runtime,
+    )
+    return True
+
+
 @dataclass(frozen=True)
 class LagunaEagerTokenResult:
     """One eager token result; device buffers remain owned by the session."""
@@ -2137,6 +2241,7 @@ class LagunaGGUFResidentSession:
         use_q5_fixed_meta_query_gate: bool | None = None,
         use_q5_shared_fixed_meta: bool | None = None,
         use_f16_attention_quad_decode: bool | None = None,
+        use_f16_projection_head_kv_decode: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
@@ -2376,6 +2481,15 @@ class LagunaGGUFResidentSession:
             )
             if use_f16_attention_quad_decode is None
             else use_f16_attention_quad_decode
+        )
+        self.use_f16_projection_head_kv_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE",
+                False,
+            )
+            if use_f16_projection_head_kv_decode is None
+            else use_f16_projection_head_kv_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2872,6 +2986,20 @@ class LagunaGGUFResidentSession:
                 )
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)
+            projection_counters = getattr(
+                self.scratch,
+                "attention_projection_counters",
+                None,
+            )
+            if (
+                self.use_f16_projection_head_kv_decode
+                and projection_counters is not None
+            ):
+                self.runtime.memset(
+                    projection_counters.ptr,
+                    0,
+                    projection_counters.nbytes,
+                )
             self.moe_scratch = allocate_laguna_moe_scratch(
                 self.moe_plan,
                 runtime=self.runtime,
@@ -3163,6 +3291,27 @@ class LagunaGGUFResidentSession:
         """Select paired exact Q4 dense/shared decode tiles."""
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
+
+    def set_f16_projection_head_kv_decode(self, enabled: bool) -> None:
+        """Select exact source-F16 projection/head/KV launch contraction."""
+
+        selected = bool(enabled)
+        projection_counters = (
+            getattr(self.scratch, "attention_projection_counters", None)
+            if self.scratch is not None
+            else None
+        )
+        if (
+            selected
+            and not self.use_f16_projection_head_kv_decode
+            and projection_counters is not None
+        ):
+            self.runtime.memset(
+                projection_counters.ptr,
+                0,
+                projection_counters.nbytes,
+            )
+        self.use_f16_projection_head_kv_decode = selected
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -4876,96 +5025,129 @@ class LagunaGGUFResidentSession:
                 library=self.libraries.gguf_ops,
                 runtime=self.runtime,
             )
-        launch_laguna_attention_projections(
-            layer.weight("attn_q"),
-            layer.weight("attn_k"),
-            layer.weight("attn_v"),
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.query.ptr,
-            scratch.key.ptr,
-            scratch.value.ptr,
-            scratch.gate_logits.ptr,
-            1,
-            config.hidden_size,
-            q_width,
-            kv_width,
-            kv_width,
-            heads,
-            backend=self.backend,
-            stream=stream,
-            libraries=self.libraries,
-            runtime=self.runtime,
-            query_gate_decode_variant=self._q5_query_gate_variant,
-            use_f16_attention_quad_decode=(
-                self.use_f16_attention_quad_decode
-            ),
-            use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
-            use_mixed_q6_fixed_meta_attention=(
-                self.use_mixed_q6_fixed_meta_attention
-            ),
-            use_mixed_local32_fixed_meta_attention=(
-                self.use_mixed_local32_fixed_meta_attention
-            ),
-        )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         head_kv = (
             self.kernel_plan.global_head_kv
             if layer.attention_type == FULL_ATTENTION
             else self.kernel_plan.swa_head_kv
         )
-        if head_kv is None:
-            launch_laguna_head_rmsnorm_rope(
-                scratch.query.ptr,
-                scratch.key.ptr,
-                layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
-                layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
-                scratch.position.ptr,
-                scratch.query_rotated.ptr,
-                scratch.key_rotated.ptr,
-                config.rms_norm_eps,
-                1,
-                heads,
-                config.head_count_kv,
-                config.key_length,
-                rope,
-                backend=self.backend,
-                stream=stream,
-                library=self.libraries.gguf_ops,
-                runtime=self.runtime,
-            )
-            self.kv_cache.append(
-                layer_id,
-                scratch.key_rotated.ptr,
-                scratch.value.ptr,
-                stream=stream,
-                library=self.libraries.kv_attention,
-            )
-        else:
+        projection_head_kv = False
+        if self.use_f16_projection_head_kv_decode and head_kv is not None:
             kv_state = self.kv_cache.layer(layer_id)
-            head_kv(
+            projection_head_kv = launch_laguna_f16_projection_head_kv(
+                layer.weight("attn_q"),
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
                 scratch.query.ptr,
                 scratch.key.ptr,
                 scratch.value.ptr,
+                scratch.gate_logits.ptr,
                 layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
                 layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
-                rope.cos.tensor.ptr,
-                rope.sin.tensor.ptr,
                 scratch.query_rotated.ptr,
                 scratch.key_rotated.ptr,
                 kv_state.key_cache.ptr,
                 kv_state.value_cache.ptr,
+                scratch.attention_projection_counters.ptr,
                 kv_state.append_spans,
+                rope,
                 config.rms_norm_eps,
                 heads,
                 config.head_count_kv,
                 config.key_length,
-                rope.config.rotary_dim,
-                rope.max_positions,
+                layer.attention_type,
+                backend=self.backend,
                 stream=stream,
-                library=self.libraries.kv_attention,
+                libraries=self.libraries,
                 runtime=self.runtime,
             )
+        if not projection_head_kv:
+            launch_laguna_attention_projections(
+                layer.weight("attn_q"),
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.query.ptr,
+                scratch.key.ptr,
+                scratch.value.ptr,
+                scratch.gate_logits.ptr,
+                1,
+                config.hidden_size,
+                q_width,
+                kv_width,
+                kv_width,
+                heads,
+                backend=self.backend,
+                stream=stream,
+                libraries=self.libraries,
+                runtime=self.runtime,
+                query_gate_decode_variant=self._q5_query_gate_variant,
+                use_f16_attention_quad_decode=(
+                    self.use_f16_attention_quad_decode
+                ),
+                use_mixed_q5_q6_attention=self.use_mixed_q5_q6_attention,
+                use_mixed_q6_fixed_meta_attention=(
+                    self.use_mixed_q6_fixed_meta_attention
+                ),
+                use_mixed_local32_fixed_meta_attention=(
+                    self.use_mixed_local32_fixed_meta_attention
+                ),
+            )
+            if head_kv is None:
+                launch_laguna_head_rmsnorm_rope(
+                    scratch.query.ptr,
+                    scratch.key.ptr,
+                    layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+                    layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+                    scratch.position.ptr,
+                    scratch.query_rotated.ptr,
+                    scratch.key_rotated.ptr,
+                    config.rms_norm_eps,
+                    1,
+                    heads,
+                    config.head_count_kv,
+                    config.key_length,
+                    rope,
+                    backend=self.backend,
+                    stream=stream,
+                    library=self.libraries.gguf_ops,
+                    runtime=self.runtime,
+                )
+                self.kv_cache.append(
+                    layer_id,
+                    scratch.key_rotated.ptr,
+                    scratch.value.ptr,
+                    stream=stream,
+                    library=self.libraries.kv_attention,
+                )
+            else:
+                kv_state = self.kv_cache.layer(layer_id)
+                head_kv(
+                    scratch.query.ptr,
+                    scratch.key.ptr,
+                    scratch.value.ptr,
+                    layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+                    layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+                    rope.cos.tensor.ptr,
+                    rope.sin.tensor.ptr,
+                    scratch.query_rotated.ptr,
+                    scratch.key_rotated.ptr,
+                    kv_state.key_cache.ptr,
+                    kv_state.value_cache.ptr,
+                    kv_state.append_spans,
+                    config.rms_norm_eps,
+                    heads,
+                    config.head_count_kv,
+                    config.key_length,
+                    rope.config.rotary_dim,
+                    rope.max_positions,
+                    stream=stream,
+                    library=self.libraries.kv_attention,
+                    runtime=self.runtime,
+                )
         attention_gated = self.kv_cache.attend(
             layer_id,
             scratch.query_rotated.ptr,
