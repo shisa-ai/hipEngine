@@ -193690,3 +193690,26 @@ Vulkan local sizes verbatim will close the measured gap.
   extension of the current exact source-F16 body, not an external port.
   Next: commit the diagnostic, then run the clean same-resident p512/d128
   production gate.
+
+## 2026-07-30 19:27 JST — Retain exact source-F16 attention quad
+
+- A first tracked-clean same-resident p512/d128 pair improved
+  **21.936032 -> 22.018694 tok/s (+0.3768%)** with the exact 128-token
+  trajectory and complete allocation recovery.
+- The seven-pair alternating-order gate is unanimous:
+  **21.944420 -> 22.026384 tok/s (+0.37351%)**, saving
+  **0.169573 ms/token** by endpoint medians and **0.171488 ms/token** by the
+  paired median. All seven candidates win; all fourteen runs preserve tokens
+  **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+  deterministic repeats, and complete recovery of
+  **79,022,520,340 resident bytes**.
+- Promoted `LAGUNA_F16_ATTENTION_QUAD_DECODE=True` only on gfx1151.
+  This removes 48 launches/token without changing residency. Rows>1,
+  unsupported layouts, explicit disable, and peer backends retain the exact
+  four-axis triple-plus-single fallback.
+- Raw seven-pair SHA-256 is
+  `e52bf2d31c82cc54947f70d3d00771a242ab042fdda51405ea185431175efe44`.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-retained.json`.
+  Next: commit the capability, publish selector-unset tracked-clean
+  production, then verify the 48-launch contraction in a complete wall trace.

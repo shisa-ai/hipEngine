@@ -6844,6 +6844,28 @@ submission idle. Current positive family gaps rank selected gate/up
 **+0.496884**, attention **+0.414342**, dense/shared **+0.357252**, selected
 down **+0.242849**, and router **+0.093081 ms/token**:
 [`post-interleave census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json).
+
+The Vulkan review changes the next move from another attention-math rewrite
+to exact device-dispatch contraction. llama.cpp records up to 100 graph nodes
+into reusable command buffers before submission; its shader count is not one
+host queue submission per shader. hipEngine's measured kernel sum is already
+within **0.164082 ms/token** of Vulkan, but every one of the 48 attention
+layers launches the source-F16 Q/K/V triple and then a tiny same-input gate
+projection. Their dependency boundary alone costs **0.26638 ms/token**.
+
+The retained `linear_quad/fixedk_onebarrier_bf16_f32_out` sibling flattens
+those two launches without changing arithmetic. Every output column keeps the
+same local256 K sequence and reduction tree, and rows>1/peer backends retain
+the registered triple-plus-single chain. The K3072 device fixture is F32-bit
+exact; cached tracing reports local256/VGPR24/SGPR128/LDS512/scratch0. All
+seven resident p512/d128 candidates win
+**21.944420 -> 22.026384 tok/s (+0.37351%)**, saving
+**0.169573 ms/token** by endpoint medians and **0.171488 ms/token** by paired
+median while preserving every token, position, repeat, allocation, and all
+**79,022,520,340 resident bytes**:
+[`F16 attention quad`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-retained.json).
+Tracked-clean selector-unset publication and the post-retention wall census
+are the remaining closure steps.
 Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
 within-evaluation command-buffer recording/submission, not cross-token graph

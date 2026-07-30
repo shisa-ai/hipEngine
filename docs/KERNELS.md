@@ -501,7 +501,10 @@ focused K3072 gfx1151 device fixture is F32-bit exact. Cached tracing names
 `laguna_f16w_quad_fixedk_onebarrier_gemv_kernel<3072>` at
 local256/VGPR24/SGPR128/LDS512/scratch0 and measures **8.095 us** on a tiny
 33+8+9+7-output fixture versus **20.277 us** for the two retained launches.
-Production remains unchanged pending the same-resident p512/d128 gate.
+All seven same-resident p512/d128 candidates win
+**21.944420 -> 22.026384 tok/s (+0.37351%, -0.169573 ms/token)** with exact
+state and unchanged residency, so gfx1151 now defaults the quad; peer
+backends and explicit disable retain triple plus singleton.
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
