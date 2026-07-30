@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T20:36:00+09:00",
+  "kind": "hipengine_laguna_f16_output_add_rmsnorm_decode_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "3a05dcd98d7ed18e0045fd7030c9cab2833e4b84",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "Preserve one exact fixed-K local256 attention-output projection block per column, then let the last producer execute the established local256 residual-add/RMSNorm tree and reset a stream-reused completion counter.",
+    "layers_per_token": 48,
+    "launches_per_token": {
+      "control": 96,
+      "candidate": 48,
+      "removed": 48
+    },
+    "resident_bytes_added": 0,
+    "counter_lifecycle": "Reuses the existing 320-byte attention-projection completion scratch; the last producer resets counter zero before the stream-ordered next layer.",
+    "fallback": "The registered exact fixed-K F16 projection followed by registered add/RMSNorm remains the peer-backend, unsupported-layout, rows>1, key-miss, and explicit-disable path."
+  },
+  "correctness": {
+    "red": "ImportError on the absent composite wrapper before implementation.",
+    "green": "Natural K6144/N3072 global and K9216/N3072 SWA gfx1151 fixtures match every BF16 projection, residual, and normalized-output byte against the registered fixed-K projection plus add/RMSNorm chain; the completion counter returns to zero.",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "resident_nbytes": 79022520660,
+    "pass": true
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling and an explicit compiler-version file",
+    "kernel": "laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<6144|9216>",
+    "grid_threads": 786432,
+    "local_x": 256,
+    "vgpr_count": 24,
+    "sgpr_count": 128,
+    "lds_block_bytes": 512,
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "ce5a6e9c2313949e43164ddc4a76c7c03291216ea7b88f88df9ad7a414fa25aa"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "Seven alternating-order control/candidate pairs in one resident session; dirty candidate source over tracked-clean revision 3a05dcd98; cached dependencies.",
+    "control_tok_s": [
+      21.967992601411957,
+      22.005296172048507,
+      22.01212333377581,
+      21.996322975573044,
+      22.009238699356196,
+      21.99001994334648,
+      22.01253313877431
+    ],
+    "candidate_tok_s": [
+      22.06637293632179,
+      22.060225321575185,
+      22.059856980833164,
+      22.049770565348393,
+      22.070553432837613,
+      22.06352157826206,
+      22.062262561028888
+    ],
+    "control_median_tok_s": 22.005296172048507,
+    "candidate_median_tok_s": 22.062262561028888,
+    "throughput_change_percent": 0.25887581123649195,
+    "control_median_ms_per_token": 45.44360558392378,
+    "candidate_median_ms_per_token": 45.32626684293092,
+    "saving_ms_per_token": 0.11733874099285657,
+    "median_paired_saving_ms_per_token": 0.11315290618130541,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "2842d98b4cdd9396ef478c6d0241bbd9c4d02f7ab57cb1b0e401172bcc6363ff"
+  },
+  "validation": {
+    "focused": "Registry, peer-backend capability, runtime resident ABI, both exact device shapes, constructor cleanup, py_compile, and git diff --check pass.",
+    "lineage": "Required inspection remains blocked before execution by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas; no external source was copied."
+  },
+  "protocol": {
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --compare-f16-output-add-rmsnorm-decode --allow-dirty --output /tmp/laguna-f16-output-add-rmsnorm-7pair.json",
+    "trace_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-output-add-rmsnorm-trace.DSvAao --output-file trace -- .venv/bin/python3 -m pytest -q tests/test_laguna_f16_projection.py::test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes"
+  },
+  "gate": {
+    "correctness": "pass; natural projection/residual/norm bytes, complete generated trajectory, position, determinism, counter reset, and lifecycle are exact",
+    "resources": "pass; local256/VGPR24/SGPR128/LDS512/scratch0",
+    "whole_model": "pass; +0.25888%, 7/7 pair wins, 0.113153 ms/token paired-median saving",
+    "decision": "Promote through gfx1151 LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE, then require tracked-clean selector-unset production and a complete dispatch census before removing the temporary A/B seam."
+  }
+}

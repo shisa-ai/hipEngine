@@ -141,6 +141,81 @@ __global__ void laguna_f16w_fixedk_onebarrier_gemv_kernel(
   }
 }
 
+// Exact rows-one attention-output projection plus add/RMSNorm boundary.
+// Every projection column preserves the fixed-K owner above. The last column
+// producer observes all BF16 projection stores, executes the existing
+// local256 add/RMSNorm tree, and resets the stream-reused completion counter.
+template <int K>
+__global__ __launch_bounds__(256)
+void laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    uint16_t* __restrict__ projection_out,
+    const uint16_t* __restrict__ residual,
+    const float* __restrict__ norm_weight,
+    uint16_t* __restrict__ norm_out,
+    uint16_t* __restrict__ residual_out,
+    int32_t* __restrict__ completion_counter,
+    int64_t out_features,
+    float eps) {
+  const int64_t col = static_cast<int64_t>(blockIdx.x);
+  if (col >= out_features) {
+    return;
+  }
+  float acc = 0.0f;
+#pragma unroll
+  for (int k = threadIdx.x; k < K; k += 256) {
+    acc += bf16_to_f32(x[k]) *
+           static_cast<float>(weight[col * K + k]);
+  }
+  const float total = block_sum_thread0(acc);
+  if (threadIdx.x == 0) {
+    projection_out[col] = f32_to_bf16(total);
+  }
+  __syncthreads();
+
+  __shared__ int last_producer;
+  if (threadIdx.x == 0) {
+    __threadfence();
+    const int prior = atomicAdd(completion_counter, 1);
+    last_producer = prior + 1 == out_features ? 1 : 0;
+  }
+  __syncthreads();
+  if (last_producer == 0) {
+    return;
+  }
+  __threadfence();
+
+  extern __shared__ float partial[];
+  const int64_t tid = static_cast<int64_t>(threadIdx.x);
+  float sum = 0.0f;
+  for (int64_t idx = tid; idx < out_features; idx += 256) {
+    const float value =
+        bf16_to_f32(residual[idx]) + bf16_to_f32(projection_out[idx]);
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms =
+      rsqrtf(partial[0] / static_cast<float>(out_features) + eps);
+  for (int64_t idx = tid; idx < out_features; idx += 256) {
+    const float value =
+        bf16_to_f32(residual[idx]) + bf16_to_f32(projection_out[idx]);
+    residual_out[idx] = f32_to_bf16(value);
+    norm_out[idx] = f32_to_bf16(value * inv_rms * norm_weight[idx]);
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    atomicExch(completion_counter, 0);
+  }
+}
+
 template <typename x_t>
 __global__ void laguna_f16w_dual_gemv_kernel(
     const x_t* __restrict__ x,
@@ -887,6 +962,59 @@ int launch_fixedk_onebarrier_single(
   }
 }
 
+template <int K>
+int launch_fixedk_output_add_rmsnorm_k(
+    const uint16_t* x,
+    const half_t* weight,
+    uint16_t* projection_out,
+    const uint16_t* residual,
+    const float* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int32_t* completion_counter,
+    int64_t out_features,
+    float eps,
+    hipStream_t stream) {
+  laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<K><<<
+      dim3(out_features), dim3(256), 256 * sizeof(float), stream>>>(
+      x, weight, projection_out, residual, norm_weight, norm_out,
+      residual_out, completion_counter, out_features, eps);
+  return hipGetLastError();
+}
+
+int launch_fixedk_output_add_rmsnorm(
+    const uint16_t* x,
+    const half_t* weight,
+    uint16_t* projection_out,
+    const uint16_t* residual,
+    const float* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int32_t* completion_counter,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows != 1 || out_features != 3072 || threads != 256 ||
+      completion_counter == nullptr) {
+    return hipErrorInvalidValue;
+  }
+  switch (in_features) {
+    case 6144:
+      return launch_fixedk_output_add_rmsnorm_k<6144>(
+          x, weight, projection_out, residual, norm_weight, norm_out,
+          residual_out, completion_counter, out_features, eps, stream);
+    case 9216:
+      return launch_fixedk_output_add_rmsnorm_k<9216>(
+          x, weight, projection_out, residual, norm_weight, norm_out,
+          residual_out, completion_counter, out_features, eps, stream);
+    default:
+      return hipErrorInvalidValue;
+  }
+}
+
 template <typename x_t>
 int launch_dual(const x_t* x, const half_t* wa, const half_t* wb, float* oa, float* ob,
                 int64_t rows, int64_t in_features, int64_t out_a, int64_t out_b,
@@ -1056,6 +1184,7 @@ extern "C" int hipengine_laguna_f16w_onebarrier_gemv_bf16_f32_out(const uint16_t
 extern "C" int hipengine_laguna_f16w_onebarrier_gemv_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_onebarrier_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_fixedk_onebarrier_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_fixedk_onebarrier_single(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_fixedk_output_add_rmsnorm_bf16(const uint16_t* x, const half_t* w, uint16_t* projection_out, const uint16_t* residual, const float* norm_weight, uint16_t* norm_out, uint16_t* residual_out, int32_t* completion_counter, int64_t r, int64_t k, int64_t n, float eps, int64_t t, hipStream_t s) { return launch_fixedk_output_add_rmsnorm(x,w,projection_out,residual,norm_weight,norm_out,residual_out,completion_counter,r,k,n,eps,t,s); }
 extern "C" int hipengine_laguna_f16w_gemv_f32_f32_out(const float* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_gemv_f32_bf16_out(const float* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_dual_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, float* oa, float* ob, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t t, hipStream_t s) { return launch_dual(x,wa,wb,oa,ob,r,k,na,nb,t,s); }

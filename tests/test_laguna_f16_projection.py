@@ -28,6 +28,7 @@ def _hip_available() -> bool:
 
 def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        laguna_f16w_fixedk_output_add_rmsnorm_bf16,
         laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_gemv_bf16_f32_out,
         laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
@@ -41,6 +42,15 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     )
 
     register_laguna_f16_projection_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear+add+rmsnorm",
+            quant="fp16_weight+gguf_f32_weight",
+            variant="fixedk_onebarrier_bf16_out",
+        )
+        is laguna_f16w_fixedk_output_add_rmsnorm_bf16
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -894,6 +904,119 @@ def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
                 _download(candidate, shape, dtype, runtime),
                 _download(baseline, shape, dtype, runtime),
             )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.parametrize("in_features", [6144, 9216])
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes(
+    in_features: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+        build_gguf_ops,
+        gguf_add_rmsnorm_bf16_f32_weight,
+    )
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection,
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out,
+        laguna_f16w_fixedk_output_add_rmsnorm_bf16,
+    )
+
+    rng = np.random.default_rng(0xADD0 + in_features)
+    hidden_size = 3072
+    x_bits = float_array_to_bf16_bits(
+        rng.standard_normal(in_features, dtype=np.float32) * np.float32(0.2)
+    )
+    residual_bits = float_array_to_bf16_bits(
+        rng.standard_normal(hidden_size, dtype=np.float32) * np.float32(0.1)
+    )
+    weight = (
+        rng.standard_normal((hidden_size, in_features), dtype=np.float32)
+        * np.float32(0.01)
+    ).astype(np.float16)
+    norm_weight = rng.normal(1.0, 0.05, size=hidden_size).astype(np.float32)
+    runtime = get_hip_runtime()
+    linear_library = build_laguna_f16_projection(load=True)
+    gguf_library = build_gguf_ops(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        dw = _upload(weight, runtime, allocations)
+        dresidual = _upload(residual_bits, runtime, allocations)
+        dnorm_weight = _upload(norm_weight, runtime, allocations)
+        control_projection = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        control_norm = _alloc((hidden_size,), np.uint16, runtime, allocations)
+        control_residual = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        candidate_projection = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        candidate_norm = _alloc((hidden_size,), np.uint16, runtime, allocations)
+        candidate_residual = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        counter = _alloc((1,), np.int32, runtime, allocations)
+        runtime.memset(counter.ptr, 0, counter.nbytes)
+
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out(
+            dx.ptr,
+            dw.ptr,
+            control_projection.ptr,
+            1,
+            in_features,
+            hidden_size,
+            library=linear_library,
+            runtime=runtime,
+        )
+        gguf_add_rmsnorm_bf16_f32_weight(
+            dresidual.ptr,
+            control_projection.ptr,
+            dnorm_weight.ptr,
+            control_norm.ptr,
+            control_residual.ptr,
+            1,
+            hidden_size,
+            1.0e-6,
+            library=gguf_library,
+            runtime=runtime,
+        )
+        laguna_f16w_fixedk_output_add_rmsnorm_bf16(
+            dx.ptr,
+            dw.ptr,
+            candidate_projection.ptr,
+            dresidual.ptr,
+            dnorm_weight.ptr,
+            candidate_norm.ptr,
+            candidate_residual.ptr,
+            counter.ptr,
+            1,
+            in_features,
+            hidden_size,
+            1.0e-6,
+            library=linear_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        for control, candidate in (
+            (control_projection, candidate_projection),
+            (control_norm, candidate_norm),
+            (control_residual, candidate_residual),
+        ):
+            np.testing.assert_array_equal(
+                _download(candidate, (hidden_size,), np.uint16, runtime),
+                _download(control, (hidden_size,), np.uint16, runtime),
+            )
+        np.testing.assert_array_equal(
+            _download(counter, (1,), np.int32, runtime),
+            np.zeros(1, dtype=np.int32),
+        )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)

@@ -193819,3 +193819,36 @@ Vulkan local sizes verbatim will close the measured gap.
   for explicit rollback; gfx1151 capability selection, composite
   registrations, counter scratch, peer-backend behavior, and the exact
   quad-plus-head/KV fallback are unchanged.
+
+## 2026-07-30 20:40 JST — Retain exact F16 output/add/RMSNorm candidate
+
+- Added a separately registered c=1
+  `linear+add+rmsnorm/fp16_weight+gguf_f32_weight/fixedk_onebarrier_bf16_out`
+  composite. Every K6144/K9216 attention-output column keeps the current
+  local256 fixed-K dot and BF16 store; the last of 3,072 producers executes
+  the existing local256 residual-add/RMSNorm tree and resets counter zero.
+  The existing 320-byte projection-completion scratch is reused, so residency
+  remains **79,022,520,660 bytes**. The fixed-K projection plus registered
+  add/RMSNorm chain remains the exact fallback.
+- RED was the absent wrapper import. Natural global and SWA device fixtures
+  match every projection, residual, and normalized BF16 byte and return the
+  counter to zero. Registry, runtime resident ABI, peer-backend capability,
+  constructor cleanup, `py_compile`, and `git diff --check` pass.
+- Cached `rocprofv3 --kernel-trace` names both
+  `laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<6144|9216>`
+  specializations at local256/VGPR24/SGPR128/LDS512/scratch0; no compiler ran
+  under the profiler.
+- Seven alternating same-resident p512/d128 pairs preserve tokens
+  **2930/74107**, trajectory `94f803f7...bda32`, final position 638,
+  determinism, metadata, and complete allocation recovery. Every candidate
+  wins: endpoint medians improve
+  **22.005296 -> 22.062263 tok/s (+0.25888%)**, saving
+  **0.117339 ms/token**, while paired deltas save
+  **0.113153 ms/token**. Promote provisionally through
+  `LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE`; tracked-clean selector-unset
+  production and a complete dispatch census remain required before removing
+  the admitted comparison seam.
+- Required lineage inspection remains blocked before execution by missing
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas`; no external code was
+  copied. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json`.

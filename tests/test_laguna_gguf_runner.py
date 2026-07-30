@@ -1088,6 +1088,89 @@ def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi() ->
     ]
 
 
+def test_laguna_f16_output_add_rmsnorm_runtime_uses_registered_resident_abi() -> None:
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.kernels.registry import register, resolve
+
+    load_backend_kernel_package("hip_gfx1151")
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear+add+rmsnorm",
+        "fp16_weight+gguf_f32_weight",
+        "fixedk_onebarrier_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(layout=LAYOUT_DENSE_F16),
+        allocation=lambda name: SimpleNamespace(
+            tensor=SimpleNamespace(ptr=11)
+        ),
+    )
+    libraries = LagunaEagerLibraries(
+        **{
+            field: SimpleNamespace()
+            for field in LagunaEagerLibraries.__dataclass_fields__
+        }
+    )
+    libraries = replace(libraries, f16_projection="f16-library")
+    try:
+        launched = runner_module.launch_laguna_f16_output_add_rmsnorm(
+            weight,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            9216,
+            3072,
+            1.0e-6,
+            backend="hip_gfx1151",
+            stream=7,
+            libraries=libraries,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert launched
+    assert calls == [
+        (
+            (
+                20,
+                11,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                1,
+                9216,
+                3072,
+                1.0e-6,
+            ),
+            {
+                "stream": 7,
+                "library": "f16-library",
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+
+
 def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     monkeypatch,
 ) -> None:

@@ -2273,5 +2273,21 @@ should be boring.
   **2.006962 -> 1.882766 ms/token** span-minus-kernel time. The comparison
   CLI and session setter are now eligible for immediate removal.
 - The comparison CLI, setter, and comparison-protocol fields are removed.
+
+## Laguna gfx1151 source-F16 output/add/RMSNorm selector
+
+- Added 2026-07-30 as
+  `LagunaGGUFResidentSession.set_f16_output_add_rmsnorm_decode(...)` and
+  `--compare-f16-output-add-rmsnorm-decode`. The candidate preserves every
+  fixed-K attention-output projection block and lets only the final producer
+  execute the established residual-add/RMSNorm tree.
+- Seven exact same-resident p512/d128 pairs all improve
+  **22.005296 -> 22.062263 tok/s (+0.25888%)**, saving
+  **0.113153 ms/token** by paired median with unchanged residency.
+- Remove the comparison CLI, setter, and protocol fields after tracked-clean
+  selector-unset production and a complete 127-transition census publish or
+  reject the default. If retained, keep the constructor override, four-axis
+  composite registration, gfx1151 capability, shared completion scratch, and
+  exact fixed-K projection plus add/RMSNorm fallback.
   Retain the constructor override for explicit rollback, gfx1151 capability,
   four-axis registrations, counter scratch, and exact unfused fallback.
