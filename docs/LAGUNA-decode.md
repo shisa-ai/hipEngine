@@ -6423,6 +6423,22 @@ The remaining attention sequence is:
      **21.234815 tok/s (+1.0801%, -0.5086 ms/token)** versus the preceding
      clean production checkpoint:
      [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dense-ring-production.json).
+103. Re-profile the tracked-clean dense-ring wall.
+     **Accepted attribution checkpoint:** 127 one-token trace segments retain
+     **673 dispatches/token** and measure **45.242411 ms/token** kernel sum
+     plus **47.295341 ms/token** span. Versus the post-DPP-QK census, SWA
+     falls **1.359431 -> 0.883141 ms/token (-35.036%)**, total attention
+     falls **2.016624 -> 1.542659 (-23.503%)**, kernel sum falls
+     **0.488092 ms/token**, and span falls **0.490952 ms/token**. Global and
+     every non-attention family remain within 0.05%, apart from ordinary
+     sampling noise.
+
+     The current named same-GGUF Vulkan gaps are attention
+     **+0.633236 ms/token**, selected gate/up **+0.510557**, and selected down
+     **+0.266460**; source-F16 is **0.707030 ms/token faster**. Attention is
+     still the largest named gap, but now only **14.85%** of the complete
+     clean wall gap:
+     [`post-dense-ring census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-ring-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
