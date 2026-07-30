@@ -52,7 +52,12 @@ def _isolate_wmma_axis_from_rowtile():
         set_q4k_rowtile_enabled(None)
 
 
-def _fake_weight(*, layout: str, quant_key: str):
+def _fake_weight(
+    *,
+    layout: str,
+    quant_key: str,
+    decode_tiles: bool = False,
+):
     allocations = {
         "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=10)),
         "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
@@ -60,6 +65,10 @@ def _fake_weight(*, layout: str, quant_key: str):
         "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=13)),
         "tiles": SimpleNamespace(tensor=SimpleNamespace(ptr=14)),
     }
+    if decode_tiles:
+        allocations["decode_tiles"] = SimpleNamespace(
+            tensor=SimpleNamespace(ptr=15)
+        )
 
     class Weight:
         def __init__(self) -> None:
@@ -1600,6 +1609,65 @@ def test_gfx1151_q4_k_pack8_decode_pair_silu_uses_registered_owner() -> None:
     assert calls == [
         (
             (100, 11, 12, 13, 11, 12, 13, 400, 1, 3072, 1024),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_q4_k_decode_sidecar_pair_silu_uses_t16_owner() -> None:
+    """A decode-only T16 sidecar overrides pack8 without changing its layout."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    fused_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "t16_sidecar_dual_decode_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_fused(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(fused_key, fake_fused, replace=True)
+    try:
+        assert launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_ptr=400,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            backend="hip_gfx1151",
+            stream=7,
+            runtime="runtime-sentinel",
+            use_gemv_decode=True,
+        )
+    finally:
+        register(fused_key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 15, 15, 400, 1, 3072, 1024),
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
     ]

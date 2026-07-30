@@ -57,6 +57,12 @@ _T16_COLUMNS = 16
 _LAGUNA_REPACKED_CACHE_SCHEMA = 1
 _LAGUNA_REPACKED_CACHE_LAYOUT_VERSION = "laguna-repacked-v1"
 _REPACKED_CACHE_LAYOUTS = frozenset({LAYOUT_Q4_K_PACK8, LAYOUT_GGUF_Q4_K_T16, LAYOUT_GGUF_Q6_K_T16})
+_Q4_DECODE_T16_SIDECAR_SUFFIXES = (
+    ".ffn_gate",
+    ".ffn_up",
+    ".ffn_gate_shexp",
+    ".ffn_up_shexp",
+)
 
 
 class LagunaMemoryAdmissionError(MemoryError):
@@ -256,6 +262,7 @@ class LagunaMemoryAdmissionPlan:
     available_nbytes: int
     scratch_nbytes: int
     safety_reserve_nbytes: int
+    auxiliary_weight_nbytes: int
     loader_transient_nbytes: int
     peak_required_nbytes: int
     headroom_bytes: int
@@ -310,6 +317,7 @@ class LagunaGGUFResidentWeights:
     admission: LagunaMemoryAdmissionPlan
     q6_qmicro: bool = False
     q6_qmicro_planar: bool = False
+    q4_decode_t16_sidecar: bool = False
 
     def root(self, slot: str) -> LagunaGGUFDeviceWeight:
         return self.root_weights[slot]
@@ -582,6 +590,8 @@ def plan_laguna_memory_admission(
     storage_dtype: str = "bf16",
     scratch_nbytes: int = DEFAULT_LAGUNA_SCRATCH_BYTES,
     safety_reserve_nbytes: int = DEFAULT_LAGUNA_SAFETY_RESERVE_BYTES,
+    auxiliary_weight_nbytes: int = 0,
+    auxiliary_loader_transient_nbytes: int | None = None,
     honor_sliding_window: bool = True,
 ) -> LagunaMemoryAdmissionPlan:
     """Calculate peak UMA demand and reject over-budget plans before allocation."""
@@ -590,12 +600,15 @@ def plan_laguna_memory_admission(
     available = int(available_bytes)
     scratch = int(scratch_nbytes)
     reserve = int(safety_reserve_nbytes)
+    auxiliary_weights = int(auxiliary_weight_nbytes)
     if context <= 0 or context > weights.config.context_length:
         raise ValueError(f"context_length must be within [1, {weights.config.context_length}]")
     if available <= 0:
         raise ValueError("available_bytes must be positive")
-    if scratch < 0 or reserve < 0:
-        raise ValueError("scratch and safety reserve must be non-negative")
+    if scratch < 0 or reserve < 0 or auxiliary_weights < 0:
+        raise ValueError(
+            "scratch, safety reserve, and auxiliary weights must be non-negative"
+        )
     dtype = str(storage_dtype).lower()
     if dtype not in {"bf16", "fp16"}:
         raise ValueError("initial Laguna KV storage_dtype must be 'bf16' or 'fp16'")
@@ -609,8 +622,21 @@ def plan_laguna_memory_admission(
         )
 
     kv = _plan_kv_memory(weights.config, context_length=context, storage_dtype=dtype)
-    transient = weights.max_loader_transient_nbytes
-    peak = weights.resident_nbytes + kv.resident_nbytes + scratch + reserve + transient
+    transient = (
+        weights.max_loader_transient_nbytes
+        if auxiliary_loader_transient_nbytes is None
+        else int(auxiliary_loader_transient_nbytes)
+    )
+    if transient < 0:
+        raise ValueError("auxiliary loader transient must be non-negative")
+    peak = (
+        weights.resident_nbytes
+        + auxiliary_weights
+        + kv.resident_nbytes
+        + scratch
+        + reserve
+        + transient
+    )
     headroom = available - peak
     result = LagunaMemoryAdmissionPlan(
         weights=weights,
@@ -618,6 +644,7 @@ def plan_laguna_memory_admission(
         available_nbytes=available,
         scratch_nbytes=scratch,
         safety_reserve_nbytes=reserve,
+        auxiliary_weight_nbytes=auxiliary_weights,
         loader_transient_nbytes=transient,
         peak_required_nbytes=peak,
         headroom_bytes=headroom,
@@ -648,6 +675,7 @@ def materialize_laguna_gguf_weights(
     repacked_cache_source_sha256: str | None = None,
     q6_qmicro: bool | None = None,
     q6_qmicro_planar: bool | None = None,
+    q4_decode_t16_sidecar: bool | None = None,
 ) -> LagunaGGUFResidentWeights:
     """Stream selected or all planned Laguna weights into owned device buffers."""
 
@@ -687,6 +715,49 @@ def materialize_laguna_gguf_weights(
     )
     if selected_q6_qmicro_planar and not selected_q6_qmicro:
         raise ValueError("Q6 planar layout requires qmicro")
+    selected_q4_decode_sidecar = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR",
+            False,
+        )
+        if q4_decode_t16_sidecar is None
+        else q4_decode_t16_sidecar
+    )
+    specs_by_path = {spec.slot_path: spec for spec in plan.specs}
+    selected = (
+        None
+        if selected_slots is None
+        else {str(item) for item in selected_slots}
+    )
+    if selected is not None:
+        unknown = tuple(sorted(selected - set(specs_by_path)))
+        if unknown:
+            raise ValueError(f"unknown selected Laguna slots: {unknown}")
+    selected_specs = (
+        plan.specs
+        if selected is None
+        else tuple(specs_by_path[slot] for slot in selected)
+    )
+    sidecar_sizes = tuple(
+        _q4_decode_t16_sidecar_nbytes(spec)
+        for spec in selected_specs
+        if selected_q4_decode_sidecar
+        and _q4_decode_t16_sidecar_nbytes(spec) > 0
+    )
+    auxiliary_weight_nbytes = sum(sidecar_sizes)
+    auxiliary_loader_transient_nbytes = max(
+        (
+            spec.loader_transient_nbytes
+            + (
+                _q4_decode_t16_sidecar_nbytes(spec)
+                if selected_q4_decode_sidecar
+                else 0
+            )
+            for spec in selected_specs
+        ),
+        default=0,
+    )
     if available_bytes is None:
         try:
             available_bytes = int(active_runtime.mem_get_info()[0])
@@ -701,14 +772,12 @@ def materialize_laguna_gguf_weights(
         storage_dtype=storage_dtype,
         scratch_nbytes=scratch_nbytes,
         safety_reserve_nbytes=safety_reserve_nbytes,
+        auxiliary_weight_nbytes=auxiliary_weight_nbytes,
+        auxiliary_loader_transient_nbytes=(
+            auxiliary_loader_transient_nbytes
+        ),
     )
 
-    specs_by_path = {spec.slot_path: spec for spec in plan.specs}
-    selected = None if selected_slots is None else {str(item) for item in selected_slots}
-    if selected is not None:
-        unknown = tuple(sorted(selected - set(specs_by_path)))
-        if unknown:
-            raise ValueError(f"unknown selected Laguna slots: {unknown}")
     selected_count = len(plan.specs) if selected is None else len(selected)
     completed: list[LagunaGGUFDeviceWeight] = []
     complete_count = 0
@@ -725,6 +794,7 @@ def materialize_laguna_gguf_weights(
                 backend=backend,
                 q6_qmicro=selected_q6_qmicro,
                 q6_qmicro_planar=selected_q6_qmicro_planar,
+                q4_decode_t16_sidecar=selected_q4_decode_sidecar,
                 profile=profile,
                 repacked_cache=cache,
             )
@@ -748,6 +818,7 @@ def materialize_laguna_gguf_weights(
                     backend=backend,
                     q6_qmicro=selected_q6_qmicro,
                     q6_qmicro_planar=selected_q6_qmicro_planar,
+                    q4_decode_t16_sidecar=selected_q4_decode_sidecar,
                     profile=profile,
                     repacked_cache=cache,
                 )
@@ -777,6 +848,7 @@ def materialize_laguna_gguf_weights(
         admission=admission,
         q6_qmicro=selected_q6_qmicro,
         q6_qmicro_planar=selected_q6_qmicro_planar,
+        q4_decode_t16_sidecar=selected_q4_decode_sidecar,
     )
 
 
@@ -829,6 +901,7 @@ def _materialize_spec(
     backend: str,
     q6_qmicro: bool | None = None,
     q6_qmicro_planar: bool | None = None,
+    q4_decode_t16_sidecar: bool = False,
     profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
     repacked_cache: LagunaGGUFRepackedCache | None = None,
 ) -> LagunaGGUFDeviceWeight:
@@ -839,11 +912,24 @@ def _materialize_spec(
     source_started = time.perf_counter()
     source_before = _process_counters() if profile is not None else None
     cache_hit = repacked_cache is not None and repacked_cache.has(spec)
-    source_kind = "repacked_cache" if cache_hit else "gguf"
+    use_q4_decode_sidecar = bool(
+        q4_decode_t16_sidecar
+        and spec.layout == LAYOUT_Q4_K_PACK8
+        and spec.slot_path.endswith(_Q4_DECODE_T16_SIDECAR_SUFFIXES)
+    )
+    source_kind = (
+        "repacked_cache+gguf_decode_sidecar"
+        if cache_hit and use_q4_decode_sidecar
+        else ("repacked_cache" if cache_hit else "gguf")
+    )
     if cache_hit:
         assert repacked_cache is not None
         payloads = repacked_cache.payloads(spec)
-        raw = None
+        raw = (
+            np.ascontiguousarray(reader.tensor_data(spec.source.name))
+            if use_q4_decode_sidecar
+            else None
+        )
     else:
         raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
         payloads = None
@@ -888,6 +974,26 @@ def _materialize_spec(
             payloads = measured_repack(lambda: _resident_payloads(spec, raw))
         else:
             payloads = _resident_payloads(spec, raw)
+    decode_sidecar_nbytes = 0
+    if use_q4_decode_sidecar:
+        if raw is None:
+            raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+        packed_decode = measured_repack(
+            lambda: repack_gguf_q4_k_tile16(
+                raw if raw.ndim == 3 else raw[None, ...]
+            )
+        )
+        decode_sidecar_nbytes = int(packed_decode.tiles.nbytes)
+        payloads = MappingProxyType(
+            {
+                **payloads,
+                "decode_tiles": _ResidentPayload(
+                    packed_decode.tiles,
+                    DType.INT8,
+                    "I8",
+                ),
+            }
+        )
     if (
         selected_q6_qmicro
         and spec.layout == LAYOUT_GGUF_Q6_K_T16
@@ -944,14 +1050,22 @@ def _materialize_spec(
                 runtime=timed_runtime,
             )
 
+        expected_names = (
+            *spec.allocation_names,
+            *(("decode_tiles",) if use_q4_decode_sidecar else ()),
+        )
         actual_names = tuple(allocations)
-        if actual_names != spec.allocation_names:
+        if actual_names != expected_names:
             raise ValueError(
                 f"Laguna allocation names differ for {spec.slot_path}: "
-                f"planned={spec.allocation_names} actual={actual_names}"
+                f"planned={expected_names} actual={actual_names}"
             )
         for name, allocation in allocations.items():
-            planned_nbytes = int(spec.allocation_nbytes[name])
+            planned_nbytes = (
+                decode_sidecar_nbytes
+                if name == "decode_tiles"
+                else int(spec.allocation_nbytes[name])
+            )
             if allocation.buffer.nbytes != planned_nbytes:
                 raise ValueError(
                     f"Laguna allocation bytes differ for {spec.slot_path}.{name}: "
@@ -1283,6 +1397,25 @@ def _q4_k_pack8_allocations(tensor: GGUFTensorInfo) -> Mapping[str, int]:
         "scales": (in_features // 32) * out_features * 4,
         "mins": (in_features // 32) * out_features * 4,
     }
+
+
+def _q4_decode_t16_sidecar_nbytes(spec: LagunaGGUFWeightSpec) -> int:
+    if (
+        spec.layout != LAYOUT_Q4_K_PACK8
+        or not spec.slot_path.endswith(_Q4_DECODE_T16_SIDECAR_SUFFIXES)
+    ):
+        return 0
+    out_features, in_features = spec.source.shape
+    if out_features % _T16_COLUMNS or in_features % _GGUF_K_BLOCK:
+        raise ValueError(
+            "Q4_K decode T16 sidecar shape unsupported: "
+            f"{spec.source.name} {spec.source.shape}"
+        )
+    return (
+        (out_features // _T16_COLUMNS)
+        * (in_features // _GGUF_K_BLOCK)
+        * GGUF_Q4_K_TILE16_BLOCK_BYTES
+    )
 
 
 def _q4_k_t16_nbytes(tensor: GGUFTensorInfo) -> int:

@@ -90,6 +90,7 @@ COMPARISON_ARGUMENTS = (
     "compare_global_mixed32",
     "compare_selected_natural_decode",
     "compare_selected_natural_tile8_decode",
+    "compare_q4_decode_t16_sidecar",
 )
 
 
@@ -345,6 +346,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance natural selected gate/up against exact tile8",
     )
+    parser.add_argument(
+        "--compare-q4-decode-t16-sidecar",
+        action="store_true",
+        help="counterbalance pack8 and compact T16 dense/shared Q4 decode",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -571,6 +577,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_block_attention_hipblaslt = False
     active_swa_attention_hipblaslt = False
     active_dense_contiguous_cache = False
+    active_q4_decode_t16_sidecar = False
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
@@ -643,6 +650,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 False
                 if args.compare_selected_natural_tile8_decode
                 else None
+            ),
+            use_q4_decode_t16_sidecar=(
+                False if args.compare_q4_decode_t16_sidecar else None
             ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
@@ -775,6 +785,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_dense_contiguous_cache = (
             owner.prefill_dense_contiguous_cache
         )
+        active_q4_decode_t16_sidecar = (
+            owner.use_q4_decode_t16_sidecar
+        )
         active_attention_rows = owner.prefill_attention_chunk_size
         active_global_attention_rows = (
             owner.prefill_global_attention_chunk_size
@@ -884,6 +897,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_selected_natural_tile8_decode:
                         owner.set_selected_natural_tile8_decode(
+                            mode == "candidate"
+                        )
+                    if args.compare_q4_decode_t16_sidecar:
+                        owner.set_q4_decode_t16_sidecar(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -1138,6 +1155,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare_selected_natural_tile8_decode": (
                 args.compare_selected_natural_tile8_decode
             ),
+            "compare_q4_decode_t16_sidecar": (
+                args.compare_q4_decode_t16_sidecar
+            ),
+            "q4_decode_t16_sidecar": active_q4_decode_t16_sidecar,
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,
             "swa_split_tile16_min_live": active_swa_split_tile16_min_live,

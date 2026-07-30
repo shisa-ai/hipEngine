@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
@@ -504,6 +505,41 @@ def _run_direct_dual_silu(fn, x_dev, selected, ta, tb, out_features, out_dtype, 
             free(buf)
 
 
+def _run_dense_dual_silu(
+    x_dev,
+    ta,
+    tb,
+    out_features,
+    out_dtype,
+    library,
+) -> np.ndarray:
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    ta_buf = malloc(ta.nbytes)
+    copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
+    tb_buf = malloc(tb.nbytes)
+    copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
+    out_arr = np.zeros((1, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
+            x_buf.ptr,
+            ta_buf.ptr,
+            tb_buf.ptr,
+            out_buf.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, ta_buf, tb_buf, out_buf):
+            free(buf)
+
+
 def _run_direct_dual_silu_q8_dp4a(
     x_dev,
     selected,
@@ -944,6 +980,43 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     np.testing.assert_array_equal(
         gate_tile8_parallel_silu_pairq,
         gate_tile8_parallel_silu_paircoeff,
+    )
+    dense_tiles_a = repack_gguf_q4_k_tile16(gate_a[0:1]).tiles
+    dense_tiles_b = repack_gguf_q4_k_tile16(gate_b[0:1]).tiles
+    dense_actual = _run_dense_dual_silu(
+        gate_x,
+        dense_tiles_a,
+        dense_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    dense_expected_pair = _expected_direct_dual(
+        _bf16_u16_to_f32(gate_x),
+        np.asarray([0], dtype=np.int64),
+        gate_a,
+        gate_b,
+        gate_out,
+        gate_out,
+    )
+    dense_gate = _bf16_u16_to_f32(
+        _f32_to_bf16_u16(dense_expected_pair[:, :gate_out])
+    )
+    dense_up = _bf16_u16_to_f32(
+        _f32_to_bf16_u16(dense_expected_pair[:, gate_out:])
+    )
+    with np.errstate(over="ignore"):
+        dense_expected = _bf16_u16_to_f32(
+            _f32_to_bf16_u16(
+                dense_gate *
+                (1.0 / (1.0 + np.exp(-dense_gate))) *
+                dense_up
+            )
+        )
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(dense_actual),
+        dense_expected,
+        **_TOL,
     )
 
     down_in, down_out = 1024, 3072

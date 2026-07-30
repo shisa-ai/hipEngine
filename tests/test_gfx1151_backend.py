@@ -271,6 +271,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
         ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "t16_sidecar_dual_decode_bf16_bf16_out",
+        ),
     ]
 
 

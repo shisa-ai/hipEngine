@@ -6533,15 +6533,40 @@ The remaining attention sequence is:
      not a useful exact reuse seam. Keep production unchanged at
      **21.304731 tok/s**:
      [`row-pair rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-rowpair-activation-reuse-rejected.json).
+108. Use compact T16 coefficients for dense/shared Q4 decode without changing
+     the retained pack8 prefill layout.
+     **Retained as the gfx1151 default:** attach `decode_tiles` only to the 96
+     rank-2 Q4 dense/shared gate and up weights. The rows-one owner preserves
+     pack8's local32 K ownership, per-column FMA sequence, wave reduction,
+     independent BF16 gate/up boundaries, and fused SiLU product. Prefill and
+     peer backends continue to consume pack8. Admission explicitly includes
+     the **214,597,632-byte** auxiliary representation; resident weights move
+     **78,807,922,708 -> 79,022,520,340 bytes**.
+
+     RED fails on the absent wrapper and GREEN passes the CPU-reference and
+     production-bit gates. Actual-weight 9x50 leaves are BF16-bit exact and
+     improve shared K3072/N1024 **0.013150 -> 0.010650 ms (-19.010%)**
+     plus dense K3072/N12288 **0.469125 -> 0.186636 ms (-60.216%)**, with
+     **9/9** wins at both shapes. Cached tracing names the intended local32
+     kernel at VGPR176/SGPR128/LDS0/scratch0.
+
+     All seven same-session p512/d128 pairs win. Median decode moves
+     **21.311596 -> 21.852204 tok/s (+2.53669%)**, saving
+     **1.160837 ms/token**, while all 14 trajectories preserve tokens
+     **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+     deterministic state, and complete allocation recovery. Pack8 remains the
+     explicit session rollback:
+     [`T16 dense/shared retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-retained.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
+| hipEngine tracked-clean production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
+| hipEngine retained T16 sidecar | **21.852204 tok/s** | **45.762 ms** | **+90.567%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **4.108 ms/token** | hipEngine is **8.753%** below Vulkan throughput |
+| Remaining retained wall gap | — | **2.932 ms/token** | hipEngine is **6.408%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own

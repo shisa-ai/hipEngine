@@ -880,6 +880,7 @@ class LagunaEagerLibraries:
             "gguf_q4_k:local32_fixed_meta_gemv_decode_bf16_f32_out": (
                 self.q4_decode_linear
             ),
+            "gguf_q4_k_t16_v1": self.selected_experts,
             "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
             "gguf_q6_k:wmma_prefill_bf16_bf16_out": self.q4_prefill_linear,
@@ -2107,6 +2108,7 @@ class LagunaGGUFResidentSession:
         use_selected_natural_tile8_parallel_silu_decode: bool | None = None,
         use_selected_down_natural_parallel_decode: bool | None = None,
         use_q4_pack8_dual_silu_decode: bool | None = None,
+        use_q4_decode_t16_sidecar: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2304,6 +2306,15 @@ class LagunaGGUFResidentSession:
             )
             if use_q4_pack8_dual_silu_decode is None
             else use_q4_pack8_dual_silu_decode
+        )
+        self.use_q4_decode_t16_sidecar = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR",
+                False,
+            )
+            if use_q4_decode_t16_sidecar is None
+            else use_q4_decode_t16_sidecar
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3081,6 +3092,11 @@ class LagunaGGUFResidentSession:
         """Select the exact tile8 natural gate/up sibling."""
 
         self.use_selected_natural_tile8_decode = bool(enabled)
+
+    def set_q4_decode_t16_sidecar(self, enabled: bool) -> None:
+        """Select compact exact Q4 dense/shared decode tiles or pack8."""
+
+        self.use_q4_decode_t16_sidecar = bool(enabled)
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -4963,6 +4979,7 @@ class LagunaGGUFResidentSession:
                 libraries=linear_libraries,
                 runtime=self.runtime,
                 use_gemv_decode=True,
+                use_q4_t16_sidecar=self.use_q4_decode_t16_sidecar,
             )
         if not dense_silu_fused:
             dense_pair = launch_gguf_linear_pair(
@@ -5070,6 +5087,9 @@ class LagunaGGUFResidentSession:
             ),
             use_q4_pack8_dual_silu_decode=(
                 self.use_q4_pack8_dual_silu_decode
+            ),
+            use_q4_decode_t16_sidecar=(
+                self.use_q4_decode_t16_sidecar
             ),
         )
         config = self.weights.config

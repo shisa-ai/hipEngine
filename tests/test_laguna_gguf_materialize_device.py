@@ -220,6 +220,46 @@ def test_laguna_materialize_spec_matches_pack8_and_t16_repack_payloads() -> None
         assert runtime.buffers == {}
 
 
+def test_laguna_materialize_q4_decode_t16_sidecar_is_additive() -> None:
+    """Decode tiles attach beside pack8 without changing its cache contract."""
+
+    tensor = tensor_info(
+        "q4_pack8_sidecar",
+        (16, 256),
+        GGMLQuantizationType.Q4_K,
+    )
+    rng = np.random.default_rng(20260730)
+    raw = rng.integers(0, 256, size=(16, 144), dtype=np.uint8)
+    expected_t16 = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    runtime = FakeRuntime()
+    weight = _materialize_spec(
+        _spec_for_tensor("layers.0.ffn_gate", tensor),
+        _ArrayReader(tensor.name, raw),
+        device=None,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        q4_decode_t16_sidecar=True,
+    )
+    try:
+        assert weight.spec.allocation_names == ("qweight", "scales", "mins")
+        assert tuple(weight.allocations) == (
+            "qweight",
+            "scales",
+            "mins",
+            "decode_tiles",
+        )
+        assert (
+            _device_bytes(weight, runtime, "decode_tiles")
+            == expected_t16.tobytes()
+        )
+        assert weight.resident_nbytes == (
+            weight.spec.resident_nbytes + expected_t16.nbytes
+        )
+    finally:
+        weight.free(runtime=runtime)
+    assert runtime.buffers == {}
+
+
 def test_laguna_materialize_profile_separates_repack_allocation_and_upload() -> None:
     tensor = tensor_info("q4_pack8", (16, 256), GGMLQuantizationType.Q4_K)
     raw = np.zeros((16, 144), dtype=np.uint8)
@@ -350,6 +390,7 @@ def test_laguna_repacked_cache_reloads_exact_replacement_payloads(tmp_path) -> N
         backend="hip_gfx1151",
         repacked_cache=cache_path,
         repacked_cache_source_sha256="synthetic-sha256",
+        q4_decode_t16_sidecar=False,
         profile=profiles.append,
     )
     try:

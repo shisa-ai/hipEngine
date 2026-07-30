@@ -1175,6 +1175,7 @@ def launch_gguf_linear_pair_silu(
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
     use_gemv_decode: bool | None = None,
+    use_q4_t16_sidecar: bool = True,
 ) -> bool:
     """Launch an exact registered gate/up pair plus SiLU, or return False."""
 
@@ -1203,7 +1204,53 @@ def launch_gguf_linear_pair_silu(
         "gguf_q4_k",
         "pack8_dual_decode_bf16_bf16_out",
     )
+    t16_sidecar_key = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "t16_sidecar_dual_decode_bf16_bf16_out",
+    )
     _ensure_linear_kernel_registered(fused_key)
+    decode_tiles_a = None
+    decode_tiles_b = None
+    try:
+        decode_tiles_a = weight_a.allocation("decode_tiles")
+        decode_tiles_b = weight_b.allocation("decode_tiles")
+    except KeyError:
+        pass
+    if (
+        dispatch_a.key == q4_decode
+        and dispatch_b.key == q4_decode
+        and use_q4_t16_sidecar
+        and decode_tiles_a is not None
+        and decode_tiles_b is not None
+        and is_registered(t16_sidecar_key)
+    ):
+        fn = resolve(
+            backend=t16_sidecar_key.backend,
+            layer=t16_sidecar_key.layer,
+            quant=t16_sidecar_key.quant,
+            variant=t16_sidecar_key.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None
+            if libraries is None
+            else libraries.get("gguf_q4_k_t16_v1")
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            decode_tiles_a.tensor.ptr,
+            decode_tiles_b.tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     if (
         dispatch_a.key != q4_decode
         or dispatch_b.key != q4_decode

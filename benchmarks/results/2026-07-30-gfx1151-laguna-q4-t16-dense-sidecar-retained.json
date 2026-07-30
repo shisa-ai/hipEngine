@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T15:31:00+09:00",
+  "kind": "hipengine_laguna_q4_t16_dense_decode_sidecar_retention",
+  "status": "accepted_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "7009647f077698ef6c5fff05aae4aa981d6043f3",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "design": {
+    "scope": "rank-2 Q4_K dense/shared gate+up, rows=1 only",
+    "prefill_layout": "retained q4_k_pack8",
+    "decode_layout": "additive q4_k_t16_v1 decode_tiles",
+    "kernel": "q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>",
+    "arithmetic": "same local32 K ownership, per-column FMA order, wave32 reduction, independent BF16 gate/up boundaries, and fused SiLU product as production pack8",
+    "sidecar_count": 96,
+    "sidecar_nbytes": 214597632,
+    "resident_nbytes_before": 78807922708,
+    "resident_nbytes_after": 79022520340
+  },
+  "leaf": {
+    "protocol": "actual layer-1 shared and layer-0 dense weights; counterbalanced 9x50 HIP events",
+    "shared_m1_k3072_n1024": {
+      "control_pack8_ms": 0.013150140047073364,
+      "candidate_t16_ms": 0.01065027952194214,
+      "delta_percent": -19.010143741302453,
+      "candidate_wins": 9,
+      "pairs": 9,
+      "bf16_mismatches": 0
+    },
+    "dense_m1_k3072_n12288": {
+      "control_pack8_ms": 0.46912464141845706,
+      "candidate_t16_ms": 0.18663637161254884,
+      "delta_percent": -60.21603745899375,
+      "candidate_wins": 9,
+      "pairs": 9,
+      "bf16_mismatches": 0
+    },
+    "raw_sha256": "8082f3a7ef5005e627746f27dbf5edeb336028fa143647cc6bac3bf2ef49372b"
+  },
+  "profiler": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-q4-t16-dense-dual-rocprof -o t16-dense-dual -- .venv/bin/python scripts/laguna_q4_t16_dense_dual_decode_leaf.py --allow-dirty --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/laguna-q4-t16-dense-dual-rocprof.json",
+    "expected_symbol_present": true,
+    "workgroup_size": 32,
+    "vgpr_count": 176,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "trace_sha256": "dd0543e23ccf512f5c929885dfeda560929be68692d089d663e48d89d6c2bddd"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, 127 synchronized decode transitions",
+    "repetitions": 7,
+    "timing": "same-session counterbalanced control/candidate pairs",
+    "control_median_tok_s": 21.31159608355746,
+    "candidate_median_tok_s": 21.852204250513775,
+    "change_percent": 2.5366854966503816,
+    "saving_ms_per_token": 1.1608373542411599,
+    "candidate_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "80b7de53df4a5434382b1d093ebeb8402344e90817c418f0871bc0c715718259"
+  },
+  "correctness": {
+    "cpu_reference_gate": "production-shape CPU-reference allclose passed",
+    "leaf_bf16_bit_exact": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "all_14_trajectories_identical": true,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-q4-decode-t16-sidecar --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-t16-dense-sidecar-ab-7.json",
+    "load_seconds_excluded": 99.80465300590731,
+    "prefill_median_control_tok_s": 651.6038450399053,
+    "prefill_median_candidate_tok_s": 651.8659535254246
+  },
+  "decision": {
+    "retain": true,
+    "default_backend": "hip_gfx1151",
+    "fallback": "resident pack8 fused dual gate/up plus SiLU",
+    "peer_backends_unchanged": true,
+    "clean_publication_required": true
+  }
+}
