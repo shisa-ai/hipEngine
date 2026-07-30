@@ -192859,3 +192859,22 @@ Vulkan local sizes verbatim will close the measured gap.
   CPU dispatch-route tests pass.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-retained.json`.
+
+## 2026-07-30 12:23 JST — Publish global mixed40-local512 production
+
+- Run the ordinary selector-unset p512/d128 eager c=1 path on tracked-clean
+  `e05a64d66` with cached-build enforcement and two HIP queues.
+- Decode is **20.954934/20.969890/20.965807 tok/s**, median
+  **20.965807 tok/s (47.69671 ms/token)**. This is a noise-floor
+  **-0.05144% / +0.02454 ms/token** movement versus the prior clean
+  20.976598 packet. Retention remains based on the exact 1.82-2.05% natural
+  leaves and fully separated 7/7 resident A/B.
+- All three runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, tracked-clean
+  provenance, active mixed40 capability, and complete allocation recovery.
+  Raw SHA-256 is `c134041d...648b`.
+- Production remains **+82.841%** over sprint start. Same-GGUF llama.cpp
+  Vulkan is **23.348381 tok/s**, leaving **4.86719 ms/token** and a
+  **10.2045%** throughput gap.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-production.json`.

@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T12:23:19+09:00",
+  "kind": "hipengine_laguna_global_mixed40_local512_decode_production",
+  "status": "accepted_tracked_clean_production",
+  "performance_claim": true,
+  "source_revision": "e05a64d66af2040cd05d5753734f36fe4ed4f2b1",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_forward_calls_per_run": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "matrix_rows": 2048,
+    "attention_rows": 128
+  },
+  "production": {
+    "decode_samples_tok_s": [
+      20.95493409103438,
+      20.969889795368747,
+      20.965806753173396
+    ],
+    "decode_median_tok_s": 20.965806753173396,
+    "decode_median_ms_per_token": 47.69670977953851,
+    "prior_clean_tok_s": 20.976598,
+    "change_from_prior_clean_percent": -0.0514442,
+    "change_from_prior_clean_ms_per_token": 0.0245372,
+    "sprint_start_tok_s": 11.466687,
+    "change_from_sprint_start_percent": 82.841,
+    "same_gguf_vulkan_tok_s": 23.348381,
+    "remaining_vulkan_gap_ms_per_token": 4.86719,
+    "throughput_below_vulkan_percent": 10.2045
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "provenance": {
+    "tracked_clean": true,
+    "selector_unset": true,
+    "mixed40_capability_active": true,
+    "raw_sha256": "c134041dfb81c08847203d62ac074b0bb708eeaf5e9587b7efe4d9462ea9648b"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-mixed40-local512-production-3.json"
+  },
+  "interpretation": {
+    "aggregate": "The clean median is 0.051% below the preceding clean packet, within shared-APU process variance.",
+    "retention_basis": "The exact natural-shape leaf improves 1.82-2.05% and all seven counterbalanced resident candidates beat their paired controls.",
+    "decision": "Keep mixed40-local512 as the gfx1151 production default and mixed32-local512 as exact rollback."
+  }
+}
