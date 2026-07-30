@@ -141,10 +141,16 @@ numbers below.
   integrated qrow4/attention/request sum falls **13.918%/8.087%/1.687%**, but
   runtime ownership is rejected: clean 4K is **-0.217%**, and a seven-repeat
   adjudication confirms **7/7** H5N samples below H5M (**-0.202%** median). The
-  temporary policy is removed; only the leaf remains. Both short rows exceed 150
-  tok/s and H5M 4K remains positive; 16K+ stays closed below the 800/700 stretch
-  target
+  temporary policy is removed; only the leaf remains. H5O therefore retargets
+  Q5's retained **465.660-ms** family/**406.709-ms** matched gap with a separately
+  proven factorized plane: **256 quant bytes + 16 F32 coefficients** per block
+  instead of 1,024 F32 bytes. The actual 235-call source model reduces logical
+  producer+consumer traffic **2.034x**, but is explicitly not measured bandwidth
+  or performance; reconstructed F32 bits and both clocks decide admission. Both
+  short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed below
+  the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  [H5O target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
   [H5N runtime rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
   [H5N leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
   [post-H5M residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·

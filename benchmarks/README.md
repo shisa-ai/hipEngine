@@ -31,9 +31,15 @@ stays local32/VGPR72/LDS0/scratch0. Complete state is KL0 and integrated
 qrow4/attention/request sum improves **13.918%/8.087%/1.687%**, but runtime
 ownership is rejected: clean 4K is **-0.217%**, and seven adjudication repeats put
 all H5N samples below H5M (**158.152 -> 157.832 tok/s, -0.202%**). The policy is
-removed; production remains H5M. Both short rows exceed 150 tok/s and H5M 4K
-remains positive; 16K+ stays closed below the 800/700 stretch gate
+removed; production remains H5M. H5O next targets Q5's **465.660-ms** family and
+**406.709-ms** matched gap with a 320-byte/block factorized plane versus 1,024
+F32 bytes. The actual 235-call model reduces logical producer+consumer traffic
+**2.034x**; this is target rationale, not measured bandwidth or performance, and
+exact reconstructed bits plus both-clock role wins are mandatory. Both short
+rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed below the
+800/700 stretch gate
 ([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[H5O target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
 [H5N runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
 [H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
@@ -245,9 +251,14 @@ at starts 256 (**1.147x/1.144x**) and 384 (**1.166x/1.163x**), combined
 72 H5N calls, cutting attention **8.087%** and request kernel sum **1.687%**.
 Nevertheless the clean 4K gate is reproducibly negative (**-0.217%**, then
 **-0.202% with 7/7 samples below H5M**), so remove runtime policy and retain only
-the leaf. Wider qrows, cross-head/key-split, source MMQ, and changed-association
-attention stay closed
-([H5N runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
+the leaf. H5O returns to the retained **465.660-ms** Q5 family without reopening
+source MMQ or output geometry: factor each Q5 block into 256 quant bytes plus
+sixteen F32 coefficients, require every reconstructed weight bit to match H5L,
+and keep H5L's FMA/reduction/store sequence. The source model halves logical
+235-call producer+consumer traffic but makes no performance claim. Wider qrows,
+cross-head/key-split, source MMQ, and changed-association attention stay closed
+([H5O target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
+[H5N runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
 [H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·

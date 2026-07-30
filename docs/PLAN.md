@@ -1565,7 +1565,17 @@ cutting qrow4/attention/request sum **13.918%/8.087%/1.687%**. Reject runtime
 ownership despite those exact wins: clean 4K is **-0.217%**, and a seven-repeat
 adjudication confirms **7/7** H5N samples below H5M (**158.152 -> 157.832 tok/s,
 -0.202%**). Remove the temporary policy extension, retain the standalone leaf,
-and keep H5M production. The old wider-qrow, cross-head/key-split, rowbatch16,
+and keep H5M production. WPF-H5O next targets Q5's retained **465.660-ms**
+family/**406.709-ms** matched gap using a separately registered exact-factor
+plane. Each 256-weight Q5 block becomes 256 quant bytes plus eight F32 scale and
+eight F32 minimum coefficients (**320 bytes**) instead of 1,024 F32 bytes; the
+consumer must reconstruct every H5L producer bit before the unchanged scalar
+FMA/reduction/store sequence. Across the actual eight-shape/**235-call**
+inventory, producer+consumer logical bytes fall **2.034x**, explicitly a source
+model rather than measured bandwidth or performance. Require RED on weight bits
+and rows17/33 output bytes, separate gfx1100 keys, cached scratch-free tracing,
+and producer-inclusive both-clock wins per role before any owner. H5L/H5G and
+gfx1151 remain fallbacks. The old wider-qrow, cross-head/key-split, rowbatch16,
 output-tile, source-MMQ, changed-association attention, and P6/repair routes
 remain closed. Launch fusion remains
 below its trigger at **1.251%** request span-minus-sum.
