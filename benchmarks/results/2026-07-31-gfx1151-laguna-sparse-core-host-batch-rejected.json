@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T04:28:00+09:00",
+  "kind": "hipengine_laguna_decode_candidate",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "source_revision": "b46e0d1d6d28b4de17144ab8640083fb5223ef9d",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_forward_calls_per_run": 127,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "resident_bytes": 79066169172,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "queue_gap_attribution": {
+    "trace": "/tmp/laguna-router-wave0-production-trace.vdncXy/production_kernel_trace.csv",
+    "profiled_decode_segments": 127,
+    "dispatches_per_token": 482,
+    "queues": 1,
+    "streams": 1,
+    "host_threads": 1,
+    "overlap_ms_per_token": 0.0,
+    "median_union_idle_ms_per_token": 1.674661,
+    "largest_repeated_boundaries_ms_per_token": {
+      "output_add_rmsnorm_to_router_projection": 0.265368,
+      "selected_gate_up_to_selected_down": 0.261966,
+      "selected_down_to_dense_shared_gate_up": 0.261946,
+      "swa_projection_head_kv_to_attention": 0.204931,
+      "global_projection_head_kv_to_attention": 0.065343,
+      "router_projection_to_selector": 0.091091,
+      "selector_to_selected_gate_up": 0.091038
+    },
+    "interpretation": "The first sparse layers retain roughly 2-us boundaries; once the initial queue backlog is consumed, the three largest sparse boundaries settle near 6.5 us each. The host is falling behind queue feeding on one serial HIP stream."
+  },
+  "vulkan_reference": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "revision": "c0bc8591e881",
+    "source": "ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+    "max_nodes_per_submit": 100,
+    "submit_flops_cap": 200000000000,
+    "submit_policy": "Record graph nodes into command buffers and submit dynamically at min(200 GFLOP, last graph FLOPs / 40), at 100 nodes, or near graph completion so CPU command recording overlaps GPU execution.",
+    "important_distinction": "This is graph-wide command recording and batched submission, not a C function that calls several ordinary HIP launch wrappers."
+  },
+  "candidate": {
+    "name": "native sparse-core five-launch host transaction",
+    "stages": [
+      "router wave-0 projection",
+      "correction selector",
+      "selected gate/up",
+      "weighted selected down",
+      "shared gate/up"
+    ],
+    "device_kernels_changed": false,
+    "device_math_changed": false,
+    "dispatches_per_token_changed": false,
+    "resident_bytes_changed": false,
+    "candidate_patch_sha256_before_removal": "bda7cd3cfdde6c9c59d725c747d6f45b8e2299dd3f644ca5b9f2e654ae6caeb0"
+  },
+  "correctness": {
+    "abi_registration_and_callable_tests": "pass",
+    "c_callback_exact_five_launch_order_and_dimensions": "pass",
+    "focused_tests": "40 passed",
+    "tokens_exact": true,
+    "state_and_lifecycle_exact": true
+  },
+  "measurements": {
+    "initial_directional": {
+      "control_tok_s": 22.552872810852996,
+      "candidate_tok_s": 22.32849729690764,
+      "throughput_delta_percent": -0.99488699,
+      "control_ms_per_token": 44.340249172991186,
+      "candidate_ms_per_token": 44.785817276583764,
+      "wall_delta_ms_per_token": 0.445568103592578,
+      "raw": "/tmp/laguna-sparse-core-directional.json",
+      "raw_sha256": "5c3d877901a67676f63b7bf1b5412e68ce277998f710e5e10e46eb564cce72f0"
+    },
+    "cached_abi_counterbalanced_two_pair": {
+      "control_samples_tok_s": [
+        22.554720,
+        22.579096
+      ],
+      "candidate_samples_tok_s": [
+        22.337464,
+        22.341000
+      ],
+      "control_median_tok_s": 22.5669011475341,
+      "candidate_median_tok_s": 22.339232192625772,
+      "throughput_delta_percent": -1.0088622864961039,
+      "control_ms_per_token": 44.31268579865564,
+      "candidate_ms_per_token": 44.7642958977839,
+      "wall_delta_ms_per_token": 0.4516100991282599,
+      "candidate_wins": "0/2",
+      "raw": "/tmp/laguna-sparse-core-directional-cachedabi.json",
+      "raw_sha256": "5a8047d1257618811d240910ccd36697d96154fab1d437aa161cdc38a162e077"
+    }
+  },
+  "decision": {
+    "result": "Reject and remove the complete candidate route.",
+    "closed_work": "Do not reopen pair-only or larger native wrappers that merely nest the same ordinary HIP launchers.",
+    "reopen_criterion": "A successor must remove device launches through actual kernel fusion or own/record commands below the ordinary HIP wrapper level.",
+    "production": "Unchanged at the clean 22.581875 tok/s checkpoint."
+  }
+}
