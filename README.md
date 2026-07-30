@@ -209,11 +209,19 @@ numbers below.
   Runtime ownership is rejected: the final balanced source-default 1K gate is
   **230.181 -> 230.175 tok/s (-0.00257%, 2/8 wins)**. All temporary runtime
   plumbing is removed, the standalone leaf remains, and production stays
-  **267.205/230.441/160.221 tok/s**.
+  **267.205/230.441/160.221 tok/s**. H5V returns to Q5, now the largest exact
+  residual at **482.339 ms** versus llama.cpp HIP **58.951 ms**. Its separate
+  unmeasured local32 leaf will replay H5L's original K partitions 0..3
+  sequentially, reuse one accumulator plane, and keep only reduced partition
+  totals in the existing LDS shape while preserving every production
+  FMA/shuffle/serial-sum/store boundary. The **4x** wave-scheduling-instance
+  model is rationale only; production is unchanged pending exact and
+  producer-inclusive both-clock gates.
   Both short rows exceed 150 tok/s and H5R 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5V target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
   [H5U runtime rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
   [H5U global cached-source leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
   [H5U target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
