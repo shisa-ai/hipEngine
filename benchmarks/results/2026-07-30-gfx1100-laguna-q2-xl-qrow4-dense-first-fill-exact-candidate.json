@@ -1,0 +1,195 @@
+{
+  "cached_trace": {
+    "compiler_spawned_under_profiler": false,
+    "physical": {
+      "candidate": {
+        "duration_us_max": 3111.897,
+        "duration_us_min": 2311.214,
+        "kernel": "void (anonymous namespace)::laguna_swa_attention_prefill_qrows_exact_bf16_kernel<4, true, true>(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "lds_bytes": 0,
+        "local_size": 32,
+        "observed_calls": 2,
+        "scratch_bytes": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 72
+      },
+      "control": {
+        "duration_us_max": 3632.22,
+        "duration_us_min": 2665.97,
+        "kernel": "void (anonymous namespace)::laguna_swa_attention_prefill_qrows_exact_bf16_kernel<4, true, false>(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "lds_bytes": 0,
+        "local_size": 32,
+        "observed_calls": 2,
+        "scratch_bytes": 0,
+        "sgpr_count": 128,
+        "vgpr_count": 72
+      }
+    },
+    "raw_csv_sha256": "f4291ca2480089babda4b4e6d3e89bc51dc89e361478654d609bb02a8fbf6de1",
+    "stderr_sha256": "522270737a53b49454ec3dc241b04c6479965126de9a873ac5f086e8e8c3f482",
+    "stdout_sha256": "99db33d5c94c6f7da021687c7391181685cc33299c5435b1c861e2db3be3ec87"
+  },
+  "candidate": {
+    "change": "under the admitted no-wrap first fill, derive key position and cached/current visibility from logical slot, start, and query row; do not consult token_positions, evict_mask, or live_counts in the candidate specialization",
+    "control_variant": "swa_context_rows_qrow4_sourcequal_exact_spans",
+    "fallback": "retained H5M exact source-qualified qrow4 for every non-first-fill, shape, policy, registration, explicit-selector, and backend miss",
+    "gfx1151_fail_closed": true,
+    "new_allocation_bytes": 0,
+    "new_sidecar_bytes": 0,
+    "package_default_changed": false,
+    "preserved": "cached base_offsets mapping, complete KVLiveSpans ABI, logical-slot and four-row order, BF16 rounding, ordered products, reconstructed 128-thread dot tree, two-pass maximum/denominator/value association, F32 stores, and attend-before-append scheduling",
+    "registry_key": [
+      "hip_gfx1100",
+      "laguna_attention_prefill",
+      "bf16",
+      "swa_context_rows_qrow4_dense_first_fill_exact_spans"
+    ],
+    "runtime_owner_added": false
+  },
+  "commands": {
+    "build_and_exactness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_laguna_h5n_dense_first_fill.py",
+    "h5m_regression": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_build_plan_registry_and_validation tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
+    "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-h5n.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5n_dense_first_fill_screen.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-h5n.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5n-leaf-rocprof --output-file h5n-leaf -- uv run pytest -q tests/test_laguna_h5n_dense_first_fill.py -k matches_h5m_wave32_and_cpu"
+  },
+  "correctness": {
+    "allocation_recovered": true,
+    "baseline_chain": "dense-first-fill candidate == retained H5M source-qualified exact qrow4 == exact wave32; sampled rows 0/63/127 at both starts also pass the independent BF16 CPU oracle",
+    "candidate_f32_bit_mismatches": {
+      "256": 0,
+      "384": 0
+    },
+    "candidate_max_abs": 0.0,
+    "focused_tests_failed": 0,
+    "focused_tests_passed": 5,
+    "preflight_rejects": [
+      "rows != 128",
+      "query heads != 72",
+      "KV heads != 8",
+      "head dimension != 128",
+      "capacity/window != 512",
+      "missing start position",
+      "start position outside 256/384"
+    ],
+    "production_starts": [
+      256,
+      384
+    ],
+    "transitive_generic_gate": "H5M remains byte-exact to exact wave32 and the token-serial oracle across dense, wrapped, evicted, and ragged inputs; its registry and wrap/eviction regression tests pass after the shared-template edit"
+  },
+  "correctness_claim": true,
+  "date": "2026-07-30",
+  "decision": {
+    "next_action": "Add a bounded default-off package role candidate and require complete natural-M512 state, exact physical 72-call ownership, and clean counter-ordered 512/1K/4K non-regression before promotion.",
+    "runtime_qualification_required": true,
+    "standalone_leaf_admitted": true,
+    "promoted_package_default": false,
+    "runtime_default_changed": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_qrow4_dense_first_fill_candidate",
+  "lineage": {
+    "base_revision": "5dd4bb29c",
+    "preceding_production_revision": "7899f6c20",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json",
+    "production_artifact_sha256": "d28e1b1831fda3c444af217daad12a9508f188819ae0e572224944e00f49886a",
+    "residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json",
+    "residual_artifact_sha256": "138bbc0d527d9b41913183c4829c1976d21416c48fd4442a8add94d2e9d3b31c",
+    "source": "net-new in-tree compile-time specialization of the retained exact H5M qrow4 body; no external device body copied"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "production": {
+    "m1024_tok_s": 218.1815612145882,
+    "m4096_tok_s": 158.13810004175082,
+    "m512_tok_s": 238.56489443755876,
+    "matched_gap": 2.909832989621587,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "unchanged": true
+  },
+  "production_shape_screen": {
+    "all_outputs_bit_exact": true,
+    "all_positions_event_positive": true,
+    "all_positions_wall_positive": true,
+    "event_candidate_ms": 5.744365119934082,
+    "event_control_ms": 6.653123092651367,
+    "event_reduction_percent": 13.659118583286745,
+    "event_speedup": 1.1581998974201195,
+    "family_projection_is_diagnostic_not_performance_claim": {
+      "modeled_candidate_ms": 224.91782081854876,
+      "modeled_request_kernel_sum_reduction_percent": 1.726873480379378,
+      "modeled_saving_ms": 35.58197618145124,
+      "ratio_applied": 1.1581998974201195,
+      "retained_trace_qrow4_ms": 260.499797
+    },
+    "lifecycle_recovered": true,
+    "protocol": {
+      "context": 512,
+      "counter_rotated_clocks": true,
+      "counter_rotated_modes": true,
+      "head_dim": 128,
+      "heads": 72,
+      "kv_heads": 8,
+      "launches_per_sample": 5,
+      "rows": 128,
+      "samples": 15,
+      "target_starts": [
+        256,
+        384
+      ],
+      "trace_smoke": false,
+      "warmups": 5
+    },
+    "target_starts": [
+      {
+        "event_candidate_ms": 2.3101900100708006,
+        "event_control_ms": 2.650032806396484,
+        "event_speedup": 1.1471059933789898,
+        "f32_bit_mismatches": 0,
+        "start_position": 256,
+        "wall_candidate_ms": 2.320140413939953,
+        "wall_control_ms": 2.655201032757759,
+        "wall_speedup": 1.1444139401239177
+      },
+      {
+        "event_candidate_ms": 3.4341751098632813,
+        "event_control_ms": 4.003090286254883,
+        "event_speedup": 1.1656628326137541,
+        "f32_bit_mismatches": 0,
+        "start_position": 384,
+        "wall_candidate_ms": 3.441865975037217,
+        "wall_control_ms": 4.0044240187853575,
+        "wall_speedup": 1.1634456564631508
+      }
+    ],
+    "wall_candidate_ms": 5.76200638897717,
+    "wall_control_ms": 6.659625051543117,
+    "wall_reduction_percent": 13.478516517351935,
+    "wall_speedup": 1.155782309489123
+  },
+  "schema": 1,
+  "source_artifacts": {
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "4e9ab9296c8d7f9c7cc0108d21876c53fc5227dcd82d15819a6c0cfacbffe021",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "56ee146811222d2bbad832544ebcd04047ab50046849b4e3a0f23f7b96ad5d43",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "8e67a413556bb75f0b28bb7b3a0a54db7e1974f4c9dbcac187a0c988d27cd257",
+      "tests/test_laguna_h5n_dense_first_fill.py": "30199f2faa12f84db447d059d31586084e6953830a53aa0434d4be0060063ff0"
+    },
+    "screen_harness_sha256": "bbcdd639cef7ebf5ae2f994c89a3745ad517ad808b56889b96677e5d995c0da2",
+    "screen_json_sha256": "1c310adabec5ae352388b0cba1d850a349f9b8ff6a1cb7269749d2d981cf48f2",
+    "screen_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "screen_stdout_sha256": "17ba838aebe53a2969e8b371abd9231cd8686ad967d3a2a63dcc38c8b9019610"
+  },
+  "status": "admitted_standalone_candidate"
+}

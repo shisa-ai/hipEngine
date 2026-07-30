@@ -23,12 +23,15 @@ matched llama.cpp HIP M512 target remains **694.184 tok/s**, narrowing the gap
 shape/registration misses, and gfx1151 retain WPF-3. The production-identical
 post-H5M trace reconciles **2,060.485 ms / 1,862 dispatches** and ranks matched
 gaps attention **429.065 ms**, Q5 **406.709**, and IQ down **336.162**. Exact
-source-qualified qrow4 remains **260.500 ms / 57.79%** of attention, selecting
-H5N's separately registered dense-first-fill exact visibility screen at starts
-256/384. The gfx1151 dense-initial result is rationale only, not gfx1100
-performance evidence. Both short rows exceed 150 tok/s and 4K remains positive;
-16K+ stays closed below the 800/700 stretch gate
+source-qualified qrow4 remains **260.500 ms / 57.79%** of attention. H5N's
+separately registered exact dense-first-fill leaf is byte-identical to H5M and
+wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
+5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
+stays local32/VGPR72/LDS0/scratch0. Production remains H5M pending complete
+state, integrated ownership, and clean 512/1K/4K. Both short rows exceed 150 tok/s
+and 4K remains positive; 16K+ stays closed below the 800/700 stretch gate
 ([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
 [post-H5L residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
@@ -230,12 +233,15 @@ production positions, and passes complete KL0/byte-exact state. Integrated
 qrow4/attention/request sum falls **3.059%/1.884%/0.664%**; clean package-default
 512/1K/4K reaches **238.565/218.182/158.138 tok/s**. The reconciled post-H5M
 request ranks matched attention/Q5/IQ-down gaps **429.065/406.709/336.162 ms**.
-H5N targets only the **260.500-ms** qrow4 first-fill role: derive identity-ring
-visibility at starts 256/384 while preserving H5M's logical-slot/four-row/dot/
-two-pass/PV/store/KV association and falling back to H5M everywhere else. Wider
-qrows, cross-head/key-split, source MMQ, and changed-association attention stay
-closed
-([post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
+H5N targets only the **260.500-ms** qrow4 first-fill role. Its admitted leaf
+preserves H5M's logical-slot/four-row/dot/two-pass/PV/store/KV association,
+matches H5M/wave32 bytes, stays VGPR72/scratch0, and improves both event and wall
+at starts 256 (**1.147x/1.144x**) and 384 (**1.166x/1.163x**), combined
+**1.158x/1.156x**. H5M remains every-miss and production fallback pending the
+runtime gate. Wider qrows, cross-head/key-split, source MMQ, and
+changed-association attention stay closed
+([H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
+[post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5M leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
 [post-H5L residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·

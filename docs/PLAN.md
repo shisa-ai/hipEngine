@@ -1552,18 +1552,20 @@ reconciles **2,060.485 ms / 1,862 dispatches** in a **2,086.586-ms** span.
 Matched gaps rank attention **429.065 ms**, Q5 **406.709**, and IQ down
 **336.162**. Attention splits into global local256 **80.707 ms**, exact SWA
 wave32 **109.583**, and exact source-qualified qrow4 **260.500**; qrow4 remains
-**57.79%** of the family at starts 256/384. Select WPF-H5N exact dense-first-
-fill qrow4 visibility: derive position/visibility from the proven identity,
-no-wrap initial ring while preserving cached `base_offsets`, complete
+**57.79%** of the family at starts 256/384. WPF-H5N's separately registered
+exact dense-first-fill qrow4 leaf derives position/visibility from the proven
+identity, no-wrap initial ring while preserving cached `base_offsets`, complete
 `KVLiveSpans`, attend-before-append scheduling, logical-slot/four-row order,
-BF16 rounding, dot tree, two-pass maximum/denominator/PV order, and stores.
-Every non-first-fill shape and policy/key/backend miss retains H5M. The gfx1151
-dense-initial result motivates the premise only; it is not gfx1100 performance
-evidence. Require H5M byte equality plus both event and synchronized-wall wins
-at starts 256/384 before any owner. The old wider-qrow, cross-head/key-split,
-rowbatch16, output-tile, source-MMQ, changed-association attention, and P6/repair
-routes remain closed. Launch fusion remains below its trigger at **1.251%**
-request span-minus-sum.
+BF16 rounding, dot tree, two-pass maximum/denominator/PV order, and stores. It
+matches H5M and wave32 bytes, retains local32/VGPR72/SGPR128/LDS0/scratch0, and
+wins event/wall at start 256 **1.147x/1.144x** and start 384 **1.166x/1.163x**;
+combined sums improve **6.653/6.660 -> 5.744/5.762 ms (1.158x/1.156x)**. Admit
+only the standalone leaf. Every non-first-fill shape and policy/key/backend miss
+retains H5M, and production stays H5M until complete M512 state, exact 72-call
+integrated ownership, and clean 512/1K/4K non-regression pass. The old wider-
+qrow, cross-head/key-split, rowbatch16, output-tile, source-MMQ, changed-
+association attention, and P6/repair routes remain closed. Launch fusion remains
+below its trigger at **1.251%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

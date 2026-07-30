@@ -132,13 +132,17 @@ numbers below.
   post-H5M trace reconciles **2,060.485 ms / 1,862 dispatches** and ranks matched
   gaps attention **429.065 ms**, Q5 **406.709**, and IQ down **336.162**. Exact
   source-qualified qrow4 still owns **260.500 ms / 57.79%** of attention at starts
-  256/384. H5N therefore screens a separately registered dense-first-fill exact
-  specialization that derives identity-ring visibility without token-position/
-  eviction reads while retaining base-offset mapping and every H5M two-pass
-  operation. This is target selection, not a performance claim. Both short rows
-  exceed 150 tok/s and 4K remains positive; 16K+ stays closed below the 800/700
-  stretch target
+  256/384. H5N's separately registered exact dense-first-fill leaf derives
+  identity-ring visibility without token-position/eviction reads while retaining
+  cached base-offset mapping and every H5M two-pass operation. It is byte-exact to
+  H5M/wave32 and improves the two slices **6.653/6.660 -> 5.744/5.762 ms
+  (1.158x/1.156x event/wall)**, with both starts positive and unchanged
+  local32/VGPR72/LDS0/scratch0 resources. This admits only the leaf; production
+  remains H5M pending complete state, integrated tracing, and clean 512/1K/4K.
+  Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed below
+  the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  [H5N leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
   [post-H5M residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
   [H5M leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
   [post-H5L residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
