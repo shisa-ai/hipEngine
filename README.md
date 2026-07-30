@@ -118,12 +118,17 @@ numbers below.
   arithmetic, or fallback changes. Post-H5L tracing now ranks matched residuals
   by exact gap: attention **437.720 ms**, Q5 **408.035 ms**, and IQ down
   **338.619 ms**. Exact SWA qrow4 owns **268.720 ms / 58.49%** of attention.
-  H5M therefore screens a separate two-pass source-qualified qrow4 body that
-  preserves every admitted dot/softmax/PV operation while avoiding unused
-  current/cache K/V loads; its 29.69–37.11% logical-source model is diagnostic,
-  not a speed claim. The 150-tok/s short gate and restored 4K gate pass, while
-  16K+ stays closed below the 800/700 512/4K stretch target
+  H5M's separate two-pass source-qualified qrow4 body preserves every admitted
+  dot/softmax/PV operation while avoiding unused current/cache K/V loads. Dense
+  starts 0/128/256/384 plus 508..515 wrap/eviction/ragged cases are bit-exact.
+  At production starts 256/384, event/wall sums improve **6.728/6.737 ->
+  6.437/6.443 ms (-4.324%/-4.354%)**, with both positions positive and unchanged
+  local32/VGPR72/LDS0/scratch0 resources. The leaf is admitted; production stays
+  H5L pending complete-state/integrated/clean-timing qualification. The 150-tok/s
+  short gate and restored 4K gate pass, while 16K+ stays closed below the
+  800/700 512/4K stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
+  [H5M leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
   [post-H5L residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
   [H5L leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json) ·
   [H5J production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
