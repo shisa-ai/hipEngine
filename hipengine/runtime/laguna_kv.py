@@ -139,6 +139,7 @@ class LagunaKVCache:
         global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape: bool,
         global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape: bool,
         global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape: bool,
+        global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape: bool,
         swa_split_wave_local: bool,
         swa_split_gqa3_scores: bool,
         swa_split_fixed512_reduce: bool,
@@ -216,6 +217,9 @@ class LagunaKVCache:
         )
         self.global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = bool(
             global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+        )
+        self.global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = bool(
+            global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
         )
         self.swa_split_wave_local = bool(swa_split_wave_local)
         self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
@@ -953,6 +957,20 @@ class LagunaKVCache:
             ):
                 variant = (
                     "global_context_fused_exact_gated_mixed32_local512_exp32_"
+                    "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_"
+                    "vec16_direct_assume_exp_fixedshape_spans"
+                )
+            if (
+                state.attention_type == FULL_ATTENTION
+                and use_gated
+                and self.global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+                and self.global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+                and live_count <= 4000
+                and state.capacity == 4096
+                and state.q_heads == 48
+            ):
+                variant = (
+                    "global_context_fused_exact_gated_mixed40_local512_exp32_"
                     "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_"
                     "vec16_direct_assume_exp_fixedshape_spans"
                 )
@@ -1994,6 +2012,14 @@ def allocate_laguna_kv_cache(
             False,
         )
     )
+    selected_global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = bool(
+        selected_global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+        and backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE",
+            False,
+        )
+    )
     _validate_split_backend(
         backend,
         parsed_global_split,
@@ -2036,6 +2062,9 @@ def allocate_laguna_kv_cache(
         ),
         global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape=(
             selected_global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+        ),
+        global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape=(
+            selected_global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
         ),
         swa_split_wave_local=selected_swa_split_wave_local,
         swa_split_gqa3_scores=selected_swa_split_gqa3_scores,
@@ -2326,6 +2355,10 @@ def allocate_laguna_kv_cache(
                 selected_global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
                 and split_enabled
             ),
+            global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape=(
+                selected_global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+                and split_enabled
+            ),
             swa_split_wave_local=(selected_swa_split_wave_local and split_enabled),
             swa_split_gqa3_scores=(
                 selected_swa_split_gqa3_scores and split_enabled
@@ -2441,6 +2474,7 @@ def _validate_split_backend(
     global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape: bool,
     global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape: bool,
     global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape: bool,
+    global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape: bool,
     swa_split_wave_local: bool,
     swa_split_gqa3_scores: bool,
     swa_split_fixed512_reduce: bool,
@@ -2617,6 +2651,17 @@ def _validate_split_backend(
                 global_threshold,
                 (
                     "global_context_fused_exact_gated_mixed32_local512_exp32_"
+                    "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_"
+                    "vec16_direct_assume_exp_fixedshape_spans"
+                ),
+            )
+        )
+    if global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape:
+        requested.append(
+            (
+                global_threshold,
+                (
+                    "global_context_fused_exact_gated_mixed40_local512_exp32_"
                     "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_"
                     "vec16_direct_assume_exp_fixedshape_spans"
                 ),

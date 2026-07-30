@@ -1338,7 +1338,8 @@ template <
     bool kDppQkReduction = false,
     bool kVectorProbabilityReplay = false,
     bool kPreNormalizeProbability = false,
-    int kLocalThreads = 256>
+    int kLocalThreads = 256,
+    bool kMixed40Owners = false>
 __global__ __launch_bounds__(kLocalThreads)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1368,8 +1369,11 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   static_assert(
       kLocalThreads == 256 || kLocalThreads == 512,
       "global fixed-shape attention supports local256 or local512");
+  static_assert(
+      !(kMixed32Owners && kMixed40Owners),
+      "global mixed32 and mixed40 ownership are mutually exclusive");
   constexpr int kOwnersPerKv =
-      kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries;
+      kMixed40Owners ? 5 : (kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries);
   constexpr int kNumWarps = kLocalThreads / 32;
   // local512 may widen independent QK and value transport, but the softmax
   // denominator must retain the local256 eight-wave summation tree.
@@ -1398,11 +1402,16 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   const int kv_head = owner / kOwnersPerKv;
   const int query_owner = owner % kOwnersPerKv;
   const int q_head_base = kv_head * kQueryGroup +
-      (kMixed32Owners
+      (kMixed40Owners
+           ? (query_owner == 0 ? 0 : query_owner + 1)
+           : kMixed32Owners
            ? (query_owner < 2 ? query_owner * 2 : 4 + query_owner - 2)
            : query_owner * kOwnedQueries);
   const int owned_queries =
-      kMixed32Owners && query_owner >= 2 ? 1 : kOwnedQueries;
+      (kMixed40Owners && query_owner >= 1) ||
+              (kMixed32Owners && query_owner >= 2)
+          ? 1
+          : kOwnedQueries;
   const int tid = static_cast<int>(threadIdx.x);
   const int lane = tid & 31;
   const int wave = tid >> 5;
@@ -7942,6 +7951,91 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp3
           true,
           kLocalThreads>),
       dim3(32),
+      dim3(kLocalThreads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  constexpr int kLocalThreads = 512;
+  const int64_t score_stride = (scan_slots + 3) & ~int64_t{3};
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * score_stride) * sizeof(float) +
+      static_cast<size_t>(scan_slots) * sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          true,
+          true,
+          true,
+          kLocalThreads,
+          true>),
+      dim3(40),
       dim3(kLocalThreads),
       shared_bytes,
       stream,

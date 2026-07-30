@@ -2251,8 +2251,18 @@ swap is removed:
 [`producer-value-tail runtime rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-producer-value-tail-runtime-rejected.json).
 The exact 40-block **2+1+1+1+1** successor is removed at the leaf stop. It
 improves live513 **4.62%** but regresses live576/live639 **0.21%/0.11%**;
-the fifth K/V owner crosses the gfx1151 occupancy/reuse seam. Evidence:
+the fifth K/V owner crosses the gfx1151 occupancy/reuse seam at local256.
+Evidence:
 [`rejected global mixed40 exp32`](../benchmarks/results/2026-07-29-gfx1151-laguna-global-mixed40-exp32-rejected.json).
+The later local512 combination reverses that result and is retained. It keeps
+the production eight-wave denominator tree while all sixteen waves share
+independent QK/value transport, then uses the same five-owner
+`2+1+1+1+1` mapping to fill all 40 gfx1151 CUs. The byte-exact 21x100 leaf
+improves live513/576/639 **1.967%/2.054%/1.824%**; all seven p512/d128 model
+pairs improve **20.987128 -> 20.991542 tok/s (+0.02103%)**. gfx1151 now
+selects the mixed40-local512 capability and retains mixed32-local512 as exact
+rollback:
+[`retained global mixed40 local512`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-retained.json).
 The exact two-launch split32 successor is removed as well. Sixteen pair-owner
 local256 blocks plus sixteen singleton-owner local128 blocks preserve four
 K/V owners and byte-exact output, but regress live513/576/639
