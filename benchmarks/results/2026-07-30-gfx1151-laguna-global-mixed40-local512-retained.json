@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T12:18:07+09:00",
+  "kind": "hipengine_laguna_global_mixed40_local512_decode_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "359656b5063683ea5f65460a21cffb9b72a3b093",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "Extend the retained exact global local512 body from 32 to 40 workgroups by assigning each six-query GQA group as 2+1+1+1+1 owners. Preserve each query's QK products and reduction tree, producer maximum, exponential and denominator order, prenormalized probability values, scalar PV association, gate, and stores.",
+    "control_ownership": "2+2+1+1 queries per KV head; 32 workgroups",
+    "candidate_ownership": "2+1+1+1+1 queries per KV head; 40 workgroups",
+    "rollback_variant": "global_context_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "resident_bytes_changed": false,
+    "launch_count_changed": false
+  },
+  "leaf": {
+    "shape": "global BF16-KV, Q48/KV8/D128, capacity4096, live513/576/639",
+    "protocol": "counterbalanced 21x100 HIP-event screen after 10 warmups",
+    "rows": [
+      {
+        "live_count": 513,
+        "control_median_ms": 0.04056029796600342,
+        "candidate_median_ms": 0.03976240873336792,
+        "latency_change_percent": -1.9671680748111542
+      },
+      {
+        "live_count": 576,
+        "control_median_ms": 0.046427040100097655,
+        "candidate_median_ms": 0.045473637580871584,
+        "latency_change_percent": -2.053550080234523
+      },
+      {
+        "live_count": 639,
+        "control_median_ms": 0.05063293933868408,
+        "candidate_median_ms": 0.04970961093902588,
+        "latency_change_percent": -1.8235725828241067
+      }
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "cf9cdcb70d3f3ecefb1c8ed2745fa416eb9458130c4a3532249f5ccd2b5a07e8"
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling",
+    "control_template_tail": "512,false",
+    "candidate_template_tail": "512,true",
+    "control_grid_x": 32,
+    "candidate_grid_x": 40,
+    "local_x": 512,
+    "vgpr_count": 48,
+    "sgpr_count": 128,
+    "lds_block_size": 512,
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "c6f8aef8cd64bc70a0e878b58e9667b8d1bee18ff13603ee6ff4de4ef7d6636d"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "seven counterbalanced control/candidate pairs; cached build; candidate worktree disclosed",
+    "control_median_tok_s": 20.98712817198828,
+    "candidate_median_tok_s": 20.991541530156823,
+    "throughput_change_percent": 0.021028880809104145,
+    "control_median_ms_per_token": 47.64825333914477,
+    "candidate_median_ms_per_token": 47.63823555137112,
+    "saving_ms_per_token": 0.010017787773660787,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "77c05ea6718f8056f58b69734c5217a998bf20dd3d791a0fa8180a7350c2f6b1"
+  },
+  "correctness": {
+    "cpu_reference_and_eviction_fixture": "pass",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "validation": {
+    "red": "ImportError on the absent mixed40-local512 wrapper before implementation.",
+    "focused_gpu_green": "tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "dispatch_green": "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "comparison_plumbing_removed_before_retention_commit": true
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed40-local512-exp32-producer-max-dpp-qk-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp --warmups 10 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-mixed40-local512-21x100.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-global-mixed40-local512 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-mixed40-local512-model-7pair.json",
+    "candidate_worktree_disclosed": true
+  },
+  "gate": {
+    "correctness": "pass; F32 context and gated BF16 bytes exact",
+    "leaf": "pass; every natural shape improves 1.82-2.05%",
+    "resources": "pass; 48 VGPR, no scratch, 40 workgroups",
+    "whole_model": "pass; +0.02103%, 7/7 pairs, exact state and lifecycle",
+    "decision": "Promote mixed40-local512 through a gfx1151 capability; keep mixed32-local512 as exact rollback."
+  }
+}

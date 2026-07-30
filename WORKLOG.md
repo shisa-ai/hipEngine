@@ -192828,3 +192828,34 @@ Vulkan local sizes verbatim will close the measured gap.
   `c6345744...b991` / `e9a9a4ee...d3a4`.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-paircoeff-wall-reprofile.json`.
+
+## 2026-07-30 12:18 JST — Retain exact global mixed40-local512 decode
+
+- Revisit the previously rejected five-owner global mapping only in
+  combination with the later-retained local512 transport schedule. Production
+  mixed32-local512 maps each six-query GQA group as `2+2+1+1` across 32
+  workgroups; the candidate uses `2+1+1+1+1` across all 40 gfx1151 CUs.
+- Preserve each query's QK products/tree, producer maximum,
+  exponential/denominator order, prenormalized probabilities, scalar PV
+  association, gate, and stores. RED fails importing the absent wrapper;
+  GREEN passes the CPU-reference/eviction fixture with byte-identical F32
+  context and gated BF16 at live513/576/639.
+- The counterbalanced 21x100 leaf improves live513
+  **0.040560 -> 0.039762 ms (-1.967%)**, live576
+  **0.046427 -> 0.045474 ms (-2.054%)**, and live639
+  **0.050633 -> 0.049710 ms (-1.824%)**. Raw SHA-256 is
+  `cf9cdcb7...07e8`.
+- Cache-only tracing names the intended local512 final-`false`/`true`
+  template siblings at 32/40 workgroups. Both allocate VGPR48/SGPR128 with
+  zero scratch. Trace SHA-256 is `c6f8aef8...36d`.
+- All seven counterbalanced p512/d128 candidates win. Median decode moves
+  **20.987128 -> 20.991542 tok/s
+  (+0.02103%, -0.01002 ms/token)**. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and allocation teardown
+  remain exact. Raw SHA-256 is `77c05ea6...f6b1`.
+- Promote through a gfx1151 backend capability and retain mixed32-local512 as
+  exact rollback. Remove the comparison-only cache field default, CLI flag,
+  protocol selector, and REFACTOR entry before commit. Focused GPU oracle and
+  CPU dispatch-route tests pass.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-retained.json`.

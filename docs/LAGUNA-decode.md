@@ -6209,6 +6209,32 @@ The remaining attention sequence is:
     The next attention work must remove exact probability/V traffic or
     synchronization without reordering the 512-term PV chains:
     [`post-paircoeff wall census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-paircoeff-wall-reprofile.json).
+95. Fill the eight idle gfx1151 CUs in exact global local512 attention.
+    **Complete, retained, and promoted pending clean publication:** the
+    production global kernel launches 32 local512 workgroups, partitioning
+    each six-query GQA group as `2+2+1+1`. Assign it instead as
+    `2+1+1+1+1`, producing 40 workgroups while preserving every query's QK
+    products and reduction tree, producer maximum, exponential/denominator
+    order, prenormalized probability values, scalar PV association, gate,
+    and stores.
+
+    Unlike the rejected local256 mixed40 screen, local512 makes the fifth K/V
+    owner positive at every natural leaf. A counterbalanced 21x100 gate moves
+    live513 **0.040560 -> 0.039762 ms (-1.967%)**, live576
+    **0.046427 -> 0.045474 ms (-2.054%)**, and live639
+    **0.050633 -> 0.049710 ms (-1.824%)**. F32 context and gated BF16 bytes
+    are exact at every shape. Cache-only tracing names the intended
+    32/40-workgroup specializations; both remain local512/VGPR48/SGPR128 with
+    zero scratch.
+
+    All seven counterbalanced p512/d128 candidates win, moving median decode
+    **20.987128 -> 20.991542 tok/s
+    (+0.02103%, -0.01002 ms/token)**. Tokens **2930/74107**, trajectory SHA
+    `94f803f7...bda32`, final position 638, determinism, and allocation
+    teardown remain exact. Promote mixed40-local512 through the gfx1151
+    capability, remove all comparison plumbing, and keep mixed32-local512 as
+    the exact rollback:
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-retained.json).
 
 Current exact decode checkpoint:
 

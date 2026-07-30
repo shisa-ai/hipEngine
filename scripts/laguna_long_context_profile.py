@@ -540,6 +540,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = (
         False
     )
+    active_global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = (
+        False
+    )
     active_swa_mixed32_exp32_producer_max_gate_stage_pcache_vstage64_vec16_direct_assume_exp_fixed512 = (
         False
     )
@@ -756,6 +759,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = (
             owner.kv_cache.global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+        )
+        active_global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = (
+            owner.kv_cache.global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
         )
         active_long_attention_hipblaslt = (
             owner.prefill_long_attention_hipblaslt
@@ -1234,6 +1240,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape": (
                 active_global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
+            ),
+            "global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape": (
+                active_global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
             ),
             "long_attention_hipblaslt": active_long_attention_hipblaslt,
             "long_attention_hipblaslt_requested": (
