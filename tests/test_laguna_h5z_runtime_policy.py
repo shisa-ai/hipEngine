@@ -9,10 +9,7 @@ from hipengine.runtime.laguna_moe import resolve_laguna_moe_plan
 from tests._laguna_synthetic import make_laguna_info
 
 
-_H5J_IQ3 = (
-    "selected_grouped_prefill_compact_k1024_resident_"
-    "rowbatch8_bf16_bf16_out"
-)
+_BASELINE_IQ3 = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
 _H5J_IQ4 = "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
 _H5Q_IQ3 = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
@@ -71,7 +68,9 @@ def test_h5z_runtime_capability_is_default_off_bounded_and_fail_closed(
         replace(config, expert_feed_forward_length=2048),
         backend="hip_gfx1100",
     )
-    assert wrong_shape.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H5J_IQ3
+    assert wrong_shape.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
+        _BASELINE_IQ3
+    )
     assert wrong_shape.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         "grouped_raw_iq"
     )
@@ -84,14 +83,16 @@ def test_h5z_runtime_capability_is_default_off_bounded_and_fail_closed(
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H5J_IQ3
+        _BASELINE_IQ3
     )
     assert registration_miss.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         "grouped_raw_iq"
     )
 
     gfx1151 = resolve_laguna_moe_plan(config, backend="hip_gfx1151")
-    assert gfx1151.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H5J_IQ3
+    assert gfx1151.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
+        _BASELINE_IQ3
+    )
     assert gfx1151.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         "grouped_raw_iq"
     )
