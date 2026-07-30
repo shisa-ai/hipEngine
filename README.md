@@ -159,9 +159,17 @@ numbers below.
   **+0.093%/-0.019%/-0.054%**; the final frozen 1K/4K adjudication remains
   **-0.030%/+0.014%**, rejecting runtime ownership. The eager owner and package
   change are removed; production remains H5M/H5L and only the exact leaf stays.
-  Both short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed
+  H5Q now selects the third-largest matched gap, IQ3/IQ4 down at **491.658 ms**
+  versus llama.cpp HIP **155.495 ms**. H5J launches **35,389,440** IQ3
+  workgroups across 45 M512 layers although only **30,240,768**
+  expert/output pairs are active. The exact active-expert persistent target reuses
+  existing route metadata and screens 1–128 expert partitions while preserving
+  every H5J dot/reduction/store operation; this is target attribution, not a
+  performance or production claim. Both short rows exceed 150 tok/s and H5M 4K
+  remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  [H5Q target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
   [H5P rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
   [H5P leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
   [H5P target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·

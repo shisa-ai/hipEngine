@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_iq3_active_expert_persistent_target_selection",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "bd6b27a0a",
+    "h5j_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json",
+    "h5j_production_artifact_sha256": "8f2bdccd93d27a39dcf8691f72d589331472d96a4bee9c69fa3223acf6a108af",
+    "post_h5m_residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json",
+    "post_h5m_residual_artifact_sha256": "138bbc0d527d9b41913183c4829c1976d21416c48fd4442a8add94d2e9d3b31c",
+    "h5p_runtime_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json",
+    "h5p_runtime_rejection_artifact_sha256": "023d73c003ed21b5ded06cbd95c12b5840b625f18d4f5da34609543c6d95f0dc",
+    "source": "net-new in-tree active-expert persistent workgroup traversal of the retained H5J exact IQ3 body; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e060e426d6a36e182c8c502f031a0a9473ff05ad5c13b786ff0e98adee4d2932",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "b3a561daca2bf26fb7713474365166c29d57a7bbe784800565d9d111a3914f07",
+      "hipengine/runtime/laguna_moe.py": "58aea1cf784261c5d6a773ded641993b2cb0ee28c7b776aadc680fc2b669f4d0",
+      "tests/test_gguf_iq_selected_prefill.py": "ee93b02734079179f2d3a4b6e2a7ec132d62026f3967c19cc046be0b1c4b43f3"
+    },
+    "lineage_output_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "production": {
+    "m512_tok_s": 238.56489443755876,
+    "m1024_tok_s": 218.1815612145882,
+    "m4096_tok_s": 158.13810004175082,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.909832989621587,
+    "request_kernel_sum_ms": 2060.485414,
+    "iq_down_ms": 491.657647,
+    "matched_iq_down_ms": 155.495249,
+    "iq_down_gap_ms": 336.162398,
+    "iq_down_gap_percent_of_family": 68.37326746592838
+  },
+  "audit": {
+    "iq3_layers": 45,
+    "iq4_layers": 2,
+    "iq3_ms": 483.261373,
+    "iq4_ms": 8.396274,
+    "iq3_percent_of_iq_down": 98.29225192545414,
+    "shape": {
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "compact_rows": 5120
+    },
+    "natural_m512_active_expert_layer_instances": 9844,
+    "current_iq3_workgroups": 35389440,
+    "useful_active_expert_output_pairs": 30240768,
+    "empty_expert_output_workgroups": 5148672,
+    "empty_workgroup_percent": 14.548611111111112,
+    "current_grid": "dim3(out_features=3072, num_experts=256)",
+    "existing_metadata": "grouped_active_experts int64[256] plus grouped_active_count int64[1], already produced for the exact grouped route",
+    "new_allocation_required": false,
+    "new_metadata_producer_required": false
+  },
+  "target": {
+    "label": "WPF-H5Q exact IQ3 active-expert persistent ownership",
+    "candidate_grid": "dim3(out_features=3072, expert_partitions=P)",
+    "candidate_mapping": "partition block y loops active_index=y,y+P,...; active_experts[active_index] selects each non-empty expert",
+    "partition_candidates": [1, 2, 4, 8, 16, 32, 64, 128],
+    "candidate_workgroups_across_45_layers": {
+      "1": 138240,
+      "2": 276480,
+      "4": 552960,
+      "8": 1105920,
+      "16": 2211840,
+      "32": 4423680,
+      "64": 8847360,
+      "128": 17694720
+    },
+    "current_to_candidate_workgroup_ratio": {
+      "1": 256.0,
+      "2": 128.0,
+      "4": 64.0,
+      "8": 32.0,
+      "16": 16.0,
+      "32": 8.0,
+      "64": 4.0,
+      "128": 2.0
+    },
+    "preserved": "one output column per local128 block, one K1024 eight-value IQ3 segment per lane and expert, exact rowbatch8 row order, scalar dot/FMA order, wave32 shuffle tree, serial wave-0..3 sum, barriers, BF16 store, compact-row layout, weights, output, allocation, and H5J fallback",
+    "unchanged_useful_work": true,
+    "workgroup_count_is_performance_claim": false,
+    "gfx1151_must_fail_closed": true,
+    "production_policy_changed": false
+  },
+  "closed_predecessors": {
+    "larger_resident_rows": "H5K rowbatch12/16 lost both clocks on all 45 IQ3 layers",
+    "output_tile2": "rejected at approximately 50% slower fixture duration with VGPR growth",
+    "source_mmq": "runtime quality rejected at max KL 0.373028; IQ3-only followup still reached 0.372917",
+    "h5p_geometry": "exact Q5 16x4 leaf retained but runtime rejected by final 1K adjudication"
+  },
+  "admission": {
+    "red_first": "separate gfx1100-only symbols/keys; strict K1024/N3072/E256 preflight; empty, uneven, exact-boundary, and tail active-expert fixtures must match H5J bytes and CPU oracle; gfx1151 absent",
+    "resources": "cached tracing must physically record every partition candidate with local128, scratch0, and plausible VGPR/LDS no worse than H5J unless timing justifies it",
+    "performance": "all 45 actual IQ3 layers with their captured weights/routing; H5J versus each partition; five warmups, 15 counter-rotated samples, five launches/sample; HIP-event and synchronized-wall medians; retain only a fixed partition that wins both summed clocks without a per-layer regression",
+    "runtime_gate_if_admitted": "bounded default-off grouped-IQ role policy, complete natural-M512 state, exact integrated candidate/fallback counts, unchanged metadata/allocation, and clean 512/1K/4K non-regression",
+    "rejection": "remove every candidate surface if no fixed partition clears exactness, resources, and both-clock performance"
+  },
+  "decision": {
+    "selected": true,
+    "production_changed": false,
+    "next_action": "Freeze RED and screen active-expert persistent partitions 1/2/4/8/16/32/64/128 against H5J on all 45 actual IQ3 layers; do not alter package policy before leaf admission."
+  }
+}
