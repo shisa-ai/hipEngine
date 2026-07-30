@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_shared_down_moe_tail_rejection",
+  "status": "rejected_removed",
+  "source_revision": "5c306730c73d5cbc524b82a7faee4a1cb6df1c19",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79022522204
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 128,
+    "measured_transitions": 127,
+    "prompt_id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "repetitions": 1,
+    "protocol_note": "Bounded one-pair rejection after both production-shape leaves were negative; a seven-pair gate was intentionally skipped."
+  },
+  "candidate": {
+    "description": "Keep every Q4/Q6 eight-column shared-down producer, let each producer materialize its exact BF16 shared/hidden boundary, and let the last of 384 producers reconstruct D9's original 256 logical sumsq lanes and 128-to-1 reduction tree before normalization.",
+    "q4_geometry": "grid384, local32/64/128/256 screen",
+    "q6_geometry": "grid384, local128",
+    "completion_scratch_bytes_per_owner": 4,
+    "target_launch_reduction_per_token": 47,
+    "removed_after_rejection": true
+  },
+  "correctness": {
+    "q4_shared_bf16_mismatches": 0,
+    "q4_hidden_bf16_mismatches": 0,
+    "q4_norm_bf16_mismatches": 0,
+    "q6_shared_bf16_mismatches": 0,
+    "q6_hidden_bf16_mismatches": 0,
+    "q6_norm_bf16_mismatches": 0,
+    "completion_counters_reset": true,
+    "generated_trajectories_exact": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_recovered": true
+  },
+  "leaf_result": {
+    "shape": {
+      "rows": 1,
+      "in_features": 1024,
+      "out_features": 3072
+    },
+    "iterations_per_sample": 200,
+    "samples": 7,
+    "q4": {
+      "control_projection_plus_tail_ms": 0.014391710283234715,
+      "candidate_local128_ms": 0.016382141038775444,
+      "candidate_local128_change_percent": 13.830397613405498,
+      "candidate_local32_change_percent": 120.86688661399307,
+      "candidate_local64_change_percent": 44.137747512263715,
+      "candidate_local256_change_percent": 19.85237360171275
+    },
+    "q6": {
+      "control_projection_plus_tail_ms": 0.023379370104521513,
+      "candidate_local128_ms": 0.024287470150738955,
+      "candidate_local128_change_percent": 3.8841938091472183
+    }
+  },
+  "model_result": {
+    "control_tok_s": 22.122652645477235,
+    "candidate_tok_s": 21.851076288905784,
+    "throughput_change_percent": -1.2275940002474006,
+    "control_ms_per_token": 45.20253588144821,
+    "candidate_ms_per_token": 45.764336125983846,
+    "wall_change_ms_per_token": 0.5618002445356325
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The last producer has only 32 Q4 or 128 Q6 lanes available for D9 work. Reconstructing the exact logical tree preserves arithmetic but collapses the original local256 tail's physical parallelism; every leaf geometry regresses and the complete exact pair loses 1.2276%.",
+    "production_checkpoint_tok_s": 22.119461,
+    "production_changed": false,
+    "reopen_only_if": "A materially different mechanism preserves local256-or-wider physical tail ownership, such as a true within-evaluation dispatch batch; do not retry last-producer tail serialization."
+  },
+  "validation": {
+    "red": "tests/test_laguna_shared_down_moe_tail.py initially failed because the Q4/Q6 composite wrappers did not exist.",
+    "green_before_removal": "3 passed: registry plus production-shape Q4/Q6 byte-exact shared/hidden/norm fixtures.",
+    "raw_artifact_sha256": "847937ff6e1c1ce2e1f0ab67b52dc8a2046da8c977612f85b4734ecfaa7ccefc",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --compare-shared-down-moe-tail-decode --allow-dirty --output /tmp/laguna-shared-down-tail-screen-1.json"
+  }
+}

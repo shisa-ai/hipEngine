@@ -193967,3 +193967,29 @@ Vulkan local sizes verbatim will close the measured gap.
   The constructor rollback, gfx1151 capability, registered composite,
   tile-local counter scratch, peer-backend behavior, and exact route-parallel
   projection plus standalone weighted-sum fallback are unchanged.
+
+## 2026-07-30 21:58 JST — Reject shared-down plus MoE-tail contraction
+
+- Built an exact Q4/Q6 shared-down boundary candidate: all 384 eight-column
+  projection workgroups retain their production arithmetic and BF16 shared
+  output, then materialize the two established BF16 add boundaries. The last
+  producer reconstructs D9's original 256 logical sumsq lanes and
+  128-to-1 FP32 reduction tree before normalization. Production K1024/N3072
+  fixtures have zero shared/hidden/norm BF16 mismatches and counters reset.
+- The mechanism is decisively negative because the last producer exposes only
+  local32 Q4 or local128 Q6 physical ownership for work normally spread across
+  D9's local256 block. Q4 projection-plus-tail versus composite changes
+  **0.014392 -> 0.016382 ms (+13.83%)** at the best screened local128
+  geometry; local32/local64/local256 regress **120.87%/44.14%/19.85%**.
+  Q6 local128 changes **0.023379 -> 0.024287 ms (+3.88%)**.
+- The bounded same-resident p512/d128 pair is exact but confirms the failure:
+  **22.122653 -> 21.851076 tok/s (-1.22759%)**, adding
+  **0.561800 ms/token**. Tokens remain **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, deterministic state, and complete
+  recovery of **79,022,522,204 bytes**. Raw SHA-256 is
+  `847937ff...ccefc`.
+- Removed the kernel, wrapper, registry, scratch, runner, test, and comparison
+  routes. Production remains **22.119461 tok/s / 482 dispatches/token**.
+  Reopen only with a materially different within-evaluation batching mechanism
+  that preserves local256-or-wider physical tail ownership. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-moe-tail-rejected.json`.
