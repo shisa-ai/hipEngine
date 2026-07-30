@@ -6612,6 +6612,28 @@ The remaining attention sequence is:
      exact coefficient-carrying consumer rather than recomputing Q4
      coefficients:
      [`compact-Q4 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-compact-shared-down-rejected.json).
+111. Mirror Vulkan's compact Q6_K decode geometry without changing raw
+     coefficients. **Rejected and removed:** all five candidates are bit-exact
+     across the 24 actual Q6 down tensors (**73,728/73,728 BF16 values**), but
+     all lose to retained pack8 on the complete streaming family:
+
+     | candidate | control -> candidate ms / 24 calls | delta |
+     | --- | ---: | ---: |
+     | one wave32 / two outputs / four retained partial trees | 0.736075 -> 0.986603 | +34.04% |
+     | all-K coefficient staging / one barrier | 0.732689 -> 0.921445 | +25.76% |
+     | fixed-shape all-K staging | 0.733341 -> 0.887809 | +21.06% |
+     | two K256 blocks per barrier pair | 0.735027 -> 0.796590 | +8.38% |
+     | four K256 blocks per barrier pair | 0.736665 -> 0.790548 | +7.31% |
+
+     The source audit also corrects an important comparator detail. Vulkan's
+     running Q6_K decode shader is not the reusable-Q8_1 MMQ path: it consumes
+     vectorized floating-point activations, uses 16 lanes per K256 block,
+     processes four blocks concurrently in the device's wave64, and owns two
+     output rows. That different vector4/wave64 reduction tree is a real reason
+     it is fast, but it is not an exact rearrangement of hipEngine's frozen
+     pack8 BF16 tree. Remove every diagnostic owner and return to the exact
+     attention gap:
+     [`Q6 geometry rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-geometry-rejected.json).
 
 Current exact decode checkpoint:
 
