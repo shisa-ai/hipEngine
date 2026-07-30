@@ -313,11 +313,25 @@ numbers below.
   Selector-unset publication confirms **307.158/260.161/173.375 ->
   312.781/261.591/173.997 tok/s (+1.831%/+0.550%/+0.359%)**, again 3/3.
   Promote H6A source production at canonical **312.781/261.591/173.997 tok/s
-  (+1.665%/+0.633%/+0.251% over H5R/H5Y/H5Z)**, narrowing the canonical M512
-  gap to llama.cpp HIP **694.184 tok/s** from **2.25635x to 2.21939x**. The
-  matched comparator-shaped row remains the pre-promotion **311.622 tok/s**
-  until immediate H6A reprofiling
-  ([H6A production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
+  (+1.665%/+0.633%/+0.251% over H5R/H5Y/H5Z)**. The binding post-H6A
+  C4096/direct-M512 row is now **326.174 tok/s** from five exact token-2930,
+  lifecycle-clean samples: **+92.414%** over campaign start and **+4.670%** over
+  matched H5Z. A provenance audit found the prior llama.cpp row bound only its
+  launcher, not the plain implementation library, so it is superseded as
+  synthetic evidence. A clean c0bc8591 patched rebuild with both hashes and
+  **5/5 top-1 2930** markers measures exact natural/C4096/BF16 llama.cpp HIP at
+  **696.342 tok/s**; separate synthetic pp512 is **711.410 tok/s**, consistent
+  with the user's **714.07**. The exact matched gap is **2.13488x**. Current
+  kernel sum is **1,568.190 ms** versus llama.cpp **718.241 ms**; residuals rank
+  IQ-down/Q5/attention/gate-up/Q6 at
+  **336.609/187.223/147.249/93.203/79.112 ms**. **WPF-H6B** therefore selects a
+  new exact active-IQ3 signed-magnitude/scale plane, not another tile sweep:
+  one aligned 16-byte record per group8 preserves H5Z's scalar dot/reduction
+  order while moving decode out of repeated rowbatch8 consumers. Its fixed
+  worst-case plane/combined-workspace bounds are **1,610,612,736 /
+  1,771,732,992 bytes**, not a speed claim
+  ([post-H6A matched residual / comparator correction / H6B target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
+  [H6A production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
   [H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). Both short
   rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

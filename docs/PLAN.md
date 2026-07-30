@@ -1800,10 +1800,31 @@ and SWA local32/VGPR64/scratch0. Default-off 512/1K/4K improves
 (+1.713%/+0.677%/+0.326%)**, 3/3 wins each. Selector-unset confirms
 **307.158/260.161/173.375 -> 312.781/261.591/173.997 tok/s
 (+1.831%/+0.550%/+0.359%)**, again 3/3. Promote H6A at canonical
-**312.781/261.591/173.997 tok/s (+1.665%/+0.633%/+0.251% over H5R/H5Y/H5Z)**,
-narrowing the canonical M512 gap **2.25635x -> 2.21939x**. Matched C4096/M512
-remains pre-promotion **311.622 tok/s** pending immediate reprofile
-([H6A production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
+**312.781/261.591/173.997 tok/s (+1.665%/+0.633%/+0.251% over H5R/H5Y/H5Z)**.
+The binding post-H6A C4096/direct-M512 row is **326.174 tok/s** from five exact
+samples, **+92.414%** over campaign start and **+4.670%** over matched H5Z. The
+llama.cpp comparator audit supersedes the old launcher-only-bound row as
+synthetic: a clean c0bc8591 patched rebuild, implementation hash, and **5/5
+2930** markers measure exact natural/C4096/BF16 llama.cpp HIP at **696.342
+tok/s**; synthetic pp512 is **711.410 tok/s**, consistent with the user's
+**714.07**. The exact matched gap is **2.13488x**. Current/llama kernel sums are
+**1,568.190/718.241 ms**; current residuals rank IQ-down/Q5/attention/gate-up/Q6
+at **336.609/187.223/147.249/93.203/79.112 ms**.
+
+Select **WPF-H6B exact active-IQ3 signed-magnitude segment plane**. A bounded
+producer writes one aligned 16-byte record per active-expert/output/group8:
+the exact current F32 scale, eight exact signed int8 magnitudes, and padding. A
+matching H5Z-derived consumer performs exact int8-to-F32 conversion and retains
+the scalar BF16 dot, scale multiply, wave tree, serial wave sum, rowbatch8, P64
+expert, P256 output, store, metadata, and fallback order. Natural M512 has
+**9,844** active layer-expert instances and **33,547** rowbatch8 iterations, so
+the static repeated-decode ratio is **3.40786x**. The fixed 256-expert plane is
+**1,610,612,736 bytes** and combined workspace is **1,771,732,992 bytes**; this
+is an admission bound/static rationale, not a speed claim. Require exact record/
+output bytes, producer-inclusive all-45-layer both-clock wins, bounded resources/
+memory, complete state, and clean 512/1K/4K before ownership
+([post-H6A matched residual / comparator correction / H6B target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
+[H6A production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
 [H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
 [post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
 [H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
@@ -1819,7 +1840,7 @@ The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, and P6/repair routes remain closed.
 Launch fusion remains deferred.
-Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
+Keep 16K+ closed until direct M512 reaches **696.342 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates
 are owned by `LAGUNA-prefill.md`.
