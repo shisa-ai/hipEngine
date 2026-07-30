@@ -113,6 +113,10 @@ LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR = True
 # Exact byte-neutral gate/up interleave plus two-column wave ownership cuts
 # the actual dense/shared leaf family by 6.50% before the resident gate.
 LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED = True
+# The selected gate/up decoder and the production D8 prefill owner now share
+# one exact byte-neutral paired T16 allocation. Natural prefill leaves improve
+# at M55+ and are effectively flat at M32; c=1 decode improves 5.70%.
+LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED = True
 # Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
 # 2048-row projection/MoE transactions while attention and physical KV writes
 # remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
@@ -884,6 +888,7 @@ __all__ = [
     "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",
     "LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR",
     "LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED",
+    "LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED",
     "LAGUNA_SELECTED_NATURAL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE",

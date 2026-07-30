@@ -8,6 +8,7 @@ import pytest
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.loading.laguna_gguf_materialize import (
+    _materialize_q4_t16_dual_pair,
     _materialize_spec,
     _spec_for_tensor,
     build_laguna_repacked_cache,
@@ -222,6 +223,69 @@ def test_laguna_materialize_spec_matches_pack8_and_t16_repack_payloads() -> None
             assert _device_bytes(weight, runtime, name) == expected.tobytes()
         weight.free(runtime=runtime)
         assert runtime.buffers == {}
+
+
+def test_laguna_materialize_q4_expert_pair_replaces_two_owned_tiles() -> None:
+    rng = np.random.default_rng(20260731)
+    gate_raw = rng.integers(0, 256, size=(2, 16, 144), dtype=np.uint8)
+    up_raw = rng.integers(0, 256, size=(2, 16, 144), dtype=np.uint8)
+    gate_info = tensor_info(
+        "q4_t16_gate_pair",
+        (2, 16, 256),
+        GGMLQuantizationType.Q4_K,
+    )
+    up_info = tensor_info(
+        "q4_t16_up_pair",
+        (2, 16, 256),
+        GGMLQuantizationType.Q4_K,
+    )
+    reader = FakeReader(
+        {
+            gate_info.name: gate_raw,
+            up_info.name: up_raw,
+        }
+    )
+    runtime = FakeRuntime()
+    profiles = []
+
+    gate_weight, up_weight = _materialize_q4_t16_dual_pair(
+        _spec_for_tensor("layers.1.ffn_gate_exps", gate_info),
+        _spec_for_tensor("layers.1.ffn_up_exps", up_info),
+        reader,
+        device=None,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        profile=profiles.append,
+    )
+    expected = interleave_gguf_q4_k_tile16_dual(
+        repack_gguf_q4_k_tile16(gate_raw).tiles,
+        repack_gguf_q4_k_tile16(up_raw).tiles,
+    )
+    try:
+        assert tuple(gate_weight.allocations) == ("tiles_dual",)
+        assert tuple(up_weight.allocations) == ()
+        assert _device_bytes(
+            gate_weight,
+            runtime,
+            "tiles_dual",
+        ) == expected.tobytes()
+        assert (
+            gate_weight.resident_nbytes + up_weight.resident_nbytes
+            == gate_weight.spec.resident_nbytes
+            + up_weight.spec.resident_nbytes
+        )
+        assert [profile.slot_path for profile in profiles] == [
+            "layers.1.ffn_gate_exps",
+            "layers.1.ffn_up_exps",
+        ]
+        assert [profile.resident_nbytes for profile in profiles] == [
+            expected.nbytes,
+            0,
+        ]
+    finally:
+        gate_weight.free(runtime=runtime)
+        up_weight.free(runtime=runtime)
+    assert runtime.buffers == {}
 
 
 def test_laguna_materialize_q4_decode_t16_sidecar_is_additive() -> None:

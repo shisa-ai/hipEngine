@@ -1421,9 +1421,11 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert kv_kwargs["prefill_cached_meta"] is True
     assert kv_kwargs["prefill_global_qrow6"] is True
     assert kv_kwargs["prefill_dense_initial"] is True
-    assert session.prefill_scratch_plan.total_nbytes == 1_756_061_728
+    assert session.prefill_scratch_plan.total_nbytes == 1_756_062_496
     assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert materialize_kwargs["q6_qmicro_planar"] is True
+    assert materialize_kwargs["q4_expert_t16_dual_interleaved"] is True
+    assert session.use_q4_expert_t16_dual_interleaved is True
     assert (
         session.global_prefill_variant
         == "global_context_rows_qrow2_online_spans"

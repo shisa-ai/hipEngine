@@ -357,6 +357,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="counterbalance separate and paired T16 dense/shared Q4 decode",
     )
+    parser.add_argument(
+        "--ordinary-q4-expert-t16",
+        action="store_true",
+        help="materialize ordinary two-buffer expert T16 as a rollback control",
+    )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -585,6 +590,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_dense_contiguous_cache = False
     active_q4_decode_t16_sidecar = False
     active_q4_decode_t16_dual_interleaved = False
+    active_q4_expert_t16_dual_interleaved = False
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
@@ -665,6 +671,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 False
                 if args.compare_q4_decode_t16_dual_interleaved
                 else None
+            ),
+            use_q4_expert_t16_dual_interleaved=(
+                False if args.ordinary_q4_expert_t16 else None
             ),
         )
         active_moe_branch_concurrency = owner.moe_branch_concurrency
@@ -802,6 +811,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_q4_decode_t16_dual_interleaved = (
             owner.use_q4_decode_t16_dual_interleaved
+        )
+        active_q4_expert_t16_dual_interleaved = (
+            owner.use_q4_expert_t16_dual_interleaved
         )
         active_attention_rows = owner.prefill_attention_chunk_size
         active_global_attention_rows = (
@@ -1183,6 +1195,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "q4_decode_t16_dual_interleaved": (
                 active_q4_decode_t16_dual_interleaved
+            ),
+            "ordinary_q4_expert_t16": args.ordinary_q4_expert_t16,
+            "q4_expert_t16_dual_interleaved": (
+                active_q4_expert_t16_dual_interleaved
             ),
             "global_split_min_live": active_global_split_min_live,
             "swa_split_min_live": active_swa_split_min_live,

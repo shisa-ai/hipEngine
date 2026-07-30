@@ -536,15 +536,17 @@ def gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf1
 ) -> None:
     """Launch exact tile8 gate/up from a dual-interleaved T16 layout."""
 
-    _check_laguna_natural_selected_shape(
-        x_rows,
-        rows,
-        in_features,
-        out_features,
-        expected_x_rows=1,
-        expected_in=3072,
-        expected_out=1024,
-    )
+    if (
+        x_rows <= 0
+        or rows != x_rows * 10
+        or in_features != 3072
+        or out_features != 1024
+    ):
+        raise ValueError(
+            "dual-interleaved Laguna selected GEMV requires positive "
+            "x_rows, rows=x_rows*10, in_features=3072, and "
+            "out_features=1024"
+        )
     _launch_dual_silu_direct(
         _Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_BF16,
         x_ptr,
@@ -2538,6 +2540,19 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             fn,
             replace=replace,
         )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_dual_interleaved_v1",
+            (
+                "selected_dual_t16_natural_tile8_parallel_silu_"
+                "gemv_decode_bf16_bf16_out"
+            ),
+        ),
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+        replace=replace,
+    )
 
     for quant_key, fn_bf16, fn_fp16, direct_bf16, direct_fp16 in (
         (

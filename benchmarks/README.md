@@ -52,24 +52,24 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.141787 tok/s / 45.163 ms/token**, up **93.097%** from the
-**11.466687 tok/s** sprint start. A native host shim now invokes the unchanged
-Q4/Q6 shared-down and local256 D9 wrappers back-to-back. The seven-pair exact
-gate wins 7/7 at **22.146074 -> 22.154405 tok/s**, and tracked-clean
-publication improves the preceding checkpoint
-**22.119461 -> 22.141787 tok/s (+0.10093%, -0.045586 ms/token)**. The
-cache-only census preserves exactly **482 model kernels/token**, including
-24 Q4 plus 23 Q6 shared-down→D9 pairs and 47 unchanged D9 calls.
-[`shared-down plus D9 host batching production`](results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json).
-
-The selected gate/up dual-interleave is now cleared for byte-neutral resident
-integration. Its production-geometry D8 prefill consumer is BF16-bit exact and
-improves actual layer-1 inclusive M128/M256/M512 leaves
-**2.460%/2.034%/1.187%** at unchanged bytes. This removes the only blocker on
-the existing **5.705%** selected-decode leaf win; the production topline is
-unchanged until paired materialization, lifecycle, full-state decode, and the
-prefill sweep pass.
-[`dual-interleaved prefill consumer`](results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json).
+**22.260802 tok/s / 44.922 ms/token**, up **94.136%** from the
+**11.466687 tok/s** sprint start. One byte-neutral dual-interleaved allocation
+now replaces each routed Q4 expert gate/up T16 pair and is consumed directly
+by exact decode and D8 prefill kernels. Same-revision three-run ordinary versus
+paired medians improve decode
+**22.130173 -> 22.260802 tok/s (+0.59027%, -0.265163 ms/token)** and pp512
+**654.569 -> 655.535 tok/s (+0.14757%)**. Full-model residency remains exactly
+**79,022,522,196 bytes**; trajectories, positions, repeats, and lifecycle are
+exact. The previous native shared-down/D9 host-batch checkpoint was
+**22.141787 tok/s**, so the retained production topline advances another
+**0.53751%**. Existing ordinary cache payloads require a one-time host
+interleave, raising excluded load **92.084 -> 142.902 seconds**; a versioned
+paired cache is the remaining startup cleanup. A fresh one-pass
+512/1K/4K/32K/64K/128K anti-overtuning confirmation measures
+**597.902/664.805/606.498/365.623/246.748/148.780 tok/s**; the
+32K/64K/128K tail is within **0.354%** of the prior clean closure, with exact
+positions and lifecycle.
+[`paired expert production`](results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
 
 The same exact boundary's resident A/B gate independently retained the final
 attention-output projection producer runs the established residual-add/RMSNorm
@@ -1784,6 +1784,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M byte-neutral routed-expert dual-interleaved T16 production | 2026-07-31 | same-revision ordinary/paired candidate; TheRock HIP 7.15; BF16 KV; exact c=1/rows2/rows3 and prefill fixtures, cached kernel trace, three-run p512/d128 A/B, and six-shape anti-overtuning sweep | **Accepted current exact production default:** one paired allocation replaces both ordinary expert gate/up allocations and serves exact short-row decode plus D8 prefill. Decode improves **22.130173 -> 22.260802 tok/s (+0.59027%, -0.265163 ms/token)** and pp512 improves **654.569 -> 655.535 tok/s (+0.14757%)** at unchanged **79,022,522,196-byte** residency. Full trajectories, final positions, repeats, and teardown are exact. [`production`](results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json). | Yes for gfx1151 routed expert Q4 gate/up decode and M32+ prefill | Build a versioned paired cache to remove the excluded **50.818-second** host-interleave load penalty; refresh the complete decode wall census before ranking the next family. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 projection/head/KV decode | 2026-07-30 | candidate `d1b87128a`; TheRock HIP 7.15; BF16 KV; natural global/SWA byte oracle, seven same-resident pairs, three tracked-clean selector-unset runs, and cached 127-transition census | **Accepted prior exact mechanical production default:** the final per-head projection producer runs the established RMSNorm/RoPE/BF16-KV body, removing another **48 launches/token** for **320 resident bytes**. Natural global/SWA outputs, KV, spans, counters, full trajectories, and lifecycle are exact. Tracked-clean throughput is aggregate-flat at **22.031913 -> 22.007742 tok/s (-0.1097%)**, while the complete trace proves **625 -> 577 dispatches/token**, **45.699715 -> 45.660100 ms/token** span, and **2.006962 -> 1.882766 ms/token** span-minus-kernel time. [`retention`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json), [`production`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json). | Yes for gfx1151 rows-one source-F16 projection/head/KV; retained on verified launch-count and cycle-wall reduction | Temporary A/B seam removed; exact quad plus head/KV remains fallback. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 output projection plus add/RMSNorm decode | 2026-07-30 | retained `95a65d756`; TheRock HIP 7.15; BF16 KV; natural K6144/K9216 byte oracle, seven alternating same-resident pairs, three tracked-clean selector-unset runs, and cached 127-transition census | **Accepted current exact production default:** the final exact projection producer executes the established residual-add/RMSNorm tree, removing **48 launches/token** with no new resident bytes. Projection/residual/norm bytes, full trajectories, counters, and lifecycle are exact. Tracked-clean decode improves **22.007742 -> 22.063262 tok/s (+0.25227%, -0.114340 ms/token)**; the trace proves **577 -> 529 dispatches/token**, kernel sum **43.777334 -> 43.750470**, and span **45.660100 -> 45.543776 ms/token**. [`retention`](results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json), [`production`](results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json). | Yes for gfx1151 rows-one dense-F16 attention output | Temporary A/B seam removed; exact unfused chain remains fallback. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M source-F16 attention-quad production and wall census | 2026-07-30 | tracked-clean default `ae4f11d59`; TheRock HIP 7.15; BF16 KV; three selector-unset p512/d128 runs plus cached-build trace over 127 exact transitions | **Accepted prior production topline and attribution:** selector-unset production improves **21.926113 -> 22.031913 tok/s (+0.48253%, -0.219014 ms/token)** and reaches **+92.138%** over sprint start. The trace confirms **673 -> 625 dispatches/token**, source-F16 **24.053006 -> 23.928557 ms/token**, kernel sum **43.823282 -> 43.692753 (-0.2979%)**, and span **45.861315 -> 45.699715 (-0.3524%)**. Kernel work is only **0.033553 ms/token (0.077%)** above Vulkan's logged GPU work; the remaining clean wall gap is **2.559 ms/token**. [`production`](results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json). | Yes for gfx1151 rows-one source-F16 Q/K/V/gate and the declared p512/d128 protocol | Prioritize exact launch contraction/within-token queue spacing; triple plus singleton remains fallback. |

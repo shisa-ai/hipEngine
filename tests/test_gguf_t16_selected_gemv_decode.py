@@ -905,6 +905,17 @@ def test_p9_h3d_registry_keys_resolve() -> None:
     }.items():
         for variant in variants:
             assert resolve(backend="hip_gfx1100", layer="moe_linear", quant=quant, variant=variant) is not None
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_q4_k_t16_dual_interleaved_v1",
+        variant=(
+            "selected_dual_t16_natural_tile8_parallel_silu_"
+            "gemv_decode_bf16_bf16_out"
+        ),
+    ) is (
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out
+    )
 
 
 def test_p9_h3d_build_plan_is_dry_run_safe() -> None:
@@ -1143,6 +1154,45 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         gate_tile8_parallel_silu_interleaved,
         gate_tile8_parallel_silu_paircoeff,
     )
+    small_gate_x = np.concatenate(
+        (
+            gate_x,
+            _f32_to_bf16_u16(
+                _bf16_u16_to_f32(gate_x) * np.float32(-0.625)
+            ),
+        ),
+        axis=0,
+    )
+    small_selected = np.tile(selected, 2)
+    small_gate_ref = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        small_gate_x,
+        small_selected,
+        gate_tiles_a,
+        gate_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    small_gate_f32 = _bf16_u16_to_f32(small_gate_ref[0])
+    small_up_f32 = _bf16_u16_to_f32(small_gate_ref[1])
+    with np.errstate(over="ignore"):
+        small_expected_silu = _f32_to_bf16_u16(
+            small_gate_f32
+            * (1.0 / (1.0 + np.exp(-small_gate_f32)))
+            * small_up_f32
+        )
+    small_interleaved = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+        small_gate_x,
+        small_selected,
+        gate_tiles_interleaved,
+        gate_tiles_interleaved,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(small_interleaved, small_expected_silu)
     dense_tiles_a = repack_gguf_q4_k_tile16(gate_a[0:1]).tiles
     dense_tiles_b = repack_gguf_q4_k_tile16(gate_b[0:1]).tiles
     dense_actual = _run_dense_dual_silu(

@@ -26,6 +26,7 @@ from hipengine.loading.laguna_gguf import (
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf_materialize import (
     LagunaGGUFResidentLayerWeights,
+    _materialize_q4_t16_dual_pair,
     _materialize_spec,
     _spec_for_tensor,
     materialize_laguna_gguf_weights,
@@ -164,6 +165,18 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
             "gguf_q4_k_t16_v1"
         ].abi
         == "t16_dual_silu"
+    )
+    assert (
+        plan.interleaved_natural_selected_gate_up_route.key.quant
+        == "gguf_q4_k_t16_dual_interleaved_v1"
+    )
+    assert (
+        plan.interleaved_natural_selected_gate_up_route.allocation_name
+        == "tiles_dual"
+    )
+    assert (
+        plan.selected_gate_up_prefill_f32_interleaved_key.quant
+        == "gguf_q4_k_t16_dual_interleaved_v1"
     )
     assert {
         quant: route.key.variant
@@ -680,6 +693,11 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     mmq_parallel_scratch = None
     down_rowvec_scratch = None
     concurrent_scratch = None
+    paired_gate_weight = None
+    paired_up_weight = None
+    paired_c1_scratch = None
+    paired_bulk_scratch = None
+    paired_production_scratch = None
     concurrent_stream = 0
     concurrent_input_ready = 0
     concurrent_output_ready = 0
@@ -1084,6 +1102,78 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_silu_pack_actual),
             _f32_to_bf16_u16(down_q6_rows64_actual),
         )
+        paired_gate_weight, paired_up_weight = _materialize_q4_t16_dual_pair(
+            resident["ffn_gate_exps"].spec,
+            resident["ffn_up_exps"].spec,
+            _MappingReader(
+                {
+                    resident["ffn_gate_exps"].spec.source.name: gate_experts,
+                    resident["ffn_up_exps"].spec.source.name: up_experts,
+                }
+            ),
+            device=None,
+            runtime=_runtime(),
+            backend="hip_gfx1151",
+        )
+        paired_weights = dict(resident)
+        paired_weights["ffn_gate_exps"] = paired_gate_weight
+        paired_weights["ffn_up_exps"] = paired_up_weight
+        paired_layer = LagunaGGUFResidentLayerWeights(
+            layer_id=layer.layer_id,
+            attention_type=layer.attention_type,
+            mlp_type=layer.mlp_type,
+            weights=MappingProxyType(paired_weights),
+        )
+        validate_laguna_moe_layer(paired_layer, plan)
+        paired_c1_scratch = allocate_laguna_moe_scratch(plan)
+        paired_c1_output = run_laguna_moe_c1(
+            hidden_buffer.ptr,
+            paired_layer,
+            paired_c1_scratch,
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(_read_bf16(paired_c1_output, (1, h))),
+            _f32_to_bf16_u16(actual),
+        )
+        paired_bulk_scratch = allocate_laguna_moe_scratch(
+            plan,
+            max_rows=3,
+        )
+        paired_bulk_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            paired_layer,
+            paired_bulk_scratch,
+            rows=3,
+            selected_gate_up_mode="direct",
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(_read_bf16(paired_bulk_output, (3, h))),
+            _f32_to_bf16_u16(bulk_actual),
+        )
+        paired_production_scratch = allocate_laguna_moe_scratch(
+            plan,
+            max_rows=3,
+        )
+        paired_production_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            paired_layer,
+            paired_production_scratch,
+            rows=3,
+            selected_gate_up_mode=(
+                "mmq128x32_d8_f32_wavecols_direct_doublebuf_"
+                "rawprefetch_ge512"
+            ),
+            selected_down_mode=(
+                "mmq64x64_d4_f32_q6_wavecols_direct_q4"
+            ),
+            fuse_selected_silu_pack=True,
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(
+                _read_bf16(paired_production_output, (3, h))
+            ),
+            _f32_to_bf16_u16(fused_silu_pack_actual),
+        )
         runtime = _runtime()
         concurrent_scratch = allocate_laguna_moe_scratch(
             plan,
@@ -1180,6 +1270,12 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             runtime.event_destroy(concurrent_input_ready)
         if concurrent_scratch is not None:
             concurrent_scratch.free()
+        if paired_production_scratch is not None:
+            paired_production_scratch.free()
+        if paired_bulk_scratch is not None:
+            paired_bulk_scratch.free()
+        if paired_c1_scratch is not None:
+            paired_c1_scratch.free()
         if router_tile8_scratch is not None:
             router_tile8_scratch.free()
         if mmq_parallel_scratch is not None:
@@ -1200,6 +1296,10 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             free(bulk_hidden_buffer)
         if hidden_buffer is not None:
             free(hidden_buffer)
+        if paired_up_weight is not None:
+            paired_up_weight.free()
+        if paired_gate_weight is not None:
+            paired_gate_weight.free()
         for weight in reversed(tuple(resident.values())):
             weight.free()
 
@@ -1427,6 +1527,14 @@ class _ArrayReader:
     def tensor_data(self, name: str) -> np.ndarray:
         assert name == self.name
         return self.array
+
+
+class _MappingReader:
+    def __init__(self, arrays: MappingProxyType | dict[str, np.ndarray]) -> None:
+        self.arrays = arrays
+
+    def tensor_data(self, name: str) -> np.ndarray:
+        return self.arrays[name]
 
 
 def _runtime():

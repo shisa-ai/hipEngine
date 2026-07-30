@@ -2164,12 +2164,12 @@ should be boring.
   key, leaf selector, and focused test call if no compound candidate uses it;
   never make it the default independently.
 
-## Laguna gfx1151 Q4T16 dual-interleaved decode diagnostic
+## Laguna gfx1151 Q4T16 dual-interleaved expert production rollback
 
-- Added 2026-07-30 as an unregistered exact leaf primitive and actual-weight
-  harness mode. It is byte-neutral only when it replaces both resident
-  gate/up T16 matrices; keeping it as a sidecar would add about **43.76 GB**
-  across 47 routed layers.
+- Originated 2026-07-30 as an unregistered exact leaf primitive and
+  actual-weight harness mode. It is now registered and production-owned. It is
+  byte-neutral only when it replaces both resident gate/up T16 matrices;
+  keeping it as a sidecar would add about **43.76 GB** across 47 routed layers.
 - The exact byte-neutral D8 MMQ128x32 prefill consumer now wins M128/M256/M512
   **2.460%/2.034%/1.187%**, so keep the dual-layout host helpers, decode and
   prefill symbols/wrappers, leaf modes, and focused fixtures through resident
@@ -2177,6 +2177,19 @@ should be boring.
   paired allocation becomes canonical; never add a decode-only production
   sidecar. Remove the temporary comparison selectors and legacy cache
   acceptance after tracked-clean decode plus the prefill sweep publish.
+- Resident integration is now default and byte-neutral. The temporary rollback
+  is `scripts/laguna_long_context_profile.py --ordinary-q4-expert-t16` plus
+  `LagunaGGUFResidentSession(...,
+  use_q4_expert_t16_dual_interleaved=False)`. Same-revision production improves
+  **22.130173 -> 22.260802 tok/s** with exact state and unchanged
+  **79,022,522,196-byte** residency.
+- The existing repacked cache still stores ordinary gate and up T16 payloads,
+  so default load interleaves them on the host and rises
+  **92.084 -> 142.902 seconds**. Retain the rollback until a versioned paired
+  cache payload can be written without duplicating the roughly **43.76 GB**
+  resident expert pair. After that cache migration and one clean decode/prefill
+  recertification, remove the ordinary CLI/session seam and ordinary paired
+  materializer fallback.
 
 ## Laguna gfx1151 dense/shared dual-interleaved T16 selector
 

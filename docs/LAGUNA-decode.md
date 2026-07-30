@@ -7044,6 +7044,33 @@ The remaining attention sequence is:
      until that byte-neutral integration passes full-state decode and the
      prefill sweep:
      [`retained prefill consumer`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json).
+127. Replace each routed expert gate/up T16 pair with one byte-neutral owning
+     dual-interleaved allocation. **Retained and promoted:** the materializer
+     now interleaves the two cached ordinary payloads once during load, uploads
+     one `tiles_dual` allocation owned by gate, and gives up an empty
+     non-owning allocation map. The pair remains exactly the sum of the two
+     old allocations; complete model residency is unchanged at
+     **79,022,522,196 bytes** and teardown returns every tracked byte.
+
+     Decode uses the exact fused tile8 owner for c=1, an exact generalized
+     interleaved fallback for rows 2-31, and the retained D8
+     MMQ128x32/wave-column/direct/double-buffer owner from M32. Device tests
+     match the ordinary two-buffer chain at c=1, rows 2/3, and the production
+     prefill boundary. Cached tracing names the c=1/rows3 interleaved decoder
+     at local128/VGPR80/LDS512/scratch0 and the production MMQ at
+     local128/VGPR96/LDS3072/scratch0.
+
+     Same-revision three-run ordinary versus paired medians improve decode
+     **22.130173 -> 22.260802 tok/s (+0.59027%,
+     -0.265163 ms/token)** and steady pp512
+     **654.569 -> 655.535 tok/s (+0.14757%, -1.153 ms)**. Every generated
+     trajectory, next/final token, final position, repeat, resident byte, and
+     lifecycle check is exact. The production decode checkpoint therefore
+     advances from **22.141787 -> 22.260802 tok/s (+0.53751%)**. The one
+     known cost is excluded startup: converting cached ordinary T16 payloads
+     on the host raises load **92.084 -> 142.902 seconds**. Keep the ordinary
+     loader rollback while a paired cache format removes that one-time debt:
+     [`production gate`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json).
 
 Current exact decode checkpoint:
 
@@ -7056,9 +7083,10 @@ Current exact decode checkpoint:
 | hipEngine prior projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
 | hipEngine prior output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
 | hipEngine prior route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
-| hipEngine current shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
+| hipEngine prior shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
+| hipEngine current byte-neutral expert dual-interleave production | **22.260802 tok/s** | **44.922 ms** | **+94.136%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.334 ms/token** | hipEngine is **5.168%** below Vulkan throughput |
+| Remaining wall gap | — | **2.092 ms/token** | hipEngine is **4.658%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -7073,18 +7101,58 @@ at **1.323765** versus llama.cpp Vulkan's logged **0.909423-ms** family. The
 remaining attention gap is **0.414342 ms/token**; selected gate/up is now the
 larger named gap at **0.496884 ms/token**.
 
-The post-interleave census lowers complete hipEngine kernel work to
+The pre-expert-pair post-interleave census lowered complete hipEngine kernel work to
 **43.823282 ms/token**, only **0.164082 ms/token** above Vulkan's logged GPU
 total, while hipEngine still exposes **2.037411 ms/token** of single-queue
 submission idle. Current positive family gaps rank selected gate/up
 **+0.496884**, attention **+0.414342**, dense/shared **+0.357252**, selected
 down **+0.242849**, and router **+0.093081 ms/token**:
 [`post-interleave census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json).
+The paired owner removes **0.265163 ms/token** from complete wall, so those
+family values are no longer a valid post-promotion ranking; refresh the
+127-transition census before choosing the next non-attention arithmetic seam.
+
+The refreshed comparator audit makes the attention trade explicit. At
+llama.cpp Vulkan `c0bc8591e`, Laguna's decode sequence length is one, but
+`ggml_vk_op_flash_attn` folds each six- or nine-query GQA group into `N`.
+That bypasses the scalar `N==1` fallback and selects cooperative-matrix
+`Br=16`, `Bc=64`, four subgroup64 groups/local256, online softmax, matrix QK
+and PV, plus split-K when the grouped grid does not fill the device. With F16
+K/V and default precision, `f32acc` is false; the shader therefore uses the
+fast F16-accumulation contract. hipEngine's BF16-KV path preserves the
+established scalar FP32 QK/PV association. The prior three-term cooperative
+screens proved the cost of this distinction: they were much faster pointwise
+but recurrently exceeded KL even when only a handful of BF16 outputs changed.
+The next attention-core attempt must therefore add a cheap, independently
+valid exact-replay certificate or preserve exact association; another
+unqualified F16/BF16 cooperative port is already closed.
+
+Next attention-core attack:
+
+1. Re-run the cached 127-transition wall census on the paired production
+   default. The expected selected gate/up reduction must be measured, not
+   ratio-scaled, before the family table is re-ranked.
+2. Screen an exact one-slot-ahead K register pipeline in the retained
+   dense-ring SWA DPP-QK owner, then the dense-prefix global owner. Keep query
+   ownership, four ordered products, the exact DPP reduction tree, score
+   plane, softmax, PV, gate, and stores fixed. RED/GREEN uses wrapped and
+   live513/576/639 byte oracles before timing.
+3. Require a positive 21x100 leaf with unchanged scratch and no material VGPR
+   occupancy loss, then seven exact p512/d128 pairs and a cached trace. Reject
+   at the first failed gate; do not compound a negative leaf.
+4. If explicit K pipelining is neutral or the compiler already schedules the
+   loads, stop exact scalar schedule tuning. The next admissible cooperative
+   attempt must begin with a tighter output-rounding certificate that predicts
+   sparse exact replay; the already-rejected standard gamma bound, BF16
+   midpoint repair, extra decomposition terms, and full component replay are
+   not new premises.
 
 The Vulkan review changes the next move from another attention-math rewrite
-to exact device-dispatch contraction. llama.cpp records up to 100 graph nodes
-into reusable command buffers before submission; its shader count is not one
-host queue submission per shader. hipEngine's measured kernel sum is already
+to exact device-dispatch contraction. llama.cpp does not expose a reusable
+Vulkan graph plan at this revision: it records each evaluation into command
+buffers, batches submission by a FLOP budget or at most 100 nodes, and overlaps
+CPU command recording with GPU execution. Its shader count is therefore not
+one synchronous host round trip per shader. hipEngine's measured kernel sum is already
 within **0.164082 ms/token** of Vulkan, but every one of the 48 attention
 layers launches the source-F16 Q/K/V triple and then a tiny same-input gate
 projection. Their dependency boundary alone costs **0.26638 ms/token**.
