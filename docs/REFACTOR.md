@@ -211,12 +211,14 @@ should be removed or collapsed.
   independently eligible after its release checkpoint.
 - WPF-H5R adds a default-empty gfx1100
   `LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` map and a generic role-scoped cache
-  gate. It may reorder only complete no-wrap SWA M128 starts after exact
-  complete-state, physical-call, and clean 512/1K/4K gates. If rejected, remove
-  the map capability, cache fields/parser/gate, focused runtime test, and runner
-  indirection while retaining the standalone cached-exact leaf. If promoted,
-  keep the map only through one release checkpoint, then consider folding the
-  stable role into the package auto policy while preserving H5M/wave32 misses.
+  gate. Complete M512 state is KL0, tracing records all **144** write->H5R pairs,
+  and default-off 512/1K/4K is **+11.444%/+4.763%/+0.881%** with 3/3 wins each.
+  Keep the capability through the selector-unset source-default publication
+  attempt. If that gate fails, remove the map capability, cache fields/parser/
+  gate, focused runtime test, and runner indirection while retaining the leaf.
+  If promoted, keep the map only through one release checkpoint, then consider
+  folding the stable role into package auto policy while preserving H5M/wave32
+  misses.
 
 ## Laguna source-IQ selected-down MMQ selector
 

@@ -1619,9 +1619,12 @@ Including equal append cost, its actual 144-call event/wall sums fall
 **337.277/334.031 -> 126.687/125.764 ms (-62.438%/-62.350%, 2.662x/2.656x)**.
 It adds no launch, allocation, workspace, or sidecar. Retain attend-before-
 append H5M/wave32 routes for every partial, wrapped, staged-verifier, explicit,
-missing, or unsupported case. Admit only the standalone SWA leaf; production
-remains H5Q pending complete-state/integrated-call and clean 512/1K/4K runtime
-qualification
+missing, or unsupported case. Complete M512 state is KL0/byte-exact; integrated
+tracing records all **144** write->H5R pairs at unchanged **1,862** dispatches
+and cuts the SWA schedule/request sum **63.946%/10.289%**. Default-off clean
+512/1K/4K improves **+11.444%/+4.763%/+0.881%**, with 3/3 paired wins each and
+unchanged ownership. Qualify bounded runtime ownership; production remains H5M
+pending selector-unset source-default publication
 ([H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json)).
 The old wider-qrow, cross-head/key-split,

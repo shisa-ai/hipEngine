@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_exact_swa_preappend_cached_candidate",
   "date": "2026-07-30",
-  "status": "admitted_standalone_candidate",
+  "status": "standalone_exact_candidate_runtime_qualified",
   "performance_claim": true,
   "correctness_claim": true,
   "hardware": {
@@ -28,7 +28,15 @@
     "residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json",
     "residual_artifact_sha256": "727c7461246f0a22a45842c07308eab489f9fa9bc0b4dd1198e75b19fb4e86ed",
     "source": "net-new in-tree cached-only specialization of the retained exact two-pass SWA qrow4 body; no external device body copied",
-    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "leaf_revision": "10d6193da",
+    "runtime_policy_revision": "311c75ec8",
+    "runtime_candidate_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "54c4ff60f4b9fb3962e8a69499a45b6a452766e2f2680ce5d1bf7b661a3daf20",
+      "hipengine/runtime/laguna_kv.py": "87afd013ec0ea08454076032d16e6c5bf483bcad07147aad04c19003837ecea0",
+      "hipengine/runtime/laguna_gguf_runner.py": "3f61ddcae5deed7143bb105720abeb8682ec6894b0e68e59c68903115de4281e",
+      "tests/test_laguna_h5r_runtime_policy.py": "0a02a5365892eb9c6e82cca626f8965ddce7eed640765d5b8b84f7b36102ef07"
+    }
   },
   "candidate": {
     "registry_key": [
@@ -227,14 +235,103 @@
     "exactness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_laguna_h5r_cached_exact.py",
     "retained": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py tests/test_laguna_h5n_dense_first_fill.py tests/test_laguna_h5r_cached_exact.py",
     "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5r_swa_cached_exact_screen_final.py",
-    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5r-final-resource-rocprof -- uv run python -u /tmp/laguna_wpfh5r_swa_cached_exact_screen_final.py --trace-smoke"
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5r-final-resource-rocprof -- uv run python -u /tmp/laguna_wpfh5r_swa_cached_exact_screen_final.py --trace-smoke",
+    "runtime_policy_tests": "HIP_VISIBLE_DEVICES=0 PYTHONPATH=. uv run pytest -v tests/test_laguna_h5r_cached_exact.py tests/test_laguna_h5r_runtime_policy.py tests/test_laguna_kv_attention.py tests/test_gfx1151_backend.py; uv run pytest -v tests/test_laguna_gguf_runner.py",
+    "full_state": "HIP_VISIBLE_DEVICES=0 PYTHONPATH=. uv run python /tmp/laguna_wpfh5r_preappend_package_full_state.py",
+    "integrated_trace": "HIP_VISIBLE_DEVICES=0 PYTHONPATH=. rocprofv3 --kernel-trace -f csv -d /tmp/laguna-wpfh5r-preappend-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5r_preappend_trace_integrated.py",
+    "default_off_clean": "HIP_VISIBLE_DEVICES=0 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5r_preappend_default_off_clean_512_4k.py"
   },
   "decision": {
     "standalone_swa_leaf_admitted": true,
     "global_leaf_removed": true,
+    "default_off_runtime_qualified": true,
     "runtime_default_changed": false,
     "promoted_package_default": false,
-    "runtime_qualification_required": true,
-    "next_action": "Add a bounded default-off preappend role map for complete safe M128 SWA tiles, then require natural-M512 complete state, physical 144-call append-before-attention proof, and clean 512/1K/4K non-regression before any package default."
+    "source_default_publication_required": true,
+    "next_action": "Change only the gfx1100 preappend role map and existing preappend capability, freeze selector-unset RED, and rerun the same clean 512/1K/4K protocol before promotion."
+  },
+  "runtime_qualification": {
+    "same_resident_natural_m512_state": {
+      "control": "selector-unset H5Q/H5M package production",
+      "candidate": "scoped default-off H5R exact SWA preappend role",
+      "next_token_id": 2930,
+      "final_position": 511,
+      "kl_mean": 0.0,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "exact_hidden_boundaries": 48,
+      "complete_logits_hidden_kv_live_spans_exact": true,
+      "candidate_repeat_exact": true,
+      "kv_allocation_count": 245,
+      "kv_resident_bytes": 101181840,
+      "workspace_bytes": 150994944,
+      "lifecycle_recovered": true,
+      "json_sha256": "525856aae53ce66ca554c059eddbfd52b25020fc430f0a3b8bab5918c131c4dd",
+      "harness_sha256": "38e8e59671e6e02d7ea4acca964eaaaaee4987a0df2c3c31734e6c58d0528549",
+      "stdout_sha256": "3eee1f2e048220c40135dd5cf24ef20291cfa7488038f450fa8cf0a3b4f2a012",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    },
+    "cached_integrated_trace": {
+      "segment": "dispatch-ID bounded Q5 embedding through argmax stage 2",
+      "dispatches_before": 1862,
+      "dispatches_after": 1862,
+      "h5r_swa_calls": 144,
+      "h5r_calls_immediately_preceded_by_swa_write": 144,
+      "global_calls_retained_attend_before_write": 48,
+      "normalized_kernel_inventory_equal": true,
+      "swa_schedule_ms_before": 372.090768,
+      "swa_schedule_ms_after": 134.15302599999993,
+      "swa_schedule_reduction_percent": 63.94615574014997,
+      "complete_attention_schedule_ms_before": 453.88904400000007,
+      "complete_attention_schedule_ms_after": 217.04469899999992,
+      "complete_attention_schedule_reduction_percent": 52.181110809098996,
+      "request_kernel_sum_ms_before": 2050.376445,
+      "request_kernel_sum_ms_after": 1839.421455,
+      "request_kernel_sum_reduction_percent": 10.288598004255745,
+      "request_kernel_span_ms_before": 2075.543277,
+      "request_kernel_span_ms_after": 1865.803102,
+      "request_kernel_span_reduction_percent": 10.105314465095594,
+      "post_argmax_low_priority_tail_ms_after": 2.450074,
+      "candidate_resources": "local32/VGPR64/SGPR128/LDS0/scratch0/grid-x2304/grid-y32",
+      "trace_sha256": "e239a161b834fb835b61609d9a3f3f5db301520c4c639d2839a67661ce85b488",
+      "summary_sha256": "e5921b46614bf92b2e04699f93f0d9b35a282558c4869ddd481399f7c7e9bde3",
+      "analyzer_sha256": "29c7569787a6d0699538119e213fbeefc4fd308582cfa6e68756712a2c5bd7bc",
+      "child_sha256": "da1d1c9b929f9fa35cd3ce922f31ea4857dd4fad3c77df19af62ecb7e467f984",
+      "stdout_sha256": "79769a0dc22dff02a778cf84f22b806e5c8c6edd855418b68331c971991ab5e7",
+      "stderr_sha256": "ee9cbd1b2e7be02a48d726e64239c490c51f5a6fb4f01e168ab67ec2971e18ba",
+      "no_compiler_under_profile": true
+    },
+    "default_off_clean_512_1k_4k": {
+      "protocol": "one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length",
+      "control_tok_s": [
+        239.60593299460174,
+        219.75023717419006,
+        158.75184125569555
+      ],
+      "candidate_tok_s": [
+        267.0274113655521,
+        230.21791058458763,
+        160.1500229546066
+      ],
+      "gain_percent": [
+        11.444407084681064,
+        4.763441234468435,
+        0.8807341621059228
+      ],
+      "paired_candidate_wins": [
+        3,
+        3,
+        3
+      ],
+      "all_state_exact": true,
+      "all_finite": true,
+      "all_lifecycle_recovered": true,
+      "workspace_bytes": 150994944,
+      "kv_allocation_count": 245,
+      "json_sha256": "1f6936665569d986e2a38262e9aadaf5cd23f03fde8864c5bd9584853fc176c9",
+      "harness_sha256": "e3ff46f3f03dcd7ff9a332791b992fb20226f25bcec223832c46b9c12a1fce8c",
+      "stdout_sha256": "c6f023f6e0cdf79847d2b38e2ac8af315d6ec6605d2fe8566cd9ccbde06f4a5c",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    }
   }
 }

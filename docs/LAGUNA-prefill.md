@@ -11,8 +11,8 @@ resident-IQ3 row batches, H5N retains an exact dense-first-fill qrow4 leaf but
 rejects runtime ownership at 4K, H5O rejects exact factorized-Q5 reconstruction,
 H5P retains one exact BF16 Q5 occupancy-retune leaf but rejects runtime
 ownership at 1K, H5Q exact IQ3 active-expert persistent P64 is production,
-H5R retains an exact SWA preappend cached-only leaf while removing its losing
-global sibling, and 16K+ remains deferred**.
+H5R qualifies exact SWA preappend cached-only runtime ownership while retaining
+H5M as package production pending source-default publication, and 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -237,12 +237,16 @@ remains local32/VGPR64/LDS0/scratch0, matches production plus sampled CPU and
 complete metadata at all four starts, and wins every start on both clocks.
 Including equal append cost, the actual 144-call event/wall sums fall
 **337.277/334.031 -> 126.687/125.764 ms (-62.438%/-62.350%, 2.662x/2.656x)**.
-Admit only the standalone SWA leaf. It adds no launch, allocation, workspace, or
-sidecar; partial, wrapped, staged-verifier, explicit, missing, and unsupported
-paths retain attend-before-append H5M/wave32. Production remains H5Q until
-complete state, physical 144-call append-before-attention tracing, and clean
-512/1K/4K non-regression pass. Wider qrows, rowbatch16, cross-head/key-split,
-source MMQ, and changed-association attention remain closed
+Admit only the SWA leaf. It adds no launch, allocation, workspace, or sidecar;
+partial, wrapped, staged-verifier, explicit, missing, and unsupported paths
+retain attend-before-append H5M/wave32. Complete M512 state is KL0/byte-exact;
+integrated tracing records all **144** append-before-H5R pairs at unchanged
+**1,862** dispatches and cuts the SWA schedule/request sum
+**63.946%/10.289%**. Default-off clean 512/1K/4K improves
+**+11.444%/+4.763%/+0.881%**, with 3/3 paired wins each, exact state, and
+unchanged ownership. Qualify bounded runtime ownership; production remains H5M
+pending selector-unset source-default publication. Wider qrows, rowbatch16,
+cross-head/key-split, source MMQ, and changed-association attention remain closed
 ([H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5Q production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
@@ -916,6 +920,7 @@ heldouts before any clean publication.
 | **WPF-H5O exact factorized-Q5 plane** | **Rejected; all candidate surfaces removed** | The 320-byte quant+coefficient block reconstructs every F32 weight bit and rows17/33 output byte exactly. Producer/expand are VGPR16/scratch0 and consumers are VGPR80-200/scratch0, but coefficient loads/reconstruction ALU dominate: **0/8** actual roles win both clocks and producer-inclusive event/wall sums regress **477.022/473.054 -> 606.780/614.512 ms (+27.202%/+29.903%)**. Keep H5L/H5G; do not retry this representation without a distinct operation-count premise. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json). |
 | **WPF-H5P exact weight-major occupancy retune** | **Runtime rejected; standalone leaf retained** | Cross-screening rejects four roles and keeps BF16 K6144/N3072 `16x4`: exact bytes, **VGPR168/LDS1536 -> VGPR136/LDS1024**, and final-source event/wall **-6.315%/-3.211%**. Complete state is KL0 and tracing cuts role/Q5/request sum **5.800%/0.572%/0.187%**. A frozen 512 adjudication is **+0.176%**, but source-default 512/1K/4K is **+0.093%/-0.019%/-0.054%** and final 1K/4K remains **-0.030%/+0.014%**. Remove eager/package ownership; H5M/H5L remains production. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json). |
 | **WPF-H5Q exact IQ3 active-expert persistent traversal** | **Complete; retained gfx1100 production through 4K** | P64/P128 alone win all **45/45** actual IQ3 layers on both clocks; the frozen max-min rule retains P64. Final-source H5J -> P64 event/wall falls **492.847/491.518 -> 481.081/483.823 ms (-2.387%/-1.565%)** with complete byte identity, sampled CPU agreement, local128/VGPR48/LDS512/scratch0, unchanged metadata/allocation, and gfx1151 fail-closed. Complete state is KL0; integrated tracing selects **45** P64 calls and cuts IQ-down/request sum **3.255%/0.491%**. Default-off clean 512/1K/4K is **+0.702%/+0.278%/+0.370%**, 3/3 paired wins each; selector-unset confirms **+0.663%/+0.355%/+0.267%** and promotes **239.981/219.494/158.693 tok/s**. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) · [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json). |
+| **WPF-H5R exact SWA preappend cached-only attention** | **Default-off runtime qualified; production unchanged** | The retained SWA-only body is byte-exact at starts 0/128/256/384, local32/VGPR64/LDS0/scratch0, and moves the leaf's append-inclusive event/wall sums **337.277/334.031 -> 126.687/125.764 ms (2.662x/2.656x)**. Complete state is KL0; tracing records all **144** append-before-H5R pairs at unchanged **1,862** dispatches and cuts SWA schedule/request sum **63.946%/10.289%**. Default-off clean 512/1K/4K is **+11.444%/+4.763%/+0.881%**, 3/3 paired wins each, with exact state and unchanged ownership. H5M remains package production pending source-default publication; global, partial, wrapped, verifier, explicit, miss, and gfx1151 routes are unchanged. [`candidate`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) · [`target`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh H5Q M512 span-minus-sum is only **25.167 ms / 1.213%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H5Q 4K is **158.693 tok/s (+0.351%)** over the preceding canonical row. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
