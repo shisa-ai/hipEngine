@@ -193889,3 +193889,38 @@ Vulkan local sizes verbatim will close the measured gap.
   for explicit rollback; gfx1151 capability selection, composite
   registration, shared counter scratch, peer-backend behavior, and the exact
   fixed-K projection plus add/RMSNorm fallback are unchanged.
+
+## 2026-07-30 21:15 JST — Retain route-parallel selected-down weighting
+
+- Audited same-GGUF llama.cpp Vulkan revision `c0bc8591e`: it records dependent
+  evaluation nodes into command buffers and submits up to 100 nodes at once,
+  after graph-pattern fusion. This explains why its remaining advantage is
+  principally within-evaluation scheduling/boundary contraction rather than a
+  faster aggregate GPU arithmetic ledger. It is distinct from hipEngine's
+  rejected whole-token graph replay.
+- Replaced the earlier rejected serial top-10 weighted owner with an exact
+  tile-local completion design. All **1,920 route-parallel Q4/planar-Q6
+  producer workgroups** and every per-route BF16 output remain; only the last
+  producer for each 16-column tile executes the established route-order F32
+  `fmaf` chain. Two MoE scratch owners add **1,536 resident bytes**, and all
+  counters self-reset.
+- Actual-weight 21x100 leaves improve Q4
+  **0.061608 -> 0.059180 ms (-3.940%)** and planar-Q6
+  **0.076088 -> 0.073233 ms (-3.752%)**, with zero BF16 mismatches. Cached
+  `rocprofv3` names both weighted specializations at grid1920/local128,
+  VGPR104/80, SGPR128, LDS512 B, scratch0; no compiler ran under profiling.
+- Seven alternating same-resident p512/d128 pairs preserve tokens
+  **2930/74107**, trajectory `94f803f7...bda32`, final position 638,
+  determinism, and allocation recovery. Every candidate wins:
+  **22.071805 -> 22.139076 tok/s (+0.30479%)**, saving
+  **0.137669 ms/token** by endpoints and **0.141227 ms/token** by paired
+  median. This removes **47 launches/token**.
+- The complete T16 selected-GEMV, weighted-boundary, gfx1151 capability,
+  MoE-plan, and focused runner tests pass. Required lineage inspection remains
+  blocked before execution by missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external source was copied.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json`.
+  Next: commit the admitted default, run tracked-clean selector-unset
+  production, and prove **529 -> 482 dispatches/token** in the complete wall
+  census.

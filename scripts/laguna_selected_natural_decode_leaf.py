@@ -38,9 +38,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    build_paro_combine,
+    weighted_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     build_paro_silu,
@@ -86,7 +92,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--gate-only", action="store_true")
     parser.add_argument(
         "--down-candidate",
-        choices=("natural", "parallel-tail"),
+        choices=("natural", "parallel-tail", "parallel-weighted"),
         default="natural",
     )
     parser.add_argument("--compiler-version-file", type=Path)
@@ -639,6 +645,154 @@ def _screen_single(
     }
 
 
+def _screen_single_weighted(
+    *,
+    runtime,
+    library,
+    combine_library,
+    control: Callable[..., None],
+    candidate: Callable[..., None],
+    x: np.ndarray,
+    selected: np.ndarray,
+    tiles: np.ndarray,
+    routing_weights: np.ndarray,
+    in_features: int,
+    out_features: int,
+    warmups: int,
+    samples: int,
+    burst: int,
+) -> dict:
+    buffers = []
+    try:
+        x_dev = _upload(runtime, x)
+        selected_dev = _upload(runtime, selected)
+        tiles_dev = _upload(runtime, tiles)
+        routing_weights_dev = _upload(runtime, routing_weights)
+        control_down_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        candidate_down_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        control_routed_dev = malloc(out_features * 2, runtime=runtime)
+        candidate_routed_dev = malloc(out_features * 2, runtime=runtime)
+        counter_dev = malloc((out_features // 16) * 4, runtime=runtime)
+        runtime.memset(counter_dev.ptr, 0, counter_dev.nbytes)
+        buffers.extend(
+            (
+                x_dev,
+                selected_dev,
+                tiles_dev,
+                routing_weights_dev,
+                control_down_dev,
+                candidate_down_dev,
+                control_routed_dev,
+                candidate_routed_dev,
+                counter_dev,
+            )
+        )
+
+        def control_launch() -> None:
+            control(
+                x_dev.ptr,
+                selected_dev.ptr,
+                tiles_dev.ptr,
+                control_down_dev.ptr,
+                int(x.shape[0]),
+                TOP_K,
+                EXPERTS,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+            weighted_sum_out_bf16_f32w(
+                control_down_dev.ptr,
+                routing_weights_dev.ptr,
+                control_routed_dev.ptr,
+                TOP_K,
+                out_features,
+                library=combine_library,
+                runtime=runtime,
+            )
+
+        def candidate_launch() -> None:
+            candidate(
+                x_dev.ptr,
+                selected_dev.ptr,
+                tiles_dev.ptr,
+                candidate_down_dev.ptr,
+                routing_weights_dev.ptr,
+                candidate_routed_dev.ptr,
+                counter_dev.ptr,
+                int(x.shape[0]),
+                TOP_K,
+                EXPERTS,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+
+        launchers = {
+            "control": control_launch,
+            "candidate": candidate_launch,
+        }
+        for _ in range(warmups):
+            control_launch()
+            candidate_launch()
+        runtime.device_synchronize()
+        timings = {"control": [], "candidate": []}
+        for sample in range(samples):
+            order = (
+                ("control", "candidate")
+                if sample % 2 == 0
+                else ("candidate", "control")
+            )
+            for name in order:
+                timings[name].append(
+                    _event_ms(runtime, launchers[name], burst=burst)
+                )
+        control_launch()
+        candidate_launch()
+        runtime.device_synchronize()
+        control_down = _read_bf16(
+            runtime, control_down_dev, (TOP_K, out_features)
+        )
+        candidate_down = _read_bf16(
+            runtime, candidate_down_dev, (TOP_K, out_features)
+        )
+        control_routed = _read_bf16(
+            runtime, control_routed_dev, (out_features,)
+        )
+        candidate_routed = _read_bf16(
+            runtime, candidate_routed_dev, (out_features,)
+        )
+        counter = np.empty(out_features // 16, dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(counter),
+            counter_dev,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    medians = {
+        name: statistics.median(values) for name, values in timings.items()
+    }
+    ratio = medians["candidate"] / medians["control"]
+    return {
+        "samples_ms": timings,
+        "median_ms": medians,
+        "candidate_over_control": ratio,
+        "candidate_delta_percent": (ratio - 1.0) * 100.0,
+        "bf16_mismatch": int(
+            np.count_nonzero(candidate_down != control_down)
+            + np.count_nonzero(candidate_routed != control_routed)
+        ),
+        "completion_counter_nonzero": int(np.count_nonzero(counter)),
+        "control_launches": 2,
+        "candidate_launches": 1,
+    }
+
+
 def main() -> int:
     args = _parse_args()
     tracked_status = _tracked_status()
@@ -708,6 +862,14 @@ def main() -> int:
     library = build_gguf_t16_selected_gemv(
         load=True,
         require_cached=args.require_cached_build,
+    )
+    combine_library = (
+        build_paro_combine(
+            load=True,
+            require_cached=args.require_cached_build,
+        )
+        if args.down_candidate == "parallel-weighted"
+        else None
     )
     silu_library = (
         build_paro_silu(
@@ -790,7 +952,50 @@ def main() -> int:
         "q4_gate_up": gate_result,
     }
     if not args.gate_only:
-        if args.down_candidate == "parallel-tail":
+        if args.down_candidate == "parallel-weighted":
+            assert combine_library is not None
+            route_weights = rng.normal(
+                0.1,
+                0.3,
+                size=TOP_K,
+            ).astype(np.float32)
+            results.update(
+                {
+                    "q4_down": _screen_single_weighted(
+                        runtime=runtime,
+                        library=library,
+                        combine_library=combine_library,
+                        control=gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
+                        candidate=gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
+                        x=x_down,
+                        selected=selected,
+                        tiles=q4_down,
+                        routing_weights=route_weights,
+                        in_features=1024,
+                        out_features=3072,
+                        warmups=args.warmups,
+                        samples=args.samples,
+                        burst=args.burst,
+                    ),
+                    "q6_down": _screen_single_weighted(
+                        runtime=runtime,
+                        library=library,
+                        combine_library=combine_library,
+                        control=gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
+                        candidate=gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
+                        x=x_down,
+                        selected=selected,
+                        tiles=q6_down,
+                        routing_weights=route_weights,
+                        in_features=1024,
+                        out_features=3072,
+                        warmups=args.warmups,
+                        samples=args.samples,
+                        burst=args.burst,
+                    ),
+                }
+            )
+        elif args.down_candidate == "parallel-tail":
             q4_down_control = (
                 gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out
             )
@@ -814,29 +1019,30 @@ def main() -> int:
                 gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out
             )
             q6_control_kwargs = {"qmicro": True, "qmicro_planar": True}
-        results.update(
-            {
-                "q4_down": _screen_single(
-                    control=q4_down_control,
-                    candidate=q4_down_candidate,
-                    x=x_down,
-                    tiles=q4_down,
-                    in_features=1024,
-                    out_features=3072,
-                    **common,
-                ),
-                "q6_down": _screen_single(
-                    control=q6_down_control,
-                    candidate=q6_down_candidate,
-                    x=x_down,
-                    tiles=q6_down,
-                    in_features=1024,
-                    out_features=3072,
-                    control_kwargs=q6_control_kwargs,
-                    **common,
-                ),
-            }
-        )
+        if args.down_candidate != "parallel-weighted":
+            results.update(
+                {
+                    "q4_down": _screen_single(
+                        control=q4_down_control,
+                        candidate=q4_down_candidate,
+                        x=x_down,
+                        tiles=q4_down,
+                        in_features=1024,
+                        out_features=3072,
+                        **common,
+                    ),
+                    "q6_down": _screen_single(
+                        control=q6_down_control,
+                        candidate=q6_down_candidate,
+                        x=x_down,
+                        tiles=q6_down,
+                        in_features=1024,
+                        out_features=3072,
+                        control_kwargs=q6_control_kwargs,
+                        **common,
+                    ),
+                }
+            )
     exact = all(
         item.get("bf16_mismatch", 0) == 0
         and item.get("bf16_mismatch_a", 0) == 0

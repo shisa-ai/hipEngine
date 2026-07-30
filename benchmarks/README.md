@@ -73,6 +73,17 @@ median)** with exact generated state and lifecycle. Tracked-clean production
 and the complete dispatch census independently confirm the default.
 [`output projection plus add/RMSNorm`](results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json).
 
+The next exact selected-down contraction keeps every one of the ten
+route-parallel Q4/planar-Q6 producer streams and every per-route BF16 output,
+then lets the last producer for each 16-column tile execute the established
+slot-order weighted FMA chain. Actual-weight leaves improve **3.940%/3.752%**.
+All seven same-resident p512/d128 pairs improve
+**22.071805 -> 22.139076 tok/s (+0.30479%, -0.141227 ms/token paired
+median)** with exact state, removing **47 launches/token** for 1,536 resident
+bytes. Tracked-clean selector-unset publication and the complete census remain
+pending.
+[`route-parallel selected down plus weighting`](results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
+
 The next exact launch-contraction gate promotes one source-F16 Q/K/V/gate
 grid on gfx1151. All seven same-resident p512/d128 candidate runs win
 **21.944420 -> 22.026384 tok/s (+0.37351%, -0.169573 ms/token)** with

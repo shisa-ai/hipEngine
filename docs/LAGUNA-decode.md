@@ -6813,6 +6813,32 @@ The remaining attention sequence is:
      **21.926113 (+0.21050%, -0.096003 ms/token)** with unchanged residency,
      exact state, and complete allocation recovery:
      [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-dual-interleaved-retained.json).
+118. Fuse selected-down weighting without serializing the ten expert streams.
+     **Retained/default pending clean publication:** this is the materially
+     different successor required by item 83's rejection. The Q4 and
+     planar-Q6 bodies keep all **1,920 route-parallel producer workgroups**,
+     every K/FMA tree, ordered four-wave reduction, and per-route BF16 output.
+     A separate completion counter for each of the 192 output tiles lets only
+     the last of that tile's ten producers execute the existing slot-order
+     FP32 `fmaf` weighting chain. Two bounded scratch owners add only
+     **1,536 resident bytes**; all counters self-reset.
+
+     Natural actual-weight 21x100 leaves improve Q4
+     **0.061608 -> 0.059180 ms (-3.940%)** and planar-Q6
+     **0.076088 -> 0.073233 ms (-3.752%)**, with zero per-route or routed
+     BF16 mismatches. Cached tracing names the weighted Q4/Q6
+     `qk_t16_selected_natural_gemv_kernel` specializations at the unchanged
+     grid1920/local128, **VGPR104/80**, SGPR128, LDS512 B, and scratch0.
+
+     Every one of seven same-resident p512/d128 pairs wins:
+     **22.071805 -> 22.139076 tok/s (+0.30479%)**, saving
+     **0.137669 ms/token** by median endpoints and
+     **0.141227 ms/token** by paired deltas. Tokens **2930/74107**,
+     trajectory `94f803f7...bda32`, final position 638, deterministic state,
+     and allocation recovery remain exact. Promote the gfx1151 capability and
+     require tracked-clean selector-unset publication plus a complete
+     dispatch census; that census should prove **529 -> 482 launches/token**:
+     [`parallel weighted retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
 
 Current exact decode checkpoint:
 
@@ -6944,9 +6970,12 @@ isolated leaf but loses all seven resident pairs while expanding code 5.06x.
 The traced dense/shared dual-Q4 owner now consumes its SiLU boundary in-kernel,
 removing 48 launches/token and exact temporary BF16 traffic; tracked-clean
 production confirms the complete-model win. Quad-local metadata broadcast
-remains closed by decisive natural-shape regressions. Exact T16 selected down
-plus routing weighting is also closed: serial top-10 ownership regresses
-complete decode by **0.8364%** despite an isolated planar-Q6 leaf win.
+remains closed by decisive natural-shape regressions. Serial T16 selected down
+plus routing weighting remains closed: one workgroup owning all ten expert
+streams regresses complete decode by **0.8364%** despite an isolated
+planar-Q6 leaf win. The distinct tile-local completion successor keeps all ten
+weight streams parallel and is retained at **+0.30479%** pending
+tracked-clean publication and its dispatch census.
 Attention should reopen only for a materially new exact-association or
 quality-safe cooperative premise: both SWA and global stage-width successors
 win isolated leaves but fail to produce a reliable complete-model improvement.

@@ -142,6 +142,60 @@ def test_weighted_hidden_rejection_restores_c1_weighted_sum(
     ).parameters
 
 
+def test_route_parallel_weighted_down_owns_the_reducer_boundary() -> None:
+    calls: list[tuple] = []
+
+    def fused(*args, **kwargs) -> None:
+        calls.append((*args, kwargs))
+
+    route = SimpleNamespace(
+        function=fused,
+        abi="t16_natural_weighted",
+        allocation_name="tiles",
+        library_key="selected_down",
+    )
+    plan = SimpleNamespace(
+        top_k=10,
+        expert_count=256,
+        expert_ffn_size=1_024,
+        hidden_size=3_072,
+        natural_parallel_weighted_selected_down_routes={
+            "gguf_q6_k_t16_v1": route
+        },
+    )
+    scratch = SimpleNamespace(
+        plan=plan,
+        expert_intermediate=_buffer(1),
+        selected_experts=_buffer(2),
+        expert_down=_buffer(3),
+        scaled_routing_weights=_buffer(4),
+        routed_output=_buffer(5),
+        selected_down_completion=_buffer(6),
+    )
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(quant_key="gguf_q6_k_t16_v1"),
+        allocation=lambda _name: SimpleNamespace(tensor=_buffer(7)),
+    )
+    layer = SimpleNamespace(weight=lambda _name: weight)
+
+    assert moe_module._launch_weighted_selected_down(
+        layer,
+        scratch,
+        tokens=1,
+        stream=11,
+        runtime=None,
+        libraries=None,
+        use_natural=True,
+        use_natural_parallel=True,
+        use_natural_parallel_weighted=True,
+    )
+    assert len(calls) == 1
+    args, kwargs = calls[0][:-1], calls[0][-1]
+    assert args[:7] == (1, 2, 7, 3, 4, 5, 6)
+    assert args[7:] == (10, 10, 256, 1_024, 3_072)
+    assert kwargs["stream"] == 11
+
+
 def test_weighted_hidden_cli_is_removed_after_clean_rejection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

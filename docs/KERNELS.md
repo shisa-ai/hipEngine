@@ -486,8 +486,23 @@ all four physical waves and assign the 16 independent ordered wave0..3 sums
 and BF16 stores to lanes 0..15. Actual Q4 and planar-Q6 down leaves are
 byte-exact and improve **3.125%/0.940%**, with 20/21 and 21/21 paired wins.
 Cached tracing preserves local128/LDS512/scratch0 and VGPR **104/80**.
-Production selection is pending the resident gate:
+The resident gate and clean publication passed, and gfx1151 selects these
+natural shapes by default:
 [`selected-down parallel-tail leaf`](../benchmarks/results/2026-07-29-gfx1151-laguna-selected-down-parallel-tail-leaf.json).
+
+The exact weighted successor preserves that complete route-parallel producer
+grid and every per-route BF16 output. One self-resetting completion counter
+per 16-column output tile lets only the last of ten route producers replay the
+registered slot-order F32 weighted FMA chain. This is not the rejected serial
+top-10 owner: all **1,920 producer workgroups** remain. Natural Q4 and
+planar-Q6 leaves improve **3.940%/3.752%** with byte-exact per-route and
+routed outputs. Cached tracing keeps grid1920/local128,
+VGPR **104/80**, SGPR128, LDS512 B, and scratch0. Seven same-resident
+p512/d128 pairs improve
+**22.071805 -> 22.139076 tok/s (+0.30479%, 7/7 wins)** with exact state,
+so gfx1151 promotes the composite pending tracked-clean publication and the
+complete dispatch census:
+[`parallel weighted retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 

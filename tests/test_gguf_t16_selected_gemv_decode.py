@@ -9,6 +9,10 @@ import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    build_paro_combine,
+    weighted_sum_out_bf16_f32w,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_quantize_bf16_q8_1,
@@ -38,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
@@ -53,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
@@ -93,6 +99,13 @@ def t16_selected_library():
     if not HIP_AVAILABLE:
         pytest.skip("HIP runtime is not available")
     return build_gguf_t16_selected_gemv(load=True)
+
+
+@pytest.fixture(scope="module")
+def combine_library():
+    if not HIP_AVAILABLE:
+        pytest.skip("HIP runtime is not available")
+    return build_paro_combine(load=True)
 
 
 def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
@@ -666,6 +679,95 @@ def _run_direct_single(
             free(buf)
 
 
+def _run_weighted_sum(
+    values: np.ndarray,
+    weights: np.ndarray,
+    library,
+) -> np.ndarray:
+    values = np.ascontiguousarray(values, dtype=np.uint16)
+    weights = np.ascontiguousarray(weights, dtype=np.float32)
+    out = np.empty(values.shape[1], dtype=np.uint16)
+    values_buf = malloc(values.nbytes)
+    weights_buf = malloc(weights.nbytes)
+    out_buf = malloc(out.nbytes)
+    copy_host_to_device(values_buf, host_array_ptr(values), values.nbytes)
+    copy_host_to_device(weights_buf, host_array_ptr(weights), weights.nbytes)
+    try:
+        weighted_sum_out_bf16_f32w(
+            values_buf.ptr,
+            weights_buf.ptr,
+            out_buf.ptr,
+            values.shape[0],
+            values.shape[1],
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), out_buf, out.nbytes)
+        return out
+    finally:
+        for buf in (values_buf, weights_buf, out_buf):
+            free(buf)
+
+
+def _run_direct_parallel_weighted(
+    fn,
+    x_dev: np.ndarray,
+    selected: np.ndarray,
+    tiles: np.ndarray,
+    weights: np.ndarray,
+    out_features: int,
+    library,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    rows = int(selected.size)
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    selected_buf = malloc(selected.nbytes)
+    tiles_buf = malloc(tiles.nbytes)
+    out = np.empty((rows, out_features), dtype=np.uint16)
+    out_buf = malloc(out.nbytes)
+    weights = np.ascontiguousarray(weights, dtype=np.float32)
+    weights_buf = malloc(weights.nbytes)
+    routed = np.empty(out_features, dtype=np.uint16)
+    routed_buf = malloc(routed.nbytes)
+    counter = np.zeros(out_features // 16, dtype=np.int32)
+    counter_buf = malloc(counter.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    copy_host_to_device(selected_buf, host_array_ptr(selected), selected.nbytes)
+    copy_host_to_device(tiles_buf, host_array_ptr(tiles), tiles.nbytes)
+    copy_host_to_device(weights_buf, host_array_ptr(weights), weights.nbytes)
+    copy_host_to_device(counter_buf, host_array_ptr(counter), counter.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            selected_buf.ptr,
+            tiles_buf.ptr,
+            out_buf.ptr,
+            weights_buf.ptr,
+            routed_buf.ptr,
+            counter_buf.ptr,
+            x_dev.shape[0],
+            rows,
+            tiles.shape[0],
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), out_buf, out.nbytes)
+        copy_device_to_host(host_array_ptr(routed), routed_buf, routed.nbytes)
+        copy_device_to_host(host_array_ptr(counter), counter_buf, counter.nbytes)
+        return out, routed, int(np.count_nonzero(counter))
+    finally:
+        for buf in (
+            x_buf,
+            selected_buf,
+            tiles_buf,
+            out_buf,
+            weights_buf,
+            routed_buf,
+            counter_buf,
+        ):
+            free(buf)
+
+
 def _run_direct_single_q8_dp4a(
     fn,
     x_dev,
@@ -904,6 +1006,7 @@ def test_p9_h3d_q4_t16_direct_dual_bf16_matches_cpu_oracle(t16_selected_library)
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_laguna_t16_natural_selected_decode_matches_production_bits(
     t16_selected_library,
+    combine_library,
 ) -> None:
     """Natural Laguna gate/up and mixed down shapes preserve exact BF16 bits."""
 
@@ -1135,6 +1238,24 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         t16_selected_library,
     )
     np.testing.assert_array_equal(q4_parallel, q4_actual)
+    route_weights = rng.normal(0.1, 0.3, size=rows).astype(np.float32)
+    q4_weighted_ref = _run_weighted_sum(
+        q4_parallel,
+        route_weights,
+        combine_library,
+    )
+    q4_fused_down, q4_weighted, q4_counter = _run_direct_parallel_weighted(
+        gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q4_tiles,
+        route_weights,
+        down_out,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(q4_fused_down, q4_parallel)
+    np.testing.assert_array_equal(q4_weighted, q4_weighted_ref)
+    assert q4_counter == 0
 
     q6_down = _stack_experts(
         make_q6_k_weight,
@@ -1182,6 +1303,23 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         t16_selected_library,
     )
     np.testing.assert_array_equal(q6_parallel, q6_actual)
+    q6_weighted_ref = _run_weighted_sum(
+        q6_parallel,
+        route_weights,
+        combine_library,
+    )
+    q6_fused_down, q6_weighted, q6_counter = _run_direct_parallel_weighted(
+        gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
+        down_x,
+        selected,
+        q6_tiles,
+        route_weights,
+        down_out,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(q6_fused_down, q6_parallel)
+    np.testing.assert_array_equal(q6_weighted, q6_weighted_ref)
+    assert q6_counter == 0
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
