@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T21:40:25.791158+00:00",
+  "kind": "hipengine_laguna_f16_q8r4_weight_only_rejection",
+  "status": "rejected_correctness_and_performance",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "revision_before_diagnostic": "067fcc688788a45094f704761e9453d41080fd57",
+    "model": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "diagnostic": "temporary Q8-base plus Q4-residual extension to scripts/laguna_f16_decode_q8_full_gate.py; removed after rejection"
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "teacher_forced": true,
+    "activation_path": "exact BF16 for Q/K/V/gate and exact F32 for output",
+    "weight_path": "block32 FP16-scale Q8 base plus FP16-scale symmetric Q4 residual, FP32 accumulation",
+    "quality_gate": {
+      "maximum_kl": 0.05,
+      "top1_agreement": 0.9
+    },
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --activation-path q8r4_exact --modes all,qkv_gate,output --scopes all --decode-tokens 16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-q8r4-exact-full-gate.json"
+  },
+  "representation": {
+    "source_f16_bytes": 5606277120,
+    "q8_base_q4_residual_bytes": 4555100160,
+    "byte_change_percent": -18.75,
+    "weight_count": 240,
+    "block_shape": 32,
+    "block_bytes": 52,
+    "build_seconds": 23.580410295864567
+  },
+  "results": [
+    {
+      "mode": "all_q8r4_weights_exact_activations",
+      "maximum_kl": 15.168966030322963,
+      "mean_kl": 8.25490952059698,
+      "top1_agreement": 0.0,
+      "median_decode_wall_ms_per_token": 52.56365949753672,
+      "dispatch_counts": {
+        "q8r4_weight_gate": 768,
+        "q8r4_weight_output": 768,
+        "q8r4_weight_qkv": 2304
+      },
+      "passed": false
+    },
+    {
+      "mode": "qkv_and_gate_q8r4_weights_exact_bf16_activation",
+      "maximum_kl": 0.46202273574738534,
+      "mean_kl": 0.09431127678109599,
+      "top1_agreement": 0.9375,
+      "median_decode_wall_ms_per_token": 50.12871650978923,
+      "passed": false
+    },
+    {
+      "mode": "output_q8r4_weights_exact_f32_activation",
+      "maximum_kl": 14.032122771480562,
+      "mean_kl": 8.35143613722774,
+      "top1_agreement": 0.0,
+      "median_decode_wall_ms_per_token": 49.34173007495701,
+      "passed": false
+    }
+  ],
+  "validation": {
+    "red": "candidate test collection failed because the Q8R4 module did not exist",
+    "green": "4 candidate tests plus 4 existing full-gate tests passed",
+    "gpu_oracle": "BF16-to-F32 and F32-to-BF16 candidate GEMVs matched the dequantized CPU representation oracle",
+    "dispatch": "all 240 source-F16 weights intercepted at the intended exact-activation boundaries",
+    "lineage_check": "blocked by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout"
+  },
+  "raw_evidence": {
+    "sha256": "350ccea17cf6bf14b660ffa404cbba17fbba9d8dc93bb0d0e64c36699b42355a"
+  },
+  "decision": {
+    "retain_production_path": false,
+    "retain_diagnostic_kernel": false,
+    "production_changed": false,
+    "production_decode_tokens_per_second": 22.752894,
+    "conclusion": "The 18.75%-smaller Q8-base/Q4-residual representation is still far outside Laguna's recurrent quality budget, with output projections alone catastrophically unstable. The scalar diagnostic consumer is also slower than the exact-F16 control. Remove the complete candidate and do not pursue another blockwise residual source-F16 representation without a materially stronger calibration premise."
+  }
+}
