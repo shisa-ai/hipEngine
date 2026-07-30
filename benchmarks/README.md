@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-07-30**
+Last updated: **2026-07-31**
 
 The canonical clean W7900 Laguna UD-Q2_K_XL prefill packet is now
 [`2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json).
@@ -18,9 +18,24 @@ Q5/request/span moves **479.776/1,826.542/1,850.682 ->
 512/1K/4K improves **271.922/234.334/162.004 -> 273.366/235.061/162.533 tok/s
 (+0.531%/+0.310%/+0.327%)**, with 3/3 paired wins at every length. Canonical
 rows improve **+0.678%/+0.445%/+0.421%** over H5W. The matched llama.cpp HIP
-M512 target remains **694.184 tok/s**, narrowing the gap **2.55661x ->
-2.53940x**. No runtime-default device body, launch, allocation, workspace,
-sidecar, or public selector is added. WPF-H5S
+M512 target remains **694.184 tok/s**, narrowing the canonical-dashboard gap
+**2.55661x -> 2.53940x**. No runtime-default device body, launch, allocation,
+workspace, sidecar, or public selector is added. A fresh production H5X run now
+uses the comparator's exact C4096/direct-M512 allocation rather than the earlier
+C512 integrated-trace allocation. Five samples yield **278.062 tok/s**
+(**+64.03%** over the campaign-start **169.516**) and narrow the binding
+apples-to-apples gap to **2.49651x**. Five cached request traces reconcile
+**1,831.568 ms / 1,862 dispatches** in a **1,850.996-ms** span versus llama.cpp
+HIP **724.299 ms**. Current gaps are Q5 **407.137 ms**, IQ down **326.998**,
+attention **234.055**, Q6 **77.436**, and gate/up **59.236 ms**. Q5 remains
+largest; its two rowbatch8/10 roles alone consume **346.501 ms**. WPF-H5Y
+therefore selects an exact projection-local `[row_group][k][row_slot]` BF16
+activation plane while freezing every H5X/H5L weight layout and arithmetic
+boundary. Width-matched vector records model activation-load instruction
+instances **4.521B -> 0.920B (-79.65%)** across the six roles, with an explicit
+maximum **10,125,312-byte** transient-plane cost. This is target rationale, not
+a speed claim; package production remains H5X pending byte/ISA/producer-inclusive
+both-clock gates. WPF-H5S
 screens the distinct persistent row-group Q5
 dimension at partitions **1/2/4/8/16/32**. All candidate outputs are byte-exact, all 36 symbols are
 scratch-free, and resource classes rise only eight VGPR, but **0/6** actual
@@ -89,7 +104,8 @@ remains **-0.030%/+0.014%**, rejecting runtime ownership. Remove the eager owner
 and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5X 4K remains positive; 16K+ stays closed
 below the 800/700 gate
-([H5X production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+([post-H5X matched residual / H5Y target](results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+[H5X production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
@@ -403,9 +419,15 @@ and the two losing roles are removed. Selected six-role event/wall falls
 **273.366/235.061/162.533 tok/s (+0.678%/+0.445%/+0.421% over H5W)** and
 narrowing matched M512 to **2.53940x**. Retain four eager aliases and the four
 promoted Q5 role entries; the two H5L roles, H5G narrow roles, all Q6 routes,
-and every miss remain unchanged. Wider qrows, cross-head/key-split, source MMQ,
-and changed-association attention stay closed
-([H5X production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+and every miss remain unchanged. The corrected C4096/direct-M512 H5X row is
+**278.062 tok/s / 1,831.568-ms** kernel sum, leaving Q5/IQ-down/attention gaps
+**407.137/326.998/234.055 ms**. H5Y next packs exact BF16 activation rows into
+aligned records over unchanged H5X/H5L weights; static load instances model
+**4.521B -> 0.920B (-79.65%)** with a bounded **10,125,312-byte** transient
+plane. Wider qrows, cross-head/key-split, source MMQ, and changed-association
+attention stay closed
+([post-H5X matched residual / H5Y target](results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+[H5X production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
