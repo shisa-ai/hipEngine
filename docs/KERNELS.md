@@ -866,8 +866,18 @@ partitions into one wave while preserving P64/rowbatch8 and every arithmetic
 boundary. Named register planes eliminate an initial scratch104 spill and
 reach local32/VGPR96/LDS0/scratch0 with exact bytes. Actual event/wall moves
 **474.107/485.298 -> 475.945/469.677 ms (+0.388%/-3.219%)**; only **12/45**
-layers win both clocks. Remove the symbol/key/test and retain H5Q
-([H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
+layers win both clocks. Remove the symbol/key/test and retain H5Q. H5U next
+selects the current **83.324-ms / 48-call** global slice with a distinct exact
+source specialization. Keep `laguna_global_attention_prefill_bf16_kernel`'s
+one-row/local256/VGPR40 score/query scratch, contiguous-four dot, eight-wave
+max/denominator, materialized-weight, normalized-PV, metadata, and store
+association; after matching preappend compile out only current/cache selection
+and F32->BF16->F32 current K/V conversion. Do not reconstruct it as H5R's
+rejected local32/VGPR248/LDS8192 qrow4 body. Add one separate gfx1100 key and
+require all-start byte identity, local256/dynamic-LDS16928/scratch0 with no
+resource regression, and both-clock wins before ownership
+([H5U target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
+[H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
 [H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
 [H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
 [post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json) ·

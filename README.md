@@ -201,10 +201,17 @@ numbers below.
   byte-exact and wall falls **485.298 -> 469.677 ms (-3.219%)**, but HIP-event
   sum regresses **474.107 -> 475.945 ms (+0.388%)** and only **12/45** layers
   win both clocks. All H5T surfaces are removed; H5Q remains IQ3 production.
+  WPF-H5U now targets the remaining **48-call / 83.324-ms global-attention
+  slice** with a narrower exact premise than H5R's rejected qrow4 rebuild: keep
+  the production one-row/local256 score, reduction, denominator, normalized-PV,
+  and store body unchanged, but after matching preappend read K/V only from the
+  BF16 cache and remove current-vs-cache selection plus in-body BF16 conversion.
+  This is target rationale, not a speed claim.
   Both short rows exceed 150 tok/s and H5R 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5U global cached-source target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-target.json) ·
   [H5T IQ3 rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
   [H5T target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
   [H5S rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
