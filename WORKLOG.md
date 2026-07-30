@@ -195011,3 +195011,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8r4-exact-activation-rejected.json`.
+
+## 2026-07-31 07:07 JST — Reject dual-interleaved selected gate/up tile16
+
+- Screened a materially new exact selected gate/up owner after the retained
+  byte-neutral physical interleave changed the prior tile-width premise. One
+  local128 workgroup owns 16 output columns instead of eight while preserving
+  every column's K/FMA/reduction/BF16/SiLU association and resident byte count.
+  RED failed on the absent wrapper import; GREEN production-shape HIP output is
+  byte-exact.
+- The actual-weight leaf improves **0.116261 -> 0.109353 ms (-5.942%)**.
+  Cache-only tracing halves the X grid **128 -> 64** and improves kernel median
+  **112.110 -> 105.899 us**, with local128/LDS512/scratch0, but raises
+  allocated VGPRs **80 -> 144**. Leaf/child/trace SHA-256 values are
+  `8937e291...ce3`, `d2e7acdd...231`, and `6bd364ad...41d4`.
+- One resident p512/d128 pair was exact and directionally positive
+  (**22.740201 -> 22.761577 tok/s**), so ran the frozen seven-pair gate.
+  The complete gate rejects promotion:
+  **22.769774 -> 22.755665 tok/s (-0.061963%)**, paired-median
+  **+0.026140 ms/token**, and only **2/7** wins. Tokens **2930/74107**,
+  final position 638, generated trajectory, **79,066,169,172-byte**
+  residency, deterministic repeats, and lifecycle all match.
+- Removed the complete kernel/wrapper/registry/plan/session/harness/test
+  candidate. Production remains tracked-clean at
+  **22.752894 tok/s / 43.950453 ms/token**. Raw one-pair/seven-pair SHA-256
+  values are `fc50fc1e...7a` and `49eae801...b8`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile16-rejected.json`.

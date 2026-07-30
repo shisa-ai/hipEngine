@@ -7375,6 +7375,34 @@ The remaining attention sequence is:
      reopen blockwise source-F16 residual compression without a materially
      stronger calibration or lossless representation:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8r4-exact-activation-rejected.json).
+138. Widen the exact byte-neutral dual-interleaved selected gate/up owner from
+     eight to sixteen output columns per local128 workgroup. **Rejected and
+     completely removed.** This is distinct from the prior ordinary two-buffer
+     tile sweep: the retained physical gate/up interleave makes one workgroup
+     reuse each activation across both eight-column halves with no resident
+     byte change. Every output column preserves tile8's K ownership, FMA
+     sequence, wave32 tree, ordered four-wave merge, BF16 gate/up round trips,
+     and SiLU expression.
+
+     The actual-weight leaf is byte-exact and improves
+     **0.116261 -> 0.109353 ms (-5.942%)**. Cache-only tracing confirms the
+     intended **128 -> 64** X-grid contraction and
+     **112.110 -> 105.899 us (-5.541%)**, with unchanged local128/LDS512 and
+     zero scratch. The cost is a material **VGPR80 -> VGPR144** increase.
+
+     That cost defeats the leaf win inside the retained two-queue token
+     schedule. Seven counterbalanced same-resident p512/d128 pairs move
+     **22.769774 -> 22.755665 tok/s (-0.06196%)**, add a paired-median
+     **0.026140 ms/token**, and win only **2/7**. All arms preserve token
+     **2930 -> 74107**, final position **638**, generated-ID SHA-256
+     `94f803f7...bda32`, **79,066,169,172-byte** residency, repeat
+     determinism, and allocation recovery.
+
+     Remove the kernel, wrapper, registry/plan/session selector, comparison
+     harness, and tests. Keep tile8 canonical. This closes wider accumulator
+     ownership for the current interleaved route unless a new design holds the
+     tile8 VGPR footprint or changes the overlap/resource premise:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile16-rejected.json).
 
 Current exact decode checkpoint:
 

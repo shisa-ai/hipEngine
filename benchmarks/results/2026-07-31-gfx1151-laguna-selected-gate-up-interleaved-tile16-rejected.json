@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T07:07:10+09:00",
+  "kind": "hipengine_laguna_selected_gate_up_interleaved_tile16_rejection",
+  "status": "rejected_full_model_performance",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "revision_before_diagnostic": "3e8a2aa594c8e5272c432604f85ed96cf7e4bf6c",
+    "model": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "diagnostic": "temporary exact dual-interleaved Q4_K T16 tile16 selected gate/up owner; removed after rejection"
+  },
+  "candidate": {
+    "scope": "47 c=1 selected routed gate/up plus SiLU calls per token",
+    "change": "one local128 workgroup owns 16 output columns instead of 8 while preserving each column's K ownership, FMA order, wave32 reduction, ordered four-wave merge, BF16 round trips, and SiLU expression",
+    "resident_byte_change": 0,
+    "grid_x_change": {
+      "control_tile8": 128,
+      "candidate_tile16": 64
+    }
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-only --gate-candidate tile16-parallel-silu-interleaved --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-interleaved-tile16-leaf.json",
+    "control_median_ms": 0.11626105308532715,
+    "candidate_median_ms": 0.10935288429260254,
+    "candidate_delta_percent": -5.941945827425565,
+    "bf16_mismatches": 0,
+    "all_roles_positive": true,
+    "raw_sha256": "8937e2912c47de3387f1eac4eb58161a4260b9c6e30916e91e4d1869d0250ce3"
+  },
+  "profile": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-selected-interleaved-tile16-rocprof --output-file tile16 -- .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-only --gate-candidate tile16-parallel-silu-interleaved --warmups 1 --samples 3 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-interleaved-tile16-profile.json",
+    "control_median_us": 112.11,
+    "candidate_median_us": 105.8985,
+    "control_vgpr": 80,
+    "candidate_vgpr": 144,
+    "control_lds_bytes": 512,
+    "candidate_lds_bytes": 512,
+    "candidate_scratch_bytes": 0,
+    "trace_sha256": "6bd364ad6d834140a1cf70a7c573a2ebd716b37b007ca2c61f954e9a4b7b41d4",
+    "child_sha256": "d2e7acdd4a17ba4563b5bac68797730e3478fe0de1f166b99d4e47f9e1c16231"
+  },
+  "production_gate": {
+    "protocol": "same-resident p512/d128 eager c1, matrix chunk 2048, seven counterbalanced pairs, 127 synchronized decode transitions per arm",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --compare-selected-interleaved-natural-tile16-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-interleaved-tile16-production-sevenpair.json",
+    "control_median_tok_s": 22.76977419723646,
+    "candidate_median_tok_s": 22.75566513480668,
+    "candidate_delta_percent": -0.06196250790027391,
+    "control_median_ms_per_token": 43.91787074117621,
+    "candidate_median_ms_per_token": 43.94510088261129,
+    "paired_median_delta_ms_per_token": 0.026139527867279355,
+    "candidate_pair_wins": 2,
+    "pair_count": 7,
+    "resident_nbytes": 79066169172,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "correctness_passed": true,
+    "lifecycle_passed": true,
+    "raw_sha256": "49eae801128d1f793135ea18cbccdf00059082a9f7ba96110f2f9418aaa8fab8"
+  },
+  "decision": {
+    "retain_production_path": false,
+    "retain_diagnostic_kernel": false,
+    "production_changed": false,
+    "production_decode_tokens_per_second": 22.752894,
+    "conclusion": "The exact tile16 owner is a real isolated-kernel win but not a production win. Its doubled accumulator footprint raises VGPR allocation from 80 to 144; under the retained routed/shared overlap schedule the seven-pair full-model gate regresses and wins only two pairs. Remove the candidate, registry/runtime route, harness selector, and tests; keep tile8 canonical."
+  }
+}
