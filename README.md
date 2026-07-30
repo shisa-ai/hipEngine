@@ -243,12 +243,16 @@ numbers below.
   **479.776/1,826.542/1,850.682 -> 470.606/1,814.537/1,834.282 ms
   (-1.911%/-0.657%/-0.886%)**. Clean 512/1K/4K improves
   **271.744/233.742/161.579 -> 272.936/234.834/162.416 tok/s
-  (+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Production remains H5W only
-  pending selector-unset publication. Both short rows exceed 150 tok/s and H5W
+  (+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Selector-unset publication then
+  confirms **271.922/234.334/162.004 -> 273.366/235.061/162.533 tok/s
+  (+0.531%/+0.310%/+0.327%)**, again 3/3 each. H5X is production at canonical
+  **273.366/235.061/162.533 tok/s (+0.678%/+0.445%/+0.421% over H5W)** and
+  narrows matched M512 to **2.53940x**. Both short rows exceed 150 tok/s and H5X
   4K remains positive; 16K+ stays closed below the 800/700 stretch target
-  ([H5X candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+  ([current H5X production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+  [H5X candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
   [H5X target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
-  [current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+  [H5W production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
   [H5W candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
   [H5W target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
   [H5V rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
