@@ -23,9 +23,15 @@ public selector is added. The production-identical H5W trace reconciles
 **1,803.036 ms / 1,862 dispatches** in a **1,829.763-ms** span against
 llama.cpp HIP's **724.299 ms**. Exact matched gaps now rank Q5 **417.482 ms**,
 IQ down **327.846 ms**, attention **192.029 ms**, Q6 **77.716 ms**, and gate/up
-**60.898 ms**; span-minus-sum remains only **26.726 ms / 1.461%**. WPF-H5S
-screens the distinct persistent row-group Q5 dimension at partitions
-**1/2/4/8/16/32**. All candidate outputs are byte-exact, all 36 symbols are
+**60.898 ms**; span-minus-sum remains only **26.726 ms / 1.461%**. H5X selects
+the next exact Q5 dataflow: six H5L roles own **188 calls / 459.232 ms**, and a
+full-F32 `[tile][k][col]` plane lets the unchanged local128 arithmetic consume
+aligned `float4` records. The static source model moves **6.309B -> 1.577B**
+weight-load instruction instances (**-75%**) across unchanged bytes,
+**5,021,440** workgroups, geometry, workspace, and useful FMAs. This is target
+rationale only; production remains H5W pending plane-byte, ISA/resource, and
+all-role both-clock gates. WPF-H5S screens the distinct persistent row-group Q5
+dimension at partitions **1/2/4/8/16/32**. All candidate outputs are byte-exact, all 36 symbols are
 scratch-free, and resource classes rise only eight VGPR, but **0/6** actual
 roles win both clocks. Even P32 regresses producer-inclusive weighted event/wall
 **459.018/473.034 -> 565.864/566.290 ms (+23.277%/+19.714%)**. Remove every
@@ -92,7 +98,8 @@ remains **-0.030%/+0.014%**, rejecting runtime ownership. Remove the eager owner
 and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5W 4K remains positive; 16K+ stays closed
 below the 800/700 gate
-([H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+([post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+[H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5W candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
@@ -389,9 +396,15 @@ event/wall falls **19.466%/16.876%**. Default-off runtime remains KL0, records
 dispatches, and improves clean 512/1K/4K **+1.830%/+1.492%/+1.061%** with 3/3
 wins each. Selector-unset confirms **+1.785%/+1.532%/+1.100%**, promoting
 **271.526/234.020/161.853 tok/s** and narrowing matched M512 to **2.55661x**.
-Wider qrows, cross-head/key-split, source MMQ, and changed-association attention
-stay closed
-([H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+The production-identical trace ranks Q5 first at **476.433 ms** versus llama.cpp
+HIP **58.951 ms**. H5X keeps H5L's exact full-F32 values, local128 ownership,
+geometry, and all arithmetic, but swizzles the internal plane to
+`[tile][k][col]` for aligned `float4` loads. The static **6.309B -> 1.577B**
+load-instruction model is not a speed claim; byte/layout/ISA and both-clock
+all-role gates precede any owner. Wider qrows, cross-head/key-split, source MMQ,
+and changed-association attention stay closed
+([post-H5W residual / H5X target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+[H5W production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5W candidate](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·

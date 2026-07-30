@@ -898,8 +898,20 @@ dispatches; Q6/request sum falls **121.306/1,851.695 -> 92.636/1,803.036 ms
 **+1.830%/+1.492%/+1.061%** with 3/3 wins each. Selector-unset confirms
 **+1.785%/+1.532%/+1.100%**, promoting **271.526/234.020/161.853 tok/s** and
 narrowing matched M512 **2.59795x -> 2.55661x**. Preserve H5I F32-N72 and raw
-long-K/wide-N fallbacks; H5W is package production
-([H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+long-K/wide-N fallbacks; H5W is package production. Post-H5W attribution
+reconciles **1,803.036 ms / 1,862 dispatches** and returns to Q5, now
+**476.433 ms** versus llama.cpp HIP **58.951 ms**. H5X selects a distinct exact
+plane layout rather than persistence, geometry, compression, or K-ownership:
+a geometry-specific producer stores each H5L tile as full-F32 `[k][col]`, and
+the matching local128 consumer uses aligned `float4` records while replaying
+unchanged scalar FMAs and reductions. The six roles own **188 calls / 459.232
+ms**. The static source model moves **6.309B -> 1.577B** weight-load instruction
+instances (**-75%**) across unchanged bytes/workgroups; actual ISA and both
+clocks decide. Add separate gfx1100 keys only, keep the row-major H5L/H5G chain
+as fallback, and require permutation/output exactness plus cached scratch0/
+dwordx4 evidence before timing or ownership
+([post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
+[H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5W candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
 [H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
