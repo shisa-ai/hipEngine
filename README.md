@@ -335,7 +335,7 @@ numbers below.
   ([H6B rejection](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json) ·
   [post-H6A matched residual / H6B target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json) ·
   [H6A production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json) ·
-  [H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). Both short
+  [H6A candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json)). The post-H6B audit shows Q5 is already **87.2%** exact H5Y consumer time while producers are only **10.3%** and the two dominant leaves already emit extensive VOPD/aligned loads, so H6C does not repeat Q5 producer or geometry work. Instead it targets the one unowned special-IQ3 gate/up launch: hipEngine **32.153 ms** versus exact llama.cpp HIP **0.077 ms**, **34.4%** of the gate/up gap. **WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4** instantiates the existing RT1-compatible grouped template, reuses each raw gate/up segment across four compact rows, and preserves every scalar FMA/reduction/BF16/SiLU boundary; this is a target, not a speed claim ([H6C target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)). Both short
   rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
   ([post-H5Z matched residual / H6A target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·

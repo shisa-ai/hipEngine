@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6c_exact_special_iq3_gate_up_expert_major_target",
+  "status": "accepted_target_production_unchanged",
+  "date": "2026-07-31",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "scope": "Post-H6B exact residual decomposition and WPF-H6C target selection for the one special-IQ3 gate/up layer of Laguna S 2.1 UD-Q2_K_XL on one Radeon Pro W7900 queue",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "baseline": {
+    "revision": "b94b7e60d",
+    "production": "H6A/H5Y/H5Z",
+    "canonical_512_1k_4k_tok_s": [312.780801, 261.591401, 173.996973],
+    "matched_c4096_direct_m512_tok_s": 326.17366882456315,
+    "exact_llamacpp_hip_tok_s": 696.342,
+    "matched_gap": 2.134881097267655,
+    "kernel_sum_ms": 1568.189644,
+    "artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6a-matched-residual.json",
+    "artifact_sha256": "50117c11a1ea54d4456465c29221de8168978c652d58e25352d727baf1689429"
+  },
+  "preceding_rejection": {
+    "id": "WPF-H6B",
+    "decision": "exact IQ3-down segment plane rejected and all candidate surfaces removed",
+    "event_percent_change": 24.551880475112252,
+    "wall_percent_change": 30.461345738652113,
+    "both_clock_wins": 0,
+    "artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json",
+    "artifact_sha256": "fa9b30efda5a18d0ea7ba30f3a3bbf468ec8ec6b5adcb7f493c3cb91fc572db1"
+  },
+  "residual_audit": {
+    "q5": {
+      "family_median_ms": 245.960155,
+      "reconciled_subcomponent_ms": 245.85020900000004,
+      "h5y_consumers_ms": 214.346015,
+      "h5y_consumers_percent": 87.18561431037871,
+      "weight_producers_ms": 25.38502100000001,
+      "weight_producers_percent": 10.325401431731143,
+      "activation_packs_ms": 4.567361000000001,
+      "activation_packs_percent": 1.8577820285684605,
+      "h5g_fallback_ms": 1.5518119999999997,
+      "h5g_fallback_percent": 0.6312022293216759,
+      "dominant_consumers_ms": {
+        "bf16_k9216_n3072_rowmajor_12x8": 78.30466000000001,
+        "f32_k3072_n9216_tilekcol_8x10": 76.13536499999998
+      },
+      "dominant_consumer_vopd_static": {
+        "bf16_k9216_n3072_rowmajor_12x8": 188,
+        "f32_k3072_n9216_tilekcol_8x10": 156
+      },
+      "decision": "Exact consumer arithmetic dominates; H5G/H5L/H5P/H5S/H5V/H5X/H5Y plus aligned loads and VOPD already close immediate geometry, ownership, producer, and plane premises. Do not target the 10.3% producer tail or repeat broad geometry without new arithmetic."
+    },
+    "closed_higher_ranked_families": {
+      "iq_down": "H5J/H5K/H5Q/H5T/H5Z/source-MMQ and rejected H6B segment plane close immediate exact IQ3-down premises.",
+      "q5": "The decomposition above provides no new exact operation beyond the already screened families.",
+      "attention": "H5M/H5N/H5R/H5U/H6A, wider-qrow evidence, source FlashAttention, and changed association remain closed without a distinct exact state-reuse operation."
+    },
+    "gate_up": {
+      "current_ms": 494.595812,
+      "llamacpp_ms": 401.393125,
+      "gap_ms": 93.20268700000003,
+      "iq2_core_current_ms": 462.326134,
+      "iq2_core_llamacpp_ms": 401.315924,
+      "special_iq3_current_ms": 32.152631,
+      "special_iq3_llamacpp_ms": 0.077201,
+      "special_gap_ms": 32.07543,
+      "special_share_of_gate_up_gap_percent": 34.41470523269355,
+      "special_current_dispatches": 1,
+      "special_current_resources": "local256/VGPR40/SGPR128/LDS512/scratch0/grid-y5120"
+    }
+  },
+  "selected": {
+    "id": "WPF-H6C",
+    "name": "exact special-IQ3 expert-major fused-SiLU rowbatch4",
+    "family": "gate_up",
+    "shape": "K3072/N1024/E256, natural M512/top-k10",
+    "operation": "Instantiate the existing exact RT1-compatible IQ3 expert-major rowbatch4 template with fused SiLU, consume one pre-gathered compact hidden matrix, reuse each raw gate/up weight segment across four rows, and write sorted post-SiLU BF16 output directly.",
+    "new_exact_premise": "Replace 5,120 route-major independent rows in the one special-IQ3 layer with expert-major raw-weight reuse while retaining every per-row segment decode, scalar FMA order, wave32 shuffle tree, serial wave-0..7 sum, gate/up BF16 boundary, SiLU expression, and BF16 output. This is a scheduling/weight-reuse operation, not IQ3-down tiling, segment-plane materialization, source MMQ, or changed arithmetic.",
+    "existing_unfused_template": true,
+    "new_device_algorithm": false,
+    "new_fused_instantiation_required": true,
+    "persistent_sidecar_bytes": 0,
+    "production_changed": false,
+    "static_rationale_is_speed_claim": false
+  },
+  "admission": {
+    "red_first": "Freeze a separate gfx1100-only fused-SiLU rowbatch4 key for K3072/N1024/E256; prove empty/reordered/tail routing, complete BF16 output identity to route-major IQ3, sampled NumPy GGUF values, strict shape preflight, unchanged IQ2/H5Z production maps, and gfx1151 absence.",
+    "physical": "One expert/output block, exact group order and rowbatch4 ownership, scratch0, bounded VGPR/LDS, no compiler under rocprof, and one candidate launch on the actual special layer.",
+    "performance": "Actual model weights and natural M512 routing; include equal pre/post gather and fused-SiLU work; five warmups, 15 counter-rotated samples, five launches/sample; require complete bytes and both HIP-event and synchronized-wall wins before runtime ownership.",
+    "runtime_if_admitted": "Add only a bounded default-off IQ3 grouped gate/up route behind the four-axis registry; preserve IQ2 pair16, down routes, metadata ABI, allocations, and fallbacks. Require complete M512 state/KV/spans/repeat/lifecycle, exact trace topology, and one-queue 512/1K/4K non-regression before source default.",
+    "rejection": "Remove every H6C candidate surface if the gather-inclusive actual-layer leaf misses either clock or any exact/physical gate."
+  },
+  "decision": {
+    "target_selected": true,
+    "production_changed": false,
+    "next_action": "Commit this target packet, freeze H6C RED, then implement and screen the separate fused expert-major leaf before any runtime owner."
+  },
+  "lineage": {
+    "iq_hip_source_sha256": "72ca5e04c3ec01efe467bb2486ed90daf75c80218e6022be517c707959c95cbd",
+    "iq_python_source_sha256": "a3cede39f35db9e9d87dca653e8420a15b451d216c4c09e89dfb0fe8cee358d3",
+    "runtime_source_sha256": "5fcd28dc20615d187fe640a7525cff2d219da71fc7d4bf588b921ed8a10b9a08",
+    "package_source_sha256": "4908716c3fb2ca3cd87d1dcad280de8474650aeb20b55da17d6f14f3d902d4ad",
+    "current_iq_code_object_sha256": "1ba86ab46cfa08eb6ecff29b23b98a7e1287c66f997aa81d08bb112497500b32",
+    "current_iq_isa_sha256": "00c06c545c28e83f6b8433ef3b5635efd6d81cd8d6f3fa58baf9de64384064ab",
+    "h5y_isa_sha256": "68d1a5726a3e36f010e78243c1fabf7ff207406a5039414b452725f218045e15",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "raw_evidence_sha256": {
+    "hip_trace": "3c8c331c3c37e65441710aaba428fc23d23b468c352c03c3de711c67482b9755",
+    "hip_trace_summary": "dacdb11bedf2bc3b106daf35eb369adca16cafb3287c48722048298e124292e8",
+    "llamacpp_trace_summary": "eb5ccaf04518a2bcc9beceacc3d515a12ddef327f973866292bd381222ba246c",
+    "target_analyzer": "6db0a30414b80454948a77d78cc2c4e903a086cd3f4b379945e7de447ae6b755",
+    "target_analysis": "1e9890a6c8df2824fe88a5beb45e91555974593591e8b84f4efc0b051fa547f6"
+  }
+}
