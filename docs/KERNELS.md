@@ -2130,6 +2130,11 @@ the gfx1151 production owner behind the existing variant name; the registered
 `...parallel_silu_scalarq...` sibling is the short-lived exact
 compiler/codegen rollback:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json).
+Tracked-clean selector-unset production publishes
+**20.823569/20.830515/20.832851 tok/s**, median **20.830515**, or
+**+0.14426% / -0.06925 ms/token** versus the prior clean checkpoint with
+exact repeated state:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-production.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace

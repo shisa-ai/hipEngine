@@ -2175,3 +2175,6 @@ should be boring.
 - Keep scalar-Q through clean selector-unset publication and one later decode
   wall census. Remove its launcher, wrapper, registry key, and comparison-only
   exactness call if pair-Q remains positive and spill-free after that census.
+- **Clean publication passed:** selector-unset production improves
+  **20.800509 -> 20.830515 tok/s (+0.14426%)** with exact repeated state.
+  Keep scalar-Q only through the next decode wall census.

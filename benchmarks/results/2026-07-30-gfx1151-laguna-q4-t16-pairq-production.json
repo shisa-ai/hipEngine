@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T10:57:03+09:00",
+  "kind": "hipengine_laguna_q4_t16_pairq_decode_production",
+  "status": "accepted",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "source": {
+    "revision": "a4293c158f3362f23a55618dd9c514110b9e394e",
+    "tracked_clean": true,
+    "selector_unset": true,
+    "require_cached_build": true
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-t16-pairq-production-3.json",
+    "raw_sha256": "50e6ac69032f0394fcdae6f9300a80cf09d80dec34a8c0fc17eaf668fdfce312"
+  },
+  "timings": {
+    "decode_samples_tok_s": [
+      20.823568756944404,
+      20.830515397675846,
+      20.832851385826963
+    ],
+    "median_decode_tok_s": 20.830515397675846,
+    "median_ms_per_token": 48.00649340205833,
+    "prior_clean_tok_s": 20.800508959788434,
+    "prior_clean_ms_per_token": 48.07574670087165,
+    "throughput_change_percent": 0.14425819072707569,
+    "saving_ms_per_token": 0.06925329881331521,
+    "sprint_start_tok_s": 11.466687,
+    "change_from_sprint_start_percent": 81.66114935966984
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "comparison": {
+    "same_gguf_llamacpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llamacpp_vulkan_ms_per_token": 42.82952209834163,
+    "remaining_wall_gap_ms_per_token": 5.176971303716698,
+    "hipengine_throughput_below_vulkan_percent": 10.783898045539663
+  },
+  "evidence": {
+    "retention": "benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json",
+    "interpretation": "The ordinary selector-unset production route improves all three samples over the prior clean median. Retention is independently supported by the exact 1.945% leaf improvement and 7/7 positive interleaved whole-model pairs."
+  }
+}

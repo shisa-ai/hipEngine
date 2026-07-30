@@ -6118,14 +6118,22 @@ The remaining attention sequence is:
     rollback:
     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json).
 
+    **Clean publication passes:** tracked-clean selector-unset production is
+    **20.823569/20.830515/20.832851 tok/s**, median
+    **20.830515 tok/s (48.00649 ms/token)**. This is **+0.14426% /
+    -0.06925 ms/token** versus the prior clean checkpoint and **+81.661%**
+    over sprint start. All repetitions preserve exact trajectory/state and
+    allocation teardown:
+    [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.800509 tok/s** | **48.076 ms** | **+81.399%** |
+| hipEngine current production | **20.830515 tok/s** | **48.006 ms** | **+81.661%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.246 ms/token** | hipEngine is **10.912%** below Vulkan throughput |
+| Remaining wall gap | — | **5.177 ms/token** | hipEngine is **10.784%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
