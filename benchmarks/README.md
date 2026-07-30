@@ -18,10 +18,15 @@ request kernel sum falls **2,600.260 -> 2,532.020 ms (-2.624%)** at the same
 **+2.290%/+2.122%/+2.052%**. The matched llama.cpp HIP M512 target remains
 **694.184 tok/s**, now a **3.540x** gap. Every map, shape, registration, and
 backend miss retains the preceding exact route; gfx1151 remains fail-closed.
-The next exact lane screens larger resident IQ3 row batches from 12/16 and
-extends only while scratch-free. Both short production rows exceed 150 tok/s and
-4K remains positive; 16K+ stays closed below the 800/700 stretch gate
+H5K closes larger resident IQ3 row ownership: rowbatch12 loses all 45 actual
+layers by **+6.893%/+5.771%** event/wall and rowbatch16 worsens to
+**+10.770%/+9.870%**, despite exact bytes and scratch-free resources. All
+temporary surfaces are removed and H5J remains production; next reprofile the
+unchanged exact request and select a distinct dataflow. Both short production
+rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed below the
+800/700 stretch gate
 ([H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
+[H5K rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
 [H5J leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
 [post-H5I residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
 [H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json)).
@@ -202,10 +207,14 @@ exact K1024 IQ3 resident-segment ownership plus exact IQ4 wave32 after all 47
 actual layers win both clocks. Complete state is KL0/byte-exact, integrated
 selected down falls **556.749 -> 497.145 ms (-10.706%)**, and request kernel sum
 falls **2,600.260 -> 2,532.020 ms (-2.624%)**. Clean 512/1K/4K reaches
-**196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I. Next
-screen larger exact resident IQ3 row batches from 12/16; do not reopen rejected
-rowbatch16, output-tile, or source-MMQ arithmetic
-([H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
+**196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I. H5K
+then rejects larger resident IQ3 rowbatch12/16 after both lose all 45 layers;
+event/wall sums regress **+6.893%/+5.771%** and **+10.770%/+9.870%**. Every
+candidate byte matches, lifecycle recovers, and all temporary code is removed.
+Reprofile a distinct exact dataflow; do not reopen larger row ownership,
+output-tile, or source-MMQ arithmetic
+([H5K rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
+[H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
 [H5J leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
 [H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
 [post-H5I residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json)).

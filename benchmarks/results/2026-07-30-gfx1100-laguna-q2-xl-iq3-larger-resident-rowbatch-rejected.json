@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_larger_resident_rowbatch_rejected",
+  "date": "2026-07-30",
+  "status": "rejected_all_actual_layers_regress_production_unchanged",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "e139c774b",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json",
+    "production_artifact_sha256": "8f2bdccd93d27a39dcf8691f72d589331472d96a4bee9c69fa3223acf6a108af",
+    "candidate_source": "temporary net-new exact rowbatch12/16 instantiations of the H5J K1024 resident-segment IQ3 schedule; no external body copied",
+    "candidate_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "b80bcaa46579da6591999fc1f8ea88cdbb94c34e7415ef359d89b4579e85006c",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "84f7fde4fad1da9abaf8a94fb08be9b824b918cd8a6513747760684cd2070ed9",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "2e9a7823970c5f1643ab83cb816c17a05d77e64497c178e8cf4ff83128d0b651",
+      "tests/test_gguf_iq_selected_prefill.py": "4bda2499ed7f88fcec2b9e0b8cfde28122ad29ebdb809cb991f3e76aa0e064ff",
+      "tests/test_gfx1151_backend.py": "b5c6323baed2581b8853c5e0df4ca9a6b99b6fd6e5871e1df190724ebaf82c8e"
+    },
+    "production_implementation_restored": true,
+    "restored_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e060e426d6a36e182c8c502f031a0a9473ff05ad5c13b786ff0e98adee4d2932",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "b3a561daca2bf26fb7713474365166c29d57a7bbe784800565d9d111a3914f07",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "447ae0747fe5019afb070e5358dab21e587dddc73b9d2f9eaaca96a4f238f6c1",
+      "tests/test_gguf_iq_selected_prefill.py": "ee93b02734079179f2d3a4b6e2a7ec132d62026f3967c19cc046be0b1c4b43f3",
+      "tests/test_gfx1151_backend.py": "16ad97d43fdd05380b0433dd2b8fea03405751afb6b3f8f65b248fe2b57053ef"
+    }
+  },
+  "red_green_gate": {
+    "red": "collection fails exactly on the absent rowbatch12 wrapper",
+    "green_passes": 5,
+    "coverage": [
+      "strict K1024 wrapper preflight",
+      "gfx1100 four-axis registrations",
+      "gfx1151 fail-closed exclusions",
+      "empty, uneven, rowbatch-boundary, and tail experts",
+      "BF16 byte identity versus H5J rowbatch8",
+      "independent CPU-reference correctness gate"
+    ],
+    "all_candidate_outputs_exact": true,
+    "cpu_correctness_gate": true
+  },
+  "resource_trace": {
+    "h5j_rowbatch8": "local128/VGPR40/SGPR128/LDS512/scratch0",
+    "rowbatch12": "local128/VGPR48/SGPR128/LDS512/scratch0",
+    "rowbatch16": "local128/VGPR56/SGPR128/LDS512/scratch0",
+    "both_candidates_scratch_free": true,
+    "no_compiler_under_profile": true
+  },
+  "actual_layer_gate": {
+    "rows": 512,
+    "compact_rows": 5120,
+    "in_features": 1024,
+    "out_features": 3072,
+    "expert_count": 256,
+    "actual_iq3_layers": 45,
+    "production_invocations": 45,
+    "actual_weights": true,
+    "natural_m512_routing_distributions": true,
+    "deterministic_bf16_compact_input": true,
+    "warmups": 5,
+    "counter_rotated_repetitions": 15,
+    "launches_per_sample": 5,
+    "clocks": [
+      "HIP event",
+      "synchronized wall"
+    ],
+    "control": "H5J exact K1024 resident IQ3 rowbatch8",
+    "candidates": {
+      "rowbatch12": {
+        "h5j_event_sum_ms": 489.05783462524397,
+        "candidate_event_sum_ms": 522.7678611755371,
+        "event_percent_change": 6.892850735358214,
+        "event_speedup": 0.935516260554943,
+        "h5j_wall_sum_ms": 492.5415486562997,
+        "candidate_wall_sum_ms": 520.9641622379422,
+        "wall_percent_change": 5.770602228214483,
+        "wall_speedup": 0.945442286357001,
+        "both_clock_positive_layers": 0,
+        "event_speedup_min_median_max": [
+          0.9266367820485722,
+          0.9357175487612278,
+          0.9416433580902471
+        ],
+        "wall_speedup_min_median_max": [
+          0.9348357382627421,
+          0.945256098053602,
+          0.952026403512743
+        ]
+      },
+      "rowbatch16": {
+        "h5j_event_sum_ms": 489.05783462524397,
+        "candidate_event_sum_ms": 541.729906463623,
+        "event_percent_change": 10.770111039881547,
+        "event_speedup": 0.9027706035610645,
+        "h5j_wall_sum_ms": 492.5415486562997,
+        "candidate_wall_sum_ms": 541.1559726111591,
+        "wall_percent_change": 9.87011635617019,
+        "wall_speedup": 0.9101655965833889,
+        "both_clock_positive_layers": 0,
+        "event_speedup_min_median_max": [
+          0.8915047688840975,
+          0.9030619868401193,
+          0.9169580764473106
+        ],
+        "wall_speedup_min_median_max": [
+          0.900894064228586,
+          0.9099045509170136,
+          0.9246112355220356
+        ]
+      }
+    },
+    "all_45_layers_byte_exact": true,
+    "tracked_returned_to_baseline": true,
+    "qualified_candidate_count": 0
+  },
+  "source_artifacts": {
+    "actual_layer_json_sha256": "23f739374fc1fe0c6577e8f9fa8581ac2a260f44913f8c0a6c159ad27926ccc6",
+    "actual_layer_harness_sha256": "5c6028b220d090bc770c16ee4faad78d3092f0c09ec9cf460405da5dec938c4d",
+    "actual_layer_stdout_sha256": "0079a86c21ec75cb6a1f008ea5a5357e68116f7e24899be9817008a1d350896a",
+    "actual_layer_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "resource_trace_csv_sha256": "36a84cbfd64a1aa4ad5d5e84fd93bf875bb111de209407a5de0fd2cf33a048e1"
+  },
+  "commands": {
+    "focused_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_selected_prefill.py::test_h5k_larger_resident_iq3_batches_match_h5j_bits_and_cpu_oracle tests/test_gguf_iq_selected_prefill.py::test_iq_selected_prefill_registry_and_build_plan tests/test_gguf_iq_selected_prefill.py::test_iq_selected_prefill_wrappers_validate_before_loading tests/test_gfx1151_backend.py::test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5k-green-rocprof -- uv run pytest -q tests/test_gguf_iq_selected_prefill.py::test_h5k_larger_resident_iq3_batches_match_h5j_bits_and_cpu_oracle",
+    "actual_layer_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5k_iq3_larger_resident_actual_screen.py"
+  },
+  "decision": {
+    "candidate_rejected": true,
+    "rowbatch24_or_32_compiled": false,
+    "reason_not_extended": "rowbatch12 loses every actual layer and rowbatch16 worsens further while VGPR rises from 48 to 56",
+    "runtime_owner_added": false,
+    "full_state_run_performed": false,
+    "clean_512_1k_4k_run_performed": false,
+    "reason_runtime_gates_omitted": "No candidate wins either clock on any actual production layer; H5J source and package policy are restored unchanged.",
+    "production_unchanged_tok_s": {
+      "512": 196.10271441429387,
+      "1024": 181.85900293284575,
+      "4096": 137.16861562535314
+    },
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_m512_gap": 3.5399000063479034,
+    "next_action": "Reprofile the unchanged H5J direct-M512 request and select a distinct exact dataflow; do not extend resident IQ3 row ownership beyond eight."
+  }
+}

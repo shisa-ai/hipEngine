@@ -100,11 +100,15 @@ numbers below.
   512/1K/4K, **+2.290%/+2.122%/+2.052%** over H5I and a **3.540x** matched M512
   gap. Every sample is byte-exact, deterministic, and lifecycle-clean; no
   allocation, workspace, or sidecar is added. Map/shape/registration misses and
-  gfx1151 retain their preceding exact routes. The next exact lane screens
-  larger resident IQ3 row batches from 12/16, extending only while scratch-free.
-  The 150-tok/s short gate and restored 4K gate pass, while 16K+ stays closed
-  below the 800/700 512/4K stretch target
+  gfx1151 retain their preceding exact routes. H5K closes larger resident IQ3
+  row ownership: rowbatch12 loses all 45 actual layers by **+6.893%/+5.771%**
+  event/wall, and rowbatch16 worsens to **+10.770%/+9.870%** despite exact bytes
+  and zero scratch. All temporary surfaces are removed and H5J is unchanged;
+  the next step is a fresh exact-dataflow residual attribution. The 150-tok/s
+  short gate and restored 4K gate pass, while 16K+ stays closed below the
+  800/700 512/4K stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
+  [H5K rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
   [H5J leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
   [post-H5I residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
   [H5I production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json)).
