@@ -1510,8 +1510,11 @@ kernel sum **2,600.260 -> 2,532.020 ms (-2.624%)** at unchanged **1,862**
 dispatches. Clean selector-unset 512/1K/4K promotes
 **196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I with no
 new allocation/workspace/sidecar; all misses and gfx1151 retain exact fallback.
-The matched M512 gap is now **3.540x**. Next screen exact larger resident IQ3
-row batches from 12/16 and extend only while scratch-free. The old rowbatch16
+The matched M512 gap is now **3.540x**. H5K closes larger resident IQ3 row
+ownership: scratch-free rowbatch12 loses all 45 layers at **+6.893%/+5.771%**
+event/wall, while rowbatch16 worsens to **+10.770%/+9.870%**; every byte and
+lifecycle matches and all temporary surfaces are removed. Reprofile the
+unchanged H5J request and select a distinct exact dataflow. The old rowbatch16
 spill, output-tile regression, and source-MMQ quality failure remain closed. Do
 not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion remains
 deferred at the current **1.012%** request span-minus-sum.
