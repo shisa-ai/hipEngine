@@ -1841,16 +1841,19 @@ Post-H6B decomposition does not justify another Q5 producer or geometry pass:
 the reconciled **245.850-ms** Q5 stack is **214.346 ms / 87.2%** exact H5Y
 consumers, **25.385 / 10.3%** weight producers, **4.567 / 1.9%** activation
 packs, and **1.552 / 0.6%** fallback. Its two dominant consumers already emit
-**188/156** static VOPD sites with aligned scratch-free loads. Instead select
-**WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4**. The one current
-route-major launch costs **32.153 ms** versus exact llama.cpp HIP **0.077 ms**,
-a **32.075-ms** gap and **34.4%** of gate/up residual. Instantiate the existing
-RT1-compatible expert-major template with fused SiLU; reuse raw gate/up segments
-across four sorted rows while preserving every per-row decode, scalar FMA,
-wave32 tree, serial wave-0..7 sum, gate/up BF16 boundary, SiLU expression, and
-BF16 output. Require gather-inclusive exact both-clock actual-layer admission
-before any owner; this is target rationale, not a speed claim
-([H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
+**188/156** static VOPD sites with aligned scratch-free loads. Instead admit one
+standalone **WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4** leaf
+for K3072/N1024/E256. It instantiates the existing RT1-compatible template,
+reuses raw gate/up segments across four sorted rows, and preserves every per-row
+decode, scalar FMA, wave32 tree, serial wave-0..7 sum, gate/up BF16 boundary,
+SiLU expression, and BF16 output. On actual layer-47 weights and natural M512
+routing, complete bytes match and fair control-post-gather versus
+candidate-pre-gather event/wall moves **32.691/32.724 -> 15.458/15.438 ms
+(-52.716%/-52.825%, 2.115x/2.120x)** with scratch0. Runtime/package production
+remains unchanged; next require complete state/topology/repeat/lifecycle and
+one-queue 512/1K/4K before source ownership
+([H6C candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-candidate.json) ·
+[H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

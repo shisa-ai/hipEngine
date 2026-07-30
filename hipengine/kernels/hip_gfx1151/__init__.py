@@ -553,6 +553,14 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k",
             "mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
         ),
+        # WPF-H6C's K3072/N1024/E256 expert-major fused-SiLU leaf is
+        # W7900-only pending independent gfx1151 resource/performance gates.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_dual_silu_grouped_prefill_compact_"
+            "k3072_n1024_e256_rowbatch4_bf16_bf16_out",
+        ),
         # WPF-H5J's K1024 resident-segment IQ3 and one-wave IQ4 schedules are
         # W7900-only pending independent gfx1151 resource/performance gates.
         (

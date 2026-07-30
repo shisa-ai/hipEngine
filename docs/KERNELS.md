@@ -1054,17 +1054,21 @@ producers (10.3%)**, **4.567-ms activation packs (1.9%)**, and **1.552-ms
 fallback (0.6%)**. The dominant BF16 K9216/N3072 and F32 K3072/N9216 leaves
 already emit **188/156** VOPD sites with aligned loads and scratch0, so H6C does
 not repeat Q5 producer, broad geometry, ownership, VOPD, or plane screens.
-**WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4** instead targets
-the one current route-major gate/up launch at **32.153 ms** versus matched
-llama.cpp HIP **0.077 ms**. Add only a separately registered fused-SiLU
-instantiation of the existing expert-major rowbatch template: one block owns an
-expert/output column, reuses exact raw gate/up segments across four compact
-rows, and preserves RT1's scalar FMAs, wave32 trees, serial wave-0..7 sums,
-gate/up BF16 boundaries, SiLU expression, and BF16 output. Require strict
-K3072/N1024/E256 preflight, full output bytes/CPU samples, scratch0, exact
-gather-inclusive actual-layer both-clock wins, and no gfx1151 surface before
-runtime qualification; this is a target, not a measured win
-([H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
+**WPF-H6C exact special-IQ3 expert-major fused-SiLU rowbatch4** now admits
+one separately registered K3072/N1024/E256 instantiation of the existing
+expert-major template. One block owns an expert/output column, reuses exact raw
+gate/up segments across four compact rows, and preserves RT1's scalar FMAs,
+wave32 trees, serial wave-0..7 sums, gate/up BF16 boundaries, SiLU expression,
+and BF16 output. On actual layer-47 weights and natural M512 routing, complete
+bytes match the route-major control and fair control-post-gather versus
+candidate-pre-gather event/wall moves **32.691/32.724 -> 15.458/15.438 ms
+(-52.716%/-52.825%, 2.115x/2.120x)**. Cached trace is
+local256/VGPR72/LDS512/scratch0 at physical grid 1024x256; code-object metadata
+is VGPR71/SGPR58/fixed-LDS256/private0/spill0. Keep the leaf gfx1100-only and
+runtime-unowned until complete state, topology, repeat/lifecycle, and one-queue
+512/1K/4K pass
+([H6C candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-candidate.json) ·
+[H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
