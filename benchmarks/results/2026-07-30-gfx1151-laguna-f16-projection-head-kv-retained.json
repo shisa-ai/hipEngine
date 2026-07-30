@@ -124,6 +124,6 @@
     "correctness": "pass; all device bytes, complete generated trajectory, position, determinism, metadata, counter reset, and lifecycle are exact",
     "resources": "pass; local256/VGPR24/SGPR128/LDS512/scratch0",
     "whole_model": "mechanically positive but throughput-flat; +0.00504%, 5/7 pair wins, +0.00293 ms/token paired median saving",
-    "decision": "Provisionally promote through gfx1151 LAGUNA_F16_PROJECTION_HEAD_KV_DECODE because the exact path removes 48 launches/token and has no measured regression. Require tracked-clean production and complete trace before final retention."
+    "decision": "Promote through gfx1151 LAGUNA_F16_PROJECTION_HEAD_KV_DECODE. Tracked-clean production is aggregate-flat at -0.110%, while the complete trace proves 625 -> 577 dispatches/token, 45.699715 -> 45.660100 ms/token kernel span, and 2.006962 -> 1.882766 ms/token span-minus-kernel time. See 2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json."
   }
 }

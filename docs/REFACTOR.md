@@ -2266,3 +2266,9 @@ should be boring.
   **0.002932 ms/token** by paired median with five of seven wins. Publication
   must confirm 48 composite calls/token, zero separate head/KV calls, and no
   material tracked-clean wall regression before this seam is removed.
+- Publication/census passes mechanically: tracked-clean throughput is
+  aggregate-flat at **22.007742 tok/s (-0.1097%)**, while tracing confirms
+  **625 -> 577 dispatches/token**, zero old quad/head-KV launches,
+  **45.699715 -> 45.660100 ms/token** span, and
+  **2.006962 -> 1.882766 ms/token** span-minus-kernel time. The comparison
+  CLI and session setter are now eligible for immediate removal.

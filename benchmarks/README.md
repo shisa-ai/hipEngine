@@ -52,13 +52,15 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.031913 tok/s / 45.389 ms/token**, up **92.138%** from the
-**11.466687 tok/s** sprint start. One source-F16 Q/K/V/gate grid now replaces
-the exact fixed-K triple plus gate singleton in each attention layer, removing
-**48 launches/token** without changing arithmetic or residency. Tracked-clean
-selector-unset production improves the prior **21.926113 -> 22.031913 tok/s
-(+0.48253%, -0.219014 ms/token)** across three exact trajectories.
-[`F16 attention-quad production`](results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json).
+**22.007742 tok/s / 45.439 ms/token**, up **91.928%** from the
+**11.466687 tok/s** sprint start. The final source-F16 producer for each head
+now executes the established RMSNorm/RoPE/BF16-KV body, removing another
+**48 launches/token** for 320 resident bytes. The three-run tracked-clean
+throughput median is **0.1097% below** the preceding 22.031913 checkpoint
+within shared-APU variance; retention is based on the complete cycle wall,
+which improves **45.699715 -> 45.660100 ms/token**, not a claimed headline
+throughput increase.
+[`projection/head/KV production`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json).
 
 The next exact launch-contraction gate promotes one source-F16 Q/K/V/gate
 grid on gfx1151. All seven same-resident p512/d128 candidate runs win
@@ -71,19 +73,20 @@ tracked-clean selector-unset publication independently confirms the default.
 The tracked-clean wall census confirms exactly **673 -> 625 dispatches/token**.
 Source-F16 projection falls **24.053006 -> 23.928557 ms/token**, complete
 kernel sum falls **43.823282 -> 43.692753**, and span falls
-**45.861315 -> 45.699715**. hipEngine kernel work is now only
-**0.033553 ms/token (0.077%)** above the same-GGUF Vulkan logger; the remaining
-production wall gap is **2.559 ms/token**.
+**45.861315 -> 45.699715**. That preceding checkpoint put hipEngine kernel
+work only **0.033553 ms/token (0.077%)** above the same-GGUF Vulkan logger.
+The current composite census is **0.118134 ms/token** above that logger but
+has a shorter within-token span; the current production wall gap is
+**2.609 ms/token**.
 
-The next exact projection→head/KV contraction is provisionally retained on
-gfx1151. Natural global/SWA fixtures match every projection, rotated head,
-BF16 K/V, live-span, and completion-counter byte. Seven same-resident
-p512/d128 pairs are throughput-flat but positive at
+The exact projection→head/KV contraction is retained on gfx1151. Natural
+global/SWA fixtures match every projection, rotated head, BF16 K/V, live-span,
+and completion-counter byte. Seven same-resident p512/d128 pairs are
+throughput-flat but positive at
 **22.016010 -> 22.017120 tok/s (+0.00504%)**, with a paired-median
-**0.002932-ms/token** saving and five of seven wins. The path removes another
-48 launches/token for only 320 resident bytes; tracked-clean production and a
-complete dispatch census remain required before it replaces the current
-**22.031913-tok/s** topline.
+**0.002932-ms/token** saving and five of seven wins. The complete trace proves
+**625 -> 577 dispatches/token**, **45.699715 -> 45.660100 ms/token** span, and
+**2.006962 -> 1.882766 ms/token** span-minus-kernel time.
 [`projection/head/KV candidate`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json).
 
 Three exact gfx1100 structural transfers plus twenty gfx1151-native owners
@@ -1746,7 +1749,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 projection/head/KV decode | 2026-07-30 | dirty candidate over tracked-clean `68ca015be`; TheRock HIP 7.15; BF16 KV; natural global/SWA byte oracle, cached resource trace, and seven same-resident p512/d128 pairs | **Provisionally retained mechanical default pending clean publication:** the final per-head projection producer runs the established RMSNorm/RoPE/BF16-KV body, removing another **48 launches/token** for **320 resident bytes**. Natural global/SWA outputs, KV, spans, counters, full trajectories, and lifecycle are exact. Same-resident throughput is flat but positive at **22.016010 -> 22.017120 tok/s (+0.00504%)**, with a paired-median **0.002932-ms/token** saving and 5/7 wins. Cached tracing names local256/VGPR24/SGPR128/LDS512/scratch0. [`artifact`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json). | Provisional for gfx1151 rows-one source-F16 projection/head/KV | Require selector-unset tracked-clean production and a complete 127-transition census before final publication; exact quad plus head/KV remains fallback. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 projection/head/KV decode | 2026-07-30 | candidate `d1b87128a`; TheRock HIP 7.15; BF16 KV; natural global/SWA byte oracle, seven same-resident pairs, three tracked-clean selector-unset runs, and cached 127-transition census | **Accepted current exact mechanical production default:** the final per-head projection producer runs the established RMSNorm/RoPE/BF16-KV body, removing another **48 launches/token** for **320 resident bytes**. Natural global/SWA outputs, KV, spans, counters, full trajectories, and lifecycle are exact. Tracked-clean throughput is aggregate-flat at **22.031913 -> 22.007742 tok/s (-0.1097%)**, while the complete trace proves **625 -> 577 dispatches/token**, **45.699715 -> 45.660100 ms/token** span, and **2.006962 -> 1.882766 ms/token** span-minus-kernel time. [`retention`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json), [`production`](results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json). | Yes for gfx1151 rows-one source-F16 projection/head/KV; retained on verified launch-count and cycle-wall reduction | Remove the temporary A/B seam; exact quad plus head/KV remains fallback. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M source-F16 attention-quad production and wall census | 2026-07-30 | tracked-clean default `ae4f11d59`; TheRock HIP 7.15; BF16 KV; three selector-unset p512/d128 runs plus cached-build trace over 127 exact transitions | **Accepted current production topline and attribution:** selector-unset production improves **21.926113 -> 22.031913 tok/s (+0.48253%, -0.219014 ms/token)** and reaches **+92.138%** over sprint start. The trace confirms **673 -> 625 dispatches/token**, source-F16 **24.053006 -> 23.928557 ms/token**, kernel sum **43.823282 -> 43.692753 (-0.2979%)**, and span **45.861315 -> 45.699715 (-0.3524%)**. Kernel work is only **0.033553 ms/token (0.077%)** above Vulkan's logged GPU work; the remaining clean wall gap is **2.559 ms/token**. [`production`](results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json). | Yes for gfx1151 rows-one source-F16 Q/K/V/gate and the declared p512/d128 protocol | Prioritize exact launch contraction/within-token queue spacing; triple plus singleton remains fallback. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 attention quad decode | 2026-07-30 | tracked-clean candidate `826e6873d`; TheRock HIP 7.15; BF16 KV; K3072 byte oracle, cached trace, and seven same-resident p512/d128 pairs | **Retained/default pending selector-unset publication:** one exact grid replaces each Q/K/V fixed-K triple plus per-head gate singleton, removing **48 launches/token** with no resident-byte change. All seven candidate runs win **21.944420 -> 22.026384 tok/s (+0.37351%, -0.169573 ms/token)**; the paired median saving is **0.171488 ms/token**. All trajectories, positions, repeats, and allocation recovery are exact. Cached tracing names local256/VGPR24/SGPR128/LDS512/scratch0. [`artifact`](results/2026-07-30-gfx1151-laguna-f16-attention-quad-retained.json). | Yes for gfx1151 rows-one source-F16 Q/K/V/gate | Publish the tracked-clean capability default, then re-profile the complete wall; triple plus singleton remains exact fallback. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M post-dense-interleave decode wall census | 2026-07-30 | tracked-clean trace `8c68c966d`; TheRock HIP 7.15; BF16 KV; p512/d128 eager c=1; cached-build `rocprofv3` over 127 exact transitions | **Accepted current attribution checkpoint:** paired dense/shared decode lowers kernel sum **43.935092 -> 43.823282 ms/token (-0.2545%)** and span **45.970888 -> 45.861315 (-0.2384%)**. hipEngine kernel work is now only **0.164082 ms/token (+0.376%)** above Vulkan's logged GPU work, but **2.037411 ms/token** remains as serialized single-queue submission idle. Current positive family gaps are selected gate/up **+0.496884**, attention **+0.414342**, dense/shared **+0.357252**, selected down **+0.242849**, and router **+0.093081 ms/token**. [`census`](results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json). | Yes, attribution only; production topline is 21.926113 tok/s | Inspect Vulkan attention/command-buffer execution before choosing the next exact kernel or fusion. |
