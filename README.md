@@ -164,8 +164,11 @@ numbers below.
   partitions, only P64/P128 win all **45/45** IQ3 layers on both clocks; the
   frozen robust rule retains P64. Final-source event/wall sums fall
   **492.847/491.518 -> 481.081/483.823 ms (-2.387%/-1.565%)**, every output byte
-  matches H5J, and cached tracing is local128/VGPR48/LDS512/scratch0. Production
-  remains unchanged pending complete-state and clean 512/1K/4K qualification.
+  matches H5J, and cached tracing is local128/VGPR48/LDS512/scratch0. Complete
+  M512 state is KL0/byte-exact; integrated tracing selects all **45** IQ3 calls
+  and cuts IQ-down/request sum **3.255%/0.491%**. Default-off clean 512/1K/4K
+  improves **+0.702%/+0.278%/+0.370% (3/3 paired wins each)**. Production stays
+  H5J pending the selector-unset source-default publication gate.
   Both short rows exceed 150 tok/s and H5M 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target

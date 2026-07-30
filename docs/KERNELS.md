@@ -828,7 +828,11 @@ P64 and removes seven instantiations. Final-source event/wall sums fall
 matches H5J, sampled CPU-oracle values agree, and tracing records local128/
 VGPR48/SGPR128/LDS512/scratch0/grid-y64. K1024 decode, rowbatch8 arithmetic/
 reduction/store order, metadata, allocation, layout, and H5J fallback remain
-unchanged. The standalone leaf still requires runtime qualification
+unchanged. Complete state is KL0/byte-exact and integrated tracing selects all
+**45** P64 IQ3 calls, cutting IQ-down/request sum **3.255%/0.491%**. The
+scoped default-off clean gate improves 512/1K/4K
+**+0.702%/+0.278%/+0.370%**, with 3/3 paired wins each. Production remains H5J
+until the selector-unset source-default publication gate passes
 ([H5Q leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
 [H5Q target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
 [H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·

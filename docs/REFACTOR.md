@@ -167,13 +167,15 @@ should be removed or collapsed.
 - WPF-H5Q adds package-only `LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS`, initially
   empty on gfx1100/gfx1151, plus an ABI-table adapter that can pass the existing
   device active-expert list/count to a registered grouped-down route. Runtime
-  qualification temporarily pairs the admitted P64 variant with
+  qualification pairs the admitted P64 variant with
   `grouped_raw_iq_active_experts`; map, ABI, shape, registration, and backend
-  misses retain H5J. If complete state or clean 512/1K/4K fails, remove this
-  capability/adapter/policy test while retaining the standalone P64 leaf. If it
-  passes, retain the one gfx1100 ABI entry and remove this temporary trigger
-  after a release checkpoint; no allocation, producer, sidecar, or public
-  selector is introduced.
+  misses retain H5J. Complete M512 state is KL0, tracing selects all 45 calls,
+  and default-off 512/1K/4K is **+0.702%/+0.278%/+0.370%**. Keep the capability
+  through the selector-unset source-default publication attempt. If that gate
+  fails, remove the capability/adapter/policy test while retaining the P64
+  leaf; if it passes, retain one gfx1100 ABI entry and remove this temporary
+  trigger after a release checkpoint. No allocation, producer, sidecar, or
+  public selector is introduced.
 
 ## Laguna exact qrow4 SWA prefill selector
 

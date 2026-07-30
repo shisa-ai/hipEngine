@@ -284,8 +284,11 @@ versus llama.cpp HIP **155.495 ms**. P64/P128 alone win all **45/45** IQ3 layers
 on both clocks; the frozen robust rule retains P64. Final-source H5J -> P64
 moves event/wall **492.847/491.518 -> 481.081/483.823 ms
 (-2.387%/-1.565%)**, with complete byte identity, local128/VGPR48/LDS512/
-scratch0 resources, and no new allocation. Production remains unchanged pending
-runtime qualification. Wider qrows, cross-head/key-split, source MMQ, and
+scratch0 resources, and no new allocation. Complete state is KL0; integrated
+tracing selects **45** P64 calls and cuts IQ-down/request sum **3.255%/0.491%**.
+Default-off clean 512/1K/4K is **+0.702%/+0.278%/+0.370%**, 3/3 paired wins at
+each length. Production remains H5J pending source-default publication. Wider
+qrows, cross-head/key-split, source MMQ, and
 changed-association attention stay closed
 ([H5Q leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
 [H5Q target](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
