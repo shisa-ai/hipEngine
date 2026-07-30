@@ -194126,3 +194126,35 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required lineage command still stops before producing a report because
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
   source was copied.
+
+## 2026-07-30 23:20 JST — Reject exact SWA score-plane recomputation
+
+- Audited the exact attention history and llama.cpp Vulkan `c0bc8591e`.
+  The earlier GQA9/D32 owner recomputed QK four times; it did not close the
+  narrower possibility of computing the maximum once and recomputing each
+  score exactly once in the retained output-sharded local512/V128 owner.
+- Added a temporary dense-ring specialization that omitted the
+  **3 x 512 F32 / 6144-byte** LDS score plane. Its output waves recomputed
+  their 32-score stage shards while otherwise-idle waves loaded V. QK
+  products/tree, scaled maximum, compiler `expf`, ordered denominator,
+  scalar PV FMA order, gate, and stores were held fixed.
+- RED failed on the absent wrapper. The first implementation then produced a
+  deliberate GREEN failure because it treated wave lanes as separate QK
+  scores; the focused wrapped-ring oracle caught the ownership error before
+  timing. Correcting the body to reduce one score per wave at a time made F32
+  context and gated BF16 byte-exact with zero error/mismatches.
+- The 9x50 cache-only leaf decisively regresses
+  **0.0211187 -> 0.0727473 ms/layer (+244.47%)**. The second scalar QK pass
+  and K read cost far more than the 6-KiB LDS saving. Remove the kernel,
+  export, wrapper, registry, test, and harness selector before runtime
+  integration. Do not retry scalar score recomputation; a viable score-plane
+  removal must fuse tensorized online QK/PV without a second scalar dot pass.
+- Post-removal focused validation passes:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction`
+  (**1 passed**). Production remains
+  **22.141787 tok/s / 45.163473 ms/token / 482 model kernels/token**.
+  Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-exact-score-recompute-rejected.json`.
+- The required lineage command still stops before producing a report because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
+  source was copied.
