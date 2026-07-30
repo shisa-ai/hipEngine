@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-07-30",
+  "kind": "hipengine_laguna_gfx1151_swa_current_gated_only_leaf_rejected",
+  "status": "rejected_removed_before_runtime",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M"
+  },
+  "based_on_revision": "135903139ee11a709a0da1291522b3ec2ea2d6a4",
+  "candidate": {
+    "description": "current dense-ring local512 output-sharded DPP-QK V-stage128 SWA with the dead F32 context store compiled out",
+    "materially_new_premise": "the prior gated-only screen predated local512, output-sharded probability, V-stage128, DPP-QK, and dense-ring ownership",
+    "production_changed": false,
+    "source_retained": false
+  },
+  "correctness": {
+    "red": "focused wrapped-ring test failed on the absent current-kernel gated-only wrapper",
+    "green": "focused wrapped-ring test passed",
+    "gated_bf16_mismatches": 0,
+    "f32_context_store_omitted": true
+  },
+  "leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-output-sharded-probability-dpp-qk-dense-ring-gated-only-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-current-gated-only-leaf.json",
+    "control_median_ms": 0.021309530735015868,
+    "candidate_median_ms": 0.021285440921783447,
+    "latency_change_percent": -0.11304713150175338,
+    "candidate_wins": 15,
+    "pairs": 21,
+    "saving_ms_per_layer": 0.000024089813232421875,
+    "modeled_saving_ms_per_token_for_36_swa_layers": 0.0008672332763671875,
+    "raw_sha256": "7607884c9e7d87c144573fe82395547a3baf23a9e5fdf5c7cfd55177983969f1"
+  },
+  "decision": {
+    "action": "reject and remove before resident integration",
+    "reason": "the non-unanimous 0.113% leaf movement models less than 0.001 ms/token and is far below the complete-model noise floor",
+    "production_decode_tok_s": 22.14178719209094,
+    "production_ms_per_token": 45.163472637710136,
+    "next": "do not reopen attention output-store removal without a larger fused consumer; continue only with a materially larger exact-association or quality-safe cooperative premise"
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_report",
+    "reason": "missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout",
+    "external_source_copied": false
+  }
+}
