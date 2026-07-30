@@ -194835,3 +194835,28 @@ Vulkan local sizes verbatim will close the measured gap.
   prequeued lower-level commands, or actual device fusion.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-sparse-ffn-graph-rejected.json`.
+
+## 2026-07-31 05:03 JST — Reject route-parallel selected-down tile8
+
+- Audited llama.cpp Vulkan `c0bc8591e881` decode MMV-ID. Its primary Q4/Q6
+  advantage is reusable Q8_1 activation packing plus integer dot products;
+  hipEngine's corresponding leaf was already 22–25% faster but blanket
+  recurrent use failed quality, so direct copying is not admissible.
+- Tested the unscreened exact ownership seam instead: split every selected
+  down T16 tile from 16 to eight output columns while retaining all ten route
+  producers, the same K/FMA and wave trees, BF16 route boundary, and the
+  exact slot-order weighted tail. RED failed on absent wrappers. GREEN
+  matches every projected/routed BF16 bit and resets every counter.
+- The 21x100 actual-weight leaf rejects it: Q4
+  **0.059319 -> 0.069486 ms (+17.140%)** and planar-qmicro Q6
+  **0.073200 -> 0.078380 (+7.077%)**. Cache-only tracing shows the intended
+  register reduction (**104 -> 64 VGPR** Q4, **80 -> 48** Q6), but grid
+  breadth doubles **1,920 -> 3,840 workgroups/layer**. Repeated tile traffic
+  dominates.
+- Removed the complete candidate implementation, wrappers, harness selector,
+  and tests before runtime integration. Production remains tracked-clean at
+  **22.581875 tok/s / 44.283303 ms/token**. The mandatory lineage command
+  remains environment-blocked because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-tile8-rejected.json`.
