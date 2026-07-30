@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T10:45:00+09:00",
+  "kind": "hipengine_laguna_q4_qmicro_tile8_silu_rejection",
+  "status": "rejected_removed",
+  "performance_claim": true,
+  "source_revision": "5b381dfe9933caa22d6211312d369e159b46f3f7",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "weights": "actual layer-1 selected gate/up",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "c=1/top-10, K3072/N1024, dual gate/up plus fused SiLU",
+    "experts": 256,
+    "selected_experts": [
+      17,
+      3,
+      91,
+      42,
+      7,
+      128,
+      201,
+      55,
+      240,
+      12
+    ],
+    "selected_sha256": "a9ee5d850f365847d74c43ff04c942df4ac8b46346c9a54a1222bbf4f514ceff",
+    "warmups": 5,
+    "samples": 9,
+    "burst": 50,
+    "timing": "counterbalanced HIP-event elapsed time"
+  },
+  "control": {
+    "layout": "Q4_K T16, 2368 bytes per 16-column K256 tile",
+    "kernel": "exact natural tile8 parallel-tail fused-SiLU production",
+    "pair_resident_bytes": 931135488
+  },
+  "candidate": {
+    "layout": "Q4_K qmicro, 2304 bytes per 16-column K256 tile",
+    "pair_resident_bytes": 905969664,
+    "pair_resident_reduction_bytes": 25165824,
+    "t16_bytes_over_qmicro_percent": 2.777778,
+    "arithmetic": "same K ownership, FMA order, wave32 tree, wave-0..3 merge, BF16 gate/up round trips, SiLU expression, and BF16 output",
+    "removed": true
+  },
+  "screens": {
+    "cooperative_lds_expand": {
+      "control_median_ms": 0.14390830039978028,
+      "candidate_median_ms": 0.18335025787353515,
+      "latency_change_percent": 27.407702,
+      "bf16_mismatches": 0,
+      "raw_sha256": "a60e5ac8bc9338bb561cb18ab06db6bf9ebf7e7d5ba11efa35b83dcb92def0a9"
+    },
+    "direct_per_lane_record_decode": {
+      "control_median_ms": 0.13902626037597657,
+      "candidate_median_ms": 0.16839475631713868,
+      "latency_change_percent": 21.124423,
+      "bf16_mismatches": 0,
+      "raw_sha256": "1e95038b882cac0f0cbdad858136ce9f7faa997ef5caab718a52af247c2f78aa"
+    },
+    "lane0_dword_wave_broadcast": {
+      "control_median_ms": 0.13509490013122558,
+      "candidate_median_ms": 0.19777402877807618,
+      "latency_change_percent": 46.396369,
+      "bf16_mismatches": 0,
+      "raw_sha256": "3840c1c777214983cac1c140de916eed77c301b4da245c7f7b4bbd9e7023694b"
+    }
+  },
+  "gate": {
+    "correctness": "pass; zero BF16 mismatches in every screen",
+    "performance": "fail; best candidate regresses 21.124%",
+    "whole_model_run_required": false,
+    "decision": "Remove the tile8 qmicro kernel, wrapper, conversion helper, tests, and comparison route. Keep the pre-existing generic qmicro primitive as diagnostic evidence only and retain T16 production."
+  },
+  "production": {
+    "changed": false,
+    "decode_tok_s": 20.800509
+  },
+  "protocol": {
+    "command_template": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate qmicro-tile8-parallel-silu --gate-only --warmups 5 --samples 9 --burst 50 --allow-dirty --output <artifact>",
+    "tracked_base_clean": true,
+    "candidate_worktree_disclosed": true,
+    "memory_recovered": true,
+    "peak_candidate_screen_bytes": 1837152336
+  }
+}
