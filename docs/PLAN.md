@@ -1644,20 +1644,20 @@ event/wall **459.018/473.034 -> 565.864/566.290 ms
 surfaces and do not infer speed from the P1 **70.68x** workgroup-prologue model
 ([H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
 [post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json)).
-Advance to **WPF-H5T exact IQ3 one-wave K-partition collapse**. Current IQ3 is
-**479.190 ms** versus matched llama.cpp HIP **152.380 ms**, or **98.240%** of
-the IQ-down family and a **326.811-ms** gap. Keep H5Q's P64 grid, rowbatch8,
-active-expert order, useful dot work, and four independent K256 arithmetic
-trees; map logical lanes `i/i+32/i+64/i+96` onto physical lane `i`, then add
-partition totals 0..3 before the same BF16 store. The local32 candidate removes
-LDS and two whole-block barriers per rowbatch phase but changes no bytes or
-operation order. Require H5Q/CPU byte identity, local32/LDS0/scratch0 with
-VGPR <=128, and both-clock wins on all 45 actual layers before runtime
-qualification
-([H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json)).
+**WPF-H5T exact IQ3 one-wave K-partition collapse** maps H5Q logical lanes
+`i/i+32/i+64/i+96` onto physical lane `i`, preserving P64, rowbatch8, decode,
+four independent FMA/shuffle trees, serial 0..3 sum, and BF16 store while
+removing LDS/barriers. The final named-register body is byte-exact and
+local32/VGPR96/LDS0/scratch0. Actual-weight timing rejects it: event/wall move
+**474.107/485.298 -> 475.945/469.677 ms (+0.388%/-3.219%)**, with only
+**12/45** both-clock-positive layers. Remove all surfaces and retain H5Q; do
+not promote a wall-only result
+([H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
+[H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
-ownership, and P6/repair routes remain closed. Launch fusion remains deferred.
+ownership, H5T one-wave ownership, and P6/repair routes remain closed. Launch
+fusion remains deferred.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates
