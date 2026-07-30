@@ -5959,6 +5959,33 @@ The remaining attention sequence is:
     next distinct exact screen keeps production V128/PV breadth and assigns two
     exponent-producer waves per query:
     [`paired-PV V64 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-paired-pv-v64-rejected.json).
+85. Split each retained V128 probability row across two tail waves.
+    **Retained and promoted on gfx1151:** pair blocks use waves 12/13 for the
+    first query and 14/15 for the second; singleton blocks use waves 14/15.
+    Each producer evaluates two 32-slot chunks per V128 stage instead of one
+    wave evaluating four chunks. The eight pair-block PV waves, four
+    singleton PV waves, ordered denominator replay, QK reductions, output
+    FMAs, gates, stores, launch count, and resident bytes remain unchanged.
+
+    RED fails importing the absent wrapper. GREEN passes the wrapped/evicted
+    CPU-reference oracle with byte-identical F32 context and gated BF16
+    output. The 9x50 leaf moves **0.030255 -> 0.029404 ms (-2.811%)**.
+    The stronger 21x100 leaf moves
+    **0.030752 -> 0.029131 ms (-5.271%)**. Cache-only native tracing names the
+    final-`true` specialization at grid40/local512 with the same
+    **VGPR176/SGPR128/LDS43,008/scratch0** resource row as retained V128.
+
+    Seven counterbalanced actual-model p512/d128 pairs move median decode
+    **20.806774 -> 20.809401 tok/s
+    (+0.01262%, -0.00607 ms/token)** with **5/7** wins. Every row preserves
+    tokens **2930/74107**, trajectory SHA `94f803f7...bda32`, final position
+    638, repeat determinism, and allocation teardown. This small exact win is
+    the scalar part of llama.cpp's probability-lane distribution that
+    transfers without its F16 cooperative arithmetic. Promote it for the
+    already-qualified gfx1151 saturated shape, retain single-producer V128 as
+    exact rollback, remove comparison-only registry replacement, and leave
+    peer backends unchanged:
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-retained.json).
 
 Current exact decode checkpoint:
 
@@ -5966,6 +5993,7 @@ Current exact decode checkpoint:
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
 | hipEngine current production | **20.803189 tok/s** | **48.070 ms** | **+81.423%** |
+| retained dual-producer candidate | **20.809401 tok/s** | **48.055 ms** | clean publication pending |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **5.240 ms/token** | hipEngine is **10.901%** below Vulkan throughput |
 

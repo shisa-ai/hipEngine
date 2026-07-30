@@ -192473,3 +192473,41 @@ Vulkan local sizes verbatim will close the measured gap.
   no V128 default was lost in the merge.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-paired-pv-v64-rejected.json`.
+
+## 2026-07-30 09:25 JST — Retain exact dual-producer V128 SWA decode
+
+- Continue the exact llama.cpp transfer after paired scalar PV fails: keep
+  production V128 and all eight pair-block PV waves, but assign two independent
+  tail probability waves to each query. Pair blocks map waves 12/13 and 14/15;
+  singleton blocks map waves 14/15. Each producer evaluates two 32-slot chunks
+  per stage instead of four. Ordered denominator replay, every PV FMA, QK,
+  gate, stores, launch count, and resident bytes remain unchanged.
+- RED is the focused wrapped/evicted test importing the absent wrapper. GREEN
+  reports **1 passed** with F32 context and gated BF16 byte-exact. The final
+  focused owner/default bundle reports **2 passed**.
+- Cached 9x50 and 21x100 leaves improve
+  **0.030255 -> 0.029404 ms (-2.811%)** and
+  **0.030752 -> 0.029131 ms (-5.271%)**. Raw hashes are
+  `15b99221...54d1` and `6019dc47...ab`.
+- Cache-only `rocprofv3 --kernel-trace` names the intended final-`true`
+  specialization at grid40/local512,
+  **VGPR176/SGPR128/LDS43,008/scratch0**, identical to retained V128. No
+  compiler runs under profiling. Trace SHA-256 is `0c60c64d...b5c`.
+- Seven counterbalanced actual-model p512/d128 pairs move
+  **20.806774 -> 20.809401 tok/s (+0.01262%)**, or
+  **48.06127 -> 48.05520 ms/token (-0.00607 ms)**. Median paired saving is
+  **0.00607 ms/token** with **5/7** wins. Every run preserves tokens
+  **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+  determinism, and allocation teardown. Raw SHA-256 is
+  `13aea9ed...f918`.
+- Promote the dual producer through the existing gfx1151 saturated-shape
+  capability. Retain single-producer V128 as the registered exact rollback,
+  remove comparison-only registry replacement, and leave peer backends
+  unchanged. The small inclusive gain matches the previously retained global
+  probability pre-normalization confidence and is exact/resource-neutral.
+- The broad kernel-lineage scan remains environment-blocked before diff
+  inspection by missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this is an in-tree scheduling
+  specialization, not an external port.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-retained.json`.
