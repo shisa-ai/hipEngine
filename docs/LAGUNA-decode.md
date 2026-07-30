@@ -7234,6 +7234,29 @@ The remaining attention sequence is:
      only for a lower-level owner that demonstrably prequeues work, a
      whole-token graph with dynamic device-owned state, or real kernel fusion:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-sparse-ffn-graph-rejected.json).
+133. Transfer selected gate/up's eight-column ownership to the remaining
+     route-parallel weighted selected-down kernels. **Rejected and removed at
+     the actual-weight leaf stop.** Q4 and planar-qmicro Q6 preserve their
+     exact K ownership, per-column FMA order, wave32 reduction, ordered
+     four-wave merge, BF16 route boundary, slot-order weighted tail, launch
+     count, and resident bytes. The candidate only splits each resident
+     16-column T16 tile across two workgroups.
+
+     RED fails on the absent wrappers; GREEN matches every projected and
+     routed BF16 bit and returns all completion counters to zero. The
+     21x100 actual-weight gate is decisively negative: Q4 moves
+     **0.059319 -> 0.069486 ms/layer (+17.140%)** and Q6 moves
+     **0.073200 -> 0.078380 (+7.077%)**. Cached tracing confirms that tile8
+     lowers Q4 **VGPR104 -> 64** and Q6 **80 -> 48**, but doubles the grid
+     from **1,920 -> 3,840 workgroups/layer**. Repeated weight/coefficient
+     work costs more than the lower register bucket saves.
+
+     Remove the kernel axis, C/Python wrappers, test calls, and leaf selector
+     before runtime integration. Keep the production 16-column
+     route-parallel weighted owner. Selected down should reopen only around a
+     design that reduces bytes or arithmetic—not narrower ownership that
+     rereads the same resident tile:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-tile8-rejected.json).
 
 Current exact decode checkpoint:
 

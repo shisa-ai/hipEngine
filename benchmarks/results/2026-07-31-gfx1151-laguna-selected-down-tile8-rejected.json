@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T05:02:55+09:00",
+  "kind": "gfx1151_laguna_selected_down_tile8_leaf",
+  "status": "rejected",
+  "performance_claim": false,
+  "source_revision": "5003823ce",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "workload": {
+    "shape": "actual-weight c=1/top-10 selected down, K1024/N3072",
+    "q4_layer": 10,
+    "q6_layer": 1,
+    "selected_experts": [17, 3, 91, 42, 7, 128, 201, 55, 240, 12],
+    "warmups": 5,
+    "paired_samples": 21,
+    "launches_per_sample": 100
+  },
+  "change": {
+    "control": "route-parallel weighted 16-column T16 owner",
+    "candidate": "route-parallel weighted 8-column T16 owner",
+    "arithmetic": "unchanged K ownership, FMA order, wave tree, BF16 projection boundary, and slot-order weighted tail",
+    "grid_change": "1920 to 3840 workgroups per layer",
+    "resident_delta_bytes": 0
+  },
+  "results": {
+    "q4": {
+      "control_ms": 0.05931931018829346,
+      "candidate_ms": 0.06948638916015625,
+      "delta_percent": 17.139577212867252,
+      "bf16_mismatches": 0,
+      "completion_counter_nonzero": 0
+    },
+    "q6_planar_qmicro": {
+      "control_ms": 0.07319974899291992,
+      "candidate_ms": 0.07837986946105957,
+      "delta_percent": 7.0766915725908985,
+      "bf16_mismatches": 0,
+      "completion_counter_nonzero": 0
+    }
+  },
+  "trace": {
+    "compiler_spawned_under_profiler": false,
+    "q4_control": "grid24576x10/local128/VGPR104/SGPR128/LDS512/scratch0",
+    "q4_candidate": "grid49152x10/local128/VGPR64/SGPR128/LDS512/scratch0",
+    "q6_control": "grid24576x10/local128/VGPR80/SGPR128/LDS512/scratch0",
+    "q6_candidate": "grid49152x10/local128/VGPR48/SGPR128/LDS512/scratch0",
+    "trace_sha256": "a500b45d83b7cc6e9317644f613f9fedebfb61317abead62cc568f1c497067f1"
+  },
+  "protocol": {
+    "leaf_command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved --down-candidate tile8-weighted --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-selected-down-tile8-leaf.json",
+    "trace_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-down-tile8-trace --output-file trace -- .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved --down-candidate tile8-weighted --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-down-tile8-trace-child.json",
+    "raw_leaf_sha256": "bf278e7b529d16c746f06461132e16cbb75627852e55b58d5648faf78fd7fb75"
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The register reduction does not repay doubling the output workgroups and repeated coefficient/weight transactions. Remove the complete candidate before runtime integration."
+  }
+}
