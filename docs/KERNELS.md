@@ -926,11 +926,16 @@ uses C4096/direct M512 and measures **278.062 tok/s**, with **1,831.568 ms /
 scalar BF16 activation load per logical row even where H5X already vectorizes
 weights. **WPF-H5Y** therefore freezes each role's H5X/H5L weight layout and
 arithmetic but packs exact BF16 bits as aligned `[row_group][k][row_slot]`
-records. Static load instances model **4.521B -> 0.920B (-79.65%)** at maximum
-**10,125,312-byte** transient cost. Before runtime ownership, require rows17/33/
-512 plane and output bytes, physical width-matched vector loads, scratch0, and
-pack-inclusive producer+consumer both-clock wins across all six actual roles
-([post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+records. Static load instances model **4.521B -> 0.920B (-79.65%)**. The
+standalone gate admits all six roles: rows17/33/512 plane/output bytes are exact,
+physical b64/b128 plus bounded tail loads preserve each weight-load class and
+consumer resources at scratch0, and the **188-call** pack-inclusive event/wall
+aggregate falls **462.608/455.971 -> 263.014/274.237 ms
+(-43.145%/-39.856%)**. Production remains H5X. Before promotion, require the
+bounded **161,120,256-byte** default-off owner, complete state/topology, and
+clean 512/1K/4K non-regression
+([H5Y candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
+[post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
 [H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·

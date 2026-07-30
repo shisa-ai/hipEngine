@@ -706,6 +706,45 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 10, "f32"),
             )
         ),
+        # H5Y exact activation-tile-K-row packs/consumers are likewise
+        # W7900-only pending an independent gfx1151 transfer gate.
+        *(
+            (
+                "activation_pack",
+                "bf16",
+                f"tile_k_row_coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for col_tile, row_batch, output_dtype, _weight_layout in (
+                (8, 4, "bf16", "tile_k_col"),
+                (8, 12, "bf16", "row_major"),
+                (16, 5, "bf16", "tile_k_col"),
+                (12, 8, "bf16", "row_major"),
+                (16, 5, "f32", "tile_k_col"),
+                (8, 10, "f32", "tile_k_col"),
+            )
+        ),
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}{weight_layout}_activation_tile_k_row_"
+                f"coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype, weight_layout in (
+                (8, 4, "bf16", "tile_k_col"),
+                (8, 12, "bf16", "row_major"),
+                (16, 5, "bf16", "tile_k_col"),
+                (12, 8, "bf16", "row_major"),
+                (16, 5, "f32", "tile_k_col"),
+                (8, 10, "f32", "tile_k_col"),
+            )
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),

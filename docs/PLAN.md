@@ -1742,10 +1742,16 @@ one scalar BF16 activation load per logical row. Select **WPF-H5Y exact
 tile-K-row BF16 activation AoSoA**: a bounded projection-local bit-copy plane
 feeds width-matched aligned records while every H5X/H5L weight layout,
 geometry, four-wave K/FMA/reduction/store boundary, and fallback remains fixed.
-The static six-role load model is **4.521B -> 0.920B (-79.65%)** with at most
-**10,125,312 bytes** of new transient workspace; this is rationale only and
-requires pack-inclusive both-clock wins
-([post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
+The static six-role load model is **4.521B -> 0.920B (-79.65%)**. H5Y now
+admits all six standalone leaves: rows17/33/512 planes and outputs are exact,
+physical loads are width-matched with unchanged consumer resources/scratch0,
+and the **188-call** pack-inclusive event/wall aggregate falls
+**462.608/455.971 -> 263.014/274.237 ms (-43.145%/-39.856%)** with 6/6
+both-clock wins. Production remains H5X; next require bounded
+**161,120,256-byte** default-off ownership, complete state/topology, and clean
+512/1K/4K non-regression
+([H5Y candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
+[post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
 [H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
