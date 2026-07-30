@@ -1310,7 +1310,13 @@ def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
     assert runner_module._resolve_laguna_f32_ordered_prefill_quants(
         "hip_gfx1100"
     ) == frozenset(("gguf_q5_k", "gguf_q6_k"))
+    assert runner_module._resolve_laguna_q5_activation_tile_k_row(
+        "hip_gfx1100"
+    )
     assert not runner_module._resolve_laguna_f32_ordered_prefill_quants(
+        "hip_gfx1151"
+    )
+    assert not runner_module._resolve_laguna_q5_activation_tile_k_row(
         "hip_gfx1151"
     )
     assert backend_package_capability(

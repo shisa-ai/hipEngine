@@ -1750,10 +1750,13 @@ and the **188-call** pack-inclusive event/wall aggregate falls
 both-clock wins. The bounded **161,120,256-byte** default-off owner now passes
 complete M512 at KL0/byte-exact across all state and repeat. Paired tracing
 records **188 packs + 235 weight producers + 188 H5Y + 47 H5G** and cuts
-Q5/request/span **47.204%/9.685%/9.770%**. Clean 512/1K/4K improves
-**10.939%/9.051%/5.920%**, 3/3 wins each. Production remains H5X pending the
-selector-unset publication gate
-([H5Y candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
+Q5/request/span **47.204%/9.685%/9.770%**. Default-off 512/1K/4K improves
+**10.939%/9.051%/5.920%**, 3/3 wins each. Selector-unset confirms
+**10.862%/8.969%/5.829%**, again 3/3 each. Promote H5Y at canonical
+**303.140/256.139/171.830 tok/s (+10.892%/+8.967%/+5.720% over H5X)** and
+reprofile the comparator-shaped C4096/direct-M512 request next
+([H5Y production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
+[H5Y candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
 [post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
 [H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
 [H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·

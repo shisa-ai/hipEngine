@@ -1,0 +1,740 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_q5_activation_tile_k_row_production",
+  "date": "2026-07-31",
+  "status": "retained_exact_package_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "target_revision": "16f8f6762",
+    "red_revision": "e118c4b60",
+    "leaf_revision": "c615e91c7",
+    "runtime_red_revision": "9cd9ac9c3",
+    "runtime_qualification_revision": "67a3b5b2f",
+    "source_default_red_revision": "e1224e3b0",
+    "source": "net-new in-tree exact BF16 activation-tile-K-row producer/consumer over retained H5X/H5L weight layouts and arithmetic",
+    "candidate_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json",
+    "candidate_artifact_sha256": "c73f613484013d0d2dec294f01ab6f7ef56a04528c5590d3113ea7737c972171",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json",
+    "target_artifact_sha256": "4882d7ce6c48ca3e0d98805e506d83859a54a9b939adccec0e68024707695418",
+    "preceding_canonical_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json",
+    "preceding_canonical_artifact_sha256": "a5947ddc2a4fbc33fb1e3fbab25dce6d85e6a8726be3de495ad7580da91729b9",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "9ee5a3eac8e170b89659406f806e6623f0a35f69cbcd1a1c879fc363d1ab5af8",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "89a6a324c0ac363bfdfbde139d9b2c52de6170b592b7cca837c5b1c14026649f",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "63c17b7a94b31d0d073b1bd6ae8b36815d385570035c29f878ff24323bde31a2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "8d186677762eab061bf4d64ba2568c22f9ab2583d4b885a9a8b7bfb981340fbf",
+      "hipengine/runtime/gguf_linear.py": "8e40f81a21ecaf6d7cc2a13d62eab142fe23401e3af028bafa1aaaf169341f40",
+      "hipengine/runtime/laguna_gguf_runner.py": "81aeb95f500b42c1716c5c40c197f7df0dac61f4d04af66c11ba468a2c271d8b",
+      "tests/test_laguna_h5y_q5_activation_tile_k_row.py": "843dc78a58ac79d0dc0c19045cbbbdc5664f5ad694bfb3187e686b2e389ccad0",
+      "tests/test_laguna_h5x_q5_tile_k_col.py": "03c89ed60df03b5c2cd1f73ef192b3f2374870d36b2198229132dcce48df2cdd",
+      "tests/test_laguna_h5w_q6_weight_major_composites.py": "9087f62c0452f9ac0837d61b55d01c51888a95ac1159d3671b22ef86387b8ae7",
+      "tests/test_laguna_h5p_q5_weight_major_occupancy.py": "1bc8fa4161b0f8ef653d49c7d4ac9164ad0a97ab61a1ea05c2e7a69adb704c79",
+      "tests/test_laguna_gguf_runner.py": "ee87b746c2be9adf14337076d6e2bfa03c2218df63f3361a76a7b786df09801c",
+      "tests/test_gguf_k_rowtile_gemv.py": "0d2298a7a4011c1cf0d5672b61af1f93a5a1bb363203a16de0e1bf5ea1082b4f"
+    }
+  },
+  "production_policy": {
+    "capability": "GGUF_Q5_F32_ORDERED_PREFILL_POLICY within GGUF_F32_ORDERED_PREFILL_POLICIES",
+    "h5y_roles": {
+      "bf16_k3072_n1024": "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch4",
+      "bf16_k3072_n12288": "weight_major_row_major_activation_tile_k_row_coltile8_rowbatch12",
+      "bf16_k6144_n3072": "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5",
+      "bf16_k9216_n3072": "weight_major_row_major_activation_tile_k_row_coltile12_rowbatch8",
+      "f32_k3072_n6144": "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5",
+      "f32_k3072_n9216": "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch10"
+    },
+    "retained_h5g_roles": {
+      "f32_k3072_n48": "coltile12_rowbatch4",
+      "f32_k3072_n72": "coltile8_rowbatch4"
+    },
+    "calls_per_m512": {
+      "activation_packs": 188,
+      "weight_producers": 235,
+      "h5y_consumers": 188,
+      "retained_h5g_consumers": 47
+    },
+    "h5x_h5l_h5g_fallbacks_registered": true,
+    "q6_policy_unchanged": true,
+    "gfx1151_fail_closed": true,
+    "public_per_session_selector": false
+  },
+  "ownership": {
+    "runtime_default_new_device_bodies": 0,
+    "runtime_default_additional_launches_per_m512": 188,
+    "runtime_default_new_allocations": 0,
+    "new_persistent_weight_sidecar_bytes": 0,
+    "existing_shared_f32_plane_bytes": 150994944,
+    "activation_plane_bytes": 10125312,
+    "control_workspace_bytes": 150994944,
+    "candidate_workspace_bytes": 161120256,
+    "eager_aliases": 6
+  },
+  "leaf_admission": {
+    "candidate": {
+      "additional_launches_per_projection": 1,
+      "additional_session_workspace_bytes_if_runtime_owned": 10125312,
+      "admitted_production_invocations": 188,
+      "admitted_roles": [
+        "bf16_k3072_n1024",
+        "bf16_k3072_n12288",
+        "bf16_k6144_n3072",
+        "bf16_k9216_n3072",
+        "f32_k3072_n6144",
+        "f32_k3072_n9216"
+      ],
+      "candidate_session_workspace_bytes_if_runtime_owned": 161120256,
+      "consumer": "local128/four-wave ordered Q5 consumer over width-matched aligned activation records and each role's unchanged H5X/H5L F32 weight plane",
+      "current_session_weight_workspace_bytes": 150994944,
+      "maximum_activation_plane_bytes": 10125312,
+      "name": "WPF-H5Y exact tile-K-row BF16 activation AoSoA",
+      "persistent_sidecar_bytes": 0,
+      "preserved": "every input BF16 bit, reconstructed F32 weight bit, current role weight layout and producer, geometry, workgroup order/count, local128 four-wave K ownership, scalar fmaf order, wave32 shuffle tree, serial wave sum, output store, package policy, and fallback",
+      "producer": "linear local256 exact BF16-bit pack into [row_group][k][row_slot] with row slots padded only to 8/16",
+      "runtime_eager_aliases_added": 6,
+      "screened_roles": 6
+    },
+    "actual_weight_screen": {
+      "aggregate": {
+        "all_candidate_event_reduction_percent": -43.145453469626915,
+        "all_candidate_event_speedup": 1.7588742871527006,
+        "all_candidate_event_weighted_ms": 263.0135464668274,
+        "all_candidate_wall_reduction_percent": -39.85633377828106,
+        "all_candidate_wall_speedup": 1.6626854710078887,
+        "all_candidate_wall_weighted_ms": 274.23749710433185,
+        "current_event_weighted_ms": 462.60776405334474,
+        "current_wall_weighted_ms": 455.9707020409405,
+        "selected_event_speedup": 1.7588742871527006,
+        "selected_event_weighted_ms": 263.0135464668274,
+        "selected_wall_speedup": 1.6626854710078887,
+        "selected_wall_weighted_ms": 274.23749710433185
+      },
+      "all_candidate_bytes_exact": true,
+      "both_clock_positive_roles": 6,
+      "protocol": {
+        "actual_weights": true,
+        "candidate": "H5Y exact BF16 tile-K-row pack plus unchanged current weight producer/layout and local128 arithmetic",
+        "control": "current H5X/H5L exact F32-plane weight layout and local128 body",
+        "counter_rotated_repetitions": 15,
+        "deterministic_bf16_input": true,
+        "event_and_synchronized_wall": true,
+        "gpu_max_hw_queues": 1,
+        "inclusive_candidate": "one exact BF16 activation pack plus the same exact raw-Q5-to-F32 producer and one H5Y ordered consumer",
+        "inclusive_control": "one unchanged exact raw-Q5-to-F32 producer plus one current ordered consumer",
+        "launches_per_sample": 5,
+        "mode_starts_per_role": {
+          "current": 8,
+          "h5y": 7
+        },
+        "production_invocations": 188,
+        "rows": 512,
+        "selection_rule": "retain a role only when H5Y improves both event and synchronized-wall medians",
+        "unique_configurations": 6,
+        "warmups": 5
+      },
+      "rows": [
+        {
+          "activation_workspace_bytes": 6291456,
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 0.33447420597076416,
+          "candidate_projection_workspace_bytes": 18874368,
+          "candidate_wall_ms": 0.3386585973203182,
+          "control_event_ms": 0.40837860107421875,
+          "control_wall_ms": 0.40576537139713764,
+          "event_speedup": 1.2209569341496977,
+          "geometry": "coltile8_rowbatch4",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 92,
+          "role": "bf16_k3072_n1024",
+          "shape": [
+            1024,
+            3072
+          ],
+          "tensor": "blk.1.ffn_gate_shexp.weight",
+          "wall_speedup": 1.1981546448482656,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "activation_workspace_bytes": 4227072,
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 3.8271255493164062,
+          "candidate_projection_workspace_bytes": 155222016,
+          "candidate_wall_ms": 4.062602436169982,
+          "control_event_ms": 7.627882385253907,
+          "control_wall_ms": 7.462917780503631,
+          "event_speedup": 1.993110047465358,
+          "geometry": "coltile8_rowbatch12",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 2,
+          "role": "bf16_k3072_n12288",
+          "shape": [
+            12288,
+            3072
+          ],
+          "tensor": "blk.0.ffn_gate.weight",
+          "wall_speedup": 1.8369795956552657,
+          "weight_layout": "row_major"
+        },
+        {
+          "activation_workspace_bytes": 10125312,
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 1.5456341743469237,
+          "candidate_projection_workspace_bytes": 85622784,
+          "candidate_wall_ms": 1.7891659867018461,
+          "control_event_ms": 2.4319599151611326,
+          "control_wall_ms": 2.3900999687612057,
+          "event_speedup": 1.5734382401247746,
+          "geometry": "coltile16_rowbatch5",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 12,
+          "role": "bf16_k6144_n3072",
+          "shape": [
+            3072,
+            6144
+          ],
+          "tensor": "blk.0.attn_output.weight",
+          "wall_speedup": 1.3358738018304959,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "activation_workspace_bytes": 9437184,
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 2.677581787109375,
+          "candidate_projection_workspace_bytes": 122683392,
+          "candidate_wall_ms": 2.7560667600482702,
+          "control_event_ms": 5.281386947631836,
+          "control_wall_ms": 5.213577812537551,
+          "event_speedup": 1.972446546005767,
+          "geometry": "coltile12_rowbatch8",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 35,
+          "role": "bf16_k9216_n3072",
+          "shape": [
+            3072,
+            9216
+          ],
+          "tensor": "blk.1.attn_output.weight",
+          "wall_speedup": 1.8916732671766774,
+          "weight_layout": "row_major"
+        },
+        {
+          "activation_workspace_bytes": 5062656,
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 1.6987234115600587,
+          "candidate_projection_workspace_bytes": 80560128,
+          "candidate_wall_ms": 1.76598378457129,
+          "control_event_ms": 2.207598876953125,
+          "control_wall_ms": 2.1991793997585773,
+          "event_speedup": 1.2995634615559515,
+          "geometry": "coltile16_rowbatch5",
+          "mismatch_count": 0,
+          "output_dtype": "f32",
+          "production_invocations": 12,
+          "role": "f32_k3072_n6144",
+          "shape": [
+            6144,
+            3072
+          ],
+          "tensor": "blk.0.attn_q.weight",
+          "wall_speedup": 1.2452998826897212,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "activation_workspace_bytes": 5111808,
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 2.626857566833496,
+          "candidate_projection_workspace_bytes": 118358016,
+          "candidate_wall_ms": 2.738044783473015,
+          "control_event_ms": 4.835940551757813,
+          "control_wall_ms": 4.747653612866998,
+          "event_speedup": 1.8409603218750916,
+          "geometry": "coltile8_rowbatch10",
+          "mismatch_count": 0,
+          "output_dtype": "f32",
+          "production_invocations": 35,
+          "role": "f32_k3072_n9216",
+          "shape": [
+            9216,
+            3072
+          ],
+          "tensor": "blk.1.attn_q.weight",
+          "wall_speedup": 1.7339576187811425,
+          "weight_layout": "tile_k_col"
+        }
+      ],
+      "selected_aggregate_both_clock_positive": true,
+      "selected_roles": {
+        "bf16_k3072_n1024": "h5y",
+        "bf16_k3072_n12288": "h5y",
+        "bf16_k6144_n3072": "h5y",
+        "bf16_k9216_n3072": "h5y",
+        "f32_k3072_n6144": "h5y",
+        "f32_k3072_n9216": "h5y"
+      },
+      "tracked_returned_to_baseline": true
+    },
+    "resource_and_isa": {
+      "all_expected_symbols_and_grids": true,
+      "candidate_calls": 6,
+      "candidate_records": [
+        {
+          "col_tile": 8,
+          "duration_us": 14.08,
+          "grid_x": 98304,
+          "lds_bytes": 512,
+          "local_size": 128,
+          "output_dtype": "bf16",
+          "row_batch": 4,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 72,
+          "vgpr_delta_vs_control": 0,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 12.4,
+          "grid_x": 33024,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_dtype": "bf16",
+          "row_batch": 12,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 200,
+          "vgpr_delta_vs_control": 0,
+          "weight_layout": "row_major"
+        },
+        {
+          "col_tile": 12,
+          "duration_us": 13.84,
+          "grid_x": 32768,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_dtype": "bf16",
+          "row_batch": 8,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 200,
+          "vgpr_delta_vs_control": 0,
+          "weight_layout": "row_major"
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 11.0,
+          "grid_x": 39552,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_dtype": "bf16",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 10.8,
+          "grid_x": 39936,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_dtype": "f32",
+          "row_batch": 10,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 10.479,
+          "grid_x": 39552,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_dtype": "f32",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0,
+          "weight_layout": "tile_k_col"
+        }
+      ],
+      "candidate_resources_match_controls_scratch0": true,
+      "isa": "/tmp/laguna-h5y-device-isa.txt",
+      "isa_records": [
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 2,
+          "global_load_b32_static": 0,
+          "global_load_b64_static": 1,
+          "global_load_d16_static": 0,
+          "output_dtype": "bf16",
+          "row_batch": 4,
+          "scratch_load_static": 0,
+          "scratch_store_static": 0,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 1,
+          "global_load_b32_static": 8,
+          "global_load_b64_static": 1,
+          "global_load_d16_static": 0,
+          "output_dtype": "bf16",
+          "row_batch": 12,
+          "scratch_load_static": 0,
+          "scratch_store_static": 0,
+          "weight_layout": "row_major"
+        },
+        {
+          "col_tile": 12,
+          "global_load_b128_static": 1,
+          "global_load_b32_static": 12,
+          "global_load_b64_static": 0,
+          "global_load_d16_static": 0,
+          "output_dtype": "bf16",
+          "row_batch": 8,
+          "scratch_load_static": 0,
+          "scratch_store_static": 0,
+          "weight_layout": "row_major"
+        },
+        {
+          "col_tile": 16,
+          "global_load_b128_static": 4,
+          "global_load_b32_static": 0,
+          "global_load_b64_static": 1,
+          "global_load_d16_static": 1,
+          "output_dtype": "bf16",
+          "row_batch": 5,
+          "scratch_load_static": 0,
+          "scratch_store_static": 0,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 3,
+          "global_load_b32_static": 1,
+          "global_load_b64_static": 0,
+          "global_load_d16_static": 0,
+          "output_dtype": "f32",
+          "row_batch": 10,
+          "scratch_load_static": 0,
+          "scratch_store_static": 0,
+          "weight_layout": "tile_k_col"
+        },
+        {
+          "col_tile": 16,
+          "global_load_b128_static": 4,
+          "global_load_b32_static": 0,
+          "global_load_b64_static": 1,
+          "global_load_d16_static": 1,
+          "output_dtype": "f32",
+          "row_batch": 5,
+          "scratch_load_static": 0,
+          "scratch_store_static": 0,
+          "weight_layout": "tile_k_col"
+        }
+      ],
+      "isa_sha256": "68d1a5726a3e36f010e78243c1fabf7ff207406a5039414b452725f218045e15",
+      "pack_calls": 6,
+      "pack_records": [
+        {
+          "duration_us": 4.96,
+          "grid_x": 524288,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "row_batch": 4,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "duration_us": 4.4,
+          "grid_x": 421888,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "duration_us": 4.04,
+          "grid_x": 421888,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "duration_us": 4.28,
+          "grid_x": 262144,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "row_batch": 8,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "duration_us": 4.4,
+          "grid_x": 425984,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "row_batch": 10,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "duration_us": 4.28,
+          "grid_x": 352256,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "row_batch": 12,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        }
+      ],
+      "pack_resources_linear_local256_vgpr16_scratch0": true,
+      "physical_width_matched_activation_loads": true,
+      "trace": "/tmp/laguna-wpfh5y-resource-rocprof/h5y_kernel_trace.csv",
+      "trace_sha256": "8fd6af8bd3be036af4c3166cd257f4f83ed42b08ec0fe307cd9927ee54144bdb",
+      "weight_load_classes_unchanged": true
+    }
+  },
+  "full_state_gate": {
+    "candidate_complete_exact": true,
+    "candidate_repeat_exact": true,
+    "candidate_workspace_bytes": 161120256,
+    "control_workspace_bytes": 150994944,
+    "exact_hidden_boundaries": 48,
+    "final_position": 511,
+    "finite": true,
+    "harness_sha256": "a04a976a2abe984ac0dcd912d8396e1cb6453c03f201874a6b11dc5ef10c6c1f",
+    "json_sha256": "4be41961f3eef25df2f18594bab89873b353e5a8842212e6df69a07420ccb3e7",
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "next_token_id": 2930,
+    "quality_gate": true,
+    "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "stdout_sha256": "3b46670fd8a106e40e167d87d7168560ab4d91e5f2ca0317c2c578c5d1da2729",
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true,
+    "workspace_expected": true
+  },
+  "integrated_cached_paired_trace": {
+    "analyzer_sha256": "4bd89a1500591178170aec670e8f8010b65599f6737af0942f2f680a20e55032",
+    "candidate_dispatches_per_request": 2050,
+    "candidate_h5g_consumers": 47,
+    "candidate_h5y_consumers": 188,
+    "candidate_h5y_role_calls": {
+      "bf16_12x8_row_major": 35,
+      "bf16_16x5_tile_k_col": 12,
+      "bf16_8x12_row_major": 2,
+      "bf16_8x4_tile_k_col": 92,
+      "f32_16x5_tile_k_col": 12,
+      "f32_8x10_tile_k_col": 35
+    },
+    "candidate_kernel_sum_median_ms": 1632.0858775000002,
+    "candidate_q5_dispatches_per_request": 658,
+    "candidate_q5_median_ms": 248.49011149999995,
+    "candidate_span_median_ms": 1653.099448,
+    "candidate_workspace_bytes": 161120256,
+    "control_dispatches_per_request": 1862,
+    "control_kernel_sum_median_ms": 1807.1034685,
+    "control_q5_dispatches_per_request": 470,
+    "control_q5_median_ms": 470.66138299999966,
+    "control_span_median_ms": 1832.0900139999999,
+    "control_workspace_bytes": 150994944,
+    "harness_sha256": "706cfbaede12602a3e080845e268425d179f0231f537137c3cffbac2a3ab1b7f",
+    "kernel_sum_reduction_percent": 9.68497897606685,
+    "no_compiler_under_profile": true,
+    "pack_producer_consumer_sequence_exact": true,
+    "protocol": "four fresh-request same-resident counter-rotated control/candidate/candidate/control segments under one process-level HIP queue cap",
+    "q5_activation_packs_per_candidate_request": 188,
+    "q5_reduction_percent": 47.20405784810263,
+    "q5_weight_producers_per_request": 235,
+    "q6_dispatches_per_request": 289,
+    "q6_routes_unchanged": true,
+    "request_segments": 4,
+    "resources": "pack local256/VGPR16/SGPR128/LDS0/scratch0; H5Y consumers local128/VGPR72,168,or200/SGPR128/LDS512 or1536/scratch0",
+    "span_reduction_percent": 9.769747372248927,
+    "stderr_sha256": "c11e9d0128e5c17c7b3ed873e8b69d53faad89dbc29b10acfa23b9d0bf61f2ac",
+    "stdout_sha256": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "summary_sha256": "6fae31823bb770720427d4ac750d845f92bdc82433d84edee65d918d3831da73",
+    "trace_sha256": "f1314e2252e6e62df057e5e600754899fea16b6d651b48d299fc7a5d3fae3f8b"
+  },
+  "default_off_clean_gate": {
+    "rows": {
+      "512": {
+        "control_median_tok_s": 272.9168559841751,
+        "candidate_median_tok_s": 302.77037371135384,
+        "gain_percent": 10.938685930380876,
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "1024": {
+        "control_median_tok_s": 234.86427769427002,
+        "candidate_median_tok_s": 256.1214173695649,
+        "gain_percent": 9.050818576576347,
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "4096": {
+        "control_median_tok_s": 162.36650042697775,
+        "candidate_median_tok_s": 171.9779722421465,
+        "gain_percent": 5.919615062154637,
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      }
+    },
+    "all_exact_finite_and_lifecycle_clean": true
+  },
+  "clean_package_default_gate": {
+    "protocol": "selector-unset H5Y source default versus scoped H5X/H5L/H5G rollback; one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length under one process-level HIP queue cap",
+    "rows": {
+      "512": {
+        "control_median_tok_s": 273.4392890111523,
+        "candidate_median_tok_s": 303.13992606587755,
+        "same_session_gain_percent": 10.861876200063513,
+        "candidate_samples_tok_s": [
+          303.9146921039363,
+          303.13992606587755,
+          302.1250091229728
+        ],
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "1024": {
+        "control_median_tok_s": 235.0580559487102,
+        "candidate_median_tok_s": 256.13928860683507,
+        "same_session_gain_percent": 8.968521658634332,
+        "candidate_samples_tok_s": [
+          257.35196023822346,
+          256.0488783145839,
+          256.13928860683507
+        ],
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "4096": {
+        "control_median_tok_s": 162.36468629953896,
+        "candidate_median_tok_s": 171.82970917654464,
+        "same_session_gain_percent": 5.829483672049296,
+        "candidate_samples_tok_s": [
+          172.18517062129314,
+          171.82970917654464,
+          171.79623326477682
+        ],
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      }
+    },
+    "all_state_exact": true,
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "control_workspace_bytes": 150994944,
+    "candidate_workspace_bytes": 161120256,
+    "json_sha256": "9115f34fd8310092abce8ba6eef239c6ac8fddbe39202b469d57675e05c7b689",
+    "harness_sha256": "8c8f3e95ce473d1cb8c9a713fbec6e5bd87915d18d325d0d84f3bdfbf48fc4dc",
+    "stdout_sha256": "c32a396e82bb9a405cda7a625ea1b69a56a213b016dfcf8d189d58e0b4b4c748",
+    "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+  },
+  "canonical_production": {
+    "preceding_tok_s": {
+      "512": 273.36575836198017,
+      "1024": 235.06076657666233,
+      "4096": 162.5334158377984
+    },
+    "current_tok_s": {
+      "512": 303.13992606587755,
+      "1024": 256.13928860683507,
+      "4096": 171.82970917654464
+    },
+    "gain_percent": {
+      "512": 10.891696122552252,
+      "1024": 8.967265076666141,
+      "4096": 5.719619741471216
+    },
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "canonical_m512_gap": 2.289978786394313,
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    }
+  },
+  "matched_llamacpp_comparator": {
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "median_tok_s": 694.184,
+    "samples_tok_s": [
+      695.611,
+      695.493,
+      694.184,
+      693.732,
+      690.927
+    ],
+    "protocol": "same model, fixed 512 token IDs, context4096, direct M512/ubatch512, FlashAttention, BF16 K/V, one W7900 and one HIP queue, last-row first-token projection",
+    "shape_note": "canonical 512/1K/4K dashboard uses independently allocated sessions; rerun comparator-shaped H5Y C4096/direct-M512 before updating the matched gap"
+  },
+  "source_artifacts": {
+    "full_state_json_sha256": "4be41961f3eef25df2f18594bab89873b353e5a8842212e6df69a07420ccb3e7",
+    "integrated_trace_csv_sha256": "f1314e2252e6e62df057e5e600754899fea16b6d651b48d299fc7a5d3fae3f8b",
+    "integrated_trace_summary_sha256": "6fae31823bb770720427d4ac750d845f92bdc82433d84edee65d918d3831da73",
+    "default_off_clean_json_sha256": "2a3e5011478a3569ee64f5a7afec61c3a415b1b56b8478007b8f5b8aa04b09cf",
+    "package_default_json_sha256": "9115f34fd8310092abce8ba6eef239c6ac8fddbe39202b469d57675e05c7b689",
+    "package_default_harness_sha256": "8c8f3e95ce473d1cb8c9a713fbec6e5bd87915d18d325d0d84f3bdfbf48fc4dc",
+    "package_default_stdout_sha256": "c32a396e82bb9a405cda7a625ea1b69a56a213b016dfcf8d189d58e0b4b4c748",
+    "package_default_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+  },
+  "commands": {
+    "full_state": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/laguna_wpfh5y_q5_activation_tile_k_row_package_full_state.py",
+    "integrated_trace": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5y-integrated-paired-rocprof --output-file h5y-paired -- python3 /tmp/laguna_wpfh5y_q5_activation_tile_k_row_trace_integrated_paired.py",
+    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/laguna_wpfh5y_q5_activation_tile_k_row_default_off_clean_512_4k.py",
+    "package_default_clean": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/laguna_wpfh5y_q5_activation_tile_k_row_package_default_clean_512_4k.py"
+  },
+  "decision": {
+    "promoted_package_default": true,
+    "runtime_default_changed": true,
+    "retained_h5g_roles": 2,
+    "q6_policy_changed": false,
+    "new_memory_allocation_added": false,
+    "gfx1151_policy_changed": false,
+    "long_context_16k_plus_remains_deferred": true,
+    "next_action": "Reprofile the promoted comparator-shaped C4096/direct-M512 request, rerank exact family gaps against matched llama.cpp HIP, and select the next distinct exact target."
+  }
+}
