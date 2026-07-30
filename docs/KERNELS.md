@@ -861,15 +861,14 @@ workspace, and fallbacks. All bytes match; all 36 cached symbols have expected
 grids, scratch0, unchanged LDS, and only +8 VGPR. No role wins both clocks.
 Best aggregate P32 regresses producer-inclusive event/wall
 **459.018/473.034 -> 565.864/566.290 ms (+23.277%/+19.714%)**; remove every
-candidate surface and retain H5L/H5G. H5T now targets the unchanged IQ3
-owner: **479.190 ms** versus llama.cpp HIP **152.380 ms**, a **326.811-ms**
-gap. One local32 block retains H5Q's P64/rowbatch8 traversal while physical
-lane `i` carries logical K256 partitions `i/i+32/i+64/i+96`; each keeps its
-FMA/shuffle tree and lane zero adds totals 0..3. This removes LDS and two block
-barriers per rowbatch phase without changing useful work. Add only a separate
-symbol/key and require exact bytes, local32/LDS0/scratch0/VGPR<=128, and
-all-45-layer both-clock wins before ownership
-([H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
+candidate surface and retain H5L/H5G. H5T maps H5Q's four logical K256
+partitions into one wave while preserving P64/rowbatch8 and every arithmetic
+boundary. Named register planes eliminate an initial scratch104 spill and
+reach local32/VGPR96/LDS0/scratch0 with exact bytes. Actual event/wall moves
+**474.107/485.298 -> 475.945/469.677 ms (+0.388%/-3.219%)**; only **12/45**
+layers win both clocks. Remove the symbol/key/test and retain H5Q
+([H5T rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json) ·
+[H5T target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json) ·
 [H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
 [post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json) ·
 [H5R production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
