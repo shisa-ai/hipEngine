@@ -1787,17 +1787,18 @@ dispatches** in a **1,651.364-ms** median span. Gaps rank IQ-down/attention/Q5/
 gate-up/Q6 at **325.570/235.310/182.882/78.514/77.504 ms**. IQ3 remains first
 at **472.416 ms / 45 calls**, but H5J/H5K/H5Q/H5T/H5Z, output tiling, and source
 MMQ already close the immediate exact ownership/geometry premises. **WPF-H6A
-exact dense-initial cached-only attention metadata elision** now admits separate
-gfx1100 first-fill specializations of H5R SWA qrow4 and H5U global local256.
-Every complete preappended M128 start 0/128/256/384 is byte/CPU exact. With equal
-append cost, weighted event/wall improves SWA **22.241%/22.475%** and global
-**44.388%/44.117%**; cached resources remain local32/VGPR64/scratch0 and
-local256/VGPR40/scratch0, and ISA removes the intended per-token metadata loads.
-The leaves preserve complete `KVLiveSpans`, exact QK/reduction,
-materialized-score/two-pass softmax, normalized-weight-before-PV association,
-F32 stores, allocation, and every fallback. Runtime/package production remains
-unchanged until complete M512 state, exact 144 SWA + 48 global topology, and
-clean one-queue 512/1K/4K qualification
+exact dense-initial cached-only attention metadata elision** now qualifies a
+bounded default-off owner for its H5R-derived SWA and H5U-derived global leaves.
+Natural M512 is KL0 and byte-exact across all 48 boundaries, complete logits/KV/
+`KVLiveSpans`, and repeat at unchanged **161,120,256-byte** workspace. Four
+paired cached requests preserve **2,050** dispatches and exact **48 H6A global +
+144 H6A SWA** write-before-attention topology, moving attention schedule/request-
+sum/span **254.976/1,627.696/1,653.806 -> 170.086/1,560.817/1,581.621 ms
+(-33.294%/-4.109%/-4.365%)**. Resources stay global local256/VGPR40/scratch0
+and SWA local32/VGPR64/scratch0. Default-off 512/1K/4K improves
+**307.071/259.710/173.388 -> 312.331/261.467/173.954 tok/s
+(+1.713%/+0.677%/+0.326%)**, 3/3 wins each. Source production remains H5R/H5Y/
+H5Z until the separate selector-unset publication
 ([H6A candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json) ·
 [post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
 [H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·

@@ -263,6 +263,17 @@ should be removed or collapsed.
   premise and a fresh complete 512/1K/4K gate. No allocation, workspace,
   sidecar, or public selector remains
   ([runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json)).
+- WPF-H6A's empty-by-default
+  `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS` owner is runtime-
+  qualified. Complete M512 state is KL0/byte-exact, paired tracing records exact
+  **48 H6A global + 144 H6A SWA** calls at unchanged **2,050** dispatches, and
+  default-off 512/1K/4K is **+1.713%/+0.677%/+0.326%**, 3/3 wins each. Keep the
+  map, dense role parser, independent allocator/runner selector bookkeeping,
+  and policy test through selector-unset publication. If that gate rejects H6A,
+  remove only this runtime seam and retain both standalone leaves. If promoted,
+  keep H5R/H5U as registered fallbacks and fold the stable owner into package
+  auto policy after one release checkpoint. No allocation, workspace, sidecar,
+  or public selector is permitted.
 
 ## Laguna source-IQ selected-down MMQ selector
 
