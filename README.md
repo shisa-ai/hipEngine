@@ -266,11 +266,22 @@ numbers below.
   (+10.939%/+9.051%/+5.920%)**, 3/3 wins each. Selector-unset publication
   confirms **273.439/235.058/162.365 -> 303.140/256.139/171.830 tok/s
   (+10.862%/+8.969%/+5.829%)**, again 3/3 each. H5Y is production at canonical
-  **303.140/256.139/171.830 tok/s (+10.892%/+8.967%/+5.720% over H5X)**,
-  narrowing the canonical-dashboard M512 gap to **2.28998x**. Both short rows
-  exceed 150 tok/s and H5Y 4K remains positive; 16K+ stays closed below the
-  800/700 stretch target
-  ([H5Y production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
+  **303.140/256.139/171.830 tok/s (+10.892%/+8.967%/+5.720% over H5X)**.
+  The binding C4096/direct-M512 row is **306.305 tok/s** from five exact
+  token-2930/lifecycle-clean samples, **+80.69%** over campaign start and
+  **2.26632x** behind llama.cpp HIP. Its cached trace reconciles
+  **1,658.386 ms / 2,050 dispatches** versus llama.cpp **724.299 ms**; gaps now
+  rank IQ-down/attention/Q5/gate-up/Q6 at
+  **339.558/239.624/188.153/82.382/79.327 ms**. IQ3 alone owns
+  **486.381 ms / 45 calls**. WPF-H5Z therefore targets a distinct exact
+  activation-resident output-column sweep: preserve H5Q's local128/four-wave
+  rowbatch8 arithmetic, keep each K8 activation tile in registers, and sweep
+  one independent output at a time. The P64 static VMEM-record model falls
+  **45.426%**, explicitly not yet a measured speed claim. Both short rows exceed
+  150 tok/s and H5Y 4K remains positive; 16K+ stays closed below the 800/700
+  stretch target
+  ([post-H5Y matched residual / H5Z target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
+  [H5Y production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
   [H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
   [post-H5X matched residual / H5Y target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
   [preceding H5X production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·

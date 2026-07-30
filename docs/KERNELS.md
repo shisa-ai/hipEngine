@@ -938,9 +938,16 @@ Q5/request/span **47.204%/9.685%/9.770%**. Default-off 512/1K/4K improves
 **10.939%/9.051%/5.920%**, 3/3 wins each. Selector-unset confirms
 **10.862%/8.969%/5.829%**, again 3/3 each, promoting canonical
 **303.140/256.139/171.830 tok/s (+10.892%/+8.967%/+5.720% over H5X)**.
-H5Y is package production; reprofile the comparator-shaped C4096/direct-M512
-request next
-([H5Y production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
+Matched C4096/direct-M512 reaches **306.305 tok/s / 1,658.386-ms** kernel sum
+and narrows llama.cpp HIP to **2.26632x**. Gaps rank IQ-down/attention/Q5 at
+**339.558/239.624/188.153 ms**; exact IQ3 alone is **486.381 ms / 45 calls**.
+WPF-H5Z selects an orthogonal exact activation-resident output-column sweep:
+keep H5Q P64, local128/four-wave K, and rowbatch8 arithmetic, retain one K8
+activation tile in registers, then process independent output columns
+sequentially. At output P64 the static activation+five-weight VMEM-record model
+falls **45.426%**, not yet a measured speed claim
+([post-H5Y residual / H5Z target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
+[H5Y production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
 [H5Y candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·
 [post-H5X matched residual / H5Y target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5x-matched-residual.json) ·
 [H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
