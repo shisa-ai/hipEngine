@@ -133,6 +133,10 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),
 }
+# H5Q's admitted P64 leaf requires the existing active-expert list/count ABI.
+# Keep ABI overrides empty until complete-state, trace, and all-length runtime
+# qualification proves package ownership; H5J remains the selector-unset owner.
+LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short
 # shapes. WPF-1T's exact constant-accumulator screen admits four adjacent output
@@ -217,6 +221,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+    "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",

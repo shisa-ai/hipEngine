@@ -60,6 +60,10 @@ _GROUPED_IQ_DOWN_BASELINE_VARIANTS = MappingProxyType(
     }
 )
 _GROUPED_IQ_DOWN_ROLE = (1024, 3072)
+_GROUPED_IQ_DOWN_BASELINE_ABI = "grouped_raw_iq"
+_GROUPED_IQ_DOWN_SUPPORTED_ABIS = frozenset(
+    {_GROUPED_IQ_DOWN_BASELINE_ABI, "grouped_raw_iq_active_experts"}
+)
 _IQ3_WAVE10_FUSED_VARIANT = (
     "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
 )
@@ -335,7 +339,7 @@ def _resolve_laguna_grouped_iq_down_variants(
     config: LagunaGGUFConfig,
     *,
     backend: str,
-) -> Mapping[str, str]:
+) -> Mapping[str, tuple[str, str]]:
     """Apply registered package variants only to the exact Laguna IQ-down role."""
 
     raw_variants = backend_package_capability(
@@ -357,14 +361,35 @@ def _resolve_laguna_grouped_iq_down_variants(
             raise ValueError("Laguna grouped-IQ down policy requires non-empty variants")
         parsed[quant] = variant
 
-    selected = dict(_GROUPED_IQ_DOWN_BASELINE_VARIANTS)
+    raw_variant_abis = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
+        {},
+    )
+    if not isinstance(raw_variant_abis, Mapping):
+        raise ValueError("Laguna grouped-IQ down variant ABIs must be a mapping")
+    variant_abis: dict[str, str] = {}
+    for raw_variant, raw_abi in raw_variant_abis.items():
+        variant = str(raw_variant).strip()
+        abi = str(raw_abi).strip()
+        if not variant or abi not in _GROUPED_IQ_DOWN_SUPPORTED_ABIS:
+            raise ValueError("Laguna grouped-IQ down policy has unsupported variant ABI")
+        variant_abis[variant] = abi
+
+    selected = {
+        quant: (variant, _GROUPED_IQ_DOWN_BASELINE_ABI)
+        for quant, variant in _GROUPED_IQ_DOWN_BASELINE_VARIANTS.items()
+    }
     role = (config.expert_feed_forward_length, config.hidden_size)
     if role != _GROUPED_IQ_DOWN_ROLE:
         return MappingProxyType(selected)
     for quant, variant in parsed.items():
         key = KernelKey(backend, "moe_linear", quant, variant)
         if is_registered(key):
-            selected[quant] = variant
+            selected[quant] = (
+                variant,
+                variant_abis.get(variant, _GROUPED_IQ_DOWN_BASELINE_ABI),
+            )
     return MappingProxyType(selected)
 
 
@@ -1009,12 +1034,13 @@ def resolve_laguna_moe_plan(
             for quant, key in grouped_pair16_gate_up_keys.items()
         }
     )
+    grouped_exact_down_policies = _resolve_laguna_grouped_iq_down_variants(
+        config,
+        backend=backend,
+    )
     grouped_exact_down_specs = {
         quant: KernelKey(backend, "moe_linear", quant, variant)
-        for quant, variant in _resolve_laguna_grouped_iq_down_variants(
-            config,
-            backend=backend,
-        ).items()
+        for quant, (variant, _abi) in grouped_exact_down_policies.items()
     }
     grouped_exact_down_keys = MappingProxyType(
         {
@@ -1028,7 +1054,7 @@ def resolve_laguna_moe_plan(
             quant: LagunaMoESelectedRoute(
                 key=key,
                 function=_resolve_exact(key),
-                abi="grouped_raw_iq",
+                abi=grouped_exact_down_policies[quant][1],
                 allocation_name="raw",
                 library_key="grouped_iq_prefill",
             )
@@ -1699,6 +1725,76 @@ def _launch_selected_gate_up_grouped_exact(
     return True
 
 
+def _launch_grouped_down_raw_iq(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_gate.ptr,
+        scratch.grouped_expert_start.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        compact_rows=lanes,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        num_experts=plan.expert_count,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
+def _launch_grouped_down_raw_iq_active_experts(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_gate.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        compact_rows=lanes,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        num_experts=plan.expert_count,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
+_GROUPED_EXACT_DOWN_ABIS = MappingProxyType(
+    {
+        _GROUPED_IQ_DOWN_BASELINE_ABI: _launch_grouped_down_raw_iq,
+        "grouped_raw_iq_active_experts": (
+            _launch_grouped_down_raw_iq_active_experts
+        ),
+    }
+)
+
+
 def _launch_selected_down_grouped_exact(
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
@@ -1715,26 +1811,21 @@ def _launch_selected_down_grouped_exact(
     weight = layer.weight("ffn_down_exps")
     try:
         route = plan.grouped_exact_down_routes[weight.spec.quant_key]
+        launch = _GROUPED_EXACT_DOWN_ABIS[route.abi]
     except KeyError as exc:
         raise ValueError(
             f"no Laguna exact grouped-down route for {weight.spec.quant_key!r}"
         ) from exc
     active_runtime = runtime or get_hip_runtime()
-    route.function(
-        scratch.expert_gate.ptr,
-        scratch.grouped_expert_start.ptr,
+    launch(
+        route,
+        plan,
         weight.allocation(route.allocation_name).tensor.ptr,
-        scratch.expert_down.ptr,
-        compact_rows=lanes,
-        in_features=plan.expert_ffn_size,
-        out_features=plan.hidden_size,
-        num_experts=plan.expert_count,
-        **_stage_kwargs(
-            route.library_key,
-            libraries,
-            stream=stream,
-            runtime=active_runtime,
-        ),
+        scratch,
+        lanes=lanes,
+        stream=stream,
+        runtime=active_runtime,
+        libraries=libraries,
     )
     plan.grouped_weighted_sum(
         scratch.expert_down.ptr,
