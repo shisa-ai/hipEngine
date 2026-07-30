@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T21:07:03.816481+00:00",
+  "kind": "hipengine_laguna_f16_q8_weight_only_rejection",
+  "status": "rejected_correctness",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "revision_before_diagnostic_commit": "f93f3597694800196e342338c950db66b6ee025d",
+    "model": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "diagnostic": "scripts/laguna_f16_decode_q8_full_gate.py"
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "teacher_forced": true,
+    "activation_path": "exact BF16 for Q/K/V/gate and exact F32 for output",
+    "weight_path": "one-plane GGUF Q8_0 with FP32 accumulation",
+    "quality_gate": {
+      "maximum_kl": 0.05,
+      "top1_agreement": 0.9
+    },
+    "control_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --decode-tokens 16 --modes control,all --scopes all --activation-path exact --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-decode-q8-weight-only-exact-directional.json",
+    "family_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --decode-tokens 16 --modes qkv_gate,output --scopes all --activation-path exact --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-decode-q8-weight-only-exact-family-split.json"
+  },
+  "representation": {
+    "source_f16_bytes": 5606277120,
+    "q8_0_bytes": 2978334720,
+    "byte_change_percent": -46.875,
+    "weight_count": 240,
+    "diagnostic_output_t16_duplicate_bytes": 1323565056,
+    "duplicate_note": "The extra output T16 allocation exists only because the diagnostic uses raw Q8 for BF16-to-F32 and T16 Q8 for F32-to-BF16. A production layout would keep one byte-neutral Q8 representation, not both output copies."
+  },
+  "results": [
+    {
+      "mode": "unfused_f16_control",
+      "maximum_kl": 0.0,
+      "top1_agreement": 1.0,
+      "median_decode_wall_ms_per_token": 46.754220966249704,
+      "dispatch_counts": {
+        "exact_single": 1536,
+        "exact_triple": 768
+      },
+      "passed": true
+    },
+    {
+      "mode": "all_q8_weights_exact_activations",
+      "maximum_kl": 14.548566485488264,
+      "mean_kl": 8.725320587795167,
+      "top1_agreement": 0.0,
+      "median_decode_wall_ms_per_token": 43.77075482625514,
+      "dispatch_counts": {
+        "q8_weight_gate": 768,
+        "q8_weight_output": 768,
+        "q8_weight_qkv": 2304
+      },
+      "passed": false
+    },
+    {
+      "mode": "qkv_and_gate_q8_weights_exact_bf16_activation",
+      "maximum_kl": 0.3219524382668661,
+      "mean_kl": 0.04618934752182292,
+      "top1_agreement": 1.0,
+      "median_decode_wall_ms_per_token": 48.268537037074566,
+      "passed": false
+    },
+    {
+      "mode": "output_q8_weights_exact_f32_activation",
+      "maximum_kl": 14.36776942831569,
+      "mean_kl": 8.499260812907588,
+      "top1_agreement": 0.0,
+      "median_decode_wall_ms_per_token": 42.20082506071776,
+      "passed": false
+    }
+  ],
+  "validation": {
+    "dispatch_unit_tests": "4 passed",
+    "raw_q8_bf16_f32_cpu_oracle": {
+      "worst_max_abs": 0.0
+    },
+    "q8_t16_f32_bf16_cpu_oracle": "passed",
+    "unfused_control": "KL=0 and 16/16 top-1, proving the repaired interception seam is neutral",
+    "lineage_check": "blocked by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout"
+  },
+  "raw_evidence": {
+    "control_and_all_sha256": "f64d255dd37c728491635d378d5ae482a967beee7b016137bb365334482a3aba",
+    "family_split_sha256": "fa959cde74e497a3baa3ff70568d39e80e281dfb711aae6192242a4bd8a97f8"
+  },
+  "decision": {
+    "retain_production_path": false,
+    "production_changed": false,
+    "production_decode_tokens_per_second": 22.752894,
+    "conclusion": "One-plane Q8 source-F16 replacement is not quality-safe even when activation quantization is removed. The earlier Q8_0-by-Q8_1 result benefited from error cancellation; activation Q8_1 was not the primary blocker. Close Q8 source-F16 compression and retain only the repaired diagnostic."
+  }
+}

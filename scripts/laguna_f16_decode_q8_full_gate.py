@@ -33,9 +33,18 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
     gguf_q8_0_dp4a_gemv_f32_f32_out,
     gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    build_gguf_k_gemv,
+    gguf_q8_0_gemv_bf16_f32_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
+    build_gguf_q8_0_t16_gemv,
+    gguf_q8_0_t16_gemv_decode_f32_bf16_out,
+)
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_f16_decode_q8_screen import (
@@ -57,6 +66,8 @@ from scripts.laguna_target_ar_bench import (
 
 _BLOCK = 32
 _MODES = ("all", "qkv_gate", "output")
+_MODE_CHOICES = ("control", *_MODES)
+_ACTIVATION_PATHS = ("q8_1_dp4a", "exact")
 _SCOPES = (
     "all",
     "full",
@@ -89,7 +100,7 @@ def _parse_list(
 
 
 def _parse_modes(value: str) -> tuple[str, ...]:
-    return _parse_list(value, choices=_MODES, noun="modes")
+    return _parse_list(value, choices=_MODE_CHOICES, noun="modes")
 
 
 def _parse_scopes(value: str) -> tuple[str, ...]:
@@ -102,6 +113,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--decode-tokens", type=int, default=16)
     parser.add_argument("--modes", type=_parse_modes, default=_MODES)
     parser.add_argument("--scopes", type=_parse_scopes, default=("all",))
+    parser.add_argument(
+        "--activation-path",
+        choices=_ACTIVATION_PATHS,
+        default="q8_1_dp4a",
+        help=(
+            "q8_1_dp4a reproduces the original weight+activation screen; "
+            "exact keeps BF16/F32 activations unquantized and changes only weights"
+        ),
+    )
     parser.add_argument("--kl-limit", type=float, default=0.05)
     parser.add_argument("--top1-minimum", type=float, default=0.90)
     parser.add_argument("--compiler-version-file", type=Path)
@@ -291,8 +311,105 @@ class Q8Sidecar:
         self.close()
 
 
+class Q8WeightOnlySidecar:
+    """Diagnostic Q8_0 weights for the exact-activation quality screen."""
+
+    def __init__(
+        self,
+        owner: LagunaGGUFResidentSession,
+        reader: GGUFReader,
+    ) -> None:
+        assert owner.weights is not None
+        self.runtime = owner.runtime
+        self.raw_weights: dict[str, DeviceBuffer] = {}
+        self.output_t16_weights: dict[str, DeviceBuffer] = {}
+        self.source_nbytes = 0
+        self.q8_nbytes = 0
+        self.output_t16_nbytes = 0
+        self.build_seconds = 0.0
+        started = time.perf_counter()
+        try:
+            for layer in owner.weights.layers:
+                for slot in _SLOTS:
+                    weight = layer.weight(slot)
+                    if weight.spec.layout != LAYOUT_DENSE_F16:
+                        raise ValueError(
+                            f"Q8 sidecar requires source F16, got {weight.spec.layout}"
+                        )
+                    source_name = weight.spec.source.name
+                    if (
+                        GGMLQuantizationType(weight.spec.source.ggml_type)
+                        != GGMLQuantizationType.F16
+                    ):
+                        raise ValueError(
+                            f"Q8 sidecar source must be GGML F16: {source_name}"
+                        )
+                    source = np.asarray(reader.tensor_data(source_name))
+                    if source.ndim != 2:
+                        raise ValueError(
+                            f"Q8 sidecar source must be rank two: {source_name}"
+                        )
+                    packed = _quantize_f16_q8_0(source)
+                    self.raw_weights[source_name] = _upload(self.runtime, packed)
+                    self.source_nbytes += int(source.nbytes)
+                    self.q8_nbytes += int(packed.nbytes)
+                    if slot == "attn_output":
+                        output_t16 = repack_gguf_q8_0_tile16(packed).tiles
+                        self.output_t16_weights[source_name] = _upload(
+                            self.runtime,
+                            output_t16,
+                        )
+                        self.output_t16_nbytes += int(output_t16.nbytes)
+                        del output_t16
+                    del packed
+                print(
+                    f"weight-only q8 sidecar layer {layer.layer_id + 1}/48 "
+                    f"{self.q8_nbytes / (1024 ** 3):.3f} GiB",
+                    flush=True,
+                )
+        except BaseException:
+            self.close()
+            raise
+        self.build_seconds = time.perf_counter() - started
+
+    def close(self) -> None:
+        for allocation in reversed(tuple(self.output_t16_weights.values())):
+            free(allocation, runtime=self.runtime)
+        self.output_t16_weights.clear()
+        for allocation in reversed(tuple(self.raw_weights.values())):
+            free(allocation, runtime=self.runtime)
+        self.raw_weights.clear()
+
+    def __enter__(self) -> "Q8WeightOnlySidecar":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+
 def _mode_owns(mode: str, family: str) -> bool:
     return mode == "all" or mode == family
+
+
+@contextmanager
+def _unfused_source_f16_projection_owner(
+    owner: LagunaGGUFResidentSession,
+) -> Iterator[None]:
+    """Expose source-F16 projection calls without changing their math."""
+
+    names = (
+        "use_f16_projection_head_kv_decode",
+        "use_f16_attention_quad_decode",
+        "use_f16_output_add_rmsnorm_decode",
+    )
+    original = {name: bool(getattr(owner, name)) for name in names}
+    for name in names:
+        setattr(owner, name, False)
+    try:
+        yield
+    finally:
+        for name, value in original.items():
+            setattr(owner, name, value)
 
 
 @contextmanager
@@ -307,7 +424,7 @@ def _q8_decode_owner(
 ) -> Iterator[dict[str, int]]:
     import hipengine.runtime.laguna_gguf_runner as runner
 
-    if mode not in _MODES:
+    if mode not in _MODE_CHOICES:
         raise ValueError(f"unsupported Q8 owner mode {mode!r}")
     original_single = runner.launch_f16_weight_linear
     original_triple = runner.launch_f16_weight_linear_triple
@@ -475,7 +592,166 @@ def _q8_decode_owner(
     runner.launch_f16_weight_linear = single
     runner.launch_f16_weight_linear_triple = triple
     try:
-        yield counters
+        with _unfused_source_f16_projection_owner(owner):
+            yield counters
+    finally:
+        runner.launch_f16_weight_linear = original_single
+        runner.launch_f16_weight_linear_triple = original_triple
+
+
+@contextmanager
+def _q8_weight_only_decode_owner(
+    owner: LagunaGGUFResidentSession,
+    sidecar: Q8WeightOnlySidecar,
+    mode: str,
+    selected_layers: frozenset[int],
+    *,
+    raw_library,
+    t16_library,
+) -> Iterator[dict[str, int]]:
+    """Replace source-F16 weights while keeping every activation unquantized."""
+
+    import hipengine.runtime.laguna_gguf_runner as runner
+
+    if mode not in _MODE_CHOICES:
+        raise ValueError(f"unsupported Q8 owner mode {mode!r}")
+    original_single = runner.launch_f16_weight_linear
+    original_triple = runner.launch_f16_weight_linear_triple
+    counters = {
+        "q8_weight_gate": 0,
+        "q8_weight_output": 0,
+        "q8_weight_qkv": 0,
+        "exact_single": 0,
+        "exact_triple": 0,
+    }
+
+    def single(
+        weight,
+        x_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    ):
+        source_name = weight.spec.source.name
+        family = _classify_source_name(source_name)
+        layer = _layer_id(source_name)
+        stream = int(kwargs.get("stream", 0))
+        if (
+            rows == 1
+            and layer in selected_layers
+            and family == "gate"
+            and _mode_owns(mode, "qkv_gate")
+        ):
+            gguf_q8_0_gemv_bf16_f32_out(
+                x_ptr,
+                sidecar.raw_weights[source_name].ptr,
+                out_ptr,
+                1,
+                in_features,
+                out_features,
+                stream=stream,
+                library=raw_library,
+                runtime=owner.runtime,
+            )
+            counters["q8_weight_gate"] += 1
+            return
+        if (
+            rows == 1
+            and layer in selected_layers
+            and family == "output"
+            and _mode_owns(mode, "output")
+        ):
+            gguf_q8_0_t16_gemv_decode_f32_bf16_out(
+                x_ptr,
+                sidecar.output_t16_weights[source_name].ptr,
+                out_ptr,
+                1,
+                in_features,
+                out_features,
+                stream=stream,
+                library=t16_library,
+                runtime=owner.runtime,
+            )
+            counters["q8_weight_output"] += 1
+            return
+        counters["exact_single"] += 1
+        original_single(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+
+    def triple(
+        q_weight,
+        k_weight,
+        v_weight,
+        x_ptr,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        rows,
+        in_features,
+        q_features,
+        k_features,
+        v_features,
+        **kwargs,
+    ):
+        source_name = q_weight.spec.source.name
+        family = _classify_source_name(source_name)
+        layer = _layer_id(source_name)
+        stream = int(kwargs.get("stream", 0))
+        if (
+            rows == 1
+            and layer in selected_layers
+            and family == "qkv"
+            and _mode_owns(mode, "qkv_gate")
+        ):
+            for weight, target_ptr, features in (
+                (q_weight, q_ptr, q_features),
+                (k_weight, k_ptr, k_features),
+                (v_weight, v_ptr, v_features),
+            ):
+                gguf_q8_0_gemv_bf16_f32_out(
+                    x_ptr,
+                    sidecar.raw_weights[weight.spec.source.name].ptr,
+                    target_ptr,
+                    1,
+                    in_features,
+                    features,
+                    stream=stream,
+                    library=raw_library,
+                    runtime=owner.runtime,
+                )
+                counters["q8_weight_qkv"] += 1
+            return
+        counters["exact_triple"] += 1
+        original_triple(
+            q_weight,
+            k_weight,
+            v_weight,
+            x_ptr,
+            q_ptr,
+            k_ptr,
+            v_ptr,
+            rows,
+            in_features,
+            q_features,
+            k_features,
+            v_features,
+            **kwargs,
+        )
+
+    runner.launch_f16_weight_linear = single
+    runner.launch_f16_weight_linear_triple = triple
+    try:
+        with _unfused_source_f16_projection_owner(owner):
+            yield counters
     finally:
         runner.launch_f16_weight_linear = original_single
         runner.launch_f16_weight_linear_triple = original_triple
@@ -518,7 +794,7 @@ def _exact_reference(
 
 def _candidate(
     owner: LagunaGGUFResidentSession,
-    sidecar: Q8Sidecar,
+    sidecar: Q8Sidecar | Q8WeightOnlySidecar,
     prompt: Sequence[int],
     teacher_inputs: Sequence[int],
     reference_predictions: Sequence[int],
@@ -527,8 +803,11 @@ def _candidate(
     scope: str,
     selected_layers: frozenset[int],
     *,
-    q4_library,
-    dp4a_library,
+    activation_path: str,
+    q4_library=None,
+    dp4a_library=None,
+    raw_library=None,
+    t16_library=None,
     kl_limit: float,
     top1_minimum: float,
 ) -> dict[str, object]:
@@ -536,14 +815,29 @@ def _candidate(
     prefill = owner.prefill(prompt)
     records: list[dict[str, object]] = []
     elapsed_ms: list[float] = []
-    with _q8_decode_owner(
-        owner,
-        sidecar,
-        mode,
-        selected_layers,
-        q4_library=q4_library,
-        dp4a_library=dp4a_library,
-    ) as counters:
+    if activation_path == "q8_1_dp4a":
+        assert isinstance(sidecar, Q8Sidecar)
+        decode_owner = _q8_decode_owner(
+            owner,
+            sidecar,
+            mode,
+            selected_layers,
+            q4_library=q4_library,
+            dp4a_library=dp4a_library,
+        )
+    elif activation_path == "exact":
+        assert isinstance(sidecar, Q8WeightOnlySidecar)
+        decode_owner = _q8_weight_only_decode_owner(
+            owner,
+            sidecar,
+            mode,
+            selected_layers,
+            raw_library=raw_library,
+            t16_library=t16_library,
+        )
+    else:
+        raise ValueError(f"unsupported activation path {activation_path!r}")
+    with decode_owner as counters:
         for step, token in enumerate(teacher_inputs):
             started = time.perf_counter()
             result = owner.forward_token(int(token))
@@ -569,6 +863,7 @@ def _candidate(
     return {
         "mode": mode,
         "scope": scope,
+        "activation_path": activation_path,
         "selected_layers": sorted(selected_layers),
         "selected_layer_count": len(selected_layers),
         "prefill_next_token": int(prefill.next_token_id),
@@ -628,15 +923,35 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             f"last={reference_predictions[-1]}",
             flush=True,
         )
-        q4_library = build_gguf_q4_k_gemv(
-            load=True,
-            require_cached=args.require_cached_build,
-        )
-        dp4a_library = build_gguf_q8_0_dp4a_gemv(
-            load=True,
-            require_cached=args.require_cached_build,
-        )
-        with Q8Sidecar(owner, reader) as sidecar:
+        q4_library = None
+        dp4a_library = None
+        raw_library = None
+        t16_library = None
+        if args.activation_path == "q8_1_dp4a":
+            q4_library = build_gguf_q4_k_gemv(
+                load=True,
+                require_cached=args.require_cached_build,
+            )
+            dp4a_library = build_gguf_q8_0_dp4a_gemv(
+                load=True,
+                require_cached=args.require_cached_build,
+            )
+            sidecar_context = Q8Sidecar(owner, reader)
+        elif args.activation_path == "exact":
+            raw_library = build_gguf_k_gemv(
+                load=True,
+                require_cached=args.require_cached_build,
+            )
+            t16_library = build_gguf_q8_0_t16_gemv(
+                load=True,
+                require_cached=args.require_cached_build,
+            )
+            sidecar_context = Q8WeightOnlySidecar(owner, reader)
+        else:
+            raise ValueError(
+                f"unsupported activation path {args.activation_path!r}"
+            )
+        with sidecar_context as sidecar:
             mode_results = []
             assert owner.weights is not None
             attention_types = tuple(
@@ -655,8 +970,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         mode,
                         scope,
                         selected_layers,
+                        activation_path=args.activation_path,
                         q4_library=q4_library,
                         dp4a_library=dp4a_library,
+                        raw_library=raw_library,
+                        t16_library=t16_library,
                         kl_limit=args.kl_limit,
                         top1_minimum=args.top1_minimum,
                     )
@@ -675,7 +993,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
                 * 100.0,
                 "build_seconds": sidecar.build_seconds,
-                "weight_count": len(sidecar.weights),
+                "weight_count": (
+                    len(sidecar.weights)
+                    if isinstance(sidecar, Q8Sidecar)
+                    else len(sidecar.raw_weights)
+                ),
+                "activation_path": args.activation_path,
+                "output_t16_duplicate_bytes": (
+                    sidecar.output_t16_nbytes
+                    if isinstance(sidecar, Q8WeightOnlySidecar)
+                    else 0
+                ),
             }
     finally:
         owner.close()
@@ -698,6 +1026,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "prompt_tokens": 512,
             "decode_tokens": args.decode_tokens,
             "teacher_forced": True,
+            "activation_path": args.activation_path,
             "modes": list(args.modes),
             "scopes": list(args.scopes),
             "quality_gate": {

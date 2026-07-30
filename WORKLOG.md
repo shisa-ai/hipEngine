@@ -194948,3 +194948,35 @@ Vulkan local sizes verbatim will close the measured gap.
   ownership or materially fewer shared-branch bytes.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-decode-delayed-shared-release-rejected.json`.
+
+## 2026-07-31 06:08 JST — Reject source-F16 Q8 weights with exact activations
+
+- Repaired `scripts/laguna_f16_decode_q8_full_gate.py` after current
+  projection->head/KV, Q/K/V/gate quad, and output->add/RMSNorm fusions made
+  its old monkeypatch seam intercept zero calls. The diagnostic now exposes
+  exact unfused F16 projection calls only inside its context, restores all
+  three flags on exit, and provides a control arm.
+- RED failed on the absent exact-activation owner. GREEN passes four dispatch
+  tests, raw-Q8 BF16->F32 remains bit-exact to its CPU oracle
+  (`worst_max_abs=0`), and Q8-T16 F32->BF16 passes its existing CPU oracle.
+  The live all-F16 control is exactly neutral: max KL 0, 16/16 top-1, with
+  1,536 single and 768 triple calls.
+- The materially different one-plane Q8-weight screen keeps BF16/F32
+  activations unquantized and FP32 accumulation while shrinking 240
+  source-F16 weights **5,606,277,120 -> 2,978,334,720 bytes (-46.875%)**.
+  Complete dispatch is confirmed at 768 gate, 768 output, and 2,304 Q/K/V
+  calls. It fails at max KL **14.548566**, mean KL **8.725321**, and 0/16
+  top-1.
+- Both family halves also fail: Q/K/V+gate reaches max KL **0.321952** with
+  16/16 top-1; output reaches **14.367769** with 0/16 top-1. Activation Q8_1
+  was not the primary prior blocker; its error partly canceled weight error.
+  Close source-F16 Q8 compression without a production kernel or perf claim.
+  Production remains **22.752894 tok/s / 43.950453 ms/token**.
+- Raw SHA-256 values are
+  `f64d255dd37c728491635d378d5ae482a967beee7b016137bb365334482a3aba`
+  and
+  `fa959cde74e497a3baa3ff70568d39e80e281dfb711aae6192242a4bd8a97f8`.
+  The required lineage command remains blocked by the missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-exact-activation-rejected.json`.
