@@ -79,14 +79,17 @@ def _install_candidate_map(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_h5u_global_preappend_metadata_is_default_off_and_runner_gated() -> None:
+def test_h5u_global_preappend_metadata_is_source_default_and_runner_gated() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner
 
-    assert hip_gfx1100.LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS == {}
+    assert hip_gfx1100.LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS == {
+        _GLOBAL_ROLE: _GLOBAL_CANDIDATE
+    }
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == {
         _SWA_ROLE: _SWA_CANDIDATE
     }
+    assert hip_gfx1100.LAGUNA_PREFILL_KV_PREAPPEND is True
     assert not hasattr(hip_gfx1151, "LAGUNA_PREFILL_GLOBAL_PREAPPEND_ROLE_VARIANTS")
     rows_source = inspect.getsource(
         laguna_gguf_runner.LagunaGGUFResidentSession._run_layer_rows
