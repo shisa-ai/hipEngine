@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6c_exact_special_iq3_gate_up_expert_major_candidate",
+  "status": "accepted_standalone_candidate_runtime_unchanged",
+  "date": "2026-07-31",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "scope": "Standalone exact layer-47 IQ3 gate/up leaf on one Radeon Pro W7900 queue; actual Laguna S 2.1 UD-Q2_K_XL weights and natural M512 top-k10 routing; runtime and package ownership unchanged",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "layer": 47,
+    "gate_tensor": "blk.47.ffn_gate_exps.weight",
+    "up_tensor": "blk.47.ffn_up_exps.weight",
+    "tensor_quant": "IQ3_XXS",
+    "shape_each": [256, 1024, 3072],
+    "bytes_each": 308281344
+  },
+  "baseline": {
+    "revision": "3c422e3f5",
+    "production": "H6A/H5Y/H5Z",
+    "canonical_512_1k_4k_tok_s": [312.780801, 261.591401, 173.996973],
+    "matched_c4096_direct_m512_tok_s": 326.17366882456315,
+    "exact_llamacpp_hip_tok_s": 696.342,
+    "matched_gap": 2.134881097267655,
+    "production_changed": false
+  },
+  "candidate": {
+    "registry_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_iq3_xxs",
+      "selected_dual_silu_grouped_prefill_compact_k3072_n1024_e256_rowbatch4_bf16_bf16_out"
+    ],
+    "symbol": "hipengine_gguf_iq3_xxs_selected_dual_silu_grouped_prefill_compact_k3072_n1024_e256_rowbatch4_bf16_bf16_out",
+    "device_instantiation": "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4, true>",
+    "shape_preflight": "exact K3072/N1024/E256 before HIP loading",
+    "operation": "Gather source hidden rows into stable expert order, reuse each raw gate/up IQ3 segment across four compact rows, preserve RT1 scalar FMA and wave32/serial-wave reduction order, round gate/up to BF16, apply the retained SiLU expression, and store sorted BF16 output directly.",
+    "new_device_algorithm": false,
+    "new_allocation_bytes": 0,
+    "new_workspace_bytes": 0,
+    "new_sidecar_bytes": 0,
+    "new_pipeline_launches": 0,
+    "runtime_owner_added": false,
+    "package_policy_changed": false,
+    "gfx1151_fail_closed": true
+  },
+  "correctness": {
+    "red_commit": "3c422e3f5",
+    "red_failures": 4,
+    "green_tests_passed": 4,
+    "broader_guard_tests_passed": 106,
+    "strict_negative_preflight_before_hip_load": true,
+    "synthetic_shape": "complete E256/N1024/K3072 308,281,344-byte gate and up tensors",
+    "synthetic_routing": "56 stable reordered routes over experts 0/1/3/7/63/64/127/128/254/255 with counts 1/3/4/5/7/8/9/2/6/11",
+    "synthetic_complete_output_byte_exact": true,
+    "sampled_numpy_gguf_gate_passed": true,
+    "empty_route_preserved": true,
+    "actual_layer_complete_output_byte_exact": true,
+    "actual_layer_mismatch_count": 0,
+    "actual_layer_next_token_id": 2930,
+    "actual_layer_final_position": 511,
+    "allocation_recovered": true,
+    "iq2_grouped_pair16_production_unchanged": true,
+    "h5z_h5j_down_policy_unchanged": true,
+    "gfx1151_absent": true,
+    "test_sha256": "699e5707ca44b7bdbe03981c4bfae038c20d019c8d312b4b3587bb8e5dda189d",
+    "green_stdout_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "guard_stdout_sha256": "42f91387fc61022ff6b5a7d2c343068cd9b2e4e9e4c8ed88a28e63532dff8639",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "leaf_screen": {
+    "protocol": {
+      "rows": 512,
+      "top_k": 10,
+      "compact_rows": 5120,
+      "actual_weights": true,
+      "actual_natural_routing": true,
+      "deterministic_bf16_source_hidden": true,
+      "warmups": 5,
+      "repetitions": 15,
+      "launches_per_sample": 5,
+      "counter_rotated": true,
+      "timing": "HIP events plus synchronized host wall",
+      "control": "route-major fused IQ3 over source hidden rows plus N1024 sorted-lane post-gather",
+      "candidate": "K3072 sorted-lane hidden pre-gather plus H6C expert-major fused IQ3 rowbatch4"
+    },
+    "routing": {
+      "active_experts": 225,
+      "count_min": 1,
+      "count_median": 9.0,
+      "count_mean": 22.755555555555556,
+      "count_max": 446,
+      "selected_sha256": "c9854ca81dfd97e3235b751a6c2e3f915d2dcf55c75e87c44790bb833015c3ee",
+      "sorted_lanes_sha256": "331c1c388d999201946365d57674b81beb3a7cbdf26e2926c85728b8153a79a7",
+      "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a"
+    },
+    "event": {
+      "control_median_ms": 32.691122436523436,
+      "control_mean_ms": 32.710569864908855,
+      "candidate_median_ms": 15.457650756835937,
+      "candidate_mean_ms": 15.443846028645833,
+      "reduction_ms": 17.233471679687497,
+      "reduction_percent": 52.716059881852765,
+      "speedup": 2.1148829761253487,
+      "control_range_ms": [32.60252380371094, 32.88377075195312],
+      "candidate_range_ms": [15.364088439941407, 15.490138244628906]
+    },
+    "wall": {
+      "control_median_ms": 32.72397737018764,
+      "control_mean_ms": 32.73715563118458,
+      "candidate_median_ms": 15.437695803120732,
+      "candidate_mean_ms": 15.433405606697002,
+      "reduction_ms": 17.286281567066908,
+      "reduction_percent": 52.82451265479465,
+      "speedup": 2.119744927450409,
+      "control_range_ms": [32.4945162050426, 32.88424159400165],
+      "candidate_range_ms": [15.410859417170286, 15.457184007391334]
+    },
+    "both_clock_gate_passed": true,
+    "complete_output_byte_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_json_sha256": "41ea381688e1648fca7e4dfeb8ef313e6f03a30ce1714e8e550f64af733153f8",
+    "harness_sha256": "71804a82836c9072ab98132de4e1efce913a961eec0bd9d3ea0ee25625b22ee1",
+    "stdout_sha256": "13c26699f4b54d34e7b7a0187f0e011d48c1accdbd2b80aab167a408b9d4ceed",
+    "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+  },
+  "physical_evidence": {
+    "profiled_candidate_duration_ns": 14558359,
+    "profiled_pre_gather_duration_ns": 164641,
+    "profiled_control_route_major_duration_ns": 34162132,
+    "profiled_control_post_gather_duration_ns": 71161,
+    "trace_resources": {
+      "workgroup_size": [256, 1, 1],
+      "physical_grid_workgroups": [1024, 256, 1],
+      "vgpr_count": 72,
+      "sgpr_count": 128,
+      "lds_block_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "code_object_resources": {
+      "logical_vgpr_count": 71,
+      "logical_sgpr_count": 58,
+      "group_segment_fixed_bytes": 256,
+      "private_segment_fixed_bytes": 0,
+      "vgpr_spills": 0,
+      "sgpr_spills": 0,
+      "wavefront_size": 32
+    },
+    "isa": {
+      "code_bytes": 10052,
+      "instruction_count": 1879,
+      "global_load_sites": 28,
+      "global_store_sites": 8,
+      "ds_bpermute_sites": 80,
+      "v_exp_sites": 8,
+      "scratch_instructions": 0
+    },
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "1eb3e565d7af44bc2f4c7f9d102af9e8947d7bb8897681f0e9b02d75168d98c7",
+    "trace_summary_sha256": "8293d5d33d386c458e1c4f9a74230ca1b115243144dd24167774c24718d7a983",
+    "trace_analyzer_sha256": "7576e2f476dc9ae640a986ea59f5b2cd535ec817e743d70fd7185b9b263cda55",
+    "trace_stdout_sha256": "1373f741ee9a9d6f5c1ae04d152d294928decc51ef541325bc9559f04b06c9b8",
+    "trace_stderr_sha256": "118b39b7e7834fa1dfd3c57952b2598d00b8d57842adca43bf4ab08c6e9b5432",
+    "shared_library_sha256": "6113938c81090f999658f51521eebb1d2fdb615a64d040eba47863cc1ac4c72d",
+    "code_object_sha256": "f043c63542687d83be013e8d891f2eba4602e653bcb9279931982bdb61a3609a",
+    "disassembly_sha256": "9b9937f0fda7bafeb45b7b261d11baa0edb8c2b4351081c4437bbe2a66667468",
+    "notes_sha256": "77ace78204ccfc087c2864d3eda8f6448fbeef7a8eb53226fac84f23094a6b5a",
+    "isa_summary_sha256": "1245ad41fae0bccced84e627a1597e0dc117490dc10011dde5a7a0071621aa4d"
+  },
+  "source": {
+    "hip_sha256": "4131422a53f33d4bd1c5bb8646f28a62fb12f093585855c6bbe2d1e3fb7f5942",
+    "python_sha256": "0ed9cc6172c1a61d34f8dac6a0ad922640a357b28f0d283184a92c3d2018f8c3",
+    "gfx1151_package_sha256": "80e18313810cc9e90929908d1742c31babe411d0b9df408b8ebea5da375dec72",
+    "runtime_changed": false,
+    "gfx1100_package_changed": false
+  },
+  "commands": {
+    "green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt PYTHONPATH=. uv run pytest -q tests/test_laguna_h6c_iq3_gate_up_expert_major.py",
+    "guard": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6c_iq3_gate_up_expert_major.py tests/test_gguf_iq_selected_prefill.py tests/test_gguf_iq2_xs_selected_prefill.py tests/test_gguf_iq_gemv.py tests/test_laguna_h5z_iq3_activation_resident_output_sweep.py tests/test_laguna_h5z_runtime_policy.py tests/test_laguna_h5z_source_default.py tests/test_gfx1151_backend.py",
+    "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/laguna_wpfh6c_iq3_gate_up_expert_major_actual_screen.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6c-leaf-rocprof --output-file h6c-leaf -- uv run python /tmp/laguna_wpfh6c_iq3_gate_up_expert_major_actual_screen.py --profile-only --mode candidate --skip-model-hash",
+    "isa": "/opt/rocm/llvm/bin/llvm-objdump --offloading <cached-so>; /opt/rocm/llvm/bin/llvm-readobj --notes <gfx1100-code-object>; /opt/rocm/llvm/bin/llvm-objdump -d --mcpu=gfx1100 <gfx1100-code-object>"
+  },
+  "decision": {
+    "standalone_leaf_admitted": true,
+    "runtime_owner_added": false,
+    "production_changed": false,
+    "source_default_promoted": false,
+    "next_action": "Freeze a separate bounded default-off H6C runtime-owner contract. Then require complete natural-M512 state, exact one-H6C layer plus unchanged 46 IQ2 grouped gate/up layers and H5Z/H5J down topology, repeat/lifecycle recovery, cached integrated trace, and one-queue 512/1K/4K non-regression before any source-default decision."
+  },
+  "lineage": {
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "parent_target": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json",
+    "parent_target_sha256": "a5d196c63d15b8abd1b1041cf8bc8038f5000b4445b3ee1894ebbff6d50c848d"
+  }
+}
