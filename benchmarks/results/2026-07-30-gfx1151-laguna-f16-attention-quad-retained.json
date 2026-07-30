@@ -112,5 +112,11 @@
     "resources": "pass; local256/VGPR24/SGPR128/LDS512/scratch0",
     "whole_model": "pass; +0.37351%, 7/7 pairs, exact state and lifecycle",
     "decision": "Promote through the gfx1151 LAGUNA_F16_ATTENTION_QUAD_DECODE capability; retain triple plus singleton as exact fallback."
+  },
+  "publication": {
+    "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json",
+    "source_revision": "ae4f11d596842af47f408fe585c5004bb570717b",
+    "tracked_clean_median_tok_s": 22.031912527806647,
+    "tracked_clean_median_ms_per_token": 45.388705984461964
   }
 }

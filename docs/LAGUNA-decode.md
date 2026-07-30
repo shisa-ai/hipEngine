@@ -6820,9 +6820,10 @@ Current exact decode checkpoint:
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
 | hipEngine prior tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
-| hipEngine current production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
+| hipEngine post-dense-interleave production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
+| hipEngine current F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.778 ms/token** | hipEngine is **6.092%** below Vulkan throughput |
+| Remaining wall gap | — | **2.559 ms/token** | hipEngine is **5.638%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -6864,8 +6865,16 @@ seven resident p512/d128 candidates win
 median while preserving every token, position, repeat, allocation, and all
 **79,022,520,340 resident bytes**:
 [`F16 attention quad`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-retained.json).
-Tracked-clean selector-unset publication and the post-retention wall census
-are the remaining closure steps.
+Tracked-clean selector-unset production at `ae4f11d59` measures
+**22.021010/22.040524/22.031913 tok/s**, median
+**22.031913 (+0.48253%, -0.219014 ms/token)** versus the prior clean
+checkpoint and **+92.138%** over sprint start. The wall census confirms
+**673 -> 625 dispatches/token**, source-F16
+**24.053006 -> 23.928557 ms/token**, kernel sum
+**43.823282 -> 43.692753 (-0.2979%)**, and span
+**45.861315 -> 45.699715 (-0.3524%)**. Kernel work is now only
+**0.033553 ms/token (0.077%)** above Vulkan's logged GPU work:
+[`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json).
 Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
 within-evaluation command-buffer recording/submission, not cross-token graph

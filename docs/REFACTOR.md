@@ -2243,3 +2243,7 @@ should be boring.
   **21.944420 -> 22.026384 tok/s (+0.37351%)**, with all seven candidates
   positive and complete state exact. Remove the comparison seam after the
   pending tracked-clean selector-unset publication and wall census.
+- Publication and census pass at **22.031913 tok/s** and exactly
+  **625 dispatches/token**. The comparison CLI and session setter are now
+  eligible for removal; retain constructor override, capability, registered
+  quad, and unfused fallback.
