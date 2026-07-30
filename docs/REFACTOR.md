@@ -193,6 +193,15 @@ should be removed or collapsed.
   allocation, workspace, or sidecar to remove. After one release checkpoint,
   consider folding the stable role into the existing auto wrapper and deleting
   only the map/cache-field indirection while preserving exact fallbacks.
+- WPF-H5N extends only the private role-candidate policy for a default-off
+  runtime gate; the gfx1100 package map still names H5M. A scoped H5N map may
+  select starts 256/384 only when `can_dense_initial_prefill()` proves the
+  identity/no-wrap state; start 512+, explicit eviction, shape/registration
+  misses, and gfx1151 retain H5M/WPF-3. If complete state or clean timing fails,
+  remove H5N from the candidate/start/dense-policy sets and retain its standalone
+  leaf. If H5N is promoted and survives one release checkpoint, replace the one
+  package value and fold its stable start/state qualification into the existing
+  auto wrapper together with the older H5M map/cache-field cleanup.
 
 ## Laguna source-IQ selected-down MMQ selector
 

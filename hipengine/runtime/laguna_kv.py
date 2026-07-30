@@ -74,11 +74,26 @@ _SWA_PREFILL_VARIANTS = frozenset(
 )
 _SWA_QROW4_ROLE = "qrow4_m128_c256_exact"
 _SWA_QROW4_ROLE_BASE_VARIANT = "swa_context_rows_qrow4_m128_c256_exact_spans"
+_SWA_QROW4_SOURCEQUAL_EXACT_VARIANT = (
+    "swa_context_rows_qrow4_sourcequal_exact_spans"
+)
+_SWA_QROW4_DENSE_FIRST_FILL_EXACT_VARIANT = (
+    "swa_context_rows_qrow4_dense_first_fill_exact_spans"
+)
 _SWA_PREFILL_ROLE_CANDIDATES = {
     _SWA_QROW4_ROLE: frozenset(
-        {"swa_context_rows_qrow4_sourcequal_exact_spans"}
+        {
+            _SWA_QROW4_SOURCEQUAL_EXACT_VARIANT,
+            _SWA_QROW4_DENSE_FIRST_FILL_EXACT_VARIANT,
+        }
     ),
 }
+_SWA_PREFILL_ROLE_START_POSITIONS = {
+    _SWA_QROW4_DENSE_FIRST_FILL_EXACT_VARIANT: frozenset({256, 384}),
+}
+_SWA_PREFILL_ROLE_REQUIRES_DENSE_INITIAL = frozenset(
+    {_SWA_QROW4_DENSE_FIRST_FILL_EXACT_VARIANT}
+)
 
 
 class _LagunaKVConfig(Protocol):
@@ -528,6 +543,19 @@ class LagunaKVCache:
             and state.capacity == 512
             and self.sliding_window == 512
             and state.q_heads == 72
+            and (
+                role_variant not in _SWA_PREFILL_ROLE_START_POSITIONS
+                or start_position
+                in _SWA_PREFILL_ROLE_START_POSITIONS[role_variant]
+            )
+            and (
+                role_variant not in _SWA_PREFILL_ROLE_REQUIRES_DENSE_INITIAL
+                or self.can_dense_initial_prefill(
+                    layer_id,
+                    rows,
+                    row_offset=row_offset,
+                )
+            )
         ):
             variant = role_variant
         fn = self._resolve("laguna_attention_prefill", variant)
