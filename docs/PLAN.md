@@ -1620,18 +1620,18 @@ Including equal append cost, its actual 144-call event/wall sums fall
 It adds no launch, allocation, workspace, or sidecar. Retain attend-before-
 append H5M/wave32 routes for every partial, wrapped, staged-verifier, explicit,
 missing, or unsupported case. Complete M512 state is KL0/byte-exact; integrated
-tracing records all **144** write->H5R pairs at unchanged **1,862** dispatches
-and cuts the SWA schedule/request sum **63.946%/10.289%**. Default-off clean
-512/1K/4K improves **+11.444%/+4.763%/+0.881%**, with 3/3 paired wins each and
-unchanged ownership. Qualify bounded runtime ownership; production remains H5M
-pending selector-unset source-default publication
-([H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
+corrected one-queue tracing records all **144** write->H5R pairs at unchanged
+**1,862** dispatches and cuts the SWA schedule/request sum **63.767%/9.690%**.
+Selector-unset one-queue 512/1K/4K improves **+11.340%/+4.848%/+0.746%**, with
+3/3 paired wins each and unchanged ownership, promoting
+**267.205/230.441/160.221 tok/s**. Earlier uncapped speed rows are superseded
+([H5R production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json)).
 The old wider-qrow, cross-head/key-split,
 rowbatch16, output-tile, source-MMQ, changed-association attention, and
 P6/repair routes remain closed.
-Launch fusion remains
-below its trigger at **1.213%** request span-minus-sum.
+Launch fusion remains deferred pending the post-H5R one-queue residual reprofile.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

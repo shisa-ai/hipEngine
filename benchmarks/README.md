@@ -3,39 +3,24 @@
 Last updated: **2026-07-30**
 
 The canonical clean W7900 Laguna UD-Q2_K_XL prefill packet is now
-[`2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json`](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json).
-It retains exact matrix512/attention128, H5M source-qualified qrow4, H5L
-weight-major Q5, H5I ordered-Q6, H5J local32 IQ4, and pair16 grouped IQ gate/up.
-H5Q changes only K1024/N3072/E256 IQ3 selected down: 64 output-column
-partitions traverse the existing device active-expert list while preserving
-H5J's segment decode, rowbatch8 FMA/reduction/store order, bytes, workspace,
-and fallback. Complete M512 logits, all **48** hidden boundaries, active K/V
-plus every `KVLiveSpans` field, repeat, workspace, and lifecycle are byte-exact
-at KL 0. Cached tracing selects **45 H5Q IQ3 + 2 retained H5J IQ4** calls and
-moves IQ-down/request sum **491.658/2,060.485 -> 475.652/2,050.376 ms
-(-3.255%/-0.491%)** at unchanged **1,862** dispatches. Default-off 512/1K/4K
-improves **+0.702%/+0.278%/+0.370%**; selector-unset source-default publication
-confirms **+0.663%/+0.355%/+0.267%**, with 3/3 paired wins at each length. The
-canonical rows are **239.981/219.494/158.693 tok/s**. The matched llama.cpp HIP
-M512 target remains **694.184 tok/s**, narrowing the gap to **2.89266x**. No
-allocation, producer, sidecar, or public selector is added; every map/ABI/shape/
-registration/backend miss retains H5J and gfx1151 remains fail-closed. The
-production-identical post-H5Q trace reconciles **2,050.376 ms / 1,862
-dispatches** versus matched llama.cpp HIP **724.299 ms**. Remaining gaps rank
-attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and gate/up
-**59.253 ms**. WPF-H5R screens a distinct exact cached-only two-pass body behind
-the already-proven safe append-before-attend schedule. The global local256-tree
-reconstruction loses all four starts at **0.636–0.926x** on both clocks and is
-removed. The retained SWA-only leaf preserves every output bit and complete
-`KVLiveSpans` at starts 0/128/256/384, remains local32/VGPR64/LDS0/scratch0, and
-includes the unchanged append cost while moving the actual 144-call event/wall
-sums **337.277/334.031 -> 126.687/125.764 ms (2.662x/2.656x)**. Complete state
-is KL0/byte-exact; integrated tracing records all **144** append-before-H5R
-pairs and cuts the SWA schedule/request sum **63.946%/10.289%** at unchanged
-**1,862** dispatches. Default-off clean 512/1K/4K improves
-**+11.444%/+4.763%/+0.881%**, 3/3 paired wins each, with unchanged ownership.
-It adds no allocation/workspace/sidecar and leaves production H5M pending
-source-default publication. H5N's
+[`2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json`](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json).
+It retains exact matrix512/attention128, H5L weight-major Q5, H5I ordered-Q6,
+H5Q active-expert IQ3, H5J local32 IQ4, and pair16 grouped IQ gate/up. H5R
+changes only complete no-wrap SWA M128 starts 0/128/256/384: the existing writer
+runs before the cached-only exact qrow4 body; global, partial, wrapped, verifier,
+explicit, registration-miss, and gfx1151 paths retain their preceding schedule.
+Complete M512 logits, all **48** hidden boundaries, active K/V plus every
+`KVLiveSpans` field, repeat, workspace, and lifecycle are byte-exact at KL 0.
+Corrected one-queue tracing records all **144** append-before-H5R pairs and cuts
+the SWA schedule/request sum **372.091/2,050.376 -> 134.818/1,851.695 ms
+(-63.767%/-9.690%)** at unchanged **1,862** dispatches. Selector-unset one-queue
+512/1K/4K improves **+11.340%/+4.848%/+0.746%**, with 3/3 paired wins at each
+length. Canonical rows become **267.205/230.441/160.221 tok/s
+(+11.344%/+4.987%/+0.963% over H5Q)**. The matched llama.cpp HIP M512 target
+remains **694.184 tok/s**, narrowing the gap **2.89266x -> 2.59795x**. No launch,
+allocation, workspace, sidecar, or public selector is added. The earlier uncapped
+H5R trace/default-off speed rows are diagnostic and superseded by this one-queue
+packet. H5N's
 separately registered exact dense-first-fill leaf is byte-identical to H5M and
 wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
@@ -60,9 +45,10 @@ predeclared seven-repeat adjudication is **+0.176%**. Source-default 512/1K/4K
 then reaches **+0.093%/-0.019%/-0.054%**; the final frozen 1K/4K adjudication
 remains **-0.030%/+0.014%**, rejecting runtime ownership. Remove the eager owner
 and package change; production remains H5M/H5L and only the exact leaf stays.
-Both short rows exceed 150 tok/s and H5Q 4K remains positive; 16K+ stays closed
+Both short rows exceed 150 tok/s and H5R 4K remains positive; 16K+ stays closed
 below the 800/700 gate
-([H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
+([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5P rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
@@ -314,12 +300,14 @@ clocks at local32/VGPR64/LDS0/scratch0. Including equal append cost, its actual
 144-call event/wall sums fall **337.277/334.031 -> 126.687/125.764 ms
 (-62.438%/-62.350%, 2.662x/2.656x)**. Complete state is KL0; integrated tracing
 records all **144** write->H5R pairs, preserves the normalized **1,862-dispatch**
-inventory, and cuts the SWA schedule/request sum **63.946%/10.289%**. Default-off
-clean 512/1K/4K is **+11.444%/+4.763%/+0.881%**, 3/3 paired wins each, with
-exact state and unchanged ownership. Runtime ownership is qualified, but H5M
-remains production pending selector-unset source-default publication. Wider
+inventory, and cuts the SWA schedule/request sum **63.767%/9.690%** under the
+corrected one-queue protocol. Selector-unset 512/1K/4K is
+**+11.340%/+4.848%/+0.746%**, 3/3 paired wins each, with exact state and
+unchanged ownership, promoting **267.205/230.441/160.221 tok/s**. Earlier
+uncapped speed rows are superseded. Wider
 qrows, cross-head/key-split, source MMQ, and changed-association attention stay closed
-([H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
+([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5R SWA leaf](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
 [H5Q production](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
 [H5Q leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
@@ -1602,7 +1590,8 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 direct-T16 MMQ32 natural-shape gate | 2026-07-25 | clean measured `272ee08d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit primitive; LAP-1 leaf gate passed; runtime default unchanged pending repair**: direct T16 reads the existing resident bytes with no layout transpose or sidecar. Producer-pack-inclusive T16 speedups over retained direct are **1.174/1.528/1.662/2.464/2.502/3.959/5.502x**; M128/M256/M512 are only **4.66%/4.05%/3.02%** behind X8. T16/X8 checksums are exact at every shape; focused tests report 31 passes; cached resources are local128/VGPR48/LDS2048B/scratch0 and device ISA contains `v_dot4_i32_iu8`. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json). | Yes for the one-layer natural-routing leaf scope only; no full-model/default claim | Calibrate residual/repair arithmetic, then integrate the sole-resident T16 route and run all-layer performance, category quality, decode, milestone-shape, and lifecycle gates. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 exact X8 decode gate | 2026-07-25 | clean measured `420bf8392`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; c1/c2/c4/c8 producer rows with top-10 | **Rejected sole-resident X8 premise; current T16 residency unchanged**: the optimized local128 X8 fallback is BF16-bit exact at every shape and catches T16 at c4/c8, but c1/c2 T16 -> X8 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate. X8/T16 pair bytes are **905,969,664/931,135,488**; the temporary comparison peaks at **1,837,482,624 bytes** and returns to zero. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json). | Negative layout decision; no runtime/default claim | Superseded by the retained direct-T16 LAP-1 leaf; do not retry dynamic X8-to-T16 reconstruction or add a complete T16 sidecar. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit prefill control; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**. The 2026-07-25 exact-decode row supersedes X8 as a resident candidate but preserves it as the MMQ ceiling. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Direct T16 now passes the same leaf gate; retain X8 only as the arithmetic ceiling while repair and runtime integration proceed. |
-| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact active-expert persistent IQ3 matrix512/attention128 production prefill | 2026-07-30 | leaf `61e30df61`; bounded ABI seam `13ed82364`; complete state/cached trace/default-off plus selector-unset three-repeat 512/1K/4K gates; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Current retained W7900 production**: H5Q uses P64 only for K1024/N3072/E256 IQ3 selected down, reusing the existing device active list/count with no allocation, producer, workspace, sidecar, or public selector. H5J IQ3 remains registered rollback; IQ4 and every miss remain unchanged; gfx1151 is fail-closed. Complete M512 state is KL0/byte-exact across all 48 boundaries, logits, complete K/V/`KVLiveSpans`, repeat, and teardown. Cached tracing records **45 H5Q IQ3 + 2 H5J IQ4** calls, moving IQ-down **491.658 -> 475.652 ms (-3.255%)** and request sum **2,060.485 -> 2,050.376 ms (-0.491%)** at unchanged **1,862** dispatches. Clean selector-unset 512/1K/4K is **239.981/219.494/158.693 tok/s (+0.663%/+0.355%/+0.267% same-session)**, 3/3 paired wins each; matched M512 is **2.89266x**. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json). | Yes, for exact package-default 512/1K/4K prefill and declared state/lifecycle scope | Rerun after IQ traversal/policy/ABI, grouped compaction metadata, matrix/attention policy, model/quant/KV, ROCm/compiler, or W7900 queue policy. |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact SWA preappend cached-only matrix512/attention128 production prefill | 2026-07-30 | leaf `10d6193da`; bounded policy `311c75ec8`; complete state plus corrected one-queue cached trace and selector-unset three-repeat 512/1K/4K gate; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Current retained W7900 production**: H5R reorders the existing append only for complete no-wrap SWA M128 starts 0/128/256/384 and runs the exact cached-only qrow4 body. Global, partial, wrapped, verifier, explicit, registration-miss, and gfx1151 routes retain preceding exact schedules. M512 state is KL0/byte-exact across all 48 boundaries, logits, complete K/V/`KVLiveSpans`, repeat, ownership, and teardown. Corrected one-queue tracing records **144/144** append-before-H5R pairs, moving SWA schedule **372.091 -> 134.818 ms (-63.767%)** and request sum **2,050.376 -> 1,851.695 (-9.690%)** at unchanged **1,862** dispatches. Selector-unset 512/1K/4K is **267.205/230.441/160.221 tok/s (+11.340%/+4.848%/+0.746% same-session)**, 3/3 wins each; matched M512 is **2.59795x**. Earlier uncapped speed rows are superseded. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json). | Yes, for exact package-default one-queue 512/1K/4K prefill and declared state/lifecycle scope | Rerun after preappend policy/schedule, SWA attention body, matrix/attention policy, model/quant/KV, ROCm/compiler, or W7900 queue policy. |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact active-expert persistent IQ3 matrix512/attention128 production prefill | 2026-07-30 | leaf `61e30df61`; bounded ABI seam `13ed82364`; complete state/cached trace/default-off plus selector-unset three-repeat 512/1K/4K gates; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Superseded by H5R; retained H5Q provenance**: H5Q uses P64 only for K1024/N3072/E256 IQ3 selected down, reusing the existing device active list/count with no allocation, producer, workspace, sidecar, or public selector. H5J IQ3 remains registered rollback; IQ4 and every miss remain unchanged; gfx1151 is fail-closed. Complete M512 state is KL0/byte-exact across all 48 boundaries, logits, complete K/V/`KVLiveSpans`, repeat, and teardown. Cached tracing records **45 H5Q IQ3 + 2 H5J IQ4** calls, moving IQ-down **491.658 -> 475.652 ms (-3.255%)** and request sum **2,060.485 -> 2,050.376 ms (-0.491%)** at unchanged **1,862** dispatches. Clean selector-unset 512/1K/4K is **239.981/219.494/158.693 tok/s (+0.663%/+0.355%/+0.267% same-session)**, 3/3 paired wins each; matched M512 is **2.89266x**. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json). | Superseded by H5R; retained for exact H5Q state/performance provenance | Use the H5R row above for current production; rerun this row only when isolating active-expert IQ ownership. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact source-qualified qrow4 matrix512/attention128 production prefill | 2026-07-30 | leaf `9218d550d`; bounded package role map; complete state/cached trace/default-off plus selector-unset three-repeat 512/1K/4K gates; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Superseded by H5Q; retained H5M provenance**: H5M changes only the exact SWA qrow4 M128/C256 role and adds no allocation or sidecar. M512 is KL0/byte-exact across all 48 boundaries, complete logits/KV/`KVLiveSpans`, repeat, workspace, and teardown. Cached tracing selects exactly **48 global + 72 wave32 + 72 H5M** calls, moving qrow4 **268.720 -> 260.500 ms (-3.059%)**, attention **459.445 -> 450.790 (-1.884%)**, and request sum **2,074.261 -> 2,060.485 (-0.664%)** at **1,862** dispatches. Clean package-default 512/1K/4K is **238.565/218.182/158.138 tok/s (+0.256%/+0.135%/+0.490% over H5L)**; matched M512 is **2.90983x**. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json). | Superseded by H5Q; retained for the declared exact H5M state/performance provenance | Use the H5Q row above for current production; rerun this row only when isolating SWA qrow ownership. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact Q5 weight-major matrix512/attention128 production prefill | 2026-07-30 | leaf `83e4c61b3`; package-default state/cached trace/three-repeat 512/1K/4K publication; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Superseded by H5M; retained H5L provenance**: six exact weight-major Q5 roles reuse H5J's single **150,994,944-byte** F32 plane; F32 N48/N72, every miss, Q6, and gfx1151 retain their preceding exact routes. M512 state is KL0/byte-exact across all 48 boundaries, logits, complete K/V/`KVLiveSpans`, repeat, and teardown. Cached tracing records **235 producers + 188 candidates + 47 H5G fallbacks**, moving Q5 **919.697 -> 466.986 ms (-49.224%)** and request kernel sum **2,532.020 -> 2,074.261 ms (-18.079%)** at unchanged **1,862** dispatches. Clean package-default 512/1K/4K is **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)** with every sample exact and lifecycle-clean; matched M512 is now **2.917x**. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json). | Superseded by H5M; retained for the declared exact H5L state/performance provenance | Use the H5M row above for current production; rerun this row only when isolating Q5 traversal or ordered-F32 ownership. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL exact IQ row-ownership matrix512/attention128 production prefill | 2026-07-30 | leaf `04f7685f5`; bounded runtime seam `cca123490`; complete state/cached trace/three-repeat selector-unset 512/1K/4K publication; HIP 7.2.53211 / AMD clang 22; exact model SHA-256 `8fe1170f...2679`; BF16 KV; one queue | **Superseded by H5L; retained H5J provenance**: gfx1100 defaults resident-segment IQ3 and local32 exact IQ4 only for K1024/N3072 selected down; every miss retains H5I and gfx1151 remains fail-closed. The route adds no allocation, workspace, or sidecar. M512 state is KL0/byte-exact across all 48 boundaries, logits, complete K/V/`KVLiveSpans`, repeat, and teardown. Cached tracing records all **45+2** candidate calls, moving selected down **556.749 -> 497.145 ms (-10.706%)** and request kernel sum **2,600.260 -> 2,532.020 ms (-2.624%)** at unchanged **1,862** dispatches. Clean selector-unset 512/1K/4K is **196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052% over H5I)** with every sample exact and lifecycle-clean. [`artifact`](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json). | Yes, for exact selector-unset 512/1K/4K prefill and declared state/lifecycle scope | Superseded by the H5L row above; retain as exact-IQ provenance. |

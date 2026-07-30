@@ -209,16 +209,15 @@ should be removed or collapsed.
   role-candidate policy or package map without a distinct long-context premise
   and a fresh 512/1K/4K gate. The older H5M map/cache-field cleanup remains
   independently eligible after its release checkpoint.
-- WPF-H5R adds a default-empty gfx1100
-  `LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` map and a generic role-scoped cache
-  gate. Complete M512 state is KL0, tracing records all **144** write->H5R pairs,
-  and default-off 512/1K/4K is **+11.444%/+4.763%/+0.881%** with 3/3 wins each.
-  Keep the capability through the selector-unset source-default publication
-  attempt. If that gate fails, remove the map capability, cache fields/parser/
-  gate, focused runtime test, and runner indirection while retaining the leaf.
-  If promoted, keep the map only through one release checkpoint, then consider
-  folding the stable role into package auto policy while preserving H5M/wave32
-  misses.
+- WPF-H5R's `LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` cleanup trigger is closed.
+  Complete M512 state is KL0, corrected one-queue tracing records all **144**
+  write->H5R pairs, and selector-unset 512/1K/4K is
+  **+11.340%/+4.848%/+0.746%** with 3/3 wins each. Keep the one gfx1100 role
+  entry, preappend capability, and generic fail-closed cache gate through one
+  release checkpoint, then consider folding the stable role into package auto
+  policy while preserving H5M/wave32/global/partial/wrapped/verifier/explicit/
+  registration/backend misses. No allocation, workspace, sidecar, or public
+  selector was added. The earlier uncapped speed packet is superseded.
 
 ## Laguna source-IQ selected-down MMQ selector
 

@@ -169,8 +169,8 @@ numbers below.
   and cuts IQ-down/request sum **3.255%/0.491%**. Default-off clean 512/1K/4K
   improves **+0.702%/+0.278%/+0.370% (3/3 paired wins each)**; selector-unset
   source-default publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3
-  paired wins each. H5Q is production at **239.981/219.494/158.693 tok/s** and
-  narrows the apples-to-apples llama.cpp HIP M512 gap to **2.89266x**.
+  paired wins each. H5Q becomes the preceding production at
+  **239.981/219.494/158.693 tok/s**, with a **2.89266x** matched M512 gap.
   The promoted request now reconciles **2,050.376 ms / 1,862 dispatches**
   versus llama.cpp HIP's matched **724.299 ms**. Remaining exact gaps rank
   attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and
@@ -181,15 +181,18 @@ numbers below.
   remains local32/VGPR64/LDS0/scratch0, and includes the unchanged append cost
   while moving the actual 144-call event/wall sums **337.277/334.031 ->
   126.687/125.764 ms (2.662x/2.656x)**. Complete M512 state is KL0/byte-exact;
-  integrated tracing records all **144** append-before-H5R pairs and cuts the
-  SWA schedule/request sum **63.946%/10.289%** at unchanged **1,862**
-  dispatches. Default-off clean 512/1K/4K improves
-  **+11.444%/+4.763%/+0.881% (3/3 paired wins each)**. It adds no allocation,
-  workspace, or sidecar; production stays H5M pending source-default publication.
-  Both short rows exceed 150 tok/s and H5Q 4K
+  corrected one-queue tracing records all **144** append-before-H5R pairs and
+  cuts the SWA schedule/request sum **63.767%/9.690%** at unchanged **1,862**
+  dispatches. Selector-unset one-queue 512/1K/4K improves
+  **+11.340%/+4.848%/+0.746% (3/3 paired wins each)** and promotes H5R at
+  **267.205/230.441/160.221 tok/s**. It adds no allocation, workspace, or
+  sidecar; the matched llama.cpp HIP M512 gap narrows to **2.59795x**. Earlier
+  uncapped H5R speed rows are diagnostic and superseded by this packet.
+  Both short rows exceed 150 tok/s and H5R 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5Q production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
   [H5R SWA leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
   [post-H5Q residual / H5R target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
   [H5Q leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-candidate.json) ·
