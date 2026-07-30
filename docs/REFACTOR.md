@@ -2272,3 +2272,6 @@ should be boring.
   **45.699715 -> 45.660100 ms/token** span, and
   **2.006962 -> 1.882766 ms/token** span-minus-kernel time. The comparison
   CLI and session setter are now eligible for immediate removal.
+- The comparison CLI, setter, and comparison-protocol fields are removed.
+  Retain the constructor override for explicit rollback, gfx1151 capability,
+  four-axis registrations, counter scratch, and exact unfused fallback.
