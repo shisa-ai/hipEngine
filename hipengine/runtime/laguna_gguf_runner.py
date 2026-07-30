@@ -3252,21 +3252,6 @@ class LagunaGGUFResidentSession:
 
         self.fuse_f16_boundaries = bool(enabled)
 
-    def set_f16_output_add_rmsnorm_decode(self, enabled: bool) -> None:
-        """Select the exact c=1 output-projection/add/RMSNorm composite."""
-
-        selected = bool(enabled)
-        if selected and not self.use_f16_output_add_rmsnorm_decode:
-            scratch = self.scratch
-            counters = (
-                getattr(scratch, "attention_projection_counters", None)
-                if scratch is not None
-                else None
-            )
-            if counters is not None:
-                self.runtime.memset(counters.ptr, 0, counters.nbytes)
-        self.use_f16_output_add_rmsnorm_decode = selected
-
     def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
         """Select the bounded dense-initial BLAS attention candidate."""
 

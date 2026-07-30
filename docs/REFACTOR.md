@@ -2293,5 +2293,8 @@ should be boring.
   **529 dispatches/token**, with kernel span
   **45.660100 -> 45.543776 ms/token**. The comparison CLI, setter, and
   protocol fields are now eligible for immediate removal.
+- The comparison CLI, setter, and protocol fields are removed. Retain the
+  constructor rollback, capability, registered composite, shared counter
+  scratch, and exact unfused fallback.
   Retain the constructor override for explicit rollback, gfx1151 capability,
   four-axis registrations, counter scratch, and exact unfused fallback.

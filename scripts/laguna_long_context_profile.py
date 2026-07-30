@@ -68,7 +68,6 @@ COMPARISON_ARGUMENTS = (
     "compare_swa_attention_hipblaslt",
     "compare_f16_decode_onebarrier",
     "compare_f16_decode_fixedk",
-    "compare_f16_output_add_rmsnorm_decode",
     "compare_swa_fixed512_reduce",
     "compare_swa_fused_fixed512",
     "compare_swa_gqa3_local384",
@@ -237,11 +236,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-f16-decode-fixedk",
         action="store_true",
         help="counterbalance one-barrier source-F16 decode against fixed-K",
-    )
-    parser.add_argument(
-        "--compare-f16-output-add-rmsnorm-decode",
-        action="store_true",
-        help="counterbalance exact output projection plus add/RMSNorm fusion",
     )
     parser.add_argument(
         "--compare-swa-fixed512-reduce",
@@ -591,7 +585,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_dense_contiguous_cache = False
     active_q4_decode_t16_sidecar = False
     active_q4_decode_t16_dual_interleaved = False
-    active_f16_output_add_rmsnorm_decode = False
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
@@ -671,11 +664,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_q4_decode_t16_dual_interleaved=(
                 False
                 if args.compare_q4_decode_t16_dual_interleaved
-                else None
-            ),
-            use_f16_output_add_rmsnorm_decode=(
-                False
-                if args.compare_f16_output_add_rmsnorm_decode
                 else None
             ),
         )
@@ -815,9 +803,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_q4_decode_t16_dual_interleaved = (
             owner.use_q4_decode_t16_dual_interleaved
         )
-        active_f16_output_add_rmsnorm_decode = (
-            owner.use_f16_output_add_rmsnorm_decode
-        )
         active_attention_rows = owner.prefill_attention_chunk_size
         active_global_attention_rows = (
             owner.prefill_global_attention_chunk_size
@@ -860,10 +845,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     if args.compare_f16_decode_fixedk:
                         os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
                             "fixedk" if mode == "candidate" else "onebarrier"
-                        )
-                    if args.compare_f16_output_add_rmsnorm_decode:
-                        owner.set_f16_output_add_rmsnorm_decode(
-                            mode == "candidate"
                         )
                     if args.compare_swa_fixed512_reduce:
                         owner.kv_cache.swa_split_fixed512_reduce = (
@@ -1149,12 +1130,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_f16_decode_onebarrier
             ),
             "compare_f16_decode_fixedk": args.compare_f16_decode_fixedk,
-            "compare_f16_output_add_rmsnorm_decode": (
-                args.compare_f16_output_add_rmsnorm_decode
-            ),
-            "f16_output_add_rmsnorm_decode": (
-                active_f16_output_add_rmsnorm_decode
-            ),
             "compare_swa_fixed512_reduce": (
                 args.compare_swa_fixed512_reduce
             ),
