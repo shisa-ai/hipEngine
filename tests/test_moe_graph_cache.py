@@ -39,7 +39,7 @@ def _bf16_round(x: np.ndarray) -> np.ndarray:
     return (_to_bf16_bits(x).astype(np.uint32) << 16).view(np.float32)
 
 
-def _make_ffn():
+def _make_ffn(*, mutate_input: bool = False):
     """Return (ffn, set_input, read_out, cleanup, out_ptr, out_nbytes, runtime).
 
     ``ffn(stream)`` runs a stateless f32->bf16->f32 round-trip reading the fixed
@@ -78,9 +78,17 @@ def _make_ffn():
     def ffn(stream):
         f32_to_bf16(x.ptr, xb.ptr, n, stream=stream, library=cast_lib, runtime=rt)
         bf16_to_f32(xb.ptr, out.ptr, n, stream=stream, library=cast_lib, runtime=rt)
+        if mutate_input:
+            rt.memset_async(x.ptr, 0, n * 4, stream)
 
     def set_input(arr):
-        copy_host_to_device(x, host_array_ptr(np.ascontiguousarray(arr, dtype=np.float32)), arr.nbytes)
+        copy_host_to_device(
+            x,
+            host_array_ptr(np.ascontiguousarray(arr, dtype=np.float32)),
+            arr.nbytes,
+        )
+
+    set_input.ptr = x.ptr
 
     def read_out():
         dst = np.empty(n, dtype=np.float32)
@@ -132,6 +140,33 @@ def test_capture_then_replay_reads_fresh_input() -> None:
         assert kinds[1:] == ["replay", "replay", "replay"]
         assert cache.stats["capture"] == 1
         assert cache.stats["replay"] == 3
+    finally:
+        cache.close()
+        cleanup()
+
+
+def test_capture_validation_restores_an_input_mutated_by_the_graph() -> None:
+    from hipengine.runtime.moe_graph import MoeGraphCache
+
+    ffn, set_input, read_out, cleanup, out_ptr, out_nbytes, rt, n = _make_ffn(
+        mutate_input=True
+    )
+    cache = MoeGraphCache(rt, enabled=True)
+    try:
+        inp = np.random.default_rng(20260731).standard_normal(n).astype(np.float32)
+        set_input(inp)
+        kind = cache.run(
+            ("mutating", 0),
+            eager=ffn,
+            out_ptr=out_ptr,
+            out_nbytes=out_nbytes,
+            mutable_inputs=((set_input.ptr, n * 4),),
+            stream=0,
+        )
+        rt.device_synchronize()
+        assert kind == "capture"
+        assert np.array_equal(read_out(), _bf16_round(inp))
+        assert cache.stats == {"capture": 1, "replay": 0, "eager": 0, "reject": 0}
     finally:
         cache.close()
         cleanup()
