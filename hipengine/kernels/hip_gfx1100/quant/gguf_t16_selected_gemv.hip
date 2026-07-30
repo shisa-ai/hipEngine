@@ -90,6 +90,15 @@ __device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
   return static_cast<float>(in.f16);
 }
 
+__device__ inline float fp16_bits_to_float(uint16_t bits) {
+  union {
+    uint16_t u16;
+    half_t f16;
+  } in;
+  in.u16 = bits;
+  return static_cast<float>(in.f16);
+}
+
 template <typename scalar_t>
 __device__ inline float scalar_to_float(scalar_t v) {
   return static_cast<float>(v);
@@ -1204,7 +1213,8 @@ template <
     typename scalar_t,
     bool parallel_tail = false,
     bool fuse_silu = false,
-    bool pair_q_payload = false>
+    bool pair_q_payload = false,
+    bool pair_coeff_payload = false>
 __global__ __launch_bounds__(128, 4)
 void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -1267,14 +1277,69 @@ void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
               (col0 >> 1);
           const uint8_t packed_a = tile_a[q_index];
           const uint8_t packed_b = tile_b[q_index];
-          const float wv_a0 = t16_q4_weight_from_quant(
-              tile_a, k_in_block, col0, packed_a & 0x0Fu);
-          const float wv_a1 = t16_q4_weight_from_quant(
-              tile_a, k_in_block, col1, packed_a >> 4);
-          const float wv_b0 = t16_q4_weight_from_quant(
-              tile_b, k_in_block, col0, packed_b & 0x0Fu);
-          const float wv_b1 = t16_q4_weight_from_quant(
-              tile_b, k_in_block, col1, packed_b >> 4);
+          float wv_a0;
+          float wv_a1;
+          float wv_b0;
+          float wv_b1;
+          if constexpr (pair_coeff_payload) {
+            const uint32_t d_a = *reinterpret_cast<const uint32_t*>(
+                tile_a + Q4_T16_D_OFFSET + col0 * 2);
+            const uint32_t dmin_a = *reinterpret_cast<const uint32_t*>(
+                tile_a + Q4_T16_DMIN_OFFSET + col0 * 2);
+            const uint16_t scale_a = *reinterpret_cast<const uint16_t*>(
+                tile_a + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+            const uint16_t min_a = *reinterpret_cast<const uint16_t*>(
+                tile_a + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+            const uint32_t d_b = *reinterpret_cast<const uint32_t*>(
+                tile_b + Q4_T16_D_OFFSET + col0 * 2);
+            const uint32_t dmin_b = *reinterpret_cast<const uint32_t*>(
+                tile_b + Q4_T16_DMIN_OFFSET + col0 * 2);
+            const uint16_t scale_b = *reinterpret_cast<const uint16_t*>(
+                tile_b + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+            const uint16_t min_b = *reinterpret_cast<const uint16_t*>(
+                tile_b + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+            const float d_a0 = fp16_bits_to_float(
+                static_cast<uint16_t>(d_a));
+            const float d_a1 = fp16_bits_to_float(
+                static_cast<uint16_t>(d_a >> 16));
+            const float dmin_a0 = fp16_bits_to_float(
+                static_cast<uint16_t>(dmin_a));
+            const float dmin_a1 = fp16_bits_to_float(
+                static_cast<uint16_t>(dmin_a >> 16));
+            const float d_b0 = fp16_bits_to_float(
+                static_cast<uint16_t>(d_b));
+            const float d_b1 = fp16_bits_to_float(
+                static_cast<uint16_t>(d_b >> 16));
+            const float dmin_b0 = fp16_bits_to_float(
+                static_cast<uint16_t>(dmin_b));
+            const float dmin_b1 = fp16_bits_to_float(
+                static_cast<uint16_t>(dmin_b >> 16));
+            wv_a0 =
+                d_a0 * static_cast<float>(scale_a & 0xFFu) *
+                    static_cast<float>(packed_a & 0x0Fu) -
+                dmin_a0 * static_cast<float>(min_a & 0xFFu);
+            wv_a1 =
+                d_a1 * static_cast<float>(scale_a >> 8) *
+                    static_cast<float>(packed_a >> 4) -
+                dmin_a1 * static_cast<float>(min_a >> 8);
+            wv_b0 =
+                d_b0 * static_cast<float>(scale_b & 0xFFu) *
+                    static_cast<float>(packed_b & 0x0Fu) -
+                dmin_b0 * static_cast<float>(min_b & 0xFFu);
+            wv_b1 =
+                d_b1 * static_cast<float>(scale_b >> 8) *
+                    static_cast<float>(packed_b >> 4) -
+                dmin_b1 * static_cast<float>(min_b >> 8);
+          } else {
+            wv_a0 = t16_q4_weight_from_quant(
+                tile_a, k_in_block, col0, packed_a & 0x0Fu);
+            wv_a1 = t16_q4_weight_from_quant(
+                tile_a, k_in_block, col1, packed_a >> 4);
+            wv_b0 = t16_q4_weight_from_quant(
+                tile_b, k_in_block, col0, packed_b & 0x0Fu);
+            wv_b1 = t16_q4_weight_from_quant(
+                tile_b, k_in_block, col1, packed_b >> 4);
+          }
           acc_a[local_col0] += xv * wv_a0;
           acc_a[local_col1] += xv * wv_a1;
           acc_b[local_col0] += xv * wv_b0;
@@ -2777,43 +2842,6 @@ int launch_q4_dual_natural_tile8_parallel(const void* x,
 }
 
 template <typename scalar_t>
-int launch_q4_dual_natural_tile8_parallel_silu(
-    const void* x,
-    const void* selected,
-    const void* tiles_a,
-    const void* tiles_b,
-    void* out,
-    int64_t x_rows,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    int64_t num_experts,
-    hipStream_t stream) {
-  if (!x || !selected || !tiles_a || !tiles_b || !out ||
-      x_rows != 1 || rows != 10 || in_features != 3072 ||
-      out_features != 1024 || num_experts <= 0) {
-    return hipErrorInvalidValue;
-  }
-  const dim3 block(128);
-  const dim3 grid(1024 / 8, 10);
-  hipLaunchKernelGGL(
-      (q4_k_t16_selected_dual_natural_tile8_gemv_kernel<
-          scalar_t, true, true>),
-      grid,
-      block,
-      0,
-      stream,
-      reinterpret_cast<const scalar_t*>(x),
-      reinterpret_cast<const int64_t*>(selected),
-      reinterpret_cast<const uint8_t*>(tiles_a),
-      reinterpret_cast<const uint8_t*>(tiles_b),
-      reinterpret_cast<scalar_t*>(out),
-      nullptr,
-      num_experts);
-  return hipGetLastError();
-}
-
-template <typename scalar_t>
 int launch_q4_dual_natural_tile8_parallel_silu_pairq(
     const void* x,
     const void* selected,
@@ -2836,6 +2864,43 @@ int launch_q4_dual_natural_tile8_parallel_silu_pairq(
   hipLaunchKernelGGL(
       (q4_k_t16_selected_dual_natural_tile8_gemv_kernel<
           scalar_t, true, true, true>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<scalar_t*>(out),
+      nullptr,
+      num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
+int launch_q4_dual_natural_tile8_parallel_silu_paircoeff(
+    const void* x,
+    const void* selected,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out ||
+      x_rows != 1 || rows != 10 || in_features != 3072 ||
+      out_features != 1024 || num_experts <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(1024 / 8, 10);
+  hipLaunchKernelGGL(
+      (q4_k_t16_selected_dual_natural_tile8_gemv_kernel<
+          scalar_t, true, true, true, true>),
       grid,
       block,
       0,
@@ -3147,23 +3212,23 @@ hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out(
 }
 
 extern "C" int
-hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out(
-    const void* x, const void* selected, const void* tiles_a,
-    const void* tiles_b, void* out, int64_t x_rows, int64_t rows,
-    int64_t num_experts, int64_t in_features, int64_t out_features,
-    hipStream_t stream) {
-  return launch_q4_dual_natural_tile8_parallel_silu<uint16_t>(
-      x, selected, tiles_a, tiles_b, out, x_rows, rows, in_features,
-      out_features, num_experts, stream);
-}
-
-extern "C" int
 hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16_out(
     const void* x, const void* selected, const void* tiles_a,
     const void* tiles_b, void* out, int64_t x_rows, int64_t rows,
     int64_t num_experts, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dual_natural_tile8_parallel_silu_pairq<uint16_t>(
+      x, selected, tiles_a, tiles_b, out, x_rows, rows, in_features,
+      out_features, num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a,
+    const void* tiles_b, void* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dual_natural_tile8_parallel_silu_paircoeff<uint16_t>(
       x, selected, tiles_a, tiles_b, out, x_rows, rows, in_features,
       out_features, num_experts, stream);
 }

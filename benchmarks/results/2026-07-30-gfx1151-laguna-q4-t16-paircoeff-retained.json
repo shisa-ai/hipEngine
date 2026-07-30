@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T11:51:23+09:00",
+  "kind": "hipengine_laguna_q4_t16_paircoeff_decode_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "c2469932ad4ccded5d829dbb67d4bed2ddfd34b2",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "weights": "actual layer-1 selected gate/up",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "leaf": "c=1/top-10, K3072/N1024, dual gate/up plus fused SiLU",
+    "whole_model": "p512/d128 eager c=1",
+    "experts": 256,
+    "selected_experts": [
+      17,
+      3,
+      91,
+      42,
+      7,
+      128,
+      201,
+      55,
+      240,
+      12
+    ]
+  },
+  "change": {
+    "description": "After adjacent columns reuse one T16 Q byte, load their aligned d/dmin half pairs as uint32 and scale/min byte pairs as uint16. Preserve resident bytes, per-column coefficient values, K ownership, FMA order, wave reduction, BF16 gate/up boundaries, SiLU expression, and output.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": false,
+    "launch_count_changed": false,
+    "rollback_variant": "selected_dual_t16_natural_tile8_parallel_silu_pairq_gemv_decode_bf16_bf16_out",
+    "older_scalar_q_rollback_removed": true
+  },
+  "leaf": {
+    "protocol": "actual-weight counterbalanced 21x100 HIP-event screen after five warmups",
+    "control_median_ms": 0.12901130676269532,
+    "candidate_median_ms": 0.11436748504638672,
+    "latency_change_percent": -11.350804889717603,
+    "candidate_pair_wins": 21,
+    "pairs": 21,
+    "bf16_mismatches": 0,
+    "raw_sha256": "449caf00237da24fae4ee3531850690e95e5c2c11a719822dcfc826bb598d6d1"
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling",
+    "control_symbol": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true, true, false>",
+    "candidate_symbol": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true, true, true>",
+    "grid_x": 16384,
+    "grid_y": 10,
+    "local_x": 128,
+    "control": {
+      "vgpr_count": 96,
+      "sgpr_count": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "vgpr_count": 72,
+      "sgpr_count": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "01c0b7150d941f9fc0b8b94bea69f53c8261e4eba90e16f6976fb9c9d4d7f41e",
+    "bench_sha256": "07e00f06dec508795de5986f4f6764648ce3b697529e07c1cd5d4beb42967dd6"
+  },
+  "whole_model": {
+    "protocol": "seven counterbalanced control/candidate p512/d128 pairs; cached build; candidate worktree disclosed",
+    "control_median_tok_s": 20.81897065105385,
+    "candidate_median_tok_s": 20.986315819022156,
+    "throughput_change_percent": 0.8038109605569499,
+    "control_median_ms_per_token": 48.033114449363055,
+    "candidate_median_ms_per_token": 47.65009774100476,
+    "saving_ms_per_token": 0.3830167083582978,
+    "median_paired_saving_ms_per_token": 0.38129897553503156,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "raw_sha256": "c4c6adae78cbee6e36ae78171558f9ea95f1073ff3c7f6aa10d9b9d493b60670"
+  },
+  "correctness": {
+    "leaf_bf16_byte_exact": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "validation": {
+    "red": "ImportError on the absent pair-coefficient wrapper before implementation.",
+    "focused_green": "Registry, natural production-bit oracle, and gfx1151 MoE plan tests pass.",
+    "broader_bundle": "All changed-kernel tests pass. One unrelated Q6 rows>1 down-projection equality node fails reproducibly at its existing Q6-vs-Q4 comparison; this candidate changes only Q4 c=1 gate/up.",
+    "lineage_check": "scripts/check_lineage.py could not complete because the configured external parent /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external code was copied."
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-paircoeff --gate-only --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-t16-paircoeff-21x100.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-t16-paircoeff-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-t16-paircoeff-model-7pair.json",
+    "candidate_worktree_disclosed": true,
+    "comparison_plumbing_removed_before_retention_commit": true
+  },
+  "gate": {
+    "correctness": "pass",
+    "leaf": "pass; exact, 11.351% faster, 21/21 wins",
+    "resources": "pass; VGPR 96 -> 72, same LDS and scratch",
+    "whole_model": "pass; +0.8038%, 7/7 pairs, exact state and lifecycle",
+    "decision": "Promote adjacent coefficient loads behind the existing production variant. Keep pair-Q as the explicit rollback and remove scalar-Q plus all comparison plumbing."
+  }
+}
