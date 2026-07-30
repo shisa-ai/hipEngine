@@ -2313,3 +2313,6 @@ should be boring.
   retained, keep the constructor rollback, architecture capability,
   four-axis composite registrations, bounded counter scratch, and exact
   route-parallel projection plus standalone weighted-sum fallback.
+- Publication and census pass at **22.119461 tok/s** and exactly
+  **482 dispatches/token**. The session setter is now eligible for immediate
+  removal.

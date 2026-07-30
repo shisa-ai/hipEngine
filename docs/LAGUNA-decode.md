@@ -6814,7 +6814,7 @@ The remaining attention sequence is:
      exact state, and complete allocation recovery:
      [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-dual-interleaved-retained.json).
 118. Fuse selected-down weighting without serializing the ten expert streams.
-     **Retained/default pending clean publication:** this is the materially
+     **Retained, cleanly published, and default:** this is the materially
      different successor required by item 83's rejection. The Q4 and
      planar-Q6 bodies keep all **1,920 route-parallel producer workgroups**,
      every K/FMA tree, ordered four-wave reduction, and per-route BF16 output.
@@ -6840,6 +6840,19 @@ The remaining attention sequence is:
      dispatch census; that census should prove **529 -> 482 launches/token**:
      [`parallel weighted retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
 
+     Publication passes at
+     **22.114497/22.119500/22.119461 tok/s**, median
+     **22.119461 tok/s (45.209059 ms/token)**. This improves the preceding
+     clean **22.063262** checkpoint by **0.25472% / 0.115155 ms/token** and
+     reaches **+92.902%** over sprint start. The complete cache-only census
+     proves exactly **529 -> 482 dispatches/token**, 24 weighted-Q4 plus 23
+     weighted-Q6 calls, and zero standalone reducer calls. Selected down plus
+     weighting falls **4.888128 -> 4.819087 ms/token (-1.412%)**, kernel sum
+     falls **43.750470 -> 43.676468**, and span falls
+     **45.543776 -> 45.386060 ms/token**. Kernel work is now only
+     **0.017268 ms/token (0.0396%)** above the same-GGUF Vulkan logger:
+     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -6849,9 +6862,10 @@ Current exact decode checkpoint:
 | hipEngine post-dense-interleave production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
 | hipEngine F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
 | hipEngine prior projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
-| hipEngine current output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
+| hipEngine prior output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
+| hipEngine current route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.495 ms/token** | hipEngine is **5.504%** below Vulkan throughput |
+| Remaining wall gap | — | **2.380 ms/token** | hipEngine is **5.263%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -6975,7 +6989,8 @@ plus routing weighting remains closed: one workgroup owning all ten expert
 streams regresses complete decode by **0.8364%** despite an isolated
 planar-Q6 leaf win. The distinct tile-local completion successor keeps all ten
 weight streams parallel and is retained at **+0.30479%** pending
-tracked-clean publication and its dispatch census.
+tracked-clean publication and its dispatch census. Both now pass at
+**22.119461 tok/s** and **482 dispatches/token**.
 Attention should reopen only for a materially new exact-association or
 quality-safe cooperative premise: both SWA and global stage-width successors
 win isolated leaves but fail to produce a reliable complete-model improvement.

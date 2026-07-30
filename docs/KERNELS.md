@@ -500,8 +500,10 @@ routed outputs. Cached tracing keeps grid1920/local128,
 VGPR **104/80**, SGPR128, LDS512 B, and scratch0. Seven same-resident
 p512/d128 pairs improve
 **22.071805 -> 22.139076 tok/s (+0.30479%, 7/7 wins)** with exact state,
-so gfx1151 promotes the composite pending tracked-clean publication and the
-complete dispatch census:
+so gfx1151 promotes the composite. Tracked-clean selector-unset publication
+reaches **22.119461 tok/s (+0.25472%)** and the complete census proves
+**529 -> 482 dispatches/token**, with selected down plus weighting
+**4.888128 -> 4.819087 ms/token (-1.412%)**:
 [`parallel weighted retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
