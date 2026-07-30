@@ -854,15 +854,16 @@ schedule/request sum **63.767%/9.690%**. Selector-unset one-queue 512/1K/4K is
 unchanged ownership, promoting **267.205/230.441/160.221 tok/s**. The earlier
 uncapped speed rows are superseded. Post-H5R one-queue attribution reconciles
 **1,851.695 ms / 1,862 dispatches** and reranks exact Q5 first at **482.339 ms**
-versus matched llama.cpp **58.951 ms**, a **423.388-ms** gap. WPF-H5S next
-screens separately registered persistent row-group partitions **1/2/4/8/16/32**
-for the six H5L roles. Each output-tile/partition block loops disjoint row groups
-while preserving the F32 producer/plane, geometry, K/`fmaf`/wave/serial-sum/
-store sequence, launch count, workspace, and fallbacks. Partition 1 models
-**5,021,440 -> 71,040 workgroups (70.68x)** with unchanged useful dot work;
-byte identity, scratch-free tracing, and producer-inclusive both-clock wins are
-mandatory before ownership
-([post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json) ·
+versus matched llama.cpp **58.951 ms**, a **423.388-ms** gap. WPF-H5S screens
+separately registered persistent row-group partitions **1/2/4/8/16/32** for the
+six H5L roles while preserving the producer/plane, geometry, arithmetic, launch,
+workspace, and fallbacks. All bytes match; all 36 cached symbols have expected
+grids, scratch0, unchanged LDS, and only +8 VGPR. No role wins both clocks.
+Best aggregate P32 regresses producer-inclusive event/wall
+**459.018/473.034 -> 565.864/566.290 ms (+23.277%/+19.714%)**; remove every
+candidate surface and retain H5L/H5G
+([H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
+[post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json) ·
 [H5R production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
 [H5R SWA leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
 [post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·

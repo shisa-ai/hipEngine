@@ -191,14 +191,17 @@ numbers below.
   production-identical post-H5R trace is **1,851.695 ms / 1,862 dispatches** in
   a **1,877.998-ms** span; exact matched gaps rerank to Q5 **423.388 ms**, IQ
   down **332.278 ms**, attention **195.796 ms**, Q6 **106.386 ms**, and gate/up
-  **65.602 ms**. WPF-H5S next screens exact persistent row-group Q5 partitions
-  **1/2/4/8/16/32**, preserving H5L geometry/arithmetic while the partition-1
-  model cuts six-role workgroups **5,021,440 -> 71,040 (70.68x)**; this count is
-  rationale, not a speed claim.
+  **65.602 ms**. WPF-H5S screens exact persistent row-group Q5 partitions
+  **1/2/4/8/16/32**. All outputs are byte-exact and all 36 symbols are
+  scratch-free, but **0/6** actual roles win both clocks; even P32 regresses
+  producer-inclusive weighted event/wall **459.018/473.034 -> 565.864/566.290
+  ms (+23.277%/+19.714%)**. All H5S surfaces are removed and H5L remains Q5
+  production.
   Both short rows exceed 150 tok/s and H5R 4K
   remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+  [H5S rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
   [post-H5R residual / H5S target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json) ·
   [H5Q production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
   [H5R SWA leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json) ·
