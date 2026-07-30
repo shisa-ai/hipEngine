@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T14:42:47+09:00",
+  "kind": "hipengine_laguna_q4_t16_paircoeff_tile16_decode_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "1618474d54207b9ee33d10adb931356f76f5bd81",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "weights": "actual layer-1 selected gate/up",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "c=1/top-10, K3072/N1024, dual gate/up plus fused SiLU",
+    "control": "exact T16 tile8 paired-Q and paired-coefficient production body",
+    "candidate": "exact full T16 tile16 paired-Q and paired-coefficient body"
+  },
+  "change": {
+    "description": "Reuse each activation across all 16 resident T16 columns and halve workgroups from 1280 to 640 while preserving K ownership, per-column FMA order, wave32 reduction, ordered four-wave merge, BF16 gate/up boundaries, SiLU expression, resident bytes, and launch count.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "candidate_removed": true,
+    "production_changed": false
+  },
+  "correctness": {
+    "red": "ImportError on the absent tile16 pair-coefficient wrapper before implementation.",
+    "green": "The focused Laguna natural-shape production-bit test passed.",
+    "bf16_mismatches": 0,
+    "pass": true
+  },
+  "leaf": {
+    "protocol": "actual-weight counterbalanced 9x50 HIP-event screen after five warmups",
+    "control_median_ms": 0.1108926010131836,
+    "candidate_median_ms": 0.11294123649597168,
+    "latency_change_percent": 1.8474050243843854,
+    "candidate_pair_wins": 1,
+    "pairs": 9,
+    "raw_sha256": "0c91d3e1b1a682e02627acae36713e8a6132d4215b6c06d746b3392dacb10926"
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the candidate library built before profiling",
+    "control_symbol": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true, true, true, false>",
+    "candidate_symbol": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short, true, true, true, true, true>",
+    "control_grid_x_threads": 16384,
+    "candidate_grid_x_threads": 8192,
+    "grid_y": 10,
+    "local_x": 128,
+    "control_vgpr": 72,
+    "candidate_vgpr": 96,
+    "allocated_sgpr": 128,
+    "reported_lds_bytes": 512,
+    "scratch_bytes": 0,
+    "trace_sha256": "57d6599ee6293d8552fcbfaa7dd5faed62b64495f607309074e3238aa15e35b4"
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile16-parallel-silu-paircoeff --gate-only --warmups 5 --samples 9 --burst 50 --allow-dirty --output /tmp/laguna-t16-paircoeff-tile16-9x50.json",
+    "trace_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --stats --output-format csv --output-directory <tmp> --output-file trace -- .venv/bin/python3 scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile16-parallel-silu-paircoeff --gate-only --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output <tmp>/child.json"
+  },
+  "gate": {
+    "correctness": "pass",
+    "leaf": "fail; exact but 1.847% slower with only 1/9 candidate wins",
+    "resources": "fail; tile16 raises allocated VGPR 72 -> 96",
+    "whole_model": "skipped at mandatory leaf stop",
+    "decision": "Reject and remove the tile16 template axis, export, wrapper, test seam, and leaf selector. Keep exact tile8 pair-coefficient production unchanged at 21.304731 tok/s."
+  }
+}
