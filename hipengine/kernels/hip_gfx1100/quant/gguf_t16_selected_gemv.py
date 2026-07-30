@@ -47,6 +47,10 @@ _Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_BF16 = (
 _Q4_DENSE_DUAL_LOCAL32_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_local32_silu_gemv_bf16_bf16_out"
 )
+_Q4_DENSE_DUAL_INTERLEAVED_TILE2_LOCAL32_SILU_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_"
+    "gemv_bf16_bf16_out"
+)
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
 _Q4_DUAL_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
@@ -645,6 +649,82 @@ def gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
         raise RuntimeError(
             f"{_Q4_DENSE_DUAL_LOCAL32_SILU_BF16} failed with HIP status "
             f"{status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_dual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the retained two-column dual-interleaved dense/shared owner."""
+
+    _launch_dense_dual_interleaved_local32_silu(
+        _Q4_DENSE_DUAL_INTERLEAVED_TILE2_LOCAL32_SILU_BF16,
+        x_ptr,
+        tiles_dual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _launch_dense_dual_interleaved_local32_silu(
+    symbol: str,
+    x_ptr: int,
+    tiles_dual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if rows != 1:
+        raise ValueError("dense Q4T16 local32 decode requires rows == 1")
+    if in_features <= 0 or in_features % _QK_K:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or build_gguf_t16_selected_gemv()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_dual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{symbol} failed with HIP status {status}: "
+            f"{rt.error_string(status)}"
         )
 
 
@@ -2446,6 +2526,7 @@ register_gguf_t16_selected_gemv_kernels()
 
 __all__ = [
     "build_gguf_t16_selected_gemv",
+    "gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out",

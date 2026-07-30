@@ -33,6 +33,7 @@ from hipengine.loading.materialize import (
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    interleave_gguf_q4_k_tile16_dual,
     repack_gguf_q4_k_pack8,
     repack_gguf_q4_k_tile16,
 )
@@ -724,6 +725,14 @@ def materialize_laguna_gguf_weights(
         if q4_decode_t16_sidecar is None
         else q4_decode_t16_sidecar
     )
+    selected_q4_decode_dual_interleaved = bool(
+        selected_q4_decode_sidecar
+        and backend_package_capability(
+            backend,
+            "LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED",
+            False,
+        )
+    )
     specs_by_path = {spec.slot_path: spec for spec in plan.specs}
     selected = (
         None
@@ -739,13 +748,50 @@ def materialize_laguna_gguf_weights(
         if selected is None
         else tuple(specs_by_path[slot] for slot in selected)
     )
-    sidecar_sizes = tuple(
-        _q4_decode_t16_sidecar_nbytes(spec)
-        for spec in selected_specs
+    selected_specs_by_path = {
+        spec.slot_path: spec for spec in selected_specs
+    }
+    dual_interleaved_nbytes = 0
+    dual_interleaved_loader_transient_nbytes = 0
+    dual_interleaved_paths: set[str] = set()
+    if selected_q4_decode_dual_interleaved:
+        for gate_suffix, up_suffix in (
+            (".ffn_gate", ".ffn_up"),
+            (".ffn_gate_shexp", ".ffn_up_shexp"),
+        ):
+            for gate_path, gate_spec in selected_specs_by_path.items():
+                if not gate_path.endswith(gate_suffix):
+                    continue
+                up_path = gate_path[: -len(gate_suffix)] + up_suffix
+                up_spec = selected_specs_by_path.get(up_path)
+                if up_spec is None:
+                    continue
+                dual_interleaved_paths.update((gate_path, up_path))
+                pair_nbytes = (
+                    _q4_decode_t16_sidecar_nbytes(gate_spec)
+                    + _q4_decode_t16_sidecar_nbytes(up_spec)
+                )
+                dual_interleaved_nbytes += pair_nbytes
+                dual_interleaved_loader_transient_nbytes = max(
+                    dual_interleaved_loader_transient_nbytes,
+                    int(gate_spec.source.nbytes)
+                    + int(up_spec.source.nbytes)
+                    + 2 * pair_nbytes,
+                )
+    # A paired payload replaces, rather than duplicates, the two ordinary
+    # sidecars. Its byte count is exactly their sum.
+    auxiliary_weight_nbytes = (
+        (
+            sum(
+                _q4_decode_t16_sidecar_nbytes(spec)
+                for spec in selected_specs
+                if spec.slot_path not in dual_interleaved_paths
+            )
+            + dual_interleaved_nbytes
+        )
         if selected_q4_decode_sidecar
-        and _q4_decode_t16_sidecar_nbytes(spec) > 0
+        else 0
     )
-    auxiliary_weight_nbytes = sum(sidecar_sizes)
     auxiliary_loader_transient_nbytes = max(
         (
             spec.loader_transient_nbytes
@@ -757,6 +803,10 @@ def materialize_laguna_gguf_weights(
             for spec in selected_specs
         ),
         default=0,
+    )
+    auxiliary_loader_transient_nbytes = max(
+        auxiliary_loader_transient_nbytes,
+        dual_interleaved_loader_transient_nbytes,
     )
     if available_bytes is None:
         try:
@@ -794,7 +844,10 @@ def materialize_laguna_gguf_weights(
                 backend=backend,
                 q6_qmicro=selected_q6_qmicro,
                 q6_qmicro_planar=selected_q6_qmicro_planar,
-                q4_decode_t16_sidecar=selected_q4_decode_sidecar,
+                q4_decode_t16_sidecar=(
+                    selected_q4_decode_sidecar
+                    and spec.slot_path not in dual_interleaved_paths
+                ),
                 profile=profile,
                 repacked_cache=cache,
             )
@@ -818,7 +871,10 @@ def materialize_laguna_gguf_weights(
                     backend=backend,
                     q6_qmicro=selected_q6_qmicro,
                     q6_qmicro_planar=selected_q6_qmicro_planar,
-                    q4_decode_t16_sidecar=selected_q4_decode_sidecar,
+                    q4_decode_t16_sidecar=(
+                        selected_q4_decode_sidecar
+                        and spec.slot_path not in dual_interleaved_paths
+                    ),
                     profile=profile,
                     repacked_cache=cache,
                 )
@@ -827,6 +883,32 @@ def materialize_laguna_gguf_weights(
                 complete_count += 1
                 if progress is not None:
                     progress(complete_count, selected_count, spec)
+            if selected_q4_decode_dual_interleaved:
+                for gate_slot, up_slot in (
+                    ("ffn_gate", "ffn_up"),
+                    ("ffn_gate_shexp", "ffn_up_shexp"),
+                ):
+                    gate_weight = layer_weights.get(gate_slot)
+                    up_weight = layer_weights.get(up_slot)
+                    if gate_weight is None or up_weight is None:
+                        continue
+                    if (
+                        gate_weight.spec.slot_path
+                        not in dual_interleaved_paths
+                    ):
+                        continue
+                    paired_weight = _attach_q4_decode_t16_dual_interleaved(
+                        gate_weight,
+                        up_weight,
+                        reader,
+                        device=device,
+                        runtime=active_runtime,
+                    )
+                    layer_weights[gate_slot] = paired_weight
+                    for index, completed_weight in enumerate(completed):
+                        if completed_weight is gate_weight:
+                            completed[index] = paired_weight
+                            break
             resident_layers.append(
                 LagunaGGUFResidentLayerWeights(
                     layer_id=layer.layer_id,
@@ -890,6 +972,53 @@ def _resident_payloads(
             f"planned={spec.allocation_names} actual={tuple(payloads)}"
         )
     return MappingProxyType(payloads)
+
+
+def _attach_q4_decode_t16_dual_interleaved(
+    gate_weight: LagunaGGUFDeviceWeight,
+    up_weight: LagunaGGUFDeviceWeight,
+    reader: GGUFReader,
+    *,
+    device: Device | None,
+    runtime: HipRuntime,
+) -> LagunaGGUFDeviceWeight:
+    """Attach one byte-neutral paired sidecar to a gate/up weight pair."""
+
+    import numpy as np
+
+    gate_raw = np.ascontiguousarray(
+        reader.tensor_data(gate_weight.spec.source.name)
+    )
+    up_raw = np.ascontiguousarray(
+        reader.tensor_data(up_weight.spec.source.name)
+    )
+    gate_tiles = repack_gguf_q4_k_tile16(
+        gate_raw if gate_raw.ndim == 3 else gate_raw[None, ...]
+    ).tiles
+    up_tiles = repack_gguf_q4_k_tile16(
+        up_raw if up_raw.ndim == 3 else up_raw[None, ...]
+    ).tiles
+    paired = interleave_gguf_q4_k_tile16_dual(gate_tiles, up_tiles)
+    allocation = load_host_array_to_device_as_dtype(
+        f"{gate_weight.spec.source.name}.decode_tiles_dual",
+        paired,
+        DType.INT8,
+        source_dtype="I8",
+        device=device,
+        runtime=runtime,
+    )
+    return LagunaGGUFDeviceWeight(
+        spec=gate_weight.spec,
+        allocations=MappingProxyType(
+            {
+                **gate_weight.allocations,
+                "decode_tiles_dual": allocation,
+            }
+        ),
+        backend=gate_weight.backend,
+        source_abs_max=gate_weight.source_abs_max,
+        source_row_l2_max=gate_weight.source_row_l2_max,
+    )
 
 
 def _materialize_spec(

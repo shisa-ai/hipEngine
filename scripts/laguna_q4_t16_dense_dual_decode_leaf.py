@@ -29,10 +29,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
 )
 from hipengine.loading.gguf import GGUFReader
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_q4_k import (
+    interleave_gguf_q4_k_tile16_dual,
+    repack_gguf_q4_k_tile16,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
@@ -49,6 +53,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmups", type=int, default=5)
     parser.add_argument("--samples", type=int, default=21)
     parser.add_argument("--burst", type=int, default=100)
+    parser.add_argument(
+        "--candidate",
+        choices=(
+            "t16",
+            "dual-interleaved-tile2",
+        ),
+        default="t16",
+    )
     parser.add_argument("--seed", type=int, default=20260730)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
@@ -133,6 +145,7 @@ def _screen(
     warmups: int,
     samples: int,
     burst: int,
+    candidate_kind: str,
 ) -> dict:
     buffers = []
     try:
@@ -141,6 +154,12 @@ def _screen(
         up_pack8_dev = tuple(_upload(runtime, value) for value in up_pack8)
         gate_t16_dev = _upload(runtime, gate_t16)
         up_t16_dev = _upload(runtime, up_t16)
+        dual_t16_dev = None
+        if candidate_kind.startswith("dual-interleaved"):
+            dual_t16_dev = _upload(
+                runtime,
+                interleave_gguf_q4_k_tile16_dual(gate_t16, up_t16),
+            )
         control_out_dev = malloc(out_features * 2, runtime=runtime)
         candidate_out_dev = malloc(out_features * 2, runtime=runtime)
         buffers.extend(
@@ -150,6 +169,7 @@ def _screen(
                 *up_pack8_dev,
                 gate_t16_dev,
                 up_t16_dev,
+                *((dual_t16_dev,) if dual_t16_dev is not None else ()),
                 control_out_dev,
                 candidate_out_dev,
             )
@@ -173,11 +193,24 @@ def _screen(
                 runtime=runtime,
             )
 
-        def candidate() -> None:
+        def current_t16(out_dev) -> None:
             gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
                 x_dev.ptr,
                 gate_t16_dev.ptr,
                 up_t16_dev.ptr,
+                out_dev.ptr,
+                1,
+                in_features,
+                out_features,
+                library=t16_library,
+                runtime=runtime,
+            )
+
+        def interleaved_t16() -> None:
+            assert dual_t16_dev is not None
+            gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out(
+                x_dev.ptr,
+                dual_t16_dev.ptr,
                 candidate_out_dev.ptr,
                 1,
                 in_features,
@@ -186,18 +219,33 @@ def _screen(
                 runtime=runtime,
             )
 
-        launchers = {"control_pack8": control, "candidate_t16": candidate}
+        if candidate_kind.startswith("dual-interleaved"):
+            control_name = "control_t16"
+            candidate_name = (
+                f"candidate_{candidate_kind.replace('-', '_')}"
+            )
+            launchers = {
+                control_name: lambda: current_t16(control_out_dev),
+                candidate_name: interleaved_t16,
+            }
+        else:
+            control_name = "control_pack8"
+            candidate_name = "candidate_t16"
+            launchers = {
+                control_name: control,
+                candidate_name: lambda: current_t16(candidate_out_dev),
+            }
         for _ in range(warmups):
-            control()
-            candidate()
+            for launcher in launchers.values():
+                launcher()
         runtime.device_synchronize()
         timings = {name: [] for name in launchers}
         candidate_wins = 0
         for sample in range(samples):
             order = (
-                ("control_pack8", "candidate_t16")
+                (control_name, candidate_name)
                 if sample % 2 == 0
-                else ("candidate_t16", "control_pack8")
+                else (candidate_name, control_name)
             )
             pair = {}
             for name in order:
@@ -206,11 +254,11 @@ def _screen(
                 )
                 timings[name].append(pair[name])
             candidate_wins += int(
-                pair["candidate_t16"] < pair["control_pack8"]
+                pair[candidate_name] < pair[control_name]
             )
 
-        control()
-        candidate()
+        launchers[control_name]()
+        launchers[candidate_name]()
         runtime.device_synchronize()
         control_out = _read_bf16(runtime, control_out_dev, (1, out_features))
         candidate_out = _read_bf16(
@@ -223,7 +271,7 @@ def _screen(
     medians = {
         name: statistics.median(values) for name, values in timings.items()
     }
-    ratio = medians["candidate_t16"] / medians["control_pack8"]
+    ratio = medians[candidate_name] / medians[control_name]
     mismatch = candidate_out != control_out
     return {
         "samples_ms": timings,
@@ -253,6 +301,9 @@ def _screen(
                 + sum(value.nbytes for value in up_pack8)
             ),
             "t16_gate_up": int(gate_t16.nbytes + up_t16.nbytes),
+            "dual_interleaved_gate_up": int(
+                gate_t16.nbytes + up_t16.nbytes
+            ),
         },
     }
 
@@ -333,6 +384,7 @@ def main() -> int:
             warmups=args.warmups,
             samples=args.samples,
             burst=args.burst,
+            candidate_kind=args.candidate,
         )
 
     exact = all(row["bf16_mismatches"] == 0 for row in results.values())
@@ -359,8 +411,17 @@ def main() -> int:
             "timing": "counterbalanced HIP-event elapsed time",
             "weights": "actual layer-0 dense and layer-1 shared Q4_K",
             "activation": "deterministic synthetic BF16 post-norm-shaped row",
-            "control": "resident pack8 fused dual gate/up plus SiLU",
-            "candidate": "decode-only T16 local32 fused dual gate/up plus SiLU",
+            "control": (
+                "separate decode-only T16 local32 fused dual gate/up plus SiLU"
+                if args.candidate.startswith("dual-interleaved")
+                else "resident pack8 fused dual gate/up plus SiLU"
+            ),
+            "candidate": (
+                "byte-neutral dual-interleaved decode-only T16 local32 fused "
+                "gate/up plus SiLU"
+                if args.candidate.startswith("dual-interleaved")
+                else "decode-only T16 local32 fused dual gate/up plus SiLU"
+            ),
         },
         "results": results,
         "correctness_pass": exact,

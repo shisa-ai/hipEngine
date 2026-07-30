@@ -193568,3 +193568,48 @@ Vulkan local sizes verbatim will close the measured gap.
   unchanged at **21.880056 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dual-interleaved-blocked.json`.
+
+## 2026-07-30 18:51 JST — Retain byte-neutral dense/shared dual-interleaved T16 decode
+
+- Audited the compiled
+  `q4_k_t16_dense_dual_local32_silu_gemv_kernel<uint16_t>` before editing.
+  The apparent shared exchange and barrier are already eliminated: current
+  tracing reports LDS0 and extracted ISA contains no `s_barrier`. The retained
+  kernel allocates 176 VGPR, so the bounded premise became physical gate/up
+  adjacency plus narrower output ownership.
+- Added exact dense/shared dual-interleaved tile8/tile4/tile2 screens. RED was
+  the absent wrapper import. GREEN proves all three candidates reproduce the
+  retained BF16 output bit-for-bit. The host interleave already round-trips
+  both T16 inputs exactly.
+- Actual-weight 21x200 leaves select tile2. Shared K3072/N1024 improves
+  **0.010351 -> 0.009617 ms (-7.090%, 21/21 wins)**; dense
+  K3072/N12288 improves **0.186435 -> 0.177191 (-4.958%, 21/21)**. The
+  one-dense-plus-47-shared ledger improves
+  **0.672947 -> 0.629207 ms (-6.500%)** with zero BF16 mismatches. Cached
+  native tracing records local32/VGPR72/SGPR128/LDS0/scratch0, versus the
+  incumbent's VGPR176.
+- Wired a temporary same-resident diagnostic with both separate and paired
+  sidecars. All seven p512/d128 pairs improve
+  **21.898558 -> 21.954474 tok/s (+0.25534%)**, saving
+  **0.116304 ms/token** by median endpoints and **0.120224 ms/token** by
+  paired deltas. All 14 runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, deterministic state, and complete
+  allocation recovery.
+- Removed the diagnostic duplicates for production. The materializer now
+  replaces 96 separate allocations with 48 paired allocations. Auxiliary
+  residency remains exactly **214,597,632 bytes**, total resident weights stay
+  **79,022,520,340 bytes**, and pack8 remains the unchanged prefill owner and
+  exact fallback.
+- Selector-unset production measures
+  **21.923059/21.945923/21.942208 tok/s**, median
+  **21.942208 (+0.28406%, -0.129457 ms/token)** versus the preceding clean
+  **21.880056** checkpoint. Prefill median is **651.672 tok/s**. Every
+  trajectory and lifecycle field remains exact.
+- Focused validation passes the natural production-bit kernel fixture,
+  paired materializer fixture, registered dispatch fixture, gfx1151 registry
+  expectation, and the complete Laguna materializer-device file. The required
+  lineage command remains blocked by the already-recorded missing
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this unit does not port an
+  external kernel.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-dual-interleaved-retained.json`.

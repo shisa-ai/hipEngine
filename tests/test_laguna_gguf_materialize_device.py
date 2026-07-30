@@ -15,7 +15,11 @@ from hipengine.loading.laguna_gguf_materialize import (
     open_laguna_repacked_cache,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_q4_k import (
+    interleave_gguf_q4_k_tile16_dual,
+    repack_gguf_q4_k_pack8,
+    repack_gguf_q4_k_tile16,
+)
 from hipengine.quant.gguf_t16 import (
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
@@ -257,6 +261,51 @@ def test_laguna_materialize_q4_decode_t16_sidecar_is_additive() -> None:
         )
     finally:
         weight.free(runtime=runtime)
+    assert runtime.buffers == {}
+
+
+def test_laguna_materialize_pairs_q4_decode_sidecars_for_gfx1151() -> None:
+    """A selected gate/up pair receives an exact paired rollback sidecar."""
+
+    gate = np.arange(1_024 * 1_728, dtype=np.uint8).reshape(1_024, 1_728)
+    up = np.flip(gate, axis=0).copy()
+    reader = FakeReader(
+        {
+            "blk.1.ffn_gate_shexp.weight": gate,
+            "blk.1.ffn_up_shexp.weight": up,
+        }
+    )
+    runtime = FakeRuntime()
+    resident = materialize_laguna_gguf_weights(
+        reader,
+        selected_slots=(
+            "layers.1.ffn_gate_shexp",
+            "layers.1.ffn_up_shexp",
+        ),
+        context_length=4_096,
+        available_bytes=120 * 2**30,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        q4_decode_t16_sidecar=True,
+    )
+    try:
+        gate_weight = resident.layer(1).weight("ffn_gate_shexp")
+        up_weight = resident.layer(1).weight("ffn_up_shexp")
+        expected = interleave_gguf_q4_k_tile16_dual(
+            repack_gguf_q4_k_tile16(gate[None, ...]).tiles,
+            repack_gguf_q4_k_tile16(up[None, ...]).tiles,
+        )
+        assert tuple(gate_weight.allocations)[-1:] == (
+            "decode_tiles_dual",
+        )
+        assert "decode_tiles" not in gate_weight.allocations
+        assert "decode_tiles" not in up_weight.allocations
+        assert (
+            _device_bytes(gate_weight, runtime, "decode_tiles_dual")
+            == expected.tobytes()
+        )
+    finally:
+        resident.free(runtime=runtime)
     assert runtime.buffers == {}
 
 

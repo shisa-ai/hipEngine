@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
@@ -544,6 +545,42 @@ def _run_dense_dual_silu(
             free(buf)
 
 
+def _run_dense_dual_interleaved_silu(
+    fn,
+    x_dev,
+    tiles_dual,
+    out_features,
+    out_dtype,
+    library,
+) -> np.ndarray:
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    tiles_buf = malloc(tiles_dual.nbytes)
+    copy_host_to_device(
+        tiles_buf,
+        host_array_ptr(tiles_dual),
+        tiles_dual.nbytes,
+    )
+    out_arr = np.zeros((1, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            tiles_buf.ptr,
+            out_buf.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, tiles_buf, out_buf):
+            free(buf)
+
+
 def _run_direct_dual_silu_q8_dp4a(
     x_dev,
     selected,
@@ -1012,6 +1049,22 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         gate_out,
         np.uint16,
         t16_selected_library,
+    )
+    dense_interleaved = interleave_gguf_q4_k_tile16_dual(
+        dense_tiles_a,
+        dense_tiles_b,
+    )
+    dense_interleaved_actual = _run_dense_dual_interleaved_silu(
+        gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
+        gate_x,
+        dense_interleaved,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(
+        dense_interleaved_actual,
+        dense_actual,
     )
     dense_expected_pair = _expected_direct_dual(
         _bf16_u16_to_f32(gate_x),
