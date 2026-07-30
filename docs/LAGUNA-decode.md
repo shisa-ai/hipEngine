@@ -6113,9 +6113,9 @@ The remaining attention sequence is:
     pairs all improve, moving median decode
     **20.811539 -> 20.820664 tok/s (+0.04385%, -0.02106 ms/token)** with
     exact tokens, trajectory, final position, determinism, and allocation
-    recovery. Promote pair-Q behind the existing production variant name;
-    retain the scalar-Q sibling briefly as an explicit compiler/codegen
-    rollback:
+    recovery. Promote pair-Q behind the existing production variant name; its
+    scalar-Q predecessor is removed after the next exact successor retained
+    pair-Q itself as the rollback:
     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-pairq-retained.json).
 
     **Clean publication passes:** tracked-clean selector-unset production is
@@ -6159,6 +6159,30 @@ The remaining attention sequence is:
     harness seam, and comparison path before runtime integration. Production
     remains **20.830515 tok/s**:
     [`fusion rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-head-kv-attention-fusion-rejected.json).
+93. Load adjacent T16 coefficient payloads as aligned pairs.
+    **Complete, retained, and promoted pending clean publication:** after
+    adjacent output columns reuse one Q byte, replace their scalar coefficient
+    reads with aligned 32-bit `d`/`dmin` half pairs and 16-bit scale/min byte
+    pairs. Each coefficient converts to the same F32 value and every
+    per-column FMA, K owner, wave reduction, BF16 gate/up boundary, SiLU
+    expression, output byte, launch, and resident allocation remains
+    unchanged.
+
+    RED fails importing the absent pair-coefficient wrapper. GREEN covers the
+    production wrapper plus explicit pair-Q rollback. The actual-weight 21x100
+    leaf improves **0.129011 -> 0.114367 ms (-11.351%)**, with **21/21**
+    wins and zero BF16 mismatches. Cache-only native tracing keeps
+    grid16384/local128/LDS512/scratch0 and reduces allocated VGPR
+    **96 -> 72**.
+
+    Seven counterbalanced p512/d128 pairs all improve, moving median decode
+    **20.818971 -> 20.986316 tok/s
+    (+0.80381%, -0.38302 ms/token)**. Every run preserves tokens
+    **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+    repeat determinism, and allocation teardown. Promote the packed
+    coefficient body behind the production variant, keep pair-Q as exact
+    rollback, remove scalar-Q and all comparison plumbing:
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-retained.json).
 
 Current exact decode checkpoint:
 

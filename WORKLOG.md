@@ -192750,3 +192750,36 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-30-gfx1151-laguna-attention-bf16-bin-bound-rejected.json`
   and
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-head-kv-attention-fusion-rejected.json`.
+
+## 2026-07-30 11:51 JST — Retain adjacent T16 coefficient loads
+
+- RED fails importing the absent pair-coefficient wrapper. GREEN extends the
+  natural exactness fixture across production, explicit pair-coefficient, and
+  retained pair-Q rollback wrappers.
+- Adjacent T16 columns already share one Q byte. The new body also loads their
+  aligned `d`/`dmin` halves as 32-bit pairs and scale/min bytes as 16-bit
+  pairs, then reconstructs the same per-column F32 coefficients. Resident
+  bytes, K ownership, FMA order, wave tree, BF16 gate/up boundaries, SiLU,
+  output, and launch count are unchanged.
+- Actual layer-1 21x100 improves
+  **0.129011 -> 0.114367 ms (-11.351%)**, with **21/21** wins and zero BF16
+  mismatches. Raw SHA-256 is `449caf00...d6d1`.
+- Cached `rocprofv3 --kernel-trace` names the intended final-`false`/`true`
+  pair-coefficient template axis. Both use grid16384/local128,
+  SGPR128/LDS512/scratch0; allocated VGPR falls **96 -> 72**. Trace/child
+  SHA-256 values are `01c0b715...f41e` / `07e00f06...dd6`.
+- All seven counterbalanced p512/d128 pairs improve. Median decode moves
+  **20.818971 -> 20.986316 tok/s
+  (+0.80381%, -0.38302 ms/token)**; median paired saving is
+  **0.38130 ms/token**. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and allocation teardown
+  are exact. Raw SHA-256 is `c4c6adae...0670`.
+- Promote pair-coefficient transport behind the existing production variant.
+  Keep pair-Q as explicit rollback; remove scalar-Q and every comparison-only
+  route before commit.
+- The focused registry, natural production-bit, and gfx1151 MoE-plan tests
+  pass. The larger bundle passes every changed-kernel test; one unrelated Q6
+  rows>1 down-projection equality node fails reproducibly in its existing
+  Q6-vs-Q4 comparison and is not touched by this c=1 Q4 gate/up change.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-retained.json`.
