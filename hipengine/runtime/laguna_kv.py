@@ -79,10 +79,25 @@ _SWA_PREFILL_ROLE_CANDIDATES = {
         {"swa_context_rows_qrow4_sourcequal_exact_spans"}
     ),
 }
+_PREFILL_DENSE_INITIAL_GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _PREFILL_PREAPPEND_SWA_QROW4_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _PREFILL_PREAPPEND_ROLE_CANDIDATES = {
     _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
         {"swa_context_rows_qrow4_cached_exact_spans"}
+    ),
+}
+_DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_dense_initial_cached_exact_spans"
+)
+_DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+)
+_PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
+    _PREFILL_DENSE_INITIAL_GLOBAL_ROLE: frozenset(
+        {_DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT}
+    ),
+    _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
+        {_DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT}
     ),
 }
 
@@ -625,12 +640,29 @@ class LagunaKVCache:
         if not self.prefill_preappend_role_scoped:
             return True
         state = self.layer(layer_id)
+        start_position = self._pending_positions[int(row_offset)]
+        if state.attention_type == FULL_ATTENTION:
+            variant = self.prefill_preappend_role_variants.get(
+                _PREFILL_DENSE_INITIAL_GLOBAL_ROLE
+            )
+            return (
+                variant is not None
+                and self._dense_initial_metadata_valid
+                and int(rows) == 128
+                and start_position in {0, 128, 256, 384}
+                and state.capacity == 4_096
+                and self.context_length == 4_096
+                and state.q_heads == 48
+            )
         variant = self.prefill_preappend_role_variants.get(
             _PREFILL_PREAPPEND_SWA_QROW4_ROLE
         )
-        start_position = self._pending_positions[int(row_offset)]
         return (
             variant is not None
+            and (
+                variant != _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT
+                or self._dense_initial_metadata_valid
+            )
             and state.attention_type == SLIDING_ATTENTION
             and int(rows) == 128
             and start_position in {0, 128, 256, 384}
@@ -780,9 +812,12 @@ class LagunaKVCache:
                 raise ValueError(
                     "cached Laguna prefill is outside package role policy"
                 )
-            role_variant = self.prefill_preappend_role_variants.get(
-                _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+            role = (
+                _PREFILL_DENSE_INITIAL_GLOBAL_ROLE
+                if state.attention_type == FULL_ATTENTION
+                else _PREFILL_PREAPPEND_SWA_QROW4_ROLE
             )
+            role_variant = self.prefill_preappend_role_variants.get(role)
         spans = self._bulk_slice_spans(
             state.spans,
             row_offset=row_offset,
@@ -835,7 +870,11 @@ class LagunaKVCache:
             int(rows),
         )
         if state.attention_type == FULL_ATTENTION:
-            extra = {"start_position": start_position} if dense_initial else {}
+            extra = (
+                {"start_position": start_position}
+                if dense_initial or role_variant is not None
+                else {}
+            )
             fn(
                 *common,
                 self.context_length,
@@ -1091,34 +1130,86 @@ def _resolve_laguna_swa_prefill_role_variants(backend: str) -> dict[str, str]:
     }
 
 
+def _parse_laguna_prefill_preappend_role_variants(
+    raw_variants: object,
+    *,
+    candidates: Mapping[str, frozenset[str]],
+    scope_name: str,
+) -> dict[str, str]:
+    """Validate one package-owned preappend role map before allocation."""
+
+    scope = f"{scope_name} " if scope_name else ""
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError(
+            f"Laguna {scope}preappend role variants must be a mapping"
+        )
+    parsed: dict[str, str] = {}
+    for role, variant in raw_variants.items():
+        if role not in candidates:
+            raise ValueError(
+                f"unsupported Laguna {scope}preappend role {role!r}"
+            )
+        if not isinstance(variant, str) or not variant:
+            raise ValueError(
+                f"Laguna {scope}preappend roles require non-empty variants"
+            )
+        if variant not in candidates[role]:
+            raise ValueError(
+                f"unsupported variant {variant!r} for Laguna {scope}"
+                f"preappend role {role!r}"
+            )
+        parsed[role] = variant
+    return parsed
+
+
 def _resolve_laguna_prefill_preappend_role_variants(
     backend: str,
     *,
-    package_default: bool,
+    global_package_default: bool,
+    swa_package_default: bool,
 ) -> tuple[bool, dict[str, str]]:
-    """Resolve package-only append-before-attention substitutions."""
+    """Resolve independent package-only append-before-attention substitutions."""
 
     raw_variants = backend_package_capability(
         backend,
         "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS",
         None,
     )
-    if raw_variants is None:
+    raw_dense_variants = backend_package_capability(
+        backend,
+        "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+        None,
+    )
+    if raw_variants is None and raw_dense_variants is None:
         return False, {}
-    if not isinstance(raw_variants, Mapping):
-        raise ValueError("Laguna preappend role variants must be a mapping")
-    parsed: dict[str, str] = {}
-    for role, variant in raw_variants.items():
-        if role not in _PREFILL_PREAPPEND_ROLE_CANDIDATES:
-            raise ValueError(f"unsupported Laguna preappend role {role!r}")
-        if not isinstance(variant, str) or not variant:
-            raise ValueError("Laguna preappend roles require non-empty variants")
-        if variant not in _PREFILL_PREAPPEND_ROLE_CANDIDATES[role]:
-            raise ValueError(
-                f"unsupported variant {variant!r} for Laguna preappend role {role!r}"
-            )
-        parsed[role] = variant
-    if not parsed or not package_default:
+    parsed_base = (
+        {}
+        if raw_variants is None
+        else _parse_laguna_prefill_preappend_role_variants(
+            raw_variants,
+            candidates=_PREFILL_PREAPPEND_ROLE_CANDIDATES,
+            scope_name="",
+        )
+    )
+    parsed_dense = (
+        {}
+        if raw_dense_variants is None
+        else _parse_laguna_prefill_preappend_role_variants(
+            raw_dense_variants,
+            candidates=_PREFILL_DENSE_INITIAL_ROLE_CANDIDATES,
+            scope_name="dense-initial",
+        )
+    )
+    parsed = dict(parsed_base) if swa_package_default else {}
+    if global_package_default:
+        global_variant = parsed_dense.get(_PREFILL_DENSE_INITIAL_GLOBAL_ROLE)
+        if global_variant is not None:
+            parsed[_PREFILL_DENSE_INITIAL_GLOBAL_ROLE] = global_variant
+    if swa_package_default:
+        swa_variant = parsed_dense.get(_PREFILL_PREAPPEND_SWA_QROW4_ROLE)
+        if swa_variant is not None:
+            parsed[_PREFILL_PREAPPEND_SWA_QROW4_ROLE] = swa_variant
+    if not parsed:
         return True, {}
 
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
@@ -1228,6 +1319,7 @@ def allocate_laguna_kv_cache(
     prefill_cached_meta: bool = False,
     prefill_global_qrow6: bool = False,
     prefill_dense_initial: bool = False,
+    prefill_global_preappend_package_default: bool | None = None,
     prefill_preappend_package_default: bool | None = None,
     global_split_min_live: int | None = None,
     swa_split_min_live: int | None = None,
@@ -1265,7 +1357,12 @@ def allocate_laguna_kv_cache(
         parsed_prefill_preappend_role_variants,
     ) = _resolve_laguna_prefill_preappend_role_variants(
         backend,
-        package_default=(
+        global_package_default=(
+            global_prefill_variant is None
+            if prefill_global_preappend_package_default is None
+            else bool(prefill_global_preappend_package_default)
+        ),
+        swa_package_default=(
             swa_prefill_variant is None
             if prefill_preappend_package_default is None
             else bool(prefill_preappend_package_default)
