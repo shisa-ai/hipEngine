@@ -142,6 +142,7 @@ def _kernel_family(name: str) -> str:
             "q4_k_t16_gemv",
             "q5_k_t16_gemv",
             "q6_k_t16_gemv",
+            "q4_k_t16_dense_",
             "gguf_k_prefill_out_kernel",
             "_k_prefill_wmma_kernel",
         )

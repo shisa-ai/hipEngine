@@ -462,6 +462,10 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
         ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
         (
+            "q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>",
+            "dense_shared_quant_projection",
+        ),
+        (
             "gguf_k_prefill_out_kernel<unsigned short, unsigned short, 6>",
             "dense_shared_quant_projection",
         ),

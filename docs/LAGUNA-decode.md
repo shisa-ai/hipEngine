@@ -6562,6 +6562,29 @@ The remaining attention sequence is:
      **21.851538 tok/s**, or **+2.56660% / -1.174562 ms/token** versus the
      preceding clean checkpoint, across three exact repeated trajectories:
      [`T16 dense/shared production`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-production.json).
+109. Re-profile the complete wall and refresh the same-GGUF Vulkan logger
+     before extending the sidecar.
+     **Complete:** the tracked-clean 127-transition trace keeps **673
+     dispatches/token** and lowers dense/shared quant
+     **3.517759 -> 2.405727 ms/token (-31.612%)**, kernel sum
+     **45.088360 -> 43.972461 (-2.475%)**, and span
+     **47.139237 -> 46.007636 (-2.401%)**. All unrelated families are stable.
+
+     The new comparison is materially different from the pre-sidecar one.
+     hipEngine's complete kernel sum is now only **0.313261 ms/token
+     (+0.718%)** above Vulkan's fresh **43.6592-ms** logged GPU total. The
+     remaining hipEngine trace contains **2.035 ms/token** of submission idle:
+     one active decode queue, no kernel overlap, and 672 gaps/token with
+     **1.963 us** median spacing. Vulkan's lower production wall therefore
+     comes mainly from scheduling/overlap rather than a large remaining
+     arithmetic deficit.
+
+     The compact T16 dense/shared gate/up portion is already faster than
+     Vulkan (**1.104075 vs 1.197546 ms/token**). The exact Q4/Q6 down portion
+     is the residue: **1.298236 vs 0.802343 ms/token**, a **0.495893-ms**
+     gap. The other positive family gaps are selected gate/up **0.524828**,
+     attention **0.473329**, and selected down **0.259006 ms/token**:
+     [`post-sidecar census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-t16-sidecar-wall-reprofile.json).
 
 Current exact decode checkpoint:
 

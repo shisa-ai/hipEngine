@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T15:47:00+09:00",
+  "kind": "hipengine_laguna_post_t16_sidecar_decode_wall_census",
+  "status": "accepted_attribution_checkpoint",
+  "performance_claim": true,
+  "source_revision": "16f1561d63cb9dedb73c016f7694568efc010fa0",
+  "classification_revision": "current_publication_commit",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "dispatches_per_token": 673,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "wall_census_ms_per_token": {
+    "kernel_sum": 43.972461,
+    "kernel_span": 46.007636,
+    "submission_idle": 2.035175,
+    "source_f16_projection": 24.056923,
+    "selected_q4_gate_up": 7.972368,
+    "selected_q4_q6_down": 4.787706,
+    "dense_shared_quant_projection": 2.405727,
+    "dense_shared_q4_gate_up": 1.104075,
+    "dense_shared_q4_q6_down": 1.298236,
+    "router": 1.051451,
+    "attention_total": 1.37983,
+    "swa_attention": 0.875,
+    "global_attention": 0.50483,
+    "norm_rope_gate": 1.053741,
+    "activation_reduce_residual": 0.120904,
+    "lm_head_argmax": 1.117859,
+    "embedding": 0.002284
+  },
+  "change_from_post_dense_global_census": {
+    "kernel_sum_ms_per_token": -1.115899,
+    "kernel_sum_percent": -2.474916,
+    "kernel_span_ms_per_token": -1.131601,
+    "kernel_span_percent": -2.40055,
+    "dense_shared_ms_per_token": -1.112032,
+    "dense_shared_percent": -31.611944
+  },
+  "same_gguf_vulkan": {
+    "source": "/tmp/laguna-vulkan-decode-current-summary.json",
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.829522098341634,
+    "dispatches_per_token": 1150,
+    "hipengine_kernel_sum_delta_ms": 0.313261,
+    "hipengine_kernel_sum_delta_percent": 0.717514,
+    "hipengine_profile_span_delta_ms": 3.178114,
+    "family_comparison_ms_per_token": {
+      "source_f16_projection_delta": -0.721747,
+      "selected_q4_gate_up_delta": 0.524828,
+      "selected_q4_q6_down_delta": 0.259006,
+      "dense_shared_quant_projection_delta": 0.405838,
+      "attention_delta": 0.473329,
+      "router_delta": 0.080735,
+      "norm_rope_gate_delta": -0.178947,
+      "lm_head_argmax_delta": -0.499086
+    },
+    "dense_shared_breakdown_ms_per_token": {
+      "hipengine_q4_gate_up": 1.104075,
+      "vulkan_q4_gate_up": 1.197546,
+      "gate_up_delta": -0.093471,
+      "hipengine_q4_q6_down": 1.298236,
+      "vulkan_q4_q6_down": 0.802343,
+      "down_delta": 0.495893
+    }
+  },
+  "submission_gap_census": {
+    "single_active_decode_queue": true,
+    "gaps_per_token": 672,
+    "median_gap_us": 1.963,
+    "mean_gap_us": 3.167897,
+    "p90_gap_us": 6.532,
+    "median_idle_ms_per_token": 2.036667,
+    "median_kernel_overlap_ms_per_token": 0.0
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-t16-sidecar-wall.jPqBdy --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-t16-sidecar-wall.jPqBdy/bench.json",
+    "segmentation": "final 127 length-one request segments after warmup and pp512; rows sorted by start timestamp and dispatch ID",
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "82f348597091279ba603a59c27f45f0c4aa0a7527e6accbd94ae56a12a82a4f9",
+    "bench_sha256": "c8a96ed9c33791d4979e82f9c70907eee2d691a9bcc3c08b034250882e8c5e36",
+    "vulkan_summary_sha256": "e83207e600a904859e47bd21dc6a569a81ee431f0207b2fef9b55251c8d0022b"
+  },
+  "interpretation": {
+    "result": "T16 dense/shared gate-up sidecars remove 1.116 ms/token of kernel work and 1.132 ms/token of span. hipEngine kernel sum is now within 0.313 ms/token of the fresh Vulkan logger, while 2.035 ms/token remains as zero-overlap submission idle time.",
+    "next": "The retained T16 gate/up owner already beats Vulkan by 0.093 ms/token. The remaining dense/shared gap is the exact Q4/Q6 down chain at +0.496 ms/token; it narrowly trails selected gate/up (+0.525) and exceeds attention (+0.473) as an isolated implementable seam. Screen compact exact down consumers before repeating closed graph/AQL/packet mechanisms."
+  }
+}

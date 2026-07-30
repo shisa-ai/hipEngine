@@ -2195,3 +2195,6 @@ should be boring.
 - Tracked-clean publication passes at **21.851538 tok/s**, with all three
   trajectories exact and the capability active. Remove the comparison seam
   after the pending post-sidecar wall census.
+- The post-sidecar census passes at **43.972461 ms/token** kernel sum and
+  **46.007636 ms/token** span. The comparison seam is now eligible for
+  removal; retain only the capability, T16 materialization, and pack8 fallback.
