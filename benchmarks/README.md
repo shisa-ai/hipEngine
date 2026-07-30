@@ -44,18 +44,14 @@ improves **268.331 -> 270.610 tok/s (+0.849%, 5/5 wins)**. Runtime ownership is
 nevertheless rejected. Selector-unset 4K is **+0.073%**, but the binding balanced
 role-ineligible 1K adjudication is **230.181 -> 230.175 tok/s (-0.00257%, 2/8
 wins)**. Remove all package/resolver/runner/test plumbing, retain only the leaf,
-and keep production **267.205/230.441/160.221 tok/s**. H5V now returns to the
-largest current residual: Q5 is **482.339 ms** versus matched llama.cpp HIP
-**58.951 ms**, a **423.388-ms / 8.182x** gap. Its distinct unmeasured target
-keeps H5L's F32 plane, role geometry, weight-major workgroup order, scalar FMA,
-wave reductions, serial partition sum, stores, workspace, and fallbacks, but
-has one local32 wave sequentially replay original K partitions 0..3 while
-reusing one accumulator plane and retaining only reduced partition totals in
-the existing LDS shape. The modeled **20,085,760 -> 5,021,440** wave scheduling
-instances and removal of **5,021,440** whole-block barriers are schedule
-rationale, not a speed claim. Production is unchanged pending RED, exact bytes,
-cached scratch-free resources, and producer-inclusive both-clock timing on all
-six H5L roles. H5N's separately registered exact dense-first-fill leaf is
+and keep production **267.205/230.441/160.221 tok/s**. H5V then screens Q5's
+distinct exact local32 sequential K-partition schedule. All six H5L roles remain
+byte-exact and cached symbols preserve SGPR128, LDS, and scratch0 with only +8
+VGPR. The binding producer-inclusive screen rejects every role on both clocks:
+weighted event/wall regresses **464.968/466.267 -> 492.423/493.754 ms
+(+5.905%/+5.895%)**. Serial partition replay cannot offset losing the retained
+four-wave K parallelism. Remove every candidate symbol/key/exclusion/test and
+keep H5L/H5G production. H5N's separately registered exact dense-first-fill leaf is
 byte-identical to H5M and wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
 stays local32/VGPR72/LDS0/scratch0. Complete state is KL0 and integrated
@@ -82,6 +78,7 @@ and package change; production remains H5M/H5L and only the exact leaf stays.
 Both short rows exceed 150 tok/s and H5R 4K remains positive; 16K+ stays closed
 below the 800/700 gate
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5V rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
 [H5U runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
 [H5U global cached-source leaf](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
@@ -361,14 +358,15 @@ Default-off M512/C4096 is KL0 and matched throughput improves **0.849%**, while
 integrated global schedule falls **15.494%** at unchanged topology. Runtime
 ownership is rejected because the final balanced source-default 1K adjudication
 is **-0.00257% with 2/8 wins**. Remove the policy seam, retain the leaf, and keep
-production unchanged. H5V now selects a distinct exact local32 Q5 schedule:
-one wave sequentially replays H5L's four logical K partitions while reusing one
-accumulator plane and preserving the existing LDS partials and every arithmetic
-boundary. The modeled **4x** wave-instance reduction is not a speed claim;
-production remains unchanged pending exact/resource/both-clock gates. Wider
+production unchanged. H5V's distinct exact local32 sequential-K4 Q5 body is
+byte-exact for all six H5L roles and remains SGPR128/scratch0 with unchanged LDS
+and only +8 VGPR. Yet **0/6** roles wins both clocks; producer-inclusive weighted
+event/wall regresses **464.968/466.267 -> 492.423/493.754 ms
+(+5.905%/+5.895%)**. Remove every candidate surface and retain H5L/H5G. Wider
 qrows, cross-head/key-split, source MMQ, and changed-association attention stay
 closed
 ([H5R production](results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
+[H5V rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
 [H5U runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
 [H5U global cached-source leaf](results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·

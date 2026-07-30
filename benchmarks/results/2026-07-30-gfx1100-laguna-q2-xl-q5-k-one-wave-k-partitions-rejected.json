@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_q5_one_wave_k_partitions_rejection",
+  "date": "2026-07-30",
+  "status": "rejected_exact_candidate_removed",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "target_revision": "f38937184",
+    "red_revision": "c7820f126",
+    "source": "net-new in-tree exact sequential-K replay of H5L; no external device body copied",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json",
+    "target_artifact_sha256": "15cade4c2cae75d552360c19345f5b194068bfb95f9a536908e530c6c4817bb9",
+    "post_h5r_residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json",
+    "post_h5r_residual_artifact_sha256": "78ab0d31b0304e76031e094a368d70b6340aa77c51f8b041dd4b60aadbbed363",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "candidate_patch_sha256": "72aafa9e0113067df16f92ce4625a324e8fb2a5cb4aa6161361aebff39a6d229",
+    "candidate_test_sha256": "36864ab0b7f8fe2767dd5c2f74681bf49ad287b1b32b3f5fb499316fc50b4a38",
+    "candidate_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "53a4fe06f372ec065d8589355fe7fe0d1f7e085b9b7e9f317b77d7d56e685fdc",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "90d7df8ffce4e1fa5cd127d8c9fea0c11e093e7109ac3d46b8bb8008b01d703f",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "4616ef090125c76138444303347ded669d4eb6d7cfaaf69061441c72919b99c6"
+    },
+    "restored_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "e2588d7f8b3aacc9b4f6945bc26a857c7aae7414db716d1efc15076a56767baa",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a9c9c4a05d4ef8bc875d4dfb440803f32784b29d81c00cfe6c0dab9c6cb1bb8e"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "production": {
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157,
+    "request_kernel_sum_ms": 1851.695368,
+    "request_dispatches": 1862,
+    "production_policy_changed": false,
+    "production_code_changed": false
+  },
+  "candidate": {
+    "label": "WPF-H5V exact Q5 one-wave sequential K-partition replay",
+    "roles": 6,
+    "production_invocations": 188,
+    "implementation": "one local32 wave sequentially replays H5L logical K partitions 0..3, reuses one accumulator plane, stores each reduced partition tile in the existing four-plane LDS shape, and preserves the serial partition sum plus BF16/F32 store",
+    "preserved": "exact raw-Q5-to-F32 producer and plane, H5L role geometry, weight-major workgroup order and count, each logical lane's K sequence, scalar fmaf order, wave32 reduction, serial partition 0..3 sum, output conversion/store, launch count, workspace, allocation, and fallbacks",
+    "new_launches": 0,
+    "new_allocations": 0,
+    "new_workspace_bytes": 0,
+    "new_sidecar_bytes": 0
+  },
+  "correctness": {
+    "red_failures": 4,
+    "red_failures_only_absent_candidate_surfaces": true,
+    "focused_green_tests": 4,
+    "rows_tested": [17, 33, 512],
+    "synthetic_roles_byte_exact": 6,
+    "actual_roles_byte_exact": 6,
+    "actual_output_mismatches": 0,
+    "output_dtypes": ["bf16", "f32"],
+    "tracked_allocations_recovered": true,
+    "gfx1151_fail_closed": true,
+    "production_policy_unchanged": true
+  },
+  "resources": {
+    "resource_smoke_harness_sha256": "5395f5cc5f8959ad711489d541b793beef1fc5f3b5ff03bf198749e6c6bd5e53",
+    "trace_sha256": "51707d8507492e010e694d2cb5148f8475a95976404956eceb78d2d9be93ae4e",
+    "summary_sha256": "66d4dbf0f2567946923d4805c81b1707d181ca3142c4baf2db7c568ea814a82a",
+    "analyzer_sha256": "bed53a1a4cd4c01a644cd0b8a46983853ed4b8572f63c0dc88464ed0c9b2f114",
+    "stdout_sha256": "53e4c03c4b711347a627ac193290dde0ff5977b82fab5cf809946d2b4472dfce",
+    "stderr_sha256": "eeb7702ef65b11be539651f5b62c4f21fad09b8b427779eabab68b153328ad4a",
+    "candidate_local_size": 32,
+    "candidate_sgpr": 128,
+    "candidate_scratch_bytes_per_thread": 0,
+    "candidate_lds_matches_control": true,
+    "candidate_vgpr_delta_vs_control": 8,
+    "candidate_resources": {
+      "coltile8_rowbatch4_bf16": "VGPR80/LDS512/scratch0",
+      "coltile8_rowbatch12_bf16": "VGPR208/LDS1536/scratch0",
+      "coltile16_rowbatch5_bf16": "VGPR176/LDS1536/scratch0",
+      "coltile12_rowbatch8_bf16": "VGPR208/LDS1536/scratch0",
+      "coltile16_rowbatch5_f32": "VGPR176/LDS1536/scratch0",
+      "coltile8_rowbatch10_f32": "VGPR176/LDS1536/scratch0"
+    },
+    "expected_symbols": 6,
+    "expected_grids": true,
+    "compiler_ran_under_profiler": false
+  },
+  "performance_protocol": {
+    "harness_sha256": "ae749129c965ecd5f96d691b73f6cbd1910597ebc7d256227dabc5d2b37387b0",
+    "raw_json_sha256": "a69bebe0f553f1d17609cc5fad1be5a6d33f62e898ed333737cd4aeb0dd143c6",
+    "stdout_sha256": "ac4f62d1b342350ccf2d96349e31daebb93d2b3c397f6997e777316bea8625b4",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "rows": 512,
+    "actual_weights": true,
+    "unique_roles": 6,
+    "production_invocations": 188,
+    "control": "one exact producer plus retained H5L local128 weight-major consumer",
+    "candidate_arm": "one identical exact producer plus H5V local32 sequential-K4 consumer",
+    "warmups": 5,
+    "repetitions": 15,
+    "mode_starts_per_role": {"h5l": 8, "h5v": 7},
+    "launches_per_sample": 5,
+    "event_and_synchronized_wall": true,
+    "gpu_max_hw_queues": 1,
+    "selection_rule": "retain a role only if both HIP-event and synchronized-wall medians improve"
+  },
+  "actual_role_results": [
+    {
+      "role": "bf16_k3072_n1024",
+      "calls": 92,
+      "geometry": "coltile8_rowbatch4",
+      "control_event_ms": 0.44460320472717285,
+      "candidate_event_ms": 0.46010842323303225,
+      "event_speedup": 0.9663009462054416,
+      "control_wall_ms": 0.4500904120504856,
+      "candidate_wall_ms": 0.46374243684113026,
+      "wall_speedup": 0.9705611915018215,
+      "both_clock_positive": false,
+      "byte_exact": true
+    },
+    {
+      "role": "bf16_k3072_n12288",
+      "calls": 2,
+      "geometry": "coltile8_rowbatch12",
+      "control_event_ms": 7.513359069824219,
+      "candidate_event_ms": 7.644847869873047,
+      "event_speedup": 0.9828003379155521,
+      "control_wall_ms": 7.515943190082908,
+      "candidate_wall_ms": 7.671625399962068,
+      "wall_speedup": 0.9797067502957157,
+      "both_clock_positive": false,
+      "byte_exact": true
+    },
+    {
+      "role": "bf16_k6144_n3072",
+      "calls": 12,
+      "geometry": "coltile16_rowbatch5",
+      "control_event_ms": 2.4965620040893555,
+      "candidate_event_ms": 2.7860439300537108,
+      "event_speedup": 0.8960957065889573,
+      "control_wall_ms": 2.507975185289979,
+      "candidate_wall_ms": 2.785122999921441,
+      "wall_speedup": 0.900489919246195,
+      "both_clock_positive": false,
+      "byte_exact": true
+    },
+    {
+      "role": "bf16_k9216_n3072",
+      "calls": 35,
+      "geometry": "coltile12_rowbatch8",
+      "control_event_ms": 5.2291820526123045,
+      "candidate_event_ms": 5.2388862609863285,
+      "event_speedup": 0.9981476581298795,
+      "control_wall_ms": 5.231033219024539,
+      "candidate_wall_ms": 5.263803619891405,
+      "wall_speedup": 0.9937743876418509,
+      "both_clock_positive": false,
+      "byte_exact": true
+    },
+    {
+      "role": "f32_k3072_n6144",
+      "calls": 12,
+      "geometry": "coltile16_rowbatch5",
+      "control_event_ms": 2.388905334472656,
+      "candidate_event_ms": 2.5879070281982424,
+      "event_speedup": 0.9231032291511123,
+      "control_wall_ms": 2.4105777963995934,
+      "candidate_wall_ms": 2.5841461960226297,
+      "wall_speedup": 0.9328333668233698,
+      "both_clock_positive": false,
+      "byte_exact": true
+    },
+    {
+      "role": "f32_k3072_n9216",
+      "calls": 35,
+      "geometry": "coltile8_rowbatch10",
+      "control_event_ms": 4.782587051391602,
+      "candidate_event_ms": 5.341575241088867,
+      "event_speedup": 0.8953514338996156,
+      "control_wall_ms": 4.791948990896344,
+      "candidate_wall_ms": 5.345212807878852,
+      "wall_speedup": 0.8964935846582205,
+      "both_clock_positive": false,
+      "byte_exact": true
+    }
+  ],
+  "aggregate": {
+    "both_clock_positive_roles": 0,
+    "control_event_weighted_ms": 464.9677396774292,
+    "candidate_event_weighted_ms": 492.4232347488403,
+    "event_speedup": 0.9442441112970336,
+    "event_regression_percent": 5.904817200965007,
+    "control_wall_weighted_ms": 466.26721741631627,
+    "candidate_wall_weighted_ms": 493.75436031259596,
+    "wall_speedup": 0.9443303287916737,
+    "wall_regression_percent": 5.895148075944889
+  },
+  "commands": {
+    "candidate_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -v tests/test_laguna_h5v_q5_one_wave_partitions.py",
+    "post_cleanup_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -v tests/test_laguna_h5p_q5_weight_major_occupancy.py tests/test_gguf_q5_k_f32_rocblas_prefill.py tests/test_gfx1151_backend.py",
+    "cached_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5v-q5-one-wave-resource-rocprof -- uv run python -u /tmp/laguna_wpfh5v_q5_one_wave_resource_smoke.py",
+    "actual_roles": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5v_q5_one_wave_actual_role_screen.py"
+  },
+  "decision": {
+    "admitted_roles": [],
+    "leaf_admitted": false,
+    "runtime_gate_warranted": false,
+    "production_changed": false,
+    "candidate_code_removed": true,
+    "candidate_test_removed": true,
+    "reason": "all six exact roles regress both clocks; serial partition execution and wave-synchronous LDS staging do not recover enough occupancy/barrier cost to offset the loss of four-wave parallel K execution",
+    "next_action": "Retain H5L/H5G and select a genuinely distinct exact residual target; do not retry local32 sequential K partitions without a new operation or cross-tile data-reuse premise."
+  }
+}
