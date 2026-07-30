@@ -194980,3 +194980,34 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-exact-activation-rejected.json`.
+
+## 2026-07-31 06:40 JST — Reject source-F16 Q8-base/Q4-residual weights
+
+- Screened a materially higher-precision block32 representation before more
+  device scheduling: FP16 `d8` + 32 signed Q8 base values + FP16 `d4` + 32
+  packed signed Q4 residuals. It shrinks all 240 source-F16 projections
+  **5,606,277,120 -> 4,555,100,160 bytes (-18.75%)** while preserving
+  BF16/F32 activations and FP32 accumulation.
+- RED failed because the candidate module was absent. GREEN passes four
+  candidate tests plus the four existing full-gate tests. The HIP BF16->F32
+  and F32->BF16 bodies match the dequantized CPU representation oracle, and
+  the dispatch fixture proves the candidate changes weights without
+  quantizing activations.
+- The 16-transition teacher-forced gate decisively rejects the representation:
+  all projections reach max KL **15.168966**, mean **8.254910**, and 0/16
+  top-1. Q/K/V+gate alone reaches max KL **0.462023** and 15/16 top-1;
+  output alone reaches max KL **14.032123** and 0/16 top-1. Complete
+  candidate dispatch is 768 gate, 768 output, and 2,304 Q/K/V calls.
+- The diagnostic scalar consumer is also directionally slower at
+  **52.563659 ms/token** versus the prior exact unfused-F16 control's
+  **46.754221 ms/token**. Removed the quantizer, sidecar, kernel/wrappers,
+  dispatch seam, and tests. Production remains tracked-clean at
+  **22.752894 tok/s / 43.950453 ms/token**.
+- Exact command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --activation-path q8r4_exact --modes all,qkv_gate,output --scopes all --decode-tokens 16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-q8r4-exact-full-gate.json`.
+  Raw SHA-256 is
+  `350ccea17cf6bf14b660ffa404cbba17fbba9d8dc93bb0d0e64c36699b42355a`.
+  The required lineage command remains blocked by the missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8r4-exact-activation-rejected.json`.

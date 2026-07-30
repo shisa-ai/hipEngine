@@ -7346,6 +7346,35 @@ The remaining attention sequence is:
      sidecar for this representation. Retain the repaired diagnostic so future
      source-F16 screens cannot silently miss current fused ownership:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-exact-activation-rejected.json).
+137. Test a higher-precision, byte-reducing source-F16 representation before
+     returning to device scheduling: one block32 Q8 base plus one symmetric
+     Q4 residual. **Rejected and completely removed.** Each block stores
+     FP16 `d8`, 32 signed Q8 values, FP16 `d4`, and 32 packed signed Q4
+     residuals: **52 bytes versus 64 bytes for F16 (-18.75%)**. All 240
+     projection weights therefore shrink
+     **5,606,277,120 -> 4,555,100,160 bytes** while BF16 Q/K/V/gate
+     activations, F32 output activations, and FP32 accumulation remain
+     unchanged.
+
+     RED fails because the diagnostic module does not exist. GREEN passes the
+     byte-count/quantizer, wrapper contract, exact-activation dispatch, and
+     live HIP CPU-oracle tests. Complete dispatch counters prove **768 gate +
+     768 output + 2,304 Q/K/V** candidate calls. The full teacher-forced gate
+     still fails catastrophically at **max KL 15.168966 / mean KL 8.254910 /
+     0-of-16 top-1**. Q/K/V+gate alone reaches **max KL 0.462023** and
+     15-of-16 top-1; output alone reaches **max KL 14.032123 / 0-of-16
+     top-1**. The scalar consumer is also directionally slower at
+     **52.564 ms/token** versus the prior unfused-F16 control's
+     **46.754 ms/token**, so there is no performance reason to preserve a
+     failed-quality path.
+
+     Remove the quantizer, sidecar, kernel, wrappers, dispatch seam, and tests.
+     Production remains **22.752894 tok/s / 43.950453 ms/token**. Laguna's
+     massive pre-output activations make even this roughly 12-bit blockwise
+     weight approximation unusable, especially on attention output. Do not
+     reopen blockwise source-F16 residual compression without a materially
+     stronger calibration or lossless representation:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8r4-exact-activation-rejected.json).
 
 Current exact decode checkpoint:
 
