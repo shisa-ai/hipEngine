@@ -7203,6 +7203,37 @@ The remaining attention sequence is:
      step must be paired with the larger selected-expert and/or source-F16
      seams:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-sparse-core-host-batch-rejected.json).
+132. Replace ordinary sparse launch calls with exact per-layer HIP graph
+     replay, the closest available HIP analogue to Vulkan command recording.
+     **Rejected and removed.** The first capture screen exposed an important
+     correctness detail: each Laguna sparse FFN consumes `scratch.norm`, then
+     its tail overwrites that allocation with the next layer's norm. Restore
+     the fresh input only for the cache's one-time validation replay. The live
+     mutating-input HIP gate passes, after which all **47 graphs capture**,
+     **5,969 timed replays** execute, and eager/reject counts remain zero.
+
+     The fully engaged graph is exact but slower. The directional wall screen
+     moves **22.573880 -> 22.465882 tok/s (-0.47842%)**, adding
+     **0.212954 ms/token**. Cached kernel tracing explains the reversal:
+     dispatches and device kernels remain 482/token, kernel sum changes only
+     **42.859795 -> 42.874986 ms/token**, but span grows
+     **44.532228 -> 44.734457** and positive idle grows
+     **1.675078 -> 1.853355 ms/token**.
+
+     HIP graph replay does not collapse the large internal boundaries:
+     output-add/RMSNorm -> router stays **6.532 -> 6.533 us**, selected
+     gate/up -> down stays **6.452 -> 6.452 us**, and selected down -> shared
+     stays **6.452 -> 6.452 us**. It also increases the graph-tail -> next
+     head/KV boundary **1.924 -> 3.727 us**. On this runtime, per-layer graph
+     replay schedules the same device work lazily and adds an outer boundary;
+     it does not reproduce Vulkan's effective graph-wide prequeue.
+
+     Remove every Laguna graph route, flag, harness control, and test. Retain
+     only the generic graph-validation input-restore correctness fix at
+     `91f18831d`; production is unchanged. Close per-layer HIP graphs. Reopen
+     only for a lower-level owner that demonstrably prequeues work, a
+     whole-token graph with dynamic device-owned state, or real kernel fusion:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-sparse-ffn-graph-rejected.json).
 
 Current exact decode checkpoint:
 
