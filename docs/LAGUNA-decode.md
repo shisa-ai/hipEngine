@@ -5987,15 +5987,21 @@ The remaining attention sequence is:
     peer backends unchanged:
     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-retained.json).
 
+    Tracked-clean selector-unset production at `72ed34b08` is
+    **20.798934/20.811150/20.803739 tok/s**, median
+    **20.803739 tok/s (48.06828 ms/token)**. That is a noise-floor
+    **+0.00264% / -0.00127 ms/token** over the preceding clean packet and
+    **+81.428%** over sprint start; exact repeated state and lifecycle pass:
+    [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **20.803189 tok/s** | **48.070 ms** | **+81.423%** |
-| retained dual-producer candidate | **20.809401 tok/s** | **48.055 ms** | clean publication pending |
+| hipEngine current production | **20.803739 tok/s** | **48.068 ms** | **+81.428%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **5.240 ms/token** | hipEngine is **10.901%** below Vulkan throughput |
+| Remaining wall gap | — | **5.239 ms/token** | hipEngine is **10.899%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
