@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T13:55:27+09:00",
+  "kind": "hipengine_laguna_swa_dense_ring_decode_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "65c88ab44f3ab213de29ea1768f303c34a87e1f8",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "resident_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "At saturated sequential SWA512 with no explicit eviction, compile the retained output-sharded DPP-QK owner with physical_slot=logical_slot and all slots visible. This removes per-slot base-offset, token-position, eviction-mask, and shared physical-slot traffic while preserving every QK product/addition, softmax operation, denominator update, ordered scalar PV FMA, gate, BF16 store, ABI, ownership, and dispatch.",
+    "qualification": "gfx1151 gated natural SWA72/KV8/D128, live_count=capacity=512, retained DPP-QK enabled, and dense-initial metadata still valid",
+    "fallback": "Pre-saturation, explicit eviction, reset-invalidated/non-dense metadata, and unqualified backends use the retained generic DPP-QK KVLiveSpans owner.",
+    "resident_bytes_changed": false,
+    "launch_count_changed": false
+  },
+  "correctness": {
+    "red": "ImportError on the absent dense-ring diagnostic wrapper before implementation.",
+    "green": "The natural wrapped ring matches the CPU oracle and the generic DPP owner byte-for-byte; the existing explicit-eviction fixture remains on the generic owner.",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_f32_sha256": "53d9bb47fc552029b4131e22ce11468d415590a5ca77a7dcc47ac09b908a2cde",
+    "gated_bf16_sha256": "0b34cb6fa6a104c12f5ee933accd927f7095472baa04403648dbc5ed4aff0c73",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "leaf": {
+    "shape": "wrapped full-ring SWA512, Q72/KV8/D128 BF16 KV",
+    "nine_by_fifty": {
+      "control_median_ms": 0.02867918014526367,
+      "candidate_median_ms": 0.021351099014282227,
+      "latency_change_percent": -25.55192089015988,
+      "raw_sha256": "4769622f9f4ad7a1196e79dd5b4e1f784208084ef25f18ec354798d6207321d0"
+    },
+    "twenty_one_by_one_hundred": {
+      "control_median_ms": 0.028636789321899416,
+      "candidate_median_ms": 0.021318700313568115,
+      "latency_change_percent": -25.55485233961849,
+      "raw_sha256": "41bc564ea8e52f8df51210d81acf497b16bb11fc2446f79d30a109299773c7af"
+    }
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling",
+    "control_dense_ring_template_argument": false,
+    "candidate_dense_ring_template_argument": true,
+    "grid_x": 40,
+    "local_x": 512,
+    "vgpr_count": 176,
+    "sgpr_count": 128,
+    "control_lds_block_size": 43008,
+    "candidate_lds_block_size": 40960,
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "85f5a8f6905d26b37808c39a4a0341e7f0669d4867d1fcc07af294dfacbb751b"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "seven counterbalanced control/candidate resident pairs; cached build; candidate worktree disclosed",
+    "control_median_tok_s": 21.020908078643647,
+    "candidate_median_tok_s": 21.23380406631782,
+    "throughput_change_percent": 1.0127820685846833,
+    "control_median_ms_per_token": 47.57168416601173,
+    "candidate_median_ms_per_token": 47.09471731380684,
+    "saving_ms_per_token": 0.4769668522048889,
+    "median_paired_saving_ms_per_token": 0.4769668522048889,
+    "mean_paired_saving_ms_per_token": 0.48816105334090104,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "control_ms_per_token": [
+      47.6063548964925,
+      47.56691607125983,
+      47.56601688298067,
+      47.60722758241115,
+      47.56640267785726,
+      47.57168416601173,
+      47.6006744411136
+    ],
+    "candidate_ms_per_token": [
+      47.10218833950092,
+      47.096117401466245,
+      47.090476864626204,
+      47.09978206229844,
+      47.09087515719176,
+      47.09471731380684,
+      47.09399220585002
+    ],
+    "raw_sha256": "2ed389c86ac694066c84fbd1f6c24434e1fd05e0cc84fd02b2ae1d51e95f3731"
+  },
+  "validation": {
+    "focused_gpu_green": "tests/test_laguna_kv_attention.py::test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction",
+    "dispatch_and_eviction_fallback_green": "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "focused_result": "2 passed",
+    "comparison_plumbing_removed_before_retention_commit": true
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_swa_fixed512_reduce_leaf.py --candidate mixed40-local512-exp32-producer-max-gate-stage-pcache-output-sharded-probability-dpp-qk-dense-ring-allwave-value-idle-vec4-denom-probability-vstage128-vec16-direct-assume-exp --warmups 10 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-dpp-qk-dense-ring-21x100.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-swa-dense-ring --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-swa-dense-ring-model-7pair.json",
+    "candidate_worktree_disclosed": true
+  },
+  "gate": {
+    "correctness": "pass; F32 context and gated BF16 bytes exact",
+    "leaf": "pass; -25.555% at 21x100",
+    "resources": "pass; grid40/local512/VGPR176/SGPR128/scratch0 unchanged, LDS 43008 -> 40960",
+    "whole_model": "pass; +1.01278%, 7/7 pairs, exact state and lifecycle",
+    "decision": "Promote only behind the gfx1151 dense-ring capability and runtime metadata-valid qualification; keep generic DPP-QK as exact rollback and explicit-eviction fallback."
+  }
+}
