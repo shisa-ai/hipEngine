@@ -7091,6 +7091,18 @@ Current exact decode checkpoint:
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **2.089 ms/token** | hipEngine is **4.651%** below Vulkan throughput |
 
+The refreshed post-pair census confirms attention as the first arithmetic
+priority. Complete hipEngine kernel work is **43.500661 ms/token**, already
+**0.158539 ms/token below** Vulkan's logged GPU sum, while tracked-clean
+production remains **2.089054 ms/token** slower in wall time. The like-for-like
+positive family gaps now rank attention **+0.437941**, dense/shared
+**+0.360630**, paired selected gate/up **+0.318997**, selected down
+**+0.272757**, and router **+0.108831 ms/token**. Attention itself is
+**1.347364 ms/token = 0.893032 SWA + 0.454332 global** versus Vulkan's
+**0.909423 ms/token**. The trace retains **482 model dispatches/token** and
+shows **1.674612 ms/token** between summed kernels and kernel span:
+[`post-pair census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-paired-expert-wall-reprofile.json).
+
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
 the data, and a block should expose enough independent work to cover the
@@ -7098,22 +7110,9 @@ machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
 cover one logical token each; larger blocks add no score ownership. Global
 local512 confirms that the same saturation axis transfers when the original
 eight-wave denominator tree is held fixed: the extra waves help only the
-independent QK and value-transport phases. The current census measures SWA at
-**0.873478 ms/token**, global attention at **0.450287**, and complete attention
-at **1.323765** versus llama.cpp Vulkan's logged **0.909423-ms** family. The
-remaining attention gap is **0.414342 ms/token**; selected gate/up is now the
-larger named gap at **0.496884 ms/token**.
-
-The pre-expert-pair post-interleave census lowered complete hipEngine kernel work to
-**43.823282 ms/token**, only **0.164082 ms/token** above Vulkan's logged GPU
-total, while hipEngine still exposes **2.037411 ms/token** of single-queue
-submission idle. Current positive family gaps rank selected gate/up
-**+0.496884**, attention **+0.414342**, dense/shared **+0.357252**, selected
-down **+0.242849**, and router **+0.093081 ms/token**:
-[`post-interleave census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json).
-The paired owner removes **0.265163 ms/token** from complete wall, so those
-family values are no longer a valid post-promotion ranking; refresh the
-127-transition census before choosing the next non-attention arithmetic seam.
+independent QK and value-transport phases. The earlier pre-expert-pair census
+remains historical evidence, but its family ranking is superseded by the
+post-pair result above.
 
 The refreshed comparator audit makes the attention trade explicit. At
 llama.cpp Vulkan `c0bc8591e`, Laguna's decode sequence length is one, but
@@ -7132,9 +7131,8 @@ unqualified F16/BF16 cooperative port is already closed.
 
 Next attention-core attack:
 
-1. Re-run the cached 127-transition wall census on the paired production
-   default. The expected selected gate/up reduction must be measured, not
-   ratio-scaled, before the family table is re-ranked.
+1. **Done:** the cached paired-production census records **43.500661-ms**
+   kernel sum, **45.173501-ms** span, and the attention-first ranking above.
 2. Screen an exact one-slot-ahead K register pipeline in the retained
    dense-ring SWA DPP-QK owner, then the dense-prefix global owner. Keep query
    ownership, four ordered products, the exact DPP reduction tree, score

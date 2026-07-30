@@ -194309,3 +194309,31 @@ Vulkan local sizes verbatim will close the measured gap.
   **79,022,522,196-byte** residency, deterministic repeats, and zero tracked
   live bytes after close. Raw artifact SHA-256 is
   `a43b0268343127256055c5dc09e66ba4751ba1960a7cbd770728e85e2f9c963c`.
+
+## 2026-07-31 01:32 JST — Re-profile paired production decode wall
+
+- A tracked-clean cached-only `rocprofv3` run on `34efbf6fa` segments all
+  127 exact length-one transitions at **482 model dispatches/token**.
+  Median kernel sum is **43.500661 ms/token**, span is **45.173501**, and
+  span-minus-sum is **1.674612 ms/token**. No compiler runs under the profiler.
+- Current family medians are selected gate/up **7.783087**, selected down
+  **4.797847**, dense/shared **2.360519**, router **1.079547**, attention
+  **1.347364 = 0.893032 SWA + 0.454332 global**, and LM head/argmax
+  **1.118300 ms/token**. The fused source-F16 projection composites total
+  **24.560818 ms/token**, but now include head/KV and add/RMSNorm work and are
+  not directly compared with Vulkan's older projection-only family.
+- Complete hipEngine kernel work is now **0.158539 ms/token below** the
+  same-GGUF Vulkan logger, while tracked-clean production wall remains
+  **2.089054 ms/token slower**. Like-for-like positive gaps rank attention
+  **+0.437941**, dense/shared **+0.360630**, paired gate/up **+0.318997**,
+  selected down **+0.272757**, and router **+0.108831 ms/token**. Attention is
+  therefore the first arithmetic target; submission/dispatch contraction is
+  the dominant cross-family wall mechanism.
+- The trace preserves tokens 2930/74107, trajectory
+  `94f803f7...bda32`, position 638, and complete allocation recovery.
+  Trace/bench SHA-256 values are
+  `d1d4aec5770164b19369767ecf3848dea12c96bb04f4a7065def0fb9f665adc0`
+  and
+  `b012409461c9c87d65bbbaa9f79f3b8f3e936220d0cffcb38ddc00f5e1bd7cde`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-paired-expert-wall-reprofile.json`.
