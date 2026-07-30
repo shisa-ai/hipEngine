@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T14:56:32+09:00",
+  "kind": "hipengine_laguna_gfx1151_q4_t16_rowpair_activation_reuse_rejection",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "source_revision": "54621d77fd0fb3342d06e8bb8cb6745fa7caee8b",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "role": "actual layer-1 selected gate/up",
+    "shape": "x_rows=1, routes=10, experts=256, K=3072, N=1024",
+    "selected_experts": [17, 3, 91, 42, 7, 128, 201, 55, 240, 12],
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "candidate": "pair two routes per tile8 workgroup, stage the shared activation once as FP32 in LDS, process routes sequentially, and fuse the existing BF16-boundary SiLU"
+  },
+  "correctness": {
+    "red": "focused test collection failed because the diagnostic row-pair wrapper did not exist",
+    "green": "focused natural-shape production-bit oracle passed",
+    "candidate_bf16_mismatches": 0,
+    "arithmetic_contract": "unchanged per-output K ownership, FMA order, wave32 tree, ordered four-wave merge, BF16 gate/up boundaries, SiLU expression, and BF16 store"
+  },
+  "leaf": {
+    "protocol": "5 warmups, 9 counterbalanced samples, 50 launches per timed burst",
+    "control_median_ms": 0.1090451431274414,
+    "candidate_median_ms": 0.14903614044189453,
+    "candidate_delta_percent": 36.67379964618463,
+    "control_samples_ms": [
+      0.11134617805480956,
+      0.10979928016662598,
+      0.10927836418151855,
+      0.10898021697998046,
+      0.1090451431274414,
+      0.10824930191040039,
+      0.10800966262817382,
+      0.10815232276916503,
+      0.11007205963134765
+    ],
+    "candidate_samples_ms": [
+      0.15168496131896972,
+      0.15242715835571288,
+      0.1495458221435547,
+      0.1492821216583252,
+      0.14890230178833008,
+      0.14837411880493165,
+      0.14903614044189453,
+      0.14841739654541017,
+      0.14877984046936035
+    ],
+    "tracked_allocations_returned_to_zero": true
+  },
+  "trace": {
+    "protocol": "cached-build rocprofv3 kernel trace; one warmup, one counterbalanced sample, one launch per timed burst",
+    "control": {
+      "global_threads": [16384, 10, 1],
+      "local_threads": 128,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "median_duration_ns": 116939
+    },
+    "candidate": {
+      "global_threads": [16384, 5, 1],
+      "local_threads": 128,
+      "vgpr": 128,
+      "sgpr": 128,
+      "lds_bytes": 12800,
+      "scratch_bytes": 0,
+      "median_duration_ns": 145873
+    },
+    "kernel_trace_sha256": "a9c3e972382fc0a19c9c45d0ae24c4c5a8418a89ecf00a3511c5acb1a9a7f30f",
+    "leaf_sha256": "ce6d7f59e467ca422bbfbdae5a06372848e946203ded92f6701cc56522520f98",
+    "compiler_spawned_under_profiler": false
+  },
+  "decision": {
+    "result": "reject at the leaf stop and remove the kernel, export, wrapper, test seam, and harness selector",
+    "reason": "halving route workgroups and activation reads raises allocated VGPR 72 -> 128 and LDS 512 -> 12800 bytes; the retained cache-hot BF16 activation reads are much cheaper than this reuse schedule",
+    "production": "unchanged exact tile8 pair-coefficient owner at 21.304731 tok/s",
+    "anti_repeat": "Do not stage the complete c=1 K3072 activation per selected gate/up workgroup or serialize route pairs. Revisit cross-route reuse only with a schedule that preserves the 72-VGPR bucket and avoids a per-workgroup full-row LDS copy."
+  }
+}

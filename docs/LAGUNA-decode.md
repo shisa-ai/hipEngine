@@ -6512,6 +6512,27 @@ The remaining attention sequence is:
      production unchanged at **21.304731 tok/s**. Revisit width only if a
      different decode body holds the full tile below the tile8 VGPR bucket:
      [`tile16 rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-tile16-rejected.json).
+107. Reuse the singleton activation across two exact selected routes.
+     **Rejected and removed at the leaf stop:** pair two routed experts per
+     tile8 workgroup, stage the common K3072 BF16 activation once as FP32 in
+     LDS, and evaluate the routes sequentially. This halves route workgroups,
+     selected-ID reads, and activation reads while preserving every output's
+     K owner, FMA order, wave32 tree, ordered four-wave merge, BF16 gate/up
+     boundaries, fused SiLU expression, resident bytes, and BF16 store.
+
+     RED fails importing the absent diagnostic wrapper. GREEN passes the
+     natural-shape production-bit oracle with zero BF16 mismatches. The actual
+     layer-1 counterbalanced 9x50 leaf nevertheless regresses
+     **0.109045 -> 0.149036 ms (+36.674%)**. Cached native tracing explains
+     the loss: grid Y falls **10 -> 5**, but allocated VGPR rises
+     **72 -> 128** and LDS rises **512 -> 12,800 bytes** at unchanged
+     local128/SGPR128/scratch0.
+
+     Remove the complete diagnostic. The c=1 activation is already cache-hot;
+     copying the full row into every workgroup and serializing route owners is
+     not a useful exact reuse seam. Keep production unchanged at
+     **21.304731 tok/s**:
+     [`row-pair rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-rowpair-activation-reuse-rejected.json).
 
 Current exact decode checkpoint:
 
