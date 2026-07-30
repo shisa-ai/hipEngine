@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T18:50:00+09:00",
+  "kind": "hipengine_laguna_q4_t16_dense_dual_interleaved_decode",
+  "status": "retained_default",
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "driver": "ROCm 7.15 development environment"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "replace 96 separate decode-only gate/up T16 sidecars with 48 byte-neutral dual-interleaved payloads and use a two-column local32 owner",
+    "prior_layout_bytes": 214597632,
+    "retained_layout_bytes": 214597632,
+    "prior_total_resident_bytes": 79022520340,
+    "retained_total_resident_bytes": 79022520340,
+    "prefill_layout": "unchanged q4_k_pack8",
+    "exact_fallback": "resident pack8 fused gate/up plus SiLU"
+  },
+  "leaf": {
+    "workload": "actual layer-0 dense K3072/N12288 plus layer-1 shared K3072/N1024, deterministic BF16 row",
+    "protocol": "15 warmups, 21 counterbalanced samples, 200 launches/sample",
+    "shared_control_ms": 0.010351314544677734,
+    "shared_candidate_ms": 0.00961735486984253,
+    "shared_delta_percent": -7.090497266480799,
+    "dense_control_ms": 0.18643539428710937,
+    "dense_candidate_ms": 0.17719144821166993,
+    "dense_delta_percent": -4.958257047051817,
+    "weighted_48_call_control_ms": 0.6729471778869629,
+    "weighted_48_call_candidate_ms": 0.6292071270942687,
+    "weighted_delta_percent": -6.499774756472987,
+    "candidate_wins": "21/21 at both shapes",
+    "bf16_mismatches": 0
+  },
+  "codegen": {
+    "kernel": "q4_k_t16_dense_dual_interleaved_local32_silu_gemv_kernel<unsigned short, 2>",
+    "workgroup_size": 32,
+    "vgpr": 72,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "prior_vgpr": 176,
+    "q_load": "one global_load_b64 feeds corresponding gate/up Q streams"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix2048/attention128, 127 synchronized decode transitions",
+    "protocol": "seven counterbalanced same-resident pairs; separate T16 rollback retained only for this diagnostic",
+    "control_median_tok_s": 21.89855832354154,
+    "candidate_median_tok_s": 21.95447388733481,
+    "delta_percent": 0.2553390180629389,
+    "control_wall_ms_per_token": 45.66510658945859,
+    "candidate_wall_ms_per_token": 45.548802723844105,
+    "median_endpoint_saving_ms_per_token": 0.11630386561448347,
+    "median_paired_saving_ms_per_token": 0.12022407182792705,
+    "candidate_pair_wins": 7,
+    "pair_count": 7,
+    "diagnostic_resident_bytes": 79237117972
+  },
+  "production": {
+    "workload": "selector-unset p512/d128 eager c=1, matrix2048/attention128, three repeated exact trajectories",
+    "prior_clean_tok_s": 21.880056,
+    "retained_median_tok_s": 21.942208110397925,
+    "delta_percent": 0.28405827845197074,
+    "prior_wall_ms_per_token": 45.703722147694684,
+    "retained_wall_ms_per_token": 45.574264676038794,
+    "saving_ms_per_token": 0.12945747165588983,
+    "sprint_start_tok_s": 11.466687,
+    "cumulative_delta_percent": 91.35612675568736,
+    "prefill_median_tok_s": 651.6722176195786,
+    "resident_bytes": 79022520340
+  },
+  "correctness": {
+    "red": "focused fixture failed importing the absent dual-interleaved dense wrapper",
+    "green": [
+      "natural Laguna production-bit fixture passes tile8/tile4/tile2 with zero BF16 mismatches",
+      "gfx1151 registry, dispatch, and paired-materializer focused tests pass",
+      "all 14 resident A/B trajectories preserve tokens 2930/74107, trajectory SHA-256 94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32, final position 638, determinism, and lifecycle",
+      "all three selector-unset production trajectories preserve the same exact state and release every allocation"
+    ],
+    "top1_agreement_percent": 100.0,
+    "kl": 0.0
+  },
+  "commands": {
+    "leaf": "uv run python scripts/laguna_q4_t16_dense_dual_decode_leaf.py --candidate dual-interleaved-tile2 --warmups 15 --samples 21 --burst 200 --allow-dirty --output /tmp/laguna-q4-t16-dense-dual-interleaved-tile2-21x200.json",
+    "resident_gate": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-q4-decode-t16-dual-interleaved --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-t16-dense-dual-interleaved-ab-7.json",
+    "production": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-t16-dense-dual-interleaved-production-3.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-dense-dual-tile2-rocprof.ys9u5j --output-file dense-dual-tile2 -- uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits"
+  },
+  "source_hashes": {
+    "leaf_json_sha256": "ab02da9f1e978dbf320df37f242ebf4ceaf27102ed5fd465ef58752a44110e04",
+    "resident_gate_json_sha256": "98da013043b13fa9afd58304465cbc38c25c767cb9e82892733c70f1cc86018c",
+    "production_json_sha256": "d058f045b0e3587eec81a98d5d1ecc8e91fbcb68a1659c96c3a51892ad9a9bcd",
+    "trace_csv_sha256": "d40b7abc8ff40b09e9a6b2c7b22ed9ebb7ff58ee5a4e82a9649b0693d61ab35d"
+  },
+  "repo": {
+    "baseline_revision": "624317d846d80f30dbf7e92fcd4bbfb87a6740e3",
+    "tracked_worktree": "candidate implementation present"
+  }
+}

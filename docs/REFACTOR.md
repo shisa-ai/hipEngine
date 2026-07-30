@@ -2176,6 +2176,22 @@ should be boring.
   if that shared resident-layout task is declined or a prefill gate rejects
   the layout. Never add a decode-only production sidecar for this primitive.
 
+## Laguna gfx1151 dense/shared dual-interleaved T16 selector
+
+- Added 2026-07-30 as
+  `LagunaGGUFResidentSession.set_q4_decode_t16_dual_interleaved(...)` and
+  `--compare-q4-decode-t16-dual-interleaved`. The gfx1151 capability defaults
+  on; false restores the exact resident-pack8 fused gate/up path.
+- The temporary same-resident diagnostic duplicated the old separate sidecars
+  only for seven counterbalanced pairs. All seven candidates win
+  **21.898558 -> 21.954474 tok/s (+0.25534%)** with exact state.
+  Production removes the duplicates: 48 paired payloads replace 96 separate
+  payloads at the same **214,597,632-byte** auxiliary residency.
+- Remove the comparison CLI and session setter after tracked-clean
+  selector-unset publication and the first post-retention wall census. Retain
+  the architecture capability, paired materializer contract, registered tile2
+  owner, and pack8 exact fallback.
+
 ## Laguna gfx1151 selected-Q4 scalar-Q rollback
 
 - Added 2026-07-30 after exact adjacent-column T16 Q-payload reuse improved the

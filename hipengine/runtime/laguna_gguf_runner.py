@@ -2109,6 +2109,7 @@ class LagunaGGUFResidentSession:
         use_selected_down_natural_parallel_decode: bool | None = None,
         use_q4_pack8_dual_silu_decode: bool | None = None,
         use_q4_decode_t16_sidecar: bool | None = None,
+        use_q4_decode_t16_dual_interleaved: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2315,6 +2316,15 @@ class LagunaGGUFResidentSession:
             )
             if use_q4_decode_t16_sidecar is None
             else use_q4_decode_t16_sidecar
+        )
+        self.use_q4_decode_t16_dual_interleaved = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED",
+                False,
+            )
+            if use_q4_decode_t16_dual_interleaved is None
+            else use_q4_decode_t16_dual_interleaved
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -3097,6 +3107,11 @@ class LagunaGGUFResidentSession:
         """Select compact exact Q4 dense/shared decode tiles or pack8."""
 
         self.use_q4_decode_t16_sidecar = bool(enabled)
+
+    def set_q4_decode_t16_dual_interleaved(self, enabled: bool) -> None:
+        """Select paired exact Q4 dense/shared decode tiles."""
+
+        self.use_q4_decode_t16_dual_interleaved = bool(enabled)
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -4980,6 +4995,9 @@ class LagunaGGUFResidentSession:
                 runtime=self.runtime,
                 use_gemv_decode=True,
                 use_q4_t16_sidecar=self.use_q4_decode_t16_sidecar,
+                use_q4_t16_dual_interleaved=(
+                    self.use_q4_decode_t16_dual_interleaved
+                ),
             )
         if not dense_silu_fused:
             dense_pair = launch_gguf_linear_pair(
@@ -5090,6 +5108,9 @@ class LagunaGGUFResidentSession:
             ),
             use_q4_decode_t16_sidecar=(
                 self.use_q4_decode_t16_sidecar
+            ),
+            use_q4_decode_t16_dual_interleaved=(
+                self.use_q4_decode_t16_dual_interleaved
             ),
         )
         config = self.weights.config

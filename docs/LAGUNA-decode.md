@@ -6776,6 +6776,40 @@ The remaining attention sequence is:
      diagnostic until that coupled resident-layout task is explicitly funded;
      production remains **21.880056 tok/s**:
      [`dual-interleave block`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dual-interleaved-blocked.json).
+117. Apply the byte-neutral interleave to the independent dense/shared decode
+     sidecars and retune output ownership.
+     **Retained as the gfx1151 default:** unlike the 43.76-GB selected-MoE
+     layout, the 96 dense/shared T16 allocations are decode-only sidecars.
+     Replace each gate/up pair with one dual-interleaved allocation instead of
+     duplicating it. Total auxiliary residency remains exactly
+     **214,597,632 bytes**, complete resident weights remain
+     **79,022,520,340 bytes**, and pack8 remains the unchanged prefill owner
+     and exact rollback.
+
+     The compiled incumbent already eliminates its source-level shared
+     exchange and barrier: native tracing reports LDS0 and disassembly contains
+     no `s_barrier`. The useful seam is physical adjacency plus narrower output
+     ownership. Tile8 reduces the dense leaf **11.078%** but is flat on the 47
+     shared roles. Tile4 wins both. Tile2 lowers allocated VGPR
+     **176 -> 72** and wins the weighted actual family most strongly. At
+     21x200 it improves shared K3072/N1024
+     **0.010351 -> 0.009617 ms (-7.090%)**, dense K3072/N12288
+     **0.186435 -> 0.177191 (-4.958%)**, and the exact one-dense-plus-47-shared
+     ledger **0.672947 -> 0.629207 ms (-6.500%)**, with **21/21** wins and
+     zero BF16 mismatches at both shapes. Cached tracing confirms
+     local32/VGPR72/SGPR128/LDS0/scratch0.
+
+     All seven same-resident p512/d128 pairs win:
+     **21.898558 -> 21.954474 tok/s (+0.25534%)**, saving
+     **0.116304 ms/token** by median endpoints and **0.120224 ms/token** by
+     paired deltas. All trajectories retain tokens **2930/74107**, SHA
+     `94f803f7...bda32`, final position 638, deterministic state, and complete
+     recovery. Remove the diagnostic duplicate allocations before production.
+     The byte-neutral selector-unset packet measures
+     **21.923059/21.945923/21.942208 tok/s**, median
+     **21.942208 (+0.28406%, -0.129457 ms/token)** versus the preceding clean
+     checkpoint, with unchanged residency and exact state:
+     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-dual-interleaved-retained.json).
 
 Current exact decode checkpoint:
 
@@ -6783,9 +6817,9 @@ Current exact decode checkpoint:
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
 | hipEngine prior tracked-clean production | **21.851538 tok/s** | **45.763 ms** | **+90.565%** |
-| hipEngine current tracked-clean production | **21.880056 tok/s** | **45.704 ms** | **+90.814%** |
+| hipEngine current production | **21.942208 tok/s** | **45.574 ms** | **+91.356%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.874 ms/token** | hipEngine is **6.289%** below Vulkan throughput |
+| Remaining wall gap | — | **2.745 ms/token** | hipEngine is **6.023%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
@@ -6826,9 +6860,11 @@ win isolated leaves but fail to produce a reliable complete-model improvement.
 The largest selected gate/up gap (**+0.526945 ms/token**) now has one exact
 positive leaf, but its required dual-interleaved resident layout is coupled to
 the retained prefill consumer and cannot be promoted as a 43.76-GB sidecar.
-Until that shared-layout task is opened, the next independent bounded kernel
-target is dense/shared (**+0.411714 ms/token**), followed by selected down
-(**+0.252713**) if its exact leaf wins survive the resident wall.
+The independent dense/shared gate/up sidecar now uses a byte-neutral
+dual-interleaved tile2 owner. Re-profile before assigning its updated Vulkan
+gap. The next independent pre-census target remains selected down
+(**+0.252713 ms/token**), while scheduling still exposes about
+**2.036 ms/token** in the preceding single-queue trace.
 The comparator audit confirms why direct copying fails: the same-GGUF
 llama.cpp command requests F16 K/V, and its non-BF16 cooperative shader uses
 F16 accumulator/output types. hipEngine's BF16-KV recurrent contract rejects
