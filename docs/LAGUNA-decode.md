@@ -7318,6 +7318,34 @@ The remaining attention sequence is:
      finer-grained device ownership or a shared-branch kernel that materially
      reduces bytes:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-delayed-shared-release-rejected.json).
+136. Reopen source-F16 compression only for the materially different
+     **one-plane Q8_0 weights with unquantized activations and FP32
+     accumulation** hypothesis. **Rejected on correctness; production
+     unchanged.** The old full-model diagnostic had become stale after
+     projection->head/KV, Q/K/V/gate quad, and output->add/RMSNorm fusion:
+     its first attempted run intercepted zero projections. Repair the harness
+     by temporarily exposing the exact unfused F16 projection calls, restoring
+     all three production flags on exit, and adding a control arm. The
+     all-F16 control is exactly neutral at **KL 0 / 16-of-16 top-1**, with
+     **1,536 single + 768 triple** calls across the teacher-forced run.
+
+     The valid candidate changes all 240 source-F16 weights
+     **5,606,277,120 -> 2,978,334,720 bytes (-46.875%)**, keeps Q/K/V/gate
+     activations in BF16, keeps the output activation in F32, and accumulates
+     in FP32. Dispatch counters prove complete ownership: **768 gate + 768
+     output + 2,304 Q/K/V** Q8 calls. It fails catastrophically at
+     **max KL 14.548566 / mean KL 8.725321 / 0-of-16 top-1**. The bounded
+     family split closes partial promotion too: Q/K/V+gate preserves
+     16-of-16 top-1 but reaches **max KL 0.321952**, while output alone reaches
+     **max KL 14.367769 / 0-of-16 top-1**.
+
+     This disproves the hypothesis that Q8_1 activation packing caused the
+     prior rejection. The earlier Q8_0-by-Q8_1 result was substantially helped
+     by cancellation between weight and activation errors. Do not add a fused
+     production kernel, residual repair, layer slicing, or a resident Q8
+     sidecar for this representation. Retain the repaired diagnostic so future
+     source-F16 screens cannot silently miss current fused ownership:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-exact-activation-rejected.json).
 
 Current exact decode checkpoint:
 
