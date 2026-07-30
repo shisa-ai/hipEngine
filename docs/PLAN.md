@@ -1679,6 +1679,20 @@ retain H5L/H5G and do not retry this schedule without a new operation or
 cross-tile reuse premise
 ([H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json)).
+**WPF-H5W exact Q6 weight-major composite reuse** targets a genuinely open
+schedule boundary left by implementation order: H5I still launches its four
+selected Q6 roles on the original two-dimensional ordered grid, while H5L/H5P
+later admitted matching exact weight-major physical primitives. Current Q6 is
+**121.306 ms** versus matched llama.cpp HIP **14.920 ms**. An actual-weight
+transfer screen chains the unchanged exact Q6 producer into the existing
+16x5-BF16, 16x4-BF16, and 16x5-F32 weight-major primitives, covering **142/143**
+selected calls. All outputs are byte-exact; all three roles win both clocks and
+weighted event/wall falls **86.306/81.787 -> 68.533/66.587 ms
+(-20.593%/-18.584%)**. Add no device body or physical symbol: freeze RED for
+three Q6 composites, preserve H5I F32-N72 plus raw long-K/wide-N fallbacks, and
+require final-source resource/role plus complete-state/clean runtime gates before
+ownership
+([H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, and P6/repair routes remain closed.

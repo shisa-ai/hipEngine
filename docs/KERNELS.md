@@ -883,8 +883,18 @@ VGPR. But sequential logical-K replay loses retained four-wave parallelism:
 regresses **464.968/466.267 -> 492.423/493.754 ms (+5.905%/+5.895%)**. Remove
 the body, exports, wrappers, keys, gfx1151 exclusions, and focused test; retain
 H5L/H5G and require a new operation/data-reuse premise before revisiting this
-schedule
-([H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
+schedule. H5W selects exact Q6 weight-major composite reuse: H5I still uses the
+original two-dimensional ordered grid, while three later-retained H5L/H5P
+physical primitives match **142/143** selected Q6 calls. The actual-weight
+producer-inclusive transfer screen is byte-exact and both-clock positive on all
+three roles, moving weighted event/wall **86.306/81.787 -> 68.533/66.587 ms
+(-20.593%/-18.584%)**. Add only Q6 wrappers/keys over the existing local128
+16x5-BF16, 16x4-BF16, and 16x5-F32 symbols; preserve H5I F32-N72 and all raw
+long-K/wide-N fallbacks. Require composite exactness, cached physical-route
+trace, final-source role timing, and complete-state/clean runtime gates before
+ownership
+([H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
+[H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
 [H5U runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json) ·
 [H5U leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-candidate.json) ·
