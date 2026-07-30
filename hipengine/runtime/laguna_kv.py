@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
@@ -16,7 +16,7 @@ from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
@@ -72,6 +72,13 @@ _SWA_PREFILL_VARIANTS = frozenset(
         "swa_context_rows_qrow4_m128_online_spans",
     }
 )
+_SWA_QROW4_ROLE = "qrow4_m128_c256_exact"
+_SWA_QROW4_ROLE_BASE_VARIANT = "swa_context_rows_qrow4_m128_c256_exact_spans"
+_SWA_PREFILL_ROLE_CANDIDATES = {
+    _SWA_QROW4_ROLE: frozenset(
+        {"swa_context_rows_qrow4_sourcequal_exact_spans"}
+    ),
+}
 
 
 class _LagunaKVConfig(Protocol):
@@ -121,6 +128,7 @@ class LagunaKVCache:
         prefill_cached_meta: bool,
         prefill_global_qrow6: bool,
         prefill_dense_initial: bool,
+        swa_prefill_role_variants: Mapping[str, str],
         row_position: DeviceBuffer,
         split_score_scratch: DeviceBuffer | None,
         split_physical_scratch: DeviceBuffer | None,
@@ -139,6 +147,7 @@ class LagunaKVCache:
         self.prefill_cached_meta = bool(prefill_cached_meta)
         self.prefill_global_qrow6 = bool(prefill_global_qrow6)
         self.prefill_dense_initial = bool(prefill_dense_initial)
+        self.swa_prefill_role_variants = dict(swa_prefill_role_variants)
         self._row_position = row_position
         self._split_score_scratch = split_score_scratch
         self._split_physical_scratch = split_physical_scratch
@@ -502,7 +511,26 @@ class LagunaKVCache:
             rows=rows,
             row_positions_ptr=row_positions_ptr,
         )
-        fn = self._resolve("laguna_attention_prefill", state.attention_prefill_variant)
+        variant = state.attention_prefill_variant
+        start_position = (
+            int(self._pending_positions[int(row_offset)])
+            if state.attention_type == SLIDING_ATTENTION
+            else None
+        )
+        role_variant = self.swa_prefill_role_variants.get(_SWA_QROW4_ROLE)
+        if (
+            role_variant is not None
+            and variant == _SWA_QROW4_ROLE_BASE_VARIANT
+            and state.attention_type == SLIDING_ATTENTION
+            and int(rows) == 128
+            and start_position is not None
+            and start_position >= 256
+            and state.capacity == 512
+            and self.sliding_window == 512
+            and state.q_heads == 72
+        ):
+            variant = role_variant
+        fn = self._resolve("laguna_attention_prefill", variant)
         common = (
             query_ptr,
             current_key_ptr,
@@ -533,7 +561,7 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 sliding_window=self.sliding_window,
-                start_position=int(self._pending_positions[int(row_offset)]),
+                start_position=start_position,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,
@@ -960,6 +988,50 @@ def resolve_laguna_swa_prefill_variant(
     return parsed
 
 
+def _resolve_laguna_swa_prefill_role_variants(backend: str) -> dict[str, str]:
+    """Resolve registered package-only substitutions for bounded SWA roles."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna SWA prefill role variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for role, variant in raw_variants.items():
+        if role not in _SWA_PREFILL_ROLE_CANDIDATES:
+            raise ValueError(f"unsupported Laguna SWA prefill role {role!r}")
+        if not isinstance(variant, str) or not variant:
+            raise ValueError("Laguna SWA prefill roles require non-empty variants")
+        if variant not in _SWA_PREFILL_ROLE_CANDIDATES[role]:
+            raise ValueError(
+                f"unsupported variant {variant!r} for Laguna SWA prefill role {role!r}"
+            )
+        parsed[role] = variant
+    if not parsed:
+        return {}
+
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
+
+    register_laguna_kv_attention_kernels()
+    load_backend_kernel_package(backend)
+    return {
+        role: variant
+        for role, variant in parsed.items()
+        if is_registered(
+            KernelKey(
+                backend,
+                "laguna_attention_prefill",
+                "bf16",
+                variant,
+            )
+        )
+    }
+
+
 def resolve_laguna_split_thresholds(
     backend: str,
     *,
@@ -1071,6 +1143,12 @@ def allocate_laguna_kv_cache(
     parsed_swa_prefill_variant = resolve_laguna_swa_prefill_variant(
         backend,
         swa_prefill_variant,
+    )
+    package_swa_prefill_variant = resolve_laguna_swa_prefill_variant(backend)
+    parsed_swa_prefill_role_variants = (
+        _resolve_laguna_swa_prefill_role_variants(backend)
+        if parsed_swa_prefill_variant == package_swa_prefill_variant
+        else {}
     )
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
@@ -1323,6 +1401,7 @@ def allocate_laguna_kv_cache(
             prefill_cached_meta=prefill_cached_meta,
             prefill_global_qrow6=prefill_global_qrow6,
             prefill_dense_initial=prefill_dense_initial,
+            swa_prefill_role_variants=parsed_swa_prefill_role_variants,
             row_position=_buffer_for_tensor(row_position, buffers),
             split_score_scratch=split_score_scratch,
             split_physical_scratch=split_physical_scratch,

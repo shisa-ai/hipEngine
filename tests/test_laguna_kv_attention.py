@@ -804,6 +804,132 @@ def test_laguna_swa_qrow4_auto_requires_m128_and_256_prior_tokens(
     assert calls == ["wave32", "wave32", "qrow4"]
 
 
+def test_laguna_swa_qrow4_role_policy_is_bounded_and_fail_closed(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100, hip_gfx1151
+    from hipengine.runtime import laguna_kv as module
+
+    role = "qrow4_m128_c256_exact"
+    candidate = "swa_context_rows_qrow4_sourcequal_exact_spans"
+    retained = "swa_context_rows_qrow4_m128_c256_exact_spans"
+    assert hip_gfx1100.LAGUNA_SWA_PREFILL_ROLE_VARIANTS == {role: candidate}
+    assert hip_gfx1151.LAGUNA_SWA_PREFILL_ROLE_VARIANTS == {}
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
+        {role: candidate},
+    )
+    runtime = _FakeRuntime()
+    cache = module.allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    variants: list[str] = []
+
+    def resolve(layer: str, variant: str):
+        assert layer == "laguna_attention_prefill"
+        variants.append(variant)
+        return lambda *args, **kwargs: None
+
+    cache._resolve = resolve
+
+    def dispatch(layer_id: int, start: int, rows: int) -> None:
+        cache.position = start - 1
+        cache.prepare_rows(tuple(range(start, start + rows)))
+        cache.attend_prefill(
+            layer_id,
+            0x1000,
+            0x2000,
+            0x3000,
+            0x4000,
+            rows,
+        )
+        cache.discard_rows()
+
+    try:
+        assert cache.swa_prefill_role_variants == {role: candidate}
+        dispatch(1, 256, 128)
+        dispatch(1, 255, 128)
+        dispatch(1, 256, 127)
+        dispatch(0, 256, 128)
+        assert variants == [
+            candidate,
+            retained,
+            retained,
+            "global_context_rows_spans",
+        ]
+    finally:
+        cache.free()
+    assert runtime.allocations == {}
+
+    forwarded_runtime = _FakeRuntime()
+    forwarded = module.allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=forwarded_runtime,
+        swa_prefill_variant=retained,
+    )
+    try:
+        assert forwarded.swa_prefill_role_variants == {role: candidate}
+    finally:
+        forwarded.free()
+    assert forwarded_runtime.allocations == {}
+
+    explicit_runtime = _FakeRuntime()
+    explicit = module.allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=explicit_runtime,
+        swa_prefill_variant="swa_context_rows_wave32_exact_spans",
+    )
+    try:
+        assert explicit.swa_prefill_role_variants == {}
+    finally:
+        explicit.free()
+    assert explicit_runtime.allocations == {}
+
+    monkeypatch.setattr(module, "is_registered", lambda key: False)
+    missing_runtime = _FakeRuntime()
+    missing = module.allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=missing_runtime,
+    )
+    try:
+        assert missing.swa_prefill_role_variants == {}
+    finally:
+        missing.free()
+    assert missing_runtime.allocations == {}
+
+    for malformed, message in (
+        (17, "must be a mapping"),
+        ({"unknown": candidate}, "unsupported Laguna SWA prefill role"),
+        ({role: ""}, "non-empty variants"),
+        ({role: "swa_context_rows_qrow4_exact_spans"}, "unsupported variant"),
+    ):
+        monkeypatch.setattr(
+            hip_gfx1100,
+            "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
+            malformed,
+        )
+        invalid_runtime = _FakeRuntime()
+        with pytest.raises(ValueError, match=message):
+            module.allocate_laguna_kv_cache(
+                _production_config(),
+                context_length=4096,
+                backend="hip_gfx1100",
+                runtime=invalid_runtime,
+            )
+        assert invalid_runtime.malloc_calls == 0
+
+
 class _FakeRuntime:
     def __init__(self, *, fail_malloc_at: int | None = None) -> None:
         self.next_ptr = 0x10000000

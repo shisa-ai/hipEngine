@@ -5,10 +5,9 @@ Last updated: 2026-07-30
 ## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
 Status: **WPF-H1 through WPF-H5B changed-arithmetic runtimes are rejected;
-exact H5L weight-major Q5, H5I ordered-Q6, and H5J IQ row ownership are
-production; H5H closes larger Q5 tiles, H5K closes larger resident-IQ3 row
-batches, H5M screens exact source-qualified qrow4 SWA, and 16K+ remains
-deferred**. This section is the
+exact H5M source-qualified qrow4, H5L weight-major Q5, H5I ordered-Q6, and H5J
+IQ row ownership are production; H5H closes larger Q5 tiles, H5K closes larger
+resident-IQ3 row batches, and 16K+ remains deferred**. This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
 geometry.
@@ -32,9 +31,9 @@ row is exact.
 
 The apples-to-apples external target remains same-model, same-512-ID,
 context4096, direct-M512, FlashAttention, BF16-K/V, one-queue llama.cpp HIP at
-**694.184 tok/s** and token **2930**. The retained H5L package reaches
-**237.956 tok/s**, token **2930**, exact position 511, and full allocation
-recovery: a current **2.917x** gap. The clean post-H4 **169.516 tok/s** row
+**694.184 tok/s** and token **2930**. The retained H5M package reaches
+**238.565 tok/s**, token **2930**, exact position 511, and full allocation
+recovery: a current **2.90983x** gap. The clean post-H4 **169.516 tok/s** row
 remains the frozen attribution control. Same-revision Vulkan
 native F16 is **56.274 tok/s**, and llama.cpp HIP server-native is a secondary
 **649.321 tok/s** row. Cross-engine arithmetic is not a correctness oracle;
@@ -169,17 +168,25 @@ material roles qualify while F32 N48/N72 retain H5G; the final-source 235-call
 event/wall sums fall **44.857%/46.544%** with exact bytes. Complete M512 state
 is KL0/byte-exact, integrated Q5 falls **919.697 -> 466.986 ms (-49.224%)**, and
 request kernel sum falls **2,532.020 -> 2,074.261 ms (-18.079%)** at unchanged
-**1,862** dispatches. Clean package-default 512/1K/4K promotes
+**1,862** dispatches. Clean H5L package-default 512/1K/4K reaches
 **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)** with no
-new allocation or sidecar. The post-H5L request reconciles **2,074.261 ms** and
-ranks matched gaps attention **437.720 ms**, Q5 **408.035**, and IQ down
-**338.619**. Attention splits into global **80.824 ms**, exact SWA wave32
-**109.901**, and exact SWA qrow4 **268.720**. H5M next computes the same qrow4
-visibility before loading current/cache K/V, preserving every two-pass
-operation. Its 29.69–37.11% dense-M512 logical-source model is diagnostic only.
-Prior rowbatch16 spill, output tiling, source MMQ, and changed-association
-attention remain closed
-([post-H5L residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
+new allocation or sidecar. The post-H5L request ranks matched gaps attention
+**437.720 ms**, Q5 **408.035**, and IQ down **338.619**; exact SWA qrow4 owns
+**268.720 ms / 58.49%** of attention. H5M computes the same visibility before
+loading current/cache K/V while preserving every two-pass operation. Dense and
+wrapped/evicted/ragged outputs are bit-exact; starts 256/384 win event/wall by
+**4.324%/4.354%**. Complete M512 state is KL0/byte-exact. Cached tracing selects
+**48 global + 72 wave32 + 72 H5M** calls and cuts qrow4/attention/request sum
+**268.720/459.445/2,074.261 -> 260.500/450.790/2,060.485 ms
+(-3.059%/-1.884%/-0.664%)** at unchanged **1,862** dispatches. Clean H5M
+package-default 512/1K/4K is **238.565/218.182/158.138 tok/s
+(+0.256%/+0.135%/+0.490% over H5L)** with no allocation or sidecar. Reprofile
+the exact post-H5M request before selecting another lane; prior rowbatch16
+spill, output tiling, source MMQ, and changed-association attention remain
+closed
+([H5M production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[H5M leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
+[post-H5L residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
 [H5L production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
 [H5L leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json) ·
 [post-H5K residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
@@ -356,14 +363,15 @@ The revised execution order is:
    weight-tile-major linear workgroup traversal after ordered consumers retain
    **904.399 ms** and the top two roles **741.721 ms**. H5L promotes six exact
    roles, cuts integrated Q5 **49.224%**, and publishes
-   **237.956/217.888/157.366 tok/s** at 512/1K/4K. Post-H5L attribution ranks
-   matched attention/Q5/IQ-down gaps **437.720/408.035/338.619 ms**. H5M targets
-   exact qrow4 source qualification after its two M512 slices consume **268.720
-   ms**: move existing visibility ahead of current/cache loads without changing
-   logical-slot, row, dot-tree, two-pass softmax/PV, KV, or store order. Require
-   dense and wrapped/evicted byte identity plus both clocks before ownership; do
-   not stack H1-H5B or reopen larger row ownership, regressive output tiling,
-   source MMQ, changed-association attention, or P6.
+   **237.956/217.888/157.366 tok/s** at 512/1K/4K. Post-H5L attribution selects
+   H5M exact qrow4 source qualification after its two M512 slices consume
+   **268.720 ms**. Dense and wrap/eviction/ragged cases are bit-exact, both
+   production positions win both clocks, complete state is KL0, and integrated
+   qrow4/attention/request sum falls **3.059%/1.884%/0.664%**. Clean
+   package-default reaches **238.565/218.182/158.138 tok/s**. Reprofile post-H5M
+   before selecting another lane; do not stack H1-H5B or reopen larger row
+   ownership, regressive output tiling, source MMQ, changed-association
+   attention, or P6.
 6. Keep 16K+ closed. First reach direct-M512 parity at **694.184 tok/s**, then
    collect a matched llama.cpp HIP M4K comparator before reopening long-context
    work. Keep **800/700 tok/s** at M512/M4K as stretch targets rather than the
@@ -401,15 +409,15 @@ result proves that 150 was only an intermediate gate, not a credible endpoint.
 | WPF-3 exact qrow4 SWA default | One wave retains one head and four causal rows; the C256 policy uses exact wave32 below crossover. Four M128 slices improve **21.059 -> 9.389 ms (2.243x)** with zero F32-bit mismatches. The package-default M512 gate matches all 48 boundaries/KV spans at KL0. Clean 512/1K improves **118.705/107.804 -> 131.919/125.960 tok/s (+11.131%/+16.842%)**; traced SWA falls **55.411%/59.449%**. |
 | Rejected WPF-3 online qrow4 SWA | The complete 18-prompt/576-step M512 lane improves natural-prompt prefill **117.170 -> 118.335 tok/s (+0.995%)** and h16/h32 E2E **+0.764%/+0.609%**, but fails at maximum KL **0.394600** despite **564/576 (97.917%)** top-1. Poolside, repeat determinism, and lifecycle pass; exact qrow4-C256 remains default. |
 | WPF-1T exact Q5/Q6 coltile default | All 15 actual M512 configurations are exact/faster; the 381-invocation weighted `(4,8)` leaf sum is **2699.147 -> 1828.710 ms (1.476x)**. Four role keys select `(2,16)`, saving another **36.773 ms (2.011%)** from that family. The frozen same-resident gate improves **+0.545%/+0.459%** at 512/1K; a package repeat is exact/positive at **+0.382%/+0.242%** but misses its repeated 1K magnitude threshold. Complete state is KL0. Clean all-`(4,8)` publication remains **169.253/159.229 tok/s**; dense/shared falls **38.546%/38.875%**. |
-| Current canonical clean selector-unset | **237.956/217.888/157.366 tok/s** at 512/1K/4K, matrix512/attention128/H5L exact-weight-major-Q5/H5I exact-ordered-Q6/pair16-grouped-gate/H5J resident-IQ-down/qrow4-C256-SWA, **+21.342%/+19.812%/+14.725%** over H5J. M512 full state is KL0/byte-exact and lifecycle recovers. |
-| Matched external M512 targets | Same 512 IDs/context4096/direct M512/first token 2930: current hipEngine BF16 **237.956**, llama.cpp HIP BF16 **694.184 (2.917x)**, llama.cpp Vulkan native F16 **56.274 tok/s**. HIP server-native is **649.321 tok/s**. Direct HIP parity is the active external target; 800 remains stretch. |
+| Current canonical clean selector-unset | **238.565/218.182/158.138 tok/s** at 512/1K/4K, matrix512/attention128/H5M exact-source-qualified-qrow4/H5L exact-weight-major-Q5/H5I exact-ordered-Q6/pair16-grouped-gate/H5J resident-IQ-down, **+0.256%/+0.135%/+0.490%** over H5L. M512 full state is KL0/byte-exact and lifecycle recovers. |
+| Matched external M512 targets | Same 512 IDs/context4096/direct M512/first token 2930: current hipEngine BF16 **238.565**, llama.cpp HIP BF16 **694.184 (2.90983x)**, llama.cpp Vulkan native F16 **56.274 tok/s**. HIP server-native is **649.321 tok/s**. Direct HIP parity is the active external target; 800 remains stretch. |
 | Rejected WPF-H1 Q5 source-MMQ runtime | All eight actual M512 roles and 235 calls: exact coltile **1,562.932 ms** -> aligned DS4/WMMA policy **97.110 ms (16.094x)**, with N48/N72 exact. Complete quality nevertheless reaches max KL **4.162014** at **561/576** top-1 despite **1.348x** diagnostic natural-prompt prefill. Runtime ownership is removed; retain only the explicit primitive. |
 | Rejected WPF-H3 IQ3/IQ4 source-MMQ runtime | All **45 IQ3 + 2 IQ4** actual M512 selected-down layers move exact grouped **565.437 -> 115.951 ms (4.877x)** and runtime natural-prompt prefill improves **152.276 -> 181.556 tok/s (1.192x)**, but complete quality reaches max KL **0.373028** at **567/576** top-1. An IQ3-source/IQ4-exact followup still reaches **0.372917**. Runtime ownership is removed; retain exact grouped production plus the explicit leaf. |
 | Rejected WPF-1B screens | D4 **129.572/116.116 tok/s**, max KL **0.624304**; D8 **129.083/115.802**, max KL **0.400292**; D8R8 **123.466/111.324**, max KL **0.964321** at 512/1K |
 | Rejected P6 / P6-repair screen | Existing IQ2 MMQ gate/up is **3.336x** faster over 46 actual M512 layers and reaches diagnostic **122.135/110.761 tok/s (+23.082%/+20.972%)**, but complete quality reaches max KL **0.683239** at **565/576** top-1. P6 repair stops at **85.946%** uncertain coordinates and **99.496%** touched active output rows; WPF-1R's separately measured raw-Q5/Q6 screen is also rejected. |
 | Rejected WPF-1R raw-Q5/Q6 repair | All **381/381** projection tensors are captured at M512; 333 are D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch **72.266-100%** of output-weight rows and imply **0.160-1.686x** exact-RB32 family reads; the conservative midpoint envelope reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads. No repair queue/kernel/runtime route is admitted. |
-| Current attribution | The retained H5L request segment is **2,074.261 ms / 1,862 dispatches** in a **2,100.389-ms** kernel span. H5L cuts Q5 **919.697 -> 466.986 ms (-49.224%)** while H5I Q6 and H5J IQ ownership remain. Residual span-minus-sum is **26.128 ms / 1.244%**, keeping launch/fusion deferred. Reprofile/reconcile the post-H5L families before selecting the next distinct exact lane. |
-| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-C1 M256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json) · [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) · [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json) · [`WPF-2b pair16 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) · [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json) · [`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) · [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) · [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json) · [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json) · [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) · [`WPF-1T default`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) · [`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) · [`WPF-1T role policy`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json) · [`matched llama.cpp HIP/Vulkan attribution`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json) · [`WPF-H1 Q5 source-MMQ candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) · [`P6/P6-repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json) · [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json) · [`H5L production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) |
+| Current attribution | The retained H5M request segment is **2,060.485 ms / 1,862 dispatches** in a **2,086.586-ms** kernel span. H5M cuts exact qrow4 **268.720 -> 260.500 ms (-3.059%)** and attention **459.445 -> 450.790 (-1.884%)** while H5L Q5, H5I Q6, and H5J IQ ownership remain. Residual span-minus-sum is **26.101 ms / 1.251%**, keeping launch/fusion deferred. Reprofile/reconcile post-H5M before selecting the next distinct exact lane. |
+| Compact evidence | [`roofline/plan`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-prefill-roofline-plan.json) · [`WPF-1 RB8 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch8-production.json) · [`WPF-1W RB32 production`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch32-production.json) · [`WPF-C1 M256 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-matrix256-retained.json) · [`WPF-2 grouped-IQ production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json) · [`WPF-2 grouped-IQ correctness`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-exact-correctness.json) · [`WPF-2b pair16 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json) · [`WPF-2b production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json) · [`WPF-3 exact qrow4 candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json) · [`WPF-3 default promotion`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-default-promotion.json) · [`WPF-3 production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json) · [`WPF-3 online rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-online-rejected.json) · [`WPF-1T candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json) · [`WPF-1T default`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json) · [`WPF-1T production`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) · [`WPF-1T role policy`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json) · [`matched llama.cpp HIP/Vulkan attribution`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json) · [`WPF-H1 Q5 source-MMQ candidate`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json) · [`WPF-1B D4 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-primitive.json) · [`D4 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d4-runtime-rejected.json) · [`D8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-primitive.json) · [`D8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8-runtime-rejected.json) · [`D8R8 primitive`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json) · [`D8R8 rejection`](../benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json) · [`P6/P6-repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json) · [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json) · [`H5L production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) · [`H5M production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) |
 
 WPF-1 established the first retained W7900 prefill default. One shared
 resident-weight process preserves logits bit-for-bit, all 48 hidden boundaries,
@@ -807,10 +815,10 @@ heldouts before any clean publication.
 | **WPF-H5J exact IQ row ownership** | **Complete; retained gfx1100 production through 4K** | IQ3 retains one decoded segment across unchanged rowbatch8 phases; IQ4 launches the retained exact body at local32 after a generated one-ULP RED rejects duplicate constant-K math. All **45+2** actual M512 layers are byte-exact and both-clock positive, moving event/wall sums **567.274/567.056 -> 500.176/500.448 ms (-11.828%/-11.746%)**. Complete state is KL0; cached integrated selected down falls **10.706%** and request sum **2.624%**. Clean selector-unset 512/1K/4K is **196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I. No allocation/workspace/sidecar is added; bounded misses and gfx1151 retain exact fallback. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json). |
 | **WPF-H5K larger exact resident IQ3 row batches** | **Rejected; all temporary surfaces removed** | Rowbatch12/16 are byte-exact, scratch-free at VGPR48/56, and lifecycle-clean, but lose both clocks on every **45/45** actual IQ3 layer. H5J event/wall **489.058/492.542 ms** regresses to **522.768/520.964 (+6.893%/+5.771%)** and **541.730/541.156 (+10.770%/+9.870%)**. Do not extend resident IQ3 ownership beyond eight. [`rejection`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json). |
 | **WPF-H5L exact Q5 weight-tile-major traversal** | **Complete; retained gfx1100 production through 4K** | Six role-qualified mappings preserve H5G geometry/FMA/wave/store order; F32 N48/N72 retain H5G. The final-source leaf improves event/wall **1.813x/1.871x**. Complete state is KL0; integrated tracing records **235 producers + 188 candidates + 47 fallbacks**, cutting Q5 **49.224%** and request sum **18.079%**. Clean 512/1K/4K reaches **237.956/217.888/157.366 tok/s (+21.342%/+19.812%/+14.725% over H5J)** with the unchanged F32 plane. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-candidate.json). |
-| **WPF-H5M exact source-qualified qrow4 SWA** | **Selected; standalone leaf pending** | Post-H5L matched gaps rank attention **437.720 ms**, Q5 **408.035**, and IQ down **338.619**. Exact qrow4 uses **268.720 ms / 58.49%** of attention at M512 starts 256/384. Screen visibility-first current/cache source loads while preserving logical-slot/four-row order, BF16 rounding, exact dot tree, two-pass max/denominator/PV association, KV schedule, and fallback. Require dense and wrapped/evicted/ragged byte identity plus every production qrow4 position on both clocks before ownership. [`attribution`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json). |
+| **WPF-H5M exact source-qualified qrow4 SWA** | **Complete; retained gfx1100 production through 4K** | Visibility-first current/cache loads preserve logical-slot/four-row order, BF16 rounding, exact dot tree, two-pass max/denominator/PV association, KV schedule, and fallback. Dense plus wrapped/evicted/ragged cases are bit-exact; starts 256/384 improve event/wall **4.324%/4.354%**. Complete state is KL0; integrated tracing selects all **72** calls and cuts qrow4/attention/request sum **3.059%/1.884%/0.664%**. Clean 512/1K/4K is **238.565/218.182/158.138 tok/s (+0.256%/+0.135%/+0.490% over H5L)** with no allocation or sidecar. [`production`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) · [`leaf`](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
-| WPF-4 launch/fusion | Deferred | Fresh H5L M512 span-minus-sum is only **26.128 ms / 1.244%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
-| WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H5L 4K is **157.366 tok/s (+14.725%)** over H5J. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
+| WPF-4 launch/fusion | Deferred | Fresh H5M M512 span-minus-sum is only **26.101 ms / 1.251%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
+| WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H5M 4K is **158.138 tok/s (+0.490%)** over H5L. First reach matched direct-M512 HIP parity **694.184 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
 
 ### Admission and stop rules
 

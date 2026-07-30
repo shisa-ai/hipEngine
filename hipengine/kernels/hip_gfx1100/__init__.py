@@ -9,6 +9,14 @@ LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
 # Complete M512 state is KL0 and both 512/1K same-weight gates are positive;
 # explicit local128/wave32/qrow2/qrow4 variants remain registered rollbacks.
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_c256_exact_spans"
+# WPF-H5M promotes exact source-qualified qrow4 loads after KL0 complete state,
+# all 72 integrated role calls, and positive clean 512/1K/4K timing. Every
+# explicit route plus shape, registration, and backend misses retain WPF-3.
+LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
+    "qrow4_m128_c256_exact": (
+        "swa_context_rows_qrow4_sourcequal_exact_spans"
+    ),
+}
 # Clean W7900 D12 leaf/profile/category evidence admits the exact local32
 # two-output Q5 schedules for c=1 attention output and query/gate projection.
 # Other backends retain the separately registered pack8 fallbacks.
@@ -225,6 +233,7 @@ __all__ = [
     "LAGUNA_SELECTED_GATE_UP_MODE",
     "LAGUNA_SPLIT_GATE_FUSION",
     "LAGUNA_SWA_DECODE_VARIANT",
+    "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "LAGUNA_SWA_SPLIT_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
