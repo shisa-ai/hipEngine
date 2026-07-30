@@ -52,16 +52,17 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.063262 tok/s / 45.324 ms/token**, up **92.412%** from the
-**11.466687 tok/s** sprint start. The final exact K6144/K9216
-attention-output projection producer now executes the established
-residual-add/RMSNorm tree, removing another **48 launches/token** with no new
-resident bytes. Tracked-clean throughput improves
-**22.007742 -> 22.063262 tok/s (+0.25227%, -0.114340 ms/token)**. The complete
-census confirms **577 -> 529 dispatches/token**, kernel sum
-**43.777334 -> 43.750470 ms/token**, and span
-**45.660100 -> 45.543776 ms/token**.
-[`output projection plus add/RMSNorm production`](results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json).
+**22.119461 tok/s / 45.209 ms/token**, up **92.902%** from the
+**11.466687 tok/s** sprint start. The route-parallel Q4/planar-Q6
+selected-down producers now own their exact slot-order weighted reduction,
+removing **47 launches/token** for 1,536 resident bytes. Tracked-clean
+throughput improves
+**22.063262 -> 22.119461 tok/s (+0.25472%, -0.115155 ms/token)**. The complete
+census confirms **529 -> 482 dispatches/token**, kernel sum
+**43.750470 -> 43.676468 ms/token**, and span
+**45.543776 -> 45.386060 ms/token**. Kernel work is now only
+**0.017268 ms/token (0.0396%)** above the same-GGUF Vulkan logger.
+[`route-parallel selected down plus weighting production`](results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-production.json).
 
 The same exact boundary's resident A/B gate independently retained the final
 attention-output projection producer runs the established residual-add/RMSNorm
@@ -80,8 +81,10 @@ slot-order weighted FMA chain. Actual-weight leaves improve **3.940%/3.752%**.
 All seven same-resident p512/d128 pairs improve
 **22.071805 -> 22.139076 tok/s (+0.30479%, -0.141227 ms/token paired
 median)** with exact state, removing **47 launches/token** for 1,536 resident
-bytes. Tracked-clean selector-unset publication and the complete census remain
-pending.
+bytes. Tracked-clean selector-unset publication and the complete census are
+complete: production reaches **22.119461 tok/s**, dispatches fall
+**529 -> 482/token**, and the target family falls
+**4.888128 -> 4.819087 ms/token (-1.412%)**.
 [`route-parallel selected down plus weighting`](results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-retained.json).
 
 The next exact launch-contraction gate promotes one source-F16 Q/K/V/gate

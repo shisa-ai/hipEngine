@@ -193924,3 +193924,37 @@ Vulkan local sizes verbatim will close the measured gap.
   Next: commit the admitted default, run tracked-clean selector-unset
   production, and prove **529 -> 482 dispatches/token** in the complete wall
   census.
+
+## 2026-07-30 21:27 JST — Publish parallel-weighted selected down
+
+- Committed candidate `41bcc094f` and ran the selector-unset tracked-clean
+  p512/d128 protocol. Samples are
+  **22.114497/22.119500/22.119461 tok/s**, median
+  **22.119461 tok/s / 45.209059 ms/token**. This improves the preceding
+  **22.063262** default by **0.25472% / 0.115155 ms/token** and reaches
+  **+92.902%** over the **11.466687** sprint start.
+- All runs preserve tokens **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, deterministic repeats, and complete
+  recovery of **79,022,522,196 resident bytes**. Raw SHA-256 is
+  `56405d29...73d`.
+- The cache-only complete wall trace records exactly
+  **482 dispatches/token**, down from 529: 24 weighted-Q4 plus 23 weighted-Q6
+  calls, and zero standalone weighted reducers. Selected down plus weighting
+  improves **4.888128 -> 4.819087 ms/token (-1.412%)**. The weighted producer
+  itself costs **0.043731 ms/token** more than the projection-only predecessor,
+  but deleting the **0.113255-ms/token** reducer produces the net win.
+- Kernel sum improves
+  **43.750470 -> 43.676468 ms/token (-0.1691%)**, span improves
+  **45.543776 -> 45.386060 (-0.3463%)**, and span minus kernel sum falls
+  **1.793306 -> 1.709592 ms/token (-4.67%)**. Trace/child SHA-256 values are
+  `060c0a0a...8156` and `3b896e51...c7c`.
+- hipEngine kernel work is now only **0.017268 ms/token (0.0396%)** above
+  same-GGUF Vulkan's logged **43.6592 ms/token**, while production remains
+  **2.379537 ms/token / 5.263%** behind Vulkan wall throughput. This strongly
+  attributes the residual gap to within-token submission scheduling, matching
+  Vulkan's up-to-100-node command-buffer batching and graph fusion.
+- Publish
+  `LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE` as the gfx1151
+  production default. Retain the constructor override and registered exact
+  two-launch fallback; remove the admitted session setter next. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-production.json`.
