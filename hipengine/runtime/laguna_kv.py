@@ -221,6 +221,13 @@ class LagunaKVCache:
         self.global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape = bool(
             global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
         )
+        self.global_dense_prefix = bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_DENSE_PREFIX",
+                False,
+            )
+        )
         self.swa_split_wave_local = bool(swa_split_wave_local)
         self.swa_split_gqa3_scores = bool(swa_split_gqa3_scores)
         self.swa_split_fixed512_reduce = bool(swa_split_fixed512_reduce)
@@ -985,8 +992,16 @@ class LagunaKVCache:
             ):
                 variant = (
                     "global_context_fused_exact_gated_mixed40_local512_exp32_"
-                    "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_"
-                    "vec16_direct_assume_exp_fixedshape_spans"
+                    "producer_max_dpp_qk_"
+                    + (
+                        "dense_prefix_probability_vec4_prenorm_vstage64_"
+                        if (
+                            self.global_dense_prefix
+                            and self._dense_initial_metadata_valid
+                        )
+                        else "probability_vec4_prenorm_vstage64_"
+                    )
+                    + "vec16_direct_assume_exp_fixedshape_spans"
                 )
             if (
                 state.attention_type == SLIDING_ATTENTION

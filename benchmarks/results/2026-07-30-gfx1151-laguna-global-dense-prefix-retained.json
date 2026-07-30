@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T14:20:19+09:00",
+  "kind": "hipengine_laguna_global_dense_prefix_decode_retention",
+  "status": "retained_default",
+  "performance_claim": true,
+  "source_revision": "f650ce6ad7e5d63693a18e4393641450f1cceb08",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "trace_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "resident_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "While the global KV cache is a sequential no-eviction identity prefix, compile the retained mixed40/local512/DPP-QK owner with physical_slot=logical_slot and every scanned token visible. This removes per-token base-offset, token-position, eviction-mask, shared physical-slot publication, and physical-slot LDS replay while preserving every QK product/addition, softmax operation, denominator update, ordered scalar PV FMA, gate, BF16 store, ABI, ownership, and dispatch.",
+    "qualification": "gfx1151 gated global Q48/KV8/D128, capacity 4096, live_count at most 4000, retained mixed40/local512 route enabled, and dense-initial metadata still valid",
+    "fallback": "Explicit eviction, non-dense/reset-invalidated metadata, live_count above 4000, peer backends, and unqualified shapes use the retained generic mixed40/local512 KVLiveSpans owner.",
+    "resident_bytes_changed": false,
+    "launch_count_changed": false
+  },
+  "correctness": {
+    "red": "ImportError on the absent dense-prefix diagnostic wrapper before implementation.",
+    "green": "Dense identity prefixes at live 513/576/639 match the CPU oracle and retained generic mixed40 owner byte-for-byte; the existing explicit-eviction matrix remains exact and the owner dispatch test proves generic fallback after eviction.",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_f32_sha256": [
+      "18102e2b363d3b80a24b56a8e7681adca2f91e0303220dd4b971098761fd951b",
+      "3c940d7e4c514ec00df89e3c40c67f8d5e127d2cd45ca471e23c185de77b21ce",
+      "a7cf7046bc3872a446594f13326227ff3af19f09f04e09b0d7461d7c77956730"
+    ],
+    "gated_bf16_sha256": [
+      "16e5d660f8b3c6012c1ac23bbedba6a55dd8ea85d7f36386cc82aa4c0afd3e33",
+      "22355fb5b80b3a8bfdfcb31c6c8c0dd7fcf412b252d3b3625f0b1dc9c70d15cb",
+      "9eb76a374547e21ecf1653c5b97afef52ff8512041fbe034096469a5213f9f68"
+    ],
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "leaf": {
+    "shape": "dense global identity prefix, Q48/KV8/D128 BF16 KV",
+    "live_counts": [
+      513,
+      576,
+      639
+    ],
+    "control_median_ms": [
+      0.04060325145721436,
+      0.04665711879730225,
+      0.05069750785827637
+    ],
+    "candidate_median_ms": [
+      0.034393680095672605,
+      0.0373388409614563,
+      0.04060537815093994
+    ],
+    "latency_change_percent": [
+      -15.29328597756533,
+      -19.971824399034123,
+      -19.906559777156563
+    ],
+    "samples": 21,
+    "burst": 100,
+    "raw_sha256": "89741dd87c4512a4c642e040f6382642e852501cb1e5e287c8f3a7f83a1026da"
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling",
+    "control_dense_prefix_template_argument": false,
+    "candidate_dense_prefix_template_argument": true,
+    "grid_x": 40,
+    "local_x": 512,
+    "vgpr_count": 48,
+    "sgpr_count": 128,
+    "reported_static_lds_block_size": 512,
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "971ca8a94ca9cfde91e368f084a2cc592c6b36e2542aa044d53538be2bb98eac"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "seven counterbalanced control/candidate resident pairs; cached build; candidate worktree disclosed",
+    "control_median_tok_s": 21.24649622609831,
+    "candidate_median_tok_s": 21.314383686851404,
+    "throughput_change_percent": 0.31952308762188686,
+    "control_median_ms_per_token": 47.066584031471585,
+    "candidate_median_ms_per_token": 46.91667442474016,
+    "saving_ms_per_token": 0.14990960673142695,
+    "median_paired_saving_ms_per_token": 0.13780864468944287,
+    "mean_paired_saving_ms_per_token": 0.14882451221891455,
+    "candidate_pair_wins": 7,
+    "pairs": 7,
+    "control_ms_per_token": [
+      47.09674129042569,
+      47.06117841708437,
+      47.0481753077974,
+      47.066584031471585,
+      47.057266889770666,
+      47.075207953847304,
+      47.07265721348033
+    ],
+    "candidate_ms_per_token": [
+      46.911205258587096,
+      46.92336977239493,
+      46.916429345737996,
+      46.93396243369427,
+      46.924265189550994,
+      46.91667442474016,
+      46.91013309363951
+    ],
+    "raw_sha256": "e37a81cb5174507a82a0a696f29b7989f01097cb7ee552037cd8798d75a5af1b"
+  },
+  "validation": {
+    "focused_gpu_green": "tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "dispatch_and_eviction_fallback_green": "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "focused_result": "2 passed",
+    "comparison_plumbing_removed_before_retention_commit": true
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed40-local512-exp32-producer-max-dpp-qk-dense-prefix-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp --warmups 10 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-dense-prefix-21x100.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-global-dense-prefix --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-dense-prefix-model-7pair.json",
+    "candidate_worktree_disclosed": true
+  },
+  "gate": {
+    "correctness": "pass; F32 context and gated BF16 bytes exact",
+    "leaf": "pass; -15.293%/-19.972%/-19.907% at live 513/576/639",
+    "resources": "pass; grid40/local512/VGPR48/SGPR128/static-LDS512/scratch0 unchanged",
+    "whole_model": "pass; +0.31952%, 7/7 pairs, exact state and lifecycle",
+    "decision": "Promote only behind the gfx1151 dense-prefix capability and runtime metadata-valid qualification; keep generic mixed40/local512 as exact rollback and explicit-eviction fallback."
+  }
+}
