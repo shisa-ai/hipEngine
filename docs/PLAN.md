@@ -1524,12 +1524,19 @@ F32 N48/N72 retain H5G after N48 loses wall and N72's marginal first result
 turns mixed-clock on the final-source rerun. Across all **235** calls, final-
 source event/wall sums move **882.963/887.364 -> 486.892/474.348 ms
 (-44.857%/-46.544%)** with exact bytes, lifecycle recovery, and unchanged
-local128/VGPR72-200/LDS512-1536/scratch0 classes. This is standalone leaf
-evidence only; production stays H5J until complete M512 state, cached integrated
-trace, and clean counter-ordered 512/1K/4K pass. The old rowbatch16 spill,
-output-tile regression, and source-MMQ quality failure remain closed. Do not
-stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion remains
-deferred at the current **1.012%** request span-minus-sum.
+local128/VGPR72-200/LDS512-1536/scratch0 classes. Complete M512 state is
+KL0/byte-exact through all 48 boundaries, logits, K/V/live spans, repeat, and
+teardown with the unchanged **150,994,944-byte** plane. Cached integrated
+tracing physically selects **235** producers, **188** candidates, and **47** H5G
+fallbacks: Q5 falls **919.697 -> 466.986 ms (-49.224%)** and request kernel sum
+**2,532.020 -> 2,074.261 ms (-18.079%)** at unchanged **1,862** dispatches.
+Clean package-default 512/1K/4K promotes **237.956/217.888/157.366 tok/s
+(+21.342%/+19.812%/+14.725% over H5J)** and narrows matched M512 to **2.917x**.
+Every miss and gfx1151 retain the preceding exact route. The old rowbatch16
+spill, output-tile regression, and source-MMQ quality failure remain closed. Do
+not stack rejected H1-H5B arithmetic or reopen P6/repair; reprofile this H5L
+production request before selecting the next exact lane. Launch fusion remains
+below its trigger at **1.244%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates
