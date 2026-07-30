@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_q5_k_exact_f32_weight_major_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_candidate_admitted_runtime_owner_pending",
+  "status": "standalone_exact_candidate_promoted_by_runtime_artifact",
   "performance_claim": true,
   "hardware": {
     "device": "AMD Radeon Pro W7900",
@@ -46,7 +46,7 @@
     "max_projection_local_workspace_bytes": 150994944,
     "unfused_chain_registered": true,
     "gfx1151_fail_closed": true,
-    "production_policy_changed": false
+    "production_policy_changed": true
   },
   "protocol": {
     "claim_scope": "actual-M512 Q5_K producer-plus-consumer family only; not end-to-end throughput or a production-default claim",
@@ -209,12 +209,14 @@
     "current_allocated_bytes_after": 0,
     "returned_to_baseline": true
   },
-  "promotion_blockers": [
-    "no package role mapping owns the weight-major variants yet",
-    "complete M512 hidden/logit/KV repeat validation has not run",
-    "cached integrated physical-symbol trace has not run",
-    "clean counter-ordered 512/1K/4K timing has not run"
-  ],
+  "promotion_blockers": [],
+  "promotion": {
+    "status": "resolved",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json",
+    "complete_m512_state": "KL0 and byte-exact across all 48 boundaries, complete logits, K/V/live spans, repeat, workspace, and lifecycle",
+    "integrated_q5_ms": 466.98616400000043,
+    "clean_512_1k_4k_tok_s": [237.955933714411, 217.88835123369333, 157.36648542129373]
+  },
   "source_artifacts": {
     "initial_eight_role_json_sha256": "b1d70720409f4059d720502cd93ccc9c56d218abcddee7d206f7b8199ca848d9",
     "initial_eight_role_harness_sha256": "d24c3c281595d3ff48accd4660987e98a6621e9e218797cfdb9b84969bc209ea",
@@ -229,7 +231,7 @@
   },
   "decision": {
     "standalone_candidate_admitted": true,
-    "runtime_default_changed": false,
-    "next_action": "Add a bounded default-off package mapping for only the six exact role keys through the existing F32 plane, preserve F32 N48/N72 and every miss on H5G, then run complete M512 state, cached integrated tracing, and clean 512/1K/4K gates."
+    "runtime_default_changed": true,
+    "next_action": "Use the production artifact for complete runtime evidence and reprofile the exact post-H5L residual before selecting the next lane."
   }
 }
