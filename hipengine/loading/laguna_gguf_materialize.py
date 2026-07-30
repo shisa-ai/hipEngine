@@ -64,6 +64,7 @@ _Q4_DECODE_T16_SIDECAR_SUFFIXES = (
     ".ffn_up",
     ".ffn_gate_shexp",
     ".ffn_up_shexp",
+    ".ffn_down_shexp",
 )
 
 

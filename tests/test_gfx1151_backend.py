@@ -737,6 +737,13 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         == 65536
     )
     assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "LAGUNA_Q4_SHARED_DOWN_T16_DECODE",
+        )
+        is True
+    )
+    assert (
         resolve(
             backend="hip_gfx1151",
             layer="linear",

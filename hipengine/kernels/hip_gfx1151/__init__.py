@@ -113,6 +113,9 @@ LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR = True
 # Exact byte-neutral gate/up interleave plus two-column wave ownership cuts
 # the actual dense/shared leaf family by 6.50% before the resident gate.
 LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED = True
+# Exact standalone Q4T16 shared-down owner streams 22.9% fewer resident bytes
+# than expanded pack8 and is bit-identical across all 24 actual matrices.
+LAGUNA_Q4_SHARED_DOWN_T16_DECODE = True
 # The selected gate/up decoder and the production D8 prefill owner now share
 # one exact byte-neutral paired T16 allocation. Natural prefill leaves improve
 # at M55+ and are effectively flat at M32; c=1 decode improves 5.70%.
@@ -895,6 +898,7 @@ __all__ = [
     "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",
     "LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR",
     "LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED",
+    "LAGUNA_Q4_SHARED_DOWN_T16_DECODE",
     "LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED",
     "LAGUNA_SELECTED_NATURAL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",

@@ -60,6 +60,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     register_gguf_q8_0_t16_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+    register_gguf_t16_selected_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
     register_laguna_launch_batch_kernels,
 )
@@ -846,6 +849,63 @@ def launch_gguf_linear(
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
+def launch_gguf_q4_t16_sidecar_decode(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    enabled: bool = True,
+) -> bool:
+    """Launch an exact Q4T16 decode sidecar when one is resident."""
+
+    if (
+        not enabled
+        or rows != 1
+        or weight.spec.quant_key != "gguf_q4_k"
+        or "decode_tiles" not in weight.allocations
+    ):
+        return False
+    resolved_backend = _weight_backend(weight, backend=backend)
+    key = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_single_local32_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(key)
+    fn = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    kwargs = {"stream": stream, "runtime": runtime}
+    if libraries is not None:
+        library = libraries.get(
+            f"{key.quant}:{key.variant}",
+            libraries.get(key.quant),
+        )
+        if library is not None:
+            kwargs["library"] = library
+    fn(
+        x_ptr,
+        weight.allocation("decode_tiles").tensor.ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+    return True
+
+
 def launch_gguf_linear_moe_tail_host_batch(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -865,12 +925,71 @@ def launch_gguf_linear_moe_tail_host_batch(
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
     use_gemv_decode: bool | None = None,
+    use_q4_t16_sidecar: bool = False,
 ) -> bool:
     """Enqueue existing shared-down and D9 kernels through one native host call."""
 
     if rows != 1 or libraries is None:
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
+    if (
+        use_q4_t16_sidecar
+        and weight.spec.quant_key == "gguf_q4_k"
+        and "decode_tiles" in weight.allocations
+    ):
+        t16_key = KernelKey(
+            resolved_backend,
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        )
+        _ensure_linear_kernel_registered(t16_key)
+        batch_key = KernelKey(
+            resolved_backend,
+            "linear+moe_tail+next_rmsnorm_host_batch",
+            t16_key.quant,
+            t16_key.variant,
+        )
+        if not is_registered(batch_key):
+            return False
+        batch_fn = resolve(
+            backend=batch_key.backend,
+            layer=batch_key.layer,
+            quant=batch_key.quant,
+            variant=batch_key.variant,
+        )
+        linear_library = libraries.get(
+            f"{t16_key.quant}:{t16_key.variant}",
+            libraries.get(t16_key.quant),
+        )
+        batch_library = libraries.get("launch_batch")
+        tail_library = libraries.get("moe_tail")
+        if (
+            linear_library is None
+            or batch_library is None
+            or tail_library is None
+        ):
+            return False
+        batch_fn(
+            getattr(linear_library, batch_fn.projection_symbol),
+            getattr(tail_library, batch_fn.tail_symbol),
+            x_ptr,
+            weight.allocation("decode_tiles").tensor.ptr,
+            shared_out_ptr,
+            routed_ptr,
+            post_attention_ptr,
+            norm_weight_ptr,
+            norm_out_ptr,
+            hidden_out_ptr,
+            rows,
+            in_features,
+            out_features,
+            eps=eps,
+            stream=stream,
+            library=batch_library,
+            runtime=runtime,
+        )
+        return True
     dispatch = resolve_gguf_linear_dispatch(
         weight,
         backend=resolved_backend,
@@ -2334,6 +2453,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
     register_gguf_q8_0_t16_prefill_kernels()
+    register_gguf_t16_selected_gemv_kernels()
     register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
 
@@ -2354,6 +2474,7 @@ __all__ = [
     "GGUF_OUTPUT_BF16",
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
+    "launch_gguf_q4_t16_sidecar_decode",
     "GGUFLinearDispatch",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",

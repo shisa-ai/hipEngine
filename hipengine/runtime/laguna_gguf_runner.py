@@ -2329,6 +2329,7 @@ class LagunaGGUFResidentSession:
         use_q4_pack8_dual_silu_decode: bool | None = None,
         use_q4_decode_t16_sidecar: bool | None = None,
         use_q4_decode_t16_dual_interleaved: bool | None = None,
+        use_q4_shared_down_t16_decode: bool | None = None,
         use_q4_expert_t16_dual_interleaved: bool | None = None,
         use_shared_down_moe_tail_host_batch: bool | None = None,
     ) -> None:
@@ -2555,6 +2556,15 @@ class LagunaGGUFResidentSession:
             )
             if use_q4_decode_t16_dual_interleaved is None
             else use_q4_decode_t16_dual_interleaved
+        )
+        self.use_q4_shared_down_t16_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q4_SHARED_DOWN_T16_DECODE",
+                False,
+            )
+            if use_q4_shared_down_t16_decode is None
+            else use_q4_shared_down_t16_decode
         )
         self.use_q4_expert_t16_dual_interleaved = bool(
             getattr(
@@ -3428,6 +3438,11 @@ class LagunaGGUFResidentSession:
         """Select paired exact Q4 dense/shared decode tiles."""
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
+
+    def set_q4_shared_down_t16_decode(self, enabled: bool) -> None:
+        """Select exact Q4T16 shared-down decode or pack8 rollback."""
+
+        self.use_q4_shared_down_t16_decode = bool(enabled)
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -5509,6 +5524,9 @@ class LagunaGGUFResidentSession:
             ),
             use_q4_decode_t16_dual_interleaved=(
                 self.use_q4_decode_t16_dual_interleaved
+            ),
+            use_q4_shared_down_t16_decode=(
+                self.use_q4_shared_down_t16_decode
             ),
             tail_context=tail_context,
         )

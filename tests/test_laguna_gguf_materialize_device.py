@@ -288,7 +288,13 @@ def test_laguna_materialize_q4_expert_pair_replaces_two_owned_tiles() -> None:
     assert runtime.buffers == {}
 
 
-def test_laguna_materialize_q4_decode_t16_sidecar_is_additive() -> None:
+@pytest.mark.parametrize(
+    "slot_path",
+    ("layers.0.ffn_gate", "layers.1.ffn_down_shexp"),
+)
+def test_laguna_materialize_q4_decode_t16_sidecar_is_additive(
+    slot_path: str,
+) -> None:
     """Decode tiles attach beside pack8 without changing its cache contract."""
 
     tensor = tensor_info(
@@ -301,7 +307,7 @@ def test_laguna_materialize_q4_decode_t16_sidecar_is_additive() -> None:
     expected_t16 = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
     runtime = FakeRuntime()
     weight = _materialize_spec(
-        _spec_for_tensor("layers.0.ffn_gate", tensor),
+        _spec_for_tensor(slot_path, tensor),
         _ArrayReader(tensor.name, raw),
         device=None,
         runtime=runtime,

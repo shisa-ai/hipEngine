@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T03:01:15+09:00",
+  "kind": "hipengine_laguna_q4_t16_shared_down_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "source_revision": "d5cd5e336a9cb9f15c7bfe0698c126ebbe19d7e6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_transitions": 127,
+    "protocol": "one resident model load, seven alternating same-resident control/candidate pairs, two HIP queues",
+    "control": "exact expanded-pack8 Q4 shared-down plus native D9 host batch",
+    "candidate": "exact compact-T16 Q4 shared-down plus native D9 host batch"
+  },
+  "correctness": {
+    "pass": true,
+    "control_candidate_next_tokens_match": true,
+    "control_candidate_generated_ids_match": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "resident_nbytes": 79066169172,
+    "resident_increase_bytes": 43646976
+  },
+  "performance": {
+    "control_samples_tok_s": [
+      22.35926712388093,
+      22.38070316824523,
+      22.37426509443615,
+      22.371889745149872,
+      22.377298285635185,
+      22.378482807796264,
+      22.3792843042867
+    ],
+    "candidate_samples_tok_s": [
+      22.56662501095604,
+      22.56348816632661,
+      22.56298152409688,
+      22.56643211386618,
+      22.554781007258022,
+      22.558894138180786,
+      22.570960040530323
+    ],
+    "control_median_tok_s": 22.377298285635185,
+    "candidate_median_tok_s": 22.56348816632661,
+    "throughput_change_percent": 0.8320480797762375,
+    "control_median_ms_per_token": 44.68814721221002,
+    "candidate_median_ms_per_token": 44.31938859047441,
+    "independent_median_saving_ms_per_token": 0.36875862173560847,
+    "median_paired_saving_ms_per_token": 0.37382164508046145,
+    "candidate_wins": 7,
+    "pairs": 7
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-q4-shared-down-t16-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-q4-t16-shared-down-ab.json",
+    "raw_sha256": "e092592527356a486ba44955af585d3269a3b934d83ea61d83704caf9023db24",
+    "load_seconds_excluded": 141.23556667403318,
+    "compiler_spawned": false
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "production_publication_pending": true,
+    "rollback": "exact expanded-pack8 shared-down route using the same native D9 host batch",
+    "next": "run tracked-clean selector-unset production and a cached 127-transition kernel census"
+  }
+}

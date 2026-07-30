@@ -2521,6 +2521,17 @@ def _check_common(compact_rows: int, in_features: int, num_experts: int) -> None
 def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     """Register compact selected T16 GEMV decode kernels."""
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+        replace=replace,
+    )
+
     for variant, fn in (
         (
             "selected_dual_t16_gemv_decode_compact_bf16_bf16_out",

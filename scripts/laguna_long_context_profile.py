@@ -92,6 +92,7 @@ COMPARISON_ARGUMENTS = (
     "compare_selected_natural_tile8_decode",
     "compare_q4_decode_t16_sidecar",
     "compare_q4_decode_t16_dual_interleaved",
+    "compare_q4_shared_down_t16_decode",
 )
 
 
@@ -358,6 +359,11 @@ def _parse_args() -> argparse.Namespace:
         help="counterbalance separate and paired T16 dense/shared Q4 decode",
     )
     parser.add_argument(
+        "--compare-q4-shared-down-t16-decode",
+        action="store_true",
+        help="counterbalance pack8 and exact T16 Q4 shared-down decode",
+    )
+    parser.add_argument(
         "--ordinary-q4-expert-t16",
         action="store_true",
         help="materialize ordinary two-buffer expert T16 as a rollback control",
@@ -590,6 +596,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_dense_contiguous_cache = False
     active_q4_decode_t16_sidecar = False
     active_q4_decode_t16_dual_interleaved = False
+    active_q4_shared_down_t16_decode = False
     active_q4_expert_t16_dual_interleaved = False
     active_attention_rows = 128
     active_global_attention_rows = 128
@@ -814,6 +821,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_q4_decode_t16_dual_interleaved = (
             owner.use_q4_decode_t16_dual_interleaved
         )
+        active_q4_shared_down_t16_decode = (
+            owner.use_q4_shared_down_t16_decode
+        )
         active_q4_expert_t16_dual_interleaved = (
             owner.use_q4_expert_t16_dual_interleaved
         )
@@ -934,6 +944,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     if args.compare_q4_decode_t16_dual_interleaved:
                         owner.set_q4_decode_t16_dual_interleaved(
+                            mode == "candidate"
+                        )
+                    if args.compare_q4_shared_down_t16_decode:
+                        owner.set_q4_shared_down_t16_decode(
                             mode == "candidate"
                         )
                     owner.reset_state()
@@ -1197,6 +1211,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "q4_decode_t16_dual_interleaved": (
                 active_q4_decode_t16_dual_interleaved
+            ),
+            "q4_shared_down_t16_decode": (
+                active_q4_shared_down_t16_decode
             ),
             "ordinary_q4_expert_t16": args.ordinary_q4_expert_t16,
             "q4_expert_t16_dual_interleaved": (
