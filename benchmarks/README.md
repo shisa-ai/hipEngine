@@ -20,9 +20,16 @@ at unchanged **1,862** dispatches. Three-repeat package-default production is
 **+0.256%/+0.135%/+0.490%**; every sample is exact and lifecycle-clean. The
 matched llama.cpp HIP M512 target remains **694.184 tok/s**, narrowing the gap
 **2.91728x -> 2.90983x**. No allocation or sidecar is added; explicit routes,
-shape/registration misses, and gfx1151 retain WPF-3. Both short rows exceed 150
-tok/s and 4K remains positive; 16K+ stays closed below the 800/700 stretch gate
+shape/registration misses, and gfx1151 retain WPF-3. The production-identical
+post-H5M trace reconciles **2,060.485 ms / 1,862 dispatches** and ranks matched
+gaps attention **429.065 ms**, Q5 **406.709**, and IQ down **336.162**. Exact
+source-qualified qrow4 remains **260.500 ms / 57.79%** of attention, selecting
+H5N's separately registered dense-first-fill exact visibility screen at starts
+256/384. The gfx1151 dense-initial result is rationale only, not gfx1100
+performance evidence. Both short rows exceed 150 tok/s and 4K remains positive;
+16K+ stays closed below the 800/700 stretch gate
 ([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
 [post-H5L residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
 [H5L production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
@@ -221,10 +228,15 @@ The two exact SWA qrow4 slices consume **268.720 ms**. H5M's visibility-first
 current/cache source path keeps two-pass association, wins both clocks at both
 production positions, and passes complete KL0/byte-exact state. Integrated
 qrow4/attention/request sum falls **3.059%/1.884%/0.664%**; clean package-default
-512/1K/4K reaches **238.565/218.182/158.138 tok/s**. Reprofile post-H5M before
-selecting another exact lane; do not reopen larger IQ rows, Q5 output tiling,
-source MMQ, or changed-association attention
-([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+512/1K/4K reaches **238.565/218.182/158.138 tok/s**. The reconciled post-H5M
+request ranks matched attention/Q5/IQ-down gaps **429.065/406.709/336.162 ms**.
+H5N targets only the **260.500-ms** qrow4 first-fill role: derive identity-ring
+visibility at starts 256/384 while preserving H5M's logical-slot/four-row/dot/
+two-pass/PV/store/KV association and falling back to H5M everywhere else. Wider
+qrows, cross-head/key-split, source MMQ, and changed-association attention stay
+closed
+([post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
+[H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5M leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
 [post-H5L residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
 [H5L production](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·

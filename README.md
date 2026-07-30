@@ -128,10 +128,18 @@ numbers below.
   (-0.664%)** at unchanged **1,862** dispatches. Clean package-default
   512/1K/4K promotes **238.565/218.182/158.138 tok/s
   (+0.256%/+0.135%/+0.490% over H5L)**, narrowing the matched M512 gap
-  **2.91728x -> 2.90983x** with no allocation or sidecar. Both short rows exceed
-  150 tok/s and 4K remains positive; 16K+ stays closed below the 800/700 stretch
-  target
+  **2.91728x -> 2.90983x** with no allocation or sidecar. The production-identical
+  post-H5M trace reconciles **2,060.485 ms / 1,862 dispatches** and ranks matched
+  gaps attention **429.065 ms**, Q5 **406.709**, and IQ down **336.162**. Exact
+  source-qualified qrow4 still owns **260.500 ms / 57.79%** of attention at starts
+  256/384. H5N therefore screens a separately registered dense-first-fill exact
+  specialization that derives identity-ring visibility without token-position/
+  eviction reads while retaining base-offset mapping and every H5M two-pass
+  operation. This is target selection, not a performance claim. Both short rows
+  exceed 150 tok/s and 4K remains positive; 16K+ stays closed below the 800/700
+  stretch target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  [post-H5M residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
   [H5M leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
   [post-H5L residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
   [H5L production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·

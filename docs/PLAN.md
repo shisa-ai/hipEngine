@@ -1547,11 +1547,23 @@ exactly **48 global + 72 wave32 + 72 H5M** calls: qrow4 falls **268.720 ->
 sum **2,074.261 -> 2,060.485 (-0.664%)** at unchanged **1,862** dispatches.
 Clean package-default 512/1K/4K promotes **238.565/218.182/158.138 tok/s
 (+0.256%/+0.135%/+0.490% over H5L)** and narrows matched M512 to **2.90983x**
-with no allocation or sidecar. Reprofile the exact post-H5M residual before
-selecting another lane. The old rowbatch16 spill, output-tile regression,
-source-MMQ failure, changed-association attention, and P6/repair routes remain
-closed. Launch fusion remains below its trigger at **1.251%** request
-span-minus-sum.
+with no allocation or sidecar. The production-identical post-H5M request
+reconciles **2,060.485 ms / 1,862 dispatches** in a **2,086.586-ms** span.
+Matched gaps rank attention **429.065 ms**, Q5 **406.709**, and IQ down
+**336.162**. Attention splits into global local256 **80.707 ms**, exact SWA
+wave32 **109.583**, and exact source-qualified qrow4 **260.500**; qrow4 remains
+**57.79%** of the family at starts 256/384. Select WPF-H5N exact dense-first-
+fill qrow4 visibility: derive position/visibility from the proven identity,
+no-wrap initial ring while preserving cached `base_offsets`, complete
+`KVLiveSpans`, attend-before-append scheduling, logical-slot/four-row order,
+BF16 rounding, dot tree, two-pass maximum/denominator/PV order, and stores.
+Every non-first-fill shape and policy/key/backend miss retains H5M. The gfx1151
+dense-initial result motivates the premise only; it is not gfx1100 performance
+evidence. Require H5M byte equality plus both event and synchronized-wall wins
+at starts 256/384 before any owner. The old wider-qrow, cross-head/key-split,
+rowbatch16, output-tile, source-MMQ, changed-association attention, and P6/repair
+routes remain closed. Launch fusion remains below its trigger at **1.251%**
+request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

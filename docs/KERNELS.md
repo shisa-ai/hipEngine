@@ -775,8 +775,21 @@ sum **2,074.261 -> 2,060.485 (-0.664%)** at unchanged **1,862** dispatches.
 Clean package-default 512/1K/4K is **238.565/218.182/158.138 tok/s
 (+0.256%/+0.135%/+0.490% over H5L)** with no new allocation or sidecar; matched
 M512 narrows to **2.90983x**. Explicit routes, shape/registration misses, and
-gfx1151 retain WPF-3
-([H5M production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+gfx1151 retain WPF-3. The production-identical post-H5M request reconciles
+**2,060.485 ms / 1,862 dispatches** in a **2,086.586-ms** span. Matched gaps
+rank attention/Q5/IQ-down at **429.065/406.709/336.162 ms**. Attention's 48
+global, 72 SWA-wave32, and 72 source-qualified-qrow4 calls consume
+**80.707/109.583/260.500 ms**; qrow4 remains **57.79%** of attention, with
+**111.604/148.896 ms** at starts 256/384. H5N therefore screens one separately
+registered exact dense-first-fill specialization of H5M. It derives identity-
+ring position/visibility without token-position/eviction reads while retaining
+cached `base_offsets`, the full `KVLiveSpans` ABI, source rounding, dot tree,
+two-pass arithmetic, attend-before-append schedule, and H5M fallback. The
+508,944,384 source-level generic metadata predicates are diagnostic, not a
+physical-load claim; gfx1151 dense-initial evidence is not gfx1100 performance
+evidence
+([post-H5M residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
+[H5M production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5M leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
 [post-H5L residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5l-residual.json) ·
 [H5L production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json) ·
