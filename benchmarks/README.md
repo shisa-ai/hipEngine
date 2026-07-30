@@ -36,12 +36,17 @@ with a 320-byte factorized block versus 1,024 F32 bytes. Reconstructed weights
 and all eight actual role outputs are bit-exact/scratch-free, but no role wins:
 producer-inclusive event/wall sums regress **477.022/473.054 ->
 606.780/614.512 ms (+27.202%/+29.903%)**. Remove every H5O surface and keep H5L.
-H5P next combines H5F's exact 64-accumulator geometries with H5L's later
-weight-major traversal on five roles owning **414.077 ms / 88.67%** of H5L Q5.
-This combination was not screened; expected VGPR **168/200 -> 136** is a resource
-hypothesis pending physical tracing and both-clock timing. Both short rows exceed
-150 tok/s and H5M 4K remains positive; 16K+ stays closed below the 800/700 gate
+H5P cross-screens H5F's exact 64-accumulator geometries under H5L's later
+weight-major traversal. Four of five roles lose at least one clock and are
+removed. BF16 K6144/N3072 `16x4` is the sole final-source winner: physical
+resources fall **VGPR168/LDS1536 -> VGPR136/LDS1024** at scratch0, and its
+12-call producer-inclusive event/wall sums fall **31.306/30.890 ->
+29.329/29.898 ms (-6.315%/-3.211%)** with byte-exact output. Production remains
+H5M/H5L pending complete-state, call-count, and clean 512/1K/4K qualification.
+Both short rows exceed 150 tok/s and H5M 4K remains positive; 16K+ stays closed
+below the 800/700 gate
 ([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
 [H5O target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
@@ -260,12 +265,14 @@ the leaf. H5O returns to the retained **465.660-ms** Q5 family without reopening
 source MMQ or output geometry. Its 320-byte quant+coefficient block reconstructs
 all H5L weights and outputs exactly, but coefficient loads/ALU dominate: every
 role loses both clocks and weighted event/wall regress **27.202%/29.903%**.
-Remove all candidate code and keep H5L/H5G. H5P retunes only the post-H5L
-schedule/occupancy combination: five H5F 64-accumulator predecessors replace
-80/96-accumulator geometries behind separate keys, with the producer and every
-FMA unchanged. Wider qrows, cross-head/key-split, source MMQ, and changed-
-association attention stay closed
-([H5P target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
+Remove all H5O code and keep H5L/H5G. H5P then retunes only the post-H5L
+schedule/occupancy combination. Four 64-accumulator predecessors lose at least
+one clock and are removed; the retained BF16 K6144/N3072 `16x4` leaf lowers
+VGPR/LDS **168/1536 -> 136/1024** and improves its producer-inclusive 12-call
+event/wall window **6.315%/3.211%** without changing output bytes. Wider qrows,
+cross-head/key-split, source MMQ, and changed-association attention stay closed
+([H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
+[H5P target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
 [H5O target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
 [H5N runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
