@@ -2465,6 +2465,18 @@ gap. Evidence:
 
 ### Laguna post-350 selected-expert screens
 
+gfx1151 c=1 now reuses the exact routed/shared branch-concurrency resources
+previously admitted for row-batched prefill. After router correction selection,
+the specialized shared Q4T16 gate/up+SiLU and shared-down kernels run on the
+least-priority nonblocking stream while the caller executes the selected
+Q4/Q6 T16 path; a timing-disabled event joins immediately before the exact MoE
+tail. The schedule preserves **482 kernels/token**, moves **94** to the second
+queue, adds no resident bytes, and keeps the serial constructor rollback.
+Seven p512/d128 pairs improve **22.577646 -> 22.749657 tok/s (+0.76186%,
+7/7)**, while cached tracing cuts median device span
+**44.516384 -> 44.042675 ms/token**. See
+`benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json`.
+
 The retained D8 MMQ128x32 gate/up consumer now has a gfx1151 row-vector
 specialization. One thread owns each routed activation row, reads its compact
 source mapping once per K32 interval, and stages the row through two aligned

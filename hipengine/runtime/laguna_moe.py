@@ -2744,122 +2744,26 @@ def _launch_grouped_smallm_down(
         )
 
 
-def run_laguna_moe_c1_components(
+def _launch_laguna_shared_c1_branch(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
     *,
-    stream: int = 0,
-    runtime: HipRuntime | None = None,
-    libraries: Mapping[str, object] | None = None,
-    shared_pair_decode_variant: str | None = None,
-    use_selected_natural_decode: bool = False,
-    use_selected_natural_tile8_decode: bool = False,
-    use_selected_natural_tile8_parallel_decode: bool = False,
-    use_selected_natural_tile8_parallel_silu_decode: bool = False,
-    use_selected_down_natural_parallel_decode: bool = False,
-    use_selected_down_natural_parallel_weighted_decode: bool = False,
-    use_q4_pack8_dual_silu_decode: bool = False,
-    use_q4_decode_t16_sidecar: bool = True,
-    use_q4_decode_t16_dual_interleaved: bool = True,
-    use_q4_shared_down_t16_decode: bool = False,
-    use_router_projection_wave0_tree: bool = False,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+    shared_pair_decode_variant: str | None,
+    use_q4_pack8_dual_silu_decode: bool,
+    use_q4_decode_t16_sidecar: bool,
+    use_q4_decode_t16_dual_interleaved: bool,
+    use_q4_shared_down_t16_decode: bool,
     tail_context: LagunaMoETailHostBatchContext | None = None,
-) -> tuple[DeviceBuffer, DeviceBuffer]:
-    """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
+) -> None:
+    """Launch only the c=1 always-on shared expert branch."""
 
     plan = scratch.plan
-    if scratch.max_rows < 1:
-        raise ValueError("Laguna MoE scratch cannot execute one row")
-    validate_laguna_moe_layer(layer, plan)
-    h, e, k, sf = (
-        plan.hidden_size,
-        plan.expert_count,
-        plan.top_k,
-        plan.shared_ffn_size,
-    )
-    router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
-    correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
-
-    router_logits = (
-        plan.router_logits_functions["wave0_tree"]
-        if use_router_projection_wave0_tree
-        else plan.router_logits
-    )
-    router_logits(
-        hidden_bf16_ptr,
-        router,
-        scratch.router_logits.ptr,
-        1,
-        h,
-        e,
-        **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
-    )
-    plan.router_select(
-        scratch.router_logits.ptr,
-        correction,
-        scratch.routing_scores.ptr,
-        scratch.selection_scores.ptr,
-        scratch.selected_experts.ptr,
-        scratch.routing_weights.ptr,
-        scratch.scaled_routing_weights.ptr,
-        1,
-        e,
-        k,
-        plan.routed_scaling_factor,
-        **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
-    )
-    _launch_selected_gate_up(
-        hidden_bf16_ptr,
-        layer,
-        scratch,
-        x_rows=1,
-        lanes=k,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_natural=use_selected_natural_decode,
-        use_natural_tile8=use_selected_natural_tile8_decode,
-        use_natural_tile8_parallel=(
-            use_selected_natural_tile8_parallel_decode
-        ),
-        use_natural_tile8_parallel_silu=(
-            use_selected_natural_tile8_parallel_silu_decode
-        ),
-    )
-    routed_down_weighted = _launch_weighted_selected_down(
-        layer,
-        scratch,
-        tokens=1,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_natural=use_selected_natural_decode,
-        use_natural_parallel=(
-            use_selected_down_natural_parallel_decode
-        ),
-        use_natural_parallel_weighted=(
-            use_selected_down_natural_parallel_weighted_decode
-        ),
-    )
-    if not routed_down_weighted:
-        _launch_selected_down(
-            layer,
-            scratch,
-            lanes=k,
-            stream=stream,
-            runtime=runtime,
-            libraries=libraries,
-        )
-        plan.routed_sum(
-            scratch.expert_down.ptr,
-            scratch.scaled_routing_weights.ptr,
-            scratch.routed_output.ptr,
-            k,
-            h,
-            **_stage_kwargs("routed_sum", libraries, stream=stream, runtime=runtime),
-        )
-
+    h = plan.hidden_size
+    sf = plan.shared_ffn_size
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
@@ -2991,6 +2895,211 @@ def run_laguna_moe_c1_components(
                 use_wmma_prefill=False,
                 use_gemv_decode=True,
             )
+
+
+def run_laguna_moe_c1_components(
+    hidden_bf16_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+    libraries: Mapping[str, object] | None = None,
+    shared_pair_decode_variant: str | None = None,
+    use_selected_natural_decode: bool = False,
+    use_selected_natural_tile8_decode: bool = False,
+    use_selected_natural_tile8_parallel_decode: bool = False,
+    use_selected_natural_tile8_parallel_silu_decode: bool = False,
+    use_selected_down_natural_parallel_decode: bool = False,
+    use_selected_down_natural_parallel_weighted_decode: bool = False,
+    use_q4_pack8_dual_silu_decode: bool = False,
+    use_q4_decode_t16_sidecar: bool = True,
+    use_q4_decode_t16_dual_interleaved: bool = True,
+    use_q4_shared_down_t16_decode: bool = False,
+    use_router_projection_wave0_tree: bool = False,
+    tail_context: LagunaMoETailHostBatchContext | None = None,
+    shared_after_router: bool = False,
+    shared_stream: int = 0,
+    shared_input_ready_event: int = 0,
+    shared_output_ready_event: int = 0,
+) -> tuple[DeviceBuffer, DeviceBuffer]:
+    """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
+
+    plan = scratch.plan
+    if scratch.max_rows < 1:
+        raise ValueError("Laguna MoE scratch cannot execute one row")
+    validate_laguna_moe_layer(layer, plan)
+    h, e, k = (
+        plan.hidden_size,
+        plan.expert_count,
+        plan.top_k,
+    )
+    router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
+    correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
+    shared_concurrent = bool(shared_stream)
+    shared_events = (
+        bool(shared_input_ready_event),
+        bool(shared_output_ready_event),
+    )
+    if shared_concurrent and not all(shared_events):
+        raise ValueError(
+            "concurrent shared c=1 MoE requires one stream and both events"
+        )
+    if not shared_concurrent and any(shared_events):
+        raise ValueError(
+            "shared c=1 MoE events require a nonzero shared stream"
+        )
+    if shared_concurrent and shared_stream == stream:
+        raise ValueError(
+            "shared c=1 MoE stream must differ from the caller stream"
+        )
+    active_runtime = (
+        (runtime or get_hip_runtime()) if shared_concurrent else None
+    )
+
+    def launch_concurrent_shared() -> None:
+        assert active_runtime is not None
+        active_runtime.event_record(shared_input_ready_event, stream)
+        active_runtime.stream_wait_event(
+            shared_stream,
+            shared_input_ready_event,
+        )
+        _launch_laguna_shared_c1_branch(
+            hidden_bf16_ptr,
+            layer,
+            scratch,
+            stream=shared_stream,
+            runtime=active_runtime,
+            libraries=libraries,
+            shared_pair_decode_variant=shared_pair_decode_variant,
+            use_q4_pack8_dual_silu_decode=(
+                use_q4_pack8_dual_silu_decode
+            ),
+            use_q4_decode_t16_sidecar=use_q4_decode_t16_sidecar,
+            use_q4_decode_t16_dual_interleaved=(
+                use_q4_decode_t16_dual_interleaved
+            ),
+            use_q4_shared_down_t16_decode=(
+                use_q4_shared_down_t16_decode
+            ),
+            tail_context=None,
+        )
+        active_runtime.event_record(
+            shared_output_ready_event,
+            shared_stream,
+        )
+
+    if shared_concurrent and not shared_after_router:
+        launch_concurrent_shared()
+
+    router_logits = (
+        plan.router_logits_functions["wave0_tree"]
+        if use_router_projection_wave0_tree
+        else plan.router_logits
+    )
+    router_logits(
+        hidden_bf16_ptr,
+        router,
+        scratch.router_logits.ptr,
+        1,
+        h,
+        e,
+        **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
+    )
+    plan.router_select(
+        scratch.router_logits.ptr,
+        correction,
+        scratch.routing_scores.ptr,
+        scratch.selection_scores.ptr,
+        scratch.selected_experts.ptr,
+        scratch.routing_weights.ptr,
+        scratch.scaled_routing_weights.ptr,
+        1,
+        e,
+        k,
+        plan.routed_scaling_factor,
+        **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
+    )
+    if shared_concurrent and shared_after_router:
+        launch_concurrent_shared()
+    _launch_selected_gate_up(
+        hidden_bf16_ptr,
+        layer,
+        scratch,
+        x_rows=1,
+        lanes=k,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_natural=use_selected_natural_decode,
+        use_natural_tile8=use_selected_natural_tile8_decode,
+        use_natural_tile8_parallel=(
+            use_selected_natural_tile8_parallel_decode
+        ),
+        use_natural_tile8_parallel_silu=(
+            use_selected_natural_tile8_parallel_silu_decode
+        ),
+    )
+    routed_down_weighted = _launch_weighted_selected_down(
+        layer,
+        scratch,
+        tokens=1,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_natural=use_selected_natural_decode,
+        use_natural_parallel=(
+            use_selected_down_natural_parallel_decode
+        ),
+        use_natural_parallel_weighted=(
+            use_selected_down_natural_parallel_weighted_decode
+        ),
+    )
+    if not routed_down_weighted:
+        _launch_selected_down(
+            layer,
+            scratch,
+            lanes=k,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+        plan.routed_sum(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            k,
+            h,
+            **_stage_kwargs("routed_sum", libraries, stream=stream, runtime=runtime),
+        )
+    if shared_concurrent:
+        assert active_runtime is not None
+        active_runtime.stream_wait_event(
+            stream,
+            shared_output_ready_event,
+        )
+        return scratch.routed_output, scratch.shared_output
+
+    _launch_laguna_shared_c1_branch(
+        hidden_bf16_ptr,
+        layer,
+        scratch,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        shared_pair_decode_variant=shared_pair_decode_variant,
+        use_q4_pack8_dual_silu_decode=(
+            use_q4_pack8_dual_silu_decode
+        ),
+        use_q4_decode_t16_sidecar=use_q4_decode_t16_sidecar,
+        use_q4_decode_t16_dual_interleaved=(
+            use_q4_decode_t16_dual_interleaved
+        ),
+        use_q4_shared_down_t16_decode=(
+            use_q4_shared_down_t16_decode
+        ),
+        tail_context=tail_context,
+    )
     return scratch.routed_output, scratch.shared_output
 
 
@@ -3008,6 +3117,10 @@ def run_laguna_moe_c1(
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
     use_q4_shared_down_t16_decode: bool = False,
+    shared_after_router: bool = False,
+    shared_stream: int = 0,
+    shared_input_ready_event: int = 0,
+    shared_output_ready_event: int = 0,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -3026,6 +3139,10 @@ def run_laguna_moe_c1(
             use_q4_decode_t16_dual_interleaved
         ),
         use_q4_shared_down_t16_decode=use_q4_shared_down_t16_decode,
+        shared_after_router=shared_after_router,
+        shared_stream=shared_stream,
+        shared_input_ready_event=shared_input_ready_event,
+        shared_output_ready_event=shared_output_ready_event,
     )
     scratch.plan.add(
         routed.ptr,

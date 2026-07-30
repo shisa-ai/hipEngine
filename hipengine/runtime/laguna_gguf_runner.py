@@ -198,6 +198,31 @@ def resolve_laguna_moe_branch_concurrency(
     )
 
 
+def resolve_laguna_moe_decode_branch_concurrency(
+    backend: str,
+    requested: bool | None,
+    *,
+    shared_resources_enabled: bool,
+) -> bool:
+    """Resolve c=1 overlap without bypassing the shared resource owner."""
+
+    if requested is True and not shared_resources_enabled:
+        raise ValueError(
+            "decode MoE branch concurrency requires shared MoE resources"
+        )
+    if not shared_resources_enabled:
+        return False
+    if requested is not None:
+        return bool(requested)
+    return bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
+            False,
+        )
+    )
+
+
 
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
@@ -2294,6 +2319,7 @@ class LagunaGGUFResidentSession:
         q6_precomputed_activation_sums: bool | None = None,
         q4_precomputed_activation_sums: bool | None = None,
         moe_branch_concurrency: bool | None = None,
+        moe_decode_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
         global_split_min_live: int | None = None,
@@ -2923,6 +2949,13 @@ class LagunaGGUFResidentSession:
         self.moe_branch_concurrency = resolve_laguna_moe_branch_concurrency(
             self.backend,
             moe_branch_concurrency,
+        )
+        self.moe_decode_branch_concurrency = (
+            resolve_laguna_moe_decode_branch_concurrency(
+                self.backend,
+                moe_decode_branch_concurrency,
+                shared_resources_enabled=self.moe_branch_concurrency,
+            )
         )
         self.moe_shared_after_router = bool(
             backend_package_capability(
@@ -5537,6 +5570,22 @@ class LagunaGGUFResidentSession:
                 self.use_router_projection_wave0_tree
             ),
             tail_context=tail_context,
+            shared_after_router=self.moe_shared_after_router,
+            shared_stream=(
+                self._moe_shared_stream
+                if self.moe_decode_branch_concurrency
+                else 0
+            ),
+            shared_input_ready_event=(
+                self._moe_shared_input_ready_event
+                if self.moe_decode_branch_concurrency
+                else 0
+            ),
+            shared_output_ready_event=(
+                self._moe_shared_output_ready_event
+                if self.moe_decode_branch_concurrency
+                else 0
+            ),
         )
         if tail_context is not None and tail_context.fused:
             return

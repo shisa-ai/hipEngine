@@ -286,6 +286,10 @@ LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
 # two dependency events overlaps 99.16% of its measured pp512 kernel time;
 # complete-state A/B is exact and wins all seven queue-matched pairs.
 LAGUNA_MOE_BRANCH_CONCURRENCY = True
+# The same exact event schedule is profitable at c=1 once the specialized
+# T16 selected and shared decode kernels are active. Seven counterbalanced
+# p512/d128 pairs win 7/7, and tracing observes 94 secondary kernels/token.
+LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY = True
 # Protect router logits/selection before releasing the concurrent shared
 # branch. Matched complete-state pp512 is +0.073% with 5/7 wins, and cached
 # tracing verifies a 0.310-ms kernel-span reduction.
@@ -911,6 +915,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
+    "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",

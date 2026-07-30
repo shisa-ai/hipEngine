@@ -60,6 +60,14 @@ shuffles. Six of seven same-resident pairs improve
 **22.572873 -> 22.579029 tok/s (+0.02727%)**; tracked-clean selector-unset
 production advances **22.555437 -> 22.581875 tok/s (+0.11721%,
 -0.051906 ms/token)** at unchanged residency and launch count.
+The newly retained gfx1151 c=1 routed/shared overlap gate improves
+**22.577646 -> 22.749657 tok/s (+0.76186%, 7/7 wins)** and saves
+**0.336115 ms/token** by paired median with exact trajectories and unchanged
+residency/kernel count. Cached tracing moves **94 of 482 kernels/token** to
+the existing low-priority secondary stream, overlaps **6.524765 ms/token**,
+and cuts median device span **44.516384 -> 44.042675 ms/token**. A
+tracked-clean selector-unset publication is the remaining promotion gate.
+[`retained overlap`](results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json).
 The preceding exact Q4T16 shared-down owner
 streams **22.917%** fewer bytes than expanded pack8 while preserving its
 FP32 coefficient products, FMA/reduction order, BF16 outputs, and native D9

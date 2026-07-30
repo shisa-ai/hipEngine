@@ -90,6 +90,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_PREFILL_STRATEGY,
     LAGUNA_GLOBAL_PREFILL_VARIANT,
     LAGUNA_MOE_BRANCH_CONCURRENCY,
+    LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY,
     LAGUNA_MOE_GROUP_COMPACT_MODE,
     LAGUNA_MOE_SHARED_AFTER_ROUTER,
     LAGUNA_MOE_SHARED_LOW_PRIORITY,
@@ -314,6 +315,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE is True
     assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
     assert LAGUNA_MOE_BRANCH_CONCURRENCY is True
+    assert LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY is True
     assert LAGUNA_MOE_SHARED_AFTER_ROUTER is True
     assert LAGUNA_MOE_SHARED_LOW_PRIORITY is True
     assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT is True
@@ -465,6 +467,19 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_MOE_BRANCH_CONCURRENCY", None
+    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
+            None,
+        )
+        is True
+    )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
+        None,
     ) is None
     assert (
         backend_package_capability(
