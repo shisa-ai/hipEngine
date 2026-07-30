@@ -72,10 +72,17 @@ def test_h5r_preappend_role_metadata_is_default_off_and_runner_gated() -> None:
 
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == {}
     assert not hasattr(hip_gfx1151, "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS")
-    source = inspect.getsource(
+    rows_source = inspect.getsource(
         laguna_gguf_runner.LagunaGGUFResidentSession._run_layer_rows
     )
-    assert ".can_preappend_attention_prefill(" in source
+    init_source = inspect.getsource(
+        laguna_gguf_runner.LagunaGGUFResidentSession.__init__
+    )
+    assert ".can_preappend_attention_prefill(" in rows_source
+    assert "self._swa_prefill_package_default = swa_prefill_variant is None" in (
+        init_source
+    )
+    assert "prefill_preappend_package_default=(" in init_source
 
 
 def test_h5r_scoped_preappend_policy_routes_only_safe_swa_tiles(

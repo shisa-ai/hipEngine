@@ -1228,6 +1228,7 @@ def allocate_laguna_kv_cache(
     prefill_cached_meta: bool = False,
     prefill_global_qrow6: bool = False,
     prefill_dense_initial: bool = False,
+    prefill_preappend_package_default: bool | None = None,
     global_split_min_live: int | None = None,
     swa_split_min_live: int | None = None,
     swa_split_tile16_min_live: int | None = None,
@@ -1264,7 +1265,11 @@ def allocate_laguna_kv_cache(
         parsed_prefill_preappend_role_variants,
     ) = _resolve_laguna_prefill_preappend_role_variants(
         backend,
-        package_default=swa_prefill_variant is None,
+        package_default=(
+            swa_prefill_variant is None
+            if prefill_preappend_package_default is None
+            else bool(prefill_preappend_package_default)
+        ),
     )
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
