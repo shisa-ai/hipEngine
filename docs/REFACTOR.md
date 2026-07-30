@@ -2244,6 +2244,6 @@ should be boring.
   positive and complete state exact. Remove the comparison seam after the
   pending tracked-clean selector-unset publication and wall census.
 - Publication and census pass at **22.031913 tok/s** and exactly
-  **625 dispatches/token**. The comparison CLI and session setter are now
-  eligible for removal; retain constructor override, capability, registered
-  quad, and unfused fallback.
+  **625 dispatches/token**. The comparison CLI and session setter are removed;
+  retain the constructor override, capability, registered quad, and unfused
+  fallback.
