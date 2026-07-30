@@ -787,11 +787,15 @@ first-fill specialization derives identity-ring position/visibility without
 arithmetic, attend-before-append schedule, and H5M fallback. It matches
 H5M/wave32 bytes and improves start 256 **1.147x/1.144x event/wall**, start 384
 **1.166x/1.163x**, and their sums **1.158x/1.156x**, with unchanged
-local32/VGPR72/SGPR128/LDS0/scratch0 resources. This admits only the leaf;
-production remains H5M pending complete state, integrated 72-call ownership,
-and clean 512/1K/4K. The 508,944,384 source-level generic predicates remain
-diagnostic, not a physical-load claim
-([H5N leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
+local32/VGPR72/SGPR128/LDS0/scratch0 resources. Complete M512 state is KL0 and
+integrated tracing selects all 72 calls, cutting qrow4/attention/request sum
+**13.918%/8.087%/1.687%**. Runtime ownership is still rejected: clean 4K is
+**-0.217%**, and a seven-repeat adjudication confirms **7/7** H5N samples below
+H5M (**158.152 -> 157.832 tok/s, -0.202%**). Remove the temporary role policy,
+retain only the leaf, and keep H5M production. The 508,944,384 source-level
+generic predicates remain diagnostic, not a physical-load claim
+([H5N runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
+[H5N leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5M leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
