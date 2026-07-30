@@ -1325,6 +1325,16 @@ __device__ inline float laguna_reduce_wave32_dpp_exact_tree(float value) {
   return value;
 }
 
+template <bool kDensePrefix>
+__device__ __forceinline__ int laguna_global_fixedshape_physical_slot(
+    const int32_t* shared_physical,
+    int logical_slot) {
+  if constexpr (kDensePrefix) {
+    return logical_slot;
+  }
+  return shared_physical[logical_slot];
+}
+
 template <
     int kOwnedQueries,
     int kValueStage,
@@ -1339,7 +1349,8 @@ template <
     bool kVectorProbabilityReplay = false,
     bool kPreNormalizeProbability = false,
     int kLocalThreads = 256,
-    bool kMixed40Owners = false>
+    bool kMixed40Owners = false,
+    bool kDensePrefix = false>
 __global__ __launch_bounds__(kLocalThreads)
 void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const float* query,
@@ -1372,6 +1383,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   static_assert(
       !(kMixed32Owners && kMixed40Owners),
       "global mixed32 and mixed40 ownership are mutually exclusive");
+  static_assert(
+      !kDensePrefix || (!kWmmaThreeTermQk && kMixed40Owners),
+      "dense-prefix specialization requires the exact mixed40 owner");
   constexpr int kOwnersPerKv =
       kMixed40Owners ? 5 : (kMixed32Owners ? 4 : kQueryGroup / kOwnedQueries);
   constexpr int kNumWarps = kLocalThreads / 32;
@@ -1385,16 +1399,15 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
       : scan_slots;
   int32_t* shared_physical = reinterpret_cast<int32_t*>(
       shared_scores + kOwnedQueries * score_stride);
+  const int physical_slots = kDensePrefix ? 1 : scan_slots;
   const int value_prefix_bytes =
-      (kOwnedQueries * static_cast<int>(sizeof(float)) +
-       static_cast<int>(sizeof(int32_t))) * scan_slots +
-      kOwnedQueries * (score_stride - scan_slots) *
-          static_cast<int>(sizeof(float));
+      kOwnedQueries * score_stride * static_cast<int>(sizeof(float)) +
+      physical_slots * static_cast<int>(sizeof(int32_t));
   const int value_padding_bytes = kVectorValueStage
       ? ((16 - (value_prefix_bytes & 15)) & 15)
       : 0;
   uint16_t* shared_value = reinterpret_cast<uint16_t*>(
-      reinterpret_cast<uint8_t*>(shared_physical + scan_slots) +
+      reinterpret_cast<uint8_t*>(shared_physical + physical_slots) +
       value_padding_bytes);
   __shared__ float warp_buf[kOwnedQueries][kNumWarps];
 
@@ -1531,14 +1544,17 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     }
 
     for (int token = wave; token < context_len; token += kNumWarps) {
-      const int64_t key_position = token_positions[token];
-      const bool visible = evict_mask[token] == 0 &&
-                           key_position >= 0 &&
-                           key_position <= row_positions[0];
-      int physical_slot = -1;
-      if (visible) {
-        physical_slot = static_cast<int>(
-            laguna_global_physical_slot(base_offsets, token, kBlockSize));
+      int physical_slot = token;
+      if constexpr (!kDensePrefix) {
+        const int64_t key_position = token_positions[token];
+        const bool visible = evict_mask[token] == 0 &&
+                             key_position >= 0 &&
+                             key_position <= row_positions[0];
+        physical_slot = -1;
+        if (visible) {
+          physical_slot = static_cast<int>(
+              laguna_global_physical_slot(base_offsets, token, kBlockSize));
+        }
       }
       float key_values[4] = {};
       if (physical_slot >= 0) {
@@ -1576,7 +1592,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
           }
         }
       }
-      if (lane == 0) shared_physical[token] = physical_slot;
+      if constexpr (!kDensePrefix) {
+        if (lane == 0) shared_physical[token] = physical_slot;
+      }
     }
     if constexpr (kProducerMax) {
       if (lane == 0) {
@@ -1642,7 +1660,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
         const int token = token_base + lane * kSoftmaxWarps;
         const bool in_range = token < context_len;
         const bool visible =
-            in_range && shared_physical[token] >= 0;
+            in_range &&
+            laguna_global_fixedshape_physical_slot<kDensePrefix>(
+                shared_physical, token) >= 0;
 #pragma unroll
         for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
           if (q_local >= owned_queries) continue;
@@ -1674,7 +1694,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
       for (int token = wave; token < context_len;
            token += kSoftmaxWarps) {
         if (lane != 0) continue;
-        const bool visible = shared_physical[token] >= 0;
+        const bool visible =
+            laguna_global_fixedshape_physical_slot<kDensePrefix>(
+                shared_physical, token) >= 0;
 #pragma unroll
         for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
           if (q_local >= owned_queries) continue;
@@ -1757,7 +1779,8 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
           const int vector_in_slot =
               vector_idx - stage_token * kVectorsPerSlot;
           const int physical_slot =
-              shared_physical[stage_base + stage_token];
+              laguna_global_fixedshape_physical_slot<kDensePrefix>(
+                  shared_physical, stage_base + stage_token);
           if constexpr (kDirectVectorStore) {
             if (physical_slot >= 0) {
               const int value_offset =
@@ -1791,7 +1814,8 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
           const int stage_token = idx / kHeadDim;
           const int value_dim = idx - stage_token * kHeadDim;
           const int physical_slot =
-              shared_physical[stage_base + stage_token];
+              laguna_global_fixedshape_physical_slot<kDensePrefix>(
+                  shared_physical, stage_base + stage_token);
           uint16_t value = 0;
           if (physical_slot >= 0) {
             const int value_offset =
@@ -1867,7 +1891,9 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
             shared_scores[q_local * score_stride + token] *
             warp_buf[q_local][0];
         if (!(weight > 0.0f)) continue;
-        const int physical_slot = shared_physical[token];
+        const int physical_slot =
+            laguna_global_fixedshape_physical_slot<kDensePrefix>(
+                shared_physical, token);
         const int value_offset =
             (physical_slot * kNumKvHeads + kv_head) * kHeadDim + dim;
         acc += weight * laguna_bf16_bits_to_float(value_cache[value_offset]);
@@ -8071,6 +8097,92 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp3
           true,
           true,
           kLocalThreads,
+          true>),
+      dim3(40),
+      dim3(kLocalThreads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      static_cast<int>(scan_slots),
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
+      block_table_len != 16 || scratch_stride != 4096 ||
+      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
+      num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kHeadDim = 128;
+  constexpr int kLocalThreads = 512;
+  const int64_t score_stride = (scan_slots + 3) & ~int64_t{3};
+  const size_t value_prefix_bytes =
+      static_cast<size_t>(kOwnedQueries * score_stride) * sizeof(float) +
+      sizeof(int32_t);
+  const size_t value_padding_bytes =
+      (16 - (value_prefix_bytes & 15)) & 15;
+  const size_t shared_bytes =
+      value_prefix_bytes + value_padding_bytes +
+      static_cast<size_t>(kValueStage * kHeadDim) * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      (laguna_global_attention_fused_exact_gated_fixedshape_kernel<
+          kOwnedQueries,
+          kValueStage,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          false,
+          true,
+          true,
+          true,
+          kLocalThreads,
+          true,
           true>),
       dim3(40),
       dim3(kLocalThreads),

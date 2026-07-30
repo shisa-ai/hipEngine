@@ -6439,6 +6439,35 @@ The remaining attention sequence is:
      still the largest named gap, but now only **14.85%** of the complete
      clean wall gap:
      [`post-dense-ring census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-ring-wall-reprofile.json).
+104. Compile out global-cache metadata only while the runtime can prove a
+     sequential dense identity prefix.
+     **Retained as the gfx1151 default:** before an explicit eviction, Laguna's
+     global cache has identity page offsets, visible positions `0..live-1`,
+     and `physical_slot=logical_slot`. The exact mixed40/local512 sibling
+     therefore removes base-offset, token-position, eviction-mask, and shared
+     physical-slot traffic. Every QK product/addition, softmax operation,
+     denominator update, ordered scalar PV FMA, gate, BF16 store, resident
+     byte, ABI argument, ownership decision, and dispatch remains unchanged.
+     Explicit eviction, non-dense metadata, live above 4000, and peer backends
+     retain generic mixed40/local512 `KVLiveSpans` handling.
+
+     RED fails importing the absent dense-prefix wrapper. GREEN matches the
+     CPU oracle and generic owner byte-for-byte at live 513/576/639; the
+     dispatch test explicitly evicts a global slot and proves fallback to the
+     generic owner. The 21x100 cache-only leaves improve
+     **0.040603 -> 0.034394 ms (-15.293%)**,
+     **0.046657 -> 0.037339 (-19.972%)**, and
+     **0.050698 -> 0.040605 (-19.907%)**. Cached native tracing names the
+     false/true template siblings at unchanged grid40/local512, VGPR48,
+     SGPR128, reported static LDS512, and scratch0.
+
+     All seven counterbalanced resident p512/d128 pairs win, moving median
+     decode **21.246496 -> 21.314384 tok/s (+0.31952%)** and saving
+     **0.149910 ms/token**. Tokens **2930/74107**, trajectory SHA
+     `94f803f7...bda32`, final position 638, determinism, and allocation
+     recovery are exact. Promote through `LAGUNA_GLOBAL_DENSE_PREFIX`; retain
+     generic mixed40/local512 as rollback and explicit-eviction fallback:
+     [`dense-prefix retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-retained.json).
 
 Current exact decode checkpoint:
 
