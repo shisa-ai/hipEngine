@@ -894,11 +894,13 @@ producer-inclusive weighted event/wall **87.859/81.559 -> 70.756/67.795 ms
 boundaries and complete state. Cached integration records exact **142 H5W + one
 H5I + three raw** consumers at unchanged **1,862** request / **289** Q6
 dispatches; Q6/request sum falls **121.306/1,851.695 -> 92.636/1,803.036 ms
-(-23.635%/-2.628%)**. Clean one-queue 512/1K/4K improves
-**+1.830%/+1.492%/+1.061%** with 3/3 wins each. Preserve H5I F32-N72 and raw
-long-K/wide-N fallbacks; package ownership now requires only the frozen
-selector-unset source-default rerun
-([H5W leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
+(-23.635%/-2.628%)**. Default-off one-queue 512/1K/4K improves
+**+1.830%/+1.492%/+1.061%** with 3/3 wins each. Selector-unset confirms
+**+1.785%/+1.532%/+1.100%**, promoting **271.526/234.020/161.853 tok/s** and
+narrowing matched M512 **2.59795x -> 2.55661x**. Preserve H5I F32-N72 and raw
+long-K/wide-N fallbacks; H5W is package production
+([H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+[H5W candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
 [H5W target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
 [H5V rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
 [H5V target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
