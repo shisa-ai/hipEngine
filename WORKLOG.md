@@ -193713,3 +193713,31 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-retained.json`.
   Next: commit the capability, publish selector-unset tracked-clean
   production, then verify the 48-launch contraction in a complete wall trace.
+
+## 2026-07-30 19:36 JST — Publish and trace F16 attention-quad production
+
+- Tracked-clean selector-unset revision `ae4f11d59` measures
+  **22.021010/22.040524/22.031913 tok/s**, median
+  **22.031913 tok/s / 45.388706 ms/token**. This improves the preceding clean
+  **21.926113** checkpoint by **0.48253% / 0.219014 ms/token** and reaches
+  **+92.138%** over the **11.466687** sprint start.
+- All three runs preserve tokens **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, deterministic repeats, and complete
+  recovery of all **79,022,520,340 resident bytes**. Prefill median is
+  **653.049 tok/s**. Raw SHA-256 is
+  `3b20398885d636e79a2508fd622e31cbc38fef7a3a803b9390ee599b72e54a7e`.
+- The tracked-clean cached-build wall trace records exactly
+  **625 dispatches/token**, down from 673. Each token has **48 quad calls**,
+  zero old Q/K/V triple calls, and zero separate K3072 gate calls.
+- Source-F16 falls **24.053006 -> 23.928557 ms/token**, kernel sum falls
+  **43.823282 -> 43.692753 (-0.2979%)**, and span falls
+  **45.861315 -> 45.699715 (-0.3524%)**. Span minus kernel sum is
+  **2.006962 ms/token**.
+- Against the unchanged Vulkan logger at **43.6592 ms/token**, hipEngine
+  kernel work is now only **+0.033553 ms/token (+0.0769%)**. The clean
+  production wall remains **2.559184 ms/token** behind Vulkan, so the next
+  exact target is launch/submission spacing rather than approximate attention
+  math. Trace/child SHA-256 values are `08c99ee...511` and
+  `34462347...9ea`.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-f16-attention-quad-production.json`.

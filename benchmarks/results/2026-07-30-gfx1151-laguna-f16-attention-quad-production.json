@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T19:35:00+09:00",
+  "kind": "hipengine_laguna_f16_attention_quad_decode_production",
+  "status": "accepted_production",
+  "performance_claim": true,
+  "source_revision": "ae4f11d596842af47f408fe585c5004bb570717b",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79022520340
+  },
+  "production": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "three selector-unset tracked-clean cached-build runs",
+    "samples_tok_s": [
+      22.021009717728447,
+      22.04052430494048,
+      22.031912527806647
+    ],
+    "median_tok_s": 22.031912527806647,
+    "median_ms_per_token": 45.388705984461964,
+    "prior_clean_tok_s": 21.9261127138,
+    "throughput_change_percent": 0.4825288248201831,
+    "saving_ms_per_token": 0.2190135895879095,
+    "sprint_start_tok_s": 11.466687,
+    "sprint_change_percent": 92.13843133423497,
+    "prefill_samples_tok_s": [
+      627.0766847558202,
+      656.2540805954524,
+      653.0493322221128
+    ],
+    "prefill_median_tok_s": 653.0493322221128,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "raw_sha256": "3b20398885d636e79a2508fd622e31cbc38fef7a3a803b9390ee599b72e54a7e"
+  },
+  "wall_trace": {
+    "workload": "same p512/d128 protocol under cached-build rocprofv3; final 127 length-one segments",
+    "dispatches_per_token": 625,
+    "prior_dispatches_per_token": 673,
+    "removed_dispatches_per_token": 48,
+    "quad_calls_per_token": 48,
+    "old_triple_calls_per_token": 0,
+    "old_gate_singleton_calls_per_token": 0,
+    "median_kernel_sum_ms_per_token": 43.692753,
+    "prior_kernel_sum_ms_per_token": 43.823282,
+    "kernel_sum_change_ms_per_token": -0.130529,
+    "kernel_sum_change_percent": -0.297853,
+    "median_kernel_span_ms_per_token": 45.699715,
+    "prior_kernel_span_ms_per_token": 45.861315,
+    "kernel_span_change_ms_per_token": -0.1616,
+    "kernel_span_change_percent": -0.352366,
+    "span_minus_kernel_sum_ms_per_token": 2.006962,
+    "source_f16_projection_ms_per_token": 23.928557,
+    "prior_source_f16_projection_ms_per_token": 24.053006,
+    "source_f16_change_ms_per_token": -0.124449,
+    "quad_ms_per_token": 13.2617,
+    "f16_output_projection_ms_per_token": 10.668593,
+    "same_gguf_vulkan_logged_gpu_ms_per_token": 43.6592,
+    "kernel_sum_above_vulkan_ms_per_token": 0.033553,
+    "kernel_sum_above_vulkan_percent": 0.076852,
+    "families_ms_per_token": {
+      "selected_q4_gate_up": 7.9599,
+      "selected_q4_q6_down": 4.772961,
+      "dense_shared_quant_projection": 2.349254,
+      "router": 1.063194,
+      "global_attention": 0.455414,
+      "swa_attention": 0.872679,
+      "norm_rope_gate": 1.048255,
+      "activation_reduce_residual": 0.118183,
+      "lm_head_argmax": 1.117858,
+      "embedding": 0.002324
+    },
+    "quad_resources": {
+      "local_x": 256,
+      "vgpr_count": 24,
+      "sgpr_count": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "08c99ee71649d425dc6f5b0c2ce9997bdea62c1c249d3b186e8619945f951711",
+    "child_sha256": "34462347dbdefc6e0036cc952e56dbcbfc4db3312fa2acd15c33c051698d09ea",
+    "compiler_processes_under_profiler": 0,
+    "exact": true
+  },
+  "same_gguf_vulkan": {
+    "tok_s": 23.348381,
+    "ms_per_token": 42.829522,
+    "hipengine_throughput_lower_percent": 5.638371552157528,
+    "remaining_wall_gap_ms_per_token": 2.559183984461967
+  },
+  "protocol": {
+    "production_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-attention-quad-clean-production.json",
+    "trace_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-f16-quad-wall.jVXJ4W --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-f16-quad-wall.jVXJ4W/bench.json"
+  },
+  "decision": "Keep the gfx1151 source-F16 attention quad as production default. Kernel work is now effectively at the Vulkan logged-GPU floor; prioritize exact launch contraction and within-token queue spacing over approximate attention arithmetic."
+}
