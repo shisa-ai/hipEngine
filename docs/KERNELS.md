@@ -2070,6 +2070,11 @@ trajectory/state/lifecycle. gfx1151 promotes the dual producer at the
 saturated natural shape; single-producer V128 remains registered rollback and
 peer backend selection is unchanged:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-retained.json).
+Tracked-clean selector-unset production at `72ed34b08` is
+**20.803739 tok/s (48.06828 ms/token)**, a noise-floor
+**+0.00264% / -0.00127 ms/token** over the preceding clean packet and
+**+81.428%** over sprint start, with exact repeated state/lifecycle:
+[`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-production.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace

@@ -192511,3 +192511,23 @@ Vulkan local sizes verbatim will close the measured gap.
   specialization, not an external port.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-retained.json`.
+
+## 2026-07-30 09:33 JST — Publish dual-producer V128 production
+
+- From tracked-clean retention commit `72ed34b08`, run the normal
+  selector-unset, require-cached p512/d128 path three times. Decode is
+  **20.798934/20.811150/20.803739 tok/s**, median
+  **20.803739 tok/s (48.06828 ms/token)**.
+- This is a noise-floor **+0.00264% / -0.00127 ms/token** over the preceding
+  clean **20.803189 tok/s** packet and **+81.428%** over the
+  **11.466687 tok/s** sprint start. The retained evidence remains the exact
+  **5.271%** leaf and positive seven-pair resident gate; the publication does
+  not inflate the tiny aggregate delta.
+- All three runs preserve tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, repeat determinism, and allocation
+  recovery. The raw artifact SHA-256 is `31e2a756...c0d`.
+- Same-GGUF llama.cpp Vulkan remains **23.348381 tok/s /
+  42.829522 ms/token**. The remaining wall gap is **5.23876 ms/token**, and
+  hipEngine is **10.899%** lower in throughput.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-production.json`.
