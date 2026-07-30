@@ -6418,15 +6418,20 @@ The remaining attention sequence is:
      recovery are exact. Promote through `LAGUNA_SWA_DENSE_RING`; retain
      generic DPP-QK as rollback and explicit-eviction fallback:
      [`dense-ring retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dense-ring-retained.json).
+     The tracked-clean selector-unset packet measures
+     **21.223122/21.239226/21.234815 tok/s**, median
+     **21.234815 tok/s (+1.0801%, -0.5086 ms/token)** versus the preceding
+     clean production checkpoint:
+     [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dense-ring-production.json).
 
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
-| hipEngine current production | **21.007908 tok/s** | **47.601 ms** | **+83.208%** |
+| hipEngine current production | **21.234815 tok/s** | **47.092 ms** | **+85.187%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **4.772 ms/token** | hipEngine is **10.024%** below Vulkan throughput |
+| Remaining wall gap | — | **4.263 ms/token** | hipEngine is **9.052%** below Vulkan throughput |
 
 The producer-max and local512 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
