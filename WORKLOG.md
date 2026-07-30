@@ -192904,3 +192904,21 @@ Vulkan local sizes verbatim will close the measured gap.
   **20.965807 tok/s**.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-splitbarrier-v-prefetch-rejected.json`.
+
+## 2026-07-30 12:46 JST — Close Q4 selected-down paired loads
+
+- Transfer the retained adjacent-column Q/coefficient transport contraction
+  from dual gate/up to the single-plane natural Q4 down body. Preserve
+  local128/grid1920, ten selected rows, every K/FMA/reduction operation,
+  parallel tail, resident bytes, and BF16 boundary.
+- RED fails importing the absent diagnostic wrapper. GREEN passes the existing
+  natural selected-decode production-bit fixture with zero BF16 mismatches.
+- The actual layer-10 9x50 leaf rejects paired Q plus paired coefficients:
+  **0.056282 -> 0.056447 ms (+0.292%)**. A decomposed Q-byte-only sibling is
+  worse at **0.056600 -> 0.060110 ms (+6.202%)**, also byte-exact.
+- Remove both template axes, exports, wrappers, registry/export entries, test
+  calls, and harness selectors before runtime integration. The gate/up
+  compiler/resource win does not transfer to one Q4 weight plane. Production
+  remains **20.965807 tok/s**.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q4-down-paired-loads-rejected.json`.

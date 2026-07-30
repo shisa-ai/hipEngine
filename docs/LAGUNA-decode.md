@@ -6268,6 +6268,26 @@ The remaining attention sequence is:
     traffic or changes the cooperative arithmetic contract. Production remains
     **20.965807 tok/s**:
     [`split-barrier rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-splitbarrier-v-prefetch-rejected.json).
+97. Transfer adjacent T16 packed loads from gate/up to Q4 selected down.
+    **Rejected and removed at the leaf stop:** the first exact candidate reuses
+    each adjacent-column Q byte and loads the aligned `d`/`dmin` halves and
+    scale/min bytes as pairs. The second isolates Q-byte reuse while retaining
+    scalar coefficient loads. Both preserve the production local128 grid, ten
+    independent selected rows, K traversal, per-column FMA sequence, wave tree,
+    ordered tail, resident bytes, ABI, and BF16 store.
+
+    RED fails importing the missing paired-load wrapper. GREEN extends the
+    natural Q4/Q6 production-bit fixture; both candidates are BF16-byte exact.
+    On actual layer-10 Q4 down, the paired Q+coefficient 9x50 leaf moves
+    **0.056282 -> 0.056447 ms (+0.292%)**. Q-byte-only reuse is decisively
+    worse at **0.056600 -> 0.060110 ms (+6.202%)**. The gate/up compiler win
+    does not transfer to this single-weight-plane body.
+
+    Remove both template axes, exports, wrappers, registry keys, test calls,
+    and harness selectors before runtime integration. Production remains
+    **20.965807 tok/s**. Keep scalar Q4 down; Q6 qmicro-planar remains a
+    distinct candidate because its quant payload is already quartet-packed:
+    [`paired-load rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q4-down-paired-loads-rejected.json).
 
 Current exact decode checkpoint:
 

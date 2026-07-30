@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T12:45:33+09:00",
+  "kind": "hipengine_laguna_gfx1151_q4_down_paired_loads_rejected",
+  "status": "rejected_at_leaf",
+  "pass": true,
+  "performance_claim": true,
+  "source_revision": "6e6ce604b0e017449d8b23ba24d86810fd5d9865",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "weight": "blk.10.ffn_down_exps.weight",
+    "layout": "gguf_q4_k_t16_v1"
+  },
+  "shape": {
+    "x_rows": 10,
+    "selected_rows": 10,
+    "experts": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "threads_per_block": 128
+  },
+  "candidates": {
+    "pair_q_and_coeff": {
+      "description": "Reuse each adjacent-column packed Q byte and load d/dmin as aligned uint32 pairs plus scale/min as uint16 pairs.",
+      "control_median_ms": 0.05628225803375244,
+      "candidate_median_ms": 0.05644658088684082,
+      "latency_change_percent": 0.2919620833084391,
+      "bf16_mismatches": 0,
+      "raw_sha256": "00add90a37d2ee7486805df74aa148821fac0610d13071887fee5b84c6c4f3b8"
+    },
+    "pair_q_only": {
+      "description": "Reuse only each adjacent-column packed Q byte while retaining scalar d/dmin/scale/min loads.",
+      "control_median_ms": 0.0566,
+      "candidate_median_ms": 0.06011,
+      "latency_change_percent": 6.202,
+      "bf16_mismatches": 0,
+      "raw_sha256": "390766f666d0666ce118b3e295fc3ca1aef0768619309f1023b5d5b64ceb6334"
+    }
+  },
+  "protocol": {
+    "timing": "counterbalanced HIP-event elapsed time",
+    "samples": 9,
+    "warmups": 5,
+    "burst": 50,
+    "correctness": "BF16 bit equality to current production wrapper",
+    "pair_q_and_coeff_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --down-candidate q4-paircoeff --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-down-paircoeff-9x50.json",
+    "pair_q_only_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --down-candidate q4-pairq --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-down-pairq-9x50.json"
+  },
+  "decision": {
+    "retain": false,
+    "promote": false,
+    "candidate_code_removed": true,
+    "resident_gate_skipped": true,
+    "production_tok_s": 20.965807,
+    "reason": "Neither exact gate/up transport contraction transfers to the single-plane Q4 down body: paired Q plus coefficients is neutral-negative and paired Q alone regresses 6.20%.",
+    "next": "Keep scalar Q4 down decode. Test Q6 qmicro-planar coefficient transport separately because its quartet-packed quant records and signed scale payload are structurally different."
+  }
+}
