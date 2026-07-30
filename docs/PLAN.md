@@ -1634,17 +1634,19 @@ The production-identical post-H5R one-queue request reconciles **1,851.695 ms /
 attention **195.796 ms**, Q6 **106.386 ms**, and gate/up **65.602 ms**; launch/
 submission residue stays below trigger at **26.303 ms / 1.401%**. Select
 **WPF-H5S exact persistent row-group Q5 traversal**. Separately registered
-fixed partitions **1/2/4/8/16/32** make each output-tile workgroup loop disjoint
-row groups while preserving H5L's F32 plane, role geometry, per-thread K/
-`fmaf`/wave/serial-sum/store order, one consumer launch, workspace, and H5L/H5G
-fallbacks. Partition 1 models six-role workgroups **5,021,440 -> 71,040
-(70.68x)** with unchanged useful dot work; this count is rationale, not a
-performance claim. Require byte identity, cached scratch-free resources, and
-producer-inclusive both-clock wins per actual role before any runtime owner
-([post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json)).
+fixed partitions **1/2/4/8/16/32** preserve H5L's F32 plane, role geometry,
+per-thread K/`fmaf`/wave/serial-sum/store order, launch count, workspace, and
+fallbacks. Rows17/33/M512 and actual-role outputs are byte-exact; all 36 cached
+symbols are local128/SGPR128/scratch0 with only +8 VGPR. Performance rejects
+every partition on every role. Best aggregate P32 moves producer-inclusive
+event/wall **459.018/473.034 -> 565.864/566.290 ms
+(+23.277%/+19.714%)**; **0/6** roles wins both clocks. Remove all candidate
+surfaces and do not infer speed from the P1 **70.68x** workgroup-prologue model
+([H5S rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json) ·
+[post-H5R residual / H5S target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
-changed-association attention, H5O representation, H5P geometry, and P6/repair
-routes remain closed. Launch fusion remains deferred.
+changed-association attention, H5O representation, H5P geometry, H5S persistent
+ownership, and P6/repair routes remain closed. Launch fusion remains deferred.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates
