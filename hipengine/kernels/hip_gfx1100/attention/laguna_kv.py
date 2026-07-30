@@ -110,6 +110,12 @@ _SYMBOL_GLOBAL_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_D
     "probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_"
     "bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL1024_EXP32_PRODUCER_MAX_DPP_QK_DENSE_PREFIX_IDLE_DOUBLE_BUFFER_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = (
+    "hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_"
+    "local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_"
+    "probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_"
+    "bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_WMMA_QK_THREE_TERM_MIXED32_EXP32_PRODUCER_MAX_EXACT_PV = (
     "hipengine_laguna_global_attention_decode_wmma_qk_three_term_mixed32_"
     "exp32_producer_max_exact_pv_bf16_spans"
@@ -3061,6 +3067,84 @@ def laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_prod
     fn = getattr(
         library,
         _SYMBOL_GLOBAL_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_DENSE_PREFIX_IDLE_DOUBLE_BUFFER_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 13
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(gated_out_ptr),
+        ctypes.c_void_p(score_scratch_ptr),
+        ctypes.c_void_p(physical_scratch_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(parsed_scan),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Screen exact dense-prefix global local1024 QK/V transport."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    parsed_scan = _check_split_scan_slots(scan_slots, capacity)
+    if (
+        capacity != 4096
+        or parsed_scan > 4000
+        or int(max_context_len) != 4096
+        or int(num_q_heads) != 48
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+    ):
+        raise ValueError(
+            "fused global dense-prefix local1024 idle-double-buffer requires "
+            "capacity 4096, scan slots at most 4000, 48 query heads, 8 KV "
+            "heads, and D128"
+        )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_GLOBAL_ATTENTION_FUSED_EXACT_GATED_MIXED40_LOCAL1024_EXP32_PRODUCER_MAX_DPP_QK_DENSE_PREFIX_IDLE_DOUBLE_BUFFER_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE,
     )
     fn.argtypes = (
         [ctypes.c_void_p] * 13
@@ -7606,6 +7690,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+            laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_spans",
             laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans,
         ),
@@ -8085,6 +8174,7 @@ __all__ = [
     "laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans",
+    "laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans",
     "laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans",
     "laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans",
     "laguna_global_attention_prefill_bf16_spans",

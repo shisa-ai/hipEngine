@@ -194431,3 +194431,36 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json`.
   Remove the dedicated `--compare-swa-local1024` seam after publication and
   census; retain local512 as the exact non-dense/eviction/peer fallback.
+
+## 2026-07-31 02:14 JST — Admit exact global local1024 primitive
+
+- The post-SWA census leaves global attention at grid40/local512 and
+  **0.453932 ms/token**. gfx1151 exposes 32 wave32s/CU and a 1024-thread
+  workgroup, while the retained global template already fixes softmax to its
+  original eight-wave denominator tree. The new diagnostic changes only
+  `kLocalThreads=512 -> 1024`, doubling independent QK/value-transport waves
+  without changing arithmetic, dispatches, resident bytes, or the
+  `KVLiveSpans` ABI.
+- RED first fails importing the absent local1024 wrapper. GREEN passes the
+  live-HIP 513/576/639 dense-prefix oracle with F32 context and gated BF16
+  byte equality to local512; the same focused test retains the explicit
+  eviction fallback.
+- The required 5-warmup, 21-sample, burst-100 leaf improves every natural
+  length: **0.031837 -> 0.031160 ms (-2.126%)** at 513,
+  **0.035142 -> 0.033799 (-3.823%)** at 576, and
+  **0.038120 -> 0.036536 (-4.157%)** at 639. Raw SHA-256 is
+  `197dc5a85b2d4e0d3cbd95fa535ca428a813ca1786cfc5db42e755801c7898ee`.
+- Cached `rocprofv3` names the candidate at grid40/local1024,
+  VGPR48/SGPR128/reported-LDS512/scratch0; no compiler ran under the profiler.
+  Trace SHA-256 is
+  `008a2baaf0c82ca9b3a0afacd8fb164ca6fabccd3d4f590b34a1426777bda922`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is blocked
+  before any diff because the configured unrelated
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent. No external
+  source is copied; this is an in-tree template specialization of the
+  retained exact owner.
+- Retain the registered primitive and leaf route but do not change runtime
+  selection yet. Next add a separate default-off gfx1151 capability and
+  require all-positive same-resident p512/d128 pairs before promotion.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-leaf.json`.

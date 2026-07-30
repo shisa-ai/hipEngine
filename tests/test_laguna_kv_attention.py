@@ -4100,6 +4100,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_dpp_qk_probability_vec4_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
@@ -4203,7 +4204,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
                 128,
                 128**-0.5,
             )
-            laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+            laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
                 *common,
                 control_out.ptr,
                 gate_device.ptr,
@@ -4212,7 +4213,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
                 library=library,
                 runtime=runtime,
             )
-            laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+            laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
                 *common,
                 candidate_out.ptr,
                 gate_device.ptr,
