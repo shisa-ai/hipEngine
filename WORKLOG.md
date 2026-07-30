@@ -194747,3 +194747,29 @@ Vulkan local sizes verbatim will close the measured gap.
   kernel census remains next before selecting the next family.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json`.
+
+## 2026-07-31 04:10 JST — Census gfx1151 router-projection wave-0 default
+
+- A tracked-clean, require-cached `rocprofv3` run over 127 exact c=1
+  transitions records **482 dispatches/token**, **42.841932-ms** kernel sum,
+  **44.514008-ms** span, and **1.672076 ms/token** span minus summed kernels.
+  It proves **47 wave-level / zero scalar** router projections per token at
+  grid256/local256, VGPR24/SGPR128/reported-LDS0/scratch0.
+- Router falls **1.082592 -> 1.054864 ms/token (-2.561%)**, while complete
+  kernel sum/span fall **0.052954/0.050335 ms/token**. The clean
+  **0.051906-ms/token** wall improvement therefore matches the measured GPU
+  work rather than a host-timing accident.
+- hipEngine kernel work is now **0.817268 ms/token below** Vulkan's logged
+  **43.6592-ms** GPU sum, but clean production wall remains
+  **1.453781 ms/token slower**. Remaining like-for-like positive gaps rank
+  selected gate/up **+0.321883**, selected down **+0.279808**, attention
+  **+0.210155**, and router **+0.084148 ms/token**. The essentially unchanged
+  **1.672076-ms** span-minus-kernel window keeps submission/queue
+  amortization as the dominant cross-family target.
+- Trace/bench SHA-256 values are
+  `60dc61bbc34a247383900bfa08156b33b546c043f993379159ad18a4d9f7a2ed`
+  and
+  `3720b1f2254d567aac3d7dfc8675a2bc3aeef859f395d0bc13d72f8ddcac720b`.
+  No compiler ran under the profiler.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json`.

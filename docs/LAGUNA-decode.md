@@ -7156,7 +7156,8 @@ The remaining attention sequence is:
      production route, rows/prefill keep token-tile projection, and the scalar
      local256 key remains exact rollback:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-retained.json),
-     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json).
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-projection-wave0-tree-production.json),
+     [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json).
 
 Current exact decode checkpoint:
 
@@ -7182,17 +7183,19 @@ Current exact decode checkpoint:
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining tracked-clean wall gap | — | **1.454 ms/token** | hipEngine is **3.283%** below Vulkan throughput |
 
-The refreshed post-Q4T16 census closes dense/shared against the comparator.
-Complete hipEngine kernel work is **42.894886 ms/token**, now
-**0.764314 ms/token below** Vulkan's logged GPU sum, while tracked-clean
-production remains **1.505686 ms/token** slower in wall time. Dense/shared is
-**1.981566 ms/token**, **0.018323 ms/token faster** than Vulkan. The remaining
+The refreshed post-router census confirms **47 wave-level / zero scalar**
+decode projections per token. Router falls
+**1.082592 -> 1.054864 ms/token (-2.561%)**, complete kernel work falls
+**42.894886 -> 42.841932**, and span falls
+**44.564343 -> 44.514008 ms/token** at unchanged 482 dispatches. hipEngine
+kernel work is now **0.817268 ms/token below** Vulkan's logged GPU sum, while
+tracked-clean production remains **1.453781 ms/token** slower in wall time.
+Dense/shared remains **0.017681 ms/token faster** than Vulkan. The remaining
 like-for-like positive family gaps rank paired selected gate/up
-**+0.318431**, selected down **+0.277841**, attention **+0.210840**, and
-router **+0.111876 ms/token**. The trace retains **482 model
-dispatches/token** and shows **1.669457 ms/token** between summed kernels and
-kernel span:
-[`post-Q4T16 shared-down census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-q4-t16-shared-down-wall-reprofile.json).
+**+0.321883**, selected down **+0.279808**, attention **+0.210155**, and
+router **+0.084148 ms/token**. The trace shows **1.672076 ms/token** between
+summed kernels and kernel span:
+[`post-router wave-0 census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json).
 
 The producer-max and local1024 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
