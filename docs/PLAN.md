@@ -1574,8 +1574,14 @@ plus consumer VGPR80-200. The logical-byte model does not survive measurement:
 regress **477.022/473.054 -> 606.780/614.512 ms (+27.202%/+29.903%)**.
 Coefficient loads and reconstruction ALU dominate. Remove all H5O symbols, keys,
 and tests; keep H5L/H5G and gfx1151 unchanged, and do not retry this
-representation without a distinct operation-count premise. The old wider-qrow,
-cross-head/key-split, rowbatch16,
+representation without a distinct operation-count premise. WPF-H5P next tests
+the unmeasured combination of H5F's exact 64-accumulator 4x16/16x4/8x8
+geometries with H5L's later weight-major traversal. Five roles totaling
+**414.077 ms / 88.67%** of H5L Q5 currently use 80/96 accumulators at
+VGPR168/200. Add separate gfx1100-only instantiations, preserve the producer,
+row-group mapping, K/FMA/wave/store order, workspace, and fallbacks, and require
+cached scratch0/VGPR136 plus producer-inclusive both-clock wins per role before
+any owner. The old wider-qrow, cross-head/key-split, rowbatch16,
 output-tile, source-MMQ, changed-association attention, and P6/repair routes
 remain closed. Launch fusion remains
 below its trigger at **1.251%** request span-minus-sum.
