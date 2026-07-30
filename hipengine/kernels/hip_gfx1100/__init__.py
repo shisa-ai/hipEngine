@@ -132,11 +132,11 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
-# WPF-H5Q promotes exact K1024/N3072 active-expert P64 IQ3 ownership after KL0
-# complete state, all 45 expected integrated calls, and positive clean
-# 512/1K/4K timing. H5Z reuses the same bounded active-expert ABI and is now
-# qualified default-off pending selector-unset source publication. H5J's exact
-# IQ4 owner and every shape/registration/backend fallback remain unchanged.
+# WPF-H5Z promotes exact K1024/N3072 activation-resident P256 IQ3 ownership
+# after KL0 complete state, exact 45-call integration, and positive selector-
+# unset 512/1K/4K timing. H5Q remains registered rollback through the same
+# bounded active-expert ABI. H5J's exact IQ4 owner and every shape/registration/
+# backend fallback remain unchanged.
 _H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "resident_rowbatch8_bf16_bf16_out"
@@ -146,7 +146,7 @@ _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT = (
     "activation_resident_out_p256_rowbatch8_bf16_bf16_out"
 )
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
-    "gguf_iq3_xxs": _H5Q_IQ3_ACTIVE_EXPERT_VARIANT,
+    "gguf_iq3_xxs": _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT,
     "gguf_iq4_xs": (
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),
