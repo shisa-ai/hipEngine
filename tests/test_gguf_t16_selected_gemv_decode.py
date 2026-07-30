@@ -15,11 +15,13 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
+    gguf_q4_k_pack8_gemv_bf16_bf16_out,
     gguf_q4_k_quantize_bf16_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
@@ -72,6 +74,7 @@ from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import (
     interleave_gguf_q4_k_tile16_dual,
+    repack_gguf_q4_k_pack8,
     repack_gguf_q4_k_tile16,
 )
 from hipengine.quant.gguf_t16 import (
@@ -106,6 +109,13 @@ def combine_library():
     if not HIP_AVAILABLE:
         pytest.skip("HIP runtime is not available")
     return build_paro_combine(load=True)
+
+
+@pytest.fixture(scope="module")
+def q4_library():
+    if not HIP_AVAILABLE:
+        pytest.skip("HIP runtime is not available")
+    return build_gguf_q4_k_gemv(load=True)
 
 
 def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
@@ -592,6 +602,120 @@ def _run_dense_dual_interleaved_silu(
     finally:
         for buf in (x_buf, tiles_buf, out_buf):
             free(buf)
+
+
+def _run_dense_single(
+    fn,
+    x_dev,
+    tiles,
+    out_features,
+    out_dtype,
+    library,
+) -> np.ndarray:
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    tiles_buf = malloc(tiles.nbytes)
+    copy_host_to_device(tiles_buf, host_array_ptr(tiles), tiles.nbytes)
+    out_arr = np.zeros((1, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            tiles_buf.ptr,
+            out_buf.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, tiles_buf, out_buf):
+            free(buf)
+
+
+def _run_pack8_single(
+    x_dev,
+    packed,
+    out_features,
+    q4_library,
+) -> np.ndarray:
+    in_features = x_dev.shape[1]
+    buffers = []
+    try:
+        x_buf = malloc(x_dev.nbytes)
+        buffers.append(x_buf)
+        copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+        packed_buffers = []
+        for value in (packed.qweight, packed.scales, packed.mins):
+            buffer = malloc(value.nbytes)
+            buffers.append(buffer)
+            packed_buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(value), value.nbytes)
+        out_arr = np.zeros((1, out_features), dtype=np.uint16)
+        out_buf = malloc(out_arr.nbytes)
+        buffers.append(out_buf)
+        gguf_q4_k_pack8_gemv_bf16_bf16_out(
+            x_buf.ptr,
+            packed_buffers[0].ptr,
+            packed_buffers[1].ptr,
+            packed_buffers[2].ptr,
+            out_buf.ptr,
+            1,
+            in_features,
+            out_features,
+            threads=32,
+            library=q4_library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
+def test_q4_t16_dense_single_matches_pack8_production_bits(
+    t16_selected_library,
+    q4_library,
+) -> None:
+    rng = np.random.default_rng(20260731)
+    in_features = 512
+    out_features = 32
+    raw = make_q4_k_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(1, in_features)).astype(np.float32)
+    )
+    packed = repack_gguf_q4_k_pack8(raw)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+
+    control = _run_pack8_single(
+        x_bf16,
+        packed,
+        out_features,
+        q4_library,
+    )
+    actual = _run_dense_single(
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(actual, control)
+    expected = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16),
+        raw,
+        GGMLQuantizationType.Q4_K,
+    )
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(actual),
+        expected,
+        **_TOL,
+    )
 
 
 def _run_direct_dual_silu_q8_dp4a(

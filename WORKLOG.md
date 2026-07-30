@@ -194556,3 +194556,39 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-production.json`
   and
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json`.
+
+## 2026-07-31 02:46 JST — Admit exact Q4T16 shared-down primitive
+
+- Closed the apparent scalar-control follow-up before implementation. The
+  gfx1100 campaign already rejected shared control, paired reads, mapped-host
+  reads, and pinned async D2H; whole-token HIP graph replay also regressed
+  gfx1151 **21.863939 -> 21.756761 tok/s (-0.4902%)**, and pair-only native
+  host batching was aggregate-negative. Do not retry those unchanged
+  mechanisms.
+- Re-ranked the current post-global-local1024 census against same-GGUF Vulkan.
+  hipEngine's complete kernel sum is already **0.411122 ms/token lower**, but
+  dense/shared remains **0.350957 ms/token** slower. The exact Q4/Q6
+  shared-down subfamily is the actionable kernel residue; Q4 expanded-pack8
+  accounts for **0.600802 ms/token** in the current trace.
+- RED failed importing the absent standalone Q4T16 dense-single wrapper.
+  GREEN adds a local32/tile8 kernel that preserves expanded-pack8's
+  eight-contiguous-K lane ownership, FP32 coefficient products, per-output
+  FMA sequence, wave32 reduction tree, and BF16 store. The focused
+  production-bit/CPU-reference test passes, and the complete
+  `tests/test_gguf_t16_selected_gemv_decode.py` file passes **103/103**.
+- Across all 24 actual Q4 `ffn_down_shexp` matrices, the counterbalanced 9x50
+  family ledger improves **0.171187 -> 0.129045 ms/token (-24.618%)**.
+  Every per-weight median is positive, **215/216** pairs win, all **73,728**
+  BF16 outputs match production pack8 exactly, and per-matrix streamed bytes
+  fall **2,359,296 -> 1,818,624 (-22.917%)**.
+- A require-cached `rocprofv3 --kernel-trace` run names
+  `q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>` at
+  grid384/local32, VGPR96/SGPR128/LDS0/scratch0. Trace SHA-256 is
+  `887384299adb239e022e6f237bb610c2661519406eb5996fed85eaa2a631e898`.
+  No compiler ran under the profiler.
+- The required broad lineage command remains environment-blocked before
+  inspection because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent;
+  no external source was copied. This commit admits the primitive only.
+  Runtime sidecar admission, exact model gating, and production promotion
+  remain next. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-shared-down-leaf.json`.
