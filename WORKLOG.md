@@ -193410,3 +193410,27 @@ Vulkan local sizes verbatim will close the measured gap.
   Next: commit the retained unit, publish a tracked-clean selector-unset
   p512/d128 packet, then refresh attention attribution before choosing the
   next exact seam.
+
+## 2026-07-30 17:06 JST — Publish clean global idle-wave V production
+
+- Commit `48c6e3e3a` enables the idle-wave V64 ping-pong capability on gfx1151
+  with no comparison CLI or session selector remaining.
+- Three tracked-clean selector-unset Poolside Laguna S 2.1 Q4_K_M BF16-KV
+  p512/d128 eager c=1 runs measure
+  **21.880056/21.872319/21.898392 tok/s**, median
+  **21.880056 tok/s**. This moves the preceding clean
+  **21.851538 -> 21.880056 (+0.13051%)**, saves
+  **0.059647 ms/token**, reaches **+90.814%** over sprint start, and narrows
+  the same-GGUF Vulkan gap to **2.874200 ms/token / 6.289% throughput**.
+- Every run preserves next/final tokens **2930/74107**, generated SHA
+  `94f803f7...bda32`, final position 638, determinism, tracked-clean
+  provenance, and complete allocation recovery. Resident bytes remain
+  **79,022,520,340**. Load time **92.981 s** is excluded.
+- Prefill median is **651.220 tok/s (-0.141%)**, within ordinary run noise;
+  the decode-only candidate is not active during prefill. Raw packet SHA-256
+  is `8374ec36...ba26`.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-production.json`.
+  Next: collect the cached-build post-promotion wall census and rank the
+  remaining exact attention/scheduling surfaces against the fresh Vulkan
+  logger.

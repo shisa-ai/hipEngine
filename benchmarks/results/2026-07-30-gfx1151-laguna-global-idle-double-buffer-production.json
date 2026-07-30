@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T17:06:13+09:00",
+  "kind": "hipengine_laguna_global_dense_prefix_idle_double_buffer_decode_production",
+  "status": "accepted_tracked_clean_production",
+  "performance_claim": true,
+  "source_revision": "48c6e3e3aaa7e51549744a51c85181f250430db6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_forward_calls_per_run": 127,
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "matrix_rows": 2048,
+    "attention_rows": 128
+  },
+  "production": {
+    "decode_samples_tok_s": [
+      21.880055848238815,
+      21.872318747867862,
+      21.89839188768424
+    ],
+    "decode_median_tok_s": 21.880055848238815,
+    "decode_median_ms_per_token": 45.70372246469804,
+    "prior_clean_tok_s": 21.851537876333534,
+    "change_from_prior_clean_percent": 0.13050784831105666,
+    "saving_from_prior_clean_ms_per_token": 0.059646944786734934,
+    "sprint_start_tok_s": 11.466687,
+    "change_from_sprint_start_percent": 90.81410217475035,
+    "same_gguf_vulkan_tok_s": 23.348381,
+    "remaining_vulkan_gap_ms_per_token": 2.874200366356405,
+    "throughput_below_vulkan_percent": 6.288766453490647,
+    "prefill_median_tok_s": 651.2202415262852,
+    "prefill_change_from_prior_percent": -0.14084352999048644
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "provenance": {
+    "tracked_clean": true,
+    "selector_unset": true,
+    "dense_global_prefix_capability_active": true,
+    "idle_double_buffer_capability_active": true,
+    "comparison_selector_active": false,
+    "resident_nbytes": 79022520340,
+    "load_seconds_excluded": 92.980560739059,
+    "untracked_shared_tree_artifacts_excluded": true,
+    "raw_sha256": "8374ec36d2389f2fa5e25a894063b0c0a24d017c0515daf956f8d458df5eba26"
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-idle-double-buffer-production-3.json"
+  },
+  "interpretation": {
+    "aggregate": "The tracked-clean median is 0.13051% above the preceding clean checkpoint and saves 0.05965 ms/token.",
+    "prefill": "The median moves -0.14084%, within run noise; the decode-only kernel is not active during prefill.",
+    "retention_basis": "All three exact natural global leaves improve 3.58-6.06%, all seven counterbalanced resident candidates beat their controls, and production preserves the complete deterministic trajectory.",
+    "decision": "Keep idle-wave V64 ping-pong as the qualified gfx1151 dense-global default and the single-buffer owner as exact rollback/fallback."
+  }
+}

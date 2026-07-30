@@ -2,7 +2,7 @@
   "schema": 1,
   "created_at": "2026-07-30T17:00:00+09:00",
   "kind": "hipengine_laguna_global_dense_prefix_idle_double_buffer_decode_retention",
-  "status": "retained_default_pending_clean_publication",
+  "status": "retained_default",
   "performance_claim": true,
   "source_revision": "c80a620ff27893f407f3e895b4ba67e5d3c9b946",
   "hardware": {
@@ -136,5 +136,10 @@
     "resources": "pass; grid40/local512/VGPR48/SGPR128/static-LDS512/scratch0; dynamic LDS rises by one 16 KiB V64 buffer",
     "whole_model": "pass; +0.11813%, 7/7 pairs, exact state and lifecycle",
     "decision": "Promote through the gfx1151 dense-prefix idle-double-buffer capability; keep the single-buffer dense-prefix owner as exact peer fallback."
+  },
+  "publication": {
+    "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-production.json",
+    "source_revision": "48c6e3e3aaa7e51549744a51c85181f250430db6",
+    "tracked_clean_median_tok_s": 21.880055848238815
   }
 }
