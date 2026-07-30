@@ -210,6 +210,23 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
             ]
             is q5_f32_ordered
         )
+    for output_dtype, col_tile, row_batch, weight_layout in (
+        ("bf16", 8, 4, "tile_k_col"),
+        ("bf16", 8, 12, "row_major"),
+        ("bf16", 16, 5, "tile_k_col"),
+        ("bf16", 12, 8, "row_major"),
+        ("f32", 16, 5, "tile_k_col"),
+        ("f32", 8, 10, "tile_k_col"),
+    ):
+        assert (
+            libraries.linear[
+                "gguf_q5_k:f32_ordered_weight_major_"
+                f"{weight_layout}_activation_tile_k_row_"
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            ]
+            is q5_f32_ordered
+        )
     assert libraries.moe["grouped_iq_prefill"] is iq_grouped_prefill
 
 
@@ -294,12 +311,30 @@ def test_laguna_q5_f32_ordered_scratch_is_one_bounded_buffer_and_frees() -> None
     assert scratch.buffer.nbytes == 150_994_944
     assert scratch.weight_f32_ptr == scratch.buffer.ptr
     assert scratch.weight_f32_nbytes == 150_994_944
+    assert scratch.activation_bf16_ptr == 0
+    assert scratch.activation_bf16_nbytes == 0
     assert scratch.nbytes == 150_994_944
 
     scratch.free(runtime=runtime)
     scratch.free(runtime=runtime)
     assert runtime.allocations == {}
     assert len(runtime.freed) == 1
+
+    candidate = LagunaQ5F32OrderedScratch.allocate(
+        max_rows=512,
+        use_activation_tile_k_row=True,
+        runtime=runtime,
+    )
+    assert candidate.buffer.nbytes == 161_120_256
+    assert candidate.weight_f32_ptr == candidate.buffer.ptr
+    assert candidate.weight_f32_nbytes == 150_994_944
+    assert candidate.activation_bf16_ptr == candidate.buffer.ptr + 150_994_944
+    assert candidate.activation_bf16_nbytes == 10_125_312
+    assert candidate.nbytes == 161_120_256
+    candidate.free(runtime=runtime)
+    assert runtime.allocations == {}
+    assert len(runtime.freed) == 2
+
     with pytest.raises(ValueError, match="max_rows"):
         LagunaQ5F32OrderedScratch.allocate(max_rows=0, runtime=runtime)
 
@@ -365,6 +400,16 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     )
     assert q5_plan.q5_f32_ordered_nbytes == 150_994_944
     assert q5_plan.total_nbytes == 590_016_544
+
+    h5y_plan = LagunaPrefillScratchPlan.build(
+        config,
+        moe_plan,
+        policy=policy,
+        use_q5_f32_ordered=True,
+        use_q5_activation_tile_k_row=True,
+    )
+    assert h5y_plan.q5_f32_ordered_nbytes == 161_120_256
+    assert h5y_plan.total_nbytes == 600_141_856
 
     wide_policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
