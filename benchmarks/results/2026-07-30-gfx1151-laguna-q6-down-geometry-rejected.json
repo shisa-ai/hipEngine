@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T07:42:59+00:00",
+  "kind": "hipengine_laguna_q6_down_decode_geometry",
+  "status": "rejected",
+  "performance_claim": false,
+  "repo_revision": "2d613345d94533ab13c9f8efc05af1187ccd37b8",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3"
+  },
+  "protocol": {
+    "weights": "all 24 actual Q6_K down tensors: one K12288 dense and 23 K1024 shared-expert",
+    "shape": "M1, N3072",
+    "timing": "21 counterbalanced HIP-event samples, 20 complete-family cycles per sample",
+    "correctness": "73,728 actual-weight BF16 outputs against retained pack8",
+    "control": "raw Q6_K pack8 local128 with one K256 scale table per barrier pair"
+  },
+  "control_median_ms_per_24_launch_family": {
+    "pair_screen": 0.7360747814178467,
+    "all_k_screen": 0.732688570022583,
+    "fixed_k_screen": 0.733340835571289,
+    "k2_screen": 0.7350268840789795,
+    "k4_screen": 0.7366654872894287
+  },
+  "candidates": {
+    "output_pair_local32": {
+      "median_ms_per_24_launch_family": 0.9866028785705566,
+      "delta_percent": 34.035685432686094,
+      "bf16_mismatches": 0,
+      "packet": "/tmp/laguna-q6-pair-decode-leaf.json"
+    },
+    "all_k_onebarrier_generic": {
+      "median_ms_per_24_launch_family": 0.9214447975158692,
+      "delta_percent": 25.76213622214254,
+      "bf16_mismatches": 0,
+      "packet": "/tmp/laguna-q6-onebarrier-decode-leaf.json"
+    },
+    "all_k_onebarrier_fixed_shape": {
+      "median_ms_per_24_launch_family": 0.8878087043762207,
+      "delta_percent": 21.06358480427424,
+      "bf16_mismatches": 0,
+      "packet": "/tmp/laguna-q6-onebarrier-fixedk-decode-leaf.json"
+    },
+    "two_k256_per_barrier_pair": {
+      "median_ms_per_24_launch_family": 0.796589994430542,
+      "delta_percent": 8.375627026037801,
+      "bf16_mismatches": 0,
+      "packet": "/tmp/laguna-q6-k2-decode-leaf.json"
+    },
+    "four_k256_per_barrier_pair": {
+      "median_ms_per_24_launch_family": 0.7905478000640869,
+      "delta_percent": 7.314352810652069,
+      "bf16_mismatches": 0,
+      "packet": "/tmp/laguna-q6-k4-decode-leaf.json"
+    }
+  },
+  "llama_cpp_source_review": {
+    "revision": "c0bc8591e",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q6_k.comp",
+    "running_device_subgroup": 64,
+    "mechanism": "compact raw Q6_K, vector4 activation and ql/qh loads, 16 lanes per K256 block, four K256 blocks processed concurrently by wave64, and two output rows per workgroup",
+    "important_correction": "The Vulkan Q6_K decode matvec consumes vectorized floating-point activations; reusable Q8_1 packing describes its MMQ/prefill route, not this decode shader."
+  },
+  "decision": {
+    "retained": false,
+    "reason": "Every exact HIP geometry/staging candidate loses to the retained pack8 kernel on the complete streaming family. Reproducing Vulkan's different vector4/wave64 reduction tree would change the frozen BF16 association and is not an exact staging optimization.",
+    "cleanup": "Removed all candidate kernels, wrappers, tests, and leaf harness. Production remains unchanged at 21.851538 tok/s."
+  }
+}

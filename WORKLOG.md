@@ -193354,3 +193354,25 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-compact-shared-down-rejected.json`.
   Next: screen the existing compact Q6 raw down owner using the Vulkan
   wave64/vector4 lessons without changing coefficient arithmetic.
+
+## 2026-07-30 16:43 JST — Reject exact Q6 down geometry and staging screens
+
+- Read llama.cpp Vulkan `c0bc8591e`'s running
+  `mul_mat_vec_q6_k.comp`. Correction: this decode shader consumes vectorized
+  floating-point activations; reusable Q8_1 applies to MMQ/prefill, not this
+  matvec. Its useful seams are compact raw weights, vec4 ql/qh and activation
+  loads, 16 lanes per K256 block, four blocks concurrently in wave64, and two
+  output rows per workgroup.
+- Built five exact BF16 candidates and screened all 24 actual Q6 down tensors
+  (one M1/K12288/N3072 dense plus 23 M1/K1024/N3072 shared). Every candidate
+  matches all **73,728** BF16 outputs, but every complete-family median loses:
+  wave32 output-pair **+34.04%**, all-K one-barrier **+25.76%**, fixed-shape
+  all-K **+21.06%**, K2 staging **+8.38%**, and K4 staging **+7.31%**.
+- Reject and remove every candidate kernel, wrapper, test, and leaf harness.
+  Retained raw-Q6 pack8 remains the best measured exact owner and production
+  remains **21.851538 tok/s**. A source-faithful Vulkan vector4/wave64 body
+  would use a different FP32 association and is not another exact barrier
+  optimization.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-geometry-rejected.json`.
+  Next: return to the remaining exact attention gap.
