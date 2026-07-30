@@ -1775,9 +1775,14 @@ preserve **2,050** dispatches and exact **45 H5Q or 45 H5Z + two H5J IQ4**
 topology, moving IQ3/request/span **488.610/1,625.126/1,650.283 ->
 477.168/1,603.812/1,624.882 ms (-2.342%/-1.312%/-1.539%)**. Default-off
 512/1K/4K improves **302.425/256.139/171.930 -> 307.870/259.556/173.477 tok/s
-(+1.801%/+1.334%/+0.900%)**, 3/3 wins each. Source production remains H5Y/H5Q
-pending the separate selector-unset publication
-([H5Z leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
+(+1.801%/+1.334%/+0.900%)**, 3/3 wins each. Selector-unset confirms
+**302.160/256.226/172.061 -> 307.658/259.947/173.562 tok/s
+(+1.819%/+1.452%/+0.872%)**, again 3/3. Promote H5Y/H5Z at canonical
+**307.658/259.947/173.562 tok/s (+1.490%/+1.486%/+1.008% over H5Y/H5Q)**,
+narrowing the canonical M512 gap **2.28998x -> 2.25635x**. Reprofile exact H5Z
+C4096/direct-M512 before updating the comparator-shaped row
+([H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
+[H5Z candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
 [post-H5Y residual / H5Z target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
 [H5Y production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
 [H5Y candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·

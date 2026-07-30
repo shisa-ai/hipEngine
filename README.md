@@ -286,11 +286,17 @@ numbers below.
   **488.610/1,625.126/1,650.283 -> 477.168/1,603.812/1,624.882 ms
   (-2.342%/-1.312%/-1.539%)**. Fresh-session 512/1K/4K improves
   **302.425/256.139/171.930 -> 307.870/259.556/173.477 tok/s
-  (+1.801%/+1.334%/+0.900%)**, 3/3 wins each. Source production remains
-  H5Y/H5Q pending selector-unset H5Z publication. Both short rows exceed 150
-  tok/s and H5Y/H5Q 4K remains positive; 16K+ stays closed
+  (+1.801%/+1.334%/+0.900%)**, 3/3 wins each. Selector-unset publication confirms
+  **302.160/256.226/172.061 -> 307.658/259.947/173.562 tok/s
+  (+1.819%/+1.452%/+0.872%)**, again 3/3 each. Promote H5Y/H5Z production at
+  canonical **307.658/259.947/173.562 tok/s
+  (+1.490%/+1.486%/+1.008% over H5Y/H5Q)**, narrowing the canonical M512 gap
+  to llama.cpp HIP **694.184 tok/s** from **2.28998x to 2.25635x**. The exact
+  comparator-shaped H5Z C4096/direct-M512 reprofile is the immediate next unit.
+  Both short rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed
   below the 800/700 stretch target
-  ([H5Z leaf](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
+  ([H5Z production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
+  [H5Z candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
   [post-H5Y matched residual / H5Z target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
   [H5Y production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
   [H5Y candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-candidate.json) ·

@@ -197,14 +197,14 @@ should be removed or collapsed.
   with no allocation, producer, sidecar, or public selector. Map, ABI, shape,
   registration, and backend misses retain the generic exact route; gfx1151
   stays empty/fail-closed.
-- WPF-H5Z adds one second default-off variant-to-active-expert ABI entry while
-  leaving the selected IQ3 variant on H5Q. Complete M512 state is KL0/byte-exact;
-  four paired traces select exact **45 H5Q or 45 H5Z** calls at unchanged
-  **2,050** dispatches and cut IQ3/request/span **2.342%/1.312%/1.539%**.
-  Default-off 512/1K/4K is **+1.801%/+1.334%/+0.900%**, 3/3 wins each. Keep this
-  entry through the selector-unset publication; if that gate rejects H5Z,
-  remove only the H5Z metadata entry, otherwise retain H5Q as rollback. Do not
-  add another adapter, allocation, workspace, sidecar, or public selector.
+- WPF-H5Z's second variant-to-active-expert ABI entry cleanup trigger is closed.
+  Complete M512 state is KL0/byte-exact; four paired traces select exact **45
+  H5Q or 45 H5Z** calls at unchanged **2,050** dispatches and cut IQ3/request/
+  span **2.342%/1.312%/1.539%**. Default-off 512/1K/4K is
+  **+1.801%/+1.334%/+0.900%** and selector-unset confirms
+  **+1.819%/+1.452%/+0.872%**, 3/3 wins each. Keep both ABI entries and H5Q as
+  registered rollback beneath H5Z production. Do not add another adapter,
+  allocation, workspace, sidecar, or public selector.
 
 ## Laguna exact qrow4 SWA prefill selector
 
