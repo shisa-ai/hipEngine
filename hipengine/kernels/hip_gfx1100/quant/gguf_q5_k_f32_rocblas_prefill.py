@@ -37,6 +37,14 @@ _ORDERED_GEOMETRIES = (
     (12, 8),
 )
 _Q6_ORDERED_GEOMETRIES = frozenset(((8, 4), (16, 4), (16, 5)))
+_ORDERED_WEIGHT_MAJOR_GEOMETRIES = (
+    (8, 4, "bf16"),
+    (8, 12, "bf16"),
+    (16, 5, "bf16"),
+    (12, 8, "bf16"),
+    (16, 5, "f32"),
+    (8, 10, "f32"),
+)
 _ORDERED_SYMBOL = (
     "hipengine_gguf_q5_k_f32_weight_ordered_coltile{col_tile}_"
     "rowbatch{row_batch}_bf16_{output_dtype}_out"
@@ -45,6 +53,14 @@ _ORDERED_PRIMITIVE_VARIANT = (
     "ordered_coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out"
 )
 _ORDERED_COMPOSITE_VARIANT = "f32_{variant}"
+_ORDERED_WEIGHT_MAJOR_SYMBOL = (
+    "hipengine_gguf_q5_k_f32_weight_ordered_weight_major_"
+    "coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out"
+)
+_ORDERED_WEIGHT_MAJOR_PRIMITIVE_VARIANT = (
+    "ordered_weight_major_coltile{col_tile}_rowbatch{row_batch}_"
+    "bf16_{output_dtype}_out"
+)
 _QK_K = 256
 _F32_NBYTES = 4
 _SESSION_MAX_IN_FEATURES = 9_216
@@ -367,6 +383,97 @@ def _make_q5_f32_weight_ordered(
     return launch
 
 
+def _launch_q5_f32_weight_ordered_weight_major(
+    *,
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    x_ptr: int,
+    weight_f32_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    parsed_rows = _check_rows(rows)
+    hidden = _check_in_features(in_features)
+    outputs = _check_out_features(out_features)
+    if (
+        col_tile * row_batch not in {32, 48, 64, 80, 96}
+        or (col_tile, row_batch) not in _ORDERED_GEOMETRIES
+    ):
+        raise ValueError(
+            "weight-major ordered Q5 geometry must keep a retained accumulator tile"
+        )
+    if outputs % col_tile != 0:
+        raise ValueError(f"out_features must be divisible by {col_tile}")
+    if output_dtype not in {"bf16", "f32"}:
+        raise ValueError("output_dtype must be bf16 or f32")
+
+    library = library or build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    symbol = _ORDERED_WEIGHT_MAJOR_SYMBOL.format(
+        col_tile=col_tile,
+        row_batch=row_batch,
+        output_dtype=output_dtype,
+    )
+    function = getattr(library, symbol)
+    function.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    function.restype = ctypes.c_int
+    error = function(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_f32_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(parsed_rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(outputs),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def _make_q5_f32_weight_ordered_weight_major(
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+):
+    def launch(
+        x_ptr: int,
+        weight_f32_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        **kwargs,
+    ) -> None:
+        _launch_q5_f32_weight_ordered_weight_major(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+            x_ptr=x_ptr,
+            weight_f32_ptr=weight_f32_ptr,
+            out_ptr=out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            **kwargs,
+        )
+
+    return launch
+
+
 def _make_q_f32_ordered_composite(
     primitive,
     dequantize,
@@ -419,6 +526,8 @@ def _make_q_f32_ordered_composite(
 _ORDERED_PRIMITIVES = {}
 _ORDERED_COMPOSITES = {}
 _Q6_ORDERED_COMPOSITES = {}
+_ORDERED_WEIGHT_MAJOR_PRIMITIVES = {}
+_ORDERED_WEIGHT_MAJOR_COMPOSITES = {}
 _ORDERED_EXPORT_NAMES = []
 for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
     for _output_dtype in ("bf16", "f32"):
@@ -463,6 +572,32 @@ for _col_tile, _row_batch in _ORDERED_GEOMETRIES:
             globals()[_q6_composite_name] = _q6_composite
             _Q6_ORDERED_COMPOSITES[_key] = _q6_composite
             _ORDERED_EXPORT_NAMES.append(_q6_composite_name)
+for _col_tile, _row_batch, _output_dtype in _ORDERED_WEIGHT_MAJOR_GEOMETRIES:
+    _variant = _ORDERED_WEIGHT_MAJOR_PRIMITIVE_VARIANT.format(
+        col_tile=_col_tile,
+        row_batch=_row_batch,
+        output_dtype=_output_dtype,
+    )
+    _primitive_name = f"gguf_q5_k_f32_weight_{_variant}"
+    _composite_name = f"gguf_q5_k_f32_{_variant}"
+    _primitive = _make_q5_f32_weight_ordered_weight_major(
+        _col_tile,
+        _row_batch,
+        _output_dtype,
+    )
+    _primitive.__name__ = _primitive_name
+    _composite = _make_q_f32_ordered_composite(
+        _primitive,
+        gguf_q5_k_dequantize_f32_exact,
+        col_tile=_col_tile,
+    )
+    _composite.__name__ = _composite_name
+    globals()[_primitive_name] = _primitive
+    globals()[_composite_name] = _composite
+    _key = (_col_tile, _row_batch, _output_dtype)
+    _ORDERED_WEIGHT_MAJOR_PRIMITIVES[_key] = _primitive
+    _ORDERED_WEIGHT_MAJOR_COMPOSITES[_key] = _composite
+    _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
 del _col_tile, _row_batch, _output_dtype, _variant
 del _primitive_name, _composite_name, _q6_composite_name
 del _primitive, _composite, _q6_composite, _key
@@ -630,6 +765,32 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
                 q6_composite,
                 replace=replace,
             )
+    for (col_tile, row_batch, output_dtype), primitive in (
+        _ORDERED_WEIGHT_MAJOR_PRIMITIVES.items()
+    ):
+        composite = _ORDERED_WEIGHT_MAJOR_COMPOSITES[
+            (col_tile, row_batch, output_dtype)
+        ]
+        variant = _ORDERED_WEIGHT_MAJOR_PRIMITIVE_VARIANT.format(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+        )
+        register(
+            KernelKey("hip_gfx1100", "linear", "f32_weight", variant),
+            primitive,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q5_k",
+                _ORDERED_COMPOSITE_VARIANT.format(variant=variant),
+            ),
+            composite,
+            replace=replace,
+        )
 
 
 register_gguf_q5_k_f32_rocblas_prefill_kernels()

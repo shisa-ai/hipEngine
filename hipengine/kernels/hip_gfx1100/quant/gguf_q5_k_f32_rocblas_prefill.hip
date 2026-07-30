@@ -263,6 +263,104 @@ __global__ void gguf_q5_k_f32_weight_ordered_coltile_kernel(
   }
 }
 
+// H5L preserves the ordered arithmetic body but makes row-group ownership the
+// fast linear workgroup dimension. Consecutive workgroups therefore revisit
+// one compact F32 weight tile before advancing to the next output tile.
+template <typename out_t, int COL_TILE, int ROW_BATCH>
+__launch_bounds__(128, (COL_TILE * ROW_BATCH >= 64 ? 1 : 2))
+__global__ void gguf_q5_k_f32_weight_ordered_weight_major_coltile_kernel(
+    const uint16_t* __restrict__ input,
+    const float* __restrict__ weight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  static_assert(
+      COL_TILE * ROW_BATCH == 32 ||
+          COL_TILE * ROW_BATCH == 48 ||
+          COL_TILE * ROW_BATCH == 64 ||
+          COL_TILE * ROW_BATCH == 80 ||
+          COL_TILE * ROW_BATCH == 96,
+      "weight-major ordered F32 Q5 screens only retained accumulator tiles");
+  const int row_groups = (rows + ROW_BATCH - 1) / ROW_BATCH;
+  const int workgroup = static_cast<int>(blockIdx.x);
+  const int row_group = workgroup % row_groups;
+  const int out_tile = workgroup / row_groups;
+  const int out_col_base = out_tile * COL_TILE;
+  const int row_base = row_group * ROW_BATCH;
+  const int tid = static_cast<int>(threadIdx.x);
+  if (out_col_base >= out_features || row_base >= rows) return;
+
+  const float* weight_rows[COL_TILE];
+#pragma unroll
+  for (int col = 0; col < COL_TILE; ++col) {
+    weight_rows[col] =
+        weight + static_cast<int64_t>(out_col_base + col) * in_features;
+  }
+
+  float acc[ROW_BATCH][COL_TILE] = {};
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[COL_TILE];
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      weights[col] = weight_rows[col][k];
+    }
+#pragma unroll
+    for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+      const int row = row_base + row_index;
+      if (row < rows) {
+        const float input_value = bf16_bits_to_float(
+            input[static_cast<int64_t>(row) * in_features + k]);
+#pragma unroll
+        for (int col = 0; col < COL_TILE; ++col) {
+          acc[row_index][col] =
+              fmaf(input_value, weights[col], acc[row_index][col]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        acc[row_index][col] += __shfl_down(acc[row_index][col], offset);
+      }
+    }
+  }
+  __shared__ float wave_sums[4][ROW_BATCH][COL_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        wave_sums[wave][row_index][col] = acc[row_index][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_BATCH * COL_TILE) {
+    const int row_index = tid / COL_TILE;
+    const int col = tid - row_index * COL_TILE;
+    const int row = row_base + row_index;
+    if (row < rows) {
+      float total = 0.0f;
+#pragma unroll
+      for (int wave_index = 0; wave_index < 4; ++wave_index) {
+        total += wave_sums[wave_index][row_index][col];
+      }
+      store_output<out_t>(
+          out,
+          static_cast<int64_t>(row) * out_features + out_col_base + col,
+          total);
+    }
+  }
+}
+
 __global__ void gguf_q5_k_dequantize_bf16_to_f32_exact_fused_kernel(
     const uint8_t* __restrict__ qweight,
     float* __restrict__ weight_out,
@@ -310,6 +408,41 @@ int launch_q5_k_f32_weight_ordered(
       static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH));
   hipLaunchKernelGGL(
       (gguf_q5_k_f32_weight_ordered_coltile_kernel<
+          out_t,
+          COL_TILE,
+          ROW_BATCH>),
+      grid,
+      dim3(128),
+      0,
+      stream,
+      input,
+      weight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t, int COL_TILE, int ROW_BATCH>
+int launch_q5_k_f32_weight_ordered_weight_major(
+    const uint16_t* input,
+    const float* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !weight || !out || rows <= 0 ||
+      !valid_shape(in_features, out_features) ||
+      out_features % COL_TILE != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_groups = (rows + ROW_BATCH - 1) / ROW_BATCH;
+  const int64_t output_tiles = out_features / COL_TILE;
+  const dim3 grid(static_cast<unsigned int>(row_groups * output_tiles));
+  hipLaunchKernelGGL(
+      (gguf_q5_k_f32_weight_ordered_weight_major_coltile_kernel<
           out_t,
           COL_TILE,
           ROW_BATCH>),
@@ -396,6 +529,32 @@ HIPENGINE_Q5_F32_ORDERED_EXPORTS(8, 12)
 HIPENGINE_Q5_F32_ORDERED_EXPORTS(12, 8)
 
 #undef HIPENGINE_Q5_F32_ORDERED_EXPORTS
+
+#define HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT(COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_bf16_out( \
+    const uint16_t* input, const float* weight, uint16_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, hipStream_t stream) { \
+  return launch_q5_k_f32_weight_ordered_weight_major<uint16_t, COL_TILE, ROW_BATCH>( \
+      input, weight, out, rows, in_features, out_features, stream); \
+}
+
+#define HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_F32_EXPORT(COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_coltile##COL_TILE##_rowbatch##ROW_BATCH##_bf16_f32_out( \
+    const uint16_t* input, const float* weight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, hipStream_t stream) { \
+  return launch_q5_k_f32_weight_ordered_weight_major<float, COL_TILE, ROW_BATCH>( \
+      input, weight, out, rows, in_features, out_features, stream); \
+}
+
+HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT(8, 4)
+HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT(8, 12)
+HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT(16, 5)
+HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT(12, 8)
+HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_F32_EXPORT(16, 5)
+HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_F32_EXPORT(8, 10)
+
+#undef HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_BF16_EXPORT
+#undef HIPENGINE_Q5_F32_ORDERED_WEIGHT_MAJOR_F32_EXPORT
 
 extern "C" int hipengine_gguf_q5_k_dequantize_bf16_to_f32_exact_fused(
     const uint8_t* qweight,
