@@ -11,6 +11,7 @@ resident-IQ3 row batches, H5N retains an exact dense-first-fill qrow4 leaf but
 rejects runtime ownership at 4K, H5O rejects exact factorized-Q5 reconstruction,
 H5P retains one exact BF16 Q5 occupancy-retune leaf but rejects runtime
 ownership at 1K, H5Q exact IQ3 active-expert persistent P64 is production,
+H5R selects exact preappend cached-only two-pass attention as the next target,
 and 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
@@ -218,10 +219,30 @@ role/Q5/request sum **5.800%/0.572%/0.187%**. A frozen 512 adjudication is
 **+0.176%**, but source-default 512/1K/4K is **+0.093%/-0.019%/-0.054%** and the
 final frozen 1K/4K adjudication remains **-0.030%/+0.014%**. Reject runtime
 ownership, remove its eager/package surfaces, retain only the leaf, and keep
-H5M/H5L production. Wider qrows, rowbatch16, cross-head/key-split, source MMQ,
-and changed-association
-attention remain closed
-([H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
+H5M/H5L production. H5Q then consumes the already-produced active-expert list
+with a P64 exact persistent IQ3 traversal. Final-source event/wall falls
+**492.847/491.518 -> 481.081/483.823 ms (-2.387%/-1.565%)**; complete state is
+KL0/byte-exact and selector-unset 512/1K/4K improves
+**+0.663%/+0.355%/+0.267%**, promoting **239.981/219.494/158.693 tok/s**.
+The production-identical post-H5Q request reconciles **2,050.376 ms / 1,862
+dispatches** versus matched llama.cpp HIP **724.299 ms**. Remaining gaps rank
+attention **431.450 ms**, Q5 **409.559 ms**, IQ down **320.157 ms**, and gate/up
+**59.253 ms**. Select **WPF-H5R exact preappend cached-only two-pass attention**:
+reuse the existing append launch before every safe complete M128 tile, then run
+new separately registered cached-only qrow4 global/SWA bodies that replay
+production logical-slot/qrow order, F32 QK products/tree, first-pass max,
+second-pass denominator/PV, division/store, and complete `KVLiveSpans` semantics.
+No launch, allocation, workspace, or sidecar may be added. Partial, wrapped,
+evicted, staged-verifier, explicit, missing, and unsupported paths retain the
+attend-before-append H5M/wave32/global exact routes. Production remains H5Q until
+byte identity, cached resources, append-before-attention symbols/counts, all
+**192** actual M512 roles on both clocks including append cost, complete state,
+and clean 512/1K/4K non-regression pass. Wider qrows, rowbatch16,
+cross-head/key-split, source MMQ, and changed-association attention remain
+closed
+([post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json) ·
+[H5Q production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json) ·
+[H5P rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·

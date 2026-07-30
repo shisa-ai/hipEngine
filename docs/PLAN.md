@@ -1603,7 +1603,21 @@ integrated tracing selects all **45** P64 IQ3 calls and cuts IQ-down/request sum
 publication confirms **+0.663%/+0.355%/+0.267%**, again 3/3 paired wins each,
 and promotes **239.981/219.494/158.693 tok/s**. One bounded gfx1100 IQ3
 variant+ABI entry changes; H5J remains fallback, IQ4 is unchanged, and gfx1151
-stays fail-closed. The old wider-qrow, cross-head/key-split,
+stays fail-closed. The production-identical post-H5Q trace reconciles
+**2,050.376 ms / 1,862 dispatches** against matched llama.cpp HIP **724.299
+ms**, leaving gaps attention **431.450 ms**, Q5 **409.559 ms**, IQ down
+**320.157 ms**, and gate/up **59.253 ms**. WPF-H5R selects the largest lane
+through a distinct exact schedule/body pair: reuse the existing safe
+append-before-attend launch order for complete M128 tiles, then consume only the
+preappended BF16 cache in separately registered two-pass global/SWA qrow4
+kernels. Preserve production logical-slot and qrow order, F32 QK products and
+wave tree, max then denominator/PV association, stores, and full `KVLiveSpans`;
+add no launch, allocation, workspace, or sidecar. Retain attend-before-append
+H5M/wave32/global routes for every partial, wrapped, evicted, staged-verifier,
+explicit, missing, or unsupported case. Production remains H5Q pending exact
+primitive/resource and all-192-role both-clock admission
+([post-H5Q residual / H5R target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5q-residual.json)).
+The old wider-qrow, cross-head/key-split,
 rowbatch16, output-tile, source-MMQ, changed-association attention, and
 P6/repair routes remain closed.
 Launch fusion remains
