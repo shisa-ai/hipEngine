@@ -176,17 +176,20 @@ GGUF_RAW_K_PREFILL_VARIANT = "coltile"
 # another 4.224/1.989 us per M512 request. H5G's exact constant-80/96 tiles
 # improve clean 512/1K/4K another 2.192%/2.055%/1.329% on five roles. H5L's
 # exact weight-major traversal cuts the six-role/235-call leaf 44.857%/46.544%
-# by event/wall; N48/N72 and every miss retain the preceding exact route.
+# by event/wall. H5X promotes tile-K-col layout on 151 calls after KL0 complete
+# state, exact 151-H5X/37-H5L/47-H5G tracing, and selector-unset one-queue
+# 512/1K/4K gains of 0.531%/0.310%/0.327%. Two BF16 roles remain on H5L;
+# N48/N72 and every miss retain H5G/raw exact routes.
 GGUF_Q5_F32_ORDERED_PREFILL = True
 GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
-    ("bf16", 3072, 1024): "weight_major_coltile8_rowbatch4",
+    ("bf16", 3072, 1024): "weight_major_tile_k_col_coltile8_rowbatch4",
     ("bf16", 3072, 12288): "weight_major_coltile8_rowbatch12",
-    ("bf16", 6144, 3072): "weight_major_coltile16_rowbatch5",
+    ("bf16", 6144, 3072): "weight_major_tile_k_col_coltile16_rowbatch5",
     ("bf16", 9216, 3072): "weight_major_coltile12_rowbatch8",
     ("f32", 3072, 48): "coltile12_rowbatch4",
     ("f32", 3072, 72): "coltile8_rowbatch4",
-    ("f32", 3072, 6144): "weight_major_coltile16_rowbatch5",
-    ("f32", 3072, 9216): "weight_major_coltile8_rowbatch10",
+    ("f32", 3072, 6144): "weight_major_tile_k_col_coltile16_rowbatch5",
+    ("f32", 3072, 9216): "weight_major_tile_k_col_coltile8_rowbatch10",
 }
 # WPF-H5I introduced the shared serial F32 plane and ordered Q6 consumers.
 # WPF-H5W promotes weight-major traversal on 142/143 selected calls after KL0

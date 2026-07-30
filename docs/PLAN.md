@@ -1725,10 +1725,16 @@ segments record exact **151 H5X + 37 H5L + 47 H5G** ownership at unchanged
 **479.776/1,826.542/1,850.682 -> 470.606/1,814.537/1,834.282 ms
 (-1.911%/-0.657%/-0.886%)**. Clean one-queue 512/1K/4K improves
 **271.744/233.742/161.579 -> 272.936/234.834/162.416 tok/s
-(+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Retain four eager aliases while
-package policy and canonical H5W remain unchanged; next freeze the four-entry
-source-default RED and publish only after selector-unset non-regression
-([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+(+0.439%/+0.468%/+0.518%)**, 3/3 wins each. Selector-unset publication confirms
+**271.922/234.334/162.004 -> 273.366/235.061/162.533 tok/s
+(+0.531%/+0.310%/+0.327%)**, again 3/3 each. Promote H5X at canonical
+**273.366/235.061/162.533 tok/s (+0.678%/+0.445%/+0.421% over H5W)** and narrow
+matched M512 **2.55661x -> 2.53940x**. Retain four eager aliases and promoted
+role entries; preserve two H5L roles, N48/N72 H5G, all Q6 routes, and every
+miss. Next reclassify the production-identical trace and select a genuinely
+new exact residual target
+([H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+[H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent

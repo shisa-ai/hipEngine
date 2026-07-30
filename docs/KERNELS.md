@@ -914,10 +914,14 @@ ms (-1.556%/-1.668%)**; final-source winners fall **265.784/266.992 ->
 is KL0 and byte-exact. Four counter-rotated cached request segments record exact
 **151 H5X + 37 H5L + 47 H5G** ownership at unchanged **1,862/470** request/Q5
 dispatches and cut median Q5/request/span **1.911%/0.657%/0.886%**. Clean
-512/1K/4K improves **+0.439%/+0.468%/+0.518%**, 3/3 wins each. Retain four
-eager aliases while package policy remains H5L/H5G; next freeze and run the
-selector-unset source-default gate
-([H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
+512/1K/4K improves **+0.439%/+0.468%/+0.518%**, 3/3 wins each. Selector-unset
+confirms **+0.531%/+0.310%/+0.327%**, again 3/3 each, promoting
+**273.366/235.061/162.533 tok/s (+0.678%/+0.445%/+0.421% over H5W)** and
+narrowing matched M512 to **2.53940x**. Retain four eager aliases and promoted
+role entries while preserving two H5L roles, N48/N72 H5G, all Q6 routes, and
+every miss; H5X is package production
+([H5X production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json) ·
+[H5X candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json) ·
 [post-H5W residual / H5X target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json) ·
 [H5W production](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
 [H5W candidate](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·

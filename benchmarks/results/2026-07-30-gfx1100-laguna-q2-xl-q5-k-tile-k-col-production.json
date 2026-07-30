@@ -1,0 +1,869 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_q5_tile_k_col_production",
+  "date": "2026-07-30",
+  "status": "retained_exact_package_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "target_revision": "f7f462787",
+    "red_revision": "2427833ad",
+    "leaf_revision": "37a6cf348",
+    "runtime_red_revision": "b6c3ab931",
+    "runtime_qualification_revision": "b545bf87f",
+    "source_default_red_revision": "c9cce7492",
+    "source": "net-new in-tree exact tile-K-col Q5 producer/consumer over the retained H5L arithmetic and shared F32 plane",
+    "candidate_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-candidate.json",
+    "candidate_artifact_sha256": "67c8740d76920db4257d3ea0526d93bd2bf488c4f6f42fca1c67fdbfeeadae49",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5w-residual.json",
+    "target_artifact_sha256": "0097fb5cb12053919504b36db851c0730054827437cd81a27ffb26895b2131a5",
+    "preceding_canonical_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json",
+    "preceding_canonical_artifact_sha256": "6edbc5a7482f73e06cf592baba805cff7c1e54eeb4a15dca7688ab3f05c89022",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "3ccaa3dea0d5c142669f6cdbc4dba02bdb0d7f45e5b787c931048353a5834bfd",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "08e3c75886bff1197627a35ad3a0fe2064da0a0350999343245fa8577fb9e4f3",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d96896a52a48ccf00345f0aca031cdcb151125a9bf8eae9321fdd05222f129ff",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "86be3c87c05c09f3bad54beab015d56f0efab1d92461afe2bd180d7422291110",
+      "hipengine/runtime/laguna_gguf_runner.py": "e5451bbc141c90b9aa148a3649fd0c717765eea09165728a2b1a4e68515f9055",
+      "tests/test_laguna_h5x_q5_tile_k_col.py": "0b8f4d927b1df95e7a4d4095365c359834ed7f2f3b7151a195ace501ab9e8941",
+      "tests/test_laguna_h5w_q6_weight_major_composites.py": "b6287f86be64bb81bc0a9838e8767c72e7c50a6d8626b9aa2b724912b63fd3eb",
+      "tests/test_laguna_h5p_q5_weight_major_occupancy.py": "31434439f95950db7332f3234e9afefcc3d4667446122daddce14579fb57b89c",
+      "tests/test_laguna_gguf_runner.py": "921d7a6894d45d344f6163ad0699c938e52ba896c9a8aba5799b4dba65936b87",
+      "tests/test_gguf_k_rowtile_gemv.py": "0ca8a282b6896fb62c6953e9e2b53f13e37ac33e3aeac4ab75356d24cfafd9f1"
+    }
+  },
+  "production_policy": {
+    "capability": "GGUF_Q5_F32_ORDERED_PREFILL_POLICY within GGUF_F32_ORDERED_PREFILL_POLICIES",
+    "roles": {
+      "bf16_k3072_n1024": "weight_major_tile_k_col_coltile8_rowbatch4",
+      "bf16_k6144_n3072": "weight_major_tile_k_col_coltile16_rowbatch5",
+      "f32_k3072_n6144": "weight_major_tile_k_col_coltile16_rowbatch5",
+      "f32_k3072_n9216": "weight_major_tile_k_col_coltile8_rowbatch10"
+    },
+    "retained_h5l_roles": {
+      "bf16_k3072_n12288": "weight_major_coltile8_rowbatch12",
+      "bf16_k9216_n3072": "weight_major_coltile12_rowbatch8"
+    },
+    "retained_h5g_roles": {
+      "f32_k3072_n48": "coltile12_rowbatch4",
+      "f32_k3072_n72": "coltile8_rowbatch4"
+    },
+    "calls_per_m512": {
+      "h5x_tile_k_col": 151,
+      "retained_h5l_weight_major": 37,
+      "retained_h5g_ordered": 47
+    },
+    "all_key_shape_registration_backend_misses_fail_closed": true,
+    "h5l_h5g_fallbacks_registered": true,
+    "q6_policy_unchanged": true,
+    "gfx1151_fail_closed": true,
+    "public_per_session_selector": false
+  },
+  "ownership": {
+    "runtime_default_new_device_bodies": 0,
+    "runtime_default_new_launches": 0,
+    "runtime_default_new_allocations": 0,
+    "new_persistent_weight_sidecar_bytes": 0,
+    "additional_workspace_bytes": 0,
+    "existing_shared_f32_plane_bytes": 150994944,
+    "control_workspace_bytes": 150994944,
+    "candidate_workspace_bytes": 150994944,
+    "eager_aliases": 4
+  },
+  "leaf_admission": {
+    "candidate": {
+      "additional_launches": 0,
+      "additional_workspace_bytes": 0,
+      "admitted_production_invocations": 151,
+      "admitted_roles": [
+        "bf16_k3072_n1024",
+        "bf16_k6144_n3072",
+        "f32_k3072_n6144",
+        "f32_k3072_n9216"
+      ],
+      "consumer": "unchanged H5L local128 arithmetic over aligned float4/global_load_b128 records",
+      "fallback_production_invocations": 37,
+      "name": "WPF-H5X exact tile-K-col F32 AoSoA Q5",
+      "persistent_sidecar_bytes": 0,
+      "preserved": "every reconstructed F32 value, BF16 widening, role geometry, K ownership, scalar fmaf order, wave shuffle tree, serial wave sum, store, workgroup order/count, plane byte count, launch count, allocation, workspace, and H5L fallback",
+      "producer": "linear local256 exact raw-Q5 expansion into [output_tile][k][col]",
+      "rejected_and_removed_roles": [
+        "bf16_k3072_n12288",
+        "bf16_k9216_n3072"
+      ],
+      "runtime_eager_aliases_added": 4,
+      "screened_roles": 6
+    },
+    "final_source_selected_screen": {
+      "aggregate": {
+        "all_candidate_event_reduction_percent": -2.683013997490924,
+        "all_candidate_event_speedup": 1.0275698427140125,
+        "all_candidate_event_weighted_ms": 258.652907371521,
+        "all_candidate_wall_reduction_percent": -3.008704469481871,
+        "all_candidate_wall_speedup": 1.0310203555177297,
+        "all_candidate_wall_weighted_ms": 258.9591280557215,
+        "h5l_event_weighted_ms": 265.78392734527586,
+        "h5l_wall_weighted_ms": 266.9921322725713,
+        "selected_event_reduction_percent": -2.683013997490924,
+        "selected_event_speedup": 1.0275698427140125,
+        "selected_event_weighted_ms": 258.652907371521,
+        "selected_wall_reduction_percent": -3.008704469481871,
+        "selected_wall_speedup": 1.0310203555177297,
+        "selected_wall_weighted_ms": 258.9591280557215
+      },
+      "all_candidate_bytes_exact": true,
+      "both_clock_positive_roles": 4,
+      "harness_sha256": "5f7e35d7a82623f9c1f56f782310ff7aa55c8fc324b36aad4eb662c707a05c88",
+      "json_sha256": "f03f15ab0abbc3179ff49ddc85a46f268c3cf47eda8e43dbff5f33717112a80a",
+      "protocol": {
+        "actual_weights": true,
+        "candidate": "H5X exact tile-K-col F32 producer plus aligned-float4 local128 H5L arithmetic",
+        "control": "retained H5L exact F32-plane weight-major local128 body",
+        "counter_rotated_repetitions": 15,
+        "deterministic_bf16_input": true,
+        "event_and_synchronized_wall": true,
+        "gpu_max_hw_queues": 1,
+        "inclusive_control_and_candidate": "one unchanged exact raw-Q5-to-F32 producer plus one ordered consumer",
+        "launches_per_sample": 5,
+        "mode_starts_per_role": {
+          "h5l": 8,
+          "h5x": 7
+        },
+        "production_invocations": 151,
+        "rows": 512,
+        "selection_rule": "retain a role only when H5X improves both event and synchronized-wall medians",
+        "unique_configurations": 4,
+        "warmups": 5
+      },
+      "rows": [
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 0.4073031902313232,
+          "candidate_wall_ms": 0.4093619994819164,
+          "control_event_ms": 0.43505539894104006,
+          "control_wall_ms": 0.44148419983685017,
+          "event_speedup": 1.0681364874504304,
+          "geometry": "coltile8_rowbatch4",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 92,
+          "role": "bf16_k3072_n1024",
+          "shape": [
+            1024,
+            3072
+          ],
+          "tensor": "blk.1.ffn_gate_shexp.weight",
+          "wall_speedup": 1.078468935552365,
+          "workspace_bytes": 12582912
+        },
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 2.378828430175781,
+          "candidate_wall_ms": 2.359846979379654,
+          "control_event_ms": 2.4712602615356447,
+          "control_wall_ms": 2.5036856066435575,
+          "event_speedup": 1.0388560310560242,
+          "geometry": "coltile16_rowbatch5",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 12,
+          "role": "bf16_k6144_n3072",
+          "shape": [
+            3072,
+            6144
+          ],
+          "tensor": "blk.0.attn_output.weight",
+          "wall_speedup": 1.0609525229901624,
+          "workspace_bytes": 75497472
+        },
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 2.1767406463623047,
+          "candidate_wall_ms": 2.1791302133351564,
+          "control_event_ms": 2.388780212402344,
+          "control_wall_ms": 2.388746989890933,
+          "event_speedup": 1.0974114975040286,
+          "geometry": "coltile16_rowbatch5",
+          "mismatch_count": 0,
+          "output_dtype": "f32",
+          "production_invocations": 12,
+          "role": "f32_k3072_n6144",
+          "shape": [
+            6144,
+            3072
+          ],
+          "tensor": "blk.0.attn_q.weight",
+          "wall_speedup": 1.096192864140486,
+          "workspace_bytes": 75497472
+        },
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 4.757548141479492,
+          "candidate_wall_ms": 4.7665742225945,
+          "control_event_ms": 4.783952713012695,
+          "control_wall_ms": 4.790468420833349,
+          "event_speedup": 1.0055500376975675,
+          "geometry": "coltile8_rowbatch10",
+          "mismatch_count": 0,
+          "output_dtype": "f32",
+          "production_invocations": 35,
+          "role": "f32_k3072_n9216",
+          "shape": [
+            9216,
+            3072
+          ],
+          "tensor": "blk.1.attn_q.weight",
+          "wall_speedup": 1.0050128660801265,
+          "workspace_bytes": 113246208
+        }
+      ],
+      "selected_roles": {
+        "bf16_k3072_n1024": "h5x",
+        "bf16_k6144_n3072": "h5x",
+        "f32_k3072_n6144": "h5x",
+        "f32_k3072_n9216": "h5x"
+      },
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "7f85655647e78a118d0fdfcf9115ff36fcbd9ea8e2d64403e2f64dc7109945a9",
+      "tracked_returned_to_baseline": true
+    },
+    "resource_and_isa": {
+      "all_expected_symbols_and_grids": true,
+      "candidate_consumers_same_resources_scratch0": true,
+      "candidate_isa_b128_loads_per_k": true,
+      "candidate_producer_calls": 4,
+      "candidate_producers_linear_local256_vgpr16_sgpr128_scratch0": true,
+      "consumer_calls": 8,
+      "consumer_records": [
+        {
+          "col_tile": 8,
+          "duration_us": 14.6,
+          "grid_x": 98304,
+          "grid_y": 1,
+          "lds_bytes": 512,
+          "local_size": 128,
+          "mode": "candidate",
+          "output_dtype": "bf16",
+          "row_batch": 4,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 72,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 11.8,
+          "grid_x": 39552,
+          "grid_y": 1,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "mode": "candidate",
+          "output_dtype": "bf16",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 13.36,
+          "grid_x": 39936,
+          "grid_y": 1,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "mode": "candidate",
+          "output_dtype": "f32",
+          "row_batch": 10,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 11.68,
+          "grid_x": 39552,
+          "grid_y": 1,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "mode": "candidate",
+          "output_dtype": "f32",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 19.88,
+          "grid_x": 98304,
+          "grid_y": 1,
+          "lds_bytes": 512,
+          "local_size": 128,
+          "mode": "control",
+          "output_dtype": "bf16",
+          "row_batch": 4,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 72,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 12.6,
+          "grid_x": 39552,
+          "grid_y": 1,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "mode": "control",
+          "output_dtype": "bf16",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 13.72,
+          "grid_x": 39936,
+          "grid_y": 1,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "mode": "control",
+          "output_dtype": "f32",
+          "row_batch": 10,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 12.44,
+          "grid_x": 39552,
+          "grid_y": 1,
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "mode": "control",
+          "output_dtype": "f32",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 168,
+          "vgpr_delta_vs_control": 0
+        }
+      ],
+      "isa_records": [
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 2,
+          "global_load_b32_static": 0,
+          "mode": "candidate",
+          "output_dtype": "bf16",
+          "row_batch": 4
+        },
+        {
+          "col_tile": 16,
+          "global_load_b128_static": 4,
+          "global_load_b32_static": 0,
+          "mode": "candidate",
+          "output_dtype": "bf16",
+          "row_batch": 5
+        },
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 2,
+          "global_load_b32_static": 0,
+          "mode": "candidate",
+          "output_dtype": "f32",
+          "row_batch": 10
+        },
+        {
+          "col_tile": 16,
+          "global_load_b128_static": 4,
+          "global_load_b32_static": 0,
+          "mode": "candidate",
+          "output_dtype": "f32",
+          "row_batch": 5
+        },
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 0,
+          "global_load_b32_static": 8,
+          "mode": "control",
+          "output_dtype": "bf16",
+          "row_batch": 4
+        },
+        {
+          "col_tile": 16,
+          "global_load_b128_static": 0,
+          "global_load_b32_static": 16,
+          "mode": "control",
+          "output_dtype": "bf16",
+          "row_batch": 5
+        },
+        {
+          "col_tile": 8,
+          "global_load_b128_static": 0,
+          "global_load_b32_static": 8,
+          "mode": "control",
+          "output_dtype": "f32",
+          "row_batch": 10
+        },
+        {
+          "col_tile": 16,
+          "global_load_b128_static": 0,
+          "global_load_b32_static": 16,
+          "mode": "control",
+          "output_dtype": "f32",
+          "row_batch": 5
+        }
+      ],
+      "isa_sha256": "337af4e85ae0ad946542db867ac40f8b236f0e35e90edd8e22f76ccd8a734941",
+      "no_compiler_under_profile": true,
+      "producer_records": [
+        {
+          "col_tile": 16,
+          "duration_us": 2.92,
+          "grid_x": 24576,
+          "grid_y": 1,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 1.96,
+          "grid_x": 24576,
+          "grid_y": 1,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "col_tile": 16,
+          "duration_us": 2.12,
+          "grid_x": 24576,
+          "grid_y": 1,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        },
+        {
+          "col_tile": 8,
+          "duration_us": 3.36,
+          "grid_x": 24576,
+          "grid_y": 1,
+          "lds_bytes": 0,
+          "local_size": 256,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 16
+        }
+      ],
+      "standard_producer_calls": 4,
+      "summary_sha256": "82e7985a342b56a657c1b449f0c5715e022502259b3985c470989a6e93d28698",
+      "trace_sha256": "73d010b41bfc81cbfddd83b694ab1778344ed195f38e73d05064c7e25957c954"
+    },
+    "six_role_binding_screen": {
+      "aggregate": {
+        "all_candidate_event_reduction_percent": -1.272548248257066,
+        "all_candidate_event_speedup": 1.0128895076868487,
+        "all_candidate_event_weighted_ms": 459.9346038818359,
+        "all_candidate_wall_reduction_percent": -1.5605313987296476,
+        "all_candidate_wall_speedup": 1.015852700353865,
+        "all_candidate_wall_weighted_ms": 460.2155834902078,
+        "h5l_event_weighted_ms": 465.86293449401853,
+        "h5l_wall_weighted_ms": 467.5112432334572,
+        "selected_event_reduction_percent": -1.5557788516060156,
+        "selected_event_speedup": 1.015803658492669,
+        "selected_event_weighted_ms": 458.61513748168943,
+        "selected_wall_reduction_percent": -1.668188932252579,
+        "selected_wall_speedup": 1.016964895837251,
+        "selected_wall_weighted_ms": 459.71227241680026
+      },
+      "all_candidate_bytes_exact": true,
+      "both_clock_positive_roles": 4,
+      "harness_sha256": "a5718da5355c2370a9e43332700286655c9c11515eabb07a8c91d2dafee31bfb",
+      "json_sha256": "dedabd4cf8ee2b9b224f35011ec6e9ac98b9825feaed3261f3730ec124d6575a",
+      "protocol": {
+        "actual_weights": true,
+        "candidate": "H5X exact tile-K-col F32 producer plus aligned-float4 local128 H5L arithmetic",
+        "control": "retained H5L exact F32-plane weight-major local128 body",
+        "counter_rotated_repetitions": 15,
+        "deterministic_bf16_input": true,
+        "event_and_synchronized_wall": true,
+        "gpu_max_hw_queues": 1,
+        "inclusive_control_and_candidate": "one unchanged exact raw-Q5-to-F32 producer plus one ordered consumer",
+        "launches_per_sample": 5,
+        "mode_starts_per_role": {
+          "h5l": 8,
+          "h5x": 7
+        },
+        "production_invocations": 188,
+        "rows": 512,
+        "selection_rule": "retain a role only when H5X improves both event and synchronized-wall medians",
+        "unique_configurations": 6,
+        "warmups": 5
+      },
+      "rows": [
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 0.41921682357788087,
+          "candidate_wall_ms": 0.42498502880334854,
+          "control_event_ms": 0.4463210105895996,
+          "control_wall_ms": 0.45044501312077045,
+          "event_speedup": 1.0646543399198372,
+          "geometry": "coltile8_rowbatch4",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 92,
+          "role": "bf16_k3072_n1024",
+          "shape": [
+            1024,
+            3072
+          ],
+          "tensor": "blk.1.ffn_gate_shexp.weight",
+          "wall_speedup": 1.0599079557910802,
+          "workspace_bytes": 12582912
+        },
+        {
+          "both_clock_positive": false,
+          "byte_exact": true,
+          "candidate_event_ms": 7.5814453125,
+          "candidate_wall_ms": 7.572650210931897,
+          "control_event_ms": 7.531699371337891,
+          "control_wall_ms": 7.531133992597461,
+          "event_speedup": 0.9934384620462685,
+          "geometry": "coltile8_rowbatch12",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 2,
+          "role": "bf16_k3072_n12288",
+          "shape": [
+            12288,
+            3072
+          ],
+          "tensor": "blk.0.ffn_gate.weight",
+          "wall_speedup": 0.9945176104563098,
+          "workspace_bytes": 150994944
+        },
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 2.3858497619628904,
+          "candidate_wall_ms": 2.3639144375920296,
+          "control_event_ms": 2.4753618240356445,
+          "control_wall_ms": 2.510957419872284,
+          "event_speedup": 1.0375178955103654,
+          "geometry": "coltile16_rowbatch5",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 12,
+          "role": "bf16_k6144_n3072",
+          "shape": [
+            3072,
+            6144
+          ],
+          "tensor": "blk.0.attn_output.weight",
+          "wall_speedup": 1.0622031745066196,
+          "workspace_bytes": 75497472
+        },
+        {
+          "both_clock_positive": false,
+          "byte_exact": true,
+          "candidate_event_ms": 5.2690685272216795,
+          "candidate_wall_ms": 5.26126017794013,
+          "control_event_ms": 5.234212112426758,
+          "control_wall_ms": 5.249252216890454,
+          "event_speedup": 0.9933847102927506,
+          "geometry": "coltile12_rowbatch8",
+          "mismatch_count": 0,
+          "output_dtype": "bf16",
+          "production_invocations": 35,
+          "role": "bf16_k9216_n3072",
+          "shape": [
+            3072,
+            9216
+          ],
+          "tensor": "blk.1.attn_output.weight",
+          "wall_speedup": 0.9977176644675312,
+          "workspace_bytes": 113246208
+        },
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 2.1941957473754883,
+          "candidate_wall_ms": 2.1907909773290157,
+          "control_event_ms": 2.3930740356445312,
+          "control_wall_ms": 2.4003046099096537,
+          "event_speedup": 1.0906383528028092,
+          "geometry": "coltile16_rowbatch5",
+          "mismatch_count": 0,
+          "output_dtype": "f32",
+          "production_invocations": 12,
+          "role": "f32_k3072_n6144",
+          "shape": [
+            6144,
+            3072
+          ],
+          "tensor": "blk.0.attn_q.weight",
+          "wall_speedup": 1.0956337846689848,
+          "workspace_bytes": 75497472
+        },
+        {
+          "both_clock_positive": true,
+          "byte_exact": true,
+          "candidate_event_ms": 4.766452026367188,
+          "candidate_wall_ms": 4.776316834613681,
+          "control_event_ms": 4.8034099578857425,
+          "control_wall_ms": 4.809973202645779,
+          "event_speedup": 1.0077537613541707,
+          "geometry": "coltile8_rowbatch10",
+          "mismatch_count": 0,
+          "output_dtype": "f32",
+          "production_invocations": 35,
+          "role": "f32_k3072_n9216",
+          "shape": [
+            9216,
+            3072
+          ],
+          "tensor": "blk.1.attn_q.weight",
+          "wall_speedup": 1.0070465107733624,
+          "workspace_bytes": 113246208
+        }
+      ],
+      "selected_roles": {
+        "bf16_k3072_n1024": "h5x",
+        "bf16_k3072_n12288": "h5l",
+        "bf16_k6144_n3072": "h5x",
+        "bf16_k9216_n3072": "h5l",
+        "f32_k3072_n6144": "h5x",
+        "f32_k3072_n9216": "h5x"
+      },
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "5f144eb4f616c83b6cd8621a050fd6e15222f10dd2d2484cb27445e3e990b84a",
+      "tracked_returned_to_baseline": true
+    }
+  },
+  "full_state_gate": {
+    "rows": 512,
+    "next_token_id": 2930,
+    "final_position": 511,
+    "finite": true,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "exact_hidden_boundaries": 48,
+    "complete_logits_hidden_kv_live_spans_exact": true,
+    "candidate_repeat_exact": true,
+    "workspace_bytes": 150994944,
+    "lifecycle_recovered": true,
+    "control": "retained H5L/H5G exact ordered Q5 package policy",
+    "candidate": "scoped default-off four-role H5X tile-K-col Q5 policy",
+    "json_sha256": "2eaa67314fc47df94c3f060238adcbbbe53a921e2afab045e8f378986f3cf3e8",
+    "harness_sha256": "8f929e502fb5924e4626201bf912a3851ae15c518afa83b7e708cd5ab7c5a92c",
+    "stdout_sha256": "39cffc42c0b7f4898fcc4ae74e1013f42f3909ee7ecdb89097705a93f67d831d",
+    "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "quality_gate": true
+  },
+  "integrated_cached_paired_trace": {
+    "protocol": "four same-resident fresh-request control/candidate/candidate/control segments under one process-level HIP queue cap",
+    "request_segments": 4,
+    "dispatches_per_request": 1862,
+    "q5_dispatches_per_request": 470,
+    "q6_dispatches_per_request": 289,
+    "q5_producers_per_request": 235,
+    "h5x_consumers": 151,
+    "retained_h5l_consumers": 37,
+    "retained_h5g_consumers": 47,
+    "producer_immediately_precedes_consumer": true,
+    "q5_ms_before": 479.776379,
+    "q5_ms_after": 470.60629700000027,
+    "q5_reduction_percent": 1.911324192139885,
+    "request_kernel_sum_ms_before": 1826.5420935,
+    "request_kernel_sum_ms_after": 1814.537063,
+    "request_kernel_sum_reduction_percent": 0.6572545216845249,
+    "kernel_span_ms_before": 1850.6821895,
+    "kernel_span_ms_after": 1834.281502,
+    "kernel_span_reduction_percent": 0.8861968625975103,
+    "resources": "H5X producer local256/VGPR16/SGPR128/LDS0/scratch0; consumers local128/VGPR72 or 168/SGPR128/LDS512 or 1536/scratch0",
+    "trace_sha256": "aa4529ec9d23b9abc3ea7c6bf3eab0564a25ce871663348a86de1604a2c75ef8",
+    "summary_sha256": "2f31cf5088d6e35a760f775bd3de4bee05d8c411bf4513e6d48064be44429682",
+    "analyzer_sha256": "595103e87e08686d31efbf2cb6619b1c545728410049806ba668c825ab9e184e",
+    "harness_sha256": "e1a8608e26fcd7919a087827f2b5f76dbd79d4f1dc56f98e474486bd93171b6d",
+    "no_compiler_under_profile": true
+  },
+  "default_off_clean_gate": {
+    "rows": {
+      "512": {
+        "control_median_tok_s": 271.7436357544297,
+        "candidate_median_tok_s": 272.93638329538237,
+        "gain_percent": 0.4389238178996502,
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "1024": {
+        "control_median_tok_s": 233.74165391561897,
+        "candidate_median_tok_s": 234.83446161985438,
+        "gain_percent": 0.46752801048883796,
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "4096": {
+        "control_median_tok_s": 161.57939780166004,
+        "candidate_median_tok_s": 162.4159955210668,
+        "gain_percent": 0.5177626175050465,
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      }
+    },
+    "all_exact_finite_and_lifecycle_clean": true
+  },
+  "clean_package_default_gate": {
+    "protocol": "selector-unset H5X source default versus scoped H5L/H5G rollback; one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length under one process-level HIP queue cap",
+    "rows": {
+      "512": {
+        "control_median_tok_s": 271.9222861655177,
+        "candidate_median_tok_s": 273.36575753469407,
+        "same_session_gain_percent": 0.5308396709704732,
+        "candidate_samples_tok_s": [
+          274.4695925976591,
+          273.36575753469407,
+          272.88340049834676
+        ],
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "1024": {
+        "control_median_tok_s": 234.3338727894591,
+        "candidate_median_tok_s": 235.06076739649697,
+        "same_session_gain_percent": 0.3101961310095991,
+        "candidate_samples_tok_s": [
+          236.06550333166564,
+          235.0087926714331,
+          235.06076739649697
+        ],
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      },
+      "4096": {
+        "control_median_tok_s": 162.00396195007144,
+        "candidate_median_tok_s": 162.5334157143877,
+        "same_session_gain_percent": 0.3268153185534084,
+        "candidate_samples_tok_s": [
+          162.7068573533936,
+          162.5334157143877,
+          162.37609524111744
+        ],
+        "paired_candidate_wins": 3,
+        "exact_all_repetitions": true
+      }
+    },
+    "all_state_exact": true,
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "workspace_bytes": 150994944,
+    "json_sha256": "0adf5deb94253fd4b95b9a734c7071080089789a854d4dd15e38e0aa6de751cd",
+    "harness_sha256": "b773f2c1ad0d44c5b16c28e2aebffedd4383f5996e11367bedfc4fc3c4d3fdd5",
+    "stdout_sha256": "a5f939c9f75cacda84d2e369c5843c5fc04351774c84622c7e272e26a56592c3",
+    "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+  },
+  "canonical_production": {
+    "preceding_tok_s": {
+      "512": 271.52551262043875,
+      "1024": 234.02049160491273,
+      "4096": 161.85276620822188
+    },
+    "current_tok_s": {
+      "512": 273.36575753469407,
+      "1024": 235.06076739649697,
+      "4096": 162.5334157143877
+    },
+    "gain_percent": {
+      "512": 0.6777429113365763,
+      "1024": 0.44452337675646714,
+      "4096": 0.4205362207342134
+    },
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_m512_gap": 2.53939632476426,
+    "next_tokens": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    }
+  },
+  "matched_llamacpp_comparator": {
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "median_tok_s": 694.184,
+    "samples_tok_s": [
+      695.611,
+      695.493,
+      694.184,
+      693.732,
+      690.927
+    ],
+    "protocol": "same model, same fixed 512 token IDs, context4096, direct M512/ubatch512, FlashAttention, BF16 K/V, one W7900 and one HIP queue, last-row first-token projection"
+  },
+  "source_artifacts": {
+    "full_state_json_sha256": "2eaa67314fc47df94c3f060238adcbbbe53a921e2afab045e8f378986f3cf3e8",
+    "full_state_harness_sha256": "8f929e502fb5924e4626201bf912a3851ae15c518afa83b7e708cd5ab7c5a92c",
+    "integrated_trace_csv_sha256": "aa4529ec9d23b9abc3ea7c6bf3eab0564a25ce871663348a86de1604a2c75ef8",
+    "integrated_trace_summary_sha256": "2f31cf5088d6e35a760f775bd3de4bee05d8c411bf4513e6d48064be44429682",
+    "integrated_trace_analyzer_sha256": "595103e87e08686d31efbf2cb6619b1c545728410049806ba668c825ab9e184e",
+    "default_off_clean_json_sha256": "9fc343e20589efdb66a40bebea8b05d1529b6d1e8971d173dd584f2efdadff30",
+    "default_off_clean_harness_sha256": "52ff10260cdea2a2b8489c5a60c6c472d71c9b20426d476bda6fa20c07463793",
+    "package_default_json_sha256": "0adf5deb94253fd4b95b9a734c7071080089789a854d4dd15e38e0aa6de751cd",
+    "package_default_harness_sha256": "b773f2c1ad0d44c5b16c28e2aebffedd4383f5996e11367bedfc4fc3c4d3fdd5",
+    "package_default_stdout_sha256": "a5f939c9f75cacda84d2e369c5843c5fc04351774c84622c7e272e26a56592c3",
+    "empty_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+  },
+  "commands": {
+    "full_state": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python /tmp/laguna_wpfh5x_q5_tile_k_col_package_full_state.py",
+    "integrated_trace": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5x-integrated-paired-rocprof -- uv run python /tmp/laguna_wpfh5x_q5_tile_k_col_trace_integrated_paired.py",
+    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python /tmp/laguna_wpfh5x_q5_tile_k_col_default_off_clean_512_4k.py",
+    "package_default_clean": "HIP_VISIBLE_DEVICES=0 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_STREAMS=1 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python /tmp/laguna_wpfh5x_q5_tile_k_col_package_default_clean_512_4k.py"
+  },
+  "decision": {
+    "promoted_package_default": true,
+    "runtime_default_changed": true,
+    "retained_h5l_roles": 2,
+    "retained_h5g_roles": 2,
+    "q6_policy_changed": false,
+    "new_memory_owner_added": false,
+    "gfx1151_policy_changed": false,
+    "long_context_16k_plus_remains_deferred": true,
+    "next_action": "Reprofile the promoted exact M512 request, rerank residual family gaps against matched llama.cpp HIP, and select the next genuinely distinct exact target."
+  }
+}
