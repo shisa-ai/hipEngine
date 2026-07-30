@@ -1496,18 +1496,25 @@ cuts request kernel sum **2,667.034 -> 2,600.260 ms**. Clean selector-unset
 (+1.762%/+1.736%/+1.256%)** over H5G. The reconciled H5I request is Q5
 **922.619 ms**, exact IQ3/IQ4 down **556.749 ms**, attention **471.150 ms**,
 gate/up **469.311 ms**, Q6 **110.170 ms**, and remaining **70.261 ms**. Against
-matched llama.cpp, IQ down retains a **401.254-ms** gap. H5J now admits exact
+matched llama.cpp, IQ down retains a **401.254-ms** gap. H5J admits exact
 resident-segment IQ3 plus an IQ4 local32 launch of the retained physical body.
 A generated one-BF16-ULP RED removes the first separately compiled IQ4 body.
 The final actual-weight/routing gate is byte-exact and both-clock positive on
 all **45+2** layers: IQ3 moves **541.137 -> 491.481 ms (-9.176%)**, IQ4
 **26.137 -> 8.696 ms (-66.730%)**, and combined event/wall sums move
-**567.274/567.056 -> 500.176/500.448 ms (-11.828%/-11.746%)**. No allocation,
-owner, or package default exists until complete M512 state, integrated tracing,
-and clean 512/1K/4K pass. The old rowbatch16 spill, output-tile regression, and
-source-MMQ quality failure remain closed. Do not stack rejected H1-H5B
-arithmetic or reopen P6/repair; launch fusion remains deferred at the current
-**0.993%** request span-minus-sum.
+**567.274/567.056 -> 500.176/500.448 ms (-11.828%/-11.746%)**. Complete M512
+state is KL0/byte-exact through all 48 boundaries, logits, K/V/live spans,
+repeat, and teardown. Cached integrated tracing selects exactly **45+2** calls,
+moves selected down **556.749 -> 497.145 ms (-10.706%)**, and cuts request
+kernel sum **2,600.260 -> 2,532.020 ms (-2.624%)** at unchanged **1,862**
+dispatches. Clean selector-unset 512/1K/4K promotes
+**196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I with no
+new allocation/workspace/sidecar; all misses and gfx1151 retain exact fallback.
+The matched M512 gap is now **3.540x**. Next screen exact larger resident IQ3
+row batches from 12/16 and extend only while scratch-free. The old rowbatch16
+spill, output-tile regression, and source-MMQ quality failure remain closed. Do
+not stack rejected H1-H5B arithmetic or reopen P6/repair; launch fusion remains
+deferred at the current **1.012%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

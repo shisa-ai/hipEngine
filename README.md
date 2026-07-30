@@ -88,29 +88,26 @@ numbers below.
   allocation. Integrated tracing records **143+143** candidate launches and
   three exact fallbacks, moving Q6 **177.047 -> 110.170 ms (-37.774%)** and
   request kernel sum **2,667.034 -> 2,600.260 ms (-2.504%)**. Clean
-  selector-unset production is **191.713/178.080/134.411 tok/s** at 512/1K/4K,
-  **+1.762%/+1.736%/+1.256%** over H5G and a **3.621x** matched M512 gap. The
-  reconciled H5I trace is led by Q5 **922.619 ms**, IQ down **556.749 ms**,
-  attention **471.150 ms**, and Q6 **110.170 ms**. H5J's exact IQ-down leaf now
-  wins all **45 IQ3 + 2 IQ4** actual M512 layers on both clocks. IQ3 resident
-  segments cut **541.137 -> 491.481 ms (-9.176%)** by events; launching the
-  retained exact IQ4 body at local32 cuts **26.137 -> 8.696 ms (-66.730%)**.
-  Combined, selected down moves **567.274 -> 500.176 ms (-11.828%)**, with
-  synchronized wall corroborating **-11.746%**, byte-exact outputs, and full
-  lifecycle recovery. A generated RED caught and fixed a one-BF16-ULP IQ4
-  compiler boundary by reusing the physical exact body instead of duplicating
-  constant-K math. No runtime/package default changes until complete state,
-  integrated tracing, and clean 512/1K/4K gates pass. Full
-  logits, all 48 hidden boundaries, routing prefixes, active K/V, and every
-  `KVLiveSpans` field are bit-exact at KL 0 on the deep M512 gate; every
-  512/1K/4K publication sample is byte-exact, deterministic, and
-  lifecycle-clean. The 150-tok/s short gate and restored 4K gate pass, while
-  16K+ stays closed below the 800/700 512/4K stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
+  selector-unset production is **191.713/178.080/134.411 tok/s** at 512/1K/4K.
+  H5J then promotes exact resident-segment IQ3 plus a local32 launch of the
+  retained physical IQ4 body for K1024/N3072 selected down. Complete logits,
+  all 48 hidden boundaries, routing prefixes, active K/V, and every
+  `KVLiveSpans` field are bit-exact at KL 0; repeat and teardown match. Cached
+  integrated tracing observes all **45 IQ3 + 2 IQ4** production calls, moving
+  selected down **556.749 -> 497.145 ms (-10.706%)** and complete request kernel
+  sum **2,600.260 -> 2,532.020 ms (-2.624%)** at unchanged **1,862** dispatches.
+  Clean selector-unset production reaches **196.103/181.859/137.169 tok/s** at
+  512/1K/4K, **+2.290%/+2.122%/+2.052%** over H5I and a **3.540x** matched M512
+  gap. Every sample is byte-exact, deterministic, and lifecycle-clean; no
+  allocation, workspace, or sidecar is added. Map/shape/registration misses and
+  gfx1151 retain their preceding exact routes. The next exact lane screens
+  larger resident IQ3 row batches from 12/16, extending only while scratch-free.
+  The 150-tok/s short gate and restored 4K gate pass, while 16K+ stays closed
+  below the 800/700 512/4K stretch target
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
   [H5J leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
   [post-H5I residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
-  [preceding coltile production](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-production.json) ·
-  [role policy](benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile-role-policy.json)).
+  [H5I production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json)).
   A separately registered WPF-H2 F16-WMMA FlashAttention leaf keeps BF16 K/V
   and complete `KVLiveSpans` while moving the standalone 12-global/36-SWA M512
   family **490.919 -> 21.719 ms (22.603x)**, nominally matching llama.cpp's
