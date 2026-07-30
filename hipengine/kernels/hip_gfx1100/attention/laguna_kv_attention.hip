@@ -3746,6 +3746,16 @@ void laguna_swa_attention_fused_exact_gated_gqa2_fixed512_kernel(
 // five owners per KV head as 2+2+2+2+1 (40 blocks). Idle waves still
 // participate in every staged-V barrier. Active heads preserve the same QK,
 // softmax, PV, gate, and store association in all forms.
+template <bool kDenseRing>
+__device__ __forceinline__ int laguna_swa_fixed512_physical_slot(
+    const int32_t* shared_physical,
+    int logical_slot) {
+  if constexpr (kDenseRing) {
+    return logical_slot;
+  }
+  return shared_physical[logical_slot];
+}
+
 template <
     int kValueStage,
     bool kVectorValueStage,
@@ -3771,7 +3781,8 @@ template <
     bool kProducerValueTail = false,
     int kLocalThreads = 384,
     bool kDualTailProbabilityProducer = false,
-    bool kOutputShardedProbability = false>
+    bool kOutputShardedProbability = false,
+    bool kDenseRing = false>
 __global__ __launch_bounds__(kLocalThreads)
 void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
     const float* query,
@@ -3848,8 +3859,12 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
            !kDualTailProbabilityProducer),
       "output-sharded probability requires the local512 direct mixed40 "
       "V-stage128 producer-value-tail path");
+  static_assert(
+      !kDenseRing || (kOutputShardedProbability && kDppQkReduction),
+      "dense-ring specialization requires the current output-sharded "
+      "DPP-QK path");
   __shared__ float shared_scores[kOwnedQueries][kScanSlots];
-  __shared__ int32_t shared_physical[kScanSlots];
+  __shared__ int32_t shared_physical[kDenseRing ? 1 : kScanSlots];
   __shared__ float shared_wave_max[kOwnedQueries][kScoreWaves];
   __shared__ float shared_gate[kOwnedQueries];
   alignas(16) __shared__ float shared_probability[
@@ -3902,22 +3917,25 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
   }
   for (int logical_slot = wave; logical_slot < kScanSlots;
        logical_slot += kScoreWaves) {
-    int physical_slot = -1;
-    if (lane == 0) {
-      const int64_t key_position = token_positions[logical_slot];
-      const bool visible = query_position >= 0 &&
-                           evict_mask[logical_slot] == 0 &&
-                           key_position >= 0 &&
-                           key_position <= query_position &&
-                           key_position > query_position - kScanSlots;
-      if (visible) {
-        physical_slot = base_offsets[logical_slot];
-        if (physical_slot < 0 || physical_slot >= kScanSlots) {
-          physical_slot = -1;
+    int physical_slot = logical_slot;
+    if constexpr (!kDenseRing) {
+      physical_slot = -1;
+      if (lane == 0) {
+        const int64_t key_position = token_positions[logical_slot];
+        const bool visible = query_position >= 0 &&
+                             evict_mask[logical_slot] == 0 &&
+                             key_position >= 0 &&
+                             key_position <= query_position &&
+                             key_position > query_position - kScanSlots;
+        if (visible) {
+          physical_slot = base_offsets[logical_slot];
+          if (physical_slot < 0 || physical_slot >= kScanSlots) {
+            physical_slot = -1;
+          }
         }
       }
+      physical_slot = __shfl(physical_slot, 0, 32);
     }
-    physical_slot = __shfl(physical_slot, 0, 32);
 
     float key_values[4] = {};
     if (physical_slot >= 0) {
@@ -3956,8 +3974,10 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
         }
       }
     }
-    if (lane == 0) {
-      shared_physical[logical_slot] = physical_slot;
+    if constexpr (!kDenseRing) {
+      if (lane == 0) {
+        shared_physical[logical_slot] = physical_slot;
+      }
     }
   }
   if constexpr (kProducerMax) {
@@ -4000,7 +4020,8 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
 #pragma unroll
       for (int item = 0; item < 4; ++item) {
         const int idx = slot_base + item;
-        if (shared_physical[idx] >= 0) {
+        if (laguna_swa_fixed512_physical_slot<kDenseRing>(
+                shared_physical, idx) >= 0) {
           wave_max = fmaxf(
               wave_max, shared_scores[q_local][idx] * scale);
         }
@@ -4084,7 +4105,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
                        ? kValueStage
                        : kDualTailProbabilityProducer ? 64 : 32) {
             const int idx = stage_base + local_base + lane;
-            const bool visible = shared_physical[idx] >= 0;
+            const bool visible =
+                laguna_swa_fixed512_physical_slot<kDenseRing>(
+                    shared_physical, idx) >= 0;
             const float shifted_score =
                 shared_scores[probability_q_local][idx] * scale -
                 probability_max;
@@ -4100,7 +4123,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
               for (int item = 0; item < 32; ++item) {
                 const float weight = __shfl(lane_weight, item, 32);
                 if (lane == 0 &&
-                    shared_physical[stage_base + local_base + item] >= 0) {
+                    laguna_swa_fixed512_physical_slot<kDenseRing>(
+                        shared_physical,
+                        stage_base + local_base + item) >= 0) {
                   wave_denom =
                       laguna_ordered_add_f32(wave_denom, weight);
                 }
@@ -4169,7 +4194,8 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
           const int vector_in_slot =
               vector_idx - stage_slot * kVectorsPerSlot;
           const int physical_slot =
-              shared_physical[stage_base + stage_slot];
+              laguna_swa_fixed512_physical_slot<kDenseRing>(
+                  shared_physical, stage_base + stage_slot);
           if constexpr (kDirectVectorStore) {
             if (physical_slot >= 0) {
               const int value_offset =
@@ -4203,7 +4229,8 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
           const int stage_slot = idx / kHeadDim;
           const int value_dim = idx - stage_slot * kHeadDim;
           const int physical_slot =
-              shared_physical[stage_base + stage_slot];
+              laguna_swa_fixed512_physical_slot<kDenseRing>(
+                  shared_physical, stage_base + stage_slot);
           uint16_t value = 0;
           if (physical_slot >= 0) {
             const int value_offset =
@@ -4339,7 +4366,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
             float lane_weight = 0.0f;
             if (active_output && lane < kSoftmaxBatch) {
               const int idx = stage_base + local_base + lane;
-              const bool visible = shared_physical[idx] >= 0;
+              const bool visible =
+                  laguna_swa_fixed512_physical_slot<kDenseRing>(
+                      shared_physical, idx) >= 0;
               const float shifted_score =
                   shared_scores[q_local][idx] * scale - wave_max;
               if constexpr (kAssumeSoftmaxDomain) {
@@ -4351,7 +4380,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
             for (int item = 0; item < kSoftmaxBatch; ++item) {
               weights[item] = __shfl(lane_weight, item, 32);
               if (active_output && lane == 0 &&
-                  shared_physical[stage_base + local_base + item] >= 0) {
+                  laguna_swa_fixed512_physical_slot<kDenseRing>(
+                      shared_physical,
+                      stage_base + local_base + item) >= 0) {
                 wave_denom =
                     laguna_ordered_add_f32(wave_denom, weights[item]);
               }
@@ -4360,7 +4391,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
 #pragma unroll
             for (int item = 0; item < kSoftmaxBatch; ++item) {
               const int idx = stage_base + local_base + item;
-              const bool visible = shared_physical[idx] >= 0;
+              const bool visible =
+                  laguna_swa_fixed512_physical_slot<kDenseRing>(
+                      shared_physical, idx) >= 0;
               const float shifted_score =
                   shared_scores[q_local][idx] * scale - wave_max;
               if constexpr (kAssumeSoftmaxDomain) {
@@ -4410,7 +4443,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
 #pragma unroll
         for (int item = 0; item < 4; ++item) {
           const int idx = slot_base + item;
-          const bool visible = shared_physical[idx] >= 0;
+          const bool visible =
+              laguna_swa_fixed512_physical_slot<kDenseRing>(
+                  shared_physical, idx) >= 0;
           const float weight = visible
               ? expf(shared_scores[q_local][idx] * scale - wave_max)
               : 0.0f;
@@ -4424,7 +4459,9 @@ void laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel(
 #pragma unroll
         for (int item = 0; item < 4; ++item) {
           const float weight = __shfl(weights[item], 0, 32);
-          const int physical_slot = shared_physical[slot_base + item];
+          const int physical_slot =
+              laguna_swa_fixed512_physical_slot<kDenseRing>(
+                  shared_physical, slot_base + item);
           if (physical_slot >= 0) {
             const int value_offset =
                 (physical_slot * kNumKvHeads + kv_head) * kHeadDim + dim;
@@ -11225,6 +11262,87 @@ hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_p
           true,
           512,
           false,
+          true>),
+      dim3(40),
+      dim3(512),
+      0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      gate,
+      gated_out,
+      base_offsets,
+      token_positions,
+      evict_mask,
+      row_positions,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || capacity != 512 ||
+      sliding_window != 512 || scratch_stride != 512 ||
+      scan_slots != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<
+          128,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          512,
+          false,
+          true,
           true>),
       dim3(40),
       dim3(512),

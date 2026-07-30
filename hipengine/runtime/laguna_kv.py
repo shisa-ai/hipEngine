@@ -302,6 +302,13 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.swa_dense_ring = bool(
+            backend_package_capability(
+                backend,
+                "LAGUNA_SWA_DENSE_RING",
+                False,
+            )
+        )
         self.runtime = runtime
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
@@ -994,7 +1001,16 @@ class LagunaKVCache:
                     "swa_context_fused_exact_gated_mixed40_local512_exp32_"
                     "producer_max_gate_stage_pcache_output_sharded_probability_"
                     + (
-                        "dpp_qk_allwave_value_idle_vec4_denom_probability_"
+                        (
+                            "dpp_qk_dense_ring_allwave_value_idle_vec4_"
+                            "denom_probability_"
+                        )
+                        if (
+                            self.swa_output_sharded_probability_dpp_qk
+                            and self.swa_dense_ring
+                            and self._dense_initial_metadata_valid
+                        )
+                        else "dpp_qk_allwave_value_idle_vec4_denom_probability_"
                         if self.swa_output_sharded_probability_dpp_qk
                         else "allwave_value_idle_vec4_denom_probability_"
                     )

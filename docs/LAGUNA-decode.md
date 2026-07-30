@@ -6389,6 +6389,35 @@ The remaining attention sequence is:
      2 KiB physical-slot plane can disappear under an explicit runtime
      qualification:
      [`post-DPP census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dpp-qk-wall-reprofile.json).
+102. Compile out saturated SWA ring metadata only while the runtime can prove
+     the dense sequential state.
+     **Retained as the gfx1151 default:** at `live_count=capacity=512`, with
+     no explicit eviction since reset, Laguna's SWA allocator has identity
+     base offsets, every logical slot is visible, and
+     `physical_slot=logical_slot`. The exact sibling therefore removes
+     per-slot base-offset, token-position, and eviction-mask traffic plus the
+     2-KiB shared physical-slot plane. Every QK product/addition, softmax
+     operation, denominator update, ordered scalar PV FMA, gate, BF16 store,
+     resident byte, ABI argument, ownership decision, and dispatch remains
+     unchanged. Pre-saturation, explicit eviction, and peer backends retain
+     the generic DPP-QK `KVLiveSpans` owner.
+
+     RED fails importing the absent dense-ring wrapper. GREEN matches the CPU
+     oracle and retained DPP owner byte-for-byte at the natural wrapped ring;
+     the dispatch test proves an explicit eviction selects the generic DPP
+     fallback. The 9x50 and 21x100 cache-only leaves improve
+     **0.028679 -> 0.021351 ms (-25.552%)** and
+     **0.028637 -> 0.021319 ms (-25.555%)**. Cached native tracing records
+     unchanged grid40/local512, VGPR176, SGPR128, and scratch0, while LDS
+     falls **43,008 -> 40,960 bytes**.
+
+     All seven counterbalanced resident p512/d128 pairs win, moving median
+     decode **21.020908 -> 21.233804 tok/s (+1.01278%)** and saving
+     **0.476967 ms/token**. Tokens **2930/74107**, trajectory SHA
+     `94f803f7...bda32`, final position 638, determinism, and allocation
+     recovery are exact. Promote through `LAGUNA_SWA_DENSE_RING`; retain
+     generic DPP-QK as rollback and explicit-eviction fallback:
+     [`dense-ring retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dense-ring-retained.json).
 
 Current exact decode checkpoint:
 

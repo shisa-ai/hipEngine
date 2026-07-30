@@ -193049,3 +193049,32 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; no external code is copied.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-dpp-qk-wall-reprofile.json`.
+
+## 2026-07-30 13:55 JST — Retain exact dense saturated SWA ring
+
+- Specialize the retained local512/V128/output-sharded DPP-QK owner only when
+  SWA is saturated at 512 rows and the runtime still proves sequential
+  dense-initial metadata. In that state base offsets are identity, every slot
+  is visible, and physical slot equals logical slot. Compile out base-offset,
+  token-position, eviction-mask, and physical-slot-plane traffic; preserve
+  every QK/softmax/denominator/PV arithmetic boundary and the full
+  `KVLiveSpans` ABI.
+- RED fails importing the absent wrapper. GREEN matches the CPU oracle and
+  generic DPP owner byte-for-byte; the runtime dispatch test explicitly
+  evicts a live SWA slot and verifies fallback to generic DPP-QK.
+- Cached 9x50 and 21x100 leaves improve
+  **0.028679 -> 0.021351 ms (-25.552%)** and
+  **0.028637 -> 0.021319 ms (-25.555%)**. Cache-only native tracing records
+  unchanged grid40/local512, VGPR176, SGPR128, and scratch0, with LDS
+  **43,008 -> 40,960 bytes** and no compiler under the profiler.
+- All seven counterbalanced resident p512/d128 pairs win:
+  **21.020908 -> 21.233804 tok/s (+1.01278%)**, saving
+  **0.476967 ms/token**. Tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and allocation recovery
+  are exact.
+- Promote through `LAGUNA_SWA_DENSE_RING`; pre-saturation, explicit eviction,
+  peer backends, and non-qualified shapes retain generic DPP-QK. Remove the
+  temporary model-comparison option before commit. Tracked-clean production
+  follows the retention commit.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-dense-ring-retained.json`.

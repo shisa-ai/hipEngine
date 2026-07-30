@@ -3148,6 +3148,7 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
         laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_dual_tail_producer_value_tail_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans,
+        laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed40_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
         laguna_swa_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_gate_stage_pcache_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512_bf16_spans,
@@ -3264,6 +3265,59 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
                 value_device.ptr + position * row_nbytes,
                 library=library,
             )
+            if position == 512:
+                laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans(
+                    *common,
+                    control_out.ptr,
+                    gate_device.ptr,
+                    control_gated.ptr,
+                    *tail,
+                    sliding_window=512,
+                    library=library,
+                    runtime=runtime,
+                )
+                laguna_swa_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_output_sharded_probability_dpp_qk_dense_ring_allwave_value_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_bf16_spans(
+                    *common,
+                    candidate_out.ptr,
+                    gate_device.ptr,
+                    candidate_gated.ptr,
+                    *tail,
+                    sliding_window=512,
+                    library=library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                control = np.empty_like(query)
+                candidate = np.empty_like(query)
+                control_gate_bits = np.empty(query.shape, dtype=np.uint16)
+                candidate_gate_bits = np.empty_like(control_gate_bits)
+                for host, device in (
+                    (control, control_out),
+                    (candidate, candidate_out),
+                    (control_gate_bits, control_gated),
+                    (candidate_gate_bits, candidate_gated),
+                ):
+                    copy_device_to_host(
+                        host_array_ptr(host),
+                        device,
+                        host.nbytes,
+                        runtime=runtime,
+                    )
+                dense_visible = np.arange(position - 511, position + 1)
+                dense_expected = _attention_reference(
+                    query,
+                    keys_bf16[dense_visible],
+                    values_bf16[dense_visible],
+                    num_kv_heads=8,
+                )
+                np.testing.assert_allclose(
+                    candidate,
+                    dense_expected,
+                    rtol=3e-4,
+                    atol=3e-4,
+                )
+                assert np.array_equal(candidate, control)
+                assert np.array_equal(candidate_gate_bits, control_gate_bits)
             if position == 512:
                 cache.evict_swa_position(0, 200)
             laguna_swa_attention_decode_fused_exact_gated_gqa3_local384_fixed512_bf16_spans(
@@ -4650,6 +4704,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             is True
         )
         assert gfx1151_cache.swa_output_sharded_probability_dpp_qk is True
+        assert gfx1151_cache.swa_dense_ring is True
         assert gfx1151_cache.allocation_count == 245
         resolved_variants = []
 
@@ -4707,6 +4762,8 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
         gfx1151_cache.position = 64
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.position = 511
+        gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        gfx1151_cache.evict_swa_position(1, 0)
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
         gfx1151_cache.swa_output_sharded_probability_dpp_qk = False
         gfx1151_cache.attend(1, 1, 2, gate_ptr=3, gated_out_ptr=4)
@@ -4887,6 +4944,16 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             (
                 "laguna_attention_decode",
                 "swa_context_split_exact_gated_gqa3_scores_spans",
+            ),
+            (
+                "laguna_attention_decode",
+                (
+                    "swa_context_fused_exact_gated_"
+                    "mixed40_local512_exp32_producer_max_gate_stage_pcache_"
+                    "output_sharded_probability_dpp_qk_dense_ring_allwave_"
+                    "value_idle_vec4_denom_probability_vstage128_vec16_"
+                    "direct_assume_exp_fixed512_spans"
+                ),
             ),
             (
                 "laguna_attention_decode",
