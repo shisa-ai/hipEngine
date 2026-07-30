@@ -61,6 +61,10 @@ LAGUNA_F16_DECODE_ONEBARRIER = True
 # p512/d128 pairs and cache-only tracing admit them over the generic
 # one-barrier owner; the latter remains the explicit rollback.
 LAGUNA_F16_DECODE_FIXEDK = True
+# Exact c=1 source-F16 Q/K/V/gate launch contraction preserves every
+# output column's fixed-K reduction order. Seven same-resident p512/d128 pairs
+# are exact and all positive; triple-plus-single remains the unfused fallback.
+LAGUNA_F16_ATTENTION_QUAD_DECODE = True
 # Exact K3072/N1024 gate/up and K1024/N3072 down siblings preserve the
 # production local128 grid and reduction order while compile-time-specializing
 # only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
@@ -854,6 +858,7 @@ __all__ = [
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
+    "LAGUNA_F16_ATTENTION_QUAD_DECODE",
     "LAGUNA_F16_DECODE_FIXEDK",
     "LAGUNA_F16_DECODE_ONEBARRIER",
     "LAGUNA_Q4_PACK8_DUAL_SILU_DECODE",

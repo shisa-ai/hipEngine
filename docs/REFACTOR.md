@@ -2239,3 +2239,7 @@ should be boring.
   production gate is either rejected or published from a tracked-clean
   default. If retained, keep the four-axis `linear_quad` registration,
   gfx1151 capability, and unfused fallback.
+- The same-resident gate retains the capability at
+  **21.944420 -> 22.026384 tok/s (+0.37351%)**, with all seven candidates
+  positive and complete state exact. Remove the comparison seam after the
+  pending tracked-clean selector-unset publication and wall census.
