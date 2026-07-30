@@ -1559,12 +1559,15 @@ identity, no-wrap initial ring while preserving cached `base_offsets`, complete
 BF16 rounding, dot tree, two-pass maximum/denominator/PV order, and stores. It
 matches H5M and wave32 bytes, retains local32/VGPR72/SGPR128/LDS0/scratch0, and
 wins event/wall at start 256 **1.147x/1.144x** and start 384 **1.166x/1.163x**;
-combined sums improve **6.653/6.660 -> 5.744/5.762 ms (1.158x/1.156x)**. Admit
-only the standalone leaf. Every non-first-fill shape and policy/key/backend miss
-retains H5M, and production stays H5M until complete M512 state, exact 72-call
-integrated ownership, and clean 512/1K/4K non-regression pass. The old wider-
-qrow, cross-head/key-split, rowbatch16, output-tile, source-MMQ, changed-
-association attention, and P6/repair routes remain closed. Launch fusion remains
+combined sums improve **6.653/6.660 -> 5.744/5.762 ms (1.158x/1.156x)**.
+Complete M512 state is KL0 and integrated tracing selects all 72 H5N calls,
+cutting qrow4/attention/request sum **13.918%/8.087%/1.687%**. Reject runtime
+ownership despite those exact wins: clean 4K is **-0.217%**, and a seven-repeat
+adjudication confirms **7/7** H5N samples below H5M (**158.152 -> 157.832 tok/s,
+-0.202%**). Remove the temporary policy extension, retain the standalone leaf,
+and keep H5M production. The old wider-qrow, cross-head/key-split, rowbatch16,
+output-tile, source-MMQ, changed-association attention, and P6/repair routes
+remain closed. Launch fusion remains
 below its trigger at **1.251%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700

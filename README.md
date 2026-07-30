@@ -137,11 +137,15 @@ numbers below.
   cached base-offset mapping and every H5M two-pass operation. It is byte-exact to
   H5M/wave32 and improves the two slices **6.653/6.660 -> 5.744/5.762 ms
   (1.158x/1.156x event/wall)**, with both starts positive and unchanged
-  local32/VGPR72/LDS0/scratch0 resources. This admits only the leaf; production
-  remains H5M pending complete state, integrated tracing, and clean 512/1K/4K.
-  Both short rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed below
-  the 800/700 stretch target
+  local32/VGPR72/LDS0/scratch0 resources. Complete M512 state is KL0 and
+  integrated qrow4/attention/request sum falls **13.918%/8.087%/1.687%**, but
+  runtime ownership is rejected: clean 4K is **-0.217%**, and a seven-repeat
+  adjudication confirms **7/7** H5N samples below H5M (**-0.202%** median). The
+  temporary policy is removed; only the leaf remains. Both short rows exceed 150
+  tok/s and H5M 4K remains positive; 16K+ stays closed below the 800/700 stretch
+  target
   ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+  [H5N runtime rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
   [H5N leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
   [post-H5M residual](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
   [H5M leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·

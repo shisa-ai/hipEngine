@@ -27,10 +27,14 @@ source-qualified qrow4 remains **260.500 ms / 57.79%** of attention. H5N's
 separately registered exact dense-first-fill leaf is byte-identical to H5M and
 wave32 at starts 256/384 and cuts their combined event/wall sums **6.653/6.660 ->
 5.744/5.762 ms (1.158x/1.156x)**. Both positions win both clocks; cached tracing
-stays local32/VGPR72/LDS0/scratch0. Production remains H5M pending complete
-state, integrated ownership, and clean 512/1K/4K. Both short rows exceed 150 tok/s
-and 4K remains positive; 16K+ stays closed below the 800/700 stretch gate
+stays local32/VGPR72/LDS0/scratch0. Complete state is KL0 and integrated
+qrow4/attention/request sum improves **13.918%/8.087%/1.687%**, but runtime
+ownership is rejected: clean 4K is **-0.217%**, and seven adjudication repeats put
+all H5N samples below H5M (**158.152 -> 157.832 tok/s, -0.202%**). The policy is
+removed; production remains H5M. Both short rows exceed 150 tok/s and H5M 4K
+remains positive; 16K+ stays closed below the 800/700 stretch gate
 ([H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
+[H5N runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
 [H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
@@ -237,10 +241,14 @@ H5N targets only the **260.500-ms** qrow4 first-fill role. Its admitted leaf
 preserves H5M's logical-slot/four-row/dot/two-pass/PV/store/KV association,
 matches H5M/wave32 bytes, stays VGPR72/scratch0, and improves both event and wall
 at starts 256 (**1.147x/1.144x**) and 384 (**1.166x/1.163x**), combined
-**1.158x/1.156x**. H5M remains every-miss and production fallback pending the
-runtime gate. Wider qrows, cross-head/key-split, source MMQ, and
-changed-association attention stay closed
-([H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
+**1.158x/1.156x**. Complete M512 state remains byte-exact and tracing selects all
+72 H5N calls, cutting attention **8.087%** and request kernel sum **1.687%**.
+Nevertheless the clean 4K gate is reproducibly negative (**-0.217%**, then
+**-0.202% with 7/7 samples below H5M**), so remove runtime policy and retain only
+the leaf. Wider qrows, cross-head/key-split, source MMQ, and changed-association
+attention stay closed
+([H5N runtime rejection](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
+[H5N leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·
 [post-H5M residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json) ·
 [H5M production](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json) ·
 [H5M leaf](results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-candidate.json) ·
