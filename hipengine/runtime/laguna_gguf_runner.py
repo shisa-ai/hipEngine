@@ -95,6 +95,7 @@ from hipengine.runtime.laguna_kv import (
 from hipengine.runtime.laguna_moe import (
     LagunaMoEKernelPlan,
     LagunaMoEScratch,
+    LagunaMoETailHostBatchContext,
     allocate_laguna_moe_scratch,
     laguna_moe_scratch_nbytes,
     resolve_laguna_dense_q4_prefill_mode,
@@ -862,6 +863,7 @@ class LagunaEagerLibraries:
     iq_selected_experts: object
     moe_group: object
     routed_sum: object
+    launch_batch: object
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -923,6 +925,8 @@ class LagunaEagerLibraries:
             "routed_sum_rows": self.router_select,
             "shared_silu": self.dense_silu,
             "add": self.gguf_ops,
+            "launch_batch": self.launch_batch,
+            "moe_tail": self.routed_sum,
         }
 
 
@@ -2203,6 +2207,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
     )
+    from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
+        build_laguna_launch_batch,
+    )
     kwargs = {
         "compiler_version": compiler_version,
         "require_cached": require_cached,
@@ -2234,6 +2241,7 @@ def load_laguna_eager_libraries(
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
+            launch_batch=build_laguna_launch_batch(**kwargs),
         )
 
 
@@ -2321,6 +2329,7 @@ class LagunaGGUFResidentSession:
         use_q4_pack8_dual_silu_decode: bool | None = None,
         use_q4_decode_t16_sidecar: bool | None = None,
         use_q4_decode_t16_dual_interleaved: bool | None = None,
+        use_shared_down_moe_tail_host_batch: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2545,6 +2554,15 @@ class LagunaGGUFResidentSession:
             )
             if use_q4_decode_t16_dual_interleaved is None
             else use_q4_decode_t16_dual_interleaved
+        )
+        self.use_shared_down_moe_tail_host_batch = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH",
+                False,
+            )
+            if use_shared_down_moe_tail_host_batch is None
+            else use_shared_down_moe_tail_host_batch
         )
         self.use_f16_attention_quad_decode = bool(
             backend_package_capability(
@@ -3376,6 +3394,11 @@ class LagunaGGUFResidentSession:
         """Select paired exact Q4 dense/shared decode tiles."""
 
         self.use_q4_decode_t16_dual_interleaved = bool(enabled)
+
+    def set_shared_down_moe_tail_host_batch(self, enabled: bool) -> None:
+        """Batch unchanged shared-down and D9 launches in one native host call."""
+
+        self.use_shared_down_moe_tail_host_batch = bool(enabled)
 
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
@@ -5402,6 +5425,29 @@ class LagunaGGUFResidentSession:
         assert self.moe_scratch is not None
         assert self.kernel_plan is not None
         assert self.libraries is not None
+        config = self.weights.config
+        if layer_id + 1 < config.block_count:
+            next_norm_weight_ptr = (
+                self.weights.layer(layer_id + 1)
+                .weight("attn_norm")
+                .allocation("raw")
+                .tensor.ptr
+            )
+            next_norm_out_ptr = self.scratch.norm.ptr
+        else:
+            next_norm_weight_ptr = (
+                self.weights.root("output_norm").allocation("raw").tensor.ptr
+            )
+            next_norm_out_ptr = self.scratch.final_norm.ptr
+        tail_context = None
+        if self.use_shared_down_moe_tail_host_batch:
+            tail_context = LagunaMoETailHostBatchContext(
+                post_attention_ptr=self.scratch.post_attention.ptr,
+                norm_weight_ptr=next_norm_weight_ptr,
+                norm_out_ptr=next_norm_out_ptr,
+                hidden_out_ptr=self.scratch.hidden.ptr,
+                eps=config.rms_norm_eps,
+            )
         routed, shared = run_laguna_moe_c1_components(
             self.scratch.norm.ptr,
             layer,
@@ -5435,21 +5481,10 @@ class LagunaGGUFResidentSession:
             use_q4_decode_t16_dual_interleaved=(
                 self.use_q4_decode_t16_dual_interleaved
             ),
+            tail_context=tail_context,
         )
-        config = self.weights.config
-        if layer_id + 1 < config.block_count:
-            next_norm_weight_ptr = (
-                self.weights.layer(layer_id + 1)
-                .weight("attn_norm")
-                .allocation("raw")
-                .tensor.ptr
-            )
-            next_norm_out_ptr = self.scratch.norm.ptr
-        else:
-            next_norm_weight_ptr = (
-                self.weights.root("output_norm").allocation("raw").tensor.ptr
-            )
-            next_norm_out_ptr = self.scratch.final_norm.ptr
+        if tail_context is not None and tail_context.fused:
+            return
         launch_laguna_moe_tail_next_rmsnorm(
             routed.ptr,
             shared.ptr,

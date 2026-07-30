@@ -28,6 +28,7 @@ from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
 from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
+    launch_gguf_linear_moe_tail_host_batch,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_silu,
 )
@@ -38,6 +39,19 @@ _T16_COLUMNS = 16
 _BF16_NBYTES = 2
 _F32_NBYTES = 4
 _I64_NBYTES = 8
+
+
+@dataclass
+class LagunaMoETailHostBatchContext:
+    """Caller-owned exact D9 outputs for optional shared-down host batching."""
+
+    post_attention_ptr: int
+    norm_weight_ptr: int
+    norm_out_ptr: int
+    hidden_out_ptr: int
+    eps: float
+    fused: bool = False
+
 
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
 _ROUTER_SELECT_VARIANT = "correction_bias"
@@ -2620,6 +2634,7 @@ def run_laguna_moe_c1_components(
     use_q4_pack8_dual_silu_decode: bool = False,
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
+    tail_context: LagunaMoETailHostBatchContext | None = None,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     """Run c=1 routed/shared experts and expose their rounded BF16 outputs."""
 
@@ -2791,20 +2806,41 @@ def run_laguna_moe_c1_components(
                 "shared_silu", libraries, stream=stream, runtime=runtime
             ),
         )
-    launch_gguf_linear(
-        shared_down,
-        scratch.shared_intermediate.ptr,
-        scratch.shared_output.ptr,
-        1,
-        sf,
-        h,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=True,
-    )
+    if tail_context is not None:
+        tail_context.fused = launch_gguf_linear_moe_tail_host_batch(
+            shared_down,
+            scratch.shared_intermediate.ptr,
+            scratch.shared_output.ptr,
+            scratch.routed_output.ptr,
+            tail_context.post_attention_ptr,
+            tail_context.norm_weight_ptr,
+            tail_context.norm_out_ptr,
+            tail_context.hidden_out_ptr,
+            1,
+            sf,
+            h,
+            eps=tail_context.eps,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_gemv_decode=True,
+        )
+    if tail_context is None or not tail_context.fused:
+        launch_gguf_linear(
+            shared_down,
+            scratch.shared_intermediate.ptr,
+            scratch.shared_output.ptr,
+            1,
+            sf,
+            h,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+        )
     return scratch.routed_output, scratch.shared_output
 
 
@@ -3379,6 +3415,7 @@ def _resolve_exact(key: KernelKey) -> Callable:
 
 
 __all__ = [
+    "LagunaMoETailHostBatchContext",
     "LagunaMoEKernelPlan",
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",

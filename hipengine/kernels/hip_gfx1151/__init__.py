@@ -87,6 +87,11 @@ LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = True
 # every BF16 projection boundary, and the slot-order weighted FMA chain while
 # removing the standalone reducer launch. Seven same-resident pairs all win.
 LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE = True
+# Preserve the production Q4/Q6 shared-down grids and D9 local256 tree while
+# enqueueing both unchanged launch wrappers inside one native host call. Seven
+# exact same-resident p512/d128 pairs win 7/7; peer backends retain separate
+# Python calls until independently measured.
+LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH = True
 # Exact gate/up owner that splits each resident T16 tile across two 8-column
 # workgroups, halving live accumulators. The actual-weight leaf improves
 # 5.35-7.13%; seven exact p512/d128 pairs are all positive.

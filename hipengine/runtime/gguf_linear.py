@@ -60,6 +60,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     register_gguf_q8_0_t16_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
+    register_laguna_launch_batch_kernels,
+)
 from hipengine.kernels.registry import KernelKey, generation, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -841,6 +844,117 @@ def launch_gguf_linear(
         )
         return
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
+
+
+def launch_gguf_linear_moe_tail_host_batch(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    shared_out_ptr: int,
+    routed_ptr: int,
+    post_attention_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    hidden_out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    eps: float,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    use_gemv_decode: bool | None = None,
+) -> bool:
+    """Enqueue existing shared-down and D9 kernels through one native host call."""
+
+    if rows != 1 or libraries is None:
+        return False
+    resolved_backend = _weight_backend(weight, backend=backend)
+    dispatch = resolve_gguf_linear_dispatch(
+        weight,
+        backend=resolved_backend,
+        rows=rows,
+    )
+    dispatch = _pack8_decode_dispatch(
+        dispatch,
+        rows=rows,
+        out_features=out_features,
+    )
+    dispatch = _gemv_decode_dispatch(
+        dispatch,
+        rows=rows,
+        use_gemv_decode=_resolve_use_gemv_decode(use_gemv_decode),
+    )
+    _ensure_linear_kernel_registered(dispatch.key)
+    batch_key = KernelKey(
+        dispatch.key.backend,
+        "linear+moe_tail+next_rmsnorm_host_batch",
+        dispatch.key.quant,
+        dispatch.key.variant,
+    )
+    if not is_registered(batch_key):
+        return False
+    batch_fn = resolve(
+        backend=batch_key.backend,
+        layer=batch_key.layer,
+        quant=batch_key.quant,
+        variant=batch_key.variant,
+    )
+    linear_library = libraries.get(
+        f"{dispatch.key.quant}:{dispatch.key.variant}",
+        libraries.get(dispatch.key.quant),
+    )
+    batch_library = libraries.get("launch_batch")
+    tail_library = libraries.get("moe_tail")
+    if linear_library is None or batch_library is None or tail_library is None:
+        return False
+    projection_function = getattr(
+        linear_library,
+        batch_fn.projection_symbol,
+    )
+    tail_function = getattr(tail_library, batch_fn.tail_symbol)
+    common = (
+        projection_function,
+        tail_function,
+        x_ptr,
+    )
+    tail = (
+        shared_out_ptr,
+        routed_ptr,
+        post_attention_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        hidden_out_ptr,
+        rows,
+        in_features,
+        out_features,
+    )
+    kwargs = {
+        "eps": eps,
+        "stream": stream,
+        "library": batch_library,
+        "runtime": runtime,
+    }
+    if dispatch.abi == "pack8":
+        batch_fn(
+            *common,
+            weight.allocation("qweight").tensor.ptr,
+            weight.allocation("scales").tensor.ptr,
+            weight.allocation("mins").tensor.ptr,
+            *tail,
+            **kwargs,
+        )
+        return True
+    if dispatch.abi == "raw":
+        batch_fn(
+            *common,
+            weight.allocation("raw").tensor.ptr,
+            *tail,
+            **kwargs,
+        )
+        return True
+    return False
 
 
 def launch_gguf_linear_raw_ptr(
@@ -2220,6 +2334,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
     register_gguf_q8_0_t16_prefill_kernels()
+    register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
 
 
@@ -2242,6 +2357,7 @@ __all__ = [
     "GGUFLinearDispatch",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
+    "launch_gguf_linear_moe_tail_host_batch",
     "launch_gguf_linear_pair",
     "launch_gguf_linear_pair_silu",
     "launch_gguf_linear_pair_concat",

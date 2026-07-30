@@ -2319,3 +2319,18 @@ should be boring.
 - The session setter is removed. Retain only the constructor rollback,
   architecture capability, composite registrations, bounded counter scratch,
   and exact two-launch fallback.
+
+## Laguna gfx1151 shared-down/D9 native host-batch selector
+
+- Added 2026-07-30 as
+  `LagunaGGUFResidentSession.set_shared_down_moe_tail_host_batch(...)` and
+  `--compare-shared-down-moe-tail-host-batch`. The candidate preserves both
+  existing GPU launches and combines only their Python/ctypes host boundary.
+- Seven exact same-resident p512/d128 pairs all improve
+  **22.146074 -> 22.154405 tok/s (+0.03762%)**, saving
+  **0.020358 ms/token** by paired median.
+- Remove the comparison CLI, setter, and protocol fields after tracked-clean
+  selector-unset production and a cached dispatch census publish or reject
+  the default. If retained, keep the constructor rollback, gfx1151 capability,
+  four-axis host-batch registrations, native shim, and exact separate-call
+  fallback.
