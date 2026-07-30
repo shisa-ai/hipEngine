@@ -6969,6 +6969,33 @@ The remaining attention sequence is:
      score recomputation. Score-plane elimination requires a tensorized online
      QK/PV consumer that never publishes or recomputes the scalar plane:
      [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-exact-score-recompute-rejected.json).
+124. Overlap the first dense-global V64 load with the exact softmax.
+     **Rejected at the resident gate and removed:** waves 8-15 load the first
+     V tile while waves 0-7 preserve the production maximum, `expf`, and
+     denominator tree. The existing post-softmax barrier becomes the V-load
+     rendezvous; the retained idle-wave ping-pong loop then continues
+     unchanged. This removes one standalone fill and one barrier without
+     changing arithmetic, LDS, ownership, launch count, or resident bytes.
+
+     RED fails on the absent wrapper. GREEN matches the CPU oracle and
+     retained owner byte-for-byte at live 513/576/639. The 21x100 leaves are
+     unanimously directional:
+     **0.031848 -> 0.031636 ms (-0.665%)**,
+     **0.035032 -> 0.034703 (-0.939%)**, and
+     **0.037887 -> 0.037546 (-0.901%)**. Cached tracing confirms the expected
+     `true` template sibling at grid40/local512, VGPR48, SGPR128, unchanged
+     dynamic LDS, and scratch0.
+
+     The complete seven-pair p512/d128 gate is below the retention threshold.
+     Endpoint medians move only
+     **22.158317 -> 22.161545 tok/s (+0.01457%)**; median paired saving is
+     **0.003600 ms/token** and the candidate wins **5/7** pairs. Every token,
+     trajectory, position, repeat, and allocation remains exact. Remove the
+     specialization/export/wrapper/key, test and leaf seams, runtime selector,
+     and comparison CLI. Production remains **22.141787 tok/s**. This closes
+     first-V/softmax overlap as an independent resident change; future global
+     work needs to contract a larger phase:
+     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-softmax-v-overlap-rejected.json).
 
 Current exact decode checkpoint:
 
