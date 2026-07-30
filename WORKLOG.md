@@ -193143,3 +193143,20 @@ Vulkan local sizes verbatim will close the measured gap.
   commit.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-retained.json`.
+
+## 2026-07-30 14:26 JST — Publish clean dense-global production
+
+- Commit `5daf5e18a` enables `LAGUNA_GLOBAL_DENSE_PREFIX` in tracked-clean
+  selector-unset production. The measurement uses cached device code and no
+  comparison route.
+- Three Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 runs measure
+  **21.294621/21.313207/21.304731 tok/s**, median
+  **21.304731 tok/s**. This improves the preceding clean
+  **21.234815 tok/s** checkpoint by **0.3293%**, saves
+  **0.154544 ms/token**, and reaches **+85.797%** over sprint start.
+- Every repetition preserves next/final tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and complete tracked
+  allocation recovery. The raw packet records revision `5daf5e18a` with a
+  tracked-clean worktree; shared unrelated untracked artifacts are excluded.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-production.json`.

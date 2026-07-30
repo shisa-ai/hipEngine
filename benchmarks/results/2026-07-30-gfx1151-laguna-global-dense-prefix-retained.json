@@ -140,5 +140,10 @@
     "resources": "pass; grid40/local512/VGPR48/SGPR128/static-LDS512/scratch0 unchanged",
     "whole_model": "pass; +0.31952%, 7/7 pairs, exact state and lifecycle",
     "decision": "Promote only behind the gfx1151 dense-prefix capability and runtime metadata-valid qualification; keep generic mixed40/local512 as exact rollback and explicit-eviction fallback."
+  },
+  "publication": {
+    "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-global-dense-prefix-production.json",
+    "source_revision": "5daf5e18a54ac09023ab156de27f75485eb48165",
+    "tracked_clean_median_tok_s": 21.304730756249576
   }
 }
