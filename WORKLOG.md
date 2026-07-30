@@ -193632,3 +193632,31 @@ Vulkan local sizes verbatim will close the measured gap.
   diagnostic evidence but is no longer the canonical production headline.
   Clean artifact SHA-256:
   `d30d4888ad01d806aada7085396593b3e8d7f333764bfef5b1ff433f54672594`.
+
+## 2026-07-30 19:04 JST — Re-profile post-dense-interleave decode wall
+
+- A tracked-clean cached-build `rocprofv3` run on `8c68c966d` records the
+  final 127 exact one-token segments at unchanged **673 dispatches/token**.
+  Median kernel sum is **43.823282 ms/token** and span is
+  **45.861315 ms/token**.
+- Versus the post-global-idle-V census, kernel sum falls
+  **0.111810 ms/token (-0.2545%)**, span falls **0.109573 (-0.2384%)**, and
+  dense/shared attribution falls **2.411603 -> 2.357141 (-2.258%)**. The
+  retained tile2 paired owner appears **6,096** times at
+  local32/VGPR72/LDS0/scratch0.
+- Against the unchanged same-GGUF Vulkan logger, hipEngine's complete kernel
+  sum is now only **+0.164082 ms/token (+0.376%)**. The remaining serialized
+  submission idle is unchanged at **2.037411 ms/token**, with one active
+  decode queue and no median kernel overlap.
+- Positive family gaps rank selected gate/up **+0.496884**, attention
+  **+0.414342**, dense/shared **+0.357252**, selected down **+0.242849**, and
+  router **+0.093081 ms/token**. Source-F16 and LM head remain faster than
+  Vulkan by **0.725664/0.498727 ms/token**.
+- The trace is exact (tokens **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, complete allocation recovery) and
+  no compiler ran under the profiler. Trace/bench/summary SHA-256 values are
+  `bc418bf3...f7c17`, `0bb24b36...fccc`, and `815dce11...506`.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json`.
+  Next: inspect Vulkan's attention and command-buffer execution against the
+  current HIP bodies before selecting the next exact kernel or fusion.

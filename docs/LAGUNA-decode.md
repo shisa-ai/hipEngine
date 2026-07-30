@@ -6832,14 +6832,19 @@ cover one logical token each; larger blocks add no score ownership. Global
 local512 confirms that the same saturation axis transfers when the original
 eight-wave denominator tree is held fixed: the extra waves help only the
 independent QK and value-transport phases. The current census measures SWA at
-**0.876125 ms/token**, global attention at **0.452528**, and complete attention
-at **1.328653** versus llama.cpp Vulkan's logged **0.909423-ms** family. The
-remaining attention gap is **0.419230 ms/token**; selected gate/up is now the
-larger named gap at **0.526945 ms/token**.
+**0.873478 ms/token**, global attention at **0.450287**, and complete attention
+at **1.323765** versus llama.cpp Vulkan's logged **0.909423-ms** family. The
+remaining attention gap is **0.414342 ms/token**; selected gate/up is now the
+larger named gap at **0.496884 ms/token**.
 
-Complete hipEngine kernel work is only **0.275892 ms/token** above Vulkan's
-logged GPU total, while hipEngine still exposes **2.035796 ms/token** of
-single-queue submission idle. Reusable whole-token HIP graph replay is now
+The post-interleave census lowers complete hipEngine kernel work to
+**43.823282 ms/token**, only **0.164082 ms/token** above Vulkan's logged GPU
+total, while hipEngine still exposes **2.037411 ms/token** of single-queue
+submission idle. Current positive family gaps rank selected gate/up
+**+0.496884**, attention **+0.414342**, dense/shared **+0.357252**, selected
+down **+0.242849**, and router **+0.093081 ms/token**:
+[`post-interleave census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-dense-interleave-wall-reprofile.json).
+Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is
 within-evaluation command-buffer recording/submission, not cross-token graph
 reuse. Scheduling remains valuable, but it now requires lower-overhead
