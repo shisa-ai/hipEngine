@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T23:36:00+09:00",
+  "kind": "hipengine_laguna_global_softmax_first_value_overlap_decode_rejection",
+  "status": "rejected_resident_gate",
+  "performance_claim": false,
+  "source_revision": "1926c301292d36116278e984121e7e7015297e51",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "leaf_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "trace_queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "resident_queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "description": "On the retained dense-prefix mixed40/local512 global owner, assign waves 8-15 to load the first V64 tile while waves 0-7 execute the unchanged exact softmax and denominator tree. Reuse the existing post-softmax barrier as the first V-load rendezvous, then continue through the retained idle-wave V ping-pong loop.",
+    "qualification": "gfx1151 gated global Q48/KV8/D128, capacity 4096, live_count at most 4000, dense-initial metadata valid, and the retained idle-double-buffer route enabled",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "launch_count_changed": false,
+    "dynamic_lds_changed": false,
+    "removed_operations": [
+      "one standalone cooperative first-V64 fill",
+      "one standalone full-workgroup barrier"
+    ]
+  },
+  "correctness": {
+    "red": "ImportError on the absent softmax-overlapped first-V diagnostic wrapper before implementation.",
+    "green": "Dense identity prefixes at live 513/576/639 match the CPU oracle and retained idle-double-buffer owner byte-for-byte.",
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "context_f32_sha256": [
+      "18102e2b363d3b80a24b56a8e7681adca2f91e0303220dd4b971098761fd951b",
+      "3c940d7e4c514ec00df89e3c40c67f8d5e127d2cd45ca471e23c185de77b21ce",
+      "a7cf7046bc3872a446594f13326227ff3af19f09f04e09b0d7461d7c77956730"
+    ],
+    "gated_bf16_sha256": [
+      "16e5d660f8b3c6012c1ac23bbedba6a55dd8ea85d7f36386cc82aa4c0afd3e33",
+      "22355fb5b80b3a8bfdfcb31c6c8c0dd7fcf412b252d3b3625f0b1dc9c70d15cb",
+      "9eb76a374547e21ecf1653c5b97afef52ff8512041fbe034096469a5213f9f68"
+    ],
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "pass": true
+  },
+  "leaf": {
+    "shape": "dense global identity prefix, Q48/KV8/D128 BF16 KV",
+    "live_counts": [
+      513,
+      576,
+      639
+    ],
+    "control_median_ms": [
+      0.03184767007827759,
+      0.035032479763031005,
+      0.03788744926452637
+    ],
+    "candidate_median_ms": [
+      0.031636018753051755,
+      0.03470346927642822,
+      0.037546029090881346
+    ],
+    "latency_change_percent": [
+      -0.6645739694791541,
+      -0.9391584290586841,
+      -0.9011432024923716
+    ],
+    "samples": 21,
+    "burst": 100,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "fc29150d4b175a4b8cbbd40bcec0adf2cc66ad65addca5804234b136f4bad376"
+  },
+  "trace": {
+    "profiler": "rocprofv3 --kernel-trace with the library built before profiling",
+    "expected_template_argument": "kIdleSoftmaxFirstValue=true",
+    "grid_x": 40,
+    "local_x": 512,
+    "vgpr_count": 48,
+    "sgpr_count": 128,
+    "reported_static_lds_block_size": 512,
+    "dynamic_lds_bytes_at_live_513_576_639": [
+      36912,
+      37392,
+      37904
+    ],
+    "scratch_bytes": 0,
+    "compiler_processes_under_profiler": 0,
+    "trace_sha256": "bc98c8370a6d286c977c2b055b84ec6a55681aeb19e9fb9ce9546cf0c55a02dc"
+  },
+  "whole_model": {
+    "workload": "p512/d128 eager c=1; 127 synchronized decode transitions",
+    "protocol": "seven counterbalanced control/candidate resident pairs; cached build; candidate worktree disclosed",
+    "control_median_tok_s": 22.15831699624584,
+    "candidate_median_tok_s": 22.161545218358707,
+    "throughput_change_percent": 0.014568895793898307,
+    "control_median_ms_per_token": 45.12978129924869,
+    "candidate_median_ms_per_token": 45.12320734619156,
+    "saving_ms_per_token": 0.006573953057128268,
+    "median_paired_saving_ms_per_token": 0.0036000310788040224,
+    "candidate_pair_wins": 5,
+    "pairs": 7,
+    "raw_sha256": "d62a9f7926222693e9358b43290df05cf16fa5908e32f8c693366b5bb4d8e004"
+  },
+  "validation": {
+    "focused_gpu_green": "tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction",
+    "dispatch_and_eviction_fallback_green": "tests/test_laguna_kv_attention.py::test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback",
+    "profile_parser_green": "tests/test_laguna_long_context_profile.py",
+    "focused_result": "38 passed",
+    "comparison_and_candidate_source_removed_after_rejection": true
+  },
+  "protocol": {
+    "leaf_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed40-local512-dense-prefix-idle-softmax-first-value --samples 21 --warmups 10 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-idle-softmax-first-value-21x100.json",
+    "whole_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-global-idle-softmax-first-value --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-idle-softmax-first-value-model-7pair.json",
+    "trace_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-softmax-v-trace.yjw5Zh --output-file global-softmax-v -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed40-local512-dense-prefix-idle-softmax-first-value --samples 1 --warmups 0 --burst 1 --allow-dirty --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-global-softmax-v-trace-smoke.json",
+    "candidate_worktree_disclosed": true
+  },
+  "gate": {
+    "correctness": "pass; F32 context and gated BF16 bytes exact",
+    "leaf": "pass; -0.665%/-0.939%/-0.901% at live 513/576/639",
+    "resources": "pass; grid40/local512/VGPR48/SGPR128/static-LDS512/scratch0 and unchanged dynamic LDS",
+    "whole_model": "reject; only +0.01457%, 5/7 pair wins, and 0.003600-ms/token median paired saving",
+    "decision": "Remove the specialization, wrapper, registration, tests, leaf selector, runtime selector, and comparison CLI. Retain the current idle-double-buffer dense-prefix owner."
+  }
+}

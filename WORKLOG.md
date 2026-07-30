@@ -194158,3 +194158,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required lineage command still stops before producing a report because
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
   source was copied.
+
+## 2026-07-30 23:36 JST — Reject global softmax/first-V overlap
+
+- Added a temporary exact dense-prefix mixed40/local512 specialization that
+  uses idle waves 8-15 to load the first V64 plane while waves 0-7 execute the
+  unchanged exact softmax and denominator tree. The retained post-softmax
+  barrier becomes the V rendezvous and the existing V ping-pong loop remains
+  unchanged.
+- RED failed on the absent wrapper. GREEN at live 513/576/639 matches the CPU
+  oracle and retained owner byte-for-byte for both F32 context and gated BF16
+  output. Focused attention/dispatch/profile validation passes **38 tests**.
+- The 21x100 leaves improve **0.665%/0.939%/0.901%** at live
+  **513/576/639**. Cache-only tracing confirms the intended `true` template
+  sibling at grid40/local512, VGPR48, SGPR128, unchanged LDS, and scratch0.
+- The seven-pair resident p512/d128 gate is too small to retain:
+  **22.158317 -> 22.161545 tok/s (+0.01457%)**, median paired saving
+  **0.003600 ms/token**, and only **5/7** pair wins. All tokens, trajectory,
+  state, repeats, and **79,022,522,196 resident-byte** recovery remain exact.
+- Remove the complete specialization, wrapper/registry, test/harness, runtime
+  selector, and comparison CLI. Production remains
+  **22.141787 tok/s / 45.163473 ms/token / 482 model kernels/token**. Do not
+  reopen first-V/softmax overlap independently; a next global candidate must
+  contract a larger phase. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-global-softmax-v-overlap-rejected.json`.
+- Post-removal focused global-attention validation passes (**1 passed**) and
+  the candidate identifiers are absent from source, runtime, scripts, and
+  tests.
+- The required lineage command still stops before producing a report because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
+  source was copied.
