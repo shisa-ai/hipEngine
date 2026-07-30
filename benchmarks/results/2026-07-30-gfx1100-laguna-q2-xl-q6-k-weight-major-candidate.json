@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1100_laguna_q2_xl_exact_q6_weight_major_composite_candidate",
   "date": "2026-07-30",
-  "status": "standalone_exact_composites_and_default_off_runtime_qualified",
+  "status": "standalone_exact_composites_resolved_to_production",
   "performance_claim": true,
   "correctness_claim": true,
   "hardware": {
@@ -38,6 +38,16 @@
       "hipengine/runtime/laguna_gguf_runner.py": "a072e18be6120a8e5b18b55258f6f4a50bef96b1015f7b40b11b876810e2da6d",
       "tests/test_laguna_gguf_runner.py": "b640830e2d8c7f38e30143d457e601e6cc789283f3f094ac00748d82a219f3c3",
       "hipengine/kernels/hip_gfx1100/__init__.py": "2a7cf30ee1521b0450b05f907f72f5a44e39089f90bc4a350fbf6014233e1c57"
+    },
+    "source_default_red_revision": "e1f0f9b88",
+    "production_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "a2b5e1f9eeaedda75c95b2402960624634bb6e42b7c3b40f6a67d77c81acc7f0",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "87589c91f2f813584c2a2b65121cee32840a72e9780d1df3f84c2d03b8b0f5e7",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "1c7b0523d5e97f53620196e5c49253457e13ce54f87f4964319d58d1a33f5751",
+      "hipengine/runtime/laguna_gguf_runner.py": "a072e18be6120a8e5b18b55258f6f4a50bef96b1015f7b40b11b876810e2da6d",
+      "tests/test_laguna_h5w_q6_weight_major_composites.py": "d77bcdaf94a95d4ea1be36e79c6d2bdff5f151069c24bfd77a052317e0cbd036",
+      "tests/test_laguna_gguf_runner.py": "5ad35ab0de0536af4d02bc69ac69de8a3e186d3a1c050c7e4fa4995ee7a6e988"
     }
   },
   "candidate": {
@@ -195,14 +205,24 @@
     "wall_reduction_percent": 16.876125540079016
   },
   "production": {
-    "unchanged": true,
+    "unchanged": false,
     "runtime_eager_aliases_added": 3,
-    "package_policy_changed": false,
-    "m512_tok_s": 267.20469684712515,
-    "m1024_tok_s": 230.44109107265857,
-    "m4096_tok_s": 160.22098893064256,
+    "package_policy_changed": true,
+    "m512_tok_s": 271.52551262043875,
+    "m1024_tok_s": 234.02049160491273,
+    "m4096_tok_s": 161.85276620822188,
+    "preceding_canonical_tok_s": [
+      267.20469684712515,
+      230.44109107265857,
+      160.22098893064256
+    ],
+    "canonical_gain_percent": [
+      1.6170433470283019,
+      1.5532822360772247,
+      1.0184541291813565
+    ],
     "matched_llamacpp_hip_m512_tok_s": 694.184,
-    "matched_gap": 2.5979483451863157
+    "matched_gap": 2.5566069033460916
   },
   "commands": {
     "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -v tests/test_laguna_h5w_q6_weight_major_composites.py tests/test_laguna_h5p_q5_weight_major_occupancy.py tests/test_gguf_q5_k_f32_rocblas_prefill.py tests/test_gfx1151_backend.py",
@@ -210,14 +230,16 @@
     "actual_roles": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_final_screen.py",
     "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_package_full_state.py",
     "integrated_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5w-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_trace_integrated.py",
-    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_default_off_clean_512_4k.py"
+    "default_off_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_default_off_clean_512_4k.py",
+    "package_default_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_package_default_clean_512_4k.py"
   },
   "decision": {
     "standalone_composites_admitted": true,
     "default_off_runtime_qualified": true,
-    "runtime_owner_added": false,
-    "production_default_changed": false,
-    "next_action": "Freeze source-default RED for the three Q6 policy entries, promote only if a selector-unset one-queue 512/1K/4K rerun remains exact and non-regressive, then reprofile the promoted residual."
+    "runtime_owner_added": true,
+    "production_default_changed": true,
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json",
+    "next_action": "Reprofile the promoted exact M512 request, rerank residual family gaps against matched llama.cpp HIP, and select the next genuinely distinct exact target."
   },
   "runtime_qualification": {
     "same_resident_natural_m512_state": {
@@ -322,6 +344,55 @@
       "json_sha256": "14035b5933f3c92c3aa6ee13a7cdd733c900305030317990ff5e6288b82d3acd",
       "harness_sha256": "def95e8c936fee114aeebc0f32e5568ab6cda6973a0f360cad99e066209308d3",
       "stdout_sha256": "f87b119cfb18736c00e8b53010108cb470a6ffdc437cb03bd3eae8c8c90d0620",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    },
+    "clean_package_default_512_1k_4k": {
+      "protocol": "selector-unset H5W source default versus scoped H5I rollback; one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length under one queue",
+      "rows": {
+        "512": {
+          "control_median_tok_s": 266.7626722089751,
+          "candidate_median_tok_s": 271.52551262043875,
+          "same_session_gain_percent": 1.7854223651398105,
+          "candidate_samples_tok_s": [
+            272.51631729396877,
+            271.52551262043875,
+            270.71475563954823
+          ],
+          "paired_candidate_wins": 3,
+          "exact_all_repetitions": true
+        },
+        "1024": {
+          "control_median_tok_s": 230.49050584785144,
+          "candidate_median_tok_s": 234.02049160491273,
+          "same_session_gain_percent": 1.5315102650655277,
+          "candidate_samples_tok_s": [
+            234.51886349819733,
+            234.02049160491273,
+            233.55879954375368
+          ],
+          "paired_candidate_wins": 3,
+          "exact_all_repetitions": true
+        },
+        "4096": {
+          "control_median_tok_s": 160.09100488361065,
+          "candidate_median_tok_s": 161.85276620822188,
+          "same_session_gain_percent": 1.1004748991937818,
+          "candidate_samples_tok_s": [
+            162.03242209132367,
+            161.85276620822188,
+            161.78617802081914
+          ],
+          "paired_candidate_wins": 3,
+          "exact_all_repetitions": true
+        }
+      },
+      "all_state_exact": true,
+      "all_finite": true,
+      "all_sessions_recovered": true,
+      "workspace_bytes": 150994944,
+      "json_sha256": "a161769c55877302153868548eb8b8e059a14528c772a8e8101dc4a14e9cd60e",
+      "harness_sha256": "4407cafb0ca30f82330dedbde46c2e6ca2e0422908b8edd1f198d8cc47066610",
+      "stdout_sha256": "456e93a1cce9e72caf4890ede86c0e8b598ae7d56383ce97ae1cb3ef1d6e7576",
       "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
     }
   }

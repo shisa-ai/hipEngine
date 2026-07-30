@@ -188,16 +188,17 @@ GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ("f32", 3072, 6144): "weight_major_coltile16_rowbatch5",
     ("f32", 3072, 9216): "weight_major_coltile8_rowbatch10",
 }
-# WPF-H5I reuses the same serial F32 plane and ordered consumer without a
-# quant branch in dispatch. Complete state is KL0/byte-exact, integrated tracing
-# observes all 143 candidate pairs plus three exact fallbacks, and clean
-# 512/1K/4K improves 1.813%/1.932%/1.352%.
+# WPF-H5I introduced the shared serial F32 plane and ordered Q6 consumers.
+# WPF-H5W promotes weight-major traversal on 142/143 selected calls after KL0
+# complete state and exact 142-H5W/one-H5I/three-raw tracing at unchanged
+# topology. Clean one-queue 512/1K/4K improves 1.785%/1.532%/1.100%; F32 N72
+# and long-K/wide-N misses retain the H5I/raw exact fallbacks.
 GGUF_Q6_F32_ORDERED_PREFILL = True
 GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {
-    ("bf16", 3072, 1024): "coltile16_rowbatch5",
-    ("bf16", 1024, 3072): "coltile16_rowbatch4",
+    ("bf16", 3072, 1024): "weight_major_coltile16_rowbatch5",
+    ("bf16", 1024, 3072): "weight_major_coltile16_rowbatch4",
     ("f32", 3072, 72): "coltile8_rowbatch4",
-    ("f32", 3072, 1024): "coltile16_rowbatch5",
+    ("f32", 3072, 1024): "weight_major_coltile16_rowbatch5",
 }
 GGUF_F32_ORDERED_PREFILL_QUANTS = frozenset(("gguf_q5_k", "gguf_q6_k"))
 GGUF_F32_ORDERED_PREFILL_POLICIES = {

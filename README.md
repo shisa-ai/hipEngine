@@ -227,12 +227,14 @@ numbers below.
   **289** Q6 dispatches and cuts Q6/request sum **121.306/1,851.695 ->
   92.636/1,803.036 ms (-23.635%/-2.628%)**. One-queue clean 512/1K/4K is
   **266.814/230.134/159.970 -> 271.697/233.568/161.668 tok/s
-  (+1.830%/+1.492%/+1.061%)**, 3/3 wins each. Production stays unchanged only
-  until the required selector-unset source-default rerun. Both short rows exceed
-  150 tok/s and H5R 4K remains positive; 16K+ stays closed below the 800/700
-  stretch target
-  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json) ·
-  [H5W leaf](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
+  (+1.830%/+1.492%/+1.061%)**, 3/3 wins each. Selector-unset publication confirms
+  **266.763/230.491/160.091 -> 271.526/234.020/161.853 tok/s
+  (+1.785%/+1.532%/+1.100%)**, again 3/3 each, promoting canonical throughput
+  **+1.617%/+1.553%/+1.018%** over H5R and narrowing matched M512 to
+  **2.55661x**. Both short rows exceed 150 tok/s and H5R 4K remains positive;
+  16K+ stays closed below the 800/700 stretch target
+  ([current production](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json) ·
+  [H5W candidate](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-candidate.json) ·
   [H5W target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-target.json) ·
   [H5V rejection](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-rejected.json) ·
   [H5V target](benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-one-wave-k-partitions-target.json) ·
