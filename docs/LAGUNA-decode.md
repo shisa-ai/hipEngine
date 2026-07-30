@@ -7257,6 +7257,38 @@ The remaining attention sequence is:
      design that reduces bytes or arithmetic—not narrower ownership that
      rereads the same resident tile:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-tile8-rejected.json).
+134. Extend the already-retained exact prefill routed/shared overlap schedule
+     to c=1's specialized T16 decode paths. **Retained for the gfx1151
+     default; clean publication pending.** Router projection and correction
+     selection finish on the caller stream, then the complete shared
+     gate/up+SiLU+down branch runs on the existing least-priority nonblocking
+     stream while the caller executes selected gate/up and weighted selected
+     down. The caller waits on one timing-disabled event immediately before
+     the unchanged routed+shared tail. The serial constructor rollback keeps
+     the native shared-down tail batch.
+
+     RED fails because c=1 has no stream/event contract. GREEN matches every
+     production-shape Q4 BF16 output bit. Seven counterbalanced resident
+     p512/d128 pairs improve **22.577646 -> 22.749657 tok/s (+0.76186%)**,
+     save **0.336115 ms/token** by paired median, and win **7/7**. Every
+     generated trajectory remains exactly token **2930 -> 74107**, final
+     position **638**, resident bytes remain **79,066,169,172**, and teardown
+     returns tracked allocations to zero.
+
+     Cache-only tracing proves unchanged **482 kernels/token**, with **94**
+     shared kernels/token moved to queue 2. The secondary work totals
+     **6.537270 ms/token** and overlaps caller kernels for
+     **6.524765 ms/token (99.809%)**. Despite expected contention inflating
+     inclusive kernel sum, median union busy time falls
+     **42.851496 -> 42.348272 ms/token** and median device span falls
+     **44.516384 -> 44.042675 (-0.473709 ms/token)**. This is real
+     critical-path contraction, not an isolated leaf or launch-count proxy.
+
+     Promote through the gfx1151 package capability only; peer backends and
+     prefill scheduling are unchanged. The next gate is one tracked-clean
+     selector-unset p512/d128 production run, followed by removal of no
+     temporary comparison surface (only the constructor rollback remains):
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json).
 
 Current exact decode checkpoint:
 
@@ -7279,6 +7311,7 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean Q4T16 shared-down production | **22.555437 tok/s** | **44.335 ms** | **+96.704%** |
 | hipEngine retained router-projection wave-0 same-resident gate | **22.579029 tok/s** | **44.289 ms** | **+96.909%** |
 | hipEngine current tracked-clean router-projection wave-0 production | **22.581875 tok/s** | **44.283 ms** | **+96.935%** |
+| hipEngine retained c=1 routed/shared overlap gate | **22.749657 tok/s** | **43.957 ms** | **+98.400%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining tracked-clean wall gap | — | **1.454 ms/token** | hipEngine is **3.283%** below Vulkan throughput |
 

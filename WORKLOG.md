@@ -194860,3 +194860,40 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-tile8-rejected.json`.
+
+## 2026-07-31 05:26 JST — Retain exact c=1 routed/shared MoE overlap
+
+- The prefill campaign had already admitted a low-priority nonblocking shared
+  stream, but decode deliberately stayed serial without a measured c=1
+  screen. Extended the same exact event contract to c=1's specialized T16
+  paths: after router correction selection, shared gate/up+SiLU+down runs at
+  HIP priority +1 while selected gate/up and weighted down remain at priority
+  0; the caller waits immediately before the unchanged routed+shared tail.
+  No weight, scratch, allocation, or kernel arithmetic changes.
+- RED failed because `run_laguna_moe_c1` lacked the stream/event contract.
+  GREEN passes the live production-shape Q4 fixture with zero BF16 mismatches.
+  The gfx1151 capability defaults the schedule only when the already-admitted
+  two-queue shared resources exist; peer backends are unchanged and
+  constructor false keeps exact serial rollback.
+- One directional full-model run improves **22.559542 -> 22.752117 tok/s
+  (+0.85363%)**. Seven counterbalanced resident p512/d128 pairs then improve
+  **22.577646 -> 22.749657 tok/s (+0.761862%)**, save
+  **0.336115 ms/token** by paired median, and win **7/7**. All arms preserve
+  token 2930, final token 74107, final position 638, generated-ID SHA-256
+  `94f803f7...bda32`, deterministic repeats, **79,066,169,172-byte**
+  residency, and complete tracked-allocation recovery. Raw SHA-256 is
+  `3beaae0a3456a2846d6b1cf16ff5f7464f376f03567c2a3a165659307c270205`.
+- Cache-only tracing covers 127 control and 127 candidate transitions. Both
+  keep **482 kernels/token**; the candidate moves **94** shared kernels/token
+  to queue 2. Their **6.537270-ms** inclusive sum overlaps priority-0 work for
+  **6.524765 ms/token (99.809%)**. Inclusive total grows under memory
+  contention, but median union busy falls
+  **42.851496 -> 42.348272 ms/token** and median device span falls
+  **44.516384 -> 44.042675 (-0.473709 ms/token)**. Trace/child SHA-256 values
+  are `e7298574...3785` and `1e024e35...f058`; no compiler ran under
+  `rocprofv3`.
+- Focused GPU, backend/session, Python compilation, JSON, and diff checks
+  pass. Record the retained/default implementation now, then run one
+  tracked-clean selector-unset p512/d128 production publication.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-decode-moe-branch-concurrency-retained.json`.

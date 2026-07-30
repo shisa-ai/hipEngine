@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-31",
+  "kind": "hipengine_laguna_decode_moe_branch_concurrency_retained",
+  "status": "retained_for_gfx1151_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "exact Poolside Laguna S 2.1 Q4_K_M p512/d128 eager c=1 routed/shared MoE overlap on Radeon 8060S/gfx1151",
+  "system": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "caller_stream_priority": 0,
+    "shared_stream_priority": 1,
+    "clock_policy": "auto"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "model_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_bytes": 79066169172
+  },
+  "repo": {
+    "base_revision": "32bfa3845cb894e9f6e34233af899f4bb70bdd11",
+    "measurement_tree": "candidate changes present; untracked shared-tree artifacts excluded",
+    "external_source_copied": false
+  },
+  "candidate": {
+    "scope": "gfx1151 Laguna c=1 sparse layers only",
+    "schedule": "finish router projection and correction selection on the caller stream, then run the complete shared gate/up+SiLU+down branch on the existing least-priority nonblocking stream while selected gate/up and weighted selected down continue on the caller stream",
+    "dependencies": "timing-disabled input-ready and shared-output-ready HIP events; caller waits before the exact routed+shared MoE tail",
+    "device_kernels_per_token": 482,
+    "secondary_kernels_per_token": 94,
+    "resident_byte_delta": 0,
+    "arithmetic": "unchanged",
+    "fallback": "constructor false keeps the exact serial shared branch and native shared-down tail batch"
+  },
+  "red_green": {
+    "red": "the live Q4_K production-shape fixture failed because run_laguna_moe_c1 did not accept a secondary stream/event contract",
+    "green": "the same fixture matches every BF16 output bit between serial and concurrent c=1 execution",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle -k Q4_K"
+  },
+  "directional": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-moe-decode-branch-concurrency --allow-dirty --output <tmp>",
+    "control_tok_s": 22.55954234420744,
+    "candidate_tok_s": 22.752117122736443,
+    "change_percent": 0.853631579882707,
+    "exact_generated_ids": true,
+    "exact_final_position": true
+  },
+  "matched_seven_pair": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-moe-decode-branch-concurrency --allow-dirty --output <tmp>",
+    "control_samples_tok_s": [
+      22.554673107951757,
+      22.57764641745489,
+      22.565998390808684,
+      22.58190491518361,
+      22.57789413913162,
+      22.57976214362476,
+      22.57734534452406
+    ],
+    "candidate_samples_tok_s": [
+      22.75242989987864,
+      22.754023042325294,
+      22.749656858999103,
+      22.74886380462883,
+      22.733528972421936,
+      22.752439327808077,
+      22.74276914901113
+    ],
+    "control_median_tok_s": 22.57764641745489,
+    "candidate_median_tok_s": 22.749656858999103,
+    "change_percent": 0.7618617032253194,
+    "control_median_ms_per_token": 44.29159627670026,
+    "candidate_median_ms_per_token": 43.95670696037022,
+    "independent_median_saving_ms_per_token": 0.3348893163300417,
+    "paired_median_saving_ms_per_token": 0.3361147956731969,
+    "candidate_wins": "7/7",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "all_trajectories_exact": true,
+    "repeat_deterministic": true,
+    "tracked_allocations_recovered": true,
+    "raw_sha256": "3beaae0a3456a2846d6b1cf16ff5f7464f376f03567c2a3a165659307c270205"
+  },
+  "rocprof": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory <tmp> --output-file overlap -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-moe-decode-branch-concurrency --allow-dirty --output <tmp>/bench.json",
+    "compiler_ran_under_profiler": false,
+    "control_tokens": 127,
+    "candidate_tokens": 127,
+    "device_kernels_per_token": {
+      "control": 482,
+      "candidate": 482
+    },
+    "secondary_kernels_per_token": {
+      "control": 0,
+      "candidate": 94
+    },
+    "median_kernel_span_ms_per_token": {
+      "control": 44.516384,
+      "candidate": 44.042675,
+      "saving": 0.473709
+    },
+    "median_union_busy_ms_per_token": {
+      "control": 42.851496,
+      "candidate": 42.348272,
+      "saving": 0.503224
+    },
+    "median_inclusive_kernel_sum_ms_per_token": {
+      "control": 42.851496,
+      "candidate": 48.868178
+    },
+    "candidate_secondary_kernel_sum_ms_per_token": 6.53727,
+    "candidate_secondary_overlap_ms_per_token": 6.524765,
+    "candidate_secondary_overlap_percent": 99.808705,
+    "interpretation": "inclusive sums grow under memory contention and are not additive critical-path time; the unchanged 482-kernel topology moves 94 shared kernels to queue 2 and reduces both union busy time and device span",
+    "trace_sha256": "e7298574d7969d2726dffbb30737ac8ea0d540e889d008d134e15760f4033785",
+    "child_sha256": "1e024e35bfb330b03bc9644afd1a29c24782363e608ac33587761aef5f7ff058"
+  },
+  "correctness": {
+    "production_shape_q4_bf16_mismatches": 0,
+    "full_model_trajectories_exact": true,
+    "final_positions_exact": true,
+    "resident_bytes_exact": true,
+    "lifecycle_pass": true,
+    "quality_transfer": "event dependencies change only scheduling; the production-shape primitive is BF16-byte exact and every full-model output trajectory matches the serial control"
+  },
+  "validation": {
+    "focused_gpu_test": "1 passed",
+    "backend_session_tests": "passed",
+    "python_compile": true,
+    "diff_check": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "reason": "the exact schedule wins all seven matched pairs, reduces wall and profiler-visible critical path, and adds no allocations, kernels, or resident bytes",
+    "production_publication_pending": "one tracked-clean selector-unset p512/d128 run after the implementation commit"
+  }
+}

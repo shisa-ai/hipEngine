@@ -1263,6 +1263,23 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(bulk_actual),
             _f32_to_bf16_u16(serial_actual),
         )
+        concurrent_c1_output = run_laguna_moe_c1(
+            hidden_buffer.ptr,
+            layer,
+            concurrent_scratch,
+            shared_after_router=True,
+            shared_stream=concurrent_stream,
+            shared_input_ready_event=concurrent_input_ready,
+            shared_output_ready_event=concurrent_output_ready,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(
+                _read_bf16(concurrent_c1_output, (1, h))
+            ),
+            _f32_to_bf16_u16(serial_actual[-1:]),
+        )
         assert bulk_scratch.max_rows == 3
         assert bulk_scratch.selected_experts.nbytes == 3 * k * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize

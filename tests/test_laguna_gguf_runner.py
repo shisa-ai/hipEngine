@@ -25,6 +25,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
     resolve_laguna_moe_branch_concurrency,
+    resolve_laguna_moe_decode_branch_concurrency,
 )
 from tests._laguna_synthetic import make_laguna_info
 
@@ -107,6 +108,30 @@ def test_laguna_moe_branch_concurrency_requires_two_automatic_queues() -> None:
         True,
         environ={"GPU_MAX_HW_QUEUES": "1"},
     )
+
+
+def test_laguna_decode_moe_concurrency_requires_shared_resources() -> None:
+    assert resolve_laguna_moe_decode_branch_concurrency(
+        "hip_gfx1151",
+        None,
+        shared_resources_enabled=True,
+    )
+    assert not resolve_laguna_moe_decode_branch_concurrency(
+        "hip_gfx1151",
+        None,
+        shared_resources_enabled=False,
+    )
+    assert not resolve_laguna_moe_decode_branch_concurrency(
+        "hip_gfx1100",
+        None,
+        shared_resources_enabled=True,
+    )
+    with pytest.raises(ValueError, match="requires shared MoE resources"):
+        resolve_laguna_moe_decode_branch_concurrency(
+            "hip_gfx1151",
+            True,
+            shared_resources_enabled=False,
+        )
 
 
 def _config():
@@ -1452,6 +1477,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.fuse_f16_boundaries is False
     assert session.group_compact_mode == "parallel"
     assert session.moe_branch_concurrency is True
+    assert session.moe_decode_branch_concurrency is True
     assert session.moe_shared_after_router is True
     session.set_moe_shared_after_router(False)
     assert session.moe_shared_after_router is False
