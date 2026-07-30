@@ -6695,6 +6695,33 @@ The remaining attention sequence is:
      repeating its rejected register-prefetch or already-all-wave current
      stage loader:
      [`post-idle-V census`](../benchmarks/results/2026-07-30-gfx1151-laguna-post-global-idle-v-wall-reprofile.json).
+114. Overlap half of the next SWA V128 stage without register carry.
+     **Rejected at the resident gate and removed:** use three 64-row LDS V
+     regions as a ring. While exact PV consumes two regions, otherwise-idle
+     pair-owner waves compute the next probability row and load the next
+     stage's first 64 V rows into the third region. After the existing
+     stage-end barrier, all waves load only the remaining 64 rows. This is
+     distinct from the rejected register-prefetch/split-barrier screen:
+     prefetched values are published directly to LDS, no vector is carried
+     across a barrier, and the barrier count is unchanged.
+
+     The wrapped dense-ring oracle is byte-identical for F32 context and
+     gated BF16 output. The 21x100 cache-only leaf improves
+     **0.021339 -> 0.021043 ms (-1.388%)**. Cached tracing keeps
+     grid40/local512, VGPR176, SGPR128, and scratch0, while LDS rises
+     **40,960 -> 58,880 bytes**.
+
+     The mandatory seven-pair p512/d128 gate reverses the leaf:
+     **21.893163 -> 21.849793 tok/s (-0.19810%)**, or
+     **45.676360 -> 45.767024 ms/token (+0.090665 ms)**. The candidate loses
+     all **7/7** pairs; median paired saving is
+     **-0.089297 ms/token**. Every trajectory remains exact at tokens
+     **2930/74107**, SHA `94f803f7...bda32`, and position 638. Remove the
+     kernel axis/export/wrapper/key, test and leaf seams, gfx1151 capability,
+     runtime selector, and comparison CLI. Production remains
+     **21.880056 tok/s**. This closes extra-LDS SWA overlap even when nominal
+     one-block-per-CU occupancy is unchanged:
+     [`half-stage-prefetch rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-half-stage-prefetch-rejected.json).
 
 Current exact decode checkpoint:
 

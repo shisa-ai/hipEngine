@@ -193460,3 +193460,37 @@ Vulkan local sizes verbatim will close the measured gap.
   `da3b78ce...89b4`.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-post-global-idle-v-wall-reprofile.json`.
+
+## 2026-07-30 17:40 JST — Reject exact SWA half-stage LDS prefetch
+
+- Test a materially different successor to the rejected SWA register-prefetch
+  path. Three 64-row LDS V regions form a ring: while exact PV consumes two
+  regions, otherwise-idle pair-owner waves compute the next probability row
+  and load the next V128 stage's first 64 rows into the third region. After
+  the existing stage-end barrier, all waves load only the remaining 64 rows.
+  The candidate carries no vector in registers across a barrier and preserves
+  the production barrier count, QK, compiler `expf`, ordered denominator,
+  all 512 PV FMAs, gate, and BF16 store.
+- RED fails importing the absent wrapper. GREEN passes the wrapped dense-ring
+  CPU-reference fixture with byte-identical F32 context and gated BF16 output.
+  The 9x50 leaf improves **1.263%**; the stronger 21x100 leaf improves
+  **0.021339 -> 0.021043 ms (-1.388%)**.
+- Cached native tracing keeps grid40/local512, VGPR176, SGPR128, and scratch0.
+  LDS rises **40,960 -> 58,880 bytes**. Nominal topology remains one block per
+  each of 40 CUs, but the extra 17,920 bytes are not free in the resident
+  workload. Trace and 21x100 leaf SHA-256 are `f524ac10...2488` and
+  `b3779f32...384`.
+- Seven counterbalanced same-resident p512/d128 pairs reject the candidate:
+  **21.893163 -> 21.849793 tok/s (-0.19810%)**, or
+  **45.676360 -> 45.767024 ms/token (+0.090665 ms)**. All seven candidates
+  lose, with median paired saving **-0.089297 ms/token**. Every run preserves
+  next/final tokens **2930/74107**, trajectory SHA `94f803f7...bda32`,
+  position 638, determinism, and allocation recovery. Raw comparison SHA-256
+  is `4260d0b9...4d03`.
+- Remove the kernel axis/export/wrapper/key, tests and leaf seams, temporary
+  gfx1151 capability/runtime selector, and comparison CLI. Production source
+  returns byte-for-byte to `1207393c2`; current clean checkpoint remains
+  **21.880056 tok/s**. This closes extra-LDS SWA overlap without a new
+  arithmetic or traffic-removal premise.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-half-stage-prefetch-rejected.json`.
