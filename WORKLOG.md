@@ -195038,3 +195038,32 @@ Vulkan local sizes verbatim will close the measured gap.
   values are `fc50fc1e...7a` and `49eae801...b8`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile16-rejected.json`.
+
+## 2026-07-31 07:28 JST — Reject lossless source-F16 high13 packing
+
+- Reopened source-F16 compression only for a materially different bit-lossless
+  premise. Exact scanning of all 240 F16 tensors finds 99.6753% of words with
+  zero low-three bits and 92.1870% clean block64 groups. The implemented
+  high13+sparse-low3 layout round-trips all 65,536 FP16 words, uses row-local
+  dirty ordinals, and would reduce complete source-F16 residency
+  **5,606,277,120 -> 4,727,445,408 bytes (-15.6759%)**.
+- RED failed on the absent transform/wrapper. GREEN passes **7** host layout
+  tests and **3** live HIP K3072/K6144/K9216 production-byte oracles. Actual
+  layer-0/full and layer-1/SWA Q/K/V/gate/output weights are byte-exact.
+- Performance decisively rejects the layout. The stronger wave-cooperative
+  packed-word consumer moves the modeled family
+  **23.157221 -> 51.644382 ms/token (+123.016%)**. A direct duplicate-load
+  consumer is worse at **23.164147 -> 58.393572 ms/token (+152.086%)**.
+  Packed decode reaches only 83-128 physical GB/s on large Q/output rows and
+  makes cache-hot K/V more than 3x slower; per-weight extraction overwhelms
+  the 15.7% byte saving.
+- Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python -u scripts/laguna_f16_high13_leaf.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --samples 9 --warmups 5 --burst 20 --output /tmp/laguna-f16-high13-leaf.json`.
+  The direct-load repeat used `--samples 7` with the same remaining arguments.
+  Raw SHA-256 values are `d2d70ba3...208d` and `ddf4477c...d62`.
+- Removed the complete host packer/inverse, HIP body/wrappers, harness, and
+  tests. Production remains **22.752894 tok/s / 43.950453 ms/token**.
+  Reopen lossless F16 compression only with hardware-native packed-FP16
+  decoding or a materially cheaper byte-aligned representation.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-high13-lossless-rejected.json`.
