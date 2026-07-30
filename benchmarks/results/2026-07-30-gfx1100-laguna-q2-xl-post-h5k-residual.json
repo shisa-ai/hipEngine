@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_post_h5k_exact_residual_attribution",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "production_revision": "e139c774b",
+    "h5k_decision_revision": "d1fc09684",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json",
+    "production_artifact_sha256": "8f2bdccd93d27a39dcf8691f72d589331472d96a4bee9c69fa3223acf6a108af",
+    "h5k_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json",
+    "h5k_rejection_artifact_sha256": "0a92ad9b8431ba08f52cea752a4604657a44617e2948ad91f7c523eab23ecf62",
+    "trace_sha256": "2bd58c8e24c93da6cdd03bd566cf020da95bec500a9fbaf99c9a7cc27417e00c",
+    "trace_harness_sha256": "9bf438a3d35d4d229b9aa27120312e9f4258cf0c0a963fd25ad213c5f6112382",
+    "attribution_harness_sha256": "636da00bc24505aafc83f4d469b40367f2fc8c725a6146d6eeeed2d1da1cc674",
+    "attribution_json_sha256": "a166efb77bf46e8712bea59179dba01cd31dcc650b238a6051b6be40a191f3c6",
+    "matched_llamacpp_revision": "c0bc8591e",
+    "source_review": "retained H5J cached trace plus in-tree exact ordered-Q5 source; no benchmark rerun and no external body copied"
+  },
+  "production": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "m512_tok_s": 196.10271441429387,
+    "m1024_tok_s": 181.85900293284575,
+    "m4096_tok_s": 137.16861562535314,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 3.5399000063479034,
+    "next_token_id": 2930,
+    "final_position": 511
+  },
+  "request_trace": {
+    "segment": "Q5 embedding through argmax stage 2, excluding one copy kernel",
+    "dispatches": 1862,
+    "kernel_sum_ms": 2532.019736,
+    "kernel_span_ms": 2557.899559,
+    "span_minus_sum_ms": 25.879823,
+    "span_minus_sum_percent": 1.011762285774319,
+    "families": [
+      {
+        "name": "exact_q5_producer_ordered_consumer",
+        "dispatches": 470,
+        "hipengine_ms": 919.697257,
+        "matched_llamacpp_ms": 58.95103,
+        "gap_ms": 860.746227,
+        "ratio": 15.601037963204375,
+        "decision": "select H5L exact weight-tile-major workgroup traversal; arithmetic geometry and changed-association alternatives remain closed"
+      },
+      {
+        "name": "exact_attention",
+        "dispatches": 192,
+        "hipengine_ms": 468.006992,
+        "matched_llamacpp_ms": 21.725298,
+        "gap_ms": 446.281694,
+        "ratio": 21.542028652495357,
+        "decision": "exact adjacent-row schedules and changed-association transfers closed"
+      },
+      {
+        "name": "exact_iq3_iq4_selected_down",
+        "dispatches": 47,
+        "hipengine_ms": 497.144925,
+        "matched_llamacpp_ms": 155.495249,
+        "gap_ms": 341.649676,
+        "ratio": 3.1971711560139062,
+        "decision": "H5J retained; H5K larger resident row ownership rejected on all 45 IQ3 layers"
+      },
+      {
+        "name": "exact_iq2_special_iq3_gate_up",
+        "dispatches": 47,
+        "hipengine_ms": 466.826473,
+        "matched_llamacpp_ms": 404.977857,
+        "gap_ms": 61.848616,
+        "ratio": 1.1527209819770468,
+        "decision": "defer behind the much larger exact Q5 gap"
+      },
+      {
+        "name": "exact_q6",
+        "dispatches": 289,
+        "hipengine_ms": 110.293456,
+        "matched_llamacpp_ms": 14.919865,
+        "gap_ms": 95.373591,
+        "ratio": 7.392389676448144,
+        "decision": "H5I retained; three exact raw-coltile fallbacks remain"
+      },
+      {
+        "name": "remaining",
+        "dispatches": 817,
+        "hipengine_ms": 70.050633,
+        "matched_llamacpp_ms": null,
+        "gap_ms": null,
+        "ratio": null,
+        "decision": "below current family targets"
+      }
+    ],
+    "reconciled_to_kernel_sum": true
+  },
+  "q5_physical_breakdown": {
+    "exact_producers": {
+      "dispatches": 235,
+      "duration_ms": 15.298008
+    },
+    "ordered_consumers": {
+      "dispatches": 235,
+      "duration_ms": 904.399249
+    },
+    "roles": [
+      {
+        "output_dtype": "bf16",
+        "in_features": 9216,
+        "out_features": 3072,
+        "geometry": "coltile12_rowbatch8",
+        "dispatches": 35,
+        "duration_ms": 382.964995
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 9216,
+        "geometry": "coltile8_rowbatch10",
+        "dispatches": 35,
+        "duration_ms": 358.756188
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 3072,
+        "out_features": 1024,
+        "geometry": "coltile8_rowbatch4",
+        "dispatches": 92,
+        "duration_ms": 57.305211
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 6144,
+        "out_features": 3072,
+        "geometry": "coltile16_rowbatch5",
+        "dispatches": 12,
+        "duration_ms": 38.506807
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 6144,
+        "geometry": "coltile16_rowbatch5",
+        "dispatches": 12,
+        "duration_ms": 38.767851
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 3072,
+        "out_features": 12288,
+        "geometry": "coltile8_rowbatch12",
+        "dispatches": 2,
+        "duration_ms": 26.249823
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 72,
+        "geometry": "coltile8_rowbatch4",
+        "dispatches": 35,
+        "duration_ms": 1.518812
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 48,
+        "geometry": "coltile12_rowbatch4",
+        "dispatches": 12,
+        "duration_ms": 0.329562
+      }
+    ],
+    "dominant_two_consumer_ms": 741.721183,
+    "dominant_two_percent_of_consumer": 82.01258280788333,
+    "dominant_two_percent_of_family": 80.64840656581408
+  },
+  "h5l_weight_tile_major_premise": {
+    "arithmetic_change": false,
+    "weight_layout_change": false,
+    "new_allocation_allowed": false,
+    "new_sidecar_allowed": false,
+    "current_mapping": "2D grid with output tile in blockIdx.x and row batch in blockIdx.y; linear workgroup IDs traverse output tiles first",
+    "candidate_mapping": "one explicit linear grid with row_group = workgroup % row_groups and output_tile = workgroup / row_groups, visiting every row batch for one output/weight tile before the next tile",
+    "preserved_association": "same per-thread k ownership, scalar fmaf sequence, wave32 shuffle tree, serial wave-0..3 sum, and BF16/F32 store",
+    "locality_model_is_diagnostic_not_performance_claim": true,
+    "dominant_role_locality_model": [
+      {
+        "role": "bf16 K9216/N3072 coltile12/rowbatch8",
+        "output_tiles": 256,
+        "row_groups": 64,
+        "workgroups": 16384,
+        "weight_tile_bytes": 442368,
+        "input_tile_bytes": 147456,
+        "current_output_tile_fast_optimistic_bytes": 7257194496,
+        "candidate_weight_tile_fast_optimistic_bytes": 2529165312,
+        "modeled_traffic_ratio": 2.8694029850746268
+      },
+      {
+        "role": "f32 K3072/N9216 coltile8/rowbatch10",
+        "output_tiles": 1152,
+        "row_groups": 52,
+        "workgroups": 59904,
+        "weight_tile_bytes": 98304,
+        "input_tile_bytes": 61440,
+        "current_output_tile_fast_optimistic_bytes": 5891948544,
+        "candidate_weight_tile_fast_optimistic_bytes": 3793747968,
+        "modeled_traffic_ratio": 1.5530679933665008
+      }
+    ],
+    "admission_screen": "register separate exact variants for all eight production Q5 roles; require byte identity, scratch-free plausible resources, and producer-inclusive wins on both HIP-event and synchronized-wall clocks before any runtime owner",
+    "fallback": "retained H5G ordered F32-weight role policy",
+    "next_action": "Freeze RED for weight-tile-major variants without changing the production wrappers, then run the complete eight-role/235-call actual-weight screen."
+  },
+  "commands": {
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5j-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5j_iq_row_trace_integrated.py",
+    "attribution": "PYTHONPATH=. uv run python /tmp/laguna_wpfh5k_post_residual.py"
+  }
+}

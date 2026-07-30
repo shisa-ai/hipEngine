@@ -21,11 +21,15 @@ backend miss retains the preceding exact route; gfx1151 remains fail-closed.
 H5K closes larger resident IQ3 row ownership: rowbatch12 loses all 45 actual
 layers by **+6.893%/+5.771%** event/wall and rowbatch16 worsens to
 **+10.770%/+9.870%**, despite exact bytes and scratch-free resources. All
-temporary surfaces are removed and H5J remains production; next reprofile the
-unchanged exact request and select a distinct dataflow. Both short production
-rows exceed 150 tok/s and 4K remains positive; 16K+ stays closed below the
-800/700 stretch gate
+temporary surfaces are removed and H5J remains production. Post-H5K tracing
+assigns **919.697 ms** to exact Q5, including **904.399 ms** of ordered consumers;
+two roles own **741.721 ms (82.0%)**. H5L next screens exact weight-tile-major
+linear workgroup traversal, changing no arithmetic/layout/allocation; its
+1.55–2.87x optimistic locality model is diagnostic, not a performance claim.
+Both short production rows exceed 150 tok/s and 4K remains positive; 16K+ stays
+closed below the 800/700 stretch gate
 ([H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
+[post-H5K residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
 [H5K rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
 [H5J leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
 [post-H5I residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5i-residual.json) ·
@@ -211,9 +215,13 @@ falls **2,600.260 -> 2,532.020 ms (-2.624%)**. Clean 512/1K/4K reaches
 then rejects larger resident IQ3 rowbatch12/16 after both lose all 45 layers;
 event/wall sums regress **+6.893%/+5.771%** and **+10.770%/+9.870%**. Every
 candidate byte matches, lifecycle recovers, and all temporary code is removed.
-Reprofile a distinct exact dataflow; do not reopen larger row ownership,
-output-tile, or source-MMQ arithmetic
-([H5K rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
+The unchanged H5J request reconciles to Q5 **919.697 ms**, attention **468.007**,
+IQ down **497.145**, gate/up **466.826**, Q6 **110.293**, and remaining **70.051
+ms**. Q5 consumers own **904.399 ms** and select H5L's exact weight-tile-major
+linear workgroup traversal; do not reopen larger row ownership, output tiling,
+or source-MMQ arithmetic
+([post-H5K residual](results/2026-07-30-gfx1100-laguna-q2-xl-post-h5k-residual.json) ·
+[H5K rejection](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-larger-resident-rowbatch-rejected.json) ·
 [H5J production](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-production.json) ·
 [H5J leaf](results/2026-07-30-gfx1100-laguna-q2-xl-iq-row-ownership-candidate.json) ·
 [H5I production](results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json) ·
