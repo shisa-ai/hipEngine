@@ -7087,33 +7087,35 @@ Current exact decode checkpoint:
 | hipEngine prior output-projection→add/RMSNorm production | **22.063262 tok/s** | **45.324 ms** | **+92.412%** |
 | hipEngine prior route-parallel selected-down→weighting production | **22.119461 tok/s** | **45.209 ms** | **+92.902%** |
 | hipEngine prior shared-down→D9 native host-batch production | **22.141787 tok/s** | **45.163 ms** | **+93.097%** |
-| hipEngine current byte-neutral expert dual-interleave production | **22.262504 tok/s** | **44.919 ms** | **+94.151%** |
+| hipEngine prior byte-neutral expert dual-interleave production | **22.262504 tok/s** | **44.919 ms** | **+94.151%** |
 | hipEngine retained exact SWA local1024 same-resident gate | **22.356330 tok/s** | **44.730 ms** | **+94.968%** |
+| hipEngine current tracked-clean SWA local1024 production | **22.335681 tok/s** | **44.771 ms** | **+94.788%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining wall gap | — | **2.089 ms/token** | hipEngine is **4.651%** below Vulkan throughput |
+| Remaining wall gap | — | **1.942 ms/token** | hipEngine is **4.337%** below Vulkan throughput |
 
-The refreshed post-pair census confirms attention as the first arithmetic
-priority. Complete hipEngine kernel work is **43.500661 ms/token**, already
-**0.158539 ms/token below** Vulkan's logged GPU sum, while tracked-clean
-production remains **2.089054 ms/token** slower in wall time. The like-for-like
-positive family gaps now rank attention **+0.437941**, dense/shared
-**+0.360630**, paired selected gate/up **+0.318997**, selected down
-**+0.272757**, and router **+0.108831 ms/token**. Attention itself is
-**1.347364 ms/token = 0.893032 SWA + 0.454332 global** versus Vulkan's
-**0.909423 ms/token**. The trace retains **482 model dispatches/token** and
-shows **1.674612 ms/token** between summed kernels and kernel span:
-[`post-pair census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-paired-expert-wall-reprofile.json).
+The refreshed post-local1024 census confirms the exact cooperative-width
+transfer. Complete hipEngine kernel work is **43.297710 ms/token**, already
+**0.361490 ms/token below** Vulkan's logged GPU sum, while tracked-clean
+production remains **1.941890 ms/token** slower in wall time. SWA falls
+**0.893032 -> 0.721795 ms/token (-19.175%)**; total attention falls
+**1.347364 -> 1.175727 (-12.739%)** and is now only
+**+0.266304 ms/token** above Vulkan. The like-for-like positive family gaps
+now rank dense/shared **+0.356052**, paired selected gate/up **+0.312067**,
+selected down **+0.278490**, attention **+0.266304**, and router
+**+0.112037 ms/token**. The trace retains **482 model dispatches/token** and
+shows **1.673554 ms/token** between summed kernels and kernel span:
+[`post-local1024 census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json).
 
-The producer-max and local512 results capture two exact pieces of llama.cpp's
+The producer-max and local1024 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own
 the data, and a block should expose enough independent work to cover the
-machine. Local512 is the natural saturated-SWA endpoint because its 512 lanes
-cover one logical token each; larger blocks add no score ownership. Global
-local512 confirms that the same saturation axis transfers when the original
-eight-wave denominator tree is held fixed: the extra waves help only the
-independent QK and value-transport phases. The earlier pre-expert-pair census
-remains historical evidence, but its family ranking is superseded by the
-post-pair result above.
+machine. The device audit disproved the earlier local512 endpoint assumption:
+gfx1151 admits 32 wave32s/CU and local1024, and the exact SWA body benefits
+from doubling independent QK and value-transport waves even though it adds no
+logical score ownership. Global remains at local512 and is the next direct
+transfer gate, with its existing denominator tree held fixed. The earlier
+post-pair census remains historical evidence, but its family ranking is
+superseded by the post-local1024 result above.
 
 The refreshed comparator audit makes the attention trade explicit. At
 llama.cpp Vulkan `c0bc8591e`, Laguna's decode sequence length is one, but
@@ -7148,7 +7150,7 @@ Next attention-core attack:
    output-rounding certificate that predicts sparse exact replay. The
    already-rejected standard gamma bound, BF16 midpoint repair, extra
    decomposition terms, and full component replay are not new premises.
-5. **Retained/default pending clean publication:** the hardware audit corrects
+5. **Retained/default and published:** the hardware audit corrects
    the old local512 endpoint assumption. gfx1151 supports **32 wave32s/CU**
    and **1024 work-items/workgroup**. Raising only the exact dense-ring owner
    to local1024 keeps all 40 workgroups, doubles independent QK/transport
@@ -7157,8 +7159,19 @@ Next attention-core attack:
    grid40/local1024, reported VGPR32, LDS40,960, and scratch0. All seven exact
    same-resident p512/d128 pairs win **22.273482 -> 22.356330 tok/s
    (+0.37195%, -0.166375 ms/token)** with unchanged residency and complete
-   state/lifecycle:
-   [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-retained.json).
+   state/lifecycle. Tracked-clean selector-unset production reaches
+   **22.335681 tok/s / 44.771 ms/token**, up **0.32870%** from the prior
+   production checkpoint. The 127-transition census cuts SWA
+   **0.893032 -> 0.721795 ms/token (-19.175%)**, total attention
+   **12.739%**, kernel sum **0.202951 ms/token**, and span
+   **0.203804 ms/token**:
+   [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-swa-local1024-production.json),
+   [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-swa-local1024-wall-reprofile.json).
+6. **Next:** transfer only this measured width premise to dense-prefix global
+   attention. Keep its exact scalar FP32 association, fixed denominator tree,
+   40 workgroups, and local512 rollback. Require exact live-length
+   513/576/639 results plus an all-positive repeated leaf before any
+   full-model screen.
 
 The Vulkan review changes the next move from another attention-math rewrite
 to exact device-dispatch contraction. llama.cpp does not expose a reusable

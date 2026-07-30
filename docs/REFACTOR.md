@@ -28,8 +28,12 @@ should be removed or collapsed.
   local512 as the exact rollback.
 - **Promotion gate passed 2026-07-31:** all seven exact resident pairs improve
   **22.273482 -> 22.356330 tok/s (+0.37195%)**. The gfx1151 capability is
-  promoted. Keep the comparison switch through tracked-clean publication and
-  the post-promotion attention census, then remove it.
+  promoted.
+- **Closed 2026-07-31:** tracked-clean selector-unset production reaches
+  **22.335681 tok/s**, and the 127-transition census cuts SWA
+  **0.893032 -> 0.721795 ms/token (-19.175%)**. Remove the dedicated
+  comparison switch; retain local512 as the exact fallback for non-dense,
+  explicit-eviction, and peer-backend cases.
 
 ## Laguna exact SWA producer-gate selector
 
