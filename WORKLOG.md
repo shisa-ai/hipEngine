@@ -195067,3 +195067,35 @@ Vulkan local sizes verbatim will close the measured gap.
   decoding or a materially cheaper byte-aligned representation.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-high13-lossless-rejected.json`.
+
+## 2026-07-31 07:42 JST — Reject exact c=1 MoE-tail cross-stream prequeue
+
+- Re-profiled the retained two-queue p512/d128 trace by exact predecessor and
+  successor. Median union idle is **1.698114 ms/token** across 387 gaps; the
+  largest single class is selected-down -> fused aggregate+residual+
+  next-RMSNorm at **0.355161 ms/token**. Other material classes are F16
+  output+add/RMS -> router **0.268248**, router select -> selected gate/up
+  **0.211513**, head/KV -> SWA attention **0.207881**, and selected gate/up ->
+  selected down **0.195938 ms/token**.
+- Implemented an exact scheduling-only screen: record routed completion on the
+  primary stream, wait behind the shared branch on the low-priority stream,
+  prequeue the unchanged fused tail there, record tail completion, then make
+  the primary stream wait. No arithmetic, pointer, weight, scratch, allocation,
+  or model-kernel body changed; one event and two extra record/wait
+  dependencies per sparse layer were added.
+- RED failed on the absent resolver/schedule contract. GREEN focused tests
+  cover exact event order and runner handoff. The live gfx1151 fused-tail
+  oracle is byte-exact to the registered three-kernel fallback at hidden
+  17/3072. The first same-resident p512/d128 alternating pair is exact but
+  rejects the schedule: **22.727933 -> 22.589472 tok/s (-0.60921%)**,
+  **43.998723 -> 44.268410 ms/token (+0.269688 ms)**. Tokens **2930/74107**,
+  final position **638**, generated-ID SHA `94f803f7...bda32`,
+  **79,066,169,172-byte** residency, and allocation recovery match.
+- Stop before the seven-pair gate and remove the complete event/resolver/
+  runtime/CLI/test candidate. Fine-grained HIP event choreography is not
+  llama.cpp Vulkan's amortized command-buffer recording and costs more than the
+  host gap here. Production remains tracked-clean at
+  **22.752894 tok/s / 43.950453 ms/token**. Exact command is recorded in the
+  artifact; raw result SHA-256 is `412a45eb...b19`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-prequeue-rejected.json`.

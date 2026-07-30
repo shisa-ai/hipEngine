@@ -7432,6 +7432,32 @@ The remaining attention sequence is:
      decode or materially cheaper byte-aligned representation removes
      per-weight bit extraction:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-high13-lossless-rejected.json).
+140. Prequeue the existing exact fused MoE tail on the secondary stream after
+     measuring **0.355161 ms/token** of selected-down -> tail queue idle.
+     **Rejected at the directional gate and completely removed.** The
+     candidate records routed completion on the primary stream, waits for it
+     on the already-retained low-priority shared stream behind shared-down,
+     submits the unchanged aggregate+residual+next-RMSNorm tail there, records
+     tail completion, and makes the primary stream wait. It changes no
+     arithmetic, weights, scratch, or model kernels and adds one HIP event.
+
+     RED fails on the absent resolver/schedule contract. GREEN covers the
+     precise event order, session tail-stream handoff, and the existing live
+     gfx1151 fused-tail oracle remains byte-exact to its registered
+     three-kernel fallback at hidden 17/3072. The complete p512/d128 trajectory
+     is exact: token **2930 -> 74107**, final position **638**, generated-ID
+     SHA-256 `94f803f7...bda32`, unchanged **79,066,169,172-byte** residency,
+     and complete allocation recovery.
+
+     The first same-resident alternating pair is decisively negative:
+     **22.727933 -> 22.589472 tok/s (-0.60921%)**, or
+     **43.998723 -> 44.268410 ms/token (+0.269688 ms)**. Stop before the
+     seven-pair gate and remove the event, resolver, runtime/CLI path, and
+     tests. Two additional record/wait dependencies per sparse layer cost
+     more than the host-visible gap they replace. This is not llama.cpp
+     Vulkan's command-buffer batching; do not reopen fine-grained event
+     choreography around the same boundary:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-prequeue-rejected.json).
 
 Current exact decode checkpoint:
 
