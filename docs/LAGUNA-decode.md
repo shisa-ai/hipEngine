@@ -6823,6 +6823,7 @@ Current exact decode checkpoint:
 | hipEngine post-dense-interleave production | **21.926113 tok/s** | **45.608 ms** | **+91.216%** |
 | hipEngine F16-quad production | **22.031913 tok/s** | **45.389 ms** | **+92.138%** |
 | hipEngine current projection→head/KV production | **22.007742 tok/s** | **45.439 ms** | **+91.928%** |
+| hipEngine provisional output-projection→add/RMSNorm candidate | **22.062263 tok/s** | **45.326 ms** | **+92.402%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **2.609 ms/token** | hipEngine is **5.742%** below Vulkan throughput |
 
@@ -6901,6 +6902,24 @@ inside the measured cycle wall. This is retained as an exact launch-count and
 span win:
 [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json),
 [`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json).
+
+The next exact boundary contraction preserves every attention-output
+projection column's fixed-K local256 accumulation and BF16 store, then lets
+the last producer execute the established local256 residual-add/RMSNorm tree.
+It reuses the existing 320-byte completion scratch, so residency is unchanged,
+and the fixed-K projection plus standalone add/RMSNorm chain remains the exact
+fallback. Natural K6144/N3072 global and K9216/N3072 SWA fixtures match every
+projection, residual, and normalized BF16 byte and return the counter to zero.
+Cached tracing names
+`laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<6144|9216>` at
+local256/VGPR24/SGPR128/LDS512/scratch0. All seven same-resident p512/d128
+pairs win **22.005296 -> 22.062263 tok/s (+0.25888%)**, saving
+**0.117339 ms/token** by median endpoints and **0.113153 ms/token** by paired
+deltas. Every generated trajectory, final position, repeat, allocation, and
+resident byte remains exact. gfx1151 now selects the composite provisionally;
+tracked-clean selector-unset production and a complete dispatch census remain
+the publication gate:
+[`output projection plus add/RMSNorm retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json).
 
 Reusable whole-token HIP graph replay is now
 closed by an exact **-0.49020%** screen. Vulkan's actual advantage is

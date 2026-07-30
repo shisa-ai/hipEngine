@@ -150,6 +150,8 @@ _F16_PROJECTION_HEAD_KV_LAYER = (
     "attention_projection+head_rmsnorm+partial_rotary+kv_write"
 )
 _F16_PROJECTION_HEAD_KV_QUANT = "fp16_weight+laguna_f32_weight"
+_F16_OUTPUT_ADD_RMSNORM_LAYER = "linear+add+rmsnorm"
+_F16_OUTPUT_ADD_RMSNORM_QUANT = "fp16_weight+gguf_f32_weight"
 
 
 def _validate_laguna_context_length(
@@ -1535,6 +1537,66 @@ def launch_laguna_f16_projection_head_kv(
     return True
 
 
+def launch_laguna_f16_output_add_rmsnorm(
+    weight,
+    x_ptr: int,
+    projection_out_ptr: int,
+    residual_ptr: int,
+    norm_weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    completion_counter_ptr: int,
+    in_features: int,
+    out_features: int,
+    eps: float,
+    *,
+    backend: str,
+    stream: int,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None,
+) -> bool:
+    """Launch the exact c=1 output-projection/add/RMSNorm composite."""
+
+    if (
+        weight.spec.layout != LAYOUT_DENSE_F16
+        or in_features not in {6144, 9216}
+        or out_features != 3072
+    ):
+        return False
+    key = KernelKey(
+        backend,
+        _F16_OUTPUT_ADD_RMSNORM_LAYER,
+        _F16_OUTPUT_ADD_RMSNORM_QUANT,
+        "fixedk_onebarrier_bf16_out",
+    )
+    if not is_registered(key):
+        return False
+    fn = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    fn(
+        x_ptr,
+        weight.allocation("raw").tensor.ptr,
+        projection_out_ptr,
+        residual_ptr,
+        norm_weight_ptr,
+        norm_out_ptr,
+        residual_out_ptr,
+        completion_counter_ptr,
+        1,
+        in_features,
+        out_features,
+        eps,
+        stream=stream,
+        library=libraries.f16_projection,
+        runtime=runtime,
+    )
+    return True
+
+
 @dataclass(frozen=True)
 class LagunaEagerTokenResult:
     """One eager token result; device buffers remain owned by the session."""
@@ -2242,6 +2304,7 @@ class LagunaGGUFResidentSession:
         use_q5_shared_fixed_meta: bool | None = None,
         use_f16_attention_quad_decode: bool | None = None,
         use_f16_projection_head_kv_decode: bool | None = None,
+        use_f16_output_add_rmsnorm_decode: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
@@ -2490,6 +2553,15 @@ class LagunaGGUFResidentSession:
             )
             if use_f16_projection_head_kv_decode is None
             else use_f16_projection_head_kv_decode
+        )
+        self.use_f16_output_add_rmsnorm_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE",
+                False,
+            )
+            if use_f16_output_add_rmsnorm_decode is None
+            else use_f16_output_add_rmsnorm_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2992,7 +3064,10 @@ class LagunaGGUFResidentSession:
                 None,
             )
             if (
-                self.use_f16_projection_head_kv_decode
+                (
+                    self.use_f16_projection_head_kv_decode
+                    or self.use_f16_output_add_rmsnorm_decode
+                )
                 and projection_counters is not None
             ):
                 self.runtime.memset(
@@ -3176,6 +3251,21 @@ class LagunaGGUFResidentSession:
         """Fuse exact BF16-to-FP16 boundaries in range-direct prefill."""
 
         self.fuse_f16_boundaries = bool(enabled)
+
+    def set_f16_output_add_rmsnorm_decode(self, enabled: bool) -> None:
+        """Select the exact c=1 output-projection/add/RMSNorm composite."""
+
+        selected = bool(enabled)
+        if selected and not self.use_f16_output_add_rmsnorm_decode:
+            scratch = self.scratch
+            counters = (
+                getattr(scratch, "attention_projection_counters", None)
+                if scratch is not None
+                else None
+            )
+            if counters is not None:
+                self.runtime.memset(counters.ptr, 0, counters.nbytes)
+        self.use_f16_output_add_rmsnorm_decode = selected
 
     def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
         """Select the bounded dense-initial BLAS attention candidate."""
@@ -5148,32 +5238,52 @@ class LagunaGGUFResidentSession:
                 library=self.libraries.attention_gate,
                 runtime=self.runtime,
             )
-        launch_laguna_weight_linear(
-            layer.weight("attn_output"),
-            scratch.gated_context.ptr,
-            scratch.attention_output.ptr,
-            1,
-            q_width,
-            config.hidden_size,
-            backend=self.backend,
-            stream=stream,
-            libraries=self.libraries,
-            runtime=self.runtime,
-            registered_variant=self._q5_output_variant,
-        )
-        self.kernel_plan.add_rmsnorm(
-            scratch.hidden.ptr,
-            scratch.attention_output.ptr,
-            layer.weight("ffn_norm").allocation("raw").tensor.ptr,
-            scratch.norm.ptr,
-            scratch.post_attention.ptr,
-            1,
-            config.hidden_size,
-            config.rms_norm_eps,
-            stream=stream,
-            library=self.libraries.gguf_ops,
-            runtime=self.runtime,
-        )
+        output_add_rmsnorm = False
+        if self.use_f16_output_add_rmsnorm_decode:
+            output_add_rmsnorm = launch_laguna_f16_output_add_rmsnorm(
+                layer.weight("attn_output"),
+                scratch.gated_context.ptr,
+                scratch.attention_output.ptr,
+                scratch.hidden.ptr,
+                layer.weight("ffn_norm").allocation("raw").tensor.ptr,
+                scratch.norm.ptr,
+                scratch.post_attention.ptr,
+                scratch.attention_projection_counters.ptr,
+                q_width,
+                config.hidden_size,
+                config.rms_norm_eps,
+                backend=self.backend,
+                stream=stream,
+                libraries=self.libraries,
+                runtime=self.runtime,
+            )
+        if not output_add_rmsnorm:
+            launch_laguna_weight_linear(
+                layer.weight("attn_output"),
+                scratch.gated_context.ptr,
+                scratch.attention_output.ptr,
+                1,
+                q_width,
+                config.hidden_size,
+                backend=self.backend,
+                stream=stream,
+                libraries=self.libraries,
+                runtime=self.runtime,
+                registered_variant=self._q5_output_variant,
+            )
+            self.kernel_plan.add_rmsnorm(
+                scratch.hidden.ptr,
+                scratch.attention_output.ptr,
+                layer.weight("ffn_norm").allocation("raw").tensor.ptr,
+                scratch.norm.ptr,
+                scratch.post_attention.ptr,
+                1,
+                config.hidden_size,
+                config.rms_norm_eps,
+                stream=stream,
+                library=self.libraries.gguf_ops,
+                runtime=self.runtime,
+            )
         if layer.mlp_type == DENSE_MLP:
             self._run_dense_ffn(layer, stream=stream)
         elif layer.mlp_type == SPARSE_MOE:

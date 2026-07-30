@@ -530,6 +530,20 @@ the exact two-launch chain. Evidence:
 [`projection/head/KV retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-retained.json),
 [`production and census`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-projection-head-kv-production.json).
 
+The same source-F16 catalog now registers
+`linear+add+rmsnorm/fp16_weight+gguf_f32_weight/fixedk_onebarrier_bf16_out`.
+One local256 block retains each K6144/K9216 attention-output column's fixed-K
+dot and BF16 store; the last of 3,072 producers observes every store, executes
+the existing local256 residual-add/RMSNorm tree, and resets a stream-reused
+completion counter. The registered fixed-K projection plus add/RMSNorm chain
+remains the unfused fallback. Global and SWA device fixtures match every
+projection/residual/norm BF16 byte and the reset counter. Cached gfx1151
+tracing reports local256/VGPR24/SGPR128/LDS512/scratch0. Seven same-resident
+p512/d128 pairs all improve **22.005296 -> 22.062263 tok/s (+0.25888%)**,
+with a **0.113153-ms/token** paired-median saving and unchanged residency.
+gfx1151 selects the exact composite pending tracked-clean publication:
+[`output/add/RMSNorm retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-retained.json).
+
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
 | `embedding` variant `lookup_bf16_out` | `gguf_q4_k`, `gguf_q5_k` | `hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip` | `gguf_q4_k_embedding_bf16_out(...)`, `gguf_q5_k_embedding_bf16_out(...)`, registry-driven `launch_gguf_embedding(...)` | Net-new gfx11 raw-Q4_K/Q5_K row dequant for Laguna target/DFlash roots. Synthetic Q4_K lookup is BF16-exact vs CPU, invalid token IDs preserve caller output rows, and the real S 2.1 root chain (Q4 embedding -> F32-weight RMSNorm -> Q6T16 full logits -> GPU argmax) gives embedding/norm max-abs `0`, logits KL `6.87e-13`, top-1 `81364 == 81364`, and finite 100,352-way logits on gfx1151. Cached `rocprofv3 --kernel-trace` shows `gguf_q4_k_embedding_bf16_out_kernel` at `9.818 us`, 16 VGPR, zero scratch/LDS, followed by the expected norm, Q6T16, and argmax kernels. The pinned Q2 XL Q5_K root is BF16-exact against direct GGUF dequant for four repeated/unique rows; cached W7900 tracing names `gguf_q5_k_embedding_bf16_out_kernel` at `12.440 us`. `scripts/laguna_root_probe.py`; `/tmp/laguna-root-rocprof-result.json`. |
