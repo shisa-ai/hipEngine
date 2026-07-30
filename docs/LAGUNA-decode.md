@@ -6852,6 +6852,27 @@ The remaining attention sequence is:
      **45.543776 -> 45.386060 ms/token**. Kernel work is now only
      **0.017268 ms/token (0.0396%)** above the same-GGUF Vulkan logger:
      [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-down-parallel-weighted-production.json).
+119. Fuse shared-down with the existing MoE-tail/next-RMSNorm boundary.
+     **Rejected and removed:** all 384 Q4/Q6 eight-column projection
+     producers preserved their production dot/reduction trees and exact BF16
+     shared output. Each producer also wrote the two established BF16 add
+     boundaries; the last producer reconstructed D9's original 256 logical
+     sumsq lanes and identical 128-to-1 FP32 tree before normalization.
+     Production-shape Q4 and Q6 fixtures match every shared, hidden, and
+     normalized BF16 value, and the four-byte completion counter self-resets.
+
+     The design fails because logical-tree exactness does not preserve
+     physical tail parallelism. D9 normally owns 256 physical lanes; the last
+     shared-down block exposes only 32 lanes for Q4 or 128 for Q6. The
+     synthetic K1024/N3072 boundary regresses Q4 by **120.87%** at local32,
+     **44.14%** at local64, **13.83%** at local128, and **19.85%** at
+     local256; Q6 local128 regresses **3.88%**. The bounded exact model pair
+     confirms the loss: **22.122653 -> 21.851076 tok/s (-1.22759%)**, adding
+     **0.561800 ms/token**. Remove the kernel, registry, scratch, runner, and
+     comparison routes. Reopen this boundary only with a materially different
+     within-evaluation batching mechanism that retains local256-or-wider
+     physical tail ownership:
+     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-moe-tail-rejected.json).
 
 Current exact decode checkpoint:
 
