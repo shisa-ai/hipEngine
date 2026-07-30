@@ -2265,6 +2265,17 @@ pairs improve **20.987128 -> 20.991542 tok/s (+0.02103%)**. gfx1151 now
 selects the mixed40-local512 capability and retains mixed32-local512 as exact
 rollback:
 [`retained global mixed40 local512`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-mixed40-local512-retained.json).
+The qualified dense-prefix successor now also overlaps exact PV and V
+transport. After a cooperative V64 stage-zero fill, waves without an active
+query output load the next V64 plane into a second LDS buffer while active
+waves preserve the retained scalar PV sequence. This halves full barriers per
+stage without changing arithmetic, grid40/local512 ownership, resident bytes,
+or launch count. Live513/576/639 byte-exact 21x100 leaves improve
+**5.754%/3.577%/6.057%**, and all seven p512/d128 resident pairs improve
+**21.865315 -> 21.891144 tok/s (+0.11813%)**. gfx1151 selects
+`LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER`; single-buffer dense-prefix
+remains the exact peer/non-dense fallback:
+[`retained global idle-wave V ping-pong`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-retained.json).
 The exact two-launch split32 successor is removed as well. Sixteen pair-owner
 local256 blocks plus sixteen singleton-owner local128 blocks preserve four
 K/V owners and byte-exact output, but regress live513/576/639

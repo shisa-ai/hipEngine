@@ -6634,6 +6634,38 @@ The remaining attention sequence is:
      pack8 BF16 tree. Remove every diagnostic owner and return to the exact
      attention gap:
      [`Q6 geometry rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-q6-down-geometry-rejected.json).
+112. Overlap dense-prefix global V transport with exact PV using idle owner
+     waves. **Retained as the gfx1151 default:** the mixed40/local512 owner
+     initially fills V64 buffer zero cooperatively. During each exact scalar
+     PV stage, the 8 idle waves in a two-query owner or 12 idle waves in a
+     singleton owner fill the next V64 stage into a second LDS buffer. The
+     existing end-of-stage barrier becomes the load/compute rendezvous, so
+     each stage uses one full barrier instead of two. QK, maximum, exp,
+     denominator, probability normalization, ordered PV FMAs, gate, BF16
+     store, grid, ownership, resident bytes, and launch count are unchanged.
+     Generic/non-dense/explicitly-evicted states retain the single-buffer
+     owner.
+
+     RED fails importing the absent diagnostic wrapper. GREEN matches the CPU
+     oracle and retained dense-prefix owner byte-for-byte at live
+     513/576/639. The stronger 21x100 cache-only leaves improve
+     **0.033627 -> 0.031692 ms (-5.754%)**,
+     **0.036312 -> 0.035013 (-3.577%)**, and
+     **0.040564 -> 0.038107 (-6.057%)**, winning **21/21** samples at every
+     shape. Cached native tracing names the expected `true` template sibling
+     at grid40/local512, VGPR48, SGPR128, reported static LDS512, and scratch0.
+     The second V64 plane raises calculated dynamic LDS to
+     **36,912/37,392/37,904 bytes** at those shapes.
+
+     All seven counterbalanced resident p512/d128 pairs win. Median decode
+     moves **21.865315 -> 21.891144 tok/s (+0.11813%)**, saving
+     **0.053962 ms/token** by median endpoints and **0.066014 ms/token** by
+     median paired delta. All 14 trajectories preserve tokens
+     **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+     determinism, and allocation recovery. Promote through
+     `LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER`; retain single-buffer
+     dense-prefix as the exact peer fallback:
+     [`idle-double-buffer retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-retained.json).
 
 Current exact decode checkpoint:
 
@@ -6642,6 +6674,7 @@ Current exact decode checkpoint:
 | hipEngine sprint start | **11.466687 tok/s** | **87.209 ms** | baseline |
 | hipEngine prior tracked-clean production | **21.304731 tok/s** | **46.938 ms** | **+85.797%** |
 | hipEngine current tracked-clean production | **21.851538 tok/s** | **45.763 ms** | **+90.565%** |
+| hipEngine retained idle-V candidate, clean publication pending | **21.891144 tok/s** | **45.681 ms** | **+90.911%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining wall gap | — | **2.934 ms/token** | hipEngine is **6.411%** below Vulkan throughput |
 
