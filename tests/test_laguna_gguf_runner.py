@@ -196,6 +196,20 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
             ]
             is q5_f32_ordered
         )
+    for output_dtype, col_tile, row_batch in (
+        ("bf16", 8, 4),
+        ("bf16", 16, 5),
+        ("f32", 16, 5),
+        ("f32", 8, 10),
+    ):
+        assert (
+            libraries.linear[
+                "gguf_q5_k:f32_ordered_weight_major_tile_k_col_"
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            ]
+            is q5_f32_ordered
+        )
     assert libraries.moe["grouped_iq_prefill"] is iq_grouped_prefill
 
 
