@@ -279,9 +279,15 @@ event/wall window **6.315%/3.211%** without changing output bytes. Complete
 state/tracing pass and a frozen 512 adjudication is **+0.176%**, but the final
 source-default 1K/4K adjudication is **-0.030%/+0.014%**. Reject runtime
 ownership, remove its eager/package surfaces, and retain only the exact leaf.
-Wider qrows, cross-head/key-split, source MMQ, and changed-association attention
-stay closed
-([H5P rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
+H5Q selects the third-largest matched gap: IQ3/IQ4 down is **491.658 ms** versus
+llama.cpp HIP **155.495 ms**. Across 45 IQ3 layers H5J launches **35,389,440**
+expert/output workgroups for **30,240,768** active pairs. The attribution-only
+active-expert persistent target reuses existing route metadata and screens fixed
+1–128 partitions while preserving every H5J dot/reduction/store operation;
+production is unchanged. Wider qrows, cross-head/key-split, source MMQ, and
+changed-association attention stay closed
+([H5Q target](results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-target.json) ·
+[H5P rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json) ·
 [H5P leaf](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json) ·
 [H5P target](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
 [H5O rejection](results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·

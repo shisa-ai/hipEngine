@@ -1589,9 +1589,17 @@ predeclared seven-repeat adjudication resolves it at **+0.176%**. The
 source-default publication is **+0.093%/-0.019%/-0.054%** at 512/1K/4K and its
 final frozen 1K/4K adjudication remains **-0.030%/+0.014%**. Reject runtime
 ownership under the all-length rule; remove the eager owner/package change,
-retain only the exact leaf, and keep H5M/H5L production. The old wider-qrow,
-cross-head/key-split, rowbatch16, output-tile, source-MMQ, changed-association
-attention, and P6/repair routes remain closed.
+retain only the exact leaf, and keep H5M/H5L production. WPF-H5Q now selects
+the third-largest matched residual: IQ3/IQ4 down is **491.658 ms** versus
+llama.cpp HIP **155.495 ms**. H5J launches **35,389,440** IQ3 expert/output
+workgroups across 45 M512 layers for **30,240,768** active pairs; its existing
+active-expert list permits a separately registered exact persistent traversal
+with fixed 1–128 expert partitions, no new metadata/allocation, and unchanged
+useful dot/reduction/store work. These counts are attribution, not a speed
+claim; leaf admission requires exact bytes, cached scratch-free resources, and
+all-layer both-clock timing. The old wider-qrow, cross-head/key-split,
+rowbatch16, output-tile, source-MMQ, changed-association attention, and
+P6/repair routes remain closed.
 Launch fusion remains
 below its trigger at **1.251%** request span-minus-sum.
 Keep 16K+ closed until direct M512 reaches **694.184 tok/s**, then measure
