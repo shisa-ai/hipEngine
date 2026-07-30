@@ -2075,6 +2075,18 @@ Tracked-clean selector-unset production at `72ed34b08` is
 **+0.00264% / -0.00127 ms/token** over the preceding clean packet and
 **+81.428%** over sprint start, with exact repeated state/lifecycle:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-production.json).
+The exact output-sharded-probability successor moves each V128 stage's four
+32-slot probability shards onto the pair-block/singleton output waves that
+consume them, keeps all eight scalar PV waves and ordered F32 association, and
+uses all 16 waves for staged-V loading. The byte-exact 21x100 leaf improves
+**0.030266 -> 0.028760 ms (-4.976%)** at unchanged
+grid40/local512/VGPR176/SGPR128/LDS43,008/scratch0. Seven resident p512/d128
+pairs move **20.803377 -> 20.816723 tok/s
+(+0.06415%, -0.03082 ms/token)** with **7/7** wins and exact
+trajectory/state/lifecycle. gfx1151 now selects output-sharded probability for
+the saturated natural shape; dual-tail V128 remains registered rollback and
+peer backend selection is unchanged:
+[`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-retained.json).
 Post-retention code-object inspection qualifies the profiler resource fields:
 the AMDGPU metadata declares V64/V128 at **32/35 logical VGPR**, **32 SGPR**,
 zero spills/private segment, and **25,564/42,716 B fixed LDS**. V128's trace

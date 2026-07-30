@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-30T09:45:54+09:00",
+  "kind": "hipengine_laguna_swa_output_sharded_probability_vstage128_retention",
+  "status": "retained",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2 resident; 1 leaf"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "Assign the four 32-slot probability shards for each V128 stage to the output waves that consume them, while retaining the unchanged eight-wave scalar PV body.",
+    "changed_work": "Pair-block and singleton output waves each evaluate one probability cell per lane before ordered denominator/PV replay. All 16 waves cooperatively load staged V; the two former tail producer waves are no longer special loaders.",
+    "llamacpp_transfer": "Move independent probability work onto the cooperative output lanes, preserving hipEngine's exact scalar F32 accumulation rather than importing Vulkan's F16 cooperative arithmetic."
+  },
+  "leaf": {
+    "shape": "SWA fixed512, Q72/KV8/D128, BF16 KV",
+    "protocol": "21 samples, 7 warmups, burst 100, counterbalanced HIP events",
+    "control_median_ms": 0.03026581048965454,
+    "candidate_median_ms": 0.02875983953475952,
+    "latency_change_percent": -4.9758157159207395,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "87dd34a3bd2298a02d803bb763bcb303e6978a7b2ce812c4ec9b10ca684a3897"
+  },
+  "trace": {
+    "kernel": "laguna_swa_attention_fused_exact_gated_gqa3_local384_fixed512_kernel<128,...,512,false,true>",
+    "grid_blocks": 40,
+    "workgroup_threads": 512,
+    "vgpr_count_profiler": 176,
+    "sgpr_count_profiler": 128,
+    "lds_bytes": 43008,
+    "scratch_bytes": 0,
+    "control_resources_identical": true,
+    "raw_sha256": "73f18060b5a5a365f8a0d874b337c44c1d93e166140880808dd2893290841f29"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1; 127 synchronized forward_token calls",
+    "candidate_scope": "36 saturated SWA decode layers",
+    "pairs": 7,
+    "control_median_decode_seconds": 6.1047780639491975,
+    "candidate_median_decode_seconds": 6.100864313077182,
+    "control_median_tok_s": 20.803377071146688,
+    "candidate_median_tok_s": 20.816722595809242,
+    "throughput_change_percent": 0.06415076079673288,
+    "saving_ms_per_token": 0.030816936000125614,
+    "median_paired_saving_ms_per_token": 0.036135266395652385,
+    "candidate_wins": 7,
+    "raw_sha256": "ed53701ffff31ca153dee82b4b039845883bfe33b5c99bedd79d17b25e8c4214"
+  },
+  "correctness": {
+    "control_candidate_generated_ids_match": true,
+    "repeat_generated_ids_deterministic": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "first_generated_token": 2930,
+    "final_generated_token": 74107,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true,
+    "focused_gpu_oracle": "2 passed; wrapped/evicted CPU reference plus gfx1151 owner default/rollback"
+  },
+  "integration": {
+    "production_default_changed": true,
+    "fallback": "swa_context_fused_exact_gated_mixed40_local512_exp32_producer_max_gate_stage_pcache_dual_tail_producer_value_tail_idle_vec4_denom_probability_vstage128_vec16_direct_assume_exp_fixed512_spans",
+    "other_backends_unchanged": true,
+    "comparison_only_registry_replacement_removed": true
+  },
+  "decision": "Promote output-wave-sharded probability production on gfx1151. It wins all seven complete-model pairs, is exact and resource-neutral, and leaves the dual-tail V128 key registered as rollback."
+}

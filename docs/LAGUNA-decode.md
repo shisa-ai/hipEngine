@@ -5993,6 +5993,34 @@ The remaining attention sequence is:
     **+0.00264% / -0.00127 ms/token** over the preceding clean packet and
     **+81.428%** over sprint start; exact repeated state and lifecycle pass:
     [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-production.json).
+86. Move V128 probability production onto the output waves.
+    **Retained and promoted on gfx1151:** each of the four pair-block output
+    waves per query now evaluates one 32-slot probability shard before
+    consuming the unchanged ordered denominator and scalar F32 PV chain.
+    Singleton output waves use the same mapping. All 16 waves cooperatively
+    load staged V, replacing the asymmetric dual-tail loader schedule without
+    changing QK, denominator, PV, gate, store, launch, or resident boundaries.
+
+    RED fails importing the absent wrapper. GREEN is byte-identical for F32
+    context and gated BF16 through wrap and explicit eviction. The 9x50 leaf
+    moves **0.030667 -> 0.028742 ms (-6.278%)**; the stronger 21x100 leaf moves
+    **0.030266 -> 0.028760 ms (-4.976%)**. Cache-only tracing names the intended
+    final-`false,true` specialization at grid40/local512 with unchanged
+    **VGPR176/SGPR128/LDS43,008/scratch0**.
+
+    Seven counterbalanced actual-model p512/d128 pairs move median decode
+    **20.803377 -> 20.816723 tok/s
+    (+0.06415%, -0.03082 ms/token)**, with **7/7** paired wins and median
+    paired saving **0.03614 ms/token**. Every run preserves tokens
+    **2930/74107**, trajectory SHA `94f803f7...bda32`, final position 638,
+    repeat determinism, and allocation teardown. Promote the exact output-wave
+    schedule for the already-qualified saturated gfx1151 shape, retain the
+    dual-tail V128 key as exact rollback, and leave peer backends unchanged:
+    [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-retained.json).
+
+    A tracked-clean selector-unset publication remains the next closure step;
+    until then the current clean production checkpoint below remains the
+    preceding dual-tail packet.
 
 Current exact decode checkpoint:
 
