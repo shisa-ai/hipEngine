@@ -960,8 +960,18 @@ span **488.610/1,625.126/1,650.283 -> 477.168/1,603.812/1,624.882 ms
 **+1.801%/+1.334%/+0.900%**, 3/3 wins each. Selector-unset confirms
 **+1.819%/+1.452%/+0.872%**, again 3/3, promoting H5Y/H5Z at canonical
 **307.658/259.947/173.562 tok/s (+1.490%/+1.486%/+1.008% over H5Y/H5Q)**.
-Keep H5Q registered rollback and reprofile exact C4096/direct-M512 H5Z next
-([H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
+Matched H5Z C4096/direct-M512 reaches **311.622 tok/s / 1,628.336-ms** kernel
+sum and narrows llama.cpp HIP to **2.22765x**. Gaps rank IQ-down/attention/Q5 at
+**325.570/235.310/182.882 ms**; IQ3 is **472.416 ms / 45 calls**. Immediate
+exact IQ ownership/geometries are already screened. WPF-H6A therefore selects
+exact dense-initial cached-only metadata elision over the second-ranked
+attention family: separate gfx1100 specializations of H5R SWA qrow4 and H5U
+global local256 derive identity position/no-eviction/physical-slot facts only
+for complete preappended first-fill M128 tiles while preserving complete
+`KVLiveSpans`, exact QK/two-pass-softmax/PV association, allocation, and every
+fallback. Screen the 144 SWA and 48 global calls independently before ownership
+([post-H5Z matched residual / H6A target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
+[H5Z production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
 [H5Z candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
 [post-H5Y residual / H5Z target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
 [H5Y production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·

@@ -291,11 +291,24 @@ numbers below.
   (+1.819%/+1.452%/+0.872%)**, again 3/3 each. Promote H5Y/H5Z production at
   canonical **307.658/259.947/173.562 tok/s
   (+1.490%/+1.486%/+1.008% over H5Y/H5Q)**, narrowing the canonical M512 gap
-  to llama.cpp HIP **694.184 tok/s** from **2.28998x to 2.25635x**. The exact
-  comparator-shaped H5Z C4096/direct-M512 reprofile is the immediate next unit.
-  Both short rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed
-  below the 800/700 stretch target
-  ([H5Z production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
+  to llama.cpp HIP **694.184 tok/s** from **2.28998x to 2.25635x**. The binding
+  H5Z C4096/direct-M512 reprofile now reaches **311.622 tok/s** from
+  **312.394/312.340/311.622/311.229/311.317**, all exact token 2930 with clean
+  teardown. This is **+83.83%** over campaign start, **+1.736%** over matched
+  H5Y, and **2.22765x** behind llama.cpp HIP. Five production traces reconcile
+  **1,628.336 ms / 2,050 dispatches** in a **1,651.364-ms** median span; current
+  gaps rank IQ-down/attention/Q5/gate-up/Q6 at
+  **325.570/235.310/182.882/78.514/77.504 ms**. IQ3 remains first at
+  **472.416 ms / 45 calls**, but all immediate exact IQ ownership/geometries are
+  already screened. Select **WPF-H6A exact dense-initial cached-only attention
+  metadata elision** on the second-ranked family: specialize H5R SWA qrow4 and
+  H5U global local256 only for complete preappended first-fill M128 tiles,
+  deriving identity position/no-eviction/physical-slot facts while preserving
+  exact QK, two-pass softmax, PV, allocation, and fallback behavior. Both short
+  rows exceed 150 tok/s and H5Y/H5Z 4K remains positive; 16K+ stays closed below
+  the 800/700 stretch target
+  ([post-H5Z matched residual / H6A target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5z-matched-residual.json) ·
+  [H5Z production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-production.json) ·
   [H5Z candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
   [post-H5Y matched residual / H5Z target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
   [H5Y production](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·
