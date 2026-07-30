@@ -664,6 +664,19 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 10, "f32"),
             )
         ),
+        *(
+            (
+                "linear",
+                "gguf_q6_k",
+                f"f32_ordered_weight_major_coltile{col_tile}_"
+                f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+            )
+            for col_tile, row_batch, output_dtype in (
+                (16, 5, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+            )
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),
