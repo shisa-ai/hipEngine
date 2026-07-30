@@ -192531,3 +192531,37 @@ Vulkan local sizes verbatim will close the measured gap.
   hipEngine is **10.899%** lower in throughput.
 - Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-swa-dual-tail-producer-vstage128-production.json`.
+
+## 2026-07-30 09:46 JST — Retain exact output-sharded probability V128 SWA
+
+- Continue the source-grounded llama.cpp transfer without importing its F16
+  cooperative arithmetic. Each V128 stage's four 32-slot probability shards
+  per query move from two tail waves onto the pair-block/singleton output waves
+  that consume them. The unchanged eight-wave scalar PV body preserves every
+  denominator/PV F32 association; all 16 waves now balance staged-V loading.
+- RED fails on the absent wrapper. GREEN reports **2 passed** across the
+  wrapped/evicted CPU-reference oracle and the gfx1151 default/rollback route,
+  with F32 context and gated BF16 byte-exact.
+- Cached 9x50 and 21x100 leaves improve
+  **0.030667 -> 0.028742 ms (-6.278%)** and
+  **0.030266 -> 0.028760 ms (-4.976%)**. Raw hashes are
+  `79504916...9985` and `87dd34a3...3897`.
+- Cache-only `rocprofv3 --kernel-trace` names the intended final-`false,true`
+  specialization at grid40/local512. Candidate/control both report
+  **VGPR176/SGPR128/LDS43,008/scratch0**; no compiler runs under profiling.
+  Trace SHA-256 is `73f18060...f29`.
+- Seven counterbalanced actual-model p512/d128 pairs move
+  **20.803377 -> 20.816723 tok/s (+0.06415%)**, or
+  **48.06912 -> 48.03831 ms/token (-0.03082 ms)**. All **7/7** pairs improve;
+  median paired saving is **0.03614 ms/token**.
+- Every row preserves tokens **2930/74107**, trajectory SHA
+  `94f803f7...bda32`, final position 638, determinism, and allocation teardown.
+  Promote output-sharded probability on the already-qualified saturated
+  gfx1151 shape. Keep dual-tail V128 registered as exact rollback; peer
+  selection is unchanged. Remove comparison-only registry replacement.
+- The broad kernel-lineage scan remains environment-blocked before diff
+  inspection by missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this is an in-tree scheduling
+  specialization, not an external port.
+- Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-swa-output-sharded-probability-vstage128-retained.json`.
