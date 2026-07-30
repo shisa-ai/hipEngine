@@ -279,8 +279,16 @@ numbers below.
   frozen max-min rule keeps P256. Final-source event/wall moves
   **478.606/486.167 -> 459.818/451.737 ms (-3.926%/-7.082%)** with byte-exact
   outputs, local128/VGPR112/LDS512/scratch0 resources, token 2930, and lifecycle
-  recovery. Production remains H5Y pending complete H5Z runtime gates. Both
-  short rows exceed 150 tok/s and H5Y 4K remains positive; 16K+ stays closed
+  recovery. Its bounded default-off owner reuses H5Q's active-expert ABI with no
+  allocation/workspace change. Natural M512 is KL0 and byte-exact across all
+  state/repeat; four paired cached requests select exact **45 H5Q or 45 H5Z**
+  IQ3 calls at unchanged **2,050** dispatches and move IQ3/request/span
+  **488.610/1,625.126/1,650.283 -> 477.168/1,603.812/1,624.882 ms
+  (-2.342%/-1.312%/-1.539%)**. Fresh-session 512/1K/4K improves
+  **302.425/256.139/171.930 -> 307.870/259.556/173.477 tok/s
+  (+1.801%/+1.334%/+0.900%)**, 3/3 wins each. Source production remains
+  H5Y/H5Q pending selector-unset H5Z publication. Both short rows exceed 150
+  tok/s and H5Y/H5Q 4K remains positive; 16K+ stays closed
   below the 800/700 stretch target
   ([H5Z leaf](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
   [post-H5Y matched residual / H5Z target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·

@@ -192,10 +192,19 @@ should be removed or collapsed.
   Complete M512 state is KL0, tracing selects all **45** P64 IQ3 calls, and
   default-off 512/1K/4K is **+0.702%/+0.278%/+0.370%**. Selector-unset
   publication confirms **+0.663%/+0.355%/+0.267%**, 3/3 paired wins at every
-  length. Keep the one gfx1100 variant-to-`grouped_raw_iq_active_experts` entry
+  length. Keep H5Q's gfx1100 variant-to-`grouped_raw_iq_active_experts` entry
   and ABI-table adapter: they pass the existing device active-expert list/count
   with no allocation, producer, sidecar, or public selector. Map, ABI, shape,
-  registration, and backend misses retain H5J; gfx1151 stays empty/fail-closed.
+  registration, and backend misses retain the generic exact route; gfx1151
+  stays empty/fail-closed.
+- WPF-H5Z adds one second default-off variant-to-active-expert ABI entry while
+  leaving the selected IQ3 variant on H5Q. Complete M512 state is KL0/byte-exact;
+  four paired traces select exact **45 H5Q or 45 H5Z** calls at unchanged
+  **2,050** dispatches and cut IQ3/request/span **2.342%/1.312%/1.539%**.
+  Default-off 512/1K/4K is **+1.801%/+1.334%/+0.900%**, 3/3 wins each. Keep this
+  entry through the selector-unset publication; if that gate rejects H5Z,
+  remove only the H5Z metadata entry, otherwise retain H5Q as rollback. Do not
+  add another adapter, allocation, workspace, sidecar, or public selector.
 
 ## Laguna exact qrow4 SWA prefill selector
 

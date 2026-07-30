@@ -951,7 +951,14 @@ P256. Selection event/wall falls **481.013/487.809 -> 454.128/455.001 ms
 459.818/451.737 ms (-3.926%/-7.082%)**. P256 traces at local128/VGPR112/
 SGPR128/LDS512/scratch0. Device ISA has exactly eight b128 activation records
 before the sequential output loop, then the unchanged two d16 and three b32 IQ3
-records. Remove P32/P64/P128/P512; production remains H5Y pending runtime gates
+records. Remove P32/P64/P128/P512. Its bounded default-off owner reuses H5Q's
+active-expert ABI with no allocation/workspace change. Natural M512 is KL0 and
+byte-exact across all state/repeat. Four cached H5Q/H5Z/H5Z/H5Q requests retain
+**2,050** dispatches and exact **45 IQ3 + two IQ4** topology, moving IQ3/request/
+span **488.610/1,625.126/1,650.283 -> 477.168/1,603.812/1,624.882 ms
+(-2.342%/-1.312%/-1.539%)**. Default-off 512/1K/4K improves
+**+1.801%/+1.334%/+0.900%**, 3/3 wins each. Source production remains H5Y/H5Q
+pending selector-unset publication
 ([H5Z leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-activation-resident-output-sweep-candidate.json) ·
 [post-H5Y residual / H5Z target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h5y-matched-residual.json) ·
 [H5Y production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json) ·

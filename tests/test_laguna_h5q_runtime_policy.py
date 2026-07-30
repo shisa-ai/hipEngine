@@ -32,7 +32,10 @@ def test_h5q_package_policy_is_promoted_bounded_and_fail_closed(monkeypatch) -> 
     production_abis = {_H5Q_IQ3: _H5Q_ABI}
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants
-    assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == production_abis
+    assert all(
+        hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS.get(variant) == abi
+        for variant, abi in production_abis.items()
+    )
     assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
     assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
 
