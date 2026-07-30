@@ -141,6 +141,8 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
         libraries.linear["gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out"]
         is q4_prefill
     )
+    assert libraries.moe["launch_batch"] is libraries.launch_batch
+    assert libraries.moe["moe_tail"] is libraries.routed_sum
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
@@ -307,6 +309,17 @@ def test_laguna_selected_natural_tile8_decode_switch_is_session_scoped() -> None
 
     session.set_selected_natural_tile8_decode(False)
     assert session.use_selected_natural_tile8_decode is False
+
+
+def test_laguna_shared_down_moe_tail_host_batch_switch_is_session_scoped() -> None:
+    session = object.__new__(runner_module.LagunaGGUFResidentSession)
+    session.use_shared_down_moe_tail_host_batch = False
+
+    session.set_shared_down_moe_tail_host_batch(True)
+    assert session.use_shared_down_moe_tail_host_batch is True
+
+    session.set_shared_down_moe_tail_host_batch(False)
+    assert session.use_shared_down_moe_tail_host_batch is False
 
 
 def test_laguna_swa_assume_exp_switch_is_session_scoped() -> None:

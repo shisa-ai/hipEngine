@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_shared_down_tail_host_batch",
+  "status": "retained_pending_clean_publication",
+  "source_revision": "a9aeae3a1391080d6c4e108ac647bf2e8955e913",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79022522196
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens": 128,
+    "measured_transitions": 127,
+    "prompt_id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "repetitions": 7,
+    "timing": "same-resident alternating control/candidate"
+  },
+  "candidate": {
+    "description": "Invoke the existing Q4/Q6 shared-down launch wrapper and the existing local256 D9 MoE-tail/next-RMSNorm launch wrapper back-to-back inside one native host call.",
+    "gpu_kernels_changed": false,
+    "arithmetic_changed": false,
+    "gpu_launches_removed": 0,
+    "expected_dispatches_per_token": 482,
+    "peer_backend_default": false,
+    "fallback": "The existing separate shared-down and D9 wrapper calls."
+  },
+  "leaf_result": {
+    "shape": {
+      "rows": 1,
+      "in_features": 1024,
+      "out_features": 3072
+    },
+    "samples": 9,
+    "iterations_per_sample": 500,
+    "q4": {
+      "separate_ms": 0.014246498,
+      "native_batch_ms": 0.014361432,
+      "change_percent": 0.80675
+    },
+    "q6": {
+      "separate_ms": 0.022877076,
+      "native_batch_ms": 0.022877074,
+      "change_percent": -0.00001
+    },
+    "interpretation": "The direct-wrapper leaf is neutral; the retained signal is the complete production Python/registry orchestration boundary."
+  },
+  "model_result": {
+    "control_tok_s": 22.14607377497528,
+    "candidate_tok_s": 22.154405455196578,
+    "throughput_change_percent": 0.03762147776600333,
+    "control_ms_per_token": 45.15473081869638,
+    "candidate_ms_per_token": 45.13774933036798,
+    "endpoint_wall_saving_ms_per_token": 0.016981488328397742,
+    "paired_wall_saving_ms_per_token": 0.02035755832774902,
+    "pair_wins": 7,
+    "pair_count": 7,
+    "control_decode_seconds": [
+      5.739070544950664,
+      5.73465081397444,
+      5.7344083301723,
+      5.734918250935152,
+      5.73464717483148,
+      5.739301223075017,
+      5.73455622792244
+    ],
+    "candidate_decode_seconds": [
+      5.735185594065115,
+      5.732494164956734,
+      5.731286101974547,
+      5.733997051138431,
+      5.7327629290521145,
+      5.731657115044072,
+      5.7319708180148154
+    ]
+  },
+  "correctness": {
+    "q4_shared_hidden_norm_bf16_bit_exact": true,
+    "q6_shared_hidden_norm_bf16_bit_exact": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "all_control_candidate_trajectories_exact": true,
+    "deterministic": true,
+    "tracked_allocations_recovered": true
+  },
+  "commands": {
+    "exact_fixture": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_native_launch_batch.py",
+    "model_gate": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --compare-shared-down-moe-tail-host-batch --allow-dirty --output /tmp/laguna-shared-down-tail-host-batch-screen-7.json"
+  },
+  "raw_artifact": {
+    "path": "/tmp/laguna-shared-down-tail-host-batch-screen-7.json",
+    "sha256": "373eb719853798193e9dc3361913a7bb4faa60d1a554c273b947b9b1c8186139"
+  },
+  "decision": {
+    "retained": true,
+    "reason": "The exact candidate wins all seven counterbalanced same-resident pairs. The small but repeatable orchestration saving is first-class under repository policy.",
+    "next": "Commit the capability-selected candidate, run tracked-clean selector-unset production, and trace that both unchanged GPU kernels still execute with 482 total dispatches per token."
+  }
+}

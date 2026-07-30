@@ -193993,3 +193993,38 @@ Vulkan local sizes verbatim will close the measured gap.
   Reopen only with a materially different within-evaluation batching mechanism
   that preserves local256-or-wider physical tail ownership. Evidence:
   `benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-moe-tail-rejected.json`.
+
+## 2026-07-30 22:18 JST — Retain exact shared-down/D9 native host batching
+
+- Implemented the materially different item-119 successor: a native host shim
+  invokes the existing Q4/Q6 shared-down wrapper and existing local256 D9
+  MoE-tail/next-RMSNorm wrapper back-to-back. GPU grids, kernels, arithmetic,
+  BF16 boundaries, stream order, and the **482-dispatch/token** target remain
+  unchanged; the separate registered calls remain fallback.
+- RED initially failed because the batch module did not exist. GREEN passes
+  production-shape K1024/N3072 Q4 and Q6 fixtures with zero shared, hidden, or
+  normalized BF16 mismatches. Focused registry/session tests pass. A broader
+  selected unit bundle also passed 15 nodes and exposed one pre-existing
+  unrelated `LagunaPrefillScratchPlan` byte-expectation failure
+  (**1,756,062,496 actual vs 1,756,061,728 expected**); this change adds no
+  device scratch and does not alter that planner.
+- The direct 9x500 wrapper leaf is neutral: Q4
+  **0.014246498 -> 0.014361432 ms (+0.807%)**, Q6
+  **0.022877076 -> 0.022877074 ms (parity)**. The bounded one-pair complete
+  screen was exact and positive (**22.109791 -> 22.153776 tok/s**), justifying
+  the full counterbalanced gate.
+- All seven same-resident p512/d128 pairs win:
+  **22.146074 -> 22.154405 tok/s (+0.03762%)**. Endpoint wall is
+  **45.154731 -> 45.137749 ms/token**; paired median saving is
+  **0.020358 ms/token**. Tokens remain **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, determinism, and allocation recovery
+  are exact. Raw SHA-256 is `373eb719...86139`.
+- Promote `LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH` for gfx1151. Next: commit
+  the admitted candidate, run tracked-clean selector-unset production, and
+  cache-only trace the unchanged projection/D9 calls and complete dispatch
+  count. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-retained.json`.
+- Required lineage inspection still stops before producing a report because
+  the read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+  No external kernel source was copied; this unit adds only a host-call shim
+  around already-retained in-tree launch wrappers.

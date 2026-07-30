@@ -6873,6 +6873,25 @@ The remaining attention sequence is:
      within-evaluation batching mechanism that retains local256-or-wider
      physical tail ownership:
      [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-moe-tail-rejected.json).
+120. Batch the unchanged shared-down and D9 launch wrappers in one native host
+     call. **Retained pending tracked-clean publication:** unlike item 119,
+     this does not move D9 arithmetic into the projection. The production Q4/
+     Q6 shared-down grids and the local256 D9 kernel are unchanged; only their
+     two host wrapper calls execute back-to-back before returning to Python.
+     The separate registered calls remain the exact fallback, and peer
+     backends remain disabled.
+
+     Production-shape Q4 and Q6 fixtures match every shared, hidden, and
+     normalized BF16 bit. The direct wrapper leaf is neutral
+     (**+0.807% Q4**, parity Q6), but the complete runtime seam wins all seven
+     alternating same-resident p512/d128 pairs:
+     **22.146074 -> 22.154405 tok/s (+0.03762%)**. Median endpoint wall falls
+     **45.154731 -> 45.137749 ms/token**, and paired median saving is
+     **0.020358 ms/token**. Every token, trajectory, position, repeat, and
+     allocation remains exact. Promote the gfx1151 capability, then require a
+     tracked-clean selector-unset production packet and cached trace proving
+     the unchanged **482-dispatch/token** topology:
+     [`retention`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-retained.json).
 
 Current exact decode checkpoint:
 

@@ -1,5 +1,12 @@
 """Small device-resident runtime state helpers."""
 
+from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
+    build_laguna_launch_batch,
+    laguna_q4_shared_down_tail_batch,
+    laguna_q6_shared_down_tail_batch,
+    plan_laguna_launch_batch_build,
+    register_laguna_launch_batch_kernels,
+)
 from hipengine.kernels.hip_gfx1100.runtime.state import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
@@ -39,6 +46,11 @@ __all__ = [
     "embedding_lookup_batch_mapped_fp16_i64",
     "embedding_lookup_bf16_i64",
     "embedding_lookup_fp16_i64",
+    "build_laguna_launch_batch",
+    "laguna_q4_shared_down_tail_batch",
+    "laguna_q6_shared_down_tail_batch",
+    "plan_laguna_launch_batch_build",
+    "register_laguna_launch_batch_kernels",
     "plan_runtime_state_build",
     "prepare_packed_decode_metadata",
     "prepare_packed_decode_metadata_from_positions",
