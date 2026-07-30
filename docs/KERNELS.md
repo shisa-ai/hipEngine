@@ -805,8 +805,17 @@ producer-inclusive weighted event/wall regresses **477.022/473.054 ->
 606.780/614.512 ms (+27.202%/+29.903%)**. The source-level 2.034x logical-byte
 model fails because coefficient loads and reconstruction ALU dominate. Remove
 every H5O symbol/key/test; H5L/H5G and gfx1151 remain unchanged. Do not retry
-coefficient reconstruction without a distinct operation-count premise
-([H5O rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
+coefficient reconstruction without a distinct operation-count premise. WPF-H5P
+selects one unmeasured post-schedule geometry cross: H5F's exact 4x16/16x4/8x8
+64-accumulator predecessors were screened only under output-tile-fast traversal,
+while H5L later inherited H5G's 8x12/16x5/12x8/8x10 choices under weight-major
+traversal without retuning. The five affected roles own **414.077 ms / 88.67%**
+of H5L Q5. Add only separate weight-major instantiations, preserving the F32
+producer and every K/FMA/wave/store operation; cached tracing must confirm
+scratch0 and expected VGPR **168/200 -> 136**, then producer-inclusive event and
+wall must both win per actual role. Production stays H5L pending those gates
+([H5P target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json) ·
+[H5O rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json) ·
 [H5O target](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-target.json) ·
 [H5N runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json) ·
 [H5N leaf](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-exact-candidate.json) ·

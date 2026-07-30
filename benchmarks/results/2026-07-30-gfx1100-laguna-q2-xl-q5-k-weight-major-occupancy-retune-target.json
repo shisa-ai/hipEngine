@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_weight_major_occupancy_retune_target_selection",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "67195c526",
+    "h5g_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-ordered-production.json",
+    "h5g_production_artifact_sha256": "cb6e5a7eb12fc9dcf0d8bfc876614c100ccb6d05958ec100358ec3c676189c36",
+    "h5l_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json",
+    "h5l_production_artifact_sha256": "742c7bb7abc99b11e9a116d8eb73bd40af56ad61ec738bd0394d69981af7a5e4",
+    "h5o_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-factorized-exact-plane-rejected.json",
+    "h5o_rejection_artifact_sha256": "b0555d5abe2a55fd440efec1df662716750ec9bf9a1e77699132bcf2bff54251",
+    "source": "net-new in-tree combination of retained H5F exact 64-accumulator geometries with H5L weight-major workgroup traversal; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "91c10513bc436d5dde95d86b9e75fdcda73d2bb1a0ba3621cd8770522c6217a2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "f3e987c5b4ecc7921403ca44e19640d2d3e1512b218811a030c7d38a724111a5",
+      "tests/test_gguf_q5_k_f32_rocblas_prefill.py": "71b4d787f1402a0106e8839da4a8601a17b63bf2484f4052fa0cd43ac465c1ad"
+    }
+  },
+  "production": {
+    "m512_tok_s": 238.56489443755876,
+    "m1024_tok_s": 218.1815612145882,
+    "m4096_tok_s": 158.13810004175082,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.909832989621587,
+    "request_kernel_sum_ms": 2060.485414,
+    "q5_family_ms": 465.6597829999998,
+    "q5_gap_ms": 406.7087529999998,
+    "q5_ratio_vs_matched": 7.899094943718536
+  },
+  "audit": {
+    "h5f_screen_scope": "lower-register exact geometries were measured only with output-tile-fast traversal",
+    "h5l_screen_scope": "weight-major traversal retained H5G's selected geometry for each role and did not cross-screen the preceding H5F geometry",
+    "combination_previously_measured": false,
+    "arithmetic_change": false,
+    "producer_change": false,
+    "workspace_change": false,
+    "persistent_sidecar_change": false,
+    "current_large_role_resources": "local128/VGPR168 or VGPR200/SGPR128/LDS1536/scratch0",
+    "candidate_resource_hypothesis": "local128/VGPR136/SGPR128/LDS1024/scratch0, based on the cached pre-shrink constant-64 class; must be confirmed physically",
+    "current_five_role_integrated_ms": 414.076575,
+    "current_five_role_percent_of_h5l_q5": 88.66998787570076,
+    "roles": [
+      {"name": "bf16_k3072_n12288", "calls": 2, "current_geometry": "8x12", "current_accumulators": 96, "candidate_geometry": "4x16", "candidate_accumulators": 64, "current_integrated_ms": 16.005809},
+      {"name": "bf16_k6144_n3072", "calls": 12, "current_geometry": "16x5", "current_accumulators": 80, "candidate_geometry": "16x4", "candidate_accumulators": 64, "current_integrated_ms": 27.121539},
+      {"name": "bf16_k9216_n3072", "calls": 35, "current_geometry": "12x8", "current_accumulators": 96, "candidate_geometry": "8x8", "candidate_accumulators": 64, "current_integrated_ms": 180.472054},
+      {"name": "f32_k3072_n6144", "calls": 12, "current_geometry": "16x5", "current_accumulators": 80, "candidate_geometry": "16x4", "candidate_accumulators": 64, "current_integrated_ms": 26.003412},
+      {"name": "f32_k3072_n9216", "calls": 35, "current_geometry": "8x10", "current_accumulators": 80, "candidate_geometry": "4x16", "candidate_accumulators": 64, "current_integrated_ms": 164.473761}
+    ]
+  },
+  "target": {
+    "label": "WPF-H5P exact weight-major occupancy retune",
+    "candidate": "separately registered weight-major instantiations of the exact H5F predecessor geometries on the five material H5G/H5L roles",
+    "preserved": "unchanged raw-Q5-to-F32 producer, row-group-inside-output-tile mapping, per-thread K ownership, scalar fmaf order, wave32 shuffle tree, serial wave-0..3 sum, BF16/F32 store, shared workspace, and H5L/H5G fallback",
+    "gfx1151_must_fail_closed": true,
+    "production_policy_changed": false
+  },
+  "closed_predecessors": {
+    "output_tile_fast_geometry": "H5F/H5G established 80/96 accumulators as faster under the old 2D output-tile-fast traversal",
+    "larger_geometry": "H5H constant-112/128 was universally slower and reached the VGPR256 spill cliff",
+    "factorized_plane": "H5O was exact but regressed producer-inclusive event/wall 27.202%/29.903% on every role",
+    "changed_association": "Q8_1/WMMA/SGEMM paths remain quality-rejected"
+  },
+  "admission": {
+    "red_first": "separate gfx1100-only symbols/keys, rows17/33 byte identity against each current H5L composite, strict preflight, and production-policy immutability",
+    "resources": "cached tracing must physically show the expected candidate symbols, scratch0, and a lower register class than each current 80/96-accumulator owner",
+    "performance": "actual five roles/96 calls; unchanged producer included in both arms; five warmups, 15 counter-rotated samples, five launches/sample; HIP-event and synchronized-wall medians; retain only roles winning both clocks",
+    "runtime_gate_if_admitted": "bounded default-off role policy, complete natural-M512 state, exact integrated call counts, and clean 512/1K/4K non-regression",
+    "rejection": "remove every candidate surface if no role wins both clocks"
+  },
+  "decision": {
+    "selected": true,
+    "production_changed": false,
+    "next_action": "Freeze RED and screen exact H5F predecessor geometries under H5L weight-major traversal; do not alter package policy before leaf admission."
+  }
+}
