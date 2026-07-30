@@ -193296,3 +193296,36 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-production.json`.
 - Next: collect the cached-build post-sidecar 127-transition wall census and
   rank the remaining families against the same-GGUF Vulkan logger.
+
+## 2026-07-30 15:47 JST — Re-profile post-T16-sidecar decode wall
+
+- A tracked-clean cached-build `rocprofv3` run on `16f1561d6` records 127
+  exact one-token segments at **673 dispatches/token**. Median kernel sum is
+  **43.972461 ms/token** and span is **46.007636 ms/token**.
+- The trace exposed one attribution bug: the new fused T16 dense/shared
+  gate/up symbol contained `silu` and fell into activation/post-op instead of
+  dense/shared quant. RED adds the real symbol to the classifier fixture;
+  GREEN adds the explicit dense-T16 marker and all 36 profile tests pass.
+  Measurement values and raw trace are unchanged.
+- Against the post-dense-global census, dense/shared quant falls
+  **3.517759 -> 2.405727 ms/token (-31.612%)**, kernel sum falls
+  **1.115899 ms/token (-2.475%)**, and span falls
+  **1.131601 ms/token (-2.401%)**. Every unrelated family remains stable.
+- The fresh same-GGUF Vulkan logger records **43.6592 ms/token** of summed GPU
+  operations and **1,150 dispatches/token**. hipEngine's kernel sum is now
+  only **0.313261 ms/token (+0.718%)** higher. Its remaining profiled span
+  contains **2.035 ms/token** of submission idle: one active decode queue,
+  zero median kernel overlap, 672 gaps/token, median spacing **1.963 us**.
+- Family comparison now ranks selected gate/up **+0.524828 ms/token**,
+  dense/shared quant **+0.405838**, attention **+0.473329**, and selected down
+  **+0.259006**. The dense family split is more actionable than its aggregate:
+  compact T16 gate/up already beats Vulkan **1.104075 vs 1.197546**, while
+  Q4/Q6 pack8 down loses **1.298236 vs 0.802343 ms/token**, leaving
+  **0.495893 ms/token**.
+- No compiler ran under the profiler. Trace/bench/Vulkan-summary SHA-256 are
+  `82f34859...a82a4f9`, `c8a96ed9...e8c5e36`, and
+  `e83207e6...d0022b`. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-post-t16-sidecar-wall-reprofile.json`.
+- Next: remove the completed comparison selector and screen compact exact
+  Q4/Q6 dense/shared down consumers. Do not repeat unchanged graph replay,
+  AQL, or packet mechanisms; those submission mechanisms are already closed.
