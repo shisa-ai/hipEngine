@@ -194067,3 +194067,38 @@ Vulkan local sizes verbatim will close the measured gap.
 - The constructor rollback, gfx1151 capability, four-axis Q4/Q6 batch
   registrations, native host shim, and exact separate-call fallback remain
   unchanged.
+
+## 2026-07-30 22:54 JST — Reject selected gate/down pair-only host batching
+
+- Reviewed llama.cpp Vulkan `c0bc8591e`: its backend records dependent graph
+  work into command buffers and submits by a dynamic FLOP budget or at most
+  100 nodes. This is graph-wide within-evaluation scheduling, not one host
+  submission per shader and not equivalent to whole-token HIP graph replay.
+- Built an exact pair-only native host shim around the retained Q4 selected
+  gate/up wrapper and retained Q4/planar-Q6 route-parallel weighted
+  selected-down wrapper. GPU kernels, grids, stream order, intermediate BF16
+  boundary, completion protocol, residency, and the 482-kernel/token topology
+  were unchanged.
+- RED/GREEN production-shape fixtures passed for Q4 and Q6 with zero
+  intermediate/down/routed BF16 mismatches and the complete 192-counter planes
+  reset. Focused native-batch, gfx1151 registry, MoE-plan, and eager-plan tests
+  passed. A transient broader-fixture failure was traced to the new test
+  allocating one counter instead of the production-required 192; correcting
+  the fixture made repeated and complete focused runs pass.
+- The bounded first p512/d128 pair was exact and positive
+  (**22.137266 -> 22.160960 tok/s**), but the required seven-pair gate rejects
+  it. Candidate wins only **2/7**; medians change
+  **22.135206 -> 22.130210 tok/s (-0.02257%)**,
+  **45.176900 -> 45.187100 ms/token**, and the paired median adds
+  **0.012343 ms/token**. Tokens remain **2930/74107**, trajectory
+  `94f803f7...bda32`, final position 638, state deterministic, and all
+  **79,022,522,196 bytes** recover.
+- Removed the shim extension, wrapper/registry routes, plan/runtime/session
+  selector, comparison protocol, and candidate tests. Production remains
+  **22.141787 tok/s**. Do not reopen pair-only native wrapper batching; the
+  next scheduling design must span a materially larger within-layer graph or
+  remove real GPU launches. Evidence:
+  `benchmarks/results/2026-07-30-gfx1151-laguna-selected-gate-down-host-batch-rejected.json`.
+- The required lineage command still stops before producing a report because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external kernel
+  source was copied.

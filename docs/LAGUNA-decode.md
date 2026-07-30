@@ -6902,6 +6902,29 @@ The remaining attention sequence is:
      plus 23 Q6 shared-down→D9 pairs and 47 local256 D9 calls. No compiler ran
      under the profiler. Remove only the admitted comparison seam:
      [`clean production`](../benchmarks/results/2026-07-30-gfx1151-laguna-shared-down-tail-host-batch-production.json).
+121. Batch the unchanged selected gate/up and route-parallel weighted
+     selected-down wrappers in one native host call. **Rejected and removed:**
+     the Q4 gate/up, Q4/planar-Q6 down, grids, stream order, intermediate BF16
+     boundary, completion protocol, and **482-kernel/token** topology remain
+     unchanged. Production-shape fixtures match every intermediate, all ten
+     projected rows, routed output, and the full 192-counter reset plane.
+
+     The favorable first pair (**22.137266 -> 22.160960 tok/s**) does not
+     survive the seven-pair gate. Candidate wins only **2/7** pairs; endpoint
+     medians change **22.135206 -> 22.130210 tok/s (-0.02257%)**, adding
+     **0.010200 ms/token**, while the paired median adds
+     **0.012343 ms/token**. Remove the shim extension, registry routes,
+     session selector, comparison harness, and tests. Production remains the
+     item-120 **22.141787 tok/s** path:
+     [`rejection`](../benchmarks/results/2026-07-30-gfx1151-laguna-selected-gate-down-host-batch-rejected.json).
+
+     This narrows the Vulkan lesson. Revision `c0bc8591e` records a dependent
+     graph into command buffers and submits by a FLOP budget or at most 100
+     nodes. Nesting only two existing HIP launch wrappers does not reproduce
+     that graph-wide submission behavior, even when a profiler-visible
+     producer/consumer gap is large. The next scheduling candidate must span
+     a materially larger within-layer transaction or remove actual GPU
+     launches; do not reopen another pair-only native wrapper batch.
 
 Current exact decode checkpoint:
 
