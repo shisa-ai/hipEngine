@@ -30,6 +30,7 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_tiled_bf16_f32_out,
         laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
@@ -111,6 +112,15 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
             variant="fixedk_onebarrier_bf16_f32_out",
         )
         is laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_quad",
+            quant="fp16_weight",
+            variant="fixedk_onebarrier_bf16_f32_out",
+        )
+        is laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out
     )
 
 
@@ -230,6 +240,86 @@ def test_laguna_f16_projection_runtime_uses_resident_weight_abi() -> None:
         (
             (10, 11, 12, 13, 20, 21, 22, 2, 3072, 6144, 1024, 1024),
             {"threads": 128, "stream": 7, "runtime": "sentinel"},
+        )
+    ]
+
+
+def test_laguna_f16_projection_quad_runtime_uses_resident_weight_abi() -> None:
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        register_laguna_f16_projection_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, register
+    from hipengine.runtime.f16_weight_linear import launch_f16_weight_linear_quad
+
+    register_laguna_f16_projection_kernels()
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_quad",
+        "fp16_weight",
+        "fixedk_onebarrier_bf16_f32_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    weights = tuple(
+        SimpleNamespace(
+            backend="hip_gfx1100",
+            spec=SimpleNamespace(layout="dense_f16", quant_key="fp16"),
+            allocation=lambda name, ptr=ptr: SimpleNamespace(
+                tensor=SimpleNamespace(ptr=ptr)
+            ),
+        )
+        for ptr in (11, 12, 13, 14)
+    )
+    try:
+        launch_f16_weight_linear_quad(
+            *weights,
+            x_ptr=10,
+            out_a_ptr=20,
+            out_b_ptr=21,
+            out_c_ptr=22,
+            out_d_ptr=23,
+            rows=1,
+            in_features=3072,
+            out_a_features=9216,
+            out_b_features=1024,
+            out_c_features=1024,
+            out_d_features=72,
+            stream=7,
+            runtime="sentinel",
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (
+                10,
+                11,
+                12,
+                13,
+                14,
+                20,
+                21,
+                22,
+                23,
+                1,
+                3072,
+                9216,
+                1024,
+                1024,
+                72,
+            ),
+            {"threads": 256, "stream": 7, "runtime": "sentinel"},
         )
     ]
 
@@ -803,6 +893,84 @@ def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
             np.testing.assert_array_equal(
                 _download(candidate, shape, dtype, runtime),
                 _download(baseline, shape, dtype, runtime),
+            )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_quad_matches_triple_plus_single_bytes() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection,
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
+        laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
+        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
+    )
+
+    rng = np.random.default_rng(0x4AD)
+    rows, in_features = 1, 3072
+    widths = (33, 8, 9, 7)
+    x_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    weights = tuple(
+        rng.normal(0.0, 0.1, size=(width, in_features)).astype(np.float16)
+        for width in widths
+    )
+    runtime = get_hip_runtime()
+    library = build_laguna_f16_projection(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        device_weights = tuple(
+            _upload(weight, runtime, allocations) for weight in weights
+        )
+        baseline = tuple(
+            _alloc((rows, width), np.float32, runtime, allocations)
+            for width in widths
+        )
+        candidate = tuple(
+            _alloc((rows, width), np.float32, runtime, allocations)
+            for width in widths
+        )
+
+        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights[:3]),
+            *(out.ptr for out in baseline[:3]),
+            rows,
+            in_features,
+            *widths[:3],
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            device_weights[3].ptr,
+            baseline[3].ptr,
+            rows,
+            in_features,
+            widths[3],
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            *(out.ptr for out in candidate),
+            rows,
+            in_features,
+            *widths,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for expected, actual, width in zip(baseline, candidate, widths, strict=True):
+            np.testing.assert_array_equal(
+                _download(actual, (rows, width), np.float32, runtime),
+                _download(expected, (rows, width), np.float32, runtime),
             )
     finally:
         for allocation in reversed(allocations):

@@ -491,6 +491,18 @@ Production selection is pending the resident gate:
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
+The source-F16 catalog now also includes a separately registered
+`linear_quad/fixedk_onebarrier_bf16_f32_out` c=1 diagnostic in
+`hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.hip`, exposed by
+`launch_f16_weight_linear_quad(...)`. One grid selects Q, K, V, or gate while
+preserving every output column's retained local256 K order and reduction tree;
+the registered triple plus singleton remains the unfused fallback. The
+focused K3072 gfx1151 device fixture is F32-bit exact. Cached tracing names
+`laguna_f16w_quad_fixedk_onebarrier_gemv_kernel<3072>` at
+local256/VGPR24/SGPR128/LDS512/scratch0 and measures **8.095 us** on a tiny
+33+8+9+7-output fixture versus **20.277 us** for the two retained launches.
+Production remains unchanged pending the same-resident p512/d128 gate.
+
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
 | `embedding` variant `lookup_bf16_out` | `gguf_q4_k`, `gguf_q5_k` | `hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip` | `gguf_q4_k_embedding_bf16_out(...)`, `gguf_q5_k_embedding_bf16_out(...)`, registry-driven `launch_gguf_embedding(...)` | Net-new gfx11 raw-Q4_K/Q5_K row dequant for Laguna target/DFlash roots. Synthetic Q4_K lookup is BF16-exact vs CPU, invalid token IDs preserve caller output rows, and the real S 2.1 root chain (Q4 embedding -> F32-weight RMSNorm -> Q6T16 full logits -> GPU argmax) gives embedding/norm max-abs `0`, logits KL `6.87e-13`, top-1 `81364 == 81364`, and finite 100,352-way logits on gfx1151. Cached `rocprofv3 --kernel-trace` shows `gguf_q4_k_embedding_bf16_out_kernel` at `9.818 us`, 16 VGPR, zero scratch/LDS, followed by the expected norm, Q6T16, and argmax kernels. The pinned Q2 XL Q5_K root is BF16-exact against direct GGUF dequant for four repeated/unique rows; cached W7900 tracing names `gguf_q5_k_embedding_bf16_out_kernel` at `12.440 us`. `scripts/laguna_root_probe.py`; `/tmp/laguna-root-rocprof-result.json`. |
