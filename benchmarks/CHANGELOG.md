@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-01
 
+- [accepted matched gfx1100 Laguna Q2 XL post-H6N residual / WPF-H6P target] Radeon Pro W7900 / clean fixed natural C4096/direct-M512 H6N reaches **386.959 tok/s**, **+128.272%** over campaign start and **1.79952x** behind exact llama.cpp HIP **696.342**. The exact **1,309.339-ms / 2,192-dispatch** request has Q5/IQ-down/attention/Q6 gaps **195.952/191.674/126.480/72.532 ms** while gate/up is **3.851 ms faster** than llama.cpp. Q5 is closed; select target-only H6P staged-wave-publication IQ3 on H6I's **337.443 ms / 45 calls**, preserving 216 FMAs/stride `0x300`/rowbatch8/eight barriers/grid/bytes while requiring VGPR **<=128** and **45/45** both-clock wins; `benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json`.
 - [promoted exact gfx1100 Laguna Q2 XL WPF-H6N global fixed-512 production] Radeon Pro W7900 / selector-unset fixed C4096/M512 improves H6A rollback -> H6N source **381.772 -> 387.571 tok/s (+1.519%, 5/5 wins)**, **+128.633%** over campaign start and **1.79668x** behind matched llama.cpp HIP **696.342**. Selector-unset 512/1K/4K moves **363.520/295.622/188.755 -> 363.324/296.211/188.858 tok/s (-0.054%/+0.199%/+0.054%)** with exact/finite outputs and clean lifecycle; 4K wins **3/3**. Promote only the one global package-map value, retain H6A global rollback and H6A SWA, keep gfx1151 excluded, and pass **81/81** guards; `benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json`.
 
 ## 2026-07-31
