@@ -20,6 +20,7 @@ from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
 )
 from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import build_moonshine_glue
 from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import build_moonshine_mlp
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv
 from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     build_moonshine_projection,
 )
@@ -59,6 +60,7 @@ def _build_all(compiler_version: str, *, load: bool, require_cached: bool):
         builder(**arguments)
         for builder in (
             build_moonshine_projection,
+            build_dense_gemv,
             build_moonshine_layernorm,
             build_moonshine_glue,
             build_moonshine_mlp,

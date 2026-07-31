@@ -24,6 +24,13 @@ from hipengine.loading.moonshine import MoonshineLoadedModel, load_moonshine_mod
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
+MOONSHINE_CROSS_KV_THREADS = 32
+MOONSHINE_TRIPLE_QKV_THREADS = 32
+MOONSHINE_SINGLE_PROJECTION_THREADS = 64
+MOONSHINE_MLP_FC1_THREADS = 32
+MOONSHINE_MLP_FC2_THREADS = 64
+
+
 class NoAllocationError(RuntimeError):
     """Raised when a future timed region allocates through hipEngine memory."""
 
@@ -39,6 +46,7 @@ class MoonshineDecoderLibraries:
     """Prebuilt code objects used by the unfused decoder chain."""
 
     projection: object
+    dense_projection: object
     layernorm: object
     glue: object
     mlp: object
@@ -327,6 +335,9 @@ class MoonshineResidentRuntime:
             from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import (
                 build_moonshine_mlp,
             )
+            from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+                build_dense_gemv,
+            )
             from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
                 build_moonshine_projection,
             )
@@ -341,6 +352,7 @@ class MoonshineResidentRuntime:
             }
             libraries = MoonshineDecoderLibraries(
                 projection=build_moonshine_projection(**arguments),
+                dense_projection=build_dense_gemv(**arguments),
                 layernorm=build_moonshine_layernorm(**arguments),
                 glue=build_moonshine_glue(**arguments),
                 mlp=build_moonshine_mlp(**arguments),
@@ -416,6 +428,7 @@ class MoonshineResidentRuntime:
                 self.spec.decoder_kv_heads * self.spec.head_dim,
                 self.spec.decoder_kv_heads * self.spec.head_dim,
                 self.spec.head_dim,
+                threads=MOONSHINE_CROSS_KV_THREADS,
                 stream=self.stream,
                 library=libraries.projection,
                 runtime=self.runtime,
@@ -488,9 +501,11 @@ class MoonshineResidentRuntime:
         from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import (
             moonshine_gated_silu_fp16,
         )
+        from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+            dense_gemv_out_fp16,
+        )
         from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
             moonshine_f16_lm_head_projection,
-            moonshine_f16_projection,
             moonshine_f16_projection_bias,
             moonshine_f16_projection_triple,
         )
@@ -543,6 +558,7 @@ class MoonshineResidentRuntime:
                 spec.hidden_size,
                 spec.hidden_size,
                 spec.hidden_size,
+                threads=MOONSHINE_TRIPLE_QKV_THREADS,
                 library=libraries.projection,
                 **common,
             )
@@ -578,14 +594,15 @@ class MoonshineResidentRuntime:
                 library=libraries.attention,
                 **common,
             )
-            moonshine_f16_projection(
+            dense_gemv_out_fp16(
                 attention.ptr,
                 self.weights[f"{prefix}.self_attn.o_proj.weight"].ptr,
                 projection.ptr,
                 1,
                 spec.hidden_size,
                 spec.hidden_size,
-                library=libraries.projection,
+                threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
+                library=libraries.dense_projection,
                 **common,
             )
             moonshine_residual_fp16(
@@ -608,14 +625,15 @@ class MoonshineResidentRuntime:
                 library=libraries.layernorm,
                 **common,
             )
-            moonshine_f16_projection(
+            dense_gemv_out_fp16(
                 normalized.ptr,
                 self.weights[f"{prefix}.encoder_attn.q_proj.weight"].ptr,
                 query.ptr,
                 1,
                 spec.hidden_size,
                 spec.hidden_size,
-                library=libraries.projection,
+                threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
+                library=libraries.dense_projection,
                 **common,
             )
             cross_cache = self.cross_cache(layer)
@@ -631,14 +649,15 @@ class MoonshineResidentRuntime:
                 library=libraries.attention,
                 **common,
             )
-            moonshine_f16_projection(
+            dense_gemv_out_fp16(
                 attention.ptr,
                 self.weights[f"{prefix}.encoder_attn.o_proj.weight"].ptr,
                 projection.ptr,
                 1,
                 spec.hidden_size,
                 spec.hidden_size,
-                library=libraries.projection,
+                threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
+                library=libraries.dense_projection,
                 **common,
             )
             moonshine_residual_fp16(
@@ -669,6 +688,7 @@ class MoonshineResidentRuntime:
                 1,
                 spec.hidden_size,
                 2 * spec.intermediate_size,
+                threads=MOONSHINE_MLP_FC1_THREADS,
                 library=libraries.projection,
                 **common,
             )
@@ -688,6 +708,7 @@ class MoonshineResidentRuntime:
                 1,
                 spec.intermediate_size,
                 spec.hidden_size,
+                threads=MOONSHINE_MLP_FC2_THREADS,
                 library=libraries.projection,
                 **common,
             )
