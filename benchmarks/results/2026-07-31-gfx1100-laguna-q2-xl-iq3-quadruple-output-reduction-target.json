@@ -1,0 +1,173 @@
+{
+  "admission": {
+    "anti_gaming": "The candidate is fixed solely by quant and the K1024/N3072/E256 production shape; no token, prompt, route, expert-ID, output, or timing-dependent selection is allowed.",
+    "leaf_performance": "Use natural-M512 routing and all 45 actual IQ3 weights, five warmups, at least 15 counter-rotated samples, and five launches/sample. Every complete output must match H6I byte-for-byte and every layer must improve both HIP-event and synchronized-wall medians. Any failure removes every H6K surface.",
+    "physical": "Require a cached code object and rocprof proof of output stride 0x400, three loop epochs, six dynamic barriers per rowbatch, 288 useful FMAs for four outputs, private0/spill0/scratch0, metadata and runtime VGPR <=224, LDS <=1024 bytes, and unchanged local128/grid32768x64. Do not infer occupancy from metadata alone.",
+    "red_first": "Before executable changes, freeze a separately named gfx1100 H6I sibling over rows1/7/8/9/M512, active-count P64/P65, reversed traversal, every first/middle/last quadruplet boundary, complete H6I bytes, sampled independent CPU bytes, exact 104370208-byte MoE scratch, unchanged source map/ABI map, strict K1024/N3072/E256 preflight, and gfx1151 absence.",
+    "runtime_if_leaf_admitted": "Only after the leaf gate passes, freeze a separate default-off capability through the existing grouped_raw_iq_active_experts ABI/raw allocation/library. Require complete natural-M512 state, exact 45-call cached topology, unchanged 161120256-byte workspace/600141856-byte total scratch, and clean one-queue 512/1K/4K wins.",
+    "source_if_runtime_admitted": "Require a separate source-default RED, fixed natural C4096/direct-M512 and selector-unset 512/1K/4K exact paired wins before changing H6I production."
+  },
+  "baseline": {
+    "current_owner": "WPF-H6I exact IQ3 triple-output reduction amortization",
+    "h6i_iq3_calls": 45,
+    "h6i_iq3_trace_ms": 333.716945,
+    "h6i_runtime_resources": "local128/VGPR168/SGPR128/LDS512/scratch0/grid-x32768/grid-y64",
+    "iq_down_family_ms": 342.20882100000006,
+    "iq_down_gap_ms": 187.77484700000005,
+    "iq_down_llamacpp_ms": 154.433974,
+    "llamacpp_over_current": 1.9344814001349913,
+    "matched_c4096_direct_m512_tok_s": 359.9631404837535,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "production_revision": "eecf0c690495c854584c345cd5fae78ee65b600f",
+    "representative_kernel_sum_ms": 1409.540287,
+    "selection_base_revision": "39cd962d2"
+  },
+  "correctness_claim": false,
+  "date": "2026-07-31",
+  "decision": {
+    "next_action": "Commit this target-only packet, freeze WPF-H6K RED, then implement and screen only the exact quadruple-output leaf against all 45 actual IQ3 layers.",
+    "performance_claim": false,
+    "production_changed": false,
+    "runtime_owner_added": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_quadruple_output_reduction_target",
+  "model": {
+    "expert_count": 256,
+    "in_features": 1024,
+    "matrix_rows": 512,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "top_k": 10
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "selection_model_not_a_performance_claim": {
+    "current_request_seconds": 1.422367854975164,
+    "current_tok_s": 359.9631404837535,
+    "event": {
+      "fitted_fixed_ms": 259.50263900756835,
+      "fitted_per_epoch_ms": 17.17595672607422,
+      "h6f_6_epoch_ms": 362.55837936401366,
+      "h6i_4_epoch_ms": 328.2064659118652,
+      "modeled_h6i_to_h6k_saving_ms": 17.17595672607422,
+      "modeled_h6i_to_h6k_speedup": 1.0552227393095202,
+      "modeled_h6k_3_epoch_ms": 311.030509185791
+    },
+    "method": "fit fixed plus epoch-proportional time through retained all-45-layer H6F six-epoch and H6I four-epoch sums; evaluate H6K at three epochs",
+    "modeled_request_seconds": 1.4088040511123836,
+    "modeled_tok_s": 363.42882432494974,
+    "modeled_tok_s_gain": 3.4656838411962667,
+    "synchronized_wall": {
+      "fitted_fixed_ms": 278.2123207580298,
+      "fitted_per_epoch_ms": 13.563803862780333,
+      "h6f_6_epoch_ms": 359.5951439347118,
+      "h6i_4_epoch_ms": 332.46753620915115,
+      "modeled_h6i_to_h6k_saving_ms": 13.563803862780333,
+      "modeled_h6i_to_h6k_speedup": 1.042532596790207,
+      "modeled_h6k_3_epoch_ms": 318.9037323463708
+    },
+    "warning": "This two-point extrapolation ignores added register pressure and compiler scheduling. It selects a screen only and cannot justify retention or publication."
+  },
+  "source_evidence": {
+    "closed_q5_audit": {
+      "conclusion": "No new static mechanism: H5Y already uses weight-major ownership, admitted tile-K-col float4 records, packed activation-row loads, private0, and scratch0; H6G separately proved compiler lookahead waits without useful FMA overlap.",
+      "h5y_hip_sha256": "edc73b008c0c63f01fce641e33e93e2a0d24288caadc60c0d9b41a6579966d98",
+      "h5y_python_sha256": "c51c3754b855288786a5e2855cabe5defa5ef8480cfe068109f25bc53f4b5d25"
+    },
+    "h6i_candidate": {
+      "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json",
+      "sha256": "7c4def811ac0d76a02aa43a1d66ac3de347476af1e25005fa375b557aa4c725d"
+    },
+    "h6i_frozen_body_sha256": {
+      "kernel": "c5c09756a7ba62bdddbb102936e9f19365f5d8e504e1a44c969a94484a71a535",
+      "reduce_local128_triples_batched": "8becc8a7ba1e6c57f9725b1933210310873eb9fdc8d65b5e053afab92b2739a1"
+    },
+    "h6i_production": {
+      "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json",
+      "sha256": "3d15f36474baae1a01588fc8426039afec8ad1d9477f63daf00b53b5f72a204a"
+    },
+    "h6j_rejection": {
+      "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json",
+      "sha256": "c24ec84e40be2b5727e1960ebc127872d262bf4042d2a1318b382f0a7bc20dd4"
+    },
+    "lineage_report_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "live_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "488b3cb9d355072534f2e9ba997c7ce5176dc1402637baca082451f78dae686b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "35f91534188f9e254e063ed68f0a3f41543ebcd5e79d029b3c3cf5596fb0cad0",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "743d62d05ba81e73889d67f7451369e89dc5f20fcef5f61cf714a91698acdd6d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "edc73b008c0c63f01fce641e33e93e2a0d24288caadc60c0d9b41a6579966d98",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "c51c3754b855288786a5e2855cabe5defa5ef8480cfe068109f25bc53f4b5d25",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "56d70376ac980228bbc22fe8dfe4b92b5bd4f731091315b36bdcc615940a91e8",
+      "hipengine/runtime/laguna_moe.py": "12214eac397cc215d1ffc9e08feb92d4e4cd7980f45ed76c61a37b8d810d09dd"
+    },
+    "post_h6i_residual": {
+      "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json",
+      "sha256": "de67a174ae6cfe9f8de54e366e20620da530b853bc3a26ac959332ad72e36e23"
+    },
+    "source": "Net-new in-tree H6I sibling; no external device body will be copied."
+  },
+  "status": "target_selected_no_new_performance_claim",
+  "target": {
+    "backend": "hip_gfx1100",
+    "id": "WPF-H6K",
+    "layer": "moe_linear",
+    "name": "exact IQ3 quadruple-output reduction amortization",
+    "operation": "Carry four independent H6I/H6D P256 outputs through one local128 wave0..3 publication and one reuse barrier while preserving each output's IQ3 segment loads, row-interleaved VOPD FMA order, wave32 tree, serial wave0..3 sum, BF16 store, address, and active traversal.",
+    "quant": "gguf_iq3_xxs",
+    "resource_projection_not_a_gate_result": {
+      "h6f_metadata_vgpr": 146,
+      "h6f_runtime_vgpr": 152,
+      "h6i_metadata_vgpr": 164,
+      "h6i_runtime_vgpr": 168,
+      "method": "one more measured H6F-to-H6I increment; compile and rocprof evidence is mandatory",
+      "projected_h6k_metadata_vgpr": 182,
+      "projected_h6k_runtime_vgpr": 184,
+      "projection_is_not_measured": true
+    },
+    "shape_scope": {
+      "actual_production_calls": 45,
+      "column_formula": "p + epoch*1024 + member*256 for p in [0,255], epoch in [0,2], member in [0,3]",
+      "columns_per_partition": 12,
+      "expert_partitions": 64,
+      "in_features": 1024,
+      "local_size": 128,
+      "only_complete_quadruplets": true,
+      "out_features": 3072,
+      "output_partitions": 256,
+      "quadruplets_per_partition": 3,
+      "row_batch": 8
+    },
+    "static_schedule": {
+      "accumulator_scalars_per_thread_h6i": 24,
+      "accumulator_scalars_per_thread_h6k": 32,
+      "h6f_dynamic_barriers_per_rowbatch": 12,
+      "h6f_epochs_per_rowbatch": 6,
+      "h6f_outputs_per_epoch": 2,
+      "h6i_dynamic_barriers_per_rowbatch": 8,
+      "h6i_epochs_per_rowbatch": 4,
+      "h6i_outputs_per_epoch": 3,
+      "h6i_to_h6k_barrier_reduction_percent": 25.0,
+      "h6i_to_h6k_epoch_reduction_percent": 25.0,
+      "h6k_dynamic_barriers_per_rowbatch": 6,
+      "h6k_epochs_per_rowbatch": 3,
+      "h6k_outputs_per_epoch": 4,
+      "package_policy_changed": false,
+      "persistent_sidecar_bytes": 0,
+      "source_wave_sum_bytes_h6i": 384,
+      "source_wave_sum_bytes_h6k": 512,
+      "weights_activation_bytes_and_useful_math_unchanged": true,
+      "workspace_changed": false
+    },
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_quadruple_output_rowbatch8_bf16_bf16_out"
+  }
+}
