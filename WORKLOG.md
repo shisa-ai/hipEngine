@@ -195664,3 +195664,38 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **22.873989 tok/s / 43.717779 ms/token**.
 - Updated evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json`.
+
+## 2026-07-31 13:52 JST — Retain decode-only normal-priority shared MoE
+
+- Revalidated the old global shared-stream priority policy against the current
+  production topology. Two independent shared-weight sessions and seven
+  alternating p512/d128 pairs move decode
+  **22.861957 -> 22.886218 tok/s (+0.10612%, 6/7 wins)**, saving
+  **0.046369 ms/token** by endpoint medians. Normal priority simultaneously
+  regresses p512 **653.056 -> 649.008 tok/s (-0.61973%)**, so reject a global
+  flip. Raw SHA-256 is `0c458074...e4d`.
+- RED extends the owned-session lifecycle fixture with a separate priority-0
+  c=1 stream and fails on the absent constructor contract. GREEN adds a
+  gfx1151-scoped capability, constructor rollback, toggle, exact decode stream
+  selection, and reverse-order close. Prefill keeps the retained least-priority
+  +1 stream; c=1 may use the new normal-priority stream. No kernel, arithmetic,
+  launch, weight, scratch, or tracked allocation changes.
+- The decisive same-session gate allocates both streams before timing and
+  toggles only the c=1 stream. All seven p512/d128 candidates improve
+  **22.869628 -> 22.891888 tok/s (+0.097334%)**, saving
+  **0.042519 ms/token** by endpoint medians and **0.038251 ms/token** by paired
+  median. Both arms use the same low-priority prefill path.
+- Every run preserves token **2930 -> 74107**, position **638**, trajectory SHA
+  `94f803f7...bda32`, repeat determinism, and allocation recovery. Raw SHA-256
+  is `91fd667a...57db6`. Two targeted backend/session tests pass; Python
+  compilation, CLI exposure, and diff checks pass. The adjacent backend/runner
+  bundle passes **73/74**; its only failure is the unchanged stale
+  `LagunaPrefillScratchPlan` byte expectation (**104,370,208** expected versus
+  **104,370,976** current), unrelated to stream scheduling or allocation.
+- Default gfx1151
+  `LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY=true`; constructor/CLI false keeps
+  the previous all-low-priority rollback. Keep the public headline at
+  **22.873989 tok/s / 43.717779 ms/token** until a tracked-clean selector-unset
+  publication.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-retained.json`.

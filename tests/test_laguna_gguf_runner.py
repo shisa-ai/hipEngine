@@ -1300,6 +1300,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     class Runtime:
         def __init__(self) -> None:
             self.next_event = 102
+            self.next_stream = 101
 
         def stream_priority_range(self) -> tuple[int, int]:
             return 1, -1
@@ -1311,8 +1312,13 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
             priority: int | None = None,
         ) -> int:
             assert nonblocking is True
-            assert priority == 1
-            return 101
+            if self.next_stream == 101:
+                assert priority == 1
+            else:
+                assert priority is None
+            stream = self.next_stream
+            self.next_stream += 1
+            return stream
 
         def event_create(self, *, flags: int = 0) -> int:
             assert flags == 0x2
@@ -1321,8 +1327,12 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
             return event
 
         def stream_destroy(self, stream: int) -> None:
-            assert stream == 101
-            events.append("moe_shared_stream")
+            events.append(
+                {
+                    101: "moe_shared_stream",
+                    102: "moe_decode_shared_stream",
+                }[stream]
+            )
 
         def event_destroy(self, event: int) -> None:
             events.append(
@@ -1437,6 +1447,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
         global_prefill_variant="global_context_rows_qrow2_online_spans",
+        moe_decode_shared_normal_priority=True,
     )
     assert session.prefill_chunk_size == 2_048
     assert session.prefill_attention_chunk_size == 128
@@ -1499,11 +1510,15 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.moe_shared_after_router is False
     assert session.moe_shared_low_priority is True
     assert session.moe_shared_priority_range == (1, -1)
+    assert session.moe_decode_shared_normal_priority is True
+    session.set_moe_decode_shared_normal_priority(False)
+    assert session.moe_decode_shared_normal_priority is False
     assert session.verifier_scratch is None
     session.close()
     session.close()
 
     assert events == [
+        "moe_decode_shared_stream",
         "moe_shared_stream",
         "moe_shared_output_ready",
         "moe_shared_input_ready",

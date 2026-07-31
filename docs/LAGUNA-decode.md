@@ -7950,6 +7950,33 @@ The remaining attention sequence is:
      valid proxy for complete decode:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json).
 
+157. Split the retained shared-MoE priority policy by workload.
+     **Retained as the gfx1151 default; clean publication pending.**
+
+     A direct policy recheck first compares complete sessions. Moving the
+     existing shared stream from least priority **+1** to normal priority
+     improves p512/d128 decode **22.861957 -> 22.886218 tok/s (+0.106%)**
+     with **6/7** wins, but regresses the p512 median
+     **653.056 -> 649.008 tok/s (-0.620%)**. A global priority flip therefore
+     trades away the retained prefill win.
+
+     The admitted design keeps the existing +1 stream for every bulk/prefill
+     call and allocates one priority-0 stream only for c=1 shared MoE. With
+     both streams already resident in one session, seven counterbalanced
+     p512/d128 pairs improve
+     **22.869628 -> 22.891888 tok/s (+0.09733%)**, save
+     **0.042519 ms/token** by endpoint medians and
+     **0.038251 ms/token** by paired median, and win **7/7**. Both arms use the
+     same low-priority prefill path.
+
+     The change only selects a HIP stream handle: every kernel, arithmetic
+     boundary, token **2930 -> 74107**, position **638**, trajectory SHA,
+     deterministic repeat, and tracked allocation remains exact. gfx1151 now
+     defaults `LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY=true`; constructor
+     false retains the previous all-low-priority rollback. Do not advance the
+     **22.873989 tok/s** headline until a tracked-clean selector-unset run:
+     [`retained candidate`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

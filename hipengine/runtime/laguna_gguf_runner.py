@@ -2414,6 +2414,7 @@ class LagunaGGUFResidentSession:
         moe_decode_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
         moe_shared_low_priority: bool | None = None,
+        moe_decode_shared_normal_priority: bool | None = None,
         global_split_min_live: int | None = None,
         swa_split_min_live: int | None = None,
         swa_split_tile16_min_live: int | None = None,
@@ -3116,7 +3117,32 @@ class LagunaGGUFResidentSession:
             )
             if moe_shared_low_priority is None
             else moe_shared_low_priority
-
+        )
+        resolved_moe_decode_shared_normal_priority = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY",
+                False,
+            )
+            if moe_decode_shared_normal_priority is None
+            else moe_decode_shared_normal_priority
+        )
+        decode_normal_priority_prerequisites = (
+            self.moe_decode_branch_concurrency
+            and self.moe_shared_low_priority
+        )
+        if (
+            moe_decode_shared_normal_priority is not None
+            and resolved_moe_decode_shared_normal_priority
+            and not decode_normal_priority_prerequisites
+        ):
+            raise ValueError(
+                "normal-priority decode shared MoE requires concurrent decode "
+                "and a low-priority prefill shared stream"
+            )
+        self.moe_decode_shared_normal_priority = bool(
+            resolved_moe_decode_shared_normal_priority
+            and decode_normal_priority_prerequisites
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -3148,6 +3174,7 @@ class LagunaGGUFResidentSession:
         self._dflash_accept_library = None
         self._staged_verifier_tokens: tuple[int, ...] | None = None
         self._moe_shared_stream = 0
+        self._moe_decode_shared_stream = 0
         self.moe_shared_priority_range: tuple[int, int] | None = None
         self._moe_shared_input_ready_event = 0
         self._moe_shared_output_ready_event = 0
@@ -3385,6 +3412,10 @@ class LagunaGGUFResidentSession:
                     self._moe_shared_stream = self.runtime.stream_create(
                         nonblocking=True
                     )
+                if self.moe_decode_shared_normal_priority:
+                    self._moe_decode_shared_stream = (
+                        self.runtime.stream_create(nonblocking=True)
+                    )
                 self._moe_shared_input_ready_event = (
                     self.runtime.event_create(flags=0x2)
                 )
@@ -3466,6 +3497,13 @@ class LagunaGGUFResidentSession:
         """Move concurrent shared work behind the exact router prefix."""
 
         self.moe_shared_after_router = bool(enabled)
+
+    def set_moe_decode_shared_normal_priority(self, enabled: bool) -> None:
+        """Select the separately allocated priority-0 c=1 shared stream."""
+
+        if enabled and not self._moe_decode_shared_stream:
+            raise ValueError("normal-priority decode shared stream is unavailable")
+        self.moe_decode_shared_normal_priority = bool(enabled)
 
     def set_router_logits_mode(self, mode: str) -> None:
         """Select the exact rows>1 router-logit token-reuse schedule."""
@@ -5772,7 +5810,11 @@ class LagunaGGUFResidentSession:
             tail_context=tail_context,
             shared_after_router=self.moe_shared_after_router,
             shared_stream=(
-                self._moe_shared_stream
+                (
+                    self._moe_decode_shared_stream
+                    if self.moe_decode_shared_normal_priority
+                    else self._moe_shared_stream
+                )
                 if self.moe_decode_branch_concurrency
                 else 0
             ),
@@ -6035,6 +6077,10 @@ class LagunaGGUFResidentSession:
             except BaseException as exc:  # best-effort teardown after HIP failures
                 errors.append(exc)
 
+        if self._moe_decode_shared_stream:
+            stream = self._moe_decode_shared_stream
+            self._moe_decode_shared_stream = 0
+            release(lambda: self.runtime.stream_destroy(stream))
         if self._moe_shared_stream:
             stream = self._moe_shared_stream
             self._moe_shared_stream = 0

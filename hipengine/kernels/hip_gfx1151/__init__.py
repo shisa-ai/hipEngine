@@ -320,6 +320,10 @@ LAGUNA_MOE_SHARED_AFTER_ROUTER = True
 # after-router shared branch at +1 improves exact pp512 0.494% (6/7 wins) and
 # cuts cached kernel span 7.255 ms while keeping 99.75% of shared work hidden.
 LAGUNA_MOE_SHARED_LOW_PRIORITY = True
+# Decode benefits from equal scheduling priority after its exact selected and
+# shared paths became closely balanced. Keep prefill at +1, but use a separate
+# priority-0 shared stream for c=1; the same-session gate wins all seven pairs.
+LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY = True
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
@@ -934,6 +938,7 @@ __all__ = [
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
+    "LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY",
     "LAGUNA_MOE_TAIL_WAVE0_TREE",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
