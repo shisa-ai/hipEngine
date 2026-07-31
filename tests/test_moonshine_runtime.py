@@ -24,6 +24,7 @@ from hipengine.runtime.moonshine import (
     MoonshineDecoderLibraries,
     MoonshineResidentRuntime,
     NoAllocationError,
+    _moonshine_self_attention_threads,
 )
 
 
@@ -189,6 +190,16 @@ def fake_loaded_model(runtime: FakeRuntime) -> MoonshineLoadedModel:
 
 def setup_function() -> None:
     reset_memory_stats()
+
+
+def test_moonshine_self_attention_thread_buckets() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        _moonshine_self_attention_threads(0)
+    assert _moonshine_self_attention_threads(1) == 64
+    assert _moonshine_self_attention_threads(2) == 128
+    assert _moonshine_self_attention_threads(3) == 128
+    assert _moonshine_self_attention_threads(4) == 256
+    assert _moonshine_self_attention_threads(193) == 256
 
 
 def test_resident_runtime_owns_fixed_buffers_aliases_stream_events_and_bucket() -> None:
@@ -409,6 +420,12 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             resident.token_step()
         names = [name for name, _ in trace]
         assert names.count("hipengine_moonshine_self_attention_parallel_fp16") == 8
+        self_attention_threads = [
+            args[-2]
+            for name, args in trace
+            if name == "hipengine_moonshine_self_attention_parallel_fp16"
+        ]
+        assert self_attention_threads == [64] * 8
         assert "hipengine_moonshine_self_attention_branch_fp16" not in names
         resident.reset_generation(clear_cross_cache=False)
         assert resident.cross_cache_valid is True
