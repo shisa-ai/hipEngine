@@ -8632,6 +8632,36 @@ The remaining attention sequence is:
      Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-hotpath-prevalidation-rejected.json).
 
+182. Give only selected-down's final output tile physical-local256 D9
+     ownership. **Rejected at the actual-weight leaf and removed.**
+
+     This changes both failure mechanisms from item 159 without widening all
+     1,920 producer blocks. The first 191 output tiles stay on the exact
+     production local128 weighted kernel. A second launch owns only the last
+     16-column tile with ten local256 route blocks: lanes 0..127 preserve the
+     four production Q4/planar-Q6 dot and reduction waves, while the last route
+     producer uses all 256 physical lanes for the retained wave-0 D9
+     aggregate/residual/next-RMSNorm tree. Same-stream launch order replaces
+     item 159's second 192-tile completion tier. Control and candidate both
+     execute two kernels.
+
+     The GPU fixture matches every selected row, routed output, hidden output,
+     normalized output, and self-resetting counter bit-for-bit. The 21x100
+     actual-weight gate nevertheless rejects both families:
+
+     | Family | retained selected-down + D9 | final-tile local256 owner | Delta |
+     | --- | ---: | ---: | ---: |
+     | Q4 pair-coefficient | 0.063669 ms | 0.067250 ms | **+5.625%** |
+     | planar Q6 | 0.079800 ms | 0.083939 ms | **+5.188%** |
+
+     Splitting the producer grid plus executing ten final blocks at local256
+     costs more than the standalone D9 kernel. Remove the kernels, wrappers,
+     harness mode, and tests before runtime integration. Together, items 159
+     and 182 close selected-down-integrated D9 for both known physical-owner
+     constructions; reopen only with a different consumer or persistent
+     execution design. Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-lasttile256-moe-tail-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8650,7 +8680,8 @@ source-F16 dot2: the exact leaf already streams at about 235 GB/s. The next
 bounded attack must therefore contract an uncovered dependency boundary or
 the 1.501782-ms/token feed gap, rather than improving another independently
 overlapped or bandwidth-ceiling leaf. Item 181 additionally proves that the
-gap is not the redundant resident-layer Python validation walk:
+gap is not the redundant resident-layer Python validation walk, while item
+182 closes the remaining selected-down/D9 physical-owner construction:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:

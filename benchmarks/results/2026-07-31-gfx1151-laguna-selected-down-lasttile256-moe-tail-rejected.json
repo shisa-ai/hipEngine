@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T20:53:49+09:00",
+  "kind": "hipengine_laguna_selected_down_lasttile256_moe_tail_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "repo": {
+    "baseline_revision": "b561715e162c3f1cb93dd55a817101519549400a",
+    "experiment_was_dirty": true,
+    "candidate_removed": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "description": "Launch the first 191 selected-down output tiles through the unchanged local128 weighted owner, then launch only the final 16-column tile at local256. The last of its ten route producers executes the exact retained wave-0 D9 aggregate/residual/next-RMSNorm tree with 256 physical lanes.",
+    "control_launches": 2,
+    "candidate_launches": 2,
+    "control_sequence": "one local128 selected-down+weighted launch, then one local256 D9 launch",
+    "candidate_sequence": "one 191-tile local128 selected-down+weighted launch, then one ten-block local256 final-tile selected-down+weighted+D9 launch",
+    "second_output_tile_completion_tier": false,
+    "resident_bytes_changed": 0,
+    "candidate_removed": true
+  },
+  "red_green": {
+    "red": "The focused natural-shape fixture failed collection because the Q4 and planar-Q6 final-tile local256 wrappers did not exist.",
+    "green": "Both candidates matched the retained selected rows, routed output, hidden output, normalized output, and self-resetting completion counters bit-for-bit.",
+    "post_removal_validation": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits passed."
+  },
+  "protocol": {
+    "workload": "actual Laguna layer-10 Q4 and layer-1 planar-Q6 E256/K1024/N3072/top-10 selected-down plus D9",
+    "timing": "21 counterbalanced HIP-event samples, each the average of 100 sequences, after five warmups",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved --down-candidate lasttile256-moe-tail --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-down-lasttile256-moe-tail-leaf.json",
+    "raw_sha256": "8dfca7d0e6347247f606caefbacc83a7c372c47ca99db18699887998d3038c96"
+  },
+  "results": {
+    "q4": {
+      "control_ms": 0.06366906166076661,
+      "candidate_ms": 0.06725017070770263,
+      "candidate_delta_percent": 5.62456702443086,
+      "down_bf16_mismatches": 0,
+      "routed_bf16_mismatches": 0,
+      "hidden_bf16_mismatches": 0,
+      "norm_bf16_mismatches": 0,
+      "completion_counter_nonzero": 0
+    },
+    "q6": {
+      "control_ms": 0.07979973793029785,
+      "candidate_ms": 0.08393949508666992,
+      "candidate_delta_percent": 5.187682646261327,
+      "down_bf16_mismatches": 0,
+      "routed_bf16_mismatches": 0,
+      "hidden_bf16_mismatches": 0,
+      "norm_bf16_mismatches": 0,
+      "completion_counter_nonzero": 0
+    }
+  },
+  "decision": {
+    "result": "reject and remove before runtime integration",
+    "reason": "Splitting the producer grid and running the final ten route blocks at local256 costs more than the standalone local256 D9 launch for both natural weight families.",
+    "closed_seam": "Selected-down-integrated D9 is now rejected both as one local128 producer grid with two logical tail lanes per thread and as a split local128/local256 final-tile owner. Reopen only with a genuinely different consumer or persistent-execution design.",
+    "production_change": false
+  },
+  "production": {
+    "tok_per_s": 23.089692642,
+    "ms_per_token": 43.309368189
+  }
+}
