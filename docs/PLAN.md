@@ -2189,6 +2189,26 @@ changing the one selected-map value
 ([H6P candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
 [post-H6N residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
+H6P is subsequently retained as source; clean fixed natural C4096/M512 reaches
+**389.145 tok/s / 1,302.492 ms**, **1.77515x** behind fresh matched llama.cpp HIP
+**690.791 tok/s / 714.008 ms**. **WPF-H6Q exact compact-shuffle-loop staged-wave
+IQ3 now qualifies as a standalone gfx1100 leaf.** It uses a separate no-unroll
+helper to preserve H6P's 216 FMAs, 120 dynamic shuffles/order, three staged
+accumulator scopes, stride `0x300`, two/eight barriers, local128/grid32768x64/
+LDS512, and complete bytes. Static bpermutes fall **120 -> 24**, code
+**8,360 -> 6,620 bytes**, and metadata/runtime VGPR **107/112 -> 95/96**, with
+unchanged 24 LDS loads/12 stores and private0/spill0/scratch0. Frozen **9/9**
+and all **45/45** actual layers are exact and both-clock positive: event
+**329.124 -> 313.405 ms (-4.776%, 1.050x)** and wall **326.037 -> 317.946 ms
+(-2.481%, 1.025x)**; minimum layer wins are **1.038x/1.016x**. Retain only the
+leaf. Next freeze bounded default-off H6Q ownership, then require complete
+natural-M512 state, exact 45-call H6P-to-H6Q topology, unchanged workspace/
+scratch, fixed C4096/M512, and selector-unset 512/1K/4K before source
+adjudication
+([H6Q candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+[post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+[H6P production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

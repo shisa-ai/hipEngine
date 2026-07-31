@@ -376,16 +376,20 @@ Campaign-start/pre-H6P/current/llama.cpp component milliseconds are Q5
 gate/up **460.143/397.542/397.616/397.805**, and remaining
 **68.623/75.908/76.410/67.849**. Kernel sum is
 **3,001.692/1,309.339/1,302.492/714.008 ms**; the wall gap is **1.77515x**.
-Q5 stays numerically first but its exact mechanisms are closed. **WPF-H6Q is a
-target-only compact-shuffle-loop H6P sibling**: H6P and H6I have identical
-static LDS publication loads/stores, but H6P unrolls the fixed shuffle loops to
-**120 static `ds_bpermute_b32` / 8,360 code bytes** versus H6I's compact **24 /
-6,264**. H6Q must retain VGPR112, all 216 FMAs/120 dynamic shuffles and order,
-stride `0x300`, staged scopes, eight barriers, topology, and bytes while reaching
-24 static bpermutes, <=7,000 code bytes, and **45/45** both-clock wins
-([post-H6P residual / H6Q target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
-[H6P production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json) ·
-[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json)).
+Q5 stays numerically first but its exact mechanisms are closed. **WPF-H6Q exact
+compact-shuffle-loop staged-wave IQ3 is now a retained standalone gfx1100
+leaf.** Its separate no-unroll helper preserves H6P's 216 FMAs, 120 dynamic
+shuffles/order, stride `0x300`, staged scopes, eight barriers, topology, and
+bytes while reducing static `ds_bpermute_b32` **120 -> 24**, code
+**8,360 -> 6,620 bytes**, and metadata/runtime VGPR **107/112 -> 95/96**;
+24 LDS loads, 12 stores, LDS512, and scratch0 are unchanged. Frozen **9/9** and
+all **45/45** actual-layer outputs are exact and win both clocks: event
+**329.124 -> 313.405 ms (-4.776%, 1.050x)** and wall
+**326.037 -> 317.946 ms (-2.481%, 1.025x)**. Retain only the leaf; H6P remains
+source production pending bounded H6Q runtime qualification
+([H6Q candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+[post-H6P residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+[H6P production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

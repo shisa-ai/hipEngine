@@ -1386,6 +1386,26 @@ source pending separate publication
 ([H6P candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
 [post-H6N residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
+The later source publication supersedes the pending-source language above: H6P
+is now the retained gfx1100 IQ3 source, and the clean fixed natural C4096/M512
+refresh is **389.145 tok/s / 1,302.492 ms**, **1.77515x** behind freshly rerun
+matched llama.cpp HIP **690.791 tok/s / 714.008 ms**. **WPF-H6Q exact
+compact-shuffle-loop staged-wave IQ3 is now a retained standalone leaf.** Its
+separate `#pragma clang loop unroll(disable)` helper preserves every H6P dynamic
+shuffle/order, **216** FMAs, stride `0x300`, 23 global loads, three staged
+planes, two/eight barriers, local128/grid32768x64/LDS512, and bytes. Static
+bpermutes fall **120 -> 24**, code **8,360 -> 6,620 bytes**, metadata/runtime
+VGPR **107/112 -> 95/96**, while LDS loads/stores remain **24/12** and
+private/spill/scratch remain zero. Frozen **9/9** and all **45/45** actual layers
+are exact and win both clocks: event **329.124 -> 313.405 ms (-4.776%, 1.050x)**
+and wall **326.037 -> 317.946 ms (-2.481%, 1.025x)**, with minimum layer wins
+**1.038x/1.016x**. Retain only H6Q's leaf/key/export and explicit gfx1151
+exclusion; add no ABI/package/runtime owner until a separate bounded RED and
+complete-state/topology/clean wall gate
+([H6Q candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+[post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+[H6P production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

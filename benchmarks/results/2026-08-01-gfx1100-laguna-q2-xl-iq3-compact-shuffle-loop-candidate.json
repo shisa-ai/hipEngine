@@ -1,0 +1,1090 @@
+{
+  "authority_files": [
+    "README.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/PLAN.md",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "WORKLOG.md"
+  ],
+  "candidate": {
+    "additional_runtime_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "backend": "hip_gfx1100",
+    "geometry": "expert P64 / output P256 / local128 / rowbatch8 / three staged strided outputs / four epochs",
+    "gfx1151_fail_closed": true,
+    "id": "WPF-H6Q",
+    "layer": "moe_linear",
+    "name": "exact compact-shuffle-loop staged-wave IQ3",
+    "operation": "Retain H6P staged accumulator liveness and every dynamic operation/order while explicitly disabling unrolling of the fixed offset16/8/4/2/1 wave-shuffle loop in a separate helper/kernel.",
+    "package_policy_changed": false,
+    "persistent_sidecar_bytes": 0,
+    "quant": "gguf_iq3_xxs",
+    "runtime_owner_added": false,
+    "source_default": false,
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out"
+  },
+  "commands": {
+    "actual_layer_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python /tmp/laguna_wpfh6q_iq3_compact_shuffle_loop_final_screen.py",
+    "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6q_iq3_compact_shuffle_loop.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace ... -- .venv/bin/python3 -m pytest -q tests/test_laguna_h6q_iq3_compact_shuffle_loop.py::<rows512>",
+    "retained_guards": "150/150 split leaf/backend/registry + MoE + runtime policy guards"
+  },
+  "correctness": {
+    "active_count_p64_p65_checked": true,
+    "all_45_actual_weight_outputs_byte_exact": true,
+    "all_45_layers_both_clock_positive": true,
+    "complete_h6p_output_byte_identity": true,
+    "focused_green": "9/9",
+    "gfx1151_absent": true,
+    "moe_scratch_bytes_unchanged": 104370208,
+    "package_h6p_h6i_h6f_h6d_h5z_h5q_maps_and_abis_unchanged": true,
+    "red_failures": "9/9 solely absent H6Q wrapper",
+    "red_revision": "a63311ea2",
+    "retained_guard_green": "150/150 split as 116 leaf/backend/registry + 25 MoE + 9 policy",
+    "rows_1_7_8_9_512_checked": true,
+    "sampled_independent_cpu_oracle_byte_identity": true,
+    "strict_k1024_n3072_e256_preflight_before_hip_load": true,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-08-01",
+  "decision": {
+    "leaf_admitted": true,
+    "next_action": "Freeze a bounded default-off H6Q same-ABI capability, then require complete natural-M512 state, exact 45-call H6P-to-H6Q cached topology, unchanged scratch, and clean one-queue fixed/512/1K/4K wins before source-default adjudication.",
+    "production_default_changed": false,
+    "runtime_owner_added": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6q_exact_iq3_compact_shuffle_loop_candidate",
+  "lineage": {
+    "h6p_candidate_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json",
+    "h6p_candidate_artifact_sha256": "f29b7c491d01a5ed37c9905a5e9f78064c376a741809a5e48acc09291eb6be6e",
+    "h6p_production_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json",
+    "h6p_production_artifact_sha256": "0a662c9511baf02cb46ac1d079312dd3271e772ccb1c7dd4ac74710877293bc7",
+    "implementation_patch_sha256": "88aee3d66b3fdf79fd8d54456015a381b86b6fc2f1ad39956e40482a2029afde",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "f8068c77b9a5b8d3e93c8d9da2854048217be9efcc9cc018d8536590e1950f2a",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "67878ed5c7b11474e6d08314d18c542bbe53b36871745deabc82dd1288709a28",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "a131b83a768db3f214c53a21b3aa52bf1a0cb27264aeae8b80f6ff3cc2359d06",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "fde4e53a77c483a3c7ff9d4539b49f2ad30fd668e037792c40709348d43622fe",
+      "tests/test_laguna_h6p_iq3_staged_wave_publication.py": "e103627099014cd75a159eba73948d975342130a7288f1ed10fb57662bf151b4",
+      "tests/test_laguna_h6q_iq3_compact_shuffle_loop.py": "6d0c8196a4f4da12f697bf590e0aad57dffca84c647a1971184a73c4f3291646"
+    },
+    "kernel_lineage_audit": "all 14 tracked parents clean",
+    "red_revision": "a63311ea2",
+    "selection_revision": "5915c44fb",
+    "source": "Net-new in-tree H6P sibling; no external device body copied.",
+    "target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json",
+    "target_artifact_sha256": "46f56e2b96caa531268ea122884eb1e0c419a060e1a9ffef1d28c0eaefb96cc6"
+  },
+  "model": {
+    "compact_rows": 5120,
+    "expert_count": 256,
+    "final_position": 511,
+    "in_features": 1024,
+    "logical_parameters": 117561977600,
+    "next_token_id": 2930,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "performance": {
+    "aggregate": {
+      "all_layers_both_clock_positive": true,
+      "both_clock_positive_layers": 45,
+      "candidate_event_sum_ms": 313.40492401123043,
+      "candidate_wall_sum_ms": 317.94595178216696,
+      "event_percent_change": -4.776024566057724,
+      "event_speedup": 1.0501556939236474,
+      "h6p_event_sum_ms": 329.12396545410166,
+      "h6p_wall_sum_ms": 326.03652607649565,
+      "layers": 45,
+      "wall_percent_change": -2.4814932215387553,
+      "wall_speedup": 1.0254463824715458
+    },
+    "all_outputs_byte_exact": true,
+    "elapsed_s": 103.44148097094148,
+    "event_reduction_percent": 4.776024566057724,
+    "maximum_layer_event_speedup": 1.0608546971544994,
+    "maximum_layer_wall_speedup": 1.0403072750435018,
+    "minimum_layer_event_speedup": 1.0382906947560424,
+    "minimum_layer_wall_speedup": 1.0155189169619112,
+    "protocol": {
+      "actual_routing_distributions": true,
+      "actual_weights": true,
+      "candidate": "H6Q exact compact-shuffle-loop staged-wave triple-output P64/P256 rowbatch8",
+      "compact_rows": 5120,
+      "control": "H6P exact staged-wave-publication triple-output P64/P256 rowbatch8",
+      "counter_rotated": true,
+      "deterministic_bf16_compact_input": true,
+      "event_and_synchronized_wall": true,
+      "expert_partition": 64,
+      "four_k_or_longer_run_performed": false,
+      "iq3_layers": 45,
+      "launches_per_sample": 5,
+      "output_partition": 256,
+      "repetitions": 15,
+      "rows": 512,
+      "selection_rule": "admit only if complete bytes match and every one of 45 layers improves both HIP-event and synchronized-wall medians",
+      "unique_layers": 45,
+      "warmups": 5
+    },
+    "rows": [
+      {
+        "active_experts": 228,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.220938873291016,
+          "h6q": 6.819519805908203
+        },
+        "event_speedup": 1.0588632453321767,
+        "layer_id": 1,
+        "mismatches": 0,
+        "tensor": "blk.1.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.133091427385807,
+          "h6q": 6.90882639028132
+        },
+        "wall_speedup": 1.0324606560413736
+      },
+      {
+        "active_experts": 217,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.096729278564453,
+          "h6q": 6.694895172119141
+        },
+        "event_speedup": 1.0600209706223256,
+        "layer_id": 2,
+        "mismatches": 0,
+        "tensor": "blk.2.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.044010236859322,
+          "h6q": 6.771086202934384
+        },
+        "wall_speedup": 1.0403072750435018
+      },
+      {
+        "active_experts": 227,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.117091369628906,
+          "h6q": 6.776367950439453
+        },
+        "event_speedup": 1.050281127247135,
+        "layer_id": 3,
+        "mismatches": 0,
+        "tensor": "blk.3.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.090722816064954,
+          "h6q": 6.821282999590039
+        },
+        "wall_speedup": 1.0394998736295076
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.20416488647461,
+          "h6q": 6.926979827880859
+        },
+        "event_speedup": 1.040015283064358,
+        "layer_id": 4,
+        "mismatches": 0,
+        "tensor": "blk.4.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.195052178576589,
+          "h6q": 6.981561193242669
+        },
+        "wall_speedup": 1.0305792614896154
+      },
+      {
+        "active_experts": 232,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.289909362792969,
+          "h6q": 6.884053039550781
+        },
+        "event_speedup": 1.0589560133994365,
+        "layer_id": 5,
+        "mismatches": 0,
+        "tensor": "blk.5.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.258042972534895,
+          "h6q": 6.992699392139912
+        },
+        "wall_speedup": 1.037945801115552
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.30884017944336,
+          "h6q": 6.9497322082519535
+        },
+        "event_speedup": 1.0516722026735088,
+        "layer_id": 6,
+        "mismatches": 0,
+        "tensor": "blk.6.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.25644719786942,
+          "h6q": 7.053146185353398
+        },
+        "wall_speedup": 1.0288241597683312
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.216070556640625,
+          "h6q": 6.842140197753906
+        },
+        "event_speedup": 1.0546510811060947,
+        "layer_id": 7,
+        "mismatches": 0,
+        "tensor": "blk.7.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.168005779385567,
+          "h6q": 6.9080141838639975
+        },
+        "wall_speedup": 1.0376362278075322
+      },
+      {
+        "active_experts": 239,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.413096618652344,
+          "h6q": 6.994222259521484
+        },
+        "event_speedup": 1.0598886257239868,
+        "layer_id": 8,
+        "mismatches": 0,
+        "tensor": "blk.8.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.349252374842763,
+          "h6q": 7.133451383560896
+        },
+        "wall_speedup": 1.0302519747704713
+      },
+      {
+        "active_experts": 230,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.243807983398438,
+          "h6q": 6.8714134216308596
+        },
+        "event_speedup": 1.0541947542546777,
+        "layer_id": 9,
+        "mismatches": 0,
+        "tensor": "blk.9.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.192420167848468,
+          "h6q": 6.939628627151251
+        },
+        "wall_speedup": 1.0364272433409725
+      },
+      {
+        "active_experts": 232,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.268962860107422,
+          "h6q": 6.882926940917969
+        },
+        "event_speedup": 1.0560860114458759,
+        "layer_id": 10,
+        "mismatches": 0,
+        "tensor": "blk.10.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.191284187138081,
+          "h6q": 6.971845030784607
+        },
+        "wall_speedup": 1.0314750479083408
+      },
+      {
+        "active_experts": 217,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.305067443847657,
+          "h6q": 6.924256134033203
+        },
+        "event_speedup": 1.054996710468687,
+        "layer_id": 11,
+        "mismatches": 0,
+        "tensor": "blk.11.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.231718814000487,
+          "h6q": 7.031167997047305
+        },
+        "wall_speedup": 1.0285231155104533
+      },
+      {
+        "active_experts": 215,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.203715515136719,
+          "h6q": 6.8432159423828125
+        },
+        "event_speedup": 1.0526798475730081,
+        "layer_id": 12,
+        "mismatches": 0,
+        "tensor": "blk.12.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.118297182023525,
+          "h6q": 6.9708772003650665
+        },
+        "wall_speedup": 1.0211479814406625
+      },
+      {
+        "active_experts": 226,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.328596496582032,
+          "h6q": 6.908200073242187
+        },
+        "event_speedup": 1.0608546971544994,
+        "layer_id": 13,
+        "mismatches": 0,
+        "tensor": "blk.13.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.254425203427672,
+          "h6q": 7.024089805781841
+        },
+        "wall_speedup": 1.0327922056828247
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.288452911376953,
+          "h6q": 6.8996223449707035
+        },
+        "event_speedup": 1.0563553404759431,
+        "layer_id": 14,
+        "mismatches": 0,
+        "tensor": "blk.14.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.21727660857141,
+          "h6q": 7.050332194194198
+        },
+        "wall_speedup": 1.0236789430311792
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.371935272216797,
+          "h6q": 6.98587646484375
+        },
+        "event_speedup": 1.0552627589846282,
+        "layer_id": 15,
+        "mismatches": 0,
+        "tensor": "blk.15.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.294435612857342,
+          "h6q": 7.114869216457009
+        },
+        "wall_speedup": 1.0252381865270253
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.363939666748047,
+          "h6q": 7.00769271850586
+        },
+        "event_speedup": 1.0508365538490883,
+        "layer_id": 16,
+        "mismatches": 0,
+        "tensor": "blk.16.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.287157606333494,
+          "h6q": 7.152865594252944
+        },
+        "wall_speedup": 1.0187745750721848
+      },
+      {
+        "active_experts": 211,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.24315185546875,
+          "h6q": 6.8794609069824215
+        },
+        "event_speedup": 1.0528661988786352,
+        "layer_id": 17,
+        "mismatches": 0,
+        "tensor": "blk.17.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.163937762379646,
+          "h6q": 7.002001442015171
+        },
+        "wall_speedup": 1.023127147531388
+      },
+      {
+        "active_experts": 212,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.334729766845703,
+          "h6q": 6.9459587097167965
+        },
+        "event_speedup": 1.055970827552581,
+        "layer_id": 18,
+        "mismatches": 0,
+        "tensor": "blk.18.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.252300996333361,
+          "h6q": 7.085108803585172
+        },
+        "wall_speedup": 1.0235976888122857
+      },
+      {
+        "active_experts": 197,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.172232818603516,
+          "h6q": 6.819301605224609
+        },
+        "event_speedup": 1.0517547446660092,
+        "layer_id": 19,
+        "mismatches": 0,
+        "tensor": "blk.19.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.108973013237119,
+          "h6q": 6.955046812072396
+        },
+        "wall_speedup": 1.022131583772742
+      },
+      {
+        "active_experts": 214,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.320467376708985,
+          "h6q": 6.969815826416015
+        },
+        "event_speedup": 1.0503100166526609,
+        "layer_id": 20,
+        "mismatches": 0,
+        "tensor": "blk.20.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.270405208691955,
+          "h6q": 7.075502583757043
+        },
+        "wall_speedup": 1.0275461174139549
+      },
+      {
+        "active_experts": 210,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.22033920288086,
+          "h6q": 6.893511962890625
+        },
+        "event_speedup": 1.0474108468585566,
+        "layer_id": 21,
+        "mismatches": 0,
+        "tensor": "blk.21.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.175993965938687,
+          "h6q": 6.991163361817598
+        },
+        "wall_speedup": 1.0264377464172194
+      },
+      {
+        "active_experts": 203,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.192874908447266,
+          "h6q": 6.889624786376953
+        },
+        "event_speedup": 1.0440154771084105,
+        "layer_id": 22,
+        "mismatches": 0,
+        "tensor": "blk.22.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.139171427115798,
+          "h6q": 6.957978801801801
+        },
+        "wall_speedup": 1.02604098553262
+      },
+      {
+        "active_experts": 202,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.2404029846191404,
+          "h6q": 6.973387145996094
+        },
+        "event_speedup": 1.0382906947560424,
+        "layer_id": 23,
+        "mismatches": 0,
+        "tensor": "blk.23.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.191972201690078,
+          "h6q": 7.081950781866908
+        },
+        "wall_speedup": 1.0155354680104351
+      },
+      {
+        "active_experts": 199,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.204181671142578,
+          "h6q": 6.897643280029297
+        },
+        "event_speedup": 1.044441032780109,
+        "layer_id": 24,
+        "mismatches": 0,
+        "tensor": "blk.24.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.144229393452406,
+          "h6q": 7.009621616452932
+        },
+        "wall_speedup": 1.0192032871907841
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.22571029663086,
+          "h6q": 6.896291351318359
+        },
+        "event_speedup": 1.0477675504892243,
+        "layer_id": 25,
+        "mismatches": 0,
+        "tensor": "blk.25.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.144141383469105,
+          "h6q": 6.99671539478004
+        },
+        "wall_speedup": 1.0210707425371415
+      },
+      {
+        "active_experts": 213,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.373640441894532,
+          "h6q": 7.032701873779297
+        },
+        "event_speedup": 1.0484790304259006,
+        "layer_id": 26,
+        "mismatches": 0,
+        "tensor": "blk.26.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.2723552118986845,
+          "h6q": 7.142067421227694
+        },
+        "wall_speedup": 1.0182423075822205
+      },
+      {
+        "active_experts": 212,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.335673522949219,
+          "h6q": 7.064502716064453
+        },
+        "event_speedup": 1.0383849816163468,
+        "layer_id": 27,
+        "mismatches": 0,
+        "tensor": "blk.27.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.2799053974449635,
+          "h6q": 7.15798563323915
+        },
+        "wall_speedup": 1.0170326919405455
+      },
+      {
+        "active_experts": 219,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.3836830139160154,
+          "h6q": 7.044119262695313
+        },
+        "event_speedup": 1.0482052813925207,
+        "layer_id": 28,
+        "mismatches": 0,
+        "tensor": "blk.28.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.2960698045790195,
+          "h6q": 7.133459206670523
+        },
+        "wall_speedup": 1.0227954759671771
+      },
+      {
+        "active_experts": 201,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.18298568725586,
+          "h6q": 6.836046600341797
+        },
+        "event_speedup": 1.0507514221592222,
+        "layer_id": 29,
+        "mismatches": 0,
+        "tensor": "blk.29.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.088816771283746,
+          "h6q": 6.931390427052975
+        },
+        "wall_speedup": 1.0227120872626567
+      },
+      {
+        "active_experts": 204,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.317403411865234,
+          "h6q": 6.939527893066407
+        },
+        "event_speedup": 1.0544526262624263,
+        "layer_id": 30,
+        "mismatches": 0,
+        "tensor": "blk.30.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.244116999208927,
+          "h6q": 7.0984470192343
+        },
+        "wall_speedup": 1.0205213872245456
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.281187438964844,
+          "h6q": 6.932672119140625
+        },
+        "event_speedup": 1.0502714269238254,
+        "layer_id": 31,
+        "mismatches": 0,
+        "tensor": "blk.31.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.196102198213339,
+          "h6q": 7.016553590074182
+        },
+        "wall_speedup": 1.0255892876515833
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.315860748291016,
+          "h6q": 7.026273345947265
+        },
+        "event_speedup": 1.0412149354409594,
+        "layer_id": 32,
+        "mismatches": 0,
+        "tensor": "blk.32.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.2520350106060505,
+          "h6q": 7.131625199690461
+        },
+        "wall_speedup": 1.0168839230251214
+      },
+      {
+        "active_experts": 200,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.241868591308593,
+          "h6q": 6.9708099365234375
+        },
+        "event_speedup": 1.0388848150004706,
+        "layer_id": 33,
+        "mismatches": 0,
+        "tensor": "blk.33.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.188802165910602,
+          "h6q": 7.0789446122944355
+        },
+        "wall_speedup": 1.0155189169619112
+      },
+      {
+        "active_experts": 213,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.334726715087891,
+          "h6q": 6.987858581542969
+        },
+        "event_speedup": 1.0496386882329167,
+        "layer_id": 34,
+        "mismatches": 0,
+        "tensor": "blk.34.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.250424986705184,
+          "h6q": 7.070098631083965
+        },
+        "wall_speedup": 1.0255054936332015
+      },
+      {
+        "active_experts": 221,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.444064331054688,
+          "h6q": 7.141566467285156
+        },
+        "event_speedup": 1.04235735467215,
+        "layer_id": 35,
+        "mismatches": 0,
+        "tensor": "blk.35.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.361260615289211,
+          "h6q": 7.220566598698497
+        },
+        "wall_speedup": 1.019485176774919
+      },
+      {
+        "active_experts": 220,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.443360900878906,
+          "h6q": 7.164621734619141
+        },
+        "event_speedup": 1.0389049382625337,
+        "layer_id": 36,
+        "mismatches": 0,
+        "tensor": "blk.36.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.373972609639168,
+          "h6q": 7.223732629790902
+        },
+        "wall_speedup": 1.0207981091698592
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.384056854248047,
+          "h6q": 7.031492614746094
+        },
+        "event_speedup": 1.050140739501393,
+        "layer_id": 37,
+        "mismatches": 0,
+        "tensor": "blk.37.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.291003596037626,
+          "h6q": 7.127009192481637
+        },
+        "wall_speedup": 1.0230102696835286
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.423505401611328,
+          "h6q": 7.052765655517578
+        },
+        "event_speedup": 1.0525665766029968,
+        "layer_id": 38,
+        "mismatches": 0,
+        "tensor": "blk.38.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.353192428126931,
+          "h6q": 7.166579784825444
+        },
+        "wall_speedup": 1.0260392891594707
+      },
+      {
+        "active_experts": 229,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.441281127929687,
+          "h6q": 7.065478515625
+        },
+        "event_speedup": 1.0531885577846731,
+        "layer_id": 39,
+        "mismatches": 0,
+        "tensor": "blk.39.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.366762636229396,
+          "h6q": 7.167069800198078
+        },
+        "wall_speedup": 1.027862549353963
+      },
+      {
+        "active_experts": 226,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.634773254394531,
+          "h6q": 7.274669647216797
+        },
+        "event_speedup": 1.0495010254267019,
+        "layer_id": 40,
+        "mismatches": 0,
+        "tensor": "blk.40.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.586967805400491,
+          "h6q": 7.364316610619426
+        },
+        "wall_speedup": 1.030233789033459
+      },
+      {
+        "active_experts": 228,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.3671417236328125,
+          "h6q": 6.982286071777343
+        },
+        "event_speedup": 1.0551188604848303,
+        "layer_id": 41,
+        "mismatches": 0,
+        "tensor": "blk.41.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.2894396260380745,
+          "h6q": 7.097252830862999
+        },
+        "wall_speedup": 1.0270790402646126
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.476773071289062,
+          "h6q": 7.145857238769532
+        },
+        "event_speedup": 1.046308766249088,
+        "layer_id": 42,
+        "mismatches": 0,
+        "tensor": "blk.42.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.376208808273077,
+          "h6q": 7.245900807902217
+        },
+        "wall_speedup": 1.017983685372666
+      },
+      {
+        "active_experts": 224,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.417884826660156,
+          "h6q": 7.080910491943359
+        },
+        "event_speedup": 1.0475891250285123,
+        "layer_id": 43,
+        "mismatches": 0,
+        "tensor": "blk.43.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.319681812077761,
+          "h6q": 7.164625823497772
+        },
+        "wall_speedup": 1.021641882269895
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.477774047851563,
+          "h6q": 7.14991455078125
+        },
+        "event_speedup": 1.0458550231253447,
+        "layer_id": 44,
+        "mismatches": 0,
+        "tensor": "blk.44.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.415559235960245,
+          "h6q": 7.233678596094251
+        },
+        "wall_speedup": 1.0251435887632883
+      },
+      {
+        "active_experts": 231,
+        "byte_exact": true,
+        "event_ms": {
+          "h6p": 7.450910186767578,
+          "h6q": 7.10473861694336
+        },
+        "event_speedup": 1.04872404017773,
+        "layer_id": 45,
+        "mismatches": 0,
+        "tensor": "blk.45.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6p": 7.361082639545202,
+          "h6q": 7.193814171478152
+        },
+        "wall_speedup": 1.0232517082148482
+      }
+    ],
+    "tracked_returned_to_baseline": true,
+    "wall_reduction_percent": 2.4814932215387553
+  },
+  "performance_claim": true,
+  "production": {
+    "current_iq3_owner": "WPF-H6P exact staged-wave-publication IQ3",
+    "current_matched_tok_s": 389.1450493678664,
+    "current_stack": "H6N/H6L/H6P/H6E/H6C/H6A/H5Y",
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "runtime_qualification_pending": true,
+    "source_default_adjudication_pending": true,
+    "unchanged": true
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-5cc0a6563c668f13/gguf_iq_selected_prefill.so": "0cf11be1a755c5272868d96e634f56e6cbc73cc83a4468e853ebb8316b3380be",
+    "/tmp/analyze_laguna_h6q_physical.py": "fa0ef4a702ac6da1c319413fd534f1dfca9d27d98619495bbaf6bf9ccdb9b8a4",
+    "/tmp/h6q-code-object.co": "ec4784d2ecb7b4041218ab14d3bfe08676d2471452f341e7744a4babdf50b325",
+    "/tmp/h6q-full.isa": "16f4cccfab12bf0578ae79c99bc05aa12e865768b3c52b2c704995a5e5b346b3",
+    "/tmp/h6q-h6p-control.isa": "86429bd2b33dd6b13f693868a1390c763f6047f18256f89b5307744ecafec63d",
+    "/tmp/h6q-h6q-candidate.isa": "99065d13f7e1af74a954229656e2e14a6b6d04bba9537fc5fc5d0bb63ed3ba1e",
+    "/tmp/h6q-readobj-notes.txt": "a47cca491c8134dbf4302ce75eb53550a82ec276145eb71867c7d51895fe1d15",
+    "/tmp/laguna-h6q-candidate.patch": "88aee3d66b3fdf79fd8d54456015a381b86b6fc2f1ad39956e40482a2029afde",
+    "/tmp/laguna-h6q-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-green.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/laguna-h6q-h6p-control.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-h6p-control.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/laguna-h6q-leaf-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-leaf-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6q-leaf-rocprof.stderr": "07b3dd1a4e4e9d4265663d7f09402b12642a893655d53386e1155a17dad7d830",
+    "/tmp/laguna-h6q-leaf-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "/tmp/laguna-h6q-leaf-rocprof/h6q-leaf_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6q-leaf-rocprof/h6q-leaf_kernel_trace.csv": "661f93f1569ec900c0c4a9c298dcedbb5dce90dbe766f9287623b8a383c38b4b",
+    "/tmp/laguna-h6q-moe-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-moe-guards.stdout": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "/tmp/laguna-h6q-physical-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-physical-analysis.stdout": "f6076c0e92510a43c6a5c0fa872dc7952c4b7c82c16e1fdd2e5971591478dd3e",
+    "/tmp/laguna-h6q-physical-summary.json": "f6076c0e92510a43c6a5c0fa872dc7952c4b7c82c16e1fdd2e5971591478dd3e",
+    "/tmp/laguna-h6q-policy-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-policy-guards.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/laguna-h6q-prebuild.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-prebuild.stdout": "d2f9c7c4ede04da38e6a50722b8ec05ea7b3822d19ea1c036fc7da6b941aae39",
+    "/tmp/laguna-h6q-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-red.stdout": "e2e07ba0b1470beba32a3c323db05c5e057bf4a48dced0adca54f73416177ffe",
+    "/tmp/laguna-h6q-retained-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6q-retained-guards.stdout": "be0579b9176083ba8d038fca07565d82f8a7ee7e41a45f98e8a8d37343e5468d",
+    "/tmp/laguna-wpfh6q-final-screen.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6q-final-screen.stdout": "d7a6017828276493a08cebca666b8d1a502535540d4302a3398fc3a4fd85e1a7",
+    "/tmp/laguna-wpfh6q-iq3-compact-shuffle-loop-final-m512.json": "19a4ff11692e83f34c132d12480657a6efd36fc6ee351f93525a27b61c6d3a17",
+    "/tmp/laguna_wpfh6q_iq3_compact_shuffle_loop_final_screen.py": "b66bf3e5341d3025a47992080aecd104f73953fab5642e9e8c9710841587ce86"
+  },
+  "resource_and_isa": {
+    "build_cache_key": "gguf_iq_selected_prefill-5cc0a6563c668f13",
+    "code_size_reduction_percent": 20.813397129186605,
+    "metadata_vgpr_reduction_percent": 11.214953271028039,
+    "no_compiler_under_profile": true,
+    "physical": {
+      "barrier_model": {
+        "h6p_dynamic_barriers_per_rowbatch": 8,
+        "h6q_dynamic_barriers_per_rowbatch": 8,
+        "output_loop_iterations": 4
+      },
+      "isa": {
+        "h6p": {
+          "barriers_per_loop_body": 2,
+          "code_bytes": 8360,
+          "ds_instructions": 156,
+          "ds_opcodes": {
+            "ds_bpermute_b32": 120,
+            "ds_load_b128": 24,
+            "ds_store_2addr_b32": 12
+          },
+          "fma_fma_vopd_pairs": 40,
+          "fma_issue_slots": 176,
+          "fma_operations": 216,
+          "function_instruction_slots": 1496,
+          "global_load_instructions": 23,
+          "out_stride_0x100": 0,
+          "out_stride_0x200": 0,
+          "out_stride_0x300": 1,
+          "out_stride_0x400": 0,
+          "scratch_instructions": 0,
+          "vopd_slots_all_classes": 120
+        },
+        "h6q": {
+          "barriers_per_loop_body": 2,
+          "code_bytes": 6620,
+          "ds_instructions": 60,
+          "ds_opcodes": {
+            "ds_bpermute_b32": 24,
+            "ds_load_b128": 24,
+            "ds_store_2addr_b32": 12
+          },
+          "fma_fma_vopd_pairs": 41,
+          "fma_issue_slots": 175,
+          "fma_operations": 216,
+          "function_instruction_slots": 1192,
+          "global_load_instructions": 23,
+          "out_stride_0x100": 0,
+          "out_stride_0x200": 0,
+          "out_stride_0x300": 1,
+          "out_stride_0x400": 0,
+          "scratch_instructions": 0,
+          "vopd_slots_all_classes": 100
+        }
+      },
+      "metadata": {
+        "h6p": {
+          "group_segment_fixed_size": 384,
+          "max_flat_workgroup_size": 128,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 78,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 107,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "h6q": {
+          "group_segment_fixed_size": 384,
+          "max_flat_workgroup_size": 128,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 56,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 95,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        }
+      },
+      "no_compiler_under_profile": true,
+      "one_dispatch_timing_is_nonbinding": true,
+      "raw_evidence_sha256": {
+        "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-5cc0a6563c668f13/gguf_iq_selected_prefill.so": "0cf11be1a755c5272868d96e634f56e6cbc73cc83a4468e853ebb8316b3380be",
+        "/tmp/h6q-code-object.co": "ec4784d2ecb7b4041218ab14d3bfe08676d2471452f341e7744a4babdf50b325",
+        "/tmp/h6q-full.isa": "16f4cccfab12bf0578ae79c99bc05aa12e865768b3c52b2c704995a5e5b346b3",
+        "/tmp/h6q-h6p-control.isa": "86429bd2b33dd6b13f693868a1390c763f6047f18256f89b5307744ecafec63d",
+        "/tmp/h6q-h6q-candidate.isa": "99065d13f7e1af74a954229656e2e14a6b6d04bba9537fc5fc5d0bb63ed3ba1e",
+        "/tmp/h6q-readobj-notes.txt": "a47cca491c8134dbf4302ce75eb53550a82ec276145eb71867c7d51895fe1d15",
+        "/tmp/laguna-h6q-leaf-rocprof.stderr": "07b3dd1a4e4e9d4265663d7f09402b12642a893655d53386e1155a17dad7d830",
+        "/tmp/laguna-h6q-leaf-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+        "/tmp/laguna-h6q-leaf-rocprof/h6q-leaf_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+        "/tmp/laguna-h6q-leaf-rocprof/h6q-leaf_kernel_trace.csv": "661f93f1569ec900c0c4a9c298dcedbb5dce90dbe766f9287623b8a383c38b4b"
+      },
+      "schema": 1,
+      "trace": {
+        "h6p": {
+          "End_Timestamp": 1686900806797413,
+          "Grid_Size_X": 32768,
+          "Grid_Size_Y": 64,
+          "LDS_Block_Size": 512,
+          "SGPR_Count": 128,
+          "Scratch_Size": 0,
+          "Start_Timestamp": 1686900806084973,
+          "VGPR_Count": 112,
+          "Workgroup_Size_X": 128,
+          "duration_ns": 712440,
+          "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+        },
+        "h6q": {
+          "End_Timestamp": 1686900814705953,
+          "Grid_Size_X": 32768,
+          "Grid_Size_Y": 64,
+          "LDS_Block_Size": 512,
+          "SGPR_Count": 128,
+          "Scratch_Size": 0,
+          "Start_Timestamp": 1686900813964793,
+          "VGPR_Count": 96,
+          "Workgroup_Size_X": 128,
+          "duration_ns": 741160,
+          "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+        }
+      }
+    },
+    "runtime_vgpr_reduction_percent": 14.28571428571429,
+    "single_dispatch_duration_disposition": "The cached one-dispatch resource/name trace is nonbinding; admission uses the 15-sample all-45-layer event+wall gate.",
+    "static_bpermute_reduction_percent": 80.0
+  },
+  "schema": 1,
+  "scope": "Standalone exact H6Q leaf admission only; H6P source production and runtime ABI policy remain unchanged.",
+  "status": "retained_exact_leaf_runtime_qualification_pending"
+}
