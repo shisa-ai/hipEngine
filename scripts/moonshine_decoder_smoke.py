@@ -30,6 +30,7 @@ from hipengine.runtime.moonshine import MoonshineResidentRuntime
 
 BOUNDARY_MAX_ABS = 1.0
 BOUNDARY_MAX_RELATIVE_L2 = 0.01
+CERTIFIED_ENCODER_BUCKETS = (40, 207, 1248)
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-path", type=Path)
     parser.add_argument("--fixture", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--pad-to-certified-bucket",
+        action="store_true",
+        help="zero-pad encoder hidden/mask and cross-cache references to 40/207/1248",
+    )
     parser.add_argument("--prebuild-only", action="store_true")
     parser.add_argument("--json", type=Path)
     return parser.parse_args()
@@ -59,6 +65,45 @@ def _build_all(compiler_version: str, *, load: bool, require_cached: bool):
             build_moonshine_attention,
         )
     )
+
+
+def _certified_encoder_bucket(source_frames: int) -> int:
+    for bucket in CERTIFIED_ENCODER_BUCKETS:
+        if source_frames <= bucket:
+            return bucket
+    raise ValueError(
+        f"encoder frame count {source_frames} exceeds certified buckets "
+        f"{CERTIFIED_ENCODER_BUCKETS}"
+    )
+
+
+def _pad_encoder_inputs(
+    hidden: np.ndarray,
+    mask: np.ndarray,
+    bucket_frames: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    source_frames = int(hidden.shape[1])
+    if mask.shape != (1, source_frames):
+        raise ValueError(f"encoder mask shape {mask.shape} does not match {source_frames}")
+    if bucket_frames < source_frames:
+        raise ValueError(f"bucket {bucket_frames} is smaller than source {source_frames}")
+    padded_hidden = np.zeros((1, bucket_frames, hidden.shape[2]), dtype=np.float16)
+    padded_mask = np.zeros((1, bucket_frames), dtype=np.int32)
+    padded_hidden[:, :source_frames] = hidden
+    padded_mask[:, :source_frames] = mask
+    return padded_hidden, padded_mask
+
+
+def _pad_cross_reference(expected: np.ndarray, bucket_frames: int) -> np.ndarray:
+    source_frames = int(expected.shape[2])
+    if bucket_frames < source_frames:
+        raise ValueError(f"bucket {bucket_frames} is smaller than source {source_frames}")
+    padded = np.zeros(
+        (expected.shape[0], expected.shape[1], bucket_frames, expected.shape[3]),
+        dtype=expected.dtype,
+    )
+    padded[:, :, :source_frames] = expected
+    return padded
 
 
 def _download_fp16(resident: MoonshineResidentRuntime, tensor) -> np.ndarray:
@@ -124,12 +169,18 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text())
     token_ids = tuple(int(value) for value in manifest["decoder"]["token_ids"])
     positions = tuple(int(value) for value in manifest["decoder"]["positions"])
-    encoder_frames = int(manifest["input"]["encoder_frames"])
+    source_frames = int(manifest["input"]["encoder_frames"])
+    encoder_frames = (
+        _certified_encoder_bucket(source_frames)
+        if args.pad_to_certified_bucket
+        else source_frames
+    )
     report: dict[str, object] = {
         "all_passed": False,
         "boundary_max_abs_limit": BOUNDARY_MAX_ABS,
         "boundary_max_relative_l2_limit": BOUNDARY_MAX_RELATIVE_L2,
         "encoder_frames": encoder_frames,
+        "source_frames": source_frames,
         "failures": [],
         "max_abs": 0.0,
         "max_relative_l2": 0.0,
@@ -148,10 +199,15 @@ def main() -> int:
                 compiler_version=compiler_version,
                 require_cached=args.require_cached_build,
             )
-            resident.set_encoder_state(
-                fixture["encoder.output"],
-                fixture["encoder.attention_mask"],
-            )
+            encoder_hidden = fixture["encoder.output"]
+            encoder_mask = fixture["encoder.attention_mask"]
+            if encoder_frames != source_frames:
+                encoder_hidden, encoder_mask = _pad_encoder_inputs(
+                    encoder_hidden,
+                    encoder_mask,
+                    encoder_frames,
+                )
+            resident.set_encoder_state(encoder_hidden, encoder_mask)
             resident.precompute_cross_kv()
             for layer in range(resident.spec.decoder_layers):
                 cache = resident.cross_cache(layer)
@@ -159,7 +215,14 @@ def main() -> int:
                     _compare(
                         f"cross.layer_{layer}.{kind}",
                         _download_fp16(resident, tensor),
-                        fixture[f"cross.layer_{layer}.{kind}"],
+                        (
+                            _pad_cross_reference(
+                                fixture[f"cross.layer_{layer}.{kind}"],
+                                encoder_frames,
+                            )
+                            if encoder_frames != source_frames
+                            else fixture[f"cross.layer_{layer}.{kind}"]
+                        ),
                         report,
                     )
 
