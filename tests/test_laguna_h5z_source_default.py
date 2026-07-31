@@ -53,7 +53,7 @@ _H6R_RUNTIME_VARIANT = (
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 
 
-def test_h5z_source_default_is_retained_under_h6q_source_and_fail_closed(
+def test_h5z_source_default_is_retained_under_h6r_source_and_fail_closed(
     monkeypatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
@@ -64,7 +64,7 @@ def test_h5z_source_default_is_retained_under_h6q_source_and_fail_closed(
     h5z_variants = {**h5q_variants, "gguf_iq3_xxs": _H5Z_IQ3}
     production_variants = {
         **h5q_variants,
-        "gguf_iq3_xxs": _H6Q_RUNTIME_VARIANT,
+        "gguf_iq3_xxs": _H6R_RUNTIME_VARIANT,
     }
     production_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
@@ -84,7 +84,7 @@ def test_h5z_source_default_is_retained_under_h6q_source_and_fail_closed(
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H6Q_RUNTIME_VARIANT
+        _H6R_RUNTIME_VARIANT
     )
     assert package_default.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         _ACTIVE_EXPERT_ABI
@@ -127,7 +127,7 @@ def test_h5z_source_default_is_retained_under_h6q_source_and_fail_closed(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6Q_RUNTIME_VARIANT and original_is_registered(key),
+        lambda key: key.variant != _H6R_RUNTIME_VARIANT and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (

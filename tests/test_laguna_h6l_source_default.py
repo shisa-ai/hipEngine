@@ -31,10 +31,10 @@ _H6C_VARIANT = (
     "selected_dual_silu_grouped_prefill_compact_"
     "k3072_n1024_e256_rowbatch4_bf16_bf16_out"
 )
-_H6Q_VARIANT = (
+_H6R_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_row_interleaved_vopd_"
-    "staged_wave_publication_compact_shuffle_loop_triple_output_"
+    "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
 _PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
@@ -83,7 +83,7 @@ def test_h6l_source_default_promotes_only_iq2_pair16_gate_up(
         _H6C_VARIANT
     )
     assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H6Q_VARIANT
+        _H6R_VARIANT
     )
     production_moe_scratch = laguna_moe_scratch_nbytes(
         package_default,
@@ -104,7 +104,7 @@ def test_h6l_source_default_promotes_only_iq2_pair16_gate_up(
     assert rollback.grouped_special_gate_up_keys[(47, "gguf_iq3_xxs")].variant == (
         _H6C_VARIANT
     )
-    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6Q_VARIANT
+    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6R_VARIANT
     assert laguna_moe_scratch_nbytes(rollback, max_rows=512) == production_moe_scratch
     rollback_scratch = _prefill_scratch(config, rollback)
     assert rollback_scratch.q5_f32_ordered_nbytes == production_scratch.q5_f32_ordered_nbytes
