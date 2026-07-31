@@ -2134,6 +2134,35 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_
       stream);
 }
 
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (in_features != 3072 || out_features != 1024 || num_experts != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return launch_grouped_dual(
+      (gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_kernel<16>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      64,
+      stream);
+}
+
 extern "C" int hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out(
     const uint16_t* x,
     const int64_t* expert_start_compact,
