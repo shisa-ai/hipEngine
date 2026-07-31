@@ -210,6 +210,32 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
     assert aggregate["512"]["families"]["embedding"]["calls_per_pass"] == [4]
 
 
+def test_lpf5_trace_recognizes_published_control_argmax_chain() -> None:
+    rows = [
+        _row(1, "gguf_q4_k_embedding_bf16_out_kernel", 0, 2),
+        _row(2, "q6_k_t16_gemv_kernel", 2, 5),
+        _row(
+            3,
+            "q6_k_t16_gemv_top1_stage1_kernel",
+            7,
+            2,
+        ),
+        _row(
+            4,
+            "argmax_tile_stage2_publish_control_i32_kernel",
+            9,
+            1,
+        ),
+    ]
+
+    segments = _segment_requests(rows)
+    assert len(segments) == 1
+    summary = _summarize_segment(segments[0])
+    assert summary["dispatches"] == 4
+    assert summary["families"]["embedding"]["calls"] == 1
+    assert summary["families"]["lm_head_argmax"]["calls"] == 3
+
+
 def test_lpf5_trace_attributes_structural_blas_attention_composite() -> None:
     rows = [
         _row(0, "gguf_q4_k_embedding_bf16_out_kernel", 0, 10, grid_y=128),

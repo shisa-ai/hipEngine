@@ -195722,3 +195722,22 @@ Vulkan local sizes verbatim will close the measured gap.
   gfx1151 capability, separate c=1 stream, and prior all-low-priority fallback.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-production.json`.
+
+## 2026-07-31 14:09 JST — Repair current Laguna decode trace segmentation
+
+- The tracked-clean post-split-priority rocprof census contains the retained Q6
+  fused top-1 tail
+  `q6_k_t16_gemv_top1_stage1_kernel` ->
+  `argmax_tile_stage2_publish_control_i32_kernel`. The long-context trace
+  summarizer only recognized the older `argmax_stage1/2_kernel` spelling and
+  rejected the trace as an unterminated request.
+- RED adds the exact four-launch synthetic request tail, including the preceding
+  Q6 LM-head GEMV. GREEN recognizes both fused top-1 symbols for request
+  segmentation and attributes all three LM-head/top-1 launches to
+  `lm_head_argmax`; legacy spellings remain supported.
+- The focused regression and all **37** long-context profile/trace tests pass;
+  Python compilation and diff checks pass. The motivating raw trace is
+  `/tmp/laguna-split-priority-census.Zi97yx/current_kernel_trace.csv`
+  (SHA-256 `e6088600...3fab`) with child result
+  `/tmp/laguna-split-priority-census.Zi97yx/bench.json`
+  (SHA-256 `917e37f9...58e8`).
