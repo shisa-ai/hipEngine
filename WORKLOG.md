@@ -196668,3 +196668,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `0452d5d7...00c4c6f`; trace SHA-256 is
   `24d6386c...51fa3`. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-moe-tail-anyorder-rejected.json`.
+
+## 2026-08-01 00:28 JST — Reject router-select→gate/up native host batch
+
+- Implemented one native host call that invokes the unchanged correction
+  top-10 wrapper, records the existing shared-ready event, and invokes the
+  unchanged production selected gate/up wrapper. Grids, arithmetic, launches,
+  two-stream dependency, and resident bytes are unchanged.
+- Focused RED/GREEN and live-HIP validation passed. Separate and batched
+  chains produce byte-identical router scores, selected IDs/weights, scaled
+  weights, BF16 gate/up output, event visibility, generated trajectory,
+  positions, and allocation lifecycle.
+- The one-pair directional result appeared positive at
+  **23.215030 -> 23.235774 tok/s**, but the seven-pair alternating gate
+  rejects it: **23.237538 -> 23.233438 tok/s (-0.01764%,
+  +0.007594 ms/token)**.
+- Completely removed the wrapper, registry key, runtime route,
+  constructor/setter, harness option, and tests. Production remains
+  **23.231783 tok/s / 43.044479 ms/token**. Directional/admission raw SHA-256
+  values are `75a3741f...58f2d` and `3634467c...67dc5`. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-router-gate-host-batch-rejected.json`.

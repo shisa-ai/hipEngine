@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-01T00:28:00+09:00",
+  "kind": "hipengine_gfx1151_laguna_router_gate_host_batch_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "3cd7c692bd62d8fcb351064b0876601ac1a34b37",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79066169172
+  },
+  "candidate": {
+    "mechanism": "one native host call invokes the unchanged correction-top10 wrapper, records the existing shared-ready event, then invokes the unchanged production selected gate/up wrapper",
+    "gpu_kernels_changed": false,
+    "launches_changed": false,
+    "resident_bytes_delta": 0,
+    "arithmetic_changed": false,
+    "shared_dependency": "the secondary stream still waits on the same event recorded after selector and before gate/up"
+  },
+  "validation": {
+    "red": "wrapper export, four-axis registry key, and declared parent symbols were absent",
+    "green": "focused build/registry/runtime bundle passed",
+    "live_hip": "separate selector/event/gate-up and native-batched selector/event/gate-up produce byte-identical routing scores, selection scores, selected IDs, routing weights, scaled weights, and BF16 intermediate",
+    "full_model": "all fourteen control/candidate runs generate next token 2930, final token 74825, and trajectory SHA-256 1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "positions_and_lifecycle": "exact"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "repetitions_per_mode": 7,
+    "warmup_rows": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --compare-router-select-gate-up-host-batch --output /tmp/laguna-router-gate-hostbatch-ab7.json",
+    "directional_raw_sha256": "75a3741f78b6b9f224f3ae18fde207fc16ced45030fb4d63fd792edd4e458f2d",
+    "admission_raw_sha256": "3634467c1bcdb085104e7ca836b468c4f42cade7a675ad84b6ac8cecde667dc5"
+  },
+  "performance": {
+    "control_samples_tok_s": [
+      23.210458332725594,
+      23.236441021186497,
+      23.237537721770092,
+      23.236766247617204,
+      23.241769196137184,
+      23.241570106240673,
+      23.24169271609043
+    ],
+    "candidate_samples_tok_s": [
+      23.237492222413817,
+      23.23268952276669,
+      23.221911009329737,
+      23.2334377069361,
+      23.24023810850956,
+      23.227462349898065,
+      23.236701793950793
+    ],
+    "control_median_tok_s": 23.237537721770092,
+    "candidate_median_tok_s": 23.2334377069361,
+    "delta_percent": -0.017643929761756993,
+    "delta_ms_per_token": 0.007594196771187001,
+    "directional_control_tok_s": 23.215030297910467,
+    "directional_candidate_tok_s": 23.23577419748454
+  },
+  "decision": {
+    "action": "reject and completely remove native wrapper, registry key, runtime route, constructor/setter, harness option, and tests",
+    "reason": "The positive one-pair directional sample does not survive the counterbalanced seven-pair steady-state gate. Native host batching leaves the device kernel sequence unchanged and does not recover measurable complete-decode wall.",
+    "production": "unchanged at 23.231783 tok/s / 43.044479 ms/token",
+    "reopen_only_if": "a larger native executor batches a materially longer layer or token schedule instead of one already-tight adjacent boundary"
+  }
+}
