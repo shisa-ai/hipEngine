@@ -1208,22 +1208,21 @@ H6E/H5I/raw production
 ([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
-**WPF-H6I exact IQ3 triple-output reduction amortization** is now an admitted
-standalone gfx1100 leaf. The separate H6F sibling keeps P256/P64/local128/
-rowbatch8 and every per-output load, row-interleaved VOPD FMA, wave32 tree,
-wave0..3 sum, BF16 store, grid, and active traversal. Three outputs share one
-publication/reuse epoch: compiled stride **0x300** and two barriers/body prove
-fixed-N3072 **6 -> 4 epochs / 12 -> 8 dynamic barriers**; the body retains
-exactly **216** useful FMAs. Candidate metadata/runtime is private0/spill0/
-scratch0 at **VGPR164/168, LDS384/512**, local128/grid32768x64. Frozen
-rows1/7/8/9/M512, P64/P65, every triplet boundary, complete H6F bytes, and
-sampled CPU bytes pass **9/9**. All **45/45** actual IQ3 layers are byte-exact
-and both-clock positive: H6F -> H6I event/wall sums move **362.558/359.595 ->
-328.206/332.468 ms (-9.475%/-7.544%, 1.105x/1.082x)**, with minimum
-**1.094x/1.073x**. The retained bundle passes **112/112**. Runtime capability,
-package maps, workspace, and H6F source production remain unchanged pending a
-separate bounded-owner gate
-([H6I candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
+**WPF-H6I exact IQ3 triple-output reduction amortization** now has a qualified
+bounded default-off owner through the existing `grouped_raw_iq_active_experts`
+ABI/raw allocation/`grouped_iq_prefill` library. The leaf remains stride
+**0x300**, 216 FMAs, private0/spill0/scratch0 at metadata/runtime
+**VGPR164/168, LDS384/512**, and exact/both-clock positive on **45/45** actual
+layers. Complete natural M512 is KL0 and byte-exact across logits, final/post
+hidden, all **48/48** boundaries, K/V/`KVLiveSpans`, repeat, and teardown at
+unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch. Four
+cached requests preserve **2,192 dispatches** and every non-IQ3 family while
+substituting exact **45 H6F -> 45 H6I**; IQ3/request-sum/span falls
+**9.559%/1.906%/2.200%** with H6I local128/VGPR168/LDS512/scratch0. Clean
+default-off 512/1K/4K gains **2.198%/1.688%/0.650%**, 3/3 exact wins each;
+**191/191** guards pass. H6F remains selected source production pending a
+separate source-default contract and matched gates
+([H6I candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
