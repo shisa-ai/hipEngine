@@ -7603,6 +7603,39 @@ The remaining attention sequence is:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-production.json).
 
+146. Re-profile the published non-temporal route across both production
+     queues and compare the actual device schedule with llama.cpp Vulkan.
+     **Accepted as attribution; the next priority is queue scheduling, not
+     another attention rewrite.**
+
+     The exact cached-build trace covers 127 decode transitions and preserves
+     token **2930 -> 74107**, final position **638**, generated-ID SHA-256
+     `94f803f7...bda32`, **482 dispatches/token**, and complete allocation
+     recovery. The streamed source-F16 composite family falls
+     **24.538908 -> 24.362893 ms/token (-0.717%)**, independently confirming
+     the retained leaf direction in the integrated route.
+
+     Because the two queues overlap, inclusive kernel time is
+     **48.732890 ms/token** and must not be compared directly with single-queue
+     kernel sums. Interval union gives **42.158779 ms/token** of actual GPU
+     busy time inside a **43.834293-ms/token** dispatch span, with
+     **6.571019 ms/token** of queue overlap and
+     **1.687293 ms/token** of union-idle holes. Current union-busy time is
+     **1.500421 ms/token below** Vulkan's logged **43.6592-ms/token** GPU sum,
+     while tracked-clean hipEngine wall remains **0.922368 ms/token slower**
+     than Vulkan. The remaining short-decode deficit is therefore command
+     feed/dependency placement, not insufficient aggregate device throughput.
+
+     The overlap anatomy identifies a bounded next screen. Shared gate/down
+     currently overlap selected gate/up for **3.704469/2.868895 ms/token**,
+     inflating selected gate/up from the prior no-contention
+     **7.785973** to **8.903994 ms/token**. Selected down then runs alone for
+     **4.741660 ms/token**. Move the existing shared-stream dependency point
+     after selected gate/up so the shared branch can overlap selected down,
+     without adding events, launches, resident bytes, or math changes. Gate
+     that schedule on exact state and whole-model wall:
+     [`post-F16 two-queue census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -7650,6 +7683,15 @@ like-for-like positive family gaps rank paired selected gate/up
 router **+0.084148 ms/token**. The trace shows **1.672076 ms/token** between
 summed kernels and kernel span:
 [`post-router wave-0 census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json).
+
+The newer post-F16 two-queue census supersedes the single-queue kernel-sum
+comparison for scheduling decisions. It measures **42.158779 ms/token** of
+union-busy GPU time inside a **43.834293-ms/token** dispatch span, so current
+device work is already **1.500421 ms/token below** Vulkan's logged kernel sum.
+The clean wall gap is nevertheless **0.922368 ms/token**. The next retained
+candidate must contract the dispatch span/idle holes or reduce damaging
+cross-queue memory contention; a faster isolated attention leaf is no longer
+the leading cross-backend explanation.
 
 The producer-max and local1024 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own

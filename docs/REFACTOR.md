@@ -14,7 +14,7 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Laguna gfx1151 source-F16 non-temporal decode comparison seam
+## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
 - Added 2026-07-31 as a gfx1151 default plus
   `--compare-f16-nontemporal-decode` same-resident profiling seam after all
@@ -31,6 +31,12 @@ should be removed or collapsed.
 - **Clean publication passed 2026-07-31:** selector-unset production advances
   **22.780604 -> 22.856155 tok/s (+0.33165%)**. Keep the comparison seam only
   through the pending source-F16/kernel-span census, then close it.
+- **Closed 2026-07-31:** the post-promotion two-queue census confirms the
+  expected source-F16 production symbols and lowers their inclusive family
+  time **24.538908 -> 24.362893 ms/token (-0.717%)**. Removed the completed
+  CLI/protocol comparison seam. Constructor `false`, cached-load registered
+  composites, and exact leaf diagnostics remain the rollback and regression
+  coverage.
 
 ## Laguna gfx1151 exact global local1024 selector
 

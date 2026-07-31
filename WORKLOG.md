@@ -195262,3 +195262,31 @@ Vulkan local sizes verbatim will close the measured gap.
   Load is excluded and cached-build enforcement is active.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-production.json`.
+
+## 2026-07-31 09:39 JST — Post-F16 two-queue wall census
+
+- Cache-only tracing at `f4cc2f502` covers 127 exact p512/d128 decode
+  transitions, 482 dispatches/token, token **2930 -> 74107**, generated-ID SHA
+  `94f803f7...bda32`, and complete allocation recovery. The trace/bench
+  SHA-256 values are `bc886866...c138a` / `8e5486c5...976d2`; no compiler ran
+  under rocprofv3.
+- Source-F16 composites fall **24.538908 -> 24.362893 ms/token (-0.717%)**.
+  Across both queues, inclusive kernel sum is **48.732890 ms/token**, interval
+  union busy is **42.158779**, dispatch span is **43.834293**, union idle is
+  **1.687293**, and queue overlap is **6.571019 ms/token**. Inclusive family
+  totals double-count overlap and are not a wall proxy.
+- hipEngine union-busy device work is **1.500421 ms/token below** Vulkan's
+  logged **43.6592-ms/token** GPU sum, yet tracked-clean hipEngine wall remains
+  **0.922368 ms/token slower**. Attention totals only **1.116010 ms/token**;
+  the leading remaining cross-backend mechanism is queue feed/dependency
+  placement, not the attention core.
+- Shared gate/down currently overlap selected gate/up for
+  **3.704469/2.868895 ms/token**, while selected down runs alone for
+  **4.741660 ms/token**. Next screen: reuse the same two events but launch the
+  shared branch after selected gate/up, aiming to trade damaging gate/up
+  contention for overlap with selected down.
+- Removed the completed `--compare-f16-nontemporal-decode` CLI/protocol seam.
+  Constructor `false`, cached-load registered composites, and exact leaf
+  diagnostics remain rollback coverage.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json`.
