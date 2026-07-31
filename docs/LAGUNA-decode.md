@@ -8161,6 +8161,24 @@ The remaining attention sequence is:
      gate/up:
      [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-tile2-wall-reprofile.json).
 
+163. Submit selected gate/up before the after-router shared wrappers.
+     **Rejected and removed.**
+
+     This preserved the post-router event, secondary normal-priority stream,
+     every kernel, and the final join; only host submission order changed.
+     The exact seven-pair same-resident gate was neutral-negative:
+     **23.018356 -> 23.017362 tok/s (-0.00432%)**, **+0.001875
+     ms/token**, with **4/7** positive pairs and identical trajectories.
+
+     The host therefore already submits both branches ahead of execution.
+     The measured router-to-selected hole is queue/event dispatch latency, not
+     synchronous wrapper work that can be hidden by swapping two Python calls.
+     The candidate API, setter, harness selector, and test were removed.
+     The next structural screen must amortize dispatch itself across the whole
+     token—HIP graph capture or an equivalent batched executor—rather than
+     rearrange one already-ahead submission:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-selected-first-enqueue-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

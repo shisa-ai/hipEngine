@@ -195911,3 +195911,23 @@ Vulkan local sizes verbatim will close the measured gap.
   router→selected gap. Trace/child SHA-256 values are
   `7a38a028...bb50b` / `3cd78dba...7035a`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-tile2-wall-reprofile.json`.
+
+## 2026-07-31 15:54 JST — Reject selected-first shared enqueue order
+
+- RED/GREEN pinned a schedule that kept the retained post-router event and
+  final join but submitted selected gate/up before the host enqueued the
+  secondary shared branch. The call-order test passed. The production-shape
+  Q4_K GPU-oracle parameter and mocked session lifecycle also passed; the
+  Q6_K parameter hit an existing bulk-MMQ equality failure before the new c=1
+  call.
+- The exact same-resident seven-pair p512/d128 gate measures
+  **23.018356 -> 23.017362 tok/s (-0.00432%)**, **+0.001875
+  ms/token**, with **4/7** positive pairs and exact token trajectories.
+  Raw JSON SHA-256 is `3d39c863...f2a6`.
+- Rejected and removed the runtime argument, session setter, comparison
+  selector, GPU-fixture addition, and call-order test. Production is
+  unchanged. The null result shows both branches were already host-submitted
+  ahead of execution; the timeline hole is queue/event dispatch latency.
+  Next: whole-token HIP graph capture or an equivalent batched dispatch
+  executor. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-moe-selected-first-enqueue-rejected.json`.
