@@ -1301,6 +1301,7 @@ hipengine/
 │   ├── KERNELS.md               # Kernel catalog and port playbook
 │   ├── PREFILL.md               # Native bulk prefill plan/evidence
 │   ├── LAGUNA-prefill.md        # Active Laguna arithmetic/MMQ prefill attack plan
+│   ├── LAGUNA-decode.md         # Active Laguna short/long decode attack plan
 │   ├── SAMPLING.md              # Normal sampling parameter support plan
 │   ├── ROOFLINE.md
 │   ├── LESSONS-LEARNED.md
@@ -1423,6 +1424,18 @@ dominates, the strongest new premise is an in-tree fused head-dim-128 GQA
 FlashAttention owner consuming `KVLiveSpans` directly, or an attention-only
 two-M2,048 scheduling window that raises query reuse without the rejected
 whole-model M4,096 scratch.
+
+Laguna long-context decode is now a separate active track in
+`LAGUNA-decode.md`. LC-D1 removed the false `allocated_capacity == 4096`
+qualification from the exact fused global owner while retaining resource-safe
+live-work bounds. At real capacity 131,200, clean d1K/d4K improve
+**20.637969 -> 23.068316 tok/s (+11.776%)** and
+**15.477837 -> 21.666976 tok/s (+39.987%)**, landing within
+**1.275%/5.947%** of same-GGUF Vulkan. The mandatory
+16K/64K/128K gate is neutral-to-positive with exact recurrent state and full
+allocation recovery. LC-D2 now profiles the exact generic score-plane and
+reducer route above 6,000 live slots; LC-D3 replaces that materialized plane
+with bounded split-K partials or another association-exact tiled owner.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

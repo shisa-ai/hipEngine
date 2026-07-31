@@ -1,0 +1,139 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_capacity_independent_short_global_decode_production",
+  "created_at": "2026-08-01T07:12:00+09:00",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "source_revision": "524e34a2c908210d015f97ddd20ce7d5d8bef0f2",
+  "baseline_and_comparator_artifact": "benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "format": "GGUF",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "change": {
+    "summary": "Forward allocated KV capacity through KVLiveSpans into the existing exact fused global-attention owner and select it by live work plus LDS limits instead of requiring capacity 4096.",
+    "dense_prefix_routes": [
+      {
+        "live_slots": "1..4000",
+        "owner": "mixed40 local1024 idle-double-buffer V64",
+        "dynamic_lds_formula": "2 * aligned(scan_slots) * sizeof(float) + 2 * 64 * 128 * sizeof(bf16) + padding"
+      },
+      {
+        "live_slots": "4001..6000",
+        "owner": "mixed40 local512 single-buffer V64",
+        "dynamic_lds_formula": "2 * aligned(scan_slots) * sizeof(float) + 64 * 128 * sizeof(bf16) + padding"
+      },
+      {
+        "live_slots": "6001+",
+        "owner": "exact generic split attention"
+      }
+    ],
+    "non_dense_route": "mixed40 local512 through 4000 live slots, then exact generic split attention",
+    "resident_bytes_delta": 0,
+    "allocation_count_delta": 0
+  },
+  "clean_decode_rows": [
+    {
+      "depth": 1024,
+      "baseline_tokens_per_second": 20.6379690773,
+      "candidate_tokens_per_second": 23.068315617689937,
+      "candidate_ms_per_token": 43.349502,
+      "delta_percent": 11.776094,
+      "same_gguf_vulkan_tokens_per_second": 23.366162,
+      "candidate_vs_vulkan_percent": -1.274691,
+      "final_token_id": 6273,
+      "generated_ids_sha256": "18974f08ba7986767262103cb4c200ad36d3e8f675aad526887fad745bdc488c"
+    },
+    {
+      "depth": 4096,
+      "baseline_tokens_per_second": 15.4778365947,
+      "candidate_tokens_per_second": 21.66697608820993,
+      "candidate_repeat_tokens_per_second": 21.681851929807227,
+      "candidate_ms_per_token": 46.153187,
+      "delta_percent": 39.987110,
+      "same_gguf_vulkan_tokens_per_second": 23.037017,
+      "candidate_vs_vulkan_percent": -5.947128,
+      "final_token_id": 6436,
+      "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"
+    },
+    {
+      "depth": 16384,
+      "baseline_tokens_per_second": 7.731807844,
+      "candidate_tokens_per_second": 7.735835760938433,
+      "candidate_ms_per_token": 129.268515,
+      "delta_percent": 0.052095,
+      "same_gguf_vulkan_tokens_per_second": 21.728347,
+      "candidate_vs_vulkan_percent": -64.397495,
+      "final_token_id": 13815,
+      "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"
+    },
+    {
+      "depth": 65536,
+      "baseline_tokens_per_second": 2.5063305207,
+      "candidate_tokens_per_second": 2.5126516885450485,
+      "candidate_ms_per_token": 397.985922,
+      "delta_percent": 0.252208,
+      "same_gguf_vulkan_tokens_per_second": 17.737473,
+      "candidate_vs_vulkan_percent": -85.834218,
+      "final_token_id": 1869,
+      "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"
+    },
+    {
+      "depth": 131072,
+      "baseline_tokens_per_second": 1.3129211969,
+      "candidate_tokens_per_second": 1.3174000847850555,
+      "candidate_ms_per_token": 759.070848,
+      "delta_percent": 0.341139,
+      "same_gguf_vulkan_tokens_per_second": 14.237076,
+      "candidate_vs_vulkan_percent": -90.746695,
+      "final_token_id": 874,
+      "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+    }
+  ],
+  "capacity_countercheck": {
+    "workload": "p512/d128 at capacity 4224",
+    "old_generic_tokens_per_second": 21.846364,
+    "candidate_tokens_per_second": 23.210332488793412,
+    "delta_percent": 6.243458,
+    "candidate_real_131200_capacity_repeat_tokens_per_second": 23.20695791465626,
+    "same_trajectory": true
+  },
+  "correctness": {
+    "status": "pass",
+    "large_capacity_fixture": "capacity 8192 at live 1024 and live 4097",
+    "candidate_vs_generic_f32_context": "bit identical",
+    "candidate_vs_generic_bf16_gated_output": "bit identical",
+    "recurrent_generated_ids_match_baseline": true,
+    "final_positions_exact": true,
+    "tracked_lifecycle": "87407934744 bytes / 1452 allocations returned to zero",
+    "focused_tests": "42 passed",
+    "broader_test_evidence": "63 passed, 1 unrelated stale allocation-count assertion failed (expected 243, current main owns 245); the changed route adds no allocations"
+  },
+  "trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-lcd1-trace.iUN8FC -- .venv/bin/pytest -q tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "local1024_live1024_duration_ms": 0.068769,
+    "local512_live4097_duration_ms": 0.229310,
+    "reported_resources": "VGPR48 / static LDS512 / scratch0 for both template instances",
+    "raw_sha256": "049cac007b0d0921fc4894fb200fe8716429f9e4ceebf5e5f70f64e4a513ab76"
+  },
+  "protocol": {
+    "short_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd1-clean-short-guard.json",
+    "short_raw_sha256": "f7fed103be589fdba7873d97b2b66f0f41ee9c20eeda2891fdf31e50b031c7cc",
+    "long_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd1-clean-depth-gate.json",
+    "long_raw_sha256": "9e1af9f0597ad18958d5052dc978567db9431289ba6edb9433c85939df431329",
+    "tracked_clean": true,
+    "untracked_shared_artifacts_excluded": true,
+    "timing_scope": "127 synchronized forward_token calls after the first prefill-produced token; load excluded"
+  },
+  "decision": "Retain and promote LC-D1. The false allocation-capacity seam is closed: d1K is within 1.275% of same-GGUF Vulkan and d4K within 5.947%, while 16K/64K/128K remain unchanged within one-pass variance. LC-D2 must now profile and replace the exact generic global-attention score-plane/reducer path above 6000 live slots."
+}

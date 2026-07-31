@@ -196953,3 +196953,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `89a64f4a328b49cf885366eef857e5aea9d8d28ce5de2d406d64e11ddf6b2db1`.
   These are directional implementation gates, not the clean production claim;
   the mandatory clean 4K/16K/64K/128K run follows the implementation commit.
+
+## 2026-08-01 07:15 JST — Promote capacity-independent short global decode
+
+- Committed the exact implementation as `524e34a2c`, then ran the mandatory
+  tracked-clean capacity-131,200 4K/16K/64K/128K one-pass gate. Decode is
+  **21.666976/7.735836/2.512652/1.317400 tok/s**. Relative to the matched
+  pre-change curve this is **+39.987%/+0.052%/+0.252%/+0.341%**: the intended
+  short-route win is large and the generic fallback depths are
+  neutral-to-positive. Prefill remains
+  **611.641/478.134/246.369/148.570 tok/s**.
+- A second clean real-capacity short guard measures
+  **23.206958/23.068316/21.681852 tok/s** at 512/1K/4K. d1K improves
+  **11.776%** and is only **1.275%** behind same-GGUF Vulkan; d4K's mandatory
+  row improves **39.987%** and is **5.947%** behind Vulkan, with the short
+  repeat confirming **21.681852 tok/s**.
+- All final tokens and generated-ID hashes match the established baseline at
+  every measured depth; final positions are exact. Both clean processes
+  return all **87,407,934,744 bytes / 1,452 allocations** to zero. Short and
+  long raw JSON SHA-256 values are
+  `f7fed103be589fdba7873d97b2b66f0f41ee9c20eeda2891fdf31e50b031c7cc`
+  and
+  `9e1af9f0597ad18958d5052dc978567db9431289ba6edb9433c85939df431329`.
+- Promoted LC-D1 as the package default and published
+  `benchmarks/results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json`.
+  LC-D2 is next: trace and attribute the exact generic score-plane/reducer/PV
+  path above 6,000 live slots before implementing bounded split-K partials.
