@@ -316,6 +316,26 @@ Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()`
 
 Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `attention_decode`, and causal-GQA `full_attn_prefill`; varlen full-attn is covered by direct NumPy unit tests. Run committed fixtures with `python3 scripts/check_fixtures.py`.
 
+### Moonshine source-F16 projection baselines (**hipEngine landed**)
+
+`linear/moonshine_projection.{hip,py}` provides raw-pointer FP16-input,
+FP16-weight, FP16-output single, paired, and triple projections with FP32
+accumulation. The single wrapper also has an explicit row-precompute key for
+encoder-frame K/V materialization. The keys are
+`moonshine_projection/single_fp32_accum`,
+`moonshine_projection_rows/single_fp32_accum`,
+`moonshine_projection_pair/pair_fp32_accum`, and
+`moonshine_qkv_proj/triple_fp32_accum`, all under `quant="fp16"`; gfx1151
+uses the peer backend alias and native `gfx1151` code object.
+
+The production-shape fixture covers hidden 416, batch-one single/triple, and a
+40-row paired cross-K/V baseline against the independent NumPy oracle. Maximum
+absolute error is `3.052e-5`, all outputs are finite, and the cache-only
+`rocprofv3` smoke names all three kernels at local256/VGPR16/LDS512/scratch0.
+Measured four-row diagnostic durations are 20.759/56.788/69.772 us for
+single/pair/triple; these are bring-up diagnostics, not promoted performance
+claims.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
