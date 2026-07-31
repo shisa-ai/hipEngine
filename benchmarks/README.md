@@ -52,7 +52,7 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current gfx1151 Laguna p512/d128 decode checkpoint is
-**23.089693 tok/s / 43.309 ms/token**, up **101.363%** from the
+**23.231783 tok/s / 43.044 ms/token**, up **102.602%** from the
 **11.466687 tok/s** sprint start. The preceding exact checkpoint remains
 **23.017271 tok/s**; the current selected gate/up owner is explicitly
 quality-gated as described below. The exact selected-Q4 down owner now shares
@@ -134,9 +134,12 @@ unsafe variant that also relaxed the producer. The corrected chain is
 bit-exact, leaves both kernels at VGPR24/scratch0, improves the K6144/K9216
 leaves **3.161%/2.182%**, and advances the two-pair same-resident screen
 **23.087307 -> 23.233248 tok/s (+0.63213%, -0.272079 ms/token)** with both
-pairs positive and identical trajectories. The tracked-clean production
-publication is pending.
-[`output→router any-order retention`](results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json).
+pairs positive and identical trajectories. Tracked-clean default-on
+production measures **23.231783 tok/s / 43.044 ms/token**, advancing the prior
+headline **0.61538% / -0.264889 ms/token** with unchanged residency. The
+remaining same-GGUF Vulkan gap is **0.214957 ms/token / 0.5019%**.
+[`retention`](results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json),
+[`production`](results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json).
 The refreshed 127-transition census shows the tile2 family saving transfers
 to the critical path: source-F16 falls **24.349 -> 24.128 ms/token**,
 union-busy falls **42.157 -> 41.942**, and span falls
