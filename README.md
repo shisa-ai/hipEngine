@@ -356,34 +356,36 @@ unchanged, gfx1151 stays excluded, and **81/81** guards pass
 [candidate/runtime](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
 [target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
-The clean post-H6N source refresh is **386.959 tok/s** from
-**386.959/386.988/387.860/386.261/386.435**, all exact token 2930 and
-lifecycle-clean. Its representative cached request is **1,309.339 ms / 2,192
-dispatches**. Campaign-start/current/llama.cpp HIP component milliseconds are
-Q5 **1,270.458/254.689/58.737**, IQ-down **557.091/346.108/154.434**,
-attention **488.304/148.104/21.624**, Q6 **157.073/86.987/14.455**, gate/up
-**460.143/397.542/401.393**, and remaining **68.623/75.908/67.598**; current
-kernel sum is **1,309.339 vs 718.241 ms** and the clean wall gap is **1.79952x**.
-Q5 remains numerically first but its exact mechanisms are closed by H5/H6G/H6M.
-After H6N supplies the distinct attention interval, **WPF-H6P exact staged-wave-
-publication triple-output IQ3 is the retained gfx1100 source default**.
-Sequential A/B/C publication preserves H6I bytes/arithmetic and reduces runtime
-VGPR **168 -> 112**. Complete natural M512 is KL0/byte-exact across logits, all
-**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached
-requests preserve **2,192 dispatches** and substitute exact **45 H6I -> 45
-H6P**, cutting IQ3/request-sum/span **2.757%/0.291%/0.645%**. Fresh
-selector-unset 512/1K/4K improves **363.420/295.760/188.704 ->
-365.186/296.589/189.108 tok/s (+0.486%/+0.280%/+0.214%)**, **3/3** exact wins
-each; fixed natural C4096/M512 improves **387.780 -> 388.320 tok/s (+0.139%,
-4/5 wins)**. A fresh matched llama.cpp HIP rerun is **690.791 tok/s** median
-with **5/5** top-1 token 2930, leaving a **1.77892x** wall gap; the
-user-reported **714.07** is the synthetic/random default `pp512` path.
-Workspace/scratch remain **161,120,256/600,141,856 bytes**, H6I remains same-ABI
-rollback, **240/240** guards pass, E255 fails closed, and gfx1151 remains
-excluded
-([H6P production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json) ·
-[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
-[post-H6N residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+**WPF-H6P exact staged-wave-publication triple-output IQ3 is the retained
+gfx1100 source default.** Sequential A/B/C publication preserves H6I
+bytes/arithmetic while reducing runtime VGPR **168 -> 112**. Complete natural
+M512 is KL0/byte-exact across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, and teardown; selector-unset 512/1K/4K improves
+**363.420/295.760/188.704 -> 365.186/296.589/189.108 tok/s
+(+0.486%/+0.280%/+0.214%)**, **3/3** exact wins each, and fixed paired M512 is
+**387.780 -> 388.320 (+0.139%, 4/5 wins)**. The independent clean post-commit
+refresh is **389.145 tok/s** from **389.145/389.310/390.187/388.384/388.354**,
+all token 2930 and lifecycle-clean. Fresh matched llama.cpp HIP is **690.791
+tok/s** from **694.342/692.318/690.152/690.791/690.480**, all **5/5** top-1
+2930; the user-reported **714.07** is synthetic/random default `pp512`.
+
+Campaign-start/pre-H6P/current/llama.cpp component milliseconds are Q5
+**1,270.458/254.689/254.839/58.314**, IQ-down
+**557.091/346.108/337.353/153.860**, attention
+**488.304/148.104/148.927/21.512**, Q6 **157.073/86.987/87.346/14.668**,
+gate/up **460.143/397.542/397.616/397.805**, and remaining
+**68.623/75.908/76.410/67.849**. Kernel sum is
+**3,001.692/1,309.339/1,302.492/714.008 ms**; the wall gap is **1.77515x**.
+Q5 stays numerically first but its exact mechanisms are closed. **WPF-H6Q is a
+target-only compact-shuffle-loop H6P sibling**: H6P and H6I have identical
+static LDS publication loads/stores, but H6P unrolls the fixed shuffle loops to
+**120 static `ds_bpermute_b32` / 8,360 code bytes** versus H6I's compact **24 /
+6,264**. H6Q must retain VGPR112, all 216 FMAs/120 dynamic shuffles and order,
+stride `0x300`, staged scopes, eight barriers, topology, and bytes while reaching
+24 static bpermutes, <=7,000 code bytes, and **45/45** both-clock wins
+([post-H6P residual / H6Q target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+[H6P production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json) ·
+[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
