@@ -1849,16 +1849,19 @@ decode, scalar FMA, wave32 tree, serial wave-0..7 sum, gate/up BF16 boundary,
 SiLU expression, and BF16 output. On actual layer-47 weights and natural M512
 routing, complete bytes match and fair control-post-gather versus
 candidate-pre-gather event/wall moves **32.691/32.724 -> 15.458/15.438 ms
-(-52.716%/-52.825%, 2.115x/2.120x)** with scratch0. The bounded default-off
-owner resolves only layer-47 IQ3 at exact model shape, adds no allocation, and
-passes complete natural M512 at KL0/byte identity across all state/repeat with
-unchanged **600,141,856-byte** total scratch. Four cached requests preserve
-**2,050** dispatches and exact 46-IQ2/one-H6C plus 45-H5Z/two-H5J topology;
+(-52.716%/-52.825%, 2.115x/2.120x)** with scratch0. The bounded owner resolves
+only layer-47 IQ3 at exact model shape, adds no allocation, and passes complete
+natural M512 at KL0/byte identity across all state/repeat with unchanged
+**600,141,856-byte** total scratch. Four cached requests preserve **2,050**
+dispatches and exact 46-IQ2/one-H6C plus 45-H5Z/two-H5J topology;
 gather-inclusive special time falls **32.127 -> 15.030 ms (-53.215%)**.
-Default-off 512/1K/4K improves **+1.148%/+0.796%/+0.560%**, 3/3 wins each.
-Runtime qualification is complete; source production remains unchanged pending
-a separate selector-unset publication
-([H6C runtime candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-runtime-candidate.json) ·
+Default-off 512/1K/4K improves **+1.148%/+0.796%/+0.560%**; selector-unset
+publication confirms **+1.326%/+0.897%/+0.490%**, 3/3 wins each, promoting
+**316.106/263.864/174.840 tok/s**. Fixed natural M512 admitted at C4096 moves
+**325.211 -> 328.863 tok/s (+1.123%, 5/5 wins)**, narrowing exact llama.cpp HIP
+**696.342** to **2.11742x**
+([H6C production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-production.json) ·
+[H6C runtime candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-runtime-candidate.json) ·
 [H6C leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-candidate.json) ·
 [H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,

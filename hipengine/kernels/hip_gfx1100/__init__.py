@@ -144,16 +144,18 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
-# WPF-H6C's exact K3072/N1024/E256 fused-SiLU rowbatch4 leaf is admitted as
-# one bounded default-off layer-47 IQ3 runtime candidate. The empty role map
-# preserves production; scoped benchmark mutation may select the qualified ABI.
-# Wrong role/shape/quant/registration/backend and c=1 retain the exact grouped
-# route-major chain, while IQ2 keeps its independently promoted pair16 route.
+# WPF-H6C promotes the exact K3072/N1024/E256 fused-SiLU rowbatch4 leaf for
+# only the qualified layer-47 IQ3 role after exact state, physical topology,
+# clean 512/1K/4K, and matched C4096/M512 wins. An empty role map remains the
+# scoped rollback. Wrong role/shape/quant/registration/backend and c=1 retain
+# the exact grouped route-major chain, while IQ2 keeps promoted pair16.
 _H6C_IQ3_GATE_UP_VARIANT = (
     "selected_dual_silu_grouped_prefill_compact_"
     "k3072_n1024_e256_rowbatch4_bf16_bf16_out"
 )
-LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS = {}
+LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS = {
+    "layer47_iq3_k3072_n1024_e256": _H6C_IQ3_GATE_UP_VARIANT
+}
 LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS = {
     _H6C_IQ3_GATE_UP_VARIANT: "grouped_raw_iq_dual_silu"
 }
