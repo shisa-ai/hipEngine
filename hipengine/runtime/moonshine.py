@@ -489,6 +489,7 @@ class MoonshineResidentRuntime:
             moonshine_gated_silu_fp16,
         )
         from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+            moonshine_f16_lm_head_projection,
             moonshine_f16_projection,
             moonshine_f16_projection_bias,
             moonshine_f16_projection_triple,
@@ -712,7 +713,7 @@ class MoonshineResidentRuntime:
         )
         if boundary_callback is not None:
             boundary_callback("final_hidden", normalized)
-        moonshine_f16_projection(
+        moonshine_f16_lm_head_projection(
             normalized.ptr,
             self.weights[spec.lm_head_alias_name].ptr,
             self.tensor("logits").ptr,

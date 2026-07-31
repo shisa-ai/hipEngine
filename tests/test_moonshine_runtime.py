@@ -301,6 +301,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
 
     libraries = MoonshineDecoderLibraries(
         projection=FakeLibrary(
+            "hipengine_moonshine_f16_lm_head_projection",
             "hipengine_moonshine_f16_projection",
             "hipengine_moonshine_f16_projection_bias",
             "hipengine_moonshine_f16_projection_pair_head_major",
@@ -371,7 +372,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         expected.extend(
             [
                 "hipengine_moonshine_layernorm_fp16",
-                "hipengine_moonshine_f16_projection",
+                "hipengine_moonshine_f16_lm_head_projection",
                 "hipengine_moonshine_argmax_fp16",
             ]
         )

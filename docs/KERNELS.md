@@ -323,13 +323,16 @@ FP16-weight, FP16-output single, paired, and triple projections with FP32
 accumulation. The single wrapper also has an explicit row-precompute key for
 encoder-frame K/V materialization. The keys are
 `moonshine_projection/single_fp32_accum`,
+`moonshine_lm_head/tied_fp32_accum`,
 `moonshine_projection_rows/single_fp32_accum`,
 `moonshine_projection_bias/single_fp32_accum`,
 `moonshine_projection_pair/pair_fp32_accum`,
 `moonshine_cross_kv_precompute/pair_head_major_fp32_accum`, and
 `moonshine_qkv_proj/triple_fp32_accum`, all under `quant="fp16"`; gfx1151
-uses the peer backend alias and native `gfx1151` code object. The cross-K/V
-variant preserves the same dot products but writes direct resident
+uses the peer backend alias and native `gfx1151` code object. The tied LM-head
+entry preserves the singleton reduction byte-for-byte under a distinct HIP
+kernel symbol so whole-token profiles can separate its 30.671-MB stream from
+other 416-wide projections. The cross-K/V variant preserves the same dot products but writes direct resident
 `[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
 separate transpose or temporary frame buffer. Four-row output matches the
 transposed NumPy projection within max absolute error `3.052e-5`; cache-only

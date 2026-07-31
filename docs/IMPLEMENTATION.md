@@ -107,6 +107,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Add logical-dim-52 fixed self-cache and resident cross-cache attention kernels.
 - [x] Compose the exact unfused FP16 decoder fallback after attention kernels land.
   - [x] Add head-major cross-K/V precompute and deterministic device FP16 argmax glue.
+  - [x] Give the tied LM-head baseline a distinct profile-visible kernel identity.
   - [x] Wire prepared kernels, encoder state, and sequential token steps into the resident runtime.
   - [x] Validate selected golden-fixture positions and prove timed steps do not allocate.
 
