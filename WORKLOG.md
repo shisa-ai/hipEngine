@@ -196292,3 +196292,36 @@ Vulkan local sizes verbatim will close the measured gap.
 - Trace/child SHA-256 values are
   `f57f347c...7aba53` / `a831bc30...f05d0`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json`.
+
+## 2026-07-31 20:09 JST — Reject Q4 selected-down halfdot
+
+- The required pre-port
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` check could not
+  reach a lineage diff because optional external repository
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. This did not modify
+  the tree.
+- RED failed when the production-shape fixture imported the absent candidate
+  wrapper. GREEN added a local128/tile16 Q4 selected-down owner that converts
+  adjacent BF16 activation/dequantized-weight pairs to FP16, uses native
+  `v_dot2_f32_f16` with FP32 accumulation, preserves the existing fused
+  slot-order weighted tail, and resets its completion counter.
+- The actual layer-1 E256/K1024/N3072/top-10 leaf improves
+  **0.057682 -> 0.046981 ms (-18.552%)**. Down/routed maximum absolute error
+  is **0.0078125**, p99 error is **0.001953/0.003906**, and the raw artifact
+  SHA-256 is `dde6a94a...24006`.
+- The cumulative 32-step gate with retained gate/up halfdot passes:
+  candidate-vs-exact max/mean KL **0.005953/0.000906**, teacher-forced top-1
+  **32/32**, greedy prefix **32/32**, deterministic repeat, and complete
+  allocation recovery. Raw SHA-256 is `d2e2cd8c...fb8f`.
+- Seven complete two-queue p512/d128 pairs reject the candidate:
+  **23.086282 -> 23.084619 tok/s (-0.00721%)**, paired median
+  **+0.007596 ms/token**, and only **2/7** wins. The performance result is
+  negative independently of the intentionally different approximate
+  trajectory; raw SHA-256 is `6b1b5ed5...b6d7`.
+- Removed the kernel, ABI, wrapper, registry/plan route, runtime and harness
+  selectors, and test additions. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. This confirms that another faster
+  independently overlapped selected-down leaf is not the next critical-path
+  attack; the next candidate must contract a measured queue boundary or feed
+  gap. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-halfdot-rejected.json`.
