@@ -21,6 +21,7 @@ from hipengine.kernels.cpu_reference.moonshine import moonshine_projection
 from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     build_moonshine_projection,
     moonshine_f16_projection,
+    moonshine_f16_projection_bias,
     moonshine_f16_projection_pair,
     moonshine_f16_projection_triple,
 )
@@ -74,19 +75,34 @@ def main() -> int:
         rng.normal(0.0, 0.04, size=(hidden, hidden)).astype(np.float16)
         for _ in range(3)
     )
+    bias = rng.normal(0.0, 0.03, size=(hidden,)).astype(np.float16)
     expected = tuple(moonshine_projection(inputs, weight) for weight in weights)
+    expected_bias = moonshine_projection(inputs, weights[0], bias)
     runtime = get_hip_runtime()
     allocations = []
     try:
         device_input = _upload(inputs, runtime, allocations)
         device_weights = tuple(_upload(weight, runtime, allocations) for weight in weights)
+        device_bias = _upload(bias, runtime, allocations)
         single = _output((rows, hidden), runtime, allocations)
+        biased = _output((rows, hidden), runtime, allocations)
         pair = tuple(_output((rows, hidden), runtime, allocations) for _ in range(2))
         triple = tuple(_output((rows, hidden), runtime, allocations) for _ in range(3))
         moonshine_f16_projection(
             device_input.ptr,
             device_weights[0].ptr,
             single.ptr,
+            rows,
+            hidden,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
+        moonshine_f16_projection_bias(
+            device_input.ptr,
+            device_weights[0].ptr,
+            device_bias.ptr,
+            biased.ptr,
             rows,
             hidden,
             hidden,
@@ -120,6 +136,7 @@ def main() -> int:
         )
         runtime.device_synchronize()
         actual_single = _download(single, (rows, hidden), runtime)
+        actual_bias = _download(biased, (rows, hidden), runtime)
         actual_pair = tuple(_download(output, (rows, hidden), runtime) for output in pair)
         actual_triple = tuple(
             _download(output, (rows, hidden), runtime) for output in triple
@@ -128,8 +145,8 @@ def main() -> int:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
-    comparisons = (actual_single, *actual_pair, *actual_triple)
-    references = (expected[0], expected[0], expected[1], *expected)
+    comparisons = (actual_single, actual_bias, *actual_pair, *actual_triple)
+    references = (expected[0], expected_bias, expected[0], expected[1], *expected)
     max_abs = max(
         float(np.max(np.abs(actual.astype(np.float32) - reference.astype(np.float32))))
         for actual, reference in zip(comparisons, references, strict=True)
@@ -147,6 +164,7 @@ def main() -> int:
         "hidden_size": hidden,
         "expected_kernel_names": [
             "moonshine_f16_projection_kernel",
+            "moonshine_f16_projection_bias_kernel",
             "moonshine_f16_projection_pair_kernel",
             "moonshine_f16_projection_triple_kernel",
         ],

@@ -324,6 +324,7 @@ accumulation. The single wrapper also has an explicit row-precompute key for
 encoder-frame K/V materialization. The keys are
 `moonshine_projection/single_fp32_accum`,
 `moonshine_projection_rows/single_fp32_accum`,
+`moonshine_projection_bias/single_fp32_accum`,
 `moonshine_projection_pair/pair_fp32_accum`, and
 `moonshine_qkv_proj/triple_fp32_accum`, all under `quant="fp16"`; gfx1151
 uses the peer backend alias and native `gfx1151` code object.
@@ -334,7 +335,9 @@ absolute error is `3.052e-5`, all outputs are finite, and the cache-only
 `rocprofv3` smoke names all three kernels at local256/VGPR16/LDS512/scratch0.
 Measured four-row diagnostic durations are 20.759/56.788/69.772 us for
 single/pair/triple; these are bring-up diagnostics, not promoted performance
-claims.
+claims. The bias-aware sibling adds each FP16 bias to the FP32 reduced dot
+before the FP16 boundary, matching decoder `fc1`/`fc2`; its cache-only
+four-row trace is 10.620 us at the same local256/VGPR16/LDS512/scratch0 tuple.
 
 `norm/moonshine_layernorm.{hip,py}` registers
 `moonshine_layernorm/fp16/fp32_stats`. One local256 block computes the FP32
