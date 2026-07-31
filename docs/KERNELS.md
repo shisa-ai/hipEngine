@@ -374,7 +374,12 @@ mean and centered variance in two passes, then writes the weighted FP16
 boundary. The hidden-416 seven-row fixture is byte-equal to the NumPy oracle.
 Cache-only gfx1151 tracing names `moonshine_layernorm_fp16_kernel` at 14.948 us,
 local256/VGPR24/LDS512/scratch0. Moonshine uses LayerNorm; this does not reuse
-or alter the Qwen/PARO RMSNorm math.
+or alter the Qwen/PARO RMSNorm math. The separately registered
+`moonshine_residual+moonshine_layernorm/rounded_fp32_stats` composite writes the
+exact rounded FP16 residual boundary, synchronizes the workgroup, and computes
+the following FP32-statistics LayerNorm in the same launch. The production
+hidden-416 boundary is byte-exact/all-close to the primitive chain and improves
+5.384 -> 3.657 us (1.47x), local256/VGPR24/LDS512/scratch0.
 
 `fused/moonshine_glue.{hip,py}` registers explicit FP16 primitives for device
 int64 embedding lookup, rounded residual add, pair-interleaved partial RoPE,
@@ -396,7 +401,15 @@ and writes FP16. The complete unfused production-shape chain is bias-aware
 projection, and the registered residual primitive. It is byte-equal to the
 NumPy decoder-MLP-plus-residual oracle. Cached gfx1151 tracing reports
 51.497/4.289/12.664/2.966 us for fc1/activation/fc2/residual; the activation is
-local256/VGPR16/LDS0/scratch0. No fused whole-MLP claim is made.
+local256/VGPR16/LDS0/scratch0. Phase 3 adds exact
+`moonshine_mlp_fc1/bias_gated_silu_fp32_accum` and
+`moonshine_mlp_fc2_residual/bias_rounded_residual_fp32_accum` composites. The
+first computes paired value/gate rows with the original FP32 reduction and FP16
+boundaries before SiLU; the second preserves the FP16 projection boundary before
+the rounded residual. Complete boundaries improve 15.265 -> 9.636 us and 9.278
+-> 6.899 us; the selected whole MLP+next-norm chain improves 30.604 -> 22.116 us
+(1.38x). Resources are local32/VGPR16/LDS0/scratch0 and
+local64/VGPR16/LDS512/scratch0. Primitive fallbacks remain registered.
 
 `attention/moonshine_attention.{hip,py}` registers
 `moonshine_self_attention/fp16/fixed_cache_logical_dim` and
@@ -453,6 +466,15 @@ KL max/mean is `1.538e-5/8.824e-6`, top-1 is 100%, timed tracked allocations
 are zero, and teardown returns 129,686,968 resident bytes to zero. This is the
 correctness fallback; synchronized timing and baseline publication are a
 separate Phase-2 gate.
+
+The retained Phase-3 runtime now combines tuned projections, wave8 LM head,
+masked cross attention, cache-bucketed self attention, residual+LayerNorm, and
+the two MLP composites. It issues 103 kernels/token versus the 135-kernel Phase-2
+fallback. Clean past-1 timing is 0.861 ms HIP event / 0.915 ms wall; the six-file
+decoder-only median is 5.449 ms with exact generated IDs. Past-1 aggregate
+kernel time is 0.767 ms. Detailed bounded-fusion evidence is in the experiment
+ledger's `results/2026-07-31-hip-phase3-bounded-fusions.md`; fixed-address graph
+capture/replay remains the next structural step.
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
