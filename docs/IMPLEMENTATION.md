@@ -110,6 +110,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Give the tied LM-head baseline a distinct profile-visible kernel identity.
   - [x] Wire prepared kernels, encoder state, and sequential token steps into the resident runtime.
   - [x] Validate selected golden-fixture positions and prove timed steps do not allocate.
+  - [x] Validate padded 40/207-bucket position-0/193 boundaries for all six real Japanese fixtures.
+  - [x] Publish the Phase-2 correctness, dispatch, latency, and Amdahl baseline in the experiment ledger.
 
 ## Notes
 
