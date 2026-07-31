@@ -59,7 +59,7 @@ _GROUPED_IQ_DOWN_BASELINE_VARIANTS = MappingProxyType(
         "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out",
     }
 )
-_GROUPED_IQ_DOWN_ROLE = (1024, 3072)
+_GROUPED_IQ_DOWN_ROLE = (1024, 3072, 256)
 _GROUPED_IQ_DOWN_BASELINE_ABI = "grouped_raw_iq"
 _GROUPED_IQ_DOWN_SUPPORTED_ABIS = frozenset(
     {_GROUPED_IQ_DOWN_BASELINE_ABI, "grouped_raw_iq_active_experts"}
@@ -398,7 +398,11 @@ def _resolve_laguna_grouped_iq_down_variants(
         quant: (variant, _GROUPED_IQ_DOWN_BASELINE_ABI)
         for quant, variant in _GROUPED_IQ_DOWN_BASELINE_VARIANTS.items()
     }
-    role = (config.expert_feed_forward_length, config.hidden_size)
+    role = (
+        config.expert_feed_forward_length,
+        config.hidden_size,
+        config.expert_count,
+    )
     if role != _GROUPED_IQ_DOWN_ROLE:
         return MappingProxyType(selected)
     for quant, variant in parsed.items():

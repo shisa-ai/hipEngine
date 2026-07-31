@@ -254,6 +254,15 @@ should be removed or collapsed.
   registered H6I source plus H6F rollback; add no adapter, allocation,
   workspace, sidecar, or public selector. See the
   [H6I production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json).
+- WPF-H6P adds a sixth same-ABI active-expert capability as a bounded default-
+  off owner. Complete M512 and exact four-request **45 H6I -> 45 H6P** topology
+  pass; 512/1K/4K gains **+0.764%/+0.416%/+0.242%** and fixed C4096/M512 gains
+  **+0.141%**. Remove the H6P ABI entry if the separate source-default gate
+  fails. If H6P promotes, retain H6I as immediate rollback through one release
+  checkpoint, then collapse older H5Q/H5Z/H6D/H6F entries only when no active
+  bisection uses them. Add no adapter, allocation, workspace, sidecar, env flag,
+  or public selector. See the
+  [H6P candidate/runtime artifact](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json).
 - WPF-H6C's grouped gate/up role-map cleanup trigger is closed. Complete M512
   state is KL0/byte-exact, paired tracing records exact **46 IQ2 + one H6C** at
   unchanged **2,050** dispatches, default-off 512/1K/4K is

@@ -1368,13 +1368,22 @@ added publication traffic makes full timing mandatory rather than inferring a
 win from occupancy.
 
 The frozen rows1/7/8/9/M512/P64/P65 matrix passes **9/9** against H6I and sampled
-CPU bytes. Natural-M512 routing plus all **45/45** actual IQ3 weights is complete-
-byte exact and every layer wins both clocks: aggregate event **333.218 ->
-323.882 ms (-2.802%, 1.029x)** and wall **331.534 -> 326.105 ms (-1.637%,
-1.017x)**, with minimum layer **1.017x/1.003x**. Retain the leaf, keep package
-policy/workspace/allocation and gfx1151 unchanged, and next freeze a bounded
-same-ABI default-off owner
-([H6P leaf](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
+CPU bytes; all **45/45** actual layers win both clocks. H6P now also qualifies
+as a bounded default-off owner through the existing `grouped_raw_iq_active_experts`
+ABI, raw allocation, and `grouped_iq_prefill` library. Generic role matching is
+tightened from K1024/N3072 to exact K1024/N3072/E256; E255 and every other
+shape/registration/backend miss fail closed without backend/quant branches.
+
+Complete natural M512 is KL0/byte-exact across logits, all **48/48** hidden
+boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests retain
+**2,192 dispatches** and exact **45 H6I or 45 H6P + two H5J** down topology;
+IQ3/request-sum/span moves **335.561/1,350.501/1,377.064 -> 326.309/1,346.568/
+1,368.182 ms (-2.757%/-0.291%/-0.645%)** at H6I/H6P runtime VGPR **168/112**.
+Default-off 512/1K/4K gains **+0.764%/+0.416%/+0.242%**, 3/3 exact wins each;
+fixed C4096/M512 gains **+0.141% (4/5 wins)**. Workspace/scratch stay
+**161,120,256/600,141,856 bytes**, **246/246** guards pass, and H6I remains
+source pending separate publication
+([H6P candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
 [post-H6N residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
