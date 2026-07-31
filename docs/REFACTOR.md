@@ -179,14 +179,17 @@ should be removed or collapsed.
   now defaults gate/up to `grouped_pair16` plus `grouped_exact` down; c=1,
   unsupported keys, explicit `grouped_exact`, and paired `direct` remain exact
   fallbacks.
-- WPF-H6L temporarily adds `LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS` plus its
-  same-ABI map and bounded resolver so exact rowbatch16 can be qualified while
-  rowbatch8 remains source production. Complete state, exact 46-call topology,
-  clean 512/1K/4K, and **211/211** guards pass with no allocation/workspace/
-  dispatch change. After the separate source-default decision, remove this
-  candidate-only indirection if H6L is rejected; if promoted, collapse it to
-  the source map and retain rowbatch8 through the built-in baseline fallback
-  after one rollback checkpoint.
+- WPF-H6L's pair16 same-ABI capability cleanup trigger is closed. Complete
+  M512 is KL0/byte-exact; four cached requests substitute exact **46 rowbatch8
+  -> 46 H6L** at unchanged **2,192** dispatches and cut IQ2/request/span
+  **18.064%/5.153%/5.532%**. Selector-unset 512/1K/4K confirms
+  **+5.666%/+4.468%/+3.246%**, 3/3 exact wins each, while fixed natural
+  C4096/M512 wins **5/5** at **360.451 -> 381.893 tok/s (+5.949%)**. Keep H6L
+  source plus rowbatch8 same-ABI rollback through one release checkpoint; then
+  collapse the capability indirection to the source map if no downstream
+  bisection uses it. Add no adapter, allocation, workspace, sidecar, or public
+  selector. See the
+  [H6L production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-production.json).
 - The cleanup trigger is closed. Cleanup removed the unowned Laguna rowbatch8
   and fused-SiLU local256/group8 gate/up variants, IQ3 down rowbatch4, and
   losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and focused tests.

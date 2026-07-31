@@ -56,12 +56,12 @@ def _prefill_scratch(config, plan) -> LagunaPrefillScratchPlan:
     )
 
 
-def test_h6l_runtime_capability_is_default_off_bounded_and_fail_closed(
+def test_h6l_runtime_capability_is_source_default_bounded_and_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
-    source_variants = {_QUANT: _CONTROL_VARIANT}
-    candidate_variants = {_QUANT: _H6L_VARIANT}
+    source_variants = {_QUANT: _H6L_VARIANT}
+    rollback_variants = {_QUANT: _CONTROL_VARIANT}
     qualified_abis = {
         _CONTROL_VARIANT: _ABI,
         _H6L_VARIANT: _ABI,
@@ -74,7 +74,7 @@ def test_h6l_runtime_capability_is_default_off_bounded_and_fail_closed(
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_pair16_gate_up_keys[_QUANT].variant == (
-        _CONTROL_VARIANT
+        _H6L_VARIANT
     )
     package_route = package_default.grouped_pair16_gate_up_routes[_QUANT]
     assert package_route.abi == _ABI
@@ -92,23 +92,24 @@ def test_h6l_runtime_capability_is_default_off_bounded_and_fail_closed(
     assert package_scratch.q5_f32_ordered_nbytes == _PRODUCTION_WORKSPACE_BYTES
     assert package_scratch.total_nbytes == _PRODUCTION_TOTAL_SCRATCH_BYTES
 
-    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, candidate_variants)
-    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert candidate.grouped_pair16_gate_up_keys[_QUANT].variant == _H6L_VARIANT
-    candidate_route = candidate.grouped_pair16_gate_up_routes[_QUANT]
-    assert candidate_route.abi == _ABI
-    assert candidate_route.allocation_name == "raw"
-    assert candidate_route.library_key == "grouped_iq_prefill"
-    assert candidate.grouped_special_gate_up_keys[(47, "gguf_iq3_xxs")].variant == (
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, rollback_variants)
+    rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert rollback.grouped_pair16_gate_up_keys[_QUANT].variant == _CONTROL_VARIANT
+    rollback_route = rollback.grouped_pair16_gate_up_routes[_QUANT]
+    assert rollback_route.abi == _ABI
+    assert rollback_route.allocation_name == "raw"
+    assert rollback_route.library_key == "grouped_iq_prefill"
+    assert rollback.grouped_special_gate_up_keys[(47, "gguf_iq3_xxs")].variant == (
         _H6C_VARIANT
     )
-    assert candidate.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6I_VARIANT
-    assert laguna_moe_scratch_nbytes(candidate, max_rows=512) == package_moe_scratch
-    candidate_scratch = _prefill_scratch(config, candidate)
-    assert candidate_scratch.q5_f32_ordered_nbytes == package_scratch.q5_f32_ordered_nbytes
-    assert candidate_scratch.total_nbytes == package_scratch.total_nbytes
-    assert len(candidate.kernel_keys) == len(package_default.kernel_keys)
+    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6I_VARIANT
+    assert laguna_moe_scratch_nbytes(rollback, max_rows=512) == package_moe_scratch
+    rollback_scratch = _prefill_scratch(config, rollback)
+    assert rollback_scratch.q5_f32_ordered_nbytes == package_scratch.q5_f32_ordered_nbytes
+    assert rollback_scratch.total_nbytes == package_scratch.total_nbytes
+    assert len(rollback.kernel_keys) == len(package_default.kernel_keys)
 
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, source_variants)
     for wrong_config in (
         replace(config, hidden_size=1024),
         replace(config, expert_feed_forward_length=2048),
@@ -155,7 +156,7 @@ def test_h6l_runtime_capability_is_default_off_bounded_and_fail_closed(
         with pytest.raises(ValueError, match=message):
             resolve_laguna_moe_plan(config, backend="hip_gfx1100")
 
-    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, candidate_variants)
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, source_variants)
     monkeypatch.setattr(
         hip_gfx1100,
         _ABI_CAPABILITY,

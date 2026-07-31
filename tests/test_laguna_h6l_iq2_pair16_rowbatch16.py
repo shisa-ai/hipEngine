@@ -134,15 +134,13 @@ def iq2_weights() -> tuple[np.ndarray, np.ndarray]:
     return gate, up
 
 
-def test_h6l_registry_source_and_production_immutability() -> None:
+def test_h6l_registry_source_and_production_ownership() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
 
     assert hip_gfx1100.LAGUNA_SELECTED_GATE_UP_MODE == "grouped_pair16"
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     plan = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert plan.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
-        _CONTROL_VARIANT
-    )
+    assert plan.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == _VARIANT
     assert plan.grouped_pair16_gate_up_routes["gguf_iq2_xs"].abi == (
         "grouped_raw_iq_dual_silu"
     )
