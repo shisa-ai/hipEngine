@@ -101,7 +101,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Add torch-free NumPy primitives and model-derived Phase 1 fixture gates.
 - [x] Add the strict resident FP16 checkpoint/runtime/cache owner.
 - [x] Add source-F16 single, paired, triple, and row projection baselines.
-- [ ] Add FP16 LayerNorm, residual, embedding, RoPE, and self-cache glue primitives.
+- [x] Add FP16 LayerNorm, residual, embedding, RoPE, and self-cache glue primitives.
 - [ ] Add decoder gated-MLP activation and bias/residual primitives.
 - [ ] Prove primitive CPU-oracle parity and cached gfx1151 kernel names.
 - [ ] Compose the exact unfused FP16 decoder fallback after attention kernels land.
