@@ -784,6 +784,26 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 10, "f32", "tile_k_col"),
             )
         ),
+        # H6E exact Q6 activation-row consumers are separately scoped to
+        # gfx1100 pending their standalone physical/performance gate.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}weight_major_row_major_activation_tile_k_row_"
+                f"coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_"),
+                ("gguf_q6_k", "f32_ordered_"),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (16, 5, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+            )
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),

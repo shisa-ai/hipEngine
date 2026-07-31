@@ -1905,23 +1905,24 @@ Q6 **93.157/14.455**, gate/up **474.056/401.393**, and remaining
 **73.833/67.598**. Gaps rank **320.874/186.614/146.882/78.701/72.663 ms** and
 explain **99.232%** of the **811.970-ms** kernel gap.
 
-Select **WPF-H6E exact Q6 activation-tile-K-row transfer**. The larger IQ-down,
-Q5, and attention residuals have no unscreened immediate exact ownership,
-geometry, layout, or schedule premise. Q6 remains **93.157 ms** versus llama.cpp
-**14.455 ms**. Its three H5W roles own **142 calls / 63.059 ms (67.691%)** and
-still issue scalar row-major BF16 activation loads even though H5Y's exact
-`[row_group][k][row_slot]` plane is already live. Add separate gfx1100
-rowbatch5-BF16, rowbatch4-BF16, and rowbatch5-F32 Q6 consumers that reuse this
-plane while retaining the exact Q6 F32-weight producer, row-major weight loads,
-scalar `fmaf` sequence, four-wave tree, serial wave sum, output store, workgroup
-order/count, and all H5W/H5I/raw fallbacks. The static model changes activation
-load instances **448,462,848 -> 157,679,616 (-64.840%)** with no new pack body,
-allocation, persistent sidecar, or increase over the existing **161,120,256-byte**
-workspace. This is not a performance claim. Freeze separate rows17/33/M512 RED,
-require b64/b64+u16 physical loads, scratch0/no resource growth, and retain only
-roles that win producer-inclusive HIP-event and synchronized wall on actual
-weights before any runtime owner
-([post-H6D residual / H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
+**WPF-H6E exact Q6 activation-tile-K-row transfer** is admitted as a standalone
+gfx1100 leaf for all three H5W roles. The rows17/33/M512 cross-product preserves
+complete H5W output bytes, complete H5Y activation-plane bytes, sampled
+independent Q6 CPU values, strict role preflight, package maps, gfx1151 absence,
+and the existing **161,120,256-byte** owner. On actual Q6 weights with five
+warmups, 15 counter-rotated samples, and five launches/sample, pack+exact-
+producer+consumer-inclusive weighted event/wall moves **65.969/66.187 ->
+58.085/58.217 ms (-11.952%/-12.042%, 1.136x/1.137x)**; every role wins both
+clocks. Cached ISA emits b64 for rowbatch4 and b64+u16 for rowbatch5 while
+candidate resources exactly match H5W at **VGPR136/168, LDS1024/1536,
+scratch0**, matching grids, and no compiler under profile. This admits the leaf,
+not ownership: production remains H5W and matched throughput remains **332.992
+tok/s**. Next freeze a bounded default-off H6E runtime contract, reuse the live
+H5Y plane with zero workspace growth, and require complete natural-M512 state,
+exact 142-role topology, cached integration timing, and one-queue 512/1K/4K
+non-regression before source default
+([H6E candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
+[post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
