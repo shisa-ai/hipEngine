@@ -360,7 +360,10 @@ unchanged. A 15x20-launch event matrix measures single/triple/fc1/fc2/cross at
 WMMA, rocBLAS GEMM-ex, and inclusive hipBLASLt candidates are slower. Full
 fixture/token/selected-region promotion evidence remains in the Moonshine
 experiment ledger rather than treating these leaf numbers as a standalone
-speed claim.
+speed claim. Fixture token equality is required through first EOS and at every
+captured boundary position; uncaptured teacher-forced continuation after EOS is
+reported diagnostically because it is neither generated ASR output nor a Tier-B
+boundary.
 
 `norm/moonshine_layernorm.{hip,py}` registers
 `moonshine_layernorm/fp16/fp32_stats`. One local256 block computes the FP32

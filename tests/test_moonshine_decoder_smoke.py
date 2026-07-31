@@ -5,9 +5,20 @@ import pytest
 
 from scripts.moonshine_decoder_smoke import (
     _certified_encoder_bucket,
+    _fixture_first_eos_position,
     _pad_cross_reference,
     _pad_encoder_inputs,
+    _token_mismatch_required,
 )
+
+
+def test_fixture_eos_policy_requires_generation_and_selected_positions_only() -> None:
+    manifest = {"producer": {"first_eos_position": "4"}}
+    assert _fixture_first_eos_position(manifest) == 4
+    selected = {0, 193}
+    assert all(_token_mismatch_required(position, 4, selected) for position in range(5))
+    assert _token_mismatch_required(193, 4, selected)
+    assert not _token_mismatch_required(34, 4, selected)
 
 
 def test_certified_encoder_bucket_uses_smallest_fitting_bucket() -> None:
