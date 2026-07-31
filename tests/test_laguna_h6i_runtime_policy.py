@@ -40,15 +40,15 @@ _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 _PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
 
 
-def test_h6i_runtime_capability_is_default_off_bounded_and_fail_closed(
+def test_h6i_runtime_capability_is_source_default_bounded_and_fail_closed(
     monkeypatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
-    production_variants = {
+    rollback_variants = {
         "gguf_iq3_xxs": _H6F_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
-    candidate_variants = {**production_variants, "gguf_iq3_xxs": _H6I_IQ3}
+    production_variants = {**rollback_variants, "gguf_iq3_xxs": _H6I_IQ3}
     qualified_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
@@ -64,7 +64,7 @@ def test_h6i_runtime_capability_is_default_off_bounded_and_fail_closed(
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H6F_IQ3
+        _H6I_IQ3
     )
     package_route = package_default.grouped_exact_down_routes["gguf_iq3_xxs"]
     assert package_route.abi == _ACTIVE_EXPERT_ABI
@@ -79,17 +79,22 @@ def test_h6i_runtime_capability_is_default_off_bounded_and_fail_closed(
     monkeypatch.setattr(
         hip_gfx1100,
         "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
-        candidate_variants,
+        rollback_variants,
     )
-    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert candidate.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6I_IQ3
-    candidate_route = candidate.grouped_exact_down_routes["gguf_iq3_xxs"]
-    assert candidate_route.abi == _ACTIVE_EXPERT_ABI
-    assert candidate_route.allocation_name == "raw"
-    assert candidate_route.library_key == "grouped_iq_prefill"
-    assert candidate.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
-    assert laguna_moe_scratch_nbytes(candidate, max_rows=512) == package_scratch
+    rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6F_IQ3
+    rollback_route = rollback.grouped_exact_down_routes["gguf_iq3_xxs"]
+    assert rollback_route.abi == _ACTIVE_EXPERT_ABI
+    assert rollback_route.allocation_name == "raw"
+    assert rollback_route.library_key == "grouped_iq_prefill"
+    assert rollback.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
+    assert laguna_moe_scratch_nbytes(rollback, max_rows=512) == package_scratch
 
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        production_variants,
+    )
     wrong_shape = resolve_laguna_moe_plan(
         replace(config, expert_feed_forward_length=2048),
         backend="hip_gfx1100",
