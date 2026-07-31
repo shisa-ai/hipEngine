@@ -195741,3 +195741,17 @@ Vulkan local sizes verbatim will close the measured gap.
   (SHA-256 `e6088600...3fab`) with child result
   `/tmp/laguna-split-priority-census.Zi97yx/bench.json`
   (SHA-256 `917e37f9...58e8`).
+
+## 2026-07-31 14:11 JST — Repair fused source-F16 trace attribution
+
+- The current decode census exposed two retained composite symbol families that
+  postdate the trace classifier:
+  `laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_*` and
+  `laguna_f16w_fixedk_output_add_rmsnorm_*`. Their embedded RMSNorm text made
+  the tool charge **24.67 ms/token** to `norm_rope_gate` instead of the
+  dominant source-F16 projection family.
+- RED adds both exact symbol shapes to the family table. GREEN classifies every
+  `laguna_f16w_*` kernel and the fused projection/head/KV owner as
+  `source_f16_projection`, ahead of the generic RMSNorm rule.
+- All **28** family-classifier cases and all **39** long-context profile/trace
+  tests pass; Python compilation and diff checks pass.
