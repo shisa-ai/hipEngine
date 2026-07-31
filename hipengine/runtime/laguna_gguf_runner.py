@@ -1614,6 +1614,7 @@ def launch_laguna_f16_output_add_rmsnorm(
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
     use_nontemporal: bool = False,
+    use_anyorder: bool = False,
 ) -> bool:
     """Launch the exact c=1 output-projection/add/RMSNorm composite."""
 
@@ -1628,9 +1629,13 @@ def launch_laguna_f16_output_add_rmsnorm(
         _F16_OUTPUT_ADD_RMSNORM_LAYER,
         _F16_OUTPUT_ADD_RMSNORM_QUANT,
         (
-            "fixedk_nontemporal_bf16_out"
-            if use_nontemporal
-            else "fixedk_onebarrier_bf16_out"
+            "fixedk_nontemporal_signal_bf16_out"
+            if use_anyorder
+            else (
+                "fixedk_nontemporal_bf16_out"
+                if use_nontemporal
+                else "fixedk_onebarrier_bf16_out"
+            )
         ),
     )
     if not is_registered(key):
@@ -2433,6 +2438,7 @@ class LagunaGGUFResidentSession:
         use_f16_attention_quad_decode: bool | None = None,
         use_f16_projection_head_kv_decode: bool | None = None,
         use_f16_output_add_rmsnorm_decode: bool | None = None,
+        use_output_router_anyorder_decode: bool | None = None,
         use_f16_nontemporal_decode: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
@@ -2791,6 +2797,27 @@ class LagunaGGUFResidentSession:
             if use_f16_output_add_rmsnorm_decode is None
             else use_f16_output_add_rmsnorm_decode
         )
+        anyorder_available = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE",
+                False,
+            )
+        )
+        requested_anyorder = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE",
+                False,
+            )
+            if use_output_router_anyorder_decode is None
+            else use_output_router_anyorder_decode
+        )
+        if requested_anyorder and not anyorder_available:
+            raise ValueError(
+                "output-router any-order decode is unavailable for this backend"
+            )
+        self.use_output_router_anyorder_decode = requested_anyorder
         self.use_f16_nontemporal_decode = bool(
             backend_package_capability(
                 self.backend,
@@ -5594,6 +5621,10 @@ class LagunaGGUFResidentSession:
                 libraries=self.libraries,
                 runtime=self.runtime,
                 use_nontemporal=self.use_f16_nontemporal_decode,
+                use_anyorder=(
+                    self.use_output_router_anyorder_decode
+                    and layer.mlp_type != DENSE_MLP
+                ),
             )
         if not output_add_rmsnorm:
             launch_laguna_weight_linear(
@@ -5810,6 +5841,12 @@ class LagunaGGUFResidentSession:
             ),
             use_router_projection_wave0_tree=(
                 self.use_router_projection_wave0_tree
+            ),
+            use_output_router_anyorder_decode=(
+                self.use_output_router_anyorder_decode
+            ),
+            output_router_completion_counter_ptr=(
+                self.scratch.attention_projection_counters.ptr
             ),
             tail_context=tail_context,
             shared_after_router=self.moe_shared_after_router,

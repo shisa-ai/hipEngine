@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "date": "2026-07-31",
+  "status": "retained_default_pending_clean_publication",
+  "decision": {
+    "retain": true,
+    "default_backend": "hip_gfx1151",
+    "default_enabled": true,
+    "scope": "Laguna c=1 source-F16 output/add/RMSNorm to F32 router projection",
+    "fallback": "ordered output/add/RMSNorm followed by ordered wave-0 router projection"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "implementation": {
+    "producer_key": "hip_gfx1151/linear+add+rmsnorm/fp16_weight+gguf_f32_weight/fixedk_nontemporal_signal_bf16_out",
+    "consumer_key": "hip_gfx1151/router_logits/f32/bf16_hidden_wave0_tree_anyorder",
+    "mechanism": "The ordinary ordered output/add/RMSNorm producer publishes the exact BF16 norm row through a device counter. The separate router projection uses hipExtAnyOrderLaunch, waits on that counter on-device, and resets the reusable two-counter continuation gate after all 256 blocks are admitted.",
+    "preserved": [
+      "ordered producer dependency on all preceding attention work",
+      "source-F16 projection arithmetic and non-temporal weight reads",
+      "BF16 residual/add/RMSNorm boundaries",
+      "wave-0 F32 router reduction tree",
+      "separate correction-bias top-10 selector",
+      "resident weights and scratch allocation"
+    ],
+    "changed": "Only the router consumer clears the AQL barrier bit; the producer remains an ordinary ordered dispatch.",
+    "resident_bytes_delta": 0,
+    "launches_per_token_delta": 0
+  },
+  "rejected_precursor": {
+    "design": "Launch both output producer and router consumer with hipExtAnyOrderLaunch.",
+    "cause": "The output producer could bypass the preceding attention/head-KV dependency; an isolated leaf had no predecessor and therefore failed to expose the bug.",
+    "full_state_pass": false,
+    "greedy_matching_prefix_tokens": 10,
+    "greedy_tokens": 16,
+    "repeat_exact": false,
+    "candidate_vs_exact_max_kl": 20.452902679761223,
+    "raw_path": "/tmp/laguna-output-router-anyorder-correctness.json",
+    "raw_sha256": "7ed9cc7219e02af848c938357367895c71d2d795a1aacbe7511006f959ecb382"
+  },
+  "leaf": {
+    "protocol": {
+      "samples": 21,
+      "warmups": 10,
+      "burst": 100,
+      "ordering": "counterbalanced control/candidate",
+      "timers": [
+        "HIP event",
+        "host wall through event synchronization"
+      ],
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_output_router_anyorder_leaf.py --samples 21 --warmups 10 --burst 100 --require-cached-build --output /tmp/laguna-output-router-anyorder-leaf-ordered-producer.json"
+    },
+    "results": [
+      {
+        "in_features": 6144,
+        "control_event_ms": 0.1762887191772461,
+        "candidate_event_ms": 0.17071619033813476,
+        "event_delta_pct": -3.161024066156237,
+        "control_wall_ms": 0.17642902,
+        "candidate_wall_ms": 0.17092109,
+        "wall_delta_pct": -3.121895706273259
+      },
+      {
+        "in_features": 9216,
+        "control_event_ms": 0.2572250747680664,
+        "candidate_event_ms": 0.2516121673583984,
+        "event_delta_pct": -2.182099631899803,
+        "control_wall_ms": 0.257408,
+        "candidate_wall_ms": 0.25178625,
+        "wall_delta_pct": -2.18398418075586
+      }
+    ],
+    "correctness": "Projection, norm, residual, and router outputs are bit-exact; all counters return to zero.",
+    "raw_path": "/tmp/laguna-output-router-anyorder-leaf-ordered-producer.json",
+    "raw_sha256": "92d226baf6c59d1d5c5d3d2d492544a320545e2839c82fe4dfe06a136425c139"
+  },
+  "full_state": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gguf_correctness.py --backend hip_gfx1151 --greedy-tokens 16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --safety-reserve-gib 4 --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --selected-halfdot --output-router-anyorder --output /tmp/laguna-output-router-anyorder-correctness-ordered-producer.json",
+    "pass": true,
+    "greedy_exact_tokens": 16,
+    "repeat_exact": true,
+    "repeat_first_logits_max_abs": 0.0,
+    "candidate_vs_ordered_max_kl": 0.0,
+    "candidate_vs_ordered_top1_agreement": 1.0,
+    "external_first_token_kl": 0.000017512451201671218,
+    "external_first_token_top1_agreement": 1.0,
+    "allocation_recovery": true,
+    "raw_path": "/tmp/laguna-output-router-anyorder-correctness-ordered-producer.json",
+    "raw_sha256": "efc4ef6de5e44ae6832a7a6fd7b0519da1a3aaf6a48ba553d520ee5141a28fd9"
+  },
+  "performance": {
+    "protocol": {
+      "workload": "p512/d128 eager c=1",
+      "decode_forward_calls_per_sample": 127,
+      "warmup_rows": 128,
+      "repetitions": 2,
+      "ordering": "counterbalanced control/candidate in one resident session",
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 2 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --compare-output-router-anyorder-decode --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-output-router-anyorder-ab.json"
+    },
+    "control_decode_tok_s": 23.087306516161625,
+    "candidate_decode_tok_s": 23.233247996599264,
+    "decode_delta_pct": 0.6321286562184225,
+    "control_ms_per_token": 43.31384431094107,
+    "candidate_ms_per_token": 43.041764980358046,
+    "delta_ms_per_token": -0.2720793305830223,
+    "candidate_pair_wins": 2,
+    "pairs": 2,
+    "control_samples_tok_s": [
+      23.07466612048592,
+      23.099960768348012
+    ],
+    "candidate_samples_tok_s": [
+      23.236174034109492,
+      23.23032269592441
+    ],
+    "trajectory_exact": true,
+    "raw_path": "/tmp/laguna-output-router-anyorder-ab.json",
+    "raw_sha256": "0d05a4a47c4d2b73232f7c1575e34516c82bd4cb877313d99f89c0ab2a073106"
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-output-router-anyorder-trace.MRNdZ7 --output-file trace -- .venv/bin/python3 -u scripts/laguna_output_router_anyorder_leaf.py --samples 1 --warmups 1 --burst 1 --require-cached-build --output /tmp/laguna-output-router-anyorder-trace.MRNdZ7/leaf.json",
+    "path": "/tmp/laguna-output-router-anyorder-trace.MRNdZ7/trace_kernel_trace.csv",
+    "sha256": "d05dece6f07bfad55d54d12dd10d0dbb330998eb831e106c4647aeb91b160975",
+    "producer": {
+      "kernel": "laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<K, true, true>",
+      "local": 256,
+      "blocks": 3072,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "consumer": {
+      "kernel": "qwen35_router_logits_bf16_f32w_wave0_tree_anyorder_kernel",
+      "local": 256,
+      "blocks": 256,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "dynamic_lds_bytes": 1024,
+      "scratch_bytes": 0
+    },
+    "observed_consumer_overlap_us": [
+      4.048,
+      0.32,
+      3.487,
+      7.262
+    ],
+    "compiler_under_profiler": false
+  },
+  "validation": {
+    "red": "The wrappers/registry/runtime contract were absent before implementation.",
+    "green": "7 focused kernel/registry/runtime tests passed, including a predecessor-copy sentinel and four continuation reuses.",
+    "lineage": "The mandatory lineage command remains environment-blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external kernel source was copied.",
+    "production_publication": "pending one tracked-clean default-on p512/d128 packet"
+  }
+}

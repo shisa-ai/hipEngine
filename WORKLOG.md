@@ -196588,3 +196588,44 @@ Vulkan local sizes verbatim will close the measured gap.
   `98a84afd...9a7fd`; scoped raw SHA-256 is
   `16320912...93cb6`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-role-isolation-rejected.json`.
+
+## 2026-07-31 23:20 JST — Retain exact output→router any-order continuation
+
+- Audited ROCm 7.15 graph and launch primitives after the post-halfdot census
+  ranked source-F16 output→router at **0.263561 ms/token** of uncovered queue
+  boundary. Device graph launch/programmatic edges remain unimplemented in
+  the installed HIP runtime/tests; gfx11 `hipExtAnyOrderLaunch` is functional
+  and clears the AQL barrier bit.
+- RED proved the continuation wrappers/registry/runtime route absent. The
+  first GREEN design launched both the output producer and router consumer
+  any-order. Its isolated leaf appeared positive, but the full recurrent gate
+  rejected it after ten tokens: repeat was nondeterministic and
+  candidate-vs-exact max KL reached **20.452903**. Root cause was producer
+  bypass of preceding attention/head-KV dependencies.
+- Corrected the protocol: the source-F16 output/add/RMSNorm producer stays
+  ordinary/ordered, publishes a device flag only after the exact BF16 norm
+  row, and only the separate wave-0 router projection launches any-order and
+  waits on that flag. A live predecessor D2D-copy sentinel now catches the
+  rejected producer bypass. The focused bundle reports **7 passed**.
+- The corrected counterbalanced 21x100 leaf is bit-exact and improves K6144
+  **0.176289 -> 0.170716 ms (-3.161%)** and K9216
+  **0.257225 -> 0.251612 ms (-2.182%)**. Raw SHA-256 is
+  `92d226ba...25c139`.
+- The real 16-step recurrent gate passes: greedy and repeat are exact,
+  candidate-vs-ordered max KL is **0**, first logits repeat with max-abs
+  **0**, and lifecycle returns to baseline. Raw SHA-256 is
+  `efc4ef6d...a28fd9`.
+- Two alternating same-resident p512/d128 pairs both improve
+  **23.087307 -> 23.233248 tok/s (+0.63213%, -0.272079 ms/token)** with
+  identical generated IDs. Raw SHA-256 is `0d05a4a4...73106`.
+- Cached `rocprofv3 --kernel-trace` names the signal producer at
+  local256/VGPR24/SGPR128/LDS512/scratch0 and the any-order router at
+  local256/VGPR24/SGPR128/dynamic-LDS1024/scratch0. The consumer begins
+  **0.320-7.262 us** before producer retirement; no compiler runs under the
+  profiler. Trace SHA-256 is `d05dece6...0975`.
+- Promote the continuation as the gfx1151 default with constructor-false
+  fully ordered rollback. Remove the temporary comparison setter/CLI.
+  Tracked-clean production publication is the next action. The mandatory
+  lineage command remains environment-blocked only because optional
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json`.
