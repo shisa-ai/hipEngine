@@ -117,7 +117,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Tune tied LM-head/argmax with grouped exact wave32 rows.
   - [x] Tune masked resident cross attention.
   - [x] Tune short/long self-cache attention from refreshed profiles.
-  - [ ] Test bounded fusions and fixed-address graph replay only after structural wins.
+  - [x] Test and promote bounded residual/LayerNorm and gated-MLP fusions.
+  - [ ] Capture/replay the fixed-address token DAG after structural wins.
 
 ## Notes
 
