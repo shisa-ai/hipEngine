@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T20:19:43+09:00",
+  "kind": "hipengine_laguna_f16_output_halfdot_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "repo": {
+    "baseline_revision": "8f1a367b893672d096775ed2f725c49cd94b5856",
+    "experiment_was_dirty": true,
+    "candidate_removed": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "production_tok_per_s": 23.089692642,
+    "production_ms_per_token": 43.309368189
+  },
+  "change": {
+    "description": "Keep the local256 fixed-K source-F16 output-projection owner, but assign one adjacent K pair per thread, convert BF16 activations to FP16 in registers, load one FP16 weight pair, and accumulate native v_dot2_f32_f16 into FP32.",
+    "source_premise": "llama.cpp Vulkan c0bc8591e uses vector-valued F16 dot work; hipEngine already transferred adjacent-output activation reuse, so this screen isolated the remaining native dot2 arithmetic premise.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": 0,
+    "launch_count_changed": 0
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_diff",
+    "reason": "The optional external /home/lhl/amd-gpu-tuning/reference/atlas repository is absent."
+  },
+  "red_green": {
+    "red": "The focused K6144/K9216 fixture failed because the requested halfdot wrapper did not exist.",
+    "green": "Both natural fixed-K shapes completed against a direct FP32 CPU reference; maximum absolute error stayed within the predeclared 0.05 leaf envelope.",
+    "post_removal_validation": "The kernel, ABI, wrapper, test, and diagnostic selector were removed after the natural-shape performance gate failed."
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/laguna_f16_decode_onebarrier_leaf.py --candidate halfdot-output --samples 21 --warmups 10 --burst 50 --require-cached-build --output /tmp/laguna-f16-halfdot-output-leaf.json",
+    "rows": 1,
+    "samples": 21,
+    "warmups_per_mode": 10,
+    "burst": 50,
+    "order": "counterbalanced by repetition",
+    "raw_sha256": "e1e9fe3db6737e900bac54981aeb2e8ac565622851d67243a81b6296220a327a"
+  },
+  "results": [
+    {
+      "shape": "full_output",
+      "in_features": 6144,
+      "out_features": 3072,
+      "calls_per_token": 12,
+      "control_median_ms": 0.16018245697021485,
+      "candidate_median_ms": 0.16897331237792967,
+      "latency_change_percent": 5.488026325722695,
+      "control_effective_weight_gb_s": 235.66086270620255,
+      "candidate_effective_weight_gb_s": 223.4005800606565,
+      "maximum_bf16_absolute_error": 0.001953125,
+      "p99_bf16_absolute_error": 0.0
+    },
+    {
+      "shape": "swa_output",
+      "in_features": 9216,
+      "out_features": 3072,
+      "calls_per_token": 36,
+      "control_median_ms": 0.24070987701416016,
+      "candidate_median_ms": 0.24032278060913087,
+      "latency_change_percent": -0.16081450824991794,
+      "control_effective_weight_gb_s": 235.23382049116768,
+      "candidate_effective_weight_gb_s": 235.6127199280943,
+      "maximum_bf16_absolute_error": 0.001953125,
+      "p99_bf16_absolute_error": 0.0
+    }
+  ],
+  "modeled_family": {
+    "control_ms_per_token": 10.587745056152343,
+    "candidate_ms_per_token": 10.679299850463869,
+    "latency_change_percent": 0.8647242054466098,
+    "wall_change_ms_per_token": 0.09155479431152536
+  },
+  "decision": {
+    "result": "reject and remove",
+    "reason": "The candidate fails the all-natural-shapes-faster gate and models a 0.092-ms/token family regression. The exact non-temporal owner already streams both shapes at about 235 GB/s, so fewer arithmetic instructions do not increase the bandwidth ceiling.",
+    "production_change": false,
+    "next_action": "Do not transfer source-F16 dot2 into the fused output boundary. Attack a measured queue dependency or host feed gap instead."
+  }
+}

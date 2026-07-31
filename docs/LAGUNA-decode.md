@@ -8581,6 +8581,33 @@ The remaining attention sequence is:
      tests. Production remains **23.089693 tok/s / 43.309 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-halfdot-rejected.json).
 
+180. Transfer llama.cpp-style vector F16 dot work to the source-F16 output
+     projection.
+     **Rejected at the natural-shape leaf and removed.**
+
+     hipEngine already retains the transferable adjacent-output optimization
+     from llama.cpp: Q/K/V/gate tile2 reuses each BF16 activation conversion
+     across two columns. This screen isolated the remaining arithmetic
+     premise. Each local256 thread owns an adjacent K pair, converts both BF16
+     activations to FP16, loads one FP16 weight pair, and accumulates native
+     `v_dot2_f32_f16` into FP32. RED fails on the absent wrapper; GREEN covers
+     K6144/K9216 against the direct FP32 reference, with maximum BF16 output
+     error **0.001953**.
+
+     The performance gate is negative. At full-output K6144/N3072, the exact
+     non-temporal owner moves **0.160182 -> 0.168973 ms (+5.488%)** and loses
+     bandwidth **235.66 -> 223.40 GB/s**. At SWA K9216/N3072, it is
+     effectively flat at **0.240710 -> 0.240323 ms (-0.161%)** and
+     **235.23 -> 235.61 GB/s**. Weighted by 12 full plus 36 SWA calls, the
+     family models **10.587745 -> 10.679300 ms/token (+0.865%,
+     +0.091555 ms/token)**.
+
+     Stop before fused-output/runtime integration and remove the kernel, ABI,
+     wrapper, test, and diagnostic selector. Source-F16 decode is already at
+     the stream ceiling; replacing scalar FMAs with dot2 cannot make the
+     weights arrive faster. Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-halfdot-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8592,11 +8619,13 @@ leave only **0.259469 ms/token** of device work above 24 tok/s.
 The largest repeated uncovered boundaries are selected-down to MoE tail
 **0.354617 ms/token**, source-F16 output to router **0.263561**, router
 selection to selected gate/up **0.211476**, and SWA projection to attention
-**0.202899**. Attention itself is only **1.114084 ms/token**. Item 179 now
-closes a direct selected-down arithmetic attack despite its 18.55% leaf win:
-the saving is not exposed on the two-queue wall. The next bounded attack must
-therefore contract an uncovered dependency boundary or the 1.501782-ms/token
-feed gap, rather than improving another independently overlapped leaf:
+**0.202899**. Attention itself is only **1.114084 ms/token**. Item 179 closes
+a direct selected-down arithmetic attack despite its 18.55% leaf win because
+the saving is not exposed on the two-queue wall. Item 180 also closes
+source-F16 dot2: the exact leaf already streams at about 235 GB/s. The next
+bounded attack must therefore contract an uncovered dependency boundary or
+the 1.501782-ms/token feed gap, rather than improving another independently
+overlapped or bandwidth-ceiling leaf:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
