@@ -8311,6 +8311,34 @@ The remaining attention sequence is:
      43.445636 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-paired-tile-rejected.json).
 
+170. Partition the concurrent shared-MoE branch with HIP CU masks.
+     **Rejected at two seven-pair resident gates and removed.**
+
+     The candidate puts the primary decode chain on an ordinary nonblocking
+     stream and limits the secondary shared-MoE stream to **16 of the 20
+     CU-mask bits** exposed by HIP on gfx1151. This directly tests whether
+     preserving four execution resources for selected gate/up can reduce the
+     measured cross-queue inflation while keeping the shared tail hidden.
+     Token trajectory, positions, determinism, and allocation lifecycle are
+     exact.
+
+     A first stream-0 diagnostic loses nearly the same **6.7%** with 8 and 16
+     bits, identifying legacy-stream synchronization rather than a mask-width
+     result. Isolating both arms onto ordinary nonblocking primary streams
+     produces a rough **+0.114%** signal, so the idea advances to frozen gates.
+     The authoritative combined gate is negative:
+     **23.016569 -> 23.010971 tok/s (-0.02432%)**, adding **0.010570
+     ms/token**, with only **2/7** positive pairs. The independent primary-only
+     gate also rejects the stream change:
+     **23.019761 -> 23.012933 tok/s (-0.02966%)**, adding **0.012888
+     ms/token**, with only **1/7** positive pairs.
+
+     Remove the CU-mask HIP ABI, benchmark controls, and temporary tests.
+     Neither resource partitioning nor replacing stream 0 with an ordinary
+     nonblocking primary stream improves the complete schedule. Production
+     remains **23.017271 tok/s / 43.445636 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-cu-mask-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
