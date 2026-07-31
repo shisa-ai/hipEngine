@@ -1113,20 +1113,23 @@ at **320.874/186.614/146.882/78.701/72.663 ms**. The trace preserves exact
 **45 H6D + two H5J**, **46 IQ2 + one H6C**, and **48 global + 144 SWA H6A**
 topology with H6D local128/VGPR104/LDS512/scratch0 and no compiler activity.
 
-Select **WPF-H6E exact Q6 activation-tile-K-row transfer** as a separate
-three-role gfx1100 H5W sibling. Reuse H5Y's already-live exact BF16
-`[row_group][k][row_slot]` plane for coltile16 rowbatch5 BF16 K3072/N1024,
-rowbatch4 BF16 K1024/N3072, and rowbatch5 F32 K3072/N1024. Keep the exact Q6
-F32-weight producer, row-major weight loads, local128/four-wave K ownership,
-scalar `fmaf` order, wave32 tree, serial wave sum, output store, workgroup
-order/count, H5W/H5I/raw fallbacks, allocation, and workspace unchanged. These
-**142 calls / 63.059 ms** currently issue a modeled **448,462,848** scalar
-activation loads; b64/b64+u16 records reduce that to **157,679,616 (-64.840%)**
-without a new pack body or plane. This is target rationale, not speed evidence.
-Require separate rows17/33/M512 byte/CPU RED, exact physical record loads,
-scratch0/no resource growth, and producer-inclusive all-role event+wall wins
-before runtime ownership
-([post-H6D residual / H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
+**WPF-H6E exact Q6 activation-tile-K-row transfer** is admitted as three
+separately registered gfx1100 H5W siblings. The coltile16 rowbatch5 BF16
+K3072/N1024, rowbatch4 BF16 K1024/N3072, and rowbatch5 F32 K3072/N1024 leaves
+reuse H5Y's retained pack and Q6's exact row-major F32 producer while preserving
+local128/four-wave K ownership, scalar `fmaf` order, wave32 tree, serial wave
+sum, stores, workgroup order/count, maps, allocation, and workspace. All
+rows17/33/M512 output/plane bytes and sampled CPU values pass; the broader
+retained bundle is **35/35**. On actual weights, producer-inclusive weighted
+event/wall moves **65.969/66.187 -> 58.085/58.217 ms (-11.952%/-12.042%,
+1.136x/1.137x)** with 3/3 both-clock wins. Disassembly records 16 unchanged b32
+weight loads plus one b64 activation record and the required rowbatch5 u16 tail;
+trace resources exactly match H5W at **VGPR136/168, LDS1024/1536, scratch0** and
+matching grids. No compiler runs under profiling. Runtime/package ownership is
+unchanged; next add only a bounded default-off owner and require complete state,
+exact 142-role topology, cached integration, and 512/1K/4K non-regression
+([H6E candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
+[post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
