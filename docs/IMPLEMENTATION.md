@@ -128,7 +128,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Prototype only an admitted rung; otherwise apply the plan's Amdahl stop rule and retain explicit fallbacks.
   - [x] Publish the measured megakernel verdict and Phase-5 handoff.
 - [ ] Integrate the selected encoder with the promoted graph decoder.
-  - [ ] Add a fixed-resident device-to-device encoder handoff without host tensor round-trip.
+  - [x] Add a fixed-resident device-to-device encoder handoff without host tensor round-trip.
   - [ ] Validate exact six-file hybrid generation, padding/mask ownership, copies, allocation, and teardown.
   - [ ] Measure full-model hybrid latency and publish the honest ONNX CPU/MIGraphX/PyTorch/custom-HIP table.
 

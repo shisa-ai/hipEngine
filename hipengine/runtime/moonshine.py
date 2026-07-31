@@ -12,7 +12,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -467,6 +467,65 @@ class MoonshineResidentRuntime:
             host_array_ptr(np.ascontiguousarray(mask)),
             runtime=self.runtime,
         )
+        self.encoder_state_valid = True
+        self.cross_cache_valid = False
+
+    def set_encoder_state_from_device(
+        self,
+        *,
+        hidden_fp16_ptr: int,
+        attention_mask_int32_ptr: int,
+        source_frames: int,
+    ) -> None:
+        """Copy a contiguous device encoder prefix into the fixed padded bucket.
+
+        The producing runtime owns and validates finite FP16 hidden values plus a
+        binary int32 mask, and must synchronize its producer stream before this
+        handoff. The source tensors remain caller-owned.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if self.self_cache_length or self.decode_position is not None:
+            raise RuntimeError("reset generation before replacing encoder state")
+        if (
+            isinstance(hidden_fp16_ptr, bool)
+            or not isinstance(hidden_fp16_ptr, int)
+            or isinstance(attention_mask_int32_ptr, bool)
+            or not isinstance(attention_mask_int32_ptr, int)
+            or hidden_fp16_ptr <= 0
+            or attention_mask_int32_ptr <= 0
+        ):
+            raise ValueError("device encoder pointers must be positive integers")
+        if (
+            isinstance(source_frames, bool)
+            or not isinstance(source_frames, int)
+            or source_frames <= 0
+            or source_frames > self.encoder_frames
+        ):
+            raise ValueError(
+                f"source_frames must be in 1..{self.encoder_frames} for the resident bucket"
+            )
+
+        hidden = self.workspace.allocation("encoder_hidden").buffer
+        mask = self.workspace.allocation("encoder_attention_mask").buffer
+        self.runtime.memset_async(hidden.ptr, 0, hidden.nbytes, self.stream)
+        self.runtime.memset_async(mask.ptr, 0, mask.nbytes, self.stream)
+        self.runtime.memcpy_async(
+            hidden.ptr,
+            hidden_fp16_ptr,
+            source_frames * self.spec.hidden_size * DType.FP16.itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            self.stream,
+        )
+        self.runtime.memcpy_async(
+            mask.ptr,
+            attention_mask_int32_ptr,
+            source_frames * DType.INT32.itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            self.stream,
+        )
+        self.runtime.stream_synchronize(self.stream)
         self.encoder_state_valid = True
         self.cross_cache_valid = False
 

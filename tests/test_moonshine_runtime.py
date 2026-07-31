@@ -7,6 +7,7 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import free, malloc, memory_stats, reset_memory_stats
 from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import (
@@ -35,6 +36,7 @@ class FakeRuntime:
         self.malloc_calls: list[int] = []
         self.freed: list[int] = []
         self.copies: list[tuple[int, int, int, int]] = []
+        self.async_copies: list[tuple[int, int, int, int, int]] = []
         self.sets: list[tuple[int, int, int, int]] = []
         self.created_streams: list[int] = []
         self.destroyed_streams: list[int] = []
@@ -63,6 +65,11 @@ class FakeRuntime:
 
     def memcpy(self, dst: int, src: int, nbytes: int, kind) -> None:
         self.copies.append((int(dst), int(src), int(nbytes), int(kind)))
+
+    def memcpy_async(self, dst: int, src: int, nbytes: int, kind, stream: int) -> None:
+        self.async_copies.append(
+            (int(dst), int(src), int(nbytes), int(kind), int(stream))
+        )
 
     def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
         self.sets.append((int(dst), int(value), int(nbytes), int(stream)))
@@ -351,6 +358,74 @@ def test_reset_and_cross_cache_state_reuse_fixed_addresses_without_allocating() 
         assert {name: resident.tensor(name).ptr for name in resident.workspace.names} == pointers
         assert len(runtime.malloc_calls) == malloc_count
         assert runtime.synchronized_streams
+    finally:
+        resident.close()
+
+
+def test_device_encoder_handoff_zero_pads_and_copies_fixed_prefix_without_allocating() -> None:
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    try:
+        pointers = {
+            name: resident.tensor(name).ptr
+            for name in ("encoder_hidden", "encoder_attention_mask")
+        }
+        malloc_count = len(runtime.malloc_calls)
+        initial_set_count = len(runtime.sets)
+        resident.set_encoder_state_from_device(
+            hidden_fp16_ptr=0x900000,
+            attention_mask_int32_ptr=0xA00000,
+            source_frames=24,
+        )
+
+        assert resident.encoder_state_valid is True
+        assert resident.cross_cache_valid is False
+        assert runtime.sets[initial_set_count:] == [
+            (pointers["encoder_hidden"], 0, 40 * 416 * 2, resident.stream),
+            (pointers["encoder_attention_mask"], 0, 40 * 4, resident.stream),
+        ]
+        assert runtime.async_copies[-2:] == [
+            (
+                pointers["encoder_hidden"],
+                0x900000,
+                24 * 416 * 2,
+                int(HipMemcpyKind.DEVICE_TO_DEVICE),
+                resident.stream,
+            ),
+            (
+                pointers["encoder_attention_mask"],
+                0xA00000,
+                24 * 4,
+                int(HipMemcpyKind.DEVICE_TO_DEVICE),
+                resident.stream,
+            ),
+        ]
+        assert len(runtime.malloc_calls) == malloc_count
+        assert resident.tensor("encoder_hidden").ptr == pointers["encoder_hidden"]
+        assert resident.tensor("encoder_attention_mask").ptr == pointers[
+            "encoder_attention_mask"
+        ]
+        assert runtime.synchronized_streams[-1] == resident.stream
+
+        for kwargs, message in (
+            ({"hidden_fp16_ptr": 0, "attention_mask_int32_ptr": 1, "source_frames": 24}, "pointers"),
+            ({"hidden_fp16_ptr": 1, "attention_mask_int32_ptr": 0, "source_frames": 24}, "pointers"),
+            ({"hidden_fp16_ptr": 1, "attention_mask_int32_ptr": 2, "source_frames": 0}, "source_frames"),
+            ({"hidden_fp16_ptr": 1, "attention_mask_int32_ptr": 2, "source_frames": 41}, "source_frames"),
+        ):
+            with pytest.raises(ValueError, match=message):
+                resident.set_encoder_state_from_device(**kwargs)
+        resident.set_self_cache_length(1)
+        with pytest.raises(RuntimeError, match="reset generation"):
+            resident.set_encoder_state_from_device(
+                hidden_fp16_ptr=1,
+                attention_mask_int32_ptr=2,
+                source_frames=24,
+            )
     finally:
         resident.close()
 
