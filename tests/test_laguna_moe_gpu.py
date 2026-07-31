@@ -1618,13 +1618,27 @@ def test_laguna_q2_xl_actual_sparse_layer_matches_quant_oracle(
         runtime.device_synchronize()
         grouped_exact_actual = _read_bf16(grouped_exact_output, (3, h))
         lanes = 3 * k
+        sorted_lanes = _read_array(
+            grouped_exact_scratch.grouped_sorted_lanes,
+            np.int64,
+            (lanes,),
+        )
         lane_to_row = _read_array(
             grouped_exact_scratch.grouped_lane_to_row,
             np.int64,
             (lanes,),
         )
+        # The grouped weighted-sum stage reuses grouped_lane_to_row for the
+        # inverse stable-compaction map: source lane -> expert-major row.
+        np.testing.assert_array_equal(
+            sorted_lanes[lane_to_row],
+            np.arange(lanes, dtype=np.int64),
+        )
+        # Grouped gate/up always leaves its expert-major post-SiLU rows in
+        # expert_gate: ordinary routes gather route-major expert_intermediate
+        # there, while H6C writes the same sorted rows there directly.
         grouped_intermediate = _read_bf16(
-            grouped_exact_scratch.expert_intermediate,
+            grouped_exact_scratch.expert_gate,
             (lanes, plan.expert_ffn_size),
         )
         direct_intermediate = _read_bf16(
@@ -1632,7 +1646,7 @@ def test_laguna_q2_xl_actual_sparse_layer_matches_quant_oracle(
             (lanes, plan.expert_ffn_size),
         )
         np.testing.assert_array_equal(
-            _f32_to_bf16_u16(grouped_intermediate),
+            _f32_to_bf16_u16(grouped_intermediate[lane_to_row]),
             _f32_to_bf16_u16(direct_intermediate),
         )
         grouped_down = _read_bf16(grouped_exact_scratch.expert_down, (lanes, h))
