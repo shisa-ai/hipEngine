@@ -8247,6 +8247,25 @@ The remaining attention sequence is:
      this owner:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-nontemporal-rejected.json).
 
+167. Replace replicated wave-uniform Q4 metadata loads with lane-0 loads and
+     broadcasts. **Rejected at the actual-weight leaf and removed.**
+
+     This is materially different from item 143's `readfirstlane` screen:
+     only lane 0 issues each scale/min `uint32` load, then wave shuffle
+     broadcasts the word. The resident dual-interleaved T16 bytes, Q payload
+     loads, already-scalar d/dmin transport, dequantization/FMA sequence,
+     reduction, BF16 boundary, fused SiLU, grid, and residency remain fixed.
+     RED fails on the absent wrapper; GREEN matches every production BF16 bit.
+
+     The actual layer-1 E256/K3072/N1024/top-10 21x100 leaf is decisively
+     negative: **0.111996 -> 0.166178 ms/layer (+48.378%)**. Wave divergence
+     plus eight shuffles per K-ownership step costs far more than gfx1151's
+     coalescer-served replicated metadata loads. Stop before resident
+     integration and remove the kernel specialization, wrapper, leaf selector,
+     and temporary test. Production remains **23.017271 tok/s /
+     43.445636 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-lane0-metadata-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

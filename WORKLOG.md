@@ -195988,3 +195988,20 @@ Vulkan local sizes verbatim will close the measured gap.
   the selected T16 access pattern on gfx1151. Production remains
   **23.017271 tok/s / 43.445636 ms/token**. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-nontemporal-rejected.json`.
+
+## 2026-07-31 16:40 JST — Reject lane-0 selected-gate metadata loads
+
+- Audited llama.cpp Vulkan's cooperative ownership against the retained
+  dual-interleaved T16 decode body. The next exact screen differs from the
+  earlier rejected `readfirstlane` candidate: only lane 0 loads each
+  wave-uniform scale/min word, then broadcasts it to the wave.
+- RED failed on the absent ABI. GREEN matched every production BF16 bit. The
+  actual layer-1 E256/K3072/N1024/top-10 21x100 leaf regresses
+  **0.111996 -> 0.166178 ms/layer (+48.378%)** with unchanged
+  **931,135,488-byte** gate/up residency. Raw JSON SHA-256 is
+  `70d4573a...6ec6`.
+- Stop before the resident gate and remove the specialization, wrapper,
+  selector, and temporary test. Wave divergence and broadcasts cost much more
+  than coalescer-served replicated loads on gfx1151. Production remains
+  **23.017271 tok/s / 43.445636 ms/token**. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-lane0-metadata-rejected.json`.
