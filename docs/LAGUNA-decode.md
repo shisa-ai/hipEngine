@@ -7774,7 +7774,7 @@ The remaining attention sequence is:
 
 151. Move exact top-1 stage 1 into the existing 16-logit Q6T16 LM-head
      producers.
-     **Retained/default; tracked-clean publication is next.**
+     **Retained/default and published.**
 
      Every local128 producer preserves the existing Q6 decode, four-wave
      ordered merge, and FP32 logit store, then selects the best of the 16
@@ -7807,6 +7807,15 @@ The remaining attention sequence is:
      local256/VGPR16/LDS0/scratch0:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json).
 
+     Tracked-clean selector-unset production at `c882f7bd4` measures
+     **22.850647/22.875003/22.873989 tok/s**, median
+     **22.873989 tok/s / 43.717779 ms/token**. This advances the preceding
+     **22.865539 tok/s** checkpoint **0.03696%**, saves
+     **0.016157 ms/token**, and reaches **+99.482%** from the sprint start.
+     The remaining same-GGUF Vulkan gap is **0.888256 ms/token** or
+     **2.07394%** throughput:
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-production.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -7832,9 +7841,10 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean c=1 routed/shared overlap production | **22.752894 tok/s** | **43.950 ms** | **+98.426%** |
 | hipEngine prior tracked-clean paired-Q4 selected-down production | **22.780604 tok/s** | **43.897 ms** | **+98.668%** |
 | hipEngine prior source-F16 non-temporal production | **22.856155 tok/s** | **43.752 ms** | **+99.327%** |
-| hipEngine current argmax-control production | **22.865539 tok/s** | **43.734 ms** | **+99.408%** |
+| hipEngine prior argmax-control production | **22.865539 tok/s** | **43.734 ms** | **+99.408%** |
+| hipEngine current Q6 LM-head tilemax production | **22.873989 tok/s** | **43.718 ms** | **+99.482%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **0.904 ms/token** | hipEngine is **2.112%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **0.888 ms/token** | hipEngine is **2.074%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently
@@ -7860,8 +7870,8 @@ The newer post-F16 two-queue census supersedes the single-queue kernel-sum
 comparison for scheduling decisions. It measures **42.158779 ms/token** of
 union-busy GPU time inside a **43.834293-ms/token** dispatch span, so current
 device work is already **1.500421 ms/token below** Vulkan's logged kernel sum.
-The clean wall gap after argmax-owned control publication is
-**0.904414 ms/token**. The next retained
+The clean wall gap after Q6 LM-head tilemax publication is
+**0.888256 ms/token**. The next retained
 candidate must contract the dispatch span/idle holes or reduce damaging
 cross-queue memory contention; a faster isolated attention leaf is no longer
 the leading cross-backend explanation. The exact Vulkan F16 source transfer

@@ -52,7 +52,7 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.865539 tok/s / 43.734 ms/token**, up **99.408%** from the
+**22.873989 tok/s / 43.718 ms/token**, up **99.482%** from the
 **11.466687 tok/s** sprint start. The exact selected-Q4 down owner now shares
 adjacent-column nibble and coefficient transport while preserving each F32
 FMA/reduction/BF16/weighted boundary. Seven same-resident pairs improve
@@ -77,10 +77,18 @@ Steady dispatches fall **487 -> 484** while all **482 model kernels** remain:
 the three H2D control copies disappear and the two synchronized D2H result
 reads remain.
 [`argmax control production`](results/2026-07-31-gfx1151-laguna-argmax-control-publish-production.json).
+The current exact Q6T16 LM-head owner emits one top-1 pair from each existing
+16-logit producer tile and replaces the full-logit argmax stage-1 scan. It
+preserves every FP32 logit and minimum-index tie, adds no resident bytes, and
+cuts steady dispatches **484 -> 483 = 481 model kernels + two D2H copies**.
+Tracked-clean selector-unset production advances
+**22.865539 -> 22.873989 tok/s (+0.03696%, -0.016157 ms/token)**. The remaining
+same-GGUF Vulkan wall gap is **0.888256 ms/token**.
+[`Q6 LM-head tilemax production`](results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-production.json).
 The corresponding two-queue census measures **42.158779 ms/token** of union
 GPU busy time inside a **43.834293-ms/token** dispatch span. That is already
 **1.500421 ms/token below** Vulkan's logged kernel sum even though clean
-hipEngine wall is now **0.904414 ms/token slower**. The remaining short
+hipEngine wall is now **0.888256 ms/token slower**. The remaining short
 decode priority is queue-feed/dependency placement; current shared work
 overlaps selected gate/up while selected down runs alone.
 [`post-F16 wall census`](results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json).

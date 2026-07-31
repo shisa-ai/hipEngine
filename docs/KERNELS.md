@@ -2522,6 +2522,12 @@ local256/VGPR16/LDS0/scratch0. The completion-counter/last-producer sibling is
 performance-rejected and removed. Constructor false retains the ordinary
 logits + two-stage argmax chain. Evidence:
 `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json`.
+Tracked-clean selector-unset production at `c882f7bd4` measures
+**22.873989 tok/s / 43.717779 ms/token**, up **0.03696%** and
+**0.016157 ms/token** from the preceding clean checkpoint with exact state,
+unchanged residency, and a remaining **0.888256-ms/token** same-GGUF Vulkan
+gap:
+[`Q6 tilemax production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-production.json).
 
 gfx1151 c=1 now reuses the exact routed/shared branch-concurrency resources
 previously admitted for row-batched prefill. After router correction selection,
