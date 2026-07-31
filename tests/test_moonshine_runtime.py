@@ -25,6 +25,7 @@ from hipengine.runtime.moonshine import (
     MoonshineResidentRuntime,
     NoAllocationError,
     _moonshine_self_attention_threads,
+    _moonshine_token_graph_bucket,
 )
 
 
@@ -40,7 +41,14 @@ class FakeRuntime:
         self.created_events: list[int] = []
         self.destroyed_events: list[int] = []
         self.synchronized_streams: list[int] = []
+        self.capture_begins: list[tuple[int, int]] = []
+        self.capture_ends: list[int] = []
+        self.instantiated_graphs: list[int] = []
+        self.launched_graphs: list[tuple[int, int]] = []
+        self.destroyed_graph_execs: list[int] = []
+        self.destroyed_graphs: list[int] = []
         self.fail_malloc_at: int | None = None
+        self.fail_graph_instantiate_at: int | None = None
 
     def malloc(self, nbytes: int) -> int:
         if self.fail_malloc_at is not None and len(self.malloc_calls) >= self.fail_malloc_at:
@@ -71,6 +79,31 @@ class FakeRuntime:
     def stream_synchronize(self, stream: int) -> None:
         self.synchronized_streams.append(stream)
 
+    def stream_begin_capture(self, stream: int, mode: int = 2) -> None:
+        self.capture_begins.append((int(stream), int(mode)))
+
+    def stream_end_capture(self, stream: int) -> int:
+        self.capture_ends.append(int(stream))
+        return 0x7000 + len(self.capture_ends) - 1
+
+    def graph_instantiate(self, graph: int) -> int:
+        self.instantiated_graphs.append(int(graph))
+        if (
+            self.fail_graph_instantiate_at is not None
+            and len(self.instantiated_graphs) >= self.fail_graph_instantiate_at
+        ):
+            raise RuntimeError("injected graph instantiate failure")
+        return int(graph) + 0x1000
+
+    def graph_launch(self, graph_exec: int, stream: int) -> None:
+        self.launched_graphs.append((int(graph_exec), int(stream)))
+
+    def graph_exec_destroy(self, graph_exec: int) -> None:
+        self.destroyed_graph_execs.append(int(graph_exec))
+
+    def graph_destroy(self, graph: int) -> None:
+        self.destroyed_graphs.append(int(graph))
+
     def event_create(self, *, flags: int = 0) -> int:
         del flags
         event = 0x6000 + len(self.created_events)
@@ -89,6 +122,60 @@ class FakeRuntime:
     def event_elapsed_time_ms(self, start: int, stop: int) -> float:
         del start, stop
         return 0.0
+
+
+class FakeKernel:
+    def __init__(self, name: str, trace: list[tuple[str, tuple[object, ...]]]) -> None:
+        self.name = name
+        self.trace = trace
+
+    def __call__(self, *args):
+        self.trace.append((self.name, args))
+        return 0
+
+
+class FakeLibrary:
+    def __init__(self, trace: list[tuple[str, tuple[object, ...]]], *symbols: str) -> None:
+        for symbol in symbols:
+            setattr(self, symbol, FakeKernel(symbol, trace))
+
+
+def fake_decoder_libraries(trace: list[tuple[str, tuple[object, ...]]]) -> MoonshineDecoderLibraries:
+    return MoonshineDecoderLibraries(
+        projection=FakeLibrary(
+            trace,
+            "hipengine_moonshine_f16_lm_head_projection",
+            "hipengine_moonshine_f16_lm_head_projection_wave8",
+            "hipengine_moonshine_f16_projection",
+            "hipengine_moonshine_f16_projection_bias",
+            "hipengine_moonshine_f16_projection_bias_gated_silu",
+            "hipengine_moonshine_f16_projection_bias_residual",
+            "hipengine_moonshine_f16_projection_pair_head_major",
+            "hipengine_moonshine_f16_projection_triple",
+        ),
+        dense_projection=FakeLibrary(trace, "hipengine_dense_gemv_out_fp16"),
+        layernorm=FakeLibrary(
+            trace,
+            "hipengine_moonshine_layernorm_fp16",
+            "hipengine_moonshine_residual_layernorm_fp16",
+        ),
+        glue=FakeLibrary(
+            trace,
+            "hipengine_moonshine_argmax_fp16",
+            "hipengine_moonshine_embedding_lookup_fp16",
+            "hipengine_moonshine_partial_rope_cache_append_fp16",
+            "hipengine_moonshine_residual_fp16",
+        ),
+        mlp=FakeLibrary(trace, "hipengine_moonshine_gated_silu_fp16"),
+        attention=FakeLibrary(
+            trace,
+            "hipengine_moonshine_cross_attention_fp16",
+            "hipengine_moonshine_cross_attention_parallel_fp16",
+            "hipengine_moonshine_self_attention_branch_fp16",
+            "hipengine_moonshine_self_attention_parallel_fp16",
+            "hipengine_moonshine_self_attention_fp16",
+        ),
+    )
 
 
 def model_config() -> dict:
@@ -297,50 +384,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
     )
     trace: list[tuple[str, tuple[object, ...]]] = []
 
-    class FakeKernel:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def __call__(self, *args):
-            trace.append((self.name, args))
-            return 0
-
-    class FakeLibrary:
-        def __init__(self, *symbols: str) -> None:
-            for symbol in symbols:
-                setattr(self, symbol, FakeKernel(symbol))
-
-    libraries = MoonshineDecoderLibraries(
-        projection=FakeLibrary(
-            "hipengine_moonshine_f16_lm_head_projection",
-            "hipengine_moonshine_f16_lm_head_projection_wave8",
-            "hipengine_moonshine_f16_projection",
-            "hipengine_moonshine_f16_projection_bias",
-            "hipengine_moonshine_f16_projection_bias_gated_silu",
-            "hipengine_moonshine_f16_projection_bias_residual",
-            "hipengine_moonshine_f16_projection_pair_head_major",
-            "hipengine_moonshine_f16_projection_triple",
-        ),
-        dense_projection=FakeLibrary("hipengine_dense_gemv_out_fp16"),
-        layernorm=FakeLibrary(
-            "hipengine_moonshine_layernorm_fp16",
-            "hipengine_moonshine_residual_layernorm_fp16",
-        ),
-        glue=FakeLibrary(
-            "hipengine_moonshine_argmax_fp16",
-            "hipengine_moonshine_embedding_lookup_fp16",
-            "hipengine_moonshine_partial_rope_cache_append_fp16",
-            "hipengine_moonshine_residual_fp16",
-        ),
-        mlp=FakeLibrary("hipengine_moonshine_gated_silu_fp16"),
-        attention=FakeLibrary(
-            "hipengine_moonshine_cross_attention_fp16",
-            "hipengine_moonshine_cross_attention_parallel_fp16",
-            "hipengine_moonshine_self_attention_branch_fp16",
-            "hipengine_moonshine_self_attention_parallel_fp16",
-            "hipengine_moonshine_self_attention_fp16",
-        ),
-    )
+    libraries = fake_decoder_libraries(trace)
     try:
         with pytest.raises(RuntimeError, match="prepared"):
             resident.precompute_cross_kv()
@@ -434,6 +478,141 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         assert resident.cross_cache_valid is True
         assert resident.decode_position is None
         assert resident.self_cache_length == 0
+    finally:
+        resident.close()
+
+
+def test_token_graphs_capture_four_buckets_replay_sequential_state_and_close() -> None:
+    assert _moonshine_token_graph_bucket(0) == ("position_0", 0, 0)
+    assert _moonshine_token_graph_bucket(1) == ("position_1", 1, 1)
+    assert _moonshine_token_graph_bucket(2) == ("positions_2_3", 2, 3)
+    assert _moonshine_token_graph_bucket(3) == ("positions_2_3", 2, 3)
+    assert _moonshine_token_graph_bucket(4) == ("positions_4_193", 4, 193)
+    assert _moonshine_token_graph_bucket(193) == ("positions_4_193", 4, 193)
+    with pytest.raises(ValueError, match="capacity"):
+        _moonshine_token_graph_bucket(194)
+
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    try:
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries(trace))
+        resident.set_encoder_state(
+            np.zeros((1, 40, 416), dtype=np.float16),
+            np.ones((1, 40), dtype=np.int32),
+        )
+        resident.precompute_cross_kv()
+        trace.clear()
+        malloc_count = len(runtime.malloc_calls)
+
+        resident.set_decode_state(token_id=1, position=0)
+        with pytest.raises(RuntimeError, match="not captured"):
+            resident.graph_token_step()
+        resident.reset_generation(clear_cross_cache=False)
+        captures = resident.capture_token_graphs()
+        assert [capture.bucket for capture in captures] == [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193",
+        ]
+        assert [capture.capture_position for capture in captures] == [0, 1, 2, 4]
+        assert [capture.position_range for capture in captures] == [
+            (0, 0),
+            (1, 1),
+            (2, 3),
+            (4, 193),
+        ]
+        assert len(runtime.capture_begins) == len(runtime.capture_ends) == 4
+        assert runtime.instantiated_graphs == [capture.graph for capture in captures]
+        assert resident.self_cache_length == 0
+        assert resident.decode_position is None
+        assert len(trace) == 4 * 100
+        for offset, expected_self_symbol in zip(
+            range(0, 4 * 100, 100),
+            (
+                "hipengine_moonshine_self_attention_fp16",
+                "hipengine_moonshine_self_attention_parallel_fp16",
+                "hipengine_moonshine_self_attention_parallel_fp16",
+                "hipengine_moonshine_self_attention_parallel_fp16",
+            ),
+            strict=True,
+        ):
+            graph_names = [name for name, _ in trace[offset : offset + 100]]
+            assert graph_names.count(expected_self_symbol) == 8
+        assert len(runtime.malloc_calls) == malloc_count
+        assert all(capture.capture_wall_ms >= 0.0 for capture in captures)
+        assert all(capture.instantiate_wall_ms >= 0.0 for capture in captures)
+
+        resident.set_decode_state(token_id=1, position=0)
+        with resident.no_allocation_region("graph-position-0"):
+            resident.graph_token_step()
+        assert runtime.launched_graphs[-1] == (captures[0].graph_exec, resident.stream)
+        assert resident.self_cache_length == 1
+        assert resident.decode_position is None
+
+        resident.set_decode_state(token_id=1, position=1)
+        with resident.no_allocation_region("graph-position-1"):
+            resident.graph_token_step()
+        assert runtime.launched_graphs[-1] == (captures[1].graph_exec, resident.stream)
+
+        resident.set_decode_state(token_id=1, position=2)
+        resident.graph_token_step()
+        assert runtime.launched_graphs[-1] == (captures[2].graph_exec, resident.stream)
+        resident.set_decode_state(token_id=1, position=3)
+        resident.graph_token_step()
+        assert runtime.launched_graphs[-1] == (captures[2].graph_exec, resident.stream)
+        resident.set_decode_state(token_id=1, position=4)
+        resident.graph_token_step()
+        assert runtime.launched_graphs[-1] == (captures[3].graph_exec, resident.stream)
+
+        contract = resident.token_graph_contract()
+        assert contract["captured"] is True
+        assert contract["graph_count"] == 4
+        assert contract["replay_count"] == 5
+        assert contract["buckets"] == [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193",
+        ]
+        assert resident.capture_token_graphs() == captures
+        assert len(runtime.capture_begins) == 4
+        resident.reset_generation(clear_cross_cache=False)
+        resident.set_decode_state(token_id=1, position=0)
+        resident.graph_token_step()
+        assert runtime.launched_graphs[-1] == (captures[0].graph_exec, resident.stream)
+    finally:
+        resident.close()
+
+    assert runtime.destroyed_graph_execs == [capture.graph_exec for capture in reversed(captures)]
+    assert runtime.destroyed_graphs == [capture.graph for capture in reversed(captures)]
+
+
+def test_token_graph_partial_capture_failure_destroys_every_created_handle() -> None:
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    try:
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries([]))
+        resident.set_encoder_state(
+            np.zeros((1, 40, 416), dtype=np.float16),
+            np.ones((1, 40), dtype=np.int32),
+        )
+        resident.precompute_cross_kv()
+        runtime.fail_graph_instantiate_at = 2
+        with pytest.raises(RuntimeError, match="injected graph instantiate failure"):
+            resident.capture_token_graphs()
+        assert resident.token_graph_contract()["captured"] is False
+        assert runtime.destroyed_graph_execs == [0x8000]
+        assert runtime.destroyed_graphs == [0x7001, 0x7000]
     finally:
         resident.close()
 

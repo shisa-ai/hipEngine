@@ -46,6 +46,12 @@ def parse_args() -> argparse.Namespace:
         help="zero-pad encoder hidden/mask and cross-cache references to 40/207/1248",
     )
     parser.add_argument("--prebuild-only", action="store_true")
+    parser.add_argument(
+        "--token-route",
+        choices=("eager", "graph"),
+        default="eager",
+        help="dispatch each resident token through Python wrappers or a captured HIP graph",
+    )
     parser.add_argument("--json", type=Path)
     return parser.parse_args()
 
@@ -211,6 +217,9 @@ def main() -> int:
         "selected_tokens_exact": True,
         "post_eos_unselected_token_mismatches": [],
         "timed_step_allocations": 0,
+        "token_route": args.token_route,
+        "boundary_capture": "all_layer_boundaries" if args.token_route == "eager" else "final_hidden_only",
+        "token_graph": None,
     }
     reference_logits: list[np.ndarray] = []
     actual_logits: list[np.ndarray] = []
@@ -233,6 +242,8 @@ def main() -> int:
                 )
             resident.set_encoder_state(encoder_hidden, encoder_mask)
             resident.precompute_cross_kv()
+            if args.token_route == "graph":
+                resident.capture_token_graphs()
             for layer in range(resident.spec.decoder_layers):
                 cache = resident.cross_cache(layer)
                 for kind, tensor in (("key", cache.key), ("value", cache.value)):
@@ -260,9 +271,12 @@ def main() -> int:
                 resident.set_decode_state(token_id=token_ids[position], position=position)
                 before = memory_stats()["total_allocated_bytes"]
                 with resident.no_allocation_region(f"decoder-position-{position}"):
-                    resident.token_step(
-                        boundary_callback=capture if position in selected_positions else None
-                    )
+                    if args.token_route == "graph":
+                        resident.graph_token_step()
+                    else:
+                        resident.token_step(
+                            boundary_callback=capture if position in selected_positions else None
+                        )
                 after = memory_stats()["total_allocated_bytes"]
                 report["timed_step_allocations"] = int(report["timed_step_allocations"]) + (
                     after - before
@@ -290,6 +304,11 @@ def main() -> int:
                         report["post_eos_unselected_token_mismatches"].append(mismatch)
                 if position not in selected_positions:
                     continue
+                if args.token_route == "graph":
+                    captures["final_hidden"] = _download_fp16(
+                        resident,
+                        resident.tensor("normalized"),
+                    )
                 prefix = f"decoder.position_{position}"
                 for suffix, actual in captures.items():
                     _compare(
@@ -322,6 +341,8 @@ def main() -> int:
             report["logit_kl_max"] = logits_gate.kl_max
             report["logit_top1_agreement"] = logits_gate.top1_agreement
             report["logit_gate_passed"] = logits_gate.passed
+            if args.token_route == "graph":
+                report["token_graph"] = resident.token_graph_contract()
             before_close = resident.allocation_contract()
         after_close = memory_stats()
     report["resident_nbytes"] = before_close["resident_nbytes"]
