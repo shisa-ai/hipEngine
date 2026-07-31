@@ -15,7 +15,13 @@ from hipengine.loading.materialize import (
     DeviceWeightMap,
     alias_device_allocation,
 )
-from hipengine.loading.moonshine import MoonshineLoadedModel
+from hipengine.loading.moonshine import (
+    MoonshineLoadedModel,
+    MoonshineW8A16Tensor,
+    MoonshineW8A16Weights,
+    moonshine_w8a16_source_names,
+    normalize_moonshine_w8a16_families,
+)
 from hipengine.loading.safetensors import TensorInfo, WeightIndex
 from hipengine.models.moonshine import (
     expected_moonshine_weight_shapes,
@@ -182,6 +188,15 @@ def fake_decoder_libraries(trace: list[tuple[str, tuple[object, ...]]]) -> Moons
             "hipengine_moonshine_self_attention_parallel_fp16",
             "hipengine_moonshine_self_attention_fp16",
         ),
+        w8a16=FakeLibrary(
+            trace,
+            "hipengine_moonshine_w8a16_lm_head_wave8",
+            "hipengine_moonshine_w8a16_projection",
+            "hipengine_moonshine_w8a16_mlp_fc1_gated_silu",
+            "hipengine_moonshine_w8a16_mlp_fc2_residual",
+            "hipengine_moonshine_w8a16_qkv_triple",
+            "hipengine_moonshine_w8a16_cross_kv_pair_head_major",
+        ),
     )
 
 
@@ -232,7 +247,11 @@ def generation_config() -> dict:
     }
 
 
-def fake_loaded_model(runtime: FakeRuntime) -> MoonshineLoadedModel:
+def fake_loaded_model(
+    runtime: FakeRuntime,
+    *,
+    w8a16_families=(),
+) -> MoonshineLoadedModel:
     spec = parse_moonshine_model_spec(model_config(), generation_config())
     baseline = memory_stats()
     nbytes = spec.vocab_size * spec.hidden_size * DType.FP16.itemsize
@@ -272,6 +291,49 @@ def fake_loaded_model(runtime: FakeRuntime) -> MoonshineLoadedModel:
             owns_buffer=False,
         )
     weights = DeviceWeightMap(allocations)
+    selected = normalize_moonshine_w8a16_families(w8a16_families)
+    w8_tensors = {}
+    for name in moonshine_w8a16_source_names(spec, selected):
+        shape = expected_moonshine_weight_shapes(spec)[name]
+        qbuffer = malloc(int(np.prod(shape, dtype=np.int64)), runtime=runtime)  # type: ignore[arg-type]
+        scalebuffer = malloc(shape[0] * DType.FP32.itemsize, runtime=runtime)  # type: ignore[arg-type]
+        weight_source = TensorInfo(name, Path("fake.safetensors"), "F32", shape)
+        qsource = TensorInfo(f"{name}.w8a16.qweight", Path("fake.safetensors"), "I8", shape)
+        scalesource = TensorInfo(
+            f"{name}.w8a16.scale", Path("fake.safetensors"), "F32", (shape[0],)
+        )
+        qallocation = DeviceTensorAllocation(
+            qsource.name,
+            qsource,
+            qbuffer,
+            Tensor.from_handle(qbuffer.ptr, shape, DType.INT8, Device("hip", 0)),
+        )
+        scaleallocation = DeviceTensorAllocation(
+            scalesource.name,
+            scalesource,
+            scalebuffer,
+            Tensor.from_handle(
+                scalebuffer.ptr, (shape[0],), DType.FP32, Device("hip", 0)
+            ),
+        )
+        if name == spec.embedding_weight_name:
+            family = "lm_head"
+        elif name.endswith(".mlp.fc1.weight"):
+            family = "mlp_fc1"
+        elif name.endswith(".mlp.fc2.weight"):
+            family = "mlp_fc2"
+        elif ".self_attn." in name:
+            family = "self_attention"
+        else:
+            family = "cross_attention"
+        w8_tensors[name] = MoonshineW8A16Tensor(
+            source_name=name,
+            family=family,
+            qweight=qallocation,
+            scales=scaleallocation,
+            source_fp16_nbytes=int(np.prod(shape, dtype=np.int64)) * DType.FP16.itemsize,
+        )
+    w8a16 = MoonshineW8A16Weights(selected, w8_tensors) if selected else None
     index = WeightIndex(Path("/fake/moonshine"), model_config(), {source.name: source}, (source.shard_path,))
     return MoonshineLoadedModel(
         spec=spec,
@@ -279,6 +341,7 @@ def fake_loaded_model(runtime: FakeRuntime) -> MoonshineLoadedModel:
         weights=weights,
         baseline_allocated_bytes=baseline["current_allocated_bytes"],
         baseline_active_allocations=baseline["active_allocations"],
+        w8a16=w8a16,
     )
 
 
@@ -555,6 +618,64 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         assert resident.self_cache_length == 0
     finally:
         resident.close()
+
+
+def test_selective_w8a16_routes_expected_fixed_address_kernels_and_reports_bytes() -> None:
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(
+            runtime, w8a16_families=("lm_head", "mlp", "attention")
+        ),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    try:
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries(trace))
+        resident.set_encoder_state(
+            np.zeros((1, 40, 416), dtype=np.float16),
+            np.ones((1, 40), dtype=np.int32),
+        )
+        resident.precompute_cross_kv()
+        assert [name for name, _ in trace] == [
+            "hipengine_moonshine_w8a16_cross_kv_pair_head_major"
+        ] * 8
+        trace.clear()
+        malloc_count = len(runtime.malloc_calls)
+        resident.set_decode_state(token_id=1, position=0)
+        with resident.no_allocation_region("w8a16-token-step"):
+            resident.token_step()
+        assert len(runtime.malloc_calls) == malloc_count
+        names = [name for name, _ in trace]
+        assert names.count("hipengine_moonshine_w8a16_qkv_triple") == 8
+        assert names.count("hipengine_moonshine_w8a16_projection") == 24
+        assert names.count("hipengine_moonshine_w8a16_mlp_fc1_gated_silu") == 8
+        assert names.count("hipengine_moonshine_w8a16_mlp_fc2_residual") == 8
+        assert names.count("hipengine_moonshine_w8a16_lm_head_wave8") == 1
+        assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in names
+        assert "hipengine_dense_gemv_out_fp16" not in names
+        contract = resident.quantization_contract()
+        assert contract["families"] == [
+            "lm_head",
+            "mlp_fc1",
+            "mlp_fc2",
+            "self_attention",
+            "cross_attention",
+        ]
+        assert contract["tensor_count"] == 81
+        assert contract["layout"] == (
+            "row_major_int8_per_output_channel_symmetric_f32_scale"
+        )
+        assert contract["active_read_byte_reduction"] > 0
+        assert contract["fp16_fallback_resident"] is True
+        allocation = resident.allocation_contract()
+        assert allocation["w8a16_sidecar_nbytes"] == contract["packed_nbytes"]
+        assert allocation["resident_nbytes"] > allocation["fp16_weight_nbytes"]
+    finally:
+        resident.close()
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
 
 
 def test_token_graphs_capture_four_buckets_replay_sequential_state_and_close() -> None:

@@ -131,11 +131,11 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add a fixed-resident device-to-device encoder handoff without host tensor round-trip.
   - [x] Validate exact six-file hybrid generation, padding/mask ownership, copies, allocation, and teardown.
   - [x] Measure full-model hybrid latency and publish the honest ONNX CPU/MIGraphX/PyTorch/custom-HIP table.
-- [ ] Qualify Phase-6 selective Moonshine W8A16.
-  - [ ] Add a backend-neutral per-output-channel symmetric INT8 sidecar contract, deterministic host quantizer/CPU oracle, resident ownership, byte accounting, and explicit `hip_gfx1100 / moonshine_* / w8a16 / *` registrations.
-  - [ ] Implement and benchmark the tied LM-head candidate first, preserving FP16 embedding ownership and the complete FP16 decoder fallback.
-  - [ ] Qualify decoder MLP `fc1/fc2`, then self/cross projection candidates only in order, retaining a family only when primitive/Tier-B/six-file gates and repeated paired cached-token/complete-generation timing pass.
-  - [ ] Profile selected/rejected kernel identities, run available Japanese quality gates, publish compact Phase-6 evidence, and hand off the retained route to Phase 7.
+- [x] Qualify Phase-6 selective Moonshine W8A16; retain implementation but promote no quantized family.
+  - [x] Add a backend-neutral per-output-channel symmetric INT8 sidecar contract, deterministic host quantizer/CPU oracle, resident ownership, byte accounting, and explicit `hip_gfx1100 / moonshine_* / w8a16 / *` registrations.
+  - [x] Implement and benchmark the tied LM-head candidate first, preserving FP16 embedding ownership and the complete FP16 decoder fallback.
+  - [x] Qualify decoder MLP `fc1/fc2`, then self/cross projection candidates only in order, retaining a family only when primitive/Tier-B/six-file gates and repeated paired cached-token/complete-generation timing pass.
+  - [x] Profile selected/rejected kernel identities, run available Japanese quality gates, publish compact Phase-6 evidence, and hand off the retained FP16 graph route to Phase 7.
 
 ## Notes
 

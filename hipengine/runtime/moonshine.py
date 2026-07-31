@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 import time
-from typing import Callable, Iterator
+from typing import Callable, Iterable, Iterator
 
 import numpy as np
 
@@ -21,7 +21,12 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.cpu_reference.moonshine import moonshine_rope_tables
-from hipengine.loading.moonshine import MoonshineLoadedModel, load_moonshine_model
+from hipengine.loading.moonshine import (
+    MoonshineLoadedModel,
+    MoonshineW8A16Tensor,
+    load_moonshine_model,
+    normalize_moonshine_w8a16_families,
+)
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
@@ -85,6 +90,7 @@ class MoonshineDecoderLibraries:
     glue: object
     mlp: object
     attention: object
+    w8a16: object | None = None
 
 
 @dataclass
@@ -149,14 +155,26 @@ class MoonshineResidentRuntime:
         loaded_model: MoonshineLoadedModel | None = None,
         device: Device | None = None,
         runtime: HipRuntime | None = None,
+        w8a16_families: str | Iterable[str] | None = None,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
+        selected_w8a16 = normalize_moonshine_w8a16_families(w8a16_families)
+        if loaded_model is not None:
+            loaded_families = (
+                () if loaded_model.w8a16 is None else loaded_model.w8a16.families
+            )
+            if selected_w8a16 and selected_w8a16 != loaded_families:
+                raise ValueError(
+                    "w8a16_families must match the already loaded Moonshine model"
+                )
+            selected_w8a16 = loaded_families
         self.loaded_model = loaded_model
         self.weights = loaded_model.weights if loaded_model is not None else None
         self.spec = loaded_model.spec if loaded_model is not None else None
+        self.w8a16_families = selected_w8a16
         self.encoder_frames = int(encoder_frames)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
@@ -176,6 +194,7 @@ class MoonshineResidentRuntime:
                     model_path,
                     device=self.device,
                     runtime=self.runtime,
+                    w8a16_families=selected_w8a16,
                 )
                 self.weights = self.loaded_model.weights
                 self.spec = self.loaded_model.spec
@@ -413,6 +432,9 @@ class MoonshineResidentRuntime:
             from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
                 build_moonshine_layernorm,
             )
+            from hipengine.kernels.hip_gfx1100.linear.moonshine_w8a16 import (
+                build_moonshine_w8a16,
+            )
 
             arguments = {
                 "compiler_version": compiler_version,
@@ -426,7 +448,18 @@ class MoonshineResidentRuntime:
                 glue=build_moonshine_glue(**arguments),
                 mlp=build_moonshine_mlp(**arguments),
                 attention=build_moonshine_attention(**arguments),
+                w8a16=(
+                    build_moonshine_w8a16(**arguments)
+                    if self.loaded_model is not None and self.loaded_model.w8a16 is not None
+                    else None
+                ),
             )
+        if (
+            self.loaded_model is not None
+            and self.loaded_model.w8a16 is not None
+            and libraries.w8a16 is None
+        ):
+            raise ValueError("Moonshine W8A16 weights require a prepared W8A16 library")
         if self._token_graphs:
             self._close_token_graphs()
         self.decoder_libraries = libraries
@@ -529,6 +562,26 @@ class MoonshineResidentRuntime:
         self.encoder_state_valid = True
         self.cross_cache_valid = False
 
+    def _w8a16_weight(self, source_name: str) -> MoonshineW8A16Tensor | None:
+        loaded = self.loaded_model
+        if loaded is None or loaded.w8a16 is None or source_name not in loaded.w8a16:
+            return None
+        return loaded.w8a16[source_name]
+
+    def quantization_contract(self) -> dict[str, object]:
+        loaded = self.loaded_model
+        if loaded is None or loaded.w8a16 is None:
+            return {
+                "enabled": False,
+                "families": [],
+                "tensor_count": 0,
+                "fp16_fallback_resident": True,
+            }
+        contract = loaded.w8a16.contract()
+        contract["fp16_fallback_resident"] = True
+        contract["resident_sidecar_nbytes"] = loaded.w8a16.packed_nbytes
+        return contract
+
     def precompute_cross_kv(self) -> None:
         """Project encoder rows once into all eight resident head-major caches."""
 
@@ -542,27 +595,54 @@ class MoonshineResidentRuntime:
         from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
             moonshine_f16_projection_pair_head_major,
         )
+        from hipengine.kernels.hip_gfx1100.linear.moonshine_w8a16 import (
+            moonshine_w8a16_cross_kv_pair_head_major,
+        )
 
         encoder_ptr = self.tensor("encoder_hidden").ptr
         for layer in range(self.spec.decoder_layers):
             prefix = f"model.decoder.layers.{layer}.encoder_attn"
+            key_name = f"{prefix}.k_proj.weight"
+            value_name = f"{prefix}.v_proj.weight"
+            key_w8 = self._w8a16_weight(key_name)
+            value_w8 = self._w8a16_weight(value_name)
             cache = self.cross_cache(layer)
-            moonshine_f16_projection_pair_head_major(
-                encoder_ptr,
-                self.weights[f"{prefix}.k_proj.weight"].ptr,
-                self.weights[f"{prefix}.v_proj.weight"].ptr,
-                cache.key.ptr,
-                cache.value.ptr,
-                self.encoder_frames,
-                self.spec.hidden_size,
-                self.spec.decoder_kv_heads * self.spec.head_dim,
-                self.spec.decoder_kv_heads * self.spec.head_dim,
-                self.spec.head_dim,
-                threads=MOONSHINE_CROSS_KV_THREADS,
-                stream=self.stream,
-                library=libraries.projection,
-                runtime=self.runtime,
-            )
+            if key_w8 is not None and value_w8 is not None:
+                moonshine_w8a16_cross_kv_pair_head_major(
+                    encoder_ptr,
+                    key_w8.qweight.tensor.ptr,
+                    key_w8.scales.tensor.ptr,
+                    value_w8.qweight.tensor.ptr,
+                    value_w8.scales.tensor.ptr,
+                    cache.key.ptr,
+                    cache.value.ptr,
+                    self.encoder_frames,
+                    self.spec.hidden_size,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.head_dim,
+                    threads=MOONSHINE_CROSS_KV_THREADS,
+                    stream=self.stream,
+                    library=libraries.w8a16,
+                    runtime=self.runtime,
+                )
+            else:
+                moonshine_f16_projection_pair_head_major(
+                    encoder_ptr,
+                    self.weights[key_name].ptr,
+                    self.weights[value_name].ptr,
+                    cache.key.ptr,
+                    cache.value.ptr,
+                    self.encoder_frames,
+                    self.spec.hidden_size,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.head_dim,
+                    threads=MOONSHINE_CROSS_KV_THREADS,
+                    stream=self.stream,
+                    library=libraries.projection,
+                    runtime=self.runtime,
+                )
         self.runtime.stream_synchronize(self.stream)
         self.mark_cross_cache_ready(self.encoder_frames)
 
@@ -618,7 +698,7 @@ class MoonshineResidentRuntime:
         *,
         boundary_callback: Callable[[str, Tensor], None] | None = None,
     ) -> None:
-        """Enqueue one complete FP16 decoder step through eager Python dispatch."""
+        """Enqueue one complete resident decoder step through eager Python dispatch."""
 
         route_position = self._require_token_step_ready()
         self._enqueue_token_step(
@@ -668,6 +748,13 @@ class MoonshineResidentRuntime:
             moonshine_f16_projection_bias_residual,
             moonshine_f16_projection_triple,
         )
+        from hipengine.kernels.hip_gfx1100.linear.moonshine_w8a16 import (
+            moonshine_w8a16_lm_head_wave8,
+            moonshine_w8a16_mlp_fc1_gated_silu,
+            moonshine_w8a16_mlp_fc2_residual,
+            moonshine_w8a16_projection,
+            moonshine_w8a16_qkv_triple,
+        )
         from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
             moonshine_layernorm_fp16,
             moonshine_residual_layernorm_fp16,
@@ -683,6 +770,39 @@ class MoonshineResidentRuntime:
         projection = self.tensor("projection")
         position = self.tensor("position")
         common = {"stream": stream, "runtime": self.runtime}
+
+        def attention_projection(
+            input_ptr: int,
+            weight_name: str,
+            output_ptr: int,
+        ) -> None:
+            quantized = self._w8a16_weight(weight_name)
+            if quantized is None:
+                dense_gemv_out_fp16(
+                    input_ptr,
+                    self.weights[weight_name].ptr,
+                    output_ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
+                    library=libraries.dense_projection,
+                    **common,
+                )
+            else:
+                moonshine_w8a16_projection(
+                    input_ptr,
+                    quantized.qweight.tensor.ptr,
+                    quantized.scales.tensor.ptr,
+                    output_ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
+                    library=libraries.w8a16,
+                    **common,
+                )
+
         moonshine_embedding_lookup_fp16(
             self.weights[spec.embedding_weight_name].ptr,
             self.tensor("token").ptr,
@@ -704,23 +824,51 @@ class MoonshineResidentRuntime:
                 library=libraries.layernorm,
                 **common,
             )
-            moonshine_f16_projection_triple(
-                normalized.ptr,
-                self.weights[f"{prefix}.self_attn.q_proj.weight"].ptr,
-                self.weights[f"{prefix}.self_attn.k_proj.weight"].ptr,
-                self.weights[f"{prefix}.self_attn.v_proj.weight"].ptr,
-                query.ptr,
-                key.ptr,
-                value.ptr,
-                1,
-                spec.hidden_size,
-                spec.hidden_size,
-                spec.hidden_size,
-                spec.hidden_size,
-                threads=MOONSHINE_TRIPLE_QKV_THREADS,
-                library=libraries.projection,
-                **common,
-            )
+            q_name = f"{prefix}.self_attn.q_proj.weight"
+            k_name = f"{prefix}.self_attn.k_proj.weight"
+            v_name = f"{prefix}.self_attn.v_proj.weight"
+            q_w8 = self._w8a16_weight(q_name)
+            k_w8 = self._w8a16_weight(k_name)
+            v_w8 = self._w8a16_weight(v_name)
+            if q_w8 is not None and k_w8 is not None and v_w8 is not None:
+                moonshine_w8a16_qkv_triple(
+                    normalized.ptr,
+                    q_w8.qweight.tensor.ptr,
+                    q_w8.scales.tensor.ptr,
+                    k_w8.qweight.tensor.ptr,
+                    k_w8.scales.tensor.ptr,
+                    v_w8.qweight.tensor.ptr,
+                    v_w8.scales.tensor.ptr,
+                    query.ptr,
+                    key.ptr,
+                    value.ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    threads=MOONSHINE_TRIPLE_QKV_THREADS,
+                    library=libraries.w8a16,
+                    **common,
+                )
+            else:
+                moonshine_f16_projection_triple(
+                    normalized.ptr,
+                    self.weights[q_name].ptr,
+                    self.weights[k_name].ptr,
+                    self.weights[v_name].ptr,
+                    query.ptr,
+                    key.ptr,
+                    value.ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    spec.hidden_size,
+                    threads=MOONSHINE_TRIPLE_QKV_THREADS,
+                    library=libraries.projection,
+                    **common,
+                )
             self_cache = self.self_cache(layer)
             moonshine_partial_rope_cache_append_fp16(
                 query.ptr,
@@ -764,16 +912,10 @@ class MoonshineResidentRuntime:
                 **self_attention_options,
                 **common,
             )
-            dense_gemv_out_fp16(
+            attention_projection(
                 attention.ptr,
-                self.weights[f"{prefix}.self_attn.o_proj.weight"].ptr,
+                f"{prefix}.self_attn.o_proj.weight",
                 projection.ptr,
-                1,
-                spec.hidden_size,
-                spec.hidden_size,
-                threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
-                library=libraries.dense_projection,
-                **common,
             )
             moonshine_residual_layernorm_fp16(
                 hidden.ptr,
@@ -789,16 +931,10 @@ class MoonshineResidentRuntime:
             )
             if boundary_callback is not None:
                 boundary_callback(f"layer_{layer}.after_self_attention", hidden)
-            dense_gemv_out_fp16(
+            attention_projection(
                 normalized.ptr,
-                self.weights[f"{prefix}.encoder_attn.q_proj.weight"].ptr,
+                f"{prefix}.encoder_attn.q_proj.weight",
                 query.ptr,
-                1,
-                spec.hidden_size,
-                spec.hidden_size,
-                threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
-                library=libraries.dense_projection,
-                **common,
             )
             cross_cache = self.cross_cache(layer)
             moonshine_cross_attention_parallel_fp16(
@@ -814,16 +950,10 @@ class MoonshineResidentRuntime:
                 library=libraries.attention,
                 **common,
             )
-            dense_gemv_out_fp16(
+            attention_projection(
                 attention.ptr,
-                self.weights[f"{prefix}.encoder_attn.o_proj.weight"].ptr,
+                f"{prefix}.encoder_attn.o_proj.weight",
                 projection.ptr,
-                1,
-                spec.hidden_size,
-                spec.hidden_size,
-                threads=MOONSHINE_SINGLE_PROJECTION_THREADS,
-                library=libraries.dense_projection,
-                **common,
             )
             moonshine_residual_layernorm_fp16(
                 hidden.ptr,
@@ -839,31 +969,65 @@ class MoonshineResidentRuntime:
             )
             if boundary_callback is not None:
                 boundary_callback(f"layer_{layer}.after_cross_attention", hidden)
-            moonshine_f16_projection_bias_gated_silu(
-                normalized.ptr,
-                self.weights[f"{prefix}.mlp.fc1.weight"].ptr,
-                self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
-                self.tensor("mlp_intermediate").ptr,
-                1,
-                spec.hidden_size,
-                spec.intermediate_size,
-                threads=MOONSHINE_MLP_FC1_THREADS,
-                library=libraries.projection,
-                **common,
-            )
-            moonshine_f16_projection_bias_residual(
-                self.tensor("mlp_intermediate").ptr,
-                self.weights[f"{prefix}.mlp.fc2.weight"].ptr,
-                self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
-                hidden.ptr,
-                hidden.ptr,
-                1,
-                spec.intermediate_size,
-                spec.hidden_size,
-                threads=MOONSHINE_MLP_FC2_THREADS,
-                library=libraries.projection,
-                **common,
-            )
+            fc1_name = f"{prefix}.mlp.fc1.weight"
+            fc2_name = f"{prefix}.mlp.fc2.weight"
+            fc1_w8 = self._w8a16_weight(fc1_name)
+            fc2_w8 = self._w8a16_weight(fc2_name)
+            if fc1_w8 is None:
+                moonshine_f16_projection_bias_gated_silu(
+                    normalized.ptr,
+                    self.weights[fc1_name].ptr,
+                    self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
+                    self.tensor("mlp_intermediate").ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.intermediate_size,
+                    threads=MOONSHINE_MLP_FC1_THREADS,
+                    library=libraries.projection,
+                    **common,
+                )
+            else:
+                moonshine_w8a16_mlp_fc1_gated_silu(
+                    normalized.ptr,
+                    fc1_w8.qweight.tensor.ptr,
+                    fc1_w8.scales.tensor.ptr,
+                    self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
+                    self.tensor("mlp_intermediate").ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.intermediate_size,
+                    library=libraries.w8a16,
+                    **common,
+                )
+            if fc2_w8 is None:
+                moonshine_f16_projection_bias_residual(
+                    self.tensor("mlp_intermediate").ptr,
+                    self.weights[fc2_name].ptr,
+                    self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
+                    hidden.ptr,
+                    hidden.ptr,
+                    1,
+                    spec.intermediate_size,
+                    spec.hidden_size,
+                    threads=MOONSHINE_MLP_FC2_THREADS,
+                    library=libraries.projection,
+                    **common,
+                )
+            else:
+                moonshine_w8a16_mlp_fc2_residual(
+                    self.tensor("mlp_intermediate").ptr,
+                    fc2_w8.qweight.tensor.ptr,
+                    fc2_w8.scales.tensor.ptr,
+                    self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
+                    hidden.ptr,
+                    hidden.ptr,
+                    1,
+                    spec.intermediate_size,
+                    spec.hidden_size,
+                    threads=MOONSHINE_MLP_FC2_THREADS,
+                    library=libraries.w8a16,
+                    **common,
+                )
             if boundary_callback is not None:
                 boundary_callback(f"layer_{layer}.after_mlp", hidden)
         moonshine_layernorm_fp16(
@@ -878,16 +1042,30 @@ class MoonshineResidentRuntime:
         )
         if boundary_callback is not None:
             boundary_callback("final_hidden", normalized)
-        moonshine_f16_lm_head_projection_wave8(
-            normalized.ptr,
-            self.weights[spec.lm_head_alias_name].ptr,
-            self.tensor("logits").ptr,
-            1,
-            spec.hidden_size,
-            spec.vocab_size,
-            library=libraries.projection,
-            **common,
-        )
+        lm_head_w8 = self._w8a16_weight(spec.embedding_weight_name)
+        if lm_head_w8 is None:
+            moonshine_f16_lm_head_projection_wave8(
+                normalized.ptr,
+                self.weights[spec.lm_head_alias_name].ptr,
+                self.tensor("logits").ptr,
+                1,
+                spec.hidden_size,
+                spec.vocab_size,
+                library=libraries.projection,
+                **common,
+            )
+        else:
+            moonshine_w8a16_lm_head_wave8(
+                normalized.ptr,
+                lm_head_w8.qweight.tensor.ptr,
+                lm_head_w8.scales.tensor.ptr,
+                self.tensor("logits").ptr,
+                1,
+                spec.hidden_size,
+                spec.vocab_size,
+                library=libraries.w8a16,
+                **common,
+            )
         moonshine_argmax_fp16(
             self.tensor("logits").ptr,
             self.tensor("token").ptr,
@@ -1031,6 +1209,14 @@ class MoonshineResidentRuntime:
             "baseline_allocated_bytes": baseline_bytes,
             "baseline_active_allocations": baseline_allocations,
             "resident_nbytes": self.resident_nbytes,
+            "fp16_weight_nbytes": (
+                0 if self.loaded_model is None else self.loaded_model.fp16_weight_bytes
+            ),
+            "w8a16_sidecar_nbytes": (
+                0
+                if self.loaded_model is None or self.loaded_model.w8a16 is None
+                else self.loaded_model.w8a16.packed_nbytes
+            ),
             "current_allocated_bytes": current["current_allocated_bytes"],
             "current_active_allocations": current["active_allocations"],
             "decoder_kernels_prepared": self.decoder_libraries is not None,
