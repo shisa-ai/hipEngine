@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T14:15:00+09:00",
+  "kind": "hipengine_laguna_decode_two_queue_wall_census",
+  "status": "accepted_attribution",
+  "performance_claim": false,
+  "source_revision": "2fc5fdd4c3b00c0f437e30d5974400a31cc1b735",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 481,
+    "runtime_copies_per_token": 2,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "two_queue_timeline_ms_per_token": {
+    "inclusive_kernel_sum": 47.62347,
+    "kernel_interval_union_busy": 42.157483,
+    "dispatch_span": 43.773803,
+    "median_union_idle": 1.625779,
+    "queue_overlap": 5.457401,
+    "primary_queue_kernel_sum": 42.157483,
+    "decode_shared_queue_kernel_sum": 5.457401,
+    "primary_queue_calls": 387,
+    "decode_shared_queue_calls": 94,
+    "note": "Every secondary-queue interval is hidden under primary-queue work; union-busy therefore equals the primary queue's inclusive work."
+  },
+  "inclusive_family_medians_ms_per_token": {
+    "source_f16_projection_composites": 24.34938,
+    "selected_q4_gate_up": 8.948708,
+    "selected_q4_q6_down": 4.742337,
+    "dense_shared_quant_projection": 5.865488,
+    "router": 1.043797,
+    "attention_total": 1.117737,
+    "swa_attention": 0.718786,
+    "global_attention": 0.398951,
+    "norm_rope_outside_projection_composites": 0.420103,
+    "lm_head_argmax": 1.122826
+  },
+  "moe_overlap_anatomy_ms_per_token": {
+    "selected_gate_up": 8.948708,
+    "selected_down": 4.742337,
+    "shared_gate_up": 3.751283,
+    "shared_down": 2.115766,
+    "selected_gate_shared_gate_overlap": 3.553667,
+    "selected_gate_shared_down_overlap": 1.907468,
+    "shared_selected_down_overlap": 0.0
+  },
+  "change_from_low_priority_shared_census_ms_per_token": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json",
+    "inclusive_kernel_sum": -1.10942,
+    "kernel_interval_union_busy": -0.001296,
+    "dispatch_span": -0.06049,
+    "median_union_idle": -0.061514,
+    "queue_overlap": -1.113618,
+    "dense_shared_quant_projection": -1.124555,
+    "selected_q4_gate_up": 0.044714,
+    "interpretation": "Normal priority makes the shared branch materially faster, but that work was already hidden. The retained end-to-end gain comes from the smaller uncovered queue window, not from reducing device-busy union."
+  },
+  "same_gguf_vulkan": {
+    "revision": "c0bc8591e",
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_tok_s": 23.348381,
+    "production_wall_ms_per_token": 42.829522098341634,
+    "hipengine_kernel_interval_union_delta_vs_vulkan_wall_ms": -0.672039,
+    "hipengine_clean_production_tok_s": 22.891691783,
+    "hipengine_clean_production_wall_ms_per_token": 43.6839709997,
+    "hipengine_clean_production_wall_delta_ms": 0.854449,
+    "hipengine_throughput_gap_percent": -1.995
+  },
+  "target_24_tok_s": {
+    "wall_ms_per_token": 41.6666666667,
+    "current_wall_gap_ms_per_token": 2.017304333,
+    "union_busy_gap_ms_per_token": 0.4908163333,
+    "interpretation": "Eliminating all measured queue idle is insufficient by itself; reaching 24 tok/s also requires at least 0.491 ms/token of critical-path device-work contraction."
+  },
+  "repeated_union_idle_boundaries_ms_per_token": {
+    "router_select_to_selected_gate_up": 0.212193,
+    "swa_projection_head_kv_to_attention": 0.188755,
+    "q4_selected_down_to_moe_tail": 0.188232,
+    "swa_output_projection_to_router_projection": 0.187351,
+    "q6_selected_down_to_moe_tail": 0.165712,
+    "selected_gate_up_to_selected_down": 0.136604,
+    "global_projection_head_kv_to_attention": 0.058509,
+    "global_output_projection_to_router_projection": 0.058069
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-split-priority-census.Zi97yx --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-split-priority-census.Zi97yx/bench.json",
+    "segmentation": "Sort by start timestamp and dispatch id; discard warmup128 and timed prefill512; report medians over the final 127 length-one embedding-through-published-control-argmax segments; merge overlapping kernel intervals across both queues for union-busy time.",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "e6088600eeef9e4374745632764dd32559f66ac362017745488c501922073fab",
+    "bench_sha256": "917e37f9a636b276a88d00feec76c67f47a6f2c0ca1de2f474a9beaf8ab58e8"
+  },
+  "interpretation": {
+    "result": "The split-priority policy reduces uncovered queue idle while leaving critical-path union-busy work effectively unchanged.",
+    "primary_bottleneck": "The remaining Vulkan wall gap is submission/dependency spacing. Source-F16 and selected MoE dominate arithmetic, while attention is only 1.118 ms/token.",
+    "next_screen": "Remove a real model launch at a repeated dependency boundary; ordinary HIP wrapper batching, per-layer graphs, direct AQL, and event-only rescheduling are already closed."
+  }
+}

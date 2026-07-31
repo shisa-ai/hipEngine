@@ -7985,6 +7985,50 @@ The remaining attention sequence is:
      [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-production.json).
 
+158. Reprofile the retained split-priority topology before another device
+     change. **Complete; attribution accepted.**
+
+     The repaired current-symbol parser segments all **127** exact decode
+     transitions at **481 model kernels/token**. Median inclusive work is
+     **47.623470 ms/token**, but **5.457401 ms** runs on the decode-only
+     secondary queue and is completely hidden. The actual interval union is
+     therefore the primary queue's **42.157483 ms/token**, inside a
+     **43.773803-ms** dispatch span with **1.625779 ms/token** of uncovered
+     queue idle.
+
+     Relative to the preceding least-priority shared census, normal priority
+     cuts dense/shared work **6.990043 -> 5.865488 ms/token** and inclusive
+     work by **1.109420 ms**, but union-busy changes only
+     **-0.001296 ms** because that branch was already hidden. The retained
+     clean-wall gain instead tracks the **0.061514-ms** reduction in uncovered
+     idle.
+
+     Corrected family attribution puts source-F16 composites at
+     **24.349380 ms/token**, selected gate/up plus down at
+     **13.691045 ms**, and all attention at only **1.117737 ms**. The most
+     repeated uncovered boundaries are router-select -> selected gate/up
+     **0.212193**, projection/head/KV -> SWA attention **0.188755**,
+     Q4/Q6 selected-down -> MoE tail **0.188232/0.165712**, and SWA output
+     projection -> router projection **0.187351 ms/token**.
+
+     The comparison is now bounded precisely. hipEngine's union-busy work is
+     already **0.672039 ms/token below** llama.cpp Vulkan's production wall,
+     but clean hipEngine wall remains **0.854449 ms/token** slower. Reaching
+     **24 tok/s** requires **2.017304 ms/token** from the current clean wall;
+     even perfect idle removal still needs at least **0.490816 ms/token** of
+     critical-path device-work contraction.
+
+     Do not retry ordinary C wrapper batching, per-layer/whole-token graph
+     replay, direct AQL, or event-only tail rescheduling. The next bounded
+     screen is a true launch contraction: let the already route-parallel,
+     completion-counted selected-down finalizers execute the exact D9
+     aggregate/residual/next-RMSNorm tail after the existing shared-ready
+     event is moved ahead of selected down. This is materially different from
+     item 150's unchanged-dispatch host batch and item 119's slower
+     shared-down owner; selected down is already local128 and exposes one
+     finalizer per 16-column output tile:
+     [`post-split-priority census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-split-priority-wall-reprofile.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

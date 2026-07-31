@@ -195755,3 +195755,32 @@ Vulkan local sizes verbatim will close the measured gap.
   `source_f16_projection`, ahead of the generic RMSNorm rule.
 - All **28** family-classifier cases and all **39** long-context profile/trace
   tests pass; Python compilation and diff checks pass.
+
+## 2026-07-31 14:15 JST — Attribute the split-priority decode wall
+
+- The corrected 127-transition census reports **47.623470 ms/token** inclusive
+  work, **42.157483 ms/token** interval-union busy, and
+  **43.773803 ms/token** span. The normal-priority secondary queue contributes
+  **5.457401 ms/token** across 94 calls, all hidden under the 387-call primary
+  queue; median uncovered idle is **1.625779 ms/token**.
+- Against the prior low-priority census, dense/shared work falls
+  **1.124555 ms/token**, but union-busy changes only **-0.001296 ms** because
+  that branch was already hidden. Dispatch span falls **0.060490 ms** and
+  uncovered idle falls **0.061514 ms**, matching the mechanism behind the
+  smaller clean production gain.
+- Corrected inclusive medians are source-F16 **24.349380 ms**, selected
+  gate/up **8.948708**, selected down **4.742337**, dense/shared **5.865488**,
+  router **1.043797**, attention **1.117737**, and LM-head/top-1
+  **1.122826 ms/token**.
+- hipEngine union-busy work is already **0.672039 ms/token** below Vulkan's
+  production wall, while clean wall remains **0.854449 ms/token** slower.
+  The **24 tok/s** target needs **2.017304 ms/token** from current production;
+  zero idle alone is insufficient and leaves a **0.490816-ms** device-work
+  requirement.
+- Next bounded screen is a true selected-down -> D9 launch contraction, not
+  another ordinary host batch: move the existing shared-ready wait before
+  selected down, then let its completion-counted local128 finalizer reproduce
+  the exact D9 tree. Stop at the production-shape leaf if its physical tail
+  cost consumes the launch/kernel saving.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-split-priority-wall-reprofile.json`.
