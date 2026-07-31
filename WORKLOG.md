@@ -196905,3 +196905,12 @@ Vulkan local sizes verbatim will close the measured gap.
   (2) profiled bounded split-K/cooperative global attention, with directional
   4K/16K/64K checks and a mandatory 128K gate:
   `benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json`.
+
+## 2026-08-01 06:40 JST — Correct the matched Laguna artifact model digest
+
+- Corrected the full same-GGUF SHA-256 recorded in the matched prefill/decode
+  artifact and its two reproduced hipEngine command lines. The correct digest
+  is `7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`;
+  the previous value preserved only the real prefix/suffix around an invalid
+  middle. Measurements, raw-result digests, and benchmark conclusions are
+  unchanged.
