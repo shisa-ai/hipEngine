@@ -45,6 +45,22 @@ from hipengine.kernels.cpu_reference.laguna import (
     laguna_sparse_moe_forward,
     register_laguna_cpu_reference_kernels,
 )
+from hipengine.kernels.cpu_reference.moonshine import (
+    moonshine_apply_partial_rope,
+    moonshine_attention,
+    moonshine_decoder_mlp,
+    moonshine_fixed_cache_read,
+    moonshine_fixed_cache_write,
+    moonshine_layernorm,
+    moonshine_lm_head_argmax,
+    moonshine_projection,
+    moonshine_residual,
+    moonshine_rope_tables,
+    moonshine_stable_argmax,
+    moonshine_tied_lm_logits,
+    moonshine_triple_projection,
+    register_moonshine_cpu_reference_kernels,
+)
 from hipengine.kernels.cpu_reference.ops import (
     attention_decode,
     awq_pack8_dequant_transposed,
@@ -110,6 +126,7 @@ from hipengine.kernels.cpu_reference.ops import (
 def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     _register_base_cpu_reference_kernels(replace=replace)
     register_laguna_cpu_reference_kernels(replace=replace)
+    register_moonshine_cpu_reference_kernels(replace=replace)
 
 
 register_cpu_reference_kernels()
@@ -161,6 +178,7 @@ __all__ = [
     "laguna_aggregate_moe_tail_next_rmsnorm",
     "laguna_apply_rope",
     "laguna_attention_forward",
+    "laguna_block_streamed_gqa_attention",
     "laguna_causal_mask",
     "laguna_dense_ffn_forward",
     "laguna_dflash_attention_forward",
@@ -181,6 +199,19 @@ __all__ = [
     "lm_head",
     "load_fixture",
     "moe_tail_next_rmsnorm",
+    "moonshine_apply_partial_rope",
+    "moonshine_attention",
+    "moonshine_decoder_mlp",
+    "moonshine_fixed_cache_read",
+    "moonshine_fixed_cache_write",
+    "moonshine_layernorm",
+    "moonshine_lm_head_argmax",
+    "moonshine_projection",
+    "moonshine_residual",
+    "moonshine_rope_tables",
+    "moonshine_stable_argmax",
+    "moonshine_tied_lm_logits",
+    "moonshine_triple_projection",
     "o_proj",
     "paged_attn_decode_int8_block16",
     "paged_attn_decode_int8_hadamard_group32",
@@ -201,6 +232,7 @@ __all__ = [
     "qwen35_gguf_mtp_shared_head_logits",
     "register_cpu_reference_kernels",
     "register_laguna_cpu_reference_kernels",
+    "register_moonshine_cpu_reference_kernels",
     "rmsnorm",
     "rotate",
     "run_fixture",
