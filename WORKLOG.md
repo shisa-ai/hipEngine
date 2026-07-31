@@ -196496,3 +196496,27 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
   `8ff7e9bc...16f2f1`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-tile4-rejected.json`.
+
+## 2026-07-31 22:03 JST — Reject selector→selected-gate fusion
+
+- Existing evidence closes the ordinary variants: the gfx1151 last-producer
+  wave-top10 router lost **0.404%**, compact standalone selectors lost
+  **0.522%**, and cooperative SWA producer→attention lost **13.788%**. The
+  new bounded design therefore kept router projection separate and avoided
+  both last-producer tail work and a grid barrier.
+- RED failed collection on the absent composite wrapper. GREEN made every
+  local128/tile8 half-dot workgroup derive exact top-10 from the existing
+  logits with one wave, then consume its route directly. Selector fields match
+  the production local256 selector bit-for-bit, the gate/up BF16 output
+  matches retained half-dot bit-for-bit, residency is unchanged, and one
+  launch replaces two.
+- The actual layer-1 E256/K3072/N1024/top-10 full-chain 21x100 gate is
+  decisively negative: **0.104777 -> 0.125216 ms (+19.506%)**. Redundant
+  stable-sigmoid/top-10 work across the 1,280 selected workgroups overwhelms
+  the removed launch and boundary, so no runtime or complete-model gate is
+  warranted.
+- Removed the HIP specialization/export, Python wrapper, leaf harness mode,
+  and RED/GREEN fixture additions. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
+  `d6e8f843...5801da`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selector-selected-gate-fusion-rejected.json`.

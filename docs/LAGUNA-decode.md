@@ -8790,6 +8790,36 @@ The remaining attention sequence is:
      additions. Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-tile4-rejected.json).
 
+187. Remove the router-selector launch without a last-producer or cooperative
+     grid barrier by deriving exact top-10 inside every selected gate/up
+     workgroup. **Rejected at the complete target-chain leaf and removed.**
+
+     This is materially different from item 129's last-router-producer tail
+     and item 160's standalone compact selector. Router projection remains
+     separate. Each local128/tile8 half-dot workgroup uses one wave to scan
+     the already-produced 256 logits, apply stable sigmoid and correction-only
+     ranking, reproduce lower-ID ties and uncorrected-probability
+     normalization, then consumes its route directly. The design removes one
+     device launch and needs no semaphore, completion counter, or grid
+     synchronization.
+
+     RED fails on the absent composite wrapper. GREEN matches all five
+     selector output fields bit-for-bit and preserves every selected gate/up
+     BF16 output bit. The actual layer-1 counterbalanced 21x100 full-chain
+     gate is decisively negative:
+
+     | Chain | Launches | Median | Delta |
+     | --- | ---: | ---: | ---: |
+     | retained selector + half-dot gate/up | 2 | **0.104777 ms** | baseline |
+     | redundant selector inside half-dot | 1 | 0.125216 ms | **+19.506%** |
+
+     Repeating stable sigmoid and top-10 across 1,280 workgroups costs more
+     than the removed selector launch and handoff. Stop before runtime or
+     complete p512/d128 integration and remove the body/export, wrapper,
+     harness route, and fixture additions. Production remains
+     **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selector-selected-gate-fusion-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8816,7 +8846,9 @@ bounded persistent output→RMSNorm→router owner: its maximum occupancy-safe
 grid already regresses before router work is attached. Item 185 closes the
 remaining obvious shared-branch event split; delaying only shared down loses
 **0.256145 ms/token**. Item 186 closes the remaining simple selected gate/up
-half-dot geometry seam before runtime integration:
+half-dot geometry seam before runtime integration. Item 187 closes the
+barrier-free redundant selector→gate launch contraction at the complete
+target-chain leaf:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
