@@ -1399,17 +1399,33 @@ VGPR **107/112 -> 95/96**, while LDS loads/stores remain **24/12** and
 private/spill/scratch remain zero. Frozen **9/9** and all **45/45** actual layers
 are exact and win both clocks: event **329.124 -> 313.405 ms (-4.776%, 1.050x)**
 and wall **326.037 -> 317.946 ms (-2.481%, 1.025x)**, with minimum layer wins
-**1.038x/1.016x**. H6Q now also qualifies as a bounded default-off owner
-through the existing `grouped_raw_iq_active_experts` ABI/raw allocation/library;
-H6P remains source. Complete natural M512 is KL0/byte-exact across logits, all
-**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four
-cached requests preserve **2,192 dispatches** and substitute exact **45 H6P ->
-45 H6Q**, cutting IQ3/request-sum/span **4.725%/0.487%/1.076%**. Default-off
-512/1K/4K gains **+0.586%/+0.486%/+0.366%**, 3/3 wins each; fixed C4096/M512
-gains **+0.373% (5/5 wins)**. Workspace/scratch remain unchanged and **155/155**
-guards pass. Freeze an independent source-default RED before changing H6P
-([H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
-[post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+**1.038x/1.016x**. H6Q qualifies through the existing
+`grouped_raw_iq_active_experts` ABI/raw allocation/library and is now the
+retained source default; H6P is explicit same-ABI rollback. Complete natural
+M512 is KL0/byte-exact across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192
+dispatches** and substitute exact **45 H6P -> 45 H6Q**, cutting IQ3/request-sum/
+span **4.725%/0.487%/1.076%**. Selector-unset 512/1K/4K gains
+**+0.730%/+0.571%/+0.359%**, 3/3 wins each; fixed C4096/M512 gains **+0.467%
+(5/5 wins)** at **390.887 tok/s**. Workspace/scratch remain unchanged and
+**156/156** guards pass.
+
+The clean committed source reprofile reaches **390.947 tok/s / 1,301.236 ms /
+2,192 dispatches** versus matched llama.cpp HIP **690.791 tok/s / 714.008 ms**.
+Q5/IQ-down/attention/Q6 gaps are **200.158/169.006/129.896/73.493 ms**. Q5
+remains closed; target-only **WPF-H6R exact DPP peer-exchange staged-wave IQ3**
+changes only H6Q's peer instruction form. H6Q emits **24 static / 120 dynamic
+`ds_bpermute_b32`**. The in-tree local64 reducer proves the same offset order as
+permlanex16 followed by DPP 8/4/2/1, but its prior four-accumulator screen
+regressed, so H6R gets one all-45 both-clock screen only. Admission requires
+zero bpermutes, exact **24 permlanex16 + 96 DPP**, unchanged 216 FMAs, 24 LDS
+loads/12 stores, stride `0x300`, staged scopes, two/eight barriers, local128/
+grid32768x64/LDS512, VGPR <=128, private/spill/scratch0, and complete bytes.
+Remove every H6R surface and do not tune further on any failure
+([post-H6Q residual / H6R target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
+[H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
+[H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+[post-H6P residual / H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
 [H6P production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

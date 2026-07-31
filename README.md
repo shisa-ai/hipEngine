@@ -370,15 +370,18 @@ all token 2930 and lifecycle-clean. Fresh matched llama.cpp HIP is **690.791
 tok/s** from **694.342/692.318/690.152/690.791/690.480**, all **5/5** top-1
 2930; the user-reported **714.07** is synthetic/random default `pp512`.
 
-Campaign-start/pre-H6P/current/llama.cpp component milliseconds are Q5
-**1,270.458/254.689/254.839/58.314**, IQ-down
-**557.091/346.108/337.353/153.860**, attention
-**488.304/148.104/148.927/21.512**, Q6 **157.073/86.987/87.346/14.668**,
-gate/up **460.143/397.542/397.616/397.805**, and remaining
-**68.623/75.908/76.410/67.849**. Kernel sum is
-**3,001.692/1,309.339/1,302.492/714.008 ms**; the wall gap is **1.77515x**.
+Campaign-start/pre-H6Q H6P/current H6Q/llama.cpp component milliseconds are Q5
+**1,270.458/254.839/258.472/58.314**, IQ-down
+**557.091/337.353/322.866/153.860**, attention
+**488.304/148.927/151.408/21.512**, Q6 **157.073/87.346/88.160/14.668**,
+gate/up **460.143/397.616/403.242/397.805**, and remaining
+**68.623/76.410/77.086/67.849**. Kernel sum is
+**3,001.692/1,302.492/1,301.236/714.008 ms**. The independent clean H6Q wall is
+**390.947 tok/s** from **390.947/391.717/390.762/391.127/390.571**, all token
+2930 and lifecycle-clean, leaving **1.76697x** to matched llama.cpp HIP.
+
 Q5 stays numerically first but its exact mechanisms are closed. **WPF-H6Q exact
-compact-shuffle-loop staged-wave IQ3 is now the retained gfx1100 source default;
+compact-shuffle-loop staged-wave IQ3 is the retained gfx1100 source default;
 H6P is the explicit same-ABI rollback.** Its physical leaf reduces static
 bpermutes **120 -> 24**, code **8,360 -> 6,620 bytes**, and metadata/runtime
 VGPR **107/112 -> 95/96** while preserving H6P bytes/arithmetic/topology.
@@ -391,10 +394,20 @@ ms (-4.725%/-0.487%/-1.076%)**. Fresh selector-unset 512/1K/4K improves
 (+0.730%/+0.571%/+0.359%)**, **3/3** wins each; fixed C4096/M512 improves
 **389.072 -> 390.887 (+0.467%, 5/5 wins)** and is **1.76724x** behind fresh
 matched llama.cpp HIP. Workspace/scratch remain unchanged and **156/156** guards
-pass
-([H6Q production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
+pass.
+
+The next target-only operation is **WPF-H6R exact DPP peer-exchange staged-wave
+IQ3**. H6Q emits **24 static / 120 dynamic `ds_bpermute_b32`**; H6R must replace
+only those peer exchanges with exact permlanex16 plus DPP 8/4/2/1 while
+preserving all 216 FMAs, staged scopes, barriers, LDS publication/stores,
+local128/P256/P64/rowbatch8 topology, bytes, ABI, and policy. The prior local64
+four-accumulator DPP reducer regressed, so this is a one-shot gate: require zero
+bpermutes, exact **24 permlanex16 + 96 DPP** instructions, VGPR <=128,
+scratch0, and **45/45** actual layers winning both clocks or remove H6R entirely
+([post-H6Q residual / H6R target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
+[H6Q production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
 [candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
-[post-H6P residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+[post-H6P residual / H6Q target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
 [H6P rollback provenance](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 
 Both short
