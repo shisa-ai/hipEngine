@@ -187264,3 +187264,9 @@ Vulkan local sizes verbatim will close the measured gap.
 - Ten-warmup/30-iteration clean selected medians are **0.954 ms HIP event / 1.019 ms host wall** at past 1 and **1.951/2.038 ms** at past 193, improving every prior wave8 selected event row. Six-file decoder-only median-of-medians is **6.326 ms** versus wave8 **7.976 ms** and Phase 2 **8.353 ms**; it excludes the encoder and is not a full-model claim.
 - Clean selected-region profiling observes the expected `<8>` specialization. Past 1 remains 135 dispatches but cross attention falls to **8 calls / 0.060 ms / 7.5%**, while aggregate kernel time falls to **0.798 ms**. At past 193, self attention is now **0.999 ms / 57.4%** and becomes the next measured lane.
 - Decision: promote eight-wave masked cross attention as the runtime default and keep one-wave/grouped/2-wave/4-wave routes as explicit fallbacks and diagnostics. The experiment ledger publishes `results/2026-07-31-hip-phase3-cross-attention.md` plus its compact JSON artifact.
+
+## 2026-07-30 — Start Moonshine Phase-3 self-attention tuning
+
+- The refreshed clean profile measures self attention at only **0.023 ms / 2.8%** across eight calls at past 1, but **0.999 ms / 57.4%** at past 193. A single geometry cannot be assumed to win both ends of the fixed cache.
+- Add a production-shape event/correctness matrix at positions 0/1/8/32/64/128/193 for the exact one-wave fallback, a branch-specialized one-wave online-softmax body, and 2/4/8-wave per-head token partitions. Select only general cache-length buckets from repeated measurements; do not key on fixture tokens or measured prompt identity.
+- RED will cover raw-pointer/registry separation, every required cache position, and runtime bucket selection before implementation. Promotion requires full synthetic, six padded real, selected short/long, complete-generation, no-allocation, and refreshed-profile gates.
