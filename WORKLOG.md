@@ -196080,3 +196080,28 @@ Vulkan local sizes verbatim will close the measured gap.
   mechanism. Production remains **23.017271 tok/s /
   43.445636 ms/token**. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-primary-high-priority-rejected.json`.
+
+## 2026-07-31 17:48 JST — Reject persistent selected-Q4 FFN launch
+
+- Built an exact one-launch selected-FFN schedule: 40 local128 persistent
+  blocks execute the retained **1,280-task** dual-interleaved Q4T16 gate/up
+  body, synchronize through a device-wide sense-reversing barrier, then
+  execute the retained **1,920-task** Q4T16 paircoeff weighted-down body.
+  RED failed on the absent ABI; GREEN passed the focused gfx1151 GPU fixture
+  with every intermediate, down, weighted output, completion counter, and
+  barrier bit exact.
+- The initial actual layer-10 leaf is decisively negative:
+  **0.262114 -> 0.687596 ms (+162.327%)**. Because the kernel's
+  `__launch_bounds__(128, 4)` admits four blocks/CU, swept the remaining safe
+  occupancy points before closing it. **80** blocks regress
+  **0.261321 -> 0.419770 ms (+60.634%)**; **160** blocks regress
+  **0.262218 -> 0.294351 ms (+12.254%)**. More blocks cannot be assumed
+  resident and can deadlock at the grid barrier.
+- Removed the kernel, C ABI, Python wrapper, harness mode, and temporary test.
+  Production remains **23.017271 tok/s / 43.445636 ms/token**. Raw JSON
+  SHA-256 values are `7cea11ad...3b99`, `316c2757...0d5a`, and
+  `cba396ff...a9ad`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-persistent-selected-ffn-rejected.json`.
+- The required pre-port lineage audit remains blocked because the read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent. This
+  candidate was designed in-tree and copied no external code.

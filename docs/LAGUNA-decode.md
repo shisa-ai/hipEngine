@@ -8357,6 +8357,32 @@ The remaining attention sequence is:
      43.445636 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-primary-high-priority-rejected.json).
 
+172. Execute selected Q4 gate/up and weighted-down in one persistent launch.
+     **Rejected across the complete residency sweep and removed.**
+
+     The exact candidate keeps the retained dual-interleaved gate/up Q4T16
+     body, the retained Q4T16 paircoeff weighted-down body, and all BF16
+     rounding points, but executes their **1,280 + 1,920** tasks behind one
+     device-wide sense-reversing barrier. The focused gfx1151 GPU fixture
+     completes without deadlock and matches every intermediate, per-route
+     down, weighted output, counter, and barrier bit.
+
+     Occupancy is decisive but insufficient. At **40 / 80 / 160** local128
+     persistent blocks, the actual layer-10 leaf moves
+     **0.262114 -> 0.687596 ms (+162.327%)**,
+     **0.261321 -> 0.419770 ms (+60.634%)**, and
+     **0.262218 -> 0.294351 ms (+12.254%)**. The 160-block point supplies four
+     resident blocks, or sixteen wave32s, per CU and is the safe
+     grid-barrier ceiling implied by the launch bound. A larger grid cannot
+     be assumed resident and can deadlock while earlier blocks wait at the
+     phase barrier.
+
+     Remove the kernel, ABI, wrapper, harness route, and temporary test.
+     Eliminating one launch cannot repay the lost task-level memory
+     parallelism; production remains **23.017271 tok/s /
+     43.445636 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-persistent-selected-ffn-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
