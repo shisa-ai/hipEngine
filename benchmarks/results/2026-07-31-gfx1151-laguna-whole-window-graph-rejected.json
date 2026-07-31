@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T16:09:01+09:00",
+  "kind": "hipengine_laguna_decode_submission_screen",
+  "status": "rejected",
+  "performance_claim": false,
+  "source_revision": "b571d1cd334687c5a1424025cf6c2f556efa43ff",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79066169172
+  },
+  "workload": {
+    "shape": "p512/d128 c=1",
+    "captured_transitions": 127,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32"
+  },
+  "candidate": {
+    "description": "Capture all 127 position-specialized decode transitions into one multi-stream HIP graph. Device-published token and position state feed each transition into the next, and fixed graph nodes preserve each global-attention live count.",
+    "nodes_estimate": 61087,
+    "graph_launches": 1,
+    "trajectory_exact": true
+  },
+  "results": {
+    "eager_seconds": 5.523606678005308,
+    "eager_tok_s": 22.992223632741062,
+    "graph_capture_seconds": 0.9828946241177619,
+    "graph_replay_seconds": 5.599661662010476,
+    "graph_replay_only_tok_s": 22.679941693906294,
+    "graph_replay_only_delta_percent": -1.3582067738332149,
+    "graph_capture_inclusive_seconds": 6.714894026983529,
+    "graph_capture_inclusive_tok_s": 18.913180087378244,
+    "graph_capture_inclusive_delta_percent": -17.740970210268124,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-decode-graph --allow-dirty --output /tmp/laguna-decode-graph-first-screen.json",
+    "raw_sha256": "fdbe75425589ad2ae036cf98e7cdb9ee82ebbe20b01b409b5c83306ae56927dc",
+    "attempt_notes": [
+      "Attempt 1 failed before capture because the temporary graph module imported the embedding launcher from the wrong module.",
+      "Attempt 2 failed before capture because bulk prefill does not use decode control publication.",
+      "Attempt 3 seeded the exact token, scratch-position, and KV-row-position scalars and completed with exact output."
+    ]
+  },
+  "decision": {
+    "retain": false,
+    "production_changed": false,
+    "candidate_removed_completely": true,
+    "interpretation": "A giant whole-window ROCm graph is slower than direct two-queue submission even after excluding capture. Vulkan's command-buffer batching does not transfer profitably as one approximately 61k-node HIP graph on this stack.",
+    "next": "Prefer small exact fusion/composite boundaries that remove kernels and device work, or separately test bounded per-token graph units only if dynamic global-attention metadata can avoid frozen live-count scalars."
+  }
+}

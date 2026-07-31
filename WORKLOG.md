@@ -195931,3 +195931,25 @@ Vulkan local sizes verbatim will close the measured gap.
   Next: whole-token HIP graph capture or an equivalent batched dispatch
   executor. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-moe-selected-first-enqueue-rejected.json`.
+
+## 2026-07-31 16:09 JST — Reject whole-window Laguna HIP graph
+
+- Built an exact 127-transition, multi-stream graph candidate to test the
+  submission mechanism behind Vulkan's command-buffer advantage. Device
+  feedback owns token/position state, while the unrolled graph preserves each
+  transition's growing global-attention live count. Two wiring attempts failed
+  before capture (wrong embedding import, then missing bulk-prefill control
+  seed); the repaired run explicitly seeded token/scratch/KV position and
+  completed exactly.
+- One rough same-resident pair measures eager **5.523607 s / 22.992224
+  tok/s**, graph replay alone **5.599662 s / 22.679942 tok/s (-1.3582%)**,
+  and capture-inclusive **6.714894 s / 18.913180 tok/s (-17.7410%)**.
+  Capture costs **0.982895 s**. Token **2930 -> 74107**, trajectory SHA,
+  positions, and lifecycle are exact. Raw JSON SHA-256 is
+  `fdbe7542...27dc`.
+- Rejected and removed the graph module, session API/ownership, comparison
+  selector, and temporary projection enqueue split. Production remains
+  unchanged. A roughly **61k-node** ROCm graph is slower than direct two-queue
+  submission even before capture cost; continue with bounded exact composites
+  that remove launches and device work. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-whole-window-graph-rejected.json`.
