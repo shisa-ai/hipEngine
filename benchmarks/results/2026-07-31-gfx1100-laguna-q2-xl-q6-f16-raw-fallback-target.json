@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q6_f16_raw_fallback_target",
+  "date": "2026-07-31",
+  "status": "target_selected_no_new_performance_claim",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "total_device_bytes": 48301604864,
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "baseline": {
+    "revision": "abc86fbeed02170311899cb0392dbba4cbe9e67d",
+    "production_revision": "837c1c742655ead7be78e2ec002d6dfced1d43a2",
+    "matched_c4096_direct_m512_tok_s": 353.79806733444565,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "matched_gap": 1.9681905140022917,
+    "representative_kernel_sum_ms": 1435.431188,
+    "q6_family_ms": 85.704453,
+    "q6_llamacpp_ms": 14.455238,
+    "q6_gap_ms": 71.249215
+  },
+  "resident_f32_audit": {
+    "decision": "reject_before_implementation",
+    "reason": "A persistent exact F32 copy spends 1.665 GiB to remove only the already-small producer tail; Q5 still requires the shared projection-local scratch, so no existing allocation can be retired.",
+    "model_materialization": {
+      "mapped_tensor_count": 814,
+      "mapped_source_bytes": 39680849600,
+      "mapped_resident_bytes": 39680849600,
+      "q6_tensor_count": 146,
+      "q6_raw_bytes": 444024000,
+      "all_q6_f32_bytes": 2165145600
+    },
+    "selected_q6_tensor_count": 143,
+    "selected_q6_f32_bytes": 1787658240,
+    "selected_q6_f32_gib": 1.664886474609375,
+    "removable_producer_dispatches": 143,
+    "removable_producer_ms": 2.049213,
+    "bytes_per_ms_saved": 872363312.159351,
+    "kernel_sum_fraction_percent": 0.14275940338562576,
+    "modeled_tok_s_upper_bound": 354.3038694246084,
+    "modeled_tok_s_gain_upper_bound": 0.5058020901627538,
+    "production_changed": false
+  },
+  "target": {
+    "id": "WPF-H6H",
+    "name": "bounded source-F16 rocBLAS on exact-Q6 raw fallbacks",
+    "operation": "Reuse the retained H4 fused raw-Q6/BF16-to-F16 producer, FP16-compute rocBLAS GEMM, and result cast only for the three production shapes that remain on raw exact coltile. Keep all 143 H6E/H5I ordered calls, every non-M512 call, all misses, and gfx1151 exact.",
+    "shape_policy": [
+      {
+        "output_dtype": "bf16",
+        "in_features": 9216,
+        "out_features": 3072,
+        "model_role": "layer-47 attention output",
+        "current_raw_ms": 8.342074712117514,
+        "retained_leaf_candidate_ms": 0.5274003346761068
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 12288,
+        "out_features": 3072,
+        "model_role": "layer-0 dense FFN down",
+        "current_raw_ms": 11.464312235514322,
+        "retained_leaf_candidate_ms": 0.7377119859059652
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 9216,
+        "model_role": "layer-47 attention Q",
+        "current_raw_ms": 9.281363805135092,
+        "retained_leaf_candidate_ms": 0.946290651957194
+      }
+    ],
+    "representative_current_raw_fallback_ms": 28.404581,
+    "retained_leaf_candidate_sum_ms": 2.211402972539266,
+    "modeled_saving_ms": 26.193178027460736,
+    "modeled_kernel_sum_reduction_percent": 1.8247602703934516,
+    "modeled_tok_s": 360.37402944864044,
+    "modeled_tok_s_gain": 6.575962114194795,
+    "model_values_are_not_a_performance_claim": true,
+    "retained_h4_broad_owner": {
+      "calls": 144,
+      "max_kl": 0.3386567970951901,
+      "top1_agreement": 0.984375,
+      "status": "rejected_and_removed"
+    },
+    "new_bounded_exposure": {
+      "candidate_calls": 3,
+      "total_q6_calls": 146,
+      "share_percent": 2.0547945205479454
+    },
+    "workspace_plan": {
+      "required_bytes": 97517568,
+      "existing_serial_scratch_bytes": 161120256,
+      "remaining_bytes_after_alias": 63602688,
+      "additional_allocation_bytes": 0,
+      "require_same_stream_serial_alias": true
+    }
+  },
+  "admission": {
+    "red_first": "Freeze exactly three quant-shape keys, rows==512, absent source policy/runtime owner, unchanged H6F/H6E/H5Y production, same-stream scratch alias bounds, complete exact rollback, and gfx1151 absence before restoring runtime surfaces.",
+    "runtime": "Restore only the model-neutral GGUF dispatch/session ABI and Laguna owner needed to borrow the existing serial scratch. Add no public selector, persistent sidecar, allocation, kernel body, or layer-ID/backend/quant branch in model code.",
+    "correctness": "First require finite deterministic natural-M512 complete state and repeat. Then run all 18 train/category-heldout prompts and 576 teacher-forced steps; KL must be <=0.05 and top-1 >=90%. Any failure removes the owner and preserves the retained H4 leaf only.",
+    "performance": "If quality passes, require cached integrated topology with exactly three source stacks, 143 retained ordered Q6 calls, no compiler activity, and paired one-queue fixed C4096/M512 plus selector-unset 512/1K/4K wins before source promotion.",
+    "anti_gaming": "The policy is fixed by three production quant/shape roles, never token IDs, prompts, routing IDs, or candidate reranking. Quality must cover every category and heldout in the committed suite."
+  },
+  "source_evidence": {
+    "post_h6f_residual": {
+      "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json",
+      "sha256": "0cd35b66c5426cb72c21afe8746c2c4444b6cb90c53e781de7a0b91a7b5e902a"
+    },
+    "h4_leaf": {
+      "path": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json",
+      "sha256": "0dae715bb42a75a1e70eb6c1176aff113ff51741b3d4da5e67d115ed295fb7f1"
+    },
+    "h4_broad_rejection": {
+      "path": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json",
+      "sha256": "bb0ed1f2e23cb0c152e0da0d8d2a96a4da22f51213cafacb22dae59925fe06a0"
+    },
+    "live_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py": "4345f8a01a9bb0b56934d0738d858100010d192147b42db5a46bc765930ad313",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.hip": "2d1cbd2e99a082e1a347308b338536b4a097a7512f53272374b02bf16b71c90f",
+      "hipengine/runtime/gguf_linear.py": "8e40f81a21ecaf6d7cc2a13d62eab142fe23401e3af028bafa1aaaf169341f40",
+      "hipengine/runtime/laguna_gguf_runner.py": "184f3bef57164068fa8f8e9e9227cc43db1774e06550cbfa13c48b2dbe07ae5e",
+      "hipengine/loading/laguna_gguf_materialize.py": "754d006da9d18b9f7d600f76d174e0a1003b0a1bb00478c8d4d1819b0189f49b"
+    },
+    "lineage_report_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  },
+  "decision": {
+    "resident_f32_sidecar_selected": false,
+    "h6h_target_selected": true,
+    "production_changed": false,
+    "next_action": "Commit this target-only audit, freeze WPF-H6H RED, then restore the bounded no-new-allocation owner and run complete quality before any performance publication."
+  }
+}
