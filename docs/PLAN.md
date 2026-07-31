@@ -2211,25 +2211,24 @@ request-sum/span **4.725%/0.487%/1.076%**. Fresh selector-unset 512/1K/4K gains
 HIP **690.791**. Workspace/scratch remain unchanged, gfx1151 remains excluded,
 and **156/156** guards pass.
 
-The clean committed H6Q reprofile reaches **390.947 tok/s / 1,301.236 ms / 2,192
-dispatches**, **+130.625%** over campaign start and **1.76697x** behind matched
-llama.cpp HIP **690.791 tok/s / 714.008 ms**. Gaps rank Q5/IQ-down/attention/Q6
-at **200.158/169.006/129.896/73.493 ms**; Q5 remains mechanism-closed. Select
-one-shot **WPF-H6R exact DPP peer-exchange staged-wave IQ3** on H6Q's **314.216
-ms / 45 calls**. It may replace only H6Q's 120 dynamic DS bpermutes with the
-in-tree exact permlanex16 then DPP 8/4/2/1 sequence while preserving all 216
-FMAs, staged scopes, publication/store order, eight barriers, P256/P64/
-local128/rowbatch8 topology, bytes, ABI, allocation, and source policy.
-Physical admission requires zero bpermutes, exact **24 permlanex16 + 96 DPP**,
-unchanged LDS loads/stores, VGPR <=128, private/spill/scratch0, and no compiler
-under profiling. The prior four-accumulator local64 DPP reducer regressed pooled
-IQ2 and span, so H6R gets exactly one all-45 both-clock screen; remove every
-surface and do not tune further on any miss
-([post-H6Q residual / H6R target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
+The clean committed H6Q reprofile remains **390.947 tok/s / 1,301.236 ms /
+2,192 dispatches**, **+130.625%** over campaign start and **1.76697x** behind
+matched llama.cpp HIP **690.791 tok/s / 714.008 ms**. **WPF-H6R exact DPP
+peer-exchange staged-wave IQ3 now passes its one-shot standalone leaf gate.**
+Frozen rows 1/7/8/9/M512, reversed P64/P65, sampled CPU values, and all **45/45**
+actual IQ3 layers are byte-exact. Every layer wins both clocks: H6Q -> H6R event
+**311.597 -> 269.365 ms (-13.554%, 1.1568x)** and synchronized wall **317.309 ->
+265.667 ms (-16.275%, 1.1944x)**, with minimum layer **1.1425x/1.1785x**.
+Arch-tagged ISA emits zero bpermutes and exact **24 permlanex16 + 96 DPP** while
+preserving 216 FMAs, 24 LDS loads/12 stores, stride `0x300`, two/eight barriers,
+local128/grid32768x64/LDS512, and complete bytes. Metadata/runtime is VGPR
+**101/104**, private0/spill0/scratch0. Retain only the separate key/wrapper/
+kernel and gfx1151 exclusion; H6Q remains source/runtime owner with unchanged
+allocation/ABI/policy until bounded H6R qualification
+([H6R candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
+[post-H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
-[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
-[post-H6P residual / H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
-[H6P rollback provenance](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
+[H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

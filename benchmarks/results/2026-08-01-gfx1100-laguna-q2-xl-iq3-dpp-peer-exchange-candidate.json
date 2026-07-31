@@ -1,0 +1,1110 @@
+{
+  "authority_files": [
+    "README.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/PLAN.md",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "WORKLOG.md"
+  ],
+  "candidate": {
+    "additional_runtime_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "backend": "hip_gfx1100",
+    "geometry": "expert P64 / output P256 / local128 / rowbatch8 / three staged strided outputs / four epochs",
+    "gfx1151_fail_closed": true,
+    "id": "WPF-H6R",
+    "layer": "moe_linear",
+    "name": "exact DPP peer-exchange staged-wave IQ3",
+    "operation": "Replace only H6Q's offset16/8/4/2/1 wave peer exchange with permlanex16 then DPP row_shl 8/4/2/1 while retaining each lane's add order and every other operation.",
+    "package_policy_changed": false,
+    "persistent_sidecar_bytes": 0,
+    "quant": "gguf_iq3_xxs",
+    "runtime_owner_added": false,
+    "source_default": false,
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out"
+  },
+  "commands": {
+    "actual_layer_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python /tmp/laguna_wpfh6r_iq3_dpp_peer_exchange_final_screen.py",
+    "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -m pytest -q tests/test_laguna_h6r_iq3_dpp_peer_exchange.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace ... -- .venv/bin/python3 -m pytest -q tests/test_laguna_h6r_iq3_dpp_peer_exchange.py::<rows512>",
+    "retained_guards": "151/151 split leaf/backend/registry + MoE + H6Q source-policy guards"
+  },
+  "correctness": {
+    "active_count_p64_p65_checked": true,
+    "all_45_actual_weight_outputs_byte_exact": true,
+    "all_45_layers_both_clock_positive": true,
+    "complete_h6q_output_byte_identity": true,
+    "focused_green": "9/9",
+    "gfx1151_absent": true,
+    "moe_scratch_bytes_unchanged": 104370208,
+    "package_h6q_h6p_h6i_h6f_h6d_h5z_h5q_maps_and_abis_unchanged": true,
+    "red_failures": "9/9 solely absent H6R wrapper",
+    "red_revision": "2495ec336",
+    "retained_guard_green": "151/151 split as 125 leaf/backend/registry + 25 MoE + 1 H6Q source-policy",
+    "rows_1_7_8_9_512_checked": true,
+    "sampled_independent_cpu_oracle_byte_identity": true,
+    "strict_k1024_n3072_e256_preflight_before_hip_load": true,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-08-01",
+  "decision": {
+    "leaf_admitted": true,
+    "next_action": "Freeze a bounded default-off H6R same-ABI capability, then require complete natural-M512 state, exact 45-call H6Q-to-H6R cached topology, unchanged scratch, and clean one-queue fixed/512/1K/4K wins before source adjudication.",
+    "production_default_changed": false,
+    "runtime_owner_added": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6r_exact_iq3_dpp_peer_exchange_candidate",
+  "lineage": {
+    "h6q_candidate_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json",
+    "h6q_candidate_artifact_sha256": "a5339db68144a541d9e299e07c3f2a815b793de6fcb8c7a333889fdc6b00c504",
+    "h6q_production_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json",
+    "h6q_production_artifact_sha256": "0e6bc45503ec1602a016eee41ae828fa8ca2942d3b641bf1bc53b0a1b708be57",
+    "implementation_patch_sha256": "792d51f4a4e21b0382d3818cff8d4a3e6044f00d02e456590f8feb60f931744c",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "c8f212bb97520e0660f7c1cedd7b511b5673e4e60aac51549e6bc894979df905",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "6913c04d34bad89b0cd7980f4138ce5fea0f9178e829eae35b8466b7e7f74721",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "b3855948434b78339d75ee4dc34c3f7c354dd22ee1eb4cd817672f8156c898cb",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3f8c220f1e045b5cdaf9d4487ffa8fd94fc45512b50cbd1a0141c306c00e8b2b",
+      "tests/test_laguna_h6q_iq3_compact_shuffle_loop.py": "28b778b82ad2e6921bf7ca0f5ecdf9a83e669c54880bae2f4ea9c982e237de9a",
+      "tests/test_laguna_h6r_iq3_dpp_peer_exchange.py": "13835f22a95d10b26699d1df64fa5c460bfe8627fcfc948e7d781724528b48c3"
+    },
+    "kernel_lineage_audit": "all 14 Laguna/llama.cpp parents clean; four unrelated Qwen/PARO drifts unchanged",
+    "red_revision": "2495ec336",
+    "selection_revision": "b3c12d0ab",
+    "source": "Net-new in-tree H6Q sibling using the retained in-tree IQ2 DPP peer-exchange primitive; no external device body copied.",
+    "target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json",
+    "target_artifact_sha256": "e4d2d5bc277c0e7ebe9ed9ff9ec095d62aaa6e39926129e30b5cf66c3129f9f9"
+  },
+  "model": {
+    "compact_rows": 5120,
+    "expert_count": 256,
+    "final_position": 511,
+    "in_features": 1024,
+    "logical_parameters": 117561977600,
+    "next_token_id": 2930,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "performance": {
+    "aggregate": {
+      "all_layers_both_clock_positive": true,
+      "both_clock_positive_layers": 45,
+      "candidate_event_sum_ms": 269.36469039916994,
+      "candidate_wall_sum_ms": 265.66672208718956,
+      "event_percent_change": -13.553509659074725,
+      "event_speedup": 1.1567849614903134,
+      "h6q_event_sum_ms": 311.597023010254,
+      "h6q_wall_sum_ms": 317.309473734349,
+      "layers": 45,
+      "wall_percent_change": -16.275200056079854,
+      "wall_speedup": 1.1943892379197223
+    },
+    "all_outputs_byte_exact": true,
+    "elapsed_s": 93.87856274098158,
+    "event_reduction_percent": 13.553509659074725,
+    "maximum_layer_event_speedup": 1.1812413755914957,
+    "maximum_layer_wall_speedup": 1.215145708847984,
+    "minimum_layer_event_speedup": 1.142520370902811,
+    "minimum_layer_wall_speedup": 1.1785321585234556,
+    "protocol": {
+      "actual_routing_distributions": true,
+      "actual_weights": true,
+      "candidate": "H6R exact DPP peer-exchange staged-wave triple-output P64/P256 rowbatch8",
+      "compact_rows": 5120,
+      "control": "H6Q exact compact-shuffle-loop staged-wave triple-output P64/P256 rowbatch8",
+      "counter_rotated": true,
+      "deterministic_bf16_compact_input": true,
+      "event_and_synchronized_wall": true,
+      "expert_partition": 64,
+      "four_k_or_longer_run_performed": false,
+      "iq3_layers": 45,
+      "launches_per_sample": 5,
+      "output_partition": 256,
+      "repetitions": 15,
+      "rows": 512,
+      "selection_rule": "one shot: admit only if complete bytes match and every one of 45 layers improves both HIP-event and synchronized-wall medians; otherwise remove H6R",
+      "unique_layers": 45,
+      "warmups": 5
+    },
+    "rows": [
+      {
+        "active_experts": 228,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.807964324951172,
+          "h6r": 5.919414520263672
+        },
+        "event_speedup": 1.1501077178571912,
+        "layer_id": 1,
+        "mismatches": 0,
+        "tensor": "blk.1.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.8986202124506235,
+          "h6r": 5.795765575021505
+        },
+        "wall_speedup": 1.1902862742037363
+      },
+      {
+        "active_experts": 217,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.668165588378907,
+          "h6r": 5.820629501342774
+        },
+        "event_speedup": 1.1456090078986496,
+        "layer_id": 2,
+        "mismatches": 0,
+        "tensor": "blk.2.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.770088383927941,
+          "h6r": 5.7032661978155375
+        },
+        "wall_speedup": 1.187054601540608
+      },
+      {
+        "active_experts": 227,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.723204803466797,
+          "h6r": 5.840110397338867
+        },
+        "event_speedup": 1.151211937111724,
+        "layer_id": 3,
+        "mismatches": 0,
+        "tensor": "blk.3.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.829187413677573,
+          "h6r": 5.7524430099874735
+        },
+        "wall_speedup": 1.187180368726929
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.895742034912109,
+          "h6r": 5.923168182373047
+        },
+        "event_speedup": 1.1641982504284407,
+        "layer_id": 4,
+        "mismatches": 0,
+        "tensor": "blk.4.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.9737291894853115,
+          "h6r": 5.827263789251447
+        },
+        "wall_speedup": 1.1967416341008197
+      },
+      {
+        "active_experts": 232,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.838006591796875,
+          "h6r": 5.96204833984375
+        },
+        "event_speedup": 1.1469223666133646,
+        "layer_id": 5,
+        "mismatches": 0,
+        "tensor": "blk.5.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.993937585502863,
+          "h6r": 5.882860813289881
+        },
+        "wall_speedup": 1.1888667448502208
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.911857604980469,
+          "h6r": 5.977977752685547
+        },
+        "event_speedup": 1.156220028064739,
+        "layer_id": 6,
+        "mismatches": 0,
+        "tensor": "blk.6.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.046904182061553,
+          "h6r": 5.88706461712718
+        },
+        "wall_speedup": 1.1970149200605107
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.774375152587891,
+          "h6r": 5.9293254852294925
+        },
+        "event_speedup": 1.142520370902811,
+        "layer_id": 7,
+        "mismatches": 0,
+        "tensor": "blk.7.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.912956619635224,
+          "h6r": 5.865734396502376
+        },
+        "wall_speedup": 1.1785321585234556
+      },
+      {
+        "active_experts": 239,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.980233764648437,
+          "h6r": 6.044751358032227
+        },
+        "event_speedup": 1.154759451829751,
+        "layer_id": 8,
+        "mismatches": 0,
+        "tensor": "blk.8.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.117539178580046,
+          "h6r": 5.956601770594716
+        },
+        "wall_speedup": 1.1948992819557618
+      },
+      {
+        "active_experts": 230,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.806816864013672,
+          "h6r": 5.925834274291992
+        },
+        "event_speedup": 1.1486681113482435,
+        "layer_id": 9,
+        "mismatches": 0,
+        "tensor": "blk.9.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.941016996279359,
+          "h6r": 5.861676391214132
+        },
+        "wall_speedup": 1.1841351403641138
+      },
+      {
+        "active_experts": 232,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.8564094543457035,
+          "h6r": 5.935163116455078
+        },
+        "event_speedup": 1.1552183688661388,
+        "layer_id": 10,
+        "mismatches": 0,
+        "tensor": "blk.10.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.950405007228255,
+          "h6r": 5.861612595617771
+        },
+        "wall_speedup": 1.1857496369556189
+      },
+      {
+        "active_experts": 217,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.891008758544922,
+          "h6r": 5.971020889282227
+        },
+        "event_speedup": 1.1540754732434517,
+        "layer_id": 11,
+        "mismatches": 0,
+        "tensor": "blk.11.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.006629602983594,
+          "h6r": 5.907845217734575
+        },
+        "wall_speedup": 1.185987334595465
+      },
+      {
+        "active_experts": 215,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.829547119140625,
+          "h6r": 5.913460540771484
+        },
+        "event_speedup": 1.1549154800396497,
+        "layer_id": 12,
+        "mismatches": 0,
+        "tensor": "blk.12.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.951851025223732,
+          "h6r": 5.8163899928331375
+        },
+        "wall_speedup": 1.1952174860677656
+      },
+      {
+        "active_experts": 226,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.8700927734375,
+          "h6r": 5.991509628295899
+        },
+        "event_speedup": 1.1466380260814981,
+        "layer_id": 13,
+        "mismatches": 0,
+        "tensor": "blk.13.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.9833096116781235,
+          "h6r": 5.908393207937479
+        },
+        "wall_speedup": 1.181930410842761
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.8885337829589846,
+          "h6r": 5.978222274780274
+        },
+        "event_speedup": 1.1522712716820434,
+        "layer_id": 14,
+        "mismatches": 0,
+        "tensor": "blk.14.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.991497613489628,
+          "h6r": 5.889962799847126
+        },
+        "wall_speedup": 1.1870189763628205
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.976071166992187,
+          "h6r": 6.024393463134766
+        },
+        "event_speedup": 1.1579707085337385,
+        "layer_id": 15,
+        "mismatches": 0,
+        "tensor": "blk.15.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.061990583315492,
+          "h6r": 5.916003417223692
+        },
+        "wall_speedup": 1.193709686298592
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.9937599182128904,
+          "h6r": 6.047214508056641
+        },
+        "event_speedup": 1.1565258531668055,
+        "layer_id": 16,
+        "mismatches": 0,
+        "tensor": "blk.16.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.0975531823933125,
+          "h6r": 5.953417811542749
+        },
+        "wall_speedup": 1.1921812657986581
+      },
+      {
+        "active_experts": 211,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.847383880615235,
+          "h6r": 5.947298431396485
+        },
+        "event_speedup": 1.151343582233421,
+        "layer_id": 17,
+        "mismatches": 0,
+        "tensor": "blk.17.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.993957608938217,
+          "h6r": 5.867828615009785
+        },
+        "wall_speedup": 1.191915795060513
+      },
+      {
+        "active_experts": 212,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.922872924804688,
+          "h6r": 5.994153594970703
+        },
+        "event_speedup": 1.1549375262277584,
+        "layer_id": 18,
+        "mismatches": 0,
+        "tensor": "blk.18.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.058752607554197,
+          "h6r": 5.909293191507459
+        },
+        "wall_speedup": 1.1945172423833503
+      },
+      {
+        "active_experts": 197,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.7870330810546875,
+          "h6r": 5.868019104003906
+        },
+        "event_speedup": 1.1566140056401168,
+        "layer_id": 19,
+        "mismatches": 0,
+        "tensor": "blk.19.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.928786775097251,
+          "h6r": 5.794815625995398
+        },
+        "wall_speedup": 1.1956871835602305
+      },
+      {
+        "active_experts": 214,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.91263427734375,
+          "h6r": 5.97584228515625
+        },
+        "event_speedup": 1.1567631720325775,
+        "layer_id": 20,
+        "mismatches": 0,
+        "tensor": "blk.20.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.075962796807289,
+          "h6r": 5.914055183529854
+        },
+        "wall_speedup": 1.1964654669630495
+      },
+      {
+        "active_experts": 210,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.841698455810547,
+          "h6r": 5.889674377441406
+        },
+        "event_speedup": 1.1616429054236983,
+        "layer_id": 21,
+        "mismatches": 0,
+        "tensor": "blk.21.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.978401402011514,
+          "h6r": 5.837212223559618
+        },
+        "wall_speedup": 1.1955024307401285
+      },
+      {
+        "active_experts": 203,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.8115791320800785,
+          "h6r": 5.892787170410156
+        },
+        "event_speedup": 1.1559180630658974,
+        "layer_id": 22,
+        "mismatches": 0,
+        "tensor": "blk.22.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.950439186766744,
+          "h6r": 5.8138759806752205
+        },
+        "wall_speedup": 1.1954914776079422
+      },
+      {
+        "active_experts": 202,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.928884887695313,
+          "h6r": 5.9324604034423825
+        },
+        "event_speedup": 1.1679614218199827,
+        "layer_id": 23,
+        "mismatches": 0,
+        "tensor": "blk.23.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.073098793625832,
+          "h6r": 5.882074823603034
+        },
+        "wall_speedup": 1.2024836483282344
+      },
+      {
+        "active_experts": 199,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.865907287597656,
+          "h6r": 5.893278503417969
+        },
+        "event_speedup": 1.1650403563340141,
+        "layer_id": 24,
+        "mismatches": 0,
+        "tensor": "blk.24.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.999613810330629,
+          "h6r": 5.846892390400171
+        },
+        "wall_speedup": 1.1971511262671903
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.857486724853516,
+          "h6r": 5.930161666870117
+        },
+        "event_speedup": 1.1563743300902,
+        "layer_id": 25,
+        "mismatches": 0,
+        "tensor": "blk.25.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.985289603471756,
+          "h6r": 5.8198419865220785
+        },
+        "wall_speedup": 1.2002541683517676
+      },
+      {
+        "active_experts": 213,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.984151458740234,
+          "h6r": 6.032695388793945
+        },
+        "event_speedup": 1.1577165775208325,
+        "layer_id": 26,
+        "mismatches": 0,
+        "tensor": "blk.26.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.1200035978108644,
+          "h6r": 5.9435556177049875
+        },
+        "wall_speedup": 1.1979367327869213
+      },
+      {
+        "active_experts": 212,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.998480987548828,
+          "h6r": 5.973703384399414
+        },
+        "event_speedup": 1.171548123032969,
+        "layer_id": 27,
+        "mismatches": 0,
+        "tensor": "blk.27.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.115459395572543,
+          "h6r": 5.928867403417826
+        },
+        "wall_speedup": 1.2001380552836585
+      },
+      {
+        "active_experts": 219,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.0133613586425785,
+          "h6r": 6.054984664916992
+        },
+        "event_speedup": 1.158278962996965,
+        "layer_id": 28,
+        "mismatches": 0,
+        "tensor": "blk.28.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.136129820719361,
+          "h6r": 5.952901812270284
+        },
+        "wall_speedup": 1.198764912602821
+      },
+      {
+        "active_experts": 201,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.7952720642089846,
+          "h6r": 5.892607879638672
+        },
+        "event_speedup": 1.1531858564167115,
+        "layer_id": 29,
+        "mismatches": 0,
+        "tensor": "blk.29.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 6.921731028705835,
+          "h6r": 5.788181582465768
+        },
+        "wall_speedup": 1.195838611849004
+      },
+      {
+        "active_experts": 204,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.929826354980468,
+          "h6r": 5.9709827423095705
+        },
+        "event_speedup": 1.160583886112526,
+        "layer_id": 30,
+        "mismatches": 0,
+        "tensor": "blk.30.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.113091414794326,
+          "h6r": 5.926099419593811
+        },
+        "wall_speedup": 1.2002990350239304
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.880162048339844,
+          "h6r": 5.9602092742919925
+        },
+        "event_speedup": 1.1543490726098928,
+        "layer_id": 31,
+        "mismatches": 0,
+        "tensor": "blk.31.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.011285983026028,
+          "h6r": 5.858248565346003
+        },
+        "wall_speedup": 1.1968228908040408
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.978060150146485,
+          "h6r": 5.988146209716797
+        },
+        "event_speedup": 1.1653122528677375,
+        "layer_id": 32,
+        "mismatches": 0,
+        "tensor": "blk.32.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.13497381657362,
+          "h6r": 5.938379792496562
+        },
+        "wall_speedup": 1.2015017674667783
+      },
+      {
+        "active_experts": 200,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.952571868896484,
+          "h6r": 5.885818099975586
+        },
+        "event_speedup": 1.1812413755914957,
+        "layer_id": 33,
+        "mismatches": 0,
+        "tensor": "blk.33.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.076061004772782,
+          "h6r": 5.823220172896981
+        },
+        "wall_speedup": 1.215145708847984
+      },
+      {
+        "active_experts": 213,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.943516540527344,
+          "h6r": 6.015459442138672
+        },
+        "event_speedup": 1.1542786726958165,
+        "layer_id": 34,
+        "mismatches": 0,
+        "tensor": "blk.34.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.0693128276616335,
+          "h6r": 5.905981222167611
+        },
+        "wall_speedup": 1.19697516157477
+      },
+      {
+        "active_experts": 221,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.082998657226563,
+          "h6r": 6.080132675170899
+        },
+        "event_speedup": 1.1649414635557234,
+        "layer_id": 35,
+        "mismatches": 0,
+        "tensor": "blk.35.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.220738986507058,
+          "h6r": 5.998388584703207
+        },
+        "wall_speedup": 1.2037797959473697
+      },
+      {
+        "active_experts": 220,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.097248077392578,
+          "h6r": 6.101477432250976
+        },
+        "event_speedup": 1.163201561621484,
+        "layer_id": 36,
+        "mismatches": 0,
+        "tensor": "blk.36.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.233933173120022,
+          "h6r": 6.040711235255003
+        },
+        "wall_speedup": 1.1975300409827732
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.980022430419922,
+          "h6r": 6.045453262329102
+        },
+        "event_speedup": 1.1545904215179994,
+        "layer_id": 37,
+        "mismatches": 0,
+        "tensor": "blk.37.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.116993563249707,
+          "h6r": 5.949392030015588
+        },
+        "wall_speedup": 1.1962556051682915
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.031999969482422,
+          "h6r": 6.079014587402344
+        },
+        "event_speedup": 1.156766424620031,
+        "layer_id": 38,
+        "mismatches": 0,
+        "tensor": "blk.38.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.149899983778596,
+          "h6r": 5.971520207822323
+        },
+        "wall_speedup": 1.1973332978782636
+      },
+      {
+        "active_experts": 229,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.0375205993652346,
+          "h6r": 6.084158706665039
+        },
+        "event_speedup": 1.1566957633198838,
+        "layer_id": 39,
+        "mismatches": 0,
+        "tensor": "blk.39.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.155037997290492,
+          "h6r": 5.9728882275521755
+        },
+        "wall_speedup": 1.1979192853944947
+      },
+      {
+        "active_experts": 226,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.256883239746093,
+          "h6r": 6.312937545776367
+        },
+        "event_speedup": 1.1495255872761274,
+        "layer_id": 40,
+        "mismatches": 0,
+        "tensor": "blk.40.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.364000985398889,
+          "h6r": 6.245243968442082
+        },
+        "wall_speedup": 1.1791374400439776
+      },
+      {
+        "active_experts": 228,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 6.931512451171875,
+          "h6r": 6.0072792053222654
+        },
+        "event_speedup": 1.1538522206576927,
+        "layer_id": 41,
+        "mismatches": 0,
+        "tensor": "blk.41.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.061441009864211,
+          "h6r": 5.8955352287739515
+        },
+        "wall_speedup": 1.1977608030225821
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.093739318847656,
+          "h6r": 6.10406494140625
+        },
+        "event_speedup": 1.1621336579707826,
+        "layer_id": 42,
+        "mismatches": 0,
+        "tensor": "blk.42.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.2347471956163645,
+          "h6r": 6.0375032015144825
+        },
+        "wall_speedup": 1.1983011775135057
+      },
+      {
+        "active_experts": 224,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.0114501953125,
+          "h6r": 6.032408142089844
+        },
+        "event_speedup": 1.1622970512209874,
+        "layer_id": 43,
+        "mismatches": 0,
+        "tensor": "blk.43.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.143189990893006,
+          "h6r": 5.948838032782078
+        },
+        "wall_speedup": 1.2007706297480703
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.075627136230469,
+          "h6r": 6.089627075195312
+        },
+        "event_speedup": 1.1619146868699726,
+        "layer_id": 44,
+        "mismatches": 0,
+        "tensor": "blk.44.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.200576784089208,
+          "h6r": 6.036327173933387
+        },
+        "wall_speedup": 1.1928738414285078
+      },
+      {
+        "active_experts": 231,
+        "byte_exact": true,
+        "event_ms": {
+          "h6q": 7.035347747802734,
+          "h6r": 6.125609970092773
+        },
+        "event_speedup": 1.148513826729354,
+        "layer_id": 45,
+        "mismatches": 0,
+        "tensor": "blk.45.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6q": 7.159346202388406,
+          "h6r": 6.03274698369205
+        },
+        "wall_speedup": 1.1867473013109653
+      }
+    ],
+    "tracked_returned_to_baseline": true,
+    "wall_reduction_percent": 16.275200056079854
+  },
+  "performance_claim": true,
+  "production": {
+    "current_iq3_owner": "WPF-H6Q exact compact-shuffle-loop IQ3",
+    "current_matched_tok_s": 390.94706396194886,
+    "current_stack": "H6N/H6L/H6Q/H6E/H6C/H6A/H5Y",
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "runtime_qualification_pending": true,
+    "source_default_adjudication_pending": true,
+    "unchanged": true
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-f704d1c3dd3b52e2/gguf_iq_selected_prefill.so": "53840adc6368e46f4128322f87dd29cb9164c080934549f250789992ad51898a",
+    "/tmp/analyze_laguna_h6r_physical.py": "be13ec985337034490e28d4b8618636491883ab859b344a6f088e6245bcb9fea",
+    "/tmp/build_laguna_h6r_leaf_publication.py": "de6ca0b6fcc2cb06b5b5f0ff558dae352c7309b806b6bf9454cd0a5d4951fb59",
+    "/tmp/h6r-arch-code-object.co": "a247ca1d9760c096e3bdf82c70e2e8827da15e06a46b01630efc88cd2afbea82",
+    "/tmp/h6r-arch-full.isa": "af0f312875754e182c5bca2bbf516752386f7b0d236604a7de5ed34b23a86bc5",
+    "/tmp/h6r-arch-h6q.isa": "028e0e5b5c75baa1391cb7f912192fdbf63c20a8544bd98ca146093055c4c986",
+    "/tmp/h6r-arch-h6r.isa": "92c3a73019e70a796cd105cb4d8d9c110a49d0d9093e2574648adf27b0ba45a6",
+    "/tmp/h6r-arch-offloading.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6r-arch-offloading.stdout": "51f075bee6867cd4509ecd791a1b831c6c780701de2dab8babb6ac93a0c0f366",
+    "/tmp/h6r-arch-readobj-notes.txt": "daca350ee9eb2dbb0b41e6eeb8dd4ff5219dba41573281e7cc29b9afb695541e",
+    "/tmp/h6r_h6q_control.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6r_h6q_control.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/h6r_red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6r_red.stdout": "9ec2ae22287255ac241bff9d2e0b45fc1797ff9492600449c2c0b85e2627e0cb",
+    "/tmp/laguna-h6r-arch-prebuild.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-arch-prebuild.stdout": "e883da86bb7940070e825b752f6f3c8f3626207bb03b2add3d8d39dde6145655",
+    "/tmp/laguna-h6r-candidate.patch": "792d51f4a4e21b0382d3818cff8d4a3e6044f00d02e456590f8feb60f931744c",
+    "/tmp/laguna-h6r-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-green.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/laguna-h6r-leaf-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-leaf-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6r-leaf-rocprof-arch.stderr": "bdf599ee926e87298b57853e91168ff4c1ebe3315ece0708824e3968358d90e0",
+    "/tmp/laguna-h6r-leaf-rocprof-arch.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "/tmp/laguna-h6r-leaf-rocprof-arch/h6r-leaf-arch_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6r-leaf-rocprof-arch/h6r-leaf-arch_kernel_trace.csv": "4bf3da3f1ccd63baa43a6b6dd0b4f88f16425e34e66481ad671dcde40beb232a",
+    "/tmp/laguna-h6r-moe-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-moe-guards.stdout": "c6ce8518a2cc113cc5560b3731e234ed6d559e746221ae903ce01599dfe7e797",
+    "/tmp/laguna-h6r-physical-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-physical-analysis.stdout": "964dc53b8ea4b82a56c0adf97f6f68ae21429b7efc3f05306bad89c4e0fae508",
+    "/tmp/laguna-h6r-physical-summary.json": "964dc53b8ea4b82a56c0adf97f6f68ae21429b7efc3f05306bad89c4e0fae508",
+    "/tmp/laguna-h6r-retained-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-retained-guards.stdout": "0320878a3ccdbdb6c0e65054f0588879311a880966e710e117b4b621a4efcbec",
+    "/tmp/laguna-h6r-source-policy-guard.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6r-source-policy-guard.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "/tmp/laguna-wpfh6r-final-screen.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6r-final-screen.stdout": "229ec626ef6f2624358888a2528ef8986917ec5cd7fbfbe85a0ace363a94fa96",
+    "/tmp/laguna-wpfh6r-iq3-dpp-peer-exchange-final-m512.json": "907a42fadf7d3657ebc3f13ce1f3118bbc2a6a85204399b13263d90040572866",
+    "/tmp/laguna_wpfh6r_iq3_dpp_peer_exchange_final_screen.py": "00c3bf3780a066d5e1d93c4f6b40af05300a6b4812b438a3fe48eb090500e6a4"
+  },
+  "resource_and_isa": {
+    "build_cache_key": "gguf_iq_selected_prefill-f704d1c3dd3b52e2",
+    "code_size_change_percent": 21.087613293051355,
+    "dpp_peer_instructions": 96,
+    "metadata_vgpr_change_percent": 6.315789473684208,
+    "no_compiler_under_profile": true,
+    "permlanex16_instructions": 24,
+    "physical": {
+      "barrier_model": {
+        "h6q_dynamic_barriers_per_rowbatch": 8,
+        "h6r_dynamic_barriers_per_rowbatch": 8,
+        "output_loop_iterations": 4
+      },
+      "isa": {
+        "h6q": {
+          "barriers_per_loop_body": 2,
+          "code_bytes": 6620,
+          "dpp_control_instructions": {
+            "1": 0,
+            "2": 0,
+            "4": 0,
+            "8": 0
+          },
+          "dpp_peer_instructions": 0,
+          "ds_instructions": 60,
+          "ds_opcodes": {
+            "ds_bpermute_b32": 24,
+            "ds_load_b128": 24,
+            "ds_store_2addr_b32": 12
+          },
+          "fma_fma_vopd_pairs": 41,
+          "fma_issue_slots": 175,
+          "fma_operations": 216,
+          "function_instruction_slots": 1192,
+          "global_load_instructions": 23,
+          "out_stride_0x100": 0,
+          "out_stride_0x200": 0,
+          "out_stride_0x300": 1,
+          "out_stride_0x400": 0,
+          "permlanex16_instructions": 0,
+          "scratch_instructions": 0,
+          "vopd_slots_all_classes": 100
+        },
+        "h6r": {
+          "barriers_per_loop_body": 2,
+          "code_bytes": 8016,
+          "dpp_control_instructions": {
+            "1": 24,
+            "2": 24,
+            "4": 24,
+            "8": 24
+          },
+          "dpp_peer_instructions": 96,
+          "ds_instructions": 36,
+          "ds_opcodes": {
+            "ds_load_b128": 24,
+            "ds_store_2addr_b32": 12
+          },
+          "fma_fma_vopd_pairs": 33,
+          "fma_issue_slots": 183,
+          "fma_operations": 216,
+          "function_instruction_slots": 1399,
+          "global_load_instructions": 23,
+          "out_stride_0x100": 0,
+          "out_stride_0x200": 0,
+          "out_stride_0x300": 1,
+          "out_stride_0x400": 0,
+          "permlanex16_instructions": 24,
+          "scratch_instructions": 0,
+          "vopd_slots_all_classes": 115
+        }
+      },
+      "metadata": {
+        "h6q": {
+          "group_segment_fixed_size": 384,
+          "max_flat_workgroup_size": 128,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 56,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 95,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "h6r": {
+          "group_segment_fixed_size": 384,
+          "max_flat_workgroup_size": 128,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 78,
+          "sgpr_spill_count": 0,
+          "vgpr_count": 101,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        }
+      },
+      "no_compiler_under_profile": true,
+      "one_dispatch_timing_is_nonbinding": true,
+      "raw_evidence_sha256": {
+        "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-f704d1c3dd3b52e2/gguf_iq_selected_prefill.so": "53840adc6368e46f4128322f87dd29cb9164c080934549f250789992ad51898a",
+        "/tmp/h6r-arch-code-object.co": "a247ca1d9760c096e3bdf82c70e2e8827da15e06a46b01630efc88cd2afbea82",
+        "/tmp/h6r-arch-full.isa": "af0f312875754e182c5bca2bbf516752386f7b0d236604a7de5ed34b23a86bc5",
+        "/tmp/h6r-arch-h6q.isa": "028e0e5b5c75baa1391cb7f912192fdbf63c20a8544bd98ca146093055c4c986",
+        "/tmp/h6r-arch-h6r.isa": "92c3a73019e70a796cd105cb4d8d9c110a49d0d9093e2574648adf27b0ba45a6",
+        "/tmp/h6r-arch-readobj-notes.txt": "daca350ee9eb2dbb0b41e6eeb8dd4ff5219dba41573281e7cc29b9afb695541e",
+        "/tmp/laguna-h6r-leaf-rocprof-arch.stderr": "bdf599ee926e87298b57853e91168ff4c1ebe3315ece0708824e3968358d90e0",
+        "/tmp/laguna-h6r-leaf-rocprof-arch.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+        "/tmp/laguna-h6r-leaf-rocprof-arch/h6r-leaf-arch_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+        "/tmp/laguna-h6r-leaf-rocprof-arch/h6r-leaf-arch_kernel_trace.csv": "4bf3da3f1ccd63baa43a6b6dd0b4f88f16425e34e66481ad671dcde40beb232a"
+      },
+      "schema": 1,
+      "trace": {
+        "h6q": {
+          "End_Timestamp": 1694816650291360,
+          "Grid_Size_X": 32768,
+          "Grid_Size_Y": 64,
+          "LDS_Block_Size": 512,
+          "SGPR_Count": 128,
+          "Scratch_Size": 0,
+          "Start_Timestamp": 1694816649614568,
+          "VGPR_Count": 96,
+          "Workgroup_Size_X": 128,
+          "duration_ns": 676792,
+          "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+        },
+        "h6r": {
+          "End_Timestamp": 1694816659582316,
+          "Grid_Size_X": 32768,
+          "Grid_Size_Y": 64,
+          "LDS_Block_Size": 512,
+          "SGPR_Count": 128,
+          "Scratch_Size": 0,
+          "Start_Timestamp": 1694816659009439,
+          "VGPR_Count": 104,
+          "Workgroup_Size_X": 128,
+          "duration_ns": 572877,
+          "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+        }
+      }
+    },
+    "runtime_vgpr_change_percent": 8.333333333333325,
+    "single_dispatch_duration_disposition": "The cached one-dispatch resource/name trace is nonbinding; admission uses the one-shot 15-sample all-45-layer event+wall gate.",
+    "static_bpermute_reduction_percent": 100.0
+  },
+  "schema": 1,
+  "scope": "Standalone exact H6R leaf admission only; H6Q source production and runtime ABI policy remain unchanged.",
+  "status": "retained_exact_leaf_runtime_qualification_pending"
+}

@@ -396,19 +396,22 @@ ms (-4.725%/-0.487%/-1.076%)**. Fresh selector-unset 512/1K/4K improves
 matched llama.cpp HIP. Workspace/scratch remain unchanged and **156/156** guards
 pass.
 
-The next target-only operation is **WPF-H6R exact DPP peer-exchange staged-wave
-IQ3**. H6Q emits **24 static / 120 dynamic `ds_bpermute_b32`**; H6R must replace
-only those peer exchanges with exact permlanex16 plus DPP 8/4/2/1 while
-preserving all 216 FMAs, staged scopes, barriers, LDS publication/stores,
-local128/P256/P64/rowbatch8 topology, bytes, ABI, and policy. The prior local64
-four-accumulator DPP reducer regressed, so this is a one-shot gate: require zero
-bpermutes, exact **24 permlanex16 + 96 DPP** instructions, VGPR <=128,
-scratch0, and **45/45** actual layers winning both clocks or remove H6R entirely
-([post-H6Q residual / H6R target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
+**WPF-H6R exact DPP peer-exchange staged-wave IQ3 is now a retained standalone
+gfx1100 leaf; H6Q remains the production/runtime owner.** The one-shot screen
+passes exactly: all **45/45** actual IQ3 layers are byte-identical and win both
+clocks. H6Q -> H6R aggregate event time moves **311.597 -> 269.365 ms
+(-13.554%, 1.1568x)** and synchronized wall **317.309 -> 265.667 ms (-16.275%,
+1.1944x)**; minimum per-layer wins are **1.1425x/1.1785x**. The arch-tagged code
+object emits zero bpermutes, exact **24 permlanex16 + 96 DPP** peer instructions,
+unchanged **216** FMAs/24 LDS loads/12 stores/two barriers/stride/grid, and
+private0/spill0/scratch0 at metadata/runtime VGPR **101/104**. Frozen rows
+1/7/8/9/M512, reversed P64/P65, sampled CPU values, gfx1151 exclusion, and
+**151/151** retained guards pass. Production remains the clean H6Q
+**390.947 tok/s** baseline pending separate bounded H6R runtime qualification
+([H6R candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
+[post-H6Q residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
-[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
-[post-H6P residual / H6Q target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
-[H6P rollback provenance](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
+[H6Q candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

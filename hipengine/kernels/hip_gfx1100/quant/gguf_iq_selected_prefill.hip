@@ -461,6 +461,66 @@ __device__ inline void publish_local128_wave_sums_batched_compact_shuffle_no_bar
   }
 }
 
+// H6R preserves H6Q's staged-wave ownership while replacing only the five
+// wave peer exchanges with an exact permlanex16/DPP 16/8/4/2/1 tree.
+__device__ inline float h6r_permlanex16_f32(float value) {
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_permlanex16(
+      data.bits, data.bits, 0x76543210U, 0xFEDCBA98U, false, false);
+  return data.value;
+}
+
+template <int DPP_CTRL>
+__device__ inline float h6r_dpp_move_f32(float value) {
+  union FloatBits {
+    float value;
+    int bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_mov_dpp(
+      data.bits, DPP_CTRL, 0xF, 0xF, true);
+  return data.value;
+}
+
+template <int ROW_BATCH>
+__device__ inline void publish_local128_wave_sums_batched_dpp_peer_no_barrier(
+    float (&value)[ROW_BATCH],
+    float* __restrict__ wave_sums) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+    value[row] += h6r_permlanex16_f32(value[row]);
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+    value[row] += h6r_dpp_move_f32<0x108>(value[row]);
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+    value[row] += h6r_dpp_move_f32<0x104>(value[row]);
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+    value[row] += h6r_dpp_move_f32<0x102>(value[row]);
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+    value[row] += h6r_dpp_move_f32<0x101>(value[row]);
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      wave_sums[row * 4 + wave] = value[row];
+    }
+  }
+}
+
 __device__ inline float sum_local128_wave_sums_serial(
     const float* __restrict__ wave_sums,
     int row) {
@@ -1787,6 +1847,117 @@ __global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_exper
   }
 }
 
+// H6R changes only H6Q's wave peer-exchange primitive. Accumulator scopes,
+// dot/reduction order, LDS planes, publication/store order, and barrier epochs
+// remain byte-for-byte equivalent to H6Q.
+template <int OUTPUT_PARTITIONS>
+__launch_bounds__(128, 1)
+__global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ active_experts,
+    const int64_t* __restrict__ active_count_ptr,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int out_features,
+    int num_experts) {
+  constexpr int expert_partitions = 64;
+  constexpr int in_features = 1024;
+  constexpr int row_batch = 8;
+  constexpr int row_bytes =
+      (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int active_count = static_cast<int>(
+      min(max(*active_count_ptr, static_cast<int64_t>(0)),
+          static_cast<int64_t>(num_experts)));
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int x_offset = threadIdx.x * 8;
+  __shared__ float wave_sums_a[row_batch * 4];
+  __shared__ float wave_sums_b[row_batch * 4];
+  __shared__ float wave_sums_c[row_batch * 4];
+
+  for (int active_index = blockIdx.y; active_index < active_count;
+       active_index += expert_partitions) {
+    const int64_t expert64 = active_experts[active_index];
+    if (expert64 < 0 || expert64 >= num_experts) continue;
+    const int expert = static_cast<int>(expert64);
+    const int64_t begin = expert_start_compact[expert];
+    const int64_t end = expert_start_compact[expert + 1];
+    if (begin >= end) continue;
+    const int64_t expert_weight_offset =
+        static_cast<int64_t>(expert) * expert_bytes;
+
+    for (int64_t row_base = begin; row_base < end; row_base += row_batch) {
+      ushort8_t activation[row_batch] = {};
+#pragma unroll
+      for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          activation[row_idx] =
+              *reinterpret_cast<const ushort8_t*>(
+                  x + row * in_features + x_offset);
+        }
+      }
+      for (int out_col = blockIdx.x; out_col < out_features;
+           out_col += 3 * OUTPUT_PARTITIONS) {
+        const int second_out_col = out_col + OUTPUT_PARTITIONS;
+        const int third_out_col = second_out_col + OUTPUT_PARTITIONS;
+        {
+          const int64_t weight_offset_a =
+              expert_weight_offset + static_cast<int64_t>(out_col) * row_bytes;
+          float acc[row_batch] = {};
+          const IQ3Segment segment_a =
+              load_iq3_segment(qweight + weight_offset_a, threadIdx.x);
+          dot_iq3_segment_rowbatch8_interleaved(segment_a, activation, acc);
+          publish_local128_wave_sums_batched_dpp_peer_no_barrier(acc, wave_sums_a);
+        }
+        {
+          const int64_t weight_offset_b =
+              expert_weight_offset +
+              static_cast<int64_t>(second_out_col) * row_bytes;
+          float acc[row_batch] = {};
+          const IQ3Segment segment_b =
+              load_iq3_segment(qweight + weight_offset_b, threadIdx.x);
+          dot_iq3_segment_rowbatch8_interleaved(segment_b, activation, acc);
+          publish_local128_wave_sums_batched_dpp_peer_no_barrier(acc, wave_sums_b);
+        }
+        {
+          const int64_t weight_offset_c =
+              expert_weight_offset +
+              static_cast<int64_t>(third_out_col) * row_bytes;
+          float acc[row_batch] = {};
+          const IQ3Segment segment_c =
+              load_iq3_segment(qweight + weight_offset_c, threadIdx.x);
+          dot_iq3_segment_rowbatch8_interleaved(segment_c, activation, acc);
+          publish_local128_wave_sums_batched_dpp_peer_no_barrier(acc, wave_sums_c);
+        }
+        __syncthreads();
+        if (threadIdx.x == 0) {
+#pragma unroll
+          for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+            const int64_t row = row_base + row_idx;
+            if (row < end) {
+              const float value_a =
+                  sum_local128_wave_sums_serial(wave_sums_a, row_idx);
+              const float value_b =
+                  sum_local128_wave_sums_serial(wave_sums_b, row_idx);
+              const float value_c =
+                  sum_local128_wave_sums_serial(wave_sums_c, row_idx);
+              out[row * out_features + out_col] =
+                  float_to_bf16_bits(value_a);
+              out[row * out_features + second_out_col] =
+                  float_to_bf16_bits(value_b);
+              out[row * out_features + third_out_col] =
+                  float_to_bf16_bits(value_c);
+            }
+          }
+        }
+        __syncthreads();
+      }
+    }
+  }
+}
+
 __launch_bounds__(128, 2)
 __global__ void gguf_iq4_xs_selected_dual_grouped_prefill_compact_kernel(
     const uint16_t* __restrict__ x,
@@ -2886,6 +3057,43 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_act
   }
   hipLaunchKernelGGL(
       (gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_kernel<256>),
+      dim3(256, 64),
+      dim3(128),
+      0,
+      stream,
+      x,
+      expert_start_compact,
+      active_experts,
+      active_count,
+      qweight,
+      out,
+      static_cast<int>(compact_rows),
+      static_cast<int>(out_features),
+      static_cast<int>(num_experts));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* active_experts,
+    const int64_t* active_count,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!valid_common(
+          x, expert_start_compact, qweight, out, compact_rows, in_features,
+          out_features, num_experts) ||
+      active_experts == nullptr || active_count == nullptr ||
+      in_features != 1024 || out_features != 3072 || num_experts != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_kernel<256>),
       dim3(256, 64),
       dim3(128),
       0,
