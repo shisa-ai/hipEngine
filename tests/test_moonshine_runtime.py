@@ -358,7 +358,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             "hipengine_moonshine_layernorm_fp16",
             "hipengine_moonshine_f16_projection_triple",
             "hipengine_moonshine_partial_rope_cache_append_fp16",
-            "hipengine_moonshine_self_attention_branch_fp16",
+            "hipengine_moonshine_self_attention_fp16",
             "hipengine_dense_gemv_out_fp16",
             "hipengine_moonshine_residual_fp16",
             "hipengine_moonshine_layernorm_fp16",

@@ -492,7 +492,7 @@ class MoonshineResidentRuntime:
             raise RuntimeError("Moonshine device token/position state is not set")
         from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
             moonshine_cross_attention_parallel_fp16,
-            moonshine_self_attention_branch_fp16,
+            moonshine_self_attention_fp16,
             moonshine_self_attention_parallel_fp16,
         )
         from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
@@ -586,7 +586,7 @@ class MoonshineResidentRuntime:
                 **common,
             )
             self_attention = (
-                moonshine_self_attention_branch_fp16
+                moonshine_self_attention_fp16
                 if self.decode_position == 0
                 else moonshine_self_attention_parallel_fp16
             )
