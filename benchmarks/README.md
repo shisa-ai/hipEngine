@@ -51,9 +51,20 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
+The fresh same-GGUF 1K/4K/16K/32K/64K/128K one-pass prefill comparison is
+hipEngine **648.346/609.277/479.700/364.877/246.996/148.869 tok/s** versus
+llama.cpp Vulkan **343.547/334.693/281.022/212.741/127.186/65.539 tok/s**.
+hipEngine leads by **1.707x-2.271x** at every depth and retains
+**22.961%** of d1K throughput at d128K, versus Vulkan's **19.077%**. The
+curve therefore does not show short-context prefill overtuning.
+
 The current gfx1151 Laguna p512/d128 decode checkpoint is
-**23.231783 tok/s / 43.044 ms/token**, up **102.602%** from the
-**11.466687 tok/s** sprint start. The preceding exact checkpoint remains
+**23.220755 tok/s / 43.065 ms/token** on the quiet three-run median, up
+**102.506%** from the **11.466687 tok/s** sprint start. Same-GGUF llama.cpp
+Vulkan is **23.3861 tok/s / 42.760 ms/token**, leaving only
+**0.304479 ms/token / 0.7070%** at this short fixed-capacity shape.
+[`quiet short comparison`](results/2026-08-01-gfx1151-laguna-quiet-decode-gap-scheduling-rejected.json).
+The preceding exact checkpoint remains
 **23.017271 tok/s**; the current selected gate/up owner is explicitly
 quality-gated as described below. The exact selected-Q4 down owner now shares
 adjacent-column nibble and coefficient transport while preserving each F32
@@ -63,6 +74,19 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 (+0.12179%, -0.053461 ms/token)** with exact trajectories and unchanged
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
+
+Long decode does not preserve that parity. A fresh one-pass
+1K/4K/16K/32K/64K/128K depth sweep measures hipEngine
+**20.638/15.478/7.732/4.566/2.506/1.313 tok/s** versus Vulkan
+**23.366/23.037/21.728/20.212/17.737/14.237 tok/s**. The deficit expands
+from **11.676%** at d1K to **90.778%** at d128K; Vulkan is **10.844x**
+faster at the endpoint and retains **60.930%** of d1K throughput, versus
+hipEngine's **6.362%**. The capacity-qualified short attention owner is not
+the long route: capacity above 4,096 selects generic exact split global
+attention. Capacity-independent and bounded-tile global attention is now the
+first decode priority.
+[`matched prefill/decode depth sweep`](results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

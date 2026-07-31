@@ -196862,3 +196862,46 @@ Vulkan local sizes verbatim will close the measured gap.
   block-context 4,096 and query-rows 2,048, owns **1,796,734,976 bytes**, and
   returns tracked bytes/allocations **0/0 -> 0/0**. The focused harness suite
   remains **39 passed**.
+
+## 2026-08-01 04:50 JST — Measure matched Laguna prefill and decode depth curves
+
+- Ran current hipEngine production in one process at
+  **1K/4K/16K/32K/64K/128K**, cached-only with a 2,048-row prefill chunk.
+  One-pass prefill is
+  **648.346/609.277/479.700/364.877/246.996/148.869 tok/s**. The raw JSON
+  SHA-256 is
+  `07fd79f3ad802f62c728c505f1279c0593ea93618a676ff58229216a61d1fee0`.
+- Ran same-GGUF llama.cpp Vulkan `c0bc8591e`, FA on,
+  `-b 2048 -ub 512`, at the same prefill depths. It measures
+  **343.547/334.693/281.022/212.741/127.186/65.539 tok/s**. hipEngine leads
+  by **1.887x/1.820x/1.707x/1.715x/1.942x/2.271x** and retains
+  **22.961%** of d1K throughput at d128K versus Vulkan's **19.077%**. Raw log
+  SHA-256 is
+  `93396cb70d881ff687b1cddb6627b4885eab0f6ef02d0eb8a2ef0c853155e765`.
+- Ran exactly 127 timed hipEngine decode transitions at each depth with
+  capacity 131,200. Results are
+  **20.637969/15.477837/7.731808/4.566032/2.506331/1.312921 tok/s**, or
+  **48.454/64.609/129.336/219.009/398.990/761.660 ms/token**. Positions,
+  next-token records, deterministic per-depth generated hashes, and teardown
+  pass; all **87,407,934,744 bytes / 1,452 allocations** return to zero. Raw
+  JSON SHA-256 is
+  `472fc1c82d101dd4b0d828d6aa7fead4ef8a1c05fabda5977b05637143e4ac1f`.
+- Same-GGUF Vulkan d128 measures
+  **23.366162/23.037017/21.728347/20.212083/17.737473/14.237076 tok/s**, or
+  **42.797/43.408/46.023/49.475/56.378/70.239 ms/token**. hipEngine's
+  deficit expands from **11.676% at d1K** to **90.778% at d128K**; Vulkan is
+  **10.844x** faster at the endpoint and retains **60.930%** of d1K
+  throughput versus hipEngine's **6.362%**. Raw log SHA-256 is
+  `1fd60858f1f47b32d7b51f86172d1e060d12d43c3b098644d3060feaaa6f9f92`.
+- This reconciles the apparently conflicting short result. Capacity-4,096
+  p512 decode remains near parity at **23.220755 vs 23.3861 tok/s
+  (-0.7070%)**. Capacity above 4,096 selects the generic exact split global
+  path even at a short live prefix; capacity 4,224 p512 already costs
+  **5.919%**. The d1K→d128K wall increment divided by Laguna's twelve global
+  layers is approximately **59.434 ms/layer hipEngine vs 2.287 ms/layer
+  Vulkan (25.99x)**. This is an end-to-end inference, not a trace.
+- Published the compact artifact and updated both Laguna plans. Long decode
+  now attacks (1) capacity-independent live-`<=4000` specialization, then
+  (2) profiled bounded split-K/cooperative global attention, with directional
+  4K/16K/64K checks and a mandatory 128K gate:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json`.

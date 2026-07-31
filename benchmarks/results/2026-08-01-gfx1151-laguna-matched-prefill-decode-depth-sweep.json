@@ -1,0 +1,196 @@
+{
+  "date": "2026-08-01",
+  "status": "accepted_comparator_and_attack_plan_evidence",
+  "performance_claim": true,
+  "system": {
+    "device": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "hipengine_commit": "0ba65e4db",
+    "llama_cpp_vulkan_commit": "c0bc8591e",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "format": "GGUF",
+    "quant": "Q4_K_M",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5d9806c104fa97d14f2dc7f3738511625667bc97d229532d8375753f",
+    "kv": "BF16 hipEngine / F16 llama.cpp Vulkan"
+  },
+  "protocol": {
+    "depths": [
+      1024,
+      4096,
+      16384,
+      32768,
+      65536,
+      131072
+    ],
+    "prefill": {
+      "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 1024,4096,16384,32768,65536,131072 --chunk-size 2048 --decode-output-tokens 1 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5d9806c104fa97d14f2dc7f3738511625667bc97d229532d8375753f --output /tmp/laguna-matched-long-sweep-hipengine.json",
+      "hipengine_raw_sha256": "07fd79f3ad802f62c728c505f1279c0593ea93618a676ff58229216a61d1fee0",
+      "vulkan_command": "HIP_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 128,1024,4096,16384,32768,65536,131072 -n 0 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress",
+      "vulkan_raw_sha256": "93396cb70d881ff687b1cddb6627b4885eab0f6ef02d0eb8a2ef0c853155e765",
+      "notes": "One process and one measured pass per depth. The Vulkan p128 row is warmup-only and excluded."
+    },
+    "decode": {
+      "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 1024,4096,16384,32768,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5d9806c104fa97d14f2dc7f3738511625667bc97d229532d8375753f --output /tmp/laguna-matched-depth-decode-hipengine.json",
+      "hipengine_raw_sha256": "472fc1c82d101dd4b0d828d6aa7fead4ef8a1c05fabda5977b05637143e4ac1f",
+      "vulkan_command": "HIP_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 0 -n 128 -d 1024,4096,16384,32768,65536,131072 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress",
+      "vulkan_raw_sha256": "1fd60858f1f47b32d7b51f86172d1e060d12d43c3b098644d3060feaaa6f9f92",
+      "notes": "hipEngine times exactly 127 forward_token transitions after one untimed generated token. One measured pass per depth, as requested for rough directional long-context work."
+    }
+  },
+  "prefill": {
+    "rows": [
+      {
+        "depth": 1024,
+        "hipengine_tokens_per_second": 648.345570619,
+        "vulkan_tokens_per_second": 343.546573,
+        "hipengine_vs_vulkan_percent": 88.721303,
+        "hipengine_over_vulkan_ratio": 1.887213
+      },
+      {
+        "depth": 4096,
+        "hipengine_tokens_per_second": 609.276511261,
+        "vulkan_tokens_per_second": 334.692842,
+        "hipengine_vs_vulkan_percent": 82.040496,
+        "hipengine_over_vulkan_ratio": 1.820405
+      },
+      {
+        "depth": 16384,
+        "hipengine_tokens_per_second": 479.699627011,
+        "vulkan_tokens_per_second": 281.022263,
+        "hipengine_vs_vulkan_percent": 70.698087,
+        "hipengine_over_vulkan_ratio": 1.706981
+      },
+      {
+        "depth": 32768,
+        "hipengine_tokens_per_second": 364.876579437,
+        "vulkan_tokens_per_second": 212.741409,
+        "hipengine_vs_vulkan_percent": 71.511781,
+        "hipengine_over_vulkan_ratio": 1.715118
+      },
+      {
+        "depth": 65536,
+        "hipengine_tokens_per_second": 246.996215273,
+        "vulkan_tokens_per_second": 127.185912,
+        "hipengine_vs_vulkan_percent": 94.200923,
+        "hipengine_over_vulkan_ratio": 1.942009
+      },
+      {
+        "depth": 131072,
+        "hipengine_tokens_per_second": 148.868521152,
+        "vulkan_tokens_per_second": 65.538578,
+        "hipengine_vs_vulkan_percent": 127.146401,
+        "hipengine_over_vulkan_ratio": 2.271464
+      }
+    ],
+    "retention_1k_to_128k_percent": {
+      "hipengine": 22.961292,
+      "vulkan": 19.077058
+    },
+    "drop_1k_to_128k_percent": {
+      "hipengine": 77.038708,
+      "vulkan": 80.922942
+    }
+  },
+  "decode": {
+    "short_p512_reference": {
+      "hipengine_tokens_per_second": 23.2207547513,
+      "hipengine_ms_per_token": 43.064922,
+      "vulkan_tokens_per_second": 23.3861,
+      "vulkan_ms_per_token": 42.760443,
+      "hipengine_vs_vulkan_percent": -0.7070,
+      "hipengine_wall_gap_ms_per_token": 0.304479,
+      "notes": "Quiet three-run medians at capacity 4096; published separately in the quiet-gap artifact."
+    },
+    "rows": [
+      {
+        "depth": 1024,
+        "hipengine_tokens_per_second": 20.6379690773,
+        "hipengine_ms_per_token": 48.454380,
+        "vulkan_tokens_per_second": 23.366162,
+        "vulkan_ms_per_token": 42.796930,
+        "hipengine_vs_vulkan_percent": -11.675828,
+        "vulkan_over_hipengine_ratio": 1.132193
+      },
+      {
+        "depth": 4096,
+        "hipengine_tokens_per_second": 15.4778365947,
+        "hipengine_ms_per_token": 64.608513,
+        "vulkan_tokens_per_second": 23.037017,
+        "vulkan_ms_per_token": 43.408398,
+        "hipengine_vs_vulkan_percent": -32.813191,
+        "vulkan_over_hipengine_ratio": 1.488387
+      },
+      {
+        "depth": 16384,
+        "hipengine_tokens_per_second": 7.7318078440,
+        "hipengine_ms_per_token": 129.335858,
+        "vulkan_tokens_per_second": 21.728347,
+        "vulkan_ms_per_token": 46.022829,
+        "hipengine_vs_vulkan_percent": -64.416033,
+        "vulkan_over_hipengine_ratio": 2.810254
+      },
+      {
+        "depth": 32768,
+        "hipengine_tokens_per_second": 4.5660324117,
+        "hipengine_ms_per_token": 219.008520,
+        "vulkan_tokens_per_second": 20.212083,
+        "vulkan_ms_per_token": 49.475356,
+        "hipengine_vs_vulkan_percent": -77.409392,
+        "vulkan_over_hipengine_ratio": 4.426618
+      },
+      {
+        "depth": 65536,
+        "hipengine_tokens_per_second": 2.5063305207,
+        "hipengine_ms_per_token": 398.989675,
+        "vulkan_tokens_per_second": 17.737473,
+        "vulkan_ms_per_token": 56.377817,
+        "hipengine_vs_vulkan_percent": -85.869856,
+        "vulkan_over_hipengine_ratio": 7.077069
+      },
+      {
+        "depth": 131072,
+        "hipengine_tokens_per_second": 1.3129211969,
+        "hipengine_ms_per_token": 761.660336,
+        "vulkan_tokens_per_second": 14.237076,
+        "vulkan_ms_per_token": 70.239142,
+        "hipengine_vs_vulkan_percent": -90.778154,
+        "vulkan_over_hipengine_ratio": 10.843816
+      }
+    ],
+    "retention_1k_to_128k_percent": {
+      "hipengine": 6.361678,
+      "vulkan": 60.930315
+    },
+    "drop_1k_to_128k_percent": {
+      "hipengine": 93.638322,
+      "vulkan": 39.069685
+    },
+    "approximate_incremental_1k_to_128k_global_attention_cost": {
+      "assumed_global_layers": 12,
+      "hipengine_extra_ms_per_global_layer": 59.433830,
+      "vulkan_extra_ms_per_global_layer": 2.286851,
+      "hipengine_over_vulkan_ratio": 25.9894,
+      "notes": "Inference from end-to-end depth deltas divided by 12 global-attention layers; not a kernel trace."
+    }
+  },
+  "correctness": {
+    "hipengine_timed_forward_calls_per_depth": 127,
+    "all_positions_exact": true,
+    "all_next_tokens_recorded": true,
+    "deterministic_generated_hash_per_depth": true,
+    "tracked_allocations_returned_to_zero": true,
+    "tracked_bytes": 87407934744,
+    "tracked_allocations": 1452
+  },
+  "conclusions": [
+    "Short capacity-4096 p512 decode is within 0.7070% of Vulkan.",
+    "Allocating a capacity above 4096 selects the generic exact split global-attention route; its long-context wall scales far worse than Vulkan cooperative attention.",
+    "At d128K Vulkan is 10.843816x faster and retains 60.930315% of d1K throughput, versus 6.361678% for hipEngine.",
+    "The next decode priority is capacity-independent exact global attention: first decouple the <=4000-live specialization from allocated capacity, then replace full score-plane/reducer traffic with bounded tiled partials or an exact cooperative online-softmax/PV design.",
+    "Prefill is not short-context overtuned: hipEngine beats Vulkan by 1.706981x to 2.271464x across every measured depth and retains a larger fraction of d1K throughput."
+  ]
+}

@@ -9113,6 +9113,83 @@ The remaining attention sequence is:
      nested launch wrappers, and another waiting consumer are closed:
      [`current census and host screens`](../benchmarks/results/2026-08-01-gfx1151-laguna-current-wall-host-housekeeping-rejected.json).
 
+198. Admit long-capacity decode and run the same-GGUF depth comparison.
+     **Measurement accepted; long global attention is now the first decode
+     priority.**
+
+     The benchmark-only 4,096-capacity guard was obsolete: production already
+     has an exact generic split-attention fallback for larger allocations. The
+     profile helper now admits a true 128K+127-transition horizon at capacity
+     131,200 without increasing the 4,096-row blocked-prefill scratch or its
+     largest 131,072-position matrix launch. Focused harness validation passes
+     **39 tests**, and every long run returns all tracked allocations to zero.
+
+     Fresh one-pass, one-process depth sweeps on the same Q4_K_M GGUF expose a
+     sharp implementation seam:
+
+     | Decode depth | hipEngine | llama.cpp Vulkan | hipEngine delta | Vulkan / hipEngine | hipEngine wall | Vulkan wall |
+     | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 1K | **20.637969 tok/s** | **23.366162 tok/s** | **-11.676%** | **1.132x** | **48.454 ms/token** | **42.797 ms/token** |
+     | 4K | **15.477837 tok/s** | **23.037017 tok/s** | **-32.813%** | **1.488x** | **64.609 ms/token** | **43.408 ms/token** |
+     | 16K | **7.731808 tok/s** | **21.728347 tok/s** | **-64.416%** | **2.810x** | **129.336 ms/token** | **46.023 ms/token** |
+     | 32K | **4.566032 tok/s** | **20.212083 tok/s** | **-77.409%** | **4.427x** | **219.009 ms/token** | **49.475 ms/token** |
+     | 64K | **2.506331 tok/s** | **17.737473 tok/s** | **-85.870%** | **7.077x** | **398.990 ms/token** | **56.378 ms/token** |
+     | 128K | **1.312921 tok/s** | **14.237076 tok/s** | **-90.778%** | **10.844x** | **761.660 ms/token** | **70.239 ms/token** |
+
+     hipEngine retains only **6.362%** of its d1K throughput at d128K,
+     versus **60.930%** for Vulkan. This does not contradict the quiet
+     capacity-4,096 p512 comparison: the fixed-shape route remains
+     **23.220755 vs 23.3861 tok/s (-0.7070%)**. Merely allocating capacity
+     4,224 while decoding the same 512-token prefix falls to
+     **21.846364 tok/s (-5.919%)**, proving that capacity—not live work—can
+     disqualify the fast route.
+
+     The end-to-end d1K→d128K increment is **713.206 ms/token** for
+     hipEngine and **27.442 ms/token** for Vulkan. Dividing those increments
+     by Laguna's twelve global-attention layers gives an approximate
+     **59.434 vs 2.287 ms/global layer**, or a **25.99x** incremental gap.
+     This is an inference from walls, not a kernel trace, but it is large
+     enough to reorder the campaign decisively. Short source-F16 and dispatch
+     micro-tuning are subordinate until this route is repaired:
+     [`matched depth sweep`](../benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json).
+
+### Long-context decode attack
+
+Use one-run passes while changes are architectural. A candidate must move
+4K/16K/64K in the right direction and must pass 128K before promotion.
+Correctness, recurrent trajectory, `KVLiveSpans`, eviction/wrap behavior, and
+allocation teardown remain mandatory at every retained step.
+
+1. **LC-D1 — remove the false capacity seam.** Decouple the existing
+   live-`<=4000` exact global specialization from
+   `allocated_capacity == 4096`. Give it capacity-independent block/span
+   addressing and bounded 4K scratch so d1K and d4K do not fall onto the
+   generic route merely because the session reserves 128K.
+2. **LC-D2 — profile the real generic route at 4K/16K/64K/128K.** Record
+   score production, softmax reduction, PV, scratch bytes, launches, achieved
+   K/V bandwidth, and depth slope. Keep the d128K gate even when the earlier
+   samples are directionally positive.
+3. **LC-D3 — replace the full score-plane/reducer path.** Build a bounded
+   split-K global owner that emits per-block `(maximum, denominator,
+   output[D])` partials, or an exact multi-pass tiled equivalent when the
+   current ordered FP32 association cannot be replayed online. Reduce block
+   partials rather than materializing and rereading one F32 score plus
+   physical-slot metadata for every query-head/token pair.
+4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
+   numerics waiver.** Audit the running wave64 Vulkan FA path's K/V staging,
+   GQA ownership, tile size, and synchronization. Port the traffic and
+   ownership ideas while preserving hipEngine's FP32/BF16 quality contract;
+   earlier approximate cooperative paths do not become admissible merely
+   because Vulkan is fast.
+5. **LC-D5 — fuse only after the tiled owner wins.** Fold denominator/PV
+   reduction, softplus gating, and final store where profiling shows a real
+   launch or traffic boundary. Do not re-open the rejected short-context
+   waiting-consumer and wrapper screens.
+6. **LC-D6 — rebaseline the complete curve.** Repeat
+   1K/4K/16K/32K/64K/128K against same-GGUF Vulkan. The immediate target is
+   Vulkan-class retention; the stretch target is to preserve short parity
+   while matching or beating Vulkan at every depth.
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -9198,8 +9275,10 @@ Current decode checkpoint:
 | hipEngine current quality-gated selected-halfdot production | **23.089693 tok/s** | **43.309 ms** | **+101.364%** |
 | hipEngine retained output→router any-order same-resident gate | **23.233248 tok/s** | **43.042 ms** | **+102.615%** |
 | hipEngine current output→router any-order production | **23.231783 tok/s** | **43.044 ms** | **+102.602%** |
-| same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining production wall gap | — | **0.215 ms/token** | hipEngine is **0.502%** below Vulkan throughput |
+| prior same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | historical directional comparator |
+| quiet current hipEngine production | **23.220755 tok/s** | **43.065 ms** | **+102.506%** |
+| quiet current same-GGUF llama.cpp Vulkan | **23.3861 tok/s** | **42.760 ms** | current comparator |
+| Remaining quiet short-decode wall gap | — | **0.304479 ms/token** | hipEngine is **0.7070%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently
