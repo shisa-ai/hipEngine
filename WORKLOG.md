@@ -196736,3 +196736,17 @@ Vulkan local sizes verbatim will close the measured gap.
   signature assignment/boxing is not a material complete-decode limiter.
   Reopen only through a materially longer native executor. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-ctypes-hot-wrapper-slimming-rejected.json`.
+
+## 2026-08-01 01:27 JST — Advance byte-neutral Q6T16 shared-down leaf
+
+- Added an actual-weight leaf screen for all **23** rank-2 Q6_K Laguna
+  shared-down tensors. It compares the current raw Q6_K BF16 owner with the
+  existing dense Q6T16 BF16 owner using counterbalanced HIP events, 11 pairs
+  per weight, and 100 launches per event.
+- Q6T16 wins **253/253** pairs and every weight. The family sum moves
+  **0.363864 -> 0.291356 ms (-19.927%)**; individual weights improve
+  **19.05-20.33%**. Outputs have zero BF16 mismatches.
+- Raw and T16 residency are both exactly **2,580,480 bytes per weight**.
+  Advance this byte-neutral replacement to complete-model A/B; do not promote
+  from the leaf alone. Raw SHA-256 is `f8f89bee...6cebc41`. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-leaf.json`.
