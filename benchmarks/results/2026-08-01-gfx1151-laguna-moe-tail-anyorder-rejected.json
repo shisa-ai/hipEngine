@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-01T00:10:00+09:00",
+  "kind": "hipengine_gfx1151_laguna_moe_tail_anyorder_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "0957e46cd3ed8b19e6ea78e189af668574af82b5",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "profile": {
+    "workload": "p512/d128 eager c=1",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-anyorder-wall.fY7mIN -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "trace_sha256": "24d6386c198a9d251849fa6bfa67a39455311c52e9a36473bb0a19b57d451fa3",
+    "transitions": 127,
+    "layers_per_transition": 47,
+    "selected_down_to_d9_latest_producer_ms_per_token": 0.356407,
+    "shared_down_to_d9_ms_per_token": 5.590321,
+    "selected_down_end_to_d9_start_median_us": 8.416,
+    "selected_down_end_to_d9_start_mean_us": 8.156,
+    "shared_down_end_to_d9_start_median_us": 118.943,
+    "shared_down_minus_selected_down_end_median_us": -111.649,
+    "shared_down_is_last_count": 1,
+    "shared_down_is_last_total": 5969
+  },
+  "candidate": {
+    "producer": "all exact selected-down variants publish one completion signal per 16-column output tile",
+    "consumer": "unchanged exact D9 aggregate/residual/next-RMSNorm launches with hipExtAnyOrderLaunch and waits for all producer tiles",
+    "naive_wait": "all 256 D9 lanes poll completion counters",
+    "waveleader_wait": "one leader per 16 D9 lanes polls and broadcasts readiness",
+    "resident_bytes_delta": 0,
+    "arithmetic_change": "none"
+  },
+  "validation": {
+    "red": "focused source, wrapper, and runtime tests failed because producer signaling and the any-order D9 route were absent",
+    "green": "focused static and live-HIP checks passed",
+    "producer_variants": [
+      "Q4 selected down",
+      "paired-Q4 selected down",
+      "planar-Q6 selected down"
+    ],
+    "output_and_sum_bit_exact": true,
+    "signals_per_case": 192,
+    "d9_bit_exact": true,
+    "counter_reset_exact": true,
+    "counter_reuse_cycles": 2,
+    "generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa"
+  },
+  "benchmark_protocol": {
+    "workload": "p512/d128 eager c=1",
+    "repetitions_per_mode": 3,
+    "warmup_rows": 128,
+    "command": "temporary diagnostic: same cached laguna_long_context_profile.py production command with alternating ordered and --moe-tail-anyorder-decode modes; diagnostic integration was removed after rejection"
+  },
+  "results": {
+    "naive": {
+      "ordered_samples_tok_s": [
+        23.2234067001145,
+        23.222494402708797,
+        23.234179272866488
+      ],
+      "candidate_samples_tok_s": [
+        23.202540130861045,
+        23.203035723838777,
+        23.196740978538948
+      ],
+      "ordered_median_tok_s": 23.2234067001145,
+      "candidate_median_tok_s": 23.202540130861045,
+      "delta_percent": -0.08985145686377649,
+      "delta_ms_per_token": 0.038724836314045774,
+      "raw_sha256": "ac1b6e2c7567589a14896f3f805d7607abe70b0a219b5dc5eabff55493400c4c"
+    },
+    "waveleader": {
+      "ordered_samples_tok_s": [
+        23.22990857222497,
+        23.2417754569309,
+        23.220952975674116
+      ],
+      "candidate_samples_tok_s": [
+        23.20529373841664,
+        23.188793318279146,
+        23.193309220868446
+      ],
+      "ordered_median_tok_s": 23.22990857222497,
+      "candidate_median_tok_s": 23.193309220868446,
+      "delta_percent": -0.15755271374716662,
+      "delta_ms_per_token": 0.06793024326403696,
+      "raw_sha256": "0452d5d70b9ec7244aa5c62d5124a74e8b6e7bee3c17a00889b93174e91d4d6f"
+    }
+  },
+  "decision": {
+    "action": "reject and completely remove producer signaling, any-order D9 wrapper, runtime route, harness option, and tests",
+    "reason": "The normally ordered D9 starts only about 8 us after selected down. A resident spinning D9 consumer competes with the critical selected-down producer for more time than the eliminated queue boundary costs; reducing atomic pressure to one leader per 16 lanes makes the complete decode regression larger.",
+    "production": "unchanged at 23.231783 tok/s / 43.044479 ms/token",
+    "reopen_only_if": "gfx11 exposes a non-resident dependency primitive that does not occupy compute resources while waiting"
+  }
+}

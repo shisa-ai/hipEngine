@@ -196644,3 +196644,27 @@ Vulkan local sizes verbatim will close the measured gap.
   pass; residency remains **79,066,169,172 bytes**. Raw SHA-256 is
   `f532e7e6...0900fc`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json`.
+
+## 2026-08-01 00:10 JST — Reject selected-down→D9 any-order continuation
+
+- Re-profiled the current production schedule over **5,969** layer
+  transitions. Shared down finishes before selected down in **5,968/5,969**
+  cases; selected down ends a median **8.416 us** before D9 starts. The
+  latest-producer→D9 boundary totals **0.356407 ms/token**.
+- Added exact per-16-column producer signaling to Q4, paired-Q4, and
+  planar-Q6 selected down, then launched the unchanged exact D9 tail with
+  `hipExtAnyOrderLaunch`. Focused RED/GREEN and live-HIP checks passed:
+  producer output/sums and D9 are bit-exact, all **192** signals arrive, and
+  two counter-reset reuse cycles pass.
+- Complete p512/d128 A/B rejects both wait strategies. All-lane polling moves
+  **23.223407 -> 23.202540 tok/s (-0.08985%, +0.038725 ms/token)**. One
+  polling leader per 16 lanes moves **23.229909 -> 23.193309 tok/s
+  (-0.15755%, +0.067930 ms/token)**. Generated trajectories remain exact.
+- The waiting consumer competes with critical selected-down work for more
+  time than the ordinary queue boundary costs. Completely removed the
+  candidate kernels, ABIs, wrappers, runtime switch, harness option, and
+  tests. Production remains **23.231783 tok/s / 43.044479 ms/token**. Raw
+  SHA-256 values are `ac1b6e2c...3400c4c` and
+  `0452d5d7...00c4c6f`; trace SHA-256 is
+  `24d6386c...51fa3`. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-moe-tail-anyorder-rejected.json`.
