@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_decode_production",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "created_at": "2026-07-31T11:55:54+09:00",
+  "scope": "gfx1151 Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1 Q6T16 LM-head producer tile maxima",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "source": {
+    "revision": "c882f7bd4acb3e2e20905cfa299bff21a6431e42",
+    "tracked_clean": true,
+    "selector_unset": true,
+    "capability": "linear+argmax/gguf_q6_k_t16_v1/t16_gemv_decode_bf16_f32_top1_stage1"
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "repetitions": 3,
+    "load_excluded": true,
+    "cached_build_required": true
+  },
+  "before": {
+    "revision": "7d85771a8d03503ba2881cea9f851883fd974cf9",
+    "median_tok_s": 22.86553858840366,
+    "ms_per_token": 43.73393594617327
+  },
+  "after": {
+    "samples_tok_s": [
+      22.850646688882804,
+      22.875003399912988,
+      22.87398932328679
+    ],
+    "median_tok_s": 22.87398932328679,
+    "median_ms_per_token": 43.71777855915816,
+    "throughput_delta_percent": 0.03695838980768418,
+    "wall_delta_ms_per_token": -0.016157387015162783,
+    "relative_to_sprint_start_percent": 99.48211129585023
+  },
+  "same_gguf_vulkan": {
+    "revision": "c0bc8591e881",
+    "tok_s": 23.348381,
+    "ms_per_token": 42.82952209834163,
+    "remaining_throughput_gap_percent": 2.0739350272855894,
+    "remaining_wall_gap_ms_per_token": 0.8882564608165282
+  },
+  "dispatch_topology": {
+    "steady_segments": 126,
+    "before_dispatches_per_segment": 484,
+    "after_dispatches_per_segment": 483,
+    "before_model_kernels_per_segment": 482,
+    "after_model_kernels_per_segment": 481,
+    "runtime_copies_per_segment": 2,
+    "removed_full_logit_argmax_stage1_per_segment": 1
+  },
+  "correctness": {
+    "next_token_ids": [
+      2930,
+      2930,
+      2930
+    ],
+    "final_token_ids": [
+      74107,
+      74107,
+      74107
+    ],
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "lifecycle_recovered": true,
+    "kl": 0.0,
+    "top1_agreement_percent": 100.0
+  },
+  "memory": {
+    "resident_nbytes": 79066169172,
+    "resident_delta_bytes": 0,
+    "active_allocations_after": 0,
+    "tracked_bytes_after": 0
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-lmhead-production-clean.json",
+  "raw_sha256": "ebb5a02e80a23df52f968d54e047ff8070c56411a318e2c3cdd4f3f170521d49",
+  "retention_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json"
+}

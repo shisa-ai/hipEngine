@@ -195464,3 +195464,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_laguna_argmax_control_publish.py tests/test_laguna_gguf_runner.py::test_laguna_q6_t16_lm_head_tilemax_is_gfx1151_default_and_rollbackable tests/test_laguna_gguf_runner.py::test_laguna_eager_plan_rejects_non_s21_shapes tests/test_laguna_gguf_runner.py::test_laguna_p4_head_kv_is_gfx11_default_and_rollbackable`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json`.
+
+## 2026-07-31 11:56 JST — Publish Q6 LM-head tile maxima
+
+- Committed the validated exact/default unit as `c882f7bd4`, then ran the
+  selector-unset tracked-clean production protocol with cached-build
+  enforcement.
+- Three p512/d128 decode samples are
+  **22.850647/22.875003/22.873989 tok/s**, median
+  **22.873989 tok/s / 43.717779 ms/token**. This advances the preceding
+  **22.865539 tok/s** checkpoint **0.03696%**, saves
+  **0.016157 ms/token**, and reaches **+99.482%** from the
+  **11.466687 tok/s** sprint start.
+- All runs preserve next/final tokens **2930/74107**, final position **638**,
+  generated-ID SHA `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete allocation recovery.
+  Load is excluded and no compiler ran.
+- Steady topology is now **483 dispatches = 481 model kernels + two D2H
+  copies**. The remaining same-GGUF llama.cpp Vulkan gap contracts to
+  **0.888256 ms/token** or **2.07394%** throughput.
+- Command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-lmhead-production-clean.json`.
+- Raw SHA-256:
+  `ebb5a02e80a23df52f968d54e047ff8070c56411a318e2c3cdd4f3f170521d49`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-production.json`.
