@@ -2040,23 +2040,22 @@ attention/gate-up/Q6 at **194.868/187.775/150.723/78.345/71.906 ms** and explain
 **98.889%** of the **691.299-ms** kernel gap.
 
 Do not reopen Q5's compiler-prefetch route after H6G's physical failure or
-immediately iterate H6I's just-promoted IQ-down operation. Select target-only
-**WPF-H6J exact dense-initial SWA qrow4 unscaled-dot replay** on the largest
-remaining distinct exact family. H6A SWA owns **115.555 ms / 144 calls** and
-computes each ordered 128-dimension K dot plus wave32 tree in both the max and
-denominator/PV passes. A separate gfx1100 sibling must preserve H6A's one-wave
-qrow4 identity/no-wrap route, first-pass dot order/tree, `dot*scale-max`,
-denominator, token-ordered PV, division, stores, bytes, grid, cache layout,
-`KVLiveSpans`, maps, workspace, and fallbacks while storing the unchanged
-first-pass unscaled dots in one **4x512 F32 / 8,192-byte LDS** plane and
-reloading them during the second pass. This removes modeled duplicate dot work
-without changing arithmetic and is not yet a performance/default claim. Freeze
-starts 0/128/256/384 RED first; require complete H6A/CPU bytes, immutable spans,
-local32/LDS8192/scratch0/private0, one physical dot pass with LDS replay and no
-second-pass K loads/tree, unchanged grid, and every start plus the weighted
-144-call aggregate positive on HIP events and synchronized wall. Remove every
-H6J surface on any failure and retain H6A
-([artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
+immediately iterate H6I's just-promoted IQ-down operation. **WPF-H6J exact
+dense-initial SWA qrow4 unscaled-dot replay is rejected** on the largest
+remaining distinct exact family. The local32 leaf preserves complete H6A bytes,
+sampled CPU rows, every `KVLiveSpans` field, and lifecycle at starts
+0/128/256/384. Code-object ISA physically removes four second-pass K-load and
+20 wave-reduction sites, emits four LDS stores plus four loads, and remains
+metadata VGPR54/LDS8192/private0/spill0; rocprof confirms scratch0 and unchanged
+grid2304x32 but reports runtime **VGPR248**. Every start fails both timing gates:
+event regresses **+28.18%/+34.65%/+42.91%/+41.10%** and wall
+**+29.76%/+34.52%/+48.44%/+46.09%**. The weighted 144-call stack moves H6A ->
+H6J **95.924 -> 133.542 ms event (0.718x)** and **97.607 -> 139.600 ms wall
+(0.699x)**. Skip runtime ownership, remove every HIP/Python/exclusion/test
+surface, retain H6A/H6I production, and do not retry full 4x512 LDS score replay
+without a materially different occupancy-preserving mechanism
+([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
