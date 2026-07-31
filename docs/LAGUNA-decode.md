@@ -8414,6 +8414,24 @@ The remaining attention sequence is:
      not this old QK leaf:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-wmma-qk-current-rejected.json).
 
+174. Publish GGML Q8_1 activation blocks inside the D9 next-RMSNorm producer.
+     **Rejected before runtime integration and removed.**
+
+     The candidate is exact: hidden BF16, normalized BF16, and every byte of
+     all **96** Q8_1 blocks match the retained D9 plus standalone-pack chain.
+     Cached counterbalanced 21x100 timing nevertheless moves the combined leaf
+     from **0.007578 -> 0.009251 ms (+22.085%)**; it adds **74.699%** over D9
+     alone.
+
+     This isolates the wrong ownership seam. The retained D9 owner is one
+     local128 block with eight wave32s, so quantizing 96 K32 blocks requires
+     twelve serial wave rounds. The standalone pack preserves one workgroup
+     per Q8 block and wins despite a separate launch and repeated activation
+     load. Remove the temporary kernel, ABI, wrapper, test, and harness. If a
+     Q8 selected-expert route is revisited, preserve block-level pack
+     parallelism and optimize the consumer or complete schedule instead:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
