@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from hipengine.core.device import Device
@@ -15,8 +16,15 @@ from hipengine.loading.materialize import (
 )
 from hipengine.loading.moonshine import MoonshineLoadedModel
 from hipengine.loading.safetensors import TensorInfo, WeightIndex
-from hipengine.models.moonshine import parse_moonshine_model_spec
-from hipengine.runtime.moonshine import MoonshineResidentRuntime, NoAllocationError
+from hipengine.models.moonshine import (
+    expected_moonshine_weight_shapes,
+    parse_moonshine_model_spec,
+)
+from hipengine.runtime.moonshine import (
+    MoonshineDecoderLibraries,
+    MoonshineResidentRuntime,
+    NoAllocationError,
+)
 
 
 class FakeRuntime:
@@ -153,12 +161,22 @@ def fake_loaded_model(runtime: FakeRuntime) -> MoonshineLoadedModel:
         source.shape,
         DType.FP16,
     )
-    weights = DeviceWeightMap(
-        {
-            spec.embedding_weight_name: owner,
-            spec.lm_head_alias_name: alias,
-        }
-    )
+    allocations = {
+        spec.embedding_weight_name: owner,
+        spec.lm_head_alias_name: alias,
+    }
+    for name, shape in expected_moonshine_weight_shapes(spec).items():
+        if name == spec.embedding_weight_name:
+            continue
+        weight_source = TensorInfo(name, Path("fake.safetensors"), "F32", shape)
+        allocations[name] = DeviceTensorAllocation(
+            name,
+            weight_source,
+            owner.buffer,
+            Tensor.from_handle(owner.buffer.ptr, shape, DType.FP16, Device("hip", 0)),
+            owns_buffer=False,
+        )
+    weights = DeviceWeightMap(allocations)
     index = WeightIndex(Path("/fake/moonshine"), model_config(), {source.name: source}, (source.shard_path,))
     return MoonshineLoadedModel(
         spec=spec,
@@ -239,7 +257,7 @@ def test_reset_and_cross_cache_state_reuse_fixed_addresses_without_allocating() 
         resident.close()
 
 
-def test_no_allocation_region_detects_allocate_free_and_token_step_is_not_implemented() -> None:
+def test_no_allocation_region_detects_allocate_free_and_unprepared_token_step() -> None:
     runtime = FakeRuntime()
     resident = MoonshineResidentRuntime(
         loaded_model=fake_loaded_model(runtime),
@@ -253,8 +271,123 @@ def test_no_allocation_region_detects_allocate_free_and_token_step_is_not_implem
             with resident.no_allocation_region("bad-token-step"):
                 temporary = malloc(16, runtime=runtime)  # type: ignore[arg-type]
                 free(temporary, runtime=runtime)  # type: ignore[arg-type]
-        with pytest.raises(NotImplementedError, match="Phase 2"):
+        with pytest.raises(RuntimeError, match="prepared"):
             resident.token_step()
+    finally:
+        resident.close()
+
+
+def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chain() -> None:
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+
+    class FakeKernel:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __call__(self, *args):
+            trace.append((self.name, args))
+            return 0
+
+    class FakeLibrary:
+        def __init__(self, *symbols: str) -> None:
+            for symbol in symbols:
+                setattr(self, symbol, FakeKernel(symbol))
+
+    libraries = MoonshineDecoderLibraries(
+        projection=FakeLibrary(
+            "hipengine_moonshine_f16_projection",
+            "hipengine_moonshine_f16_projection_bias",
+            "hipengine_moonshine_f16_projection_pair_head_major",
+            "hipengine_moonshine_f16_projection_triple",
+        ),
+        layernorm=FakeLibrary("hipengine_moonshine_layernorm_fp16"),
+        glue=FakeLibrary(
+            "hipengine_moonshine_argmax_fp16",
+            "hipengine_moonshine_embedding_lookup_fp16",
+            "hipengine_moonshine_partial_rope_cache_append_fp16",
+            "hipengine_moonshine_residual_fp16",
+        ),
+        mlp=FakeLibrary("hipengine_moonshine_gated_silu_fp16"),
+        attention=FakeLibrary(
+            "hipengine_moonshine_cross_attention_fp16",
+            "hipengine_moonshine_self_attention_fp16",
+        ),
+    )
+    try:
+        with pytest.raises(RuntimeError, match="prepared"):
+            resident.precompute_cross_kv()
+        resident.prepare_decoder_kernels(libraries=libraries)
+        with pytest.raises(RuntimeError, match="encoder state"):
+            resident.precompute_cross_kv()
+        with pytest.raises(ValueError, match="encoder hidden"):
+            resident.set_encoder_state(
+                np.zeros((1, 39, 416), dtype=np.float16),
+                np.ones((1, 40), dtype=np.int32),
+            )
+        resident.set_encoder_state(
+            np.zeros((1, 40, 416), dtype=np.float16),
+            np.ones((1, 40), dtype=np.int32),
+        )
+        resident.precompute_cross_kv()
+        assert resident.cross_cache_valid is True
+        assert [name for name, _ in trace] == [
+            "hipengine_moonshine_f16_projection_pair_head_major"
+        ] * 8
+        trace.clear()
+        malloc_count = len(runtime.malloc_calls)
+        resident.set_decode_state(token_id=1, position=0)
+        with resident.no_allocation_region("decoder-token-step"):
+            resident.token_step()
+        assert len(runtime.malloc_calls) == malloc_count
+        assert resident.self_cache_length == 1
+        assert resident.decode_position is None
+        per_layer = [
+            "hipengine_moonshine_layernorm_fp16",
+            "hipengine_moonshine_f16_projection_triple",
+            "hipengine_moonshine_partial_rope_cache_append_fp16",
+            "hipengine_moonshine_self_attention_fp16",
+            "hipengine_moonshine_f16_projection",
+            "hipengine_moonshine_residual_fp16",
+            "hipengine_moonshine_layernorm_fp16",
+            "hipengine_moonshine_f16_projection",
+            "hipengine_moonshine_cross_attention_fp16",
+            "hipengine_moonshine_f16_projection",
+            "hipengine_moonshine_residual_fp16",
+            "hipengine_moonshine_layernorm_fp16",
+            "hipengine_moonshine_f16_projection_bias",
+            "hipengine_moonshine_gated_silu_fp16",
+            "hipengine_moonshine_f16_projection_bias",
+            "hipengine_moonshine_residual_fp16",
+        ]
+        expected = ["hipengine_moonshine_embedding_lookup_fp16"]
+        for _ in range(8):
+            expected.extend(per_layer)
+        expected.extend(
+            [
+                "hipengine_moonshine_layernorm_fp16",
+                "hipengine_moonshine_f16_projection",
+                "hipengine_moonshine_argmax_fp16",
+            ]
+        )
+        assert [name for name, _ in trace] == expected
+        with pytest.raises(RuntimeError, match="reset generation"):
+            resident.set_encoder_state(
+                np.zeros((1, 40, 416), dtype=np.float16),
+                np.ones((1, 40), dtype=np.int32),
+            )
+        with pytest.raises(ValueError, match="sequential"):
+            resident.set_decode_state(token_id=1, position=2)
+        resident.set_decode_state(token_id=1, position=1)
+        resident.reset_generation(clear_cross_cache=False)
+        assert resident.cross_cache_valid is True
+        assert resident.decode_position is None
+        assert resident.self_cache_length == 0
     finally:
         resident.close()
 

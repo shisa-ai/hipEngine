@@ -1,20 +1,23 @@
-"""Torch-free fixed-address Moonshine resident runtime skeleton.
-
-Phase 1 owns memory, streams, events, caches, and lifecycle only.  Decoder
-kernels intentionally begin in Phase 2.
-"""
+"""Torch-free fixed-address Moonshine resident runtime and FP16 decoder."""
 
 from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
+
+import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
-from hipengine.core.memory import copy_host_to_device, host_array_ptr, memory_stats
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    host_array_ptr,
+    memory_stats,
+)
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.cpu_reference.moonshine import moonshine_rope_tables
 from hipengine.loading.moonshine import MoonshineLoadedModel, load_moonshine_model
@@ -29,6 +32,17 @@ class NoAllocationError(RuntimeError):
 class MoonshineCacheView:
     key: Tensor
     value: Tensor
+
+
+@dataclass(frozen=True)
+class MoonshineDecoderLibraries:
+    """Prebuilt code objects used by the unfused decoder chain."""
+
+    projection: object
+    layernorm: object
+    glue: object
+    mlp: object
+    attention: object
 
 
 class MoonshineResidentRuntime:
@@ -74,6 +88,9 @@ class MoonshineResidentRuntime:
         self.stop_event = 0
         self.self_cache_length = 0
         self.cross_cache_valid = False
+        self.encoder_state_valid = False
+        self.decode_position: int | None = None
+        self.decoder_libraries: MoonshineDecoderLibraries | None = None
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         try:
@@ -264,8 +281,10 @@ class MoonshineResidentRuntime:
         self._zero(names)
         self.runtime.stream_synchronize(self.stream)
         self.self_cache_length = 0
+        self.decode_position = None
         if clear_cross_cache:
             self.cross_cache_valid = False
+            self.encoder_state_valid = False
 
     @contextmanager
     def no_allocation_region(self, name: str) -> Iterator[None]:
@@ -287,8 +306,448 @@ class MoonshineResidentRuntime:
                     f"(current_delta={current_delta}, active_delta={active_delta})"
                 )
 
-    def token_step(self) -> None:
-        raise NotImplementedError("Moonshine decoder token kernels begin in Phase 2")
+    def prepare_decoder_kernels(
+        self,
+        *,
+        libraries: MoonshineDecoderLibraries | None = None,
+        compiler_version: str | None = None,
+        require_cached: bool = False,
+    ) -> MoonshineDecoderLibraries:
+        """Load every code object before any no-allocation/timed token region."""
+
+        if self.closed:
+            raise RuntimeError("Moonshine runtime is closed")
+        if libraries is None:
+            from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
+                build_moonshine_attention,
+            )
+            from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
+                build_moonshine_glue,
+            )
+            from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import (
+                build_moonshine_mlp,
+            )
+            from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+                build_moonshine_projection,
+            )
+            from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
+                build_moonshine_layernorm,
+            )
+
+            arguments = {
+                "compiler_version": compiler_version,
+                "load": True,
+                "require_cached": require_cached,
+            }
+            libraries = MoonshineDecoderLibraries(
+                projection=build_moonshine_projection(**arguments),
+                layernorm=build_moonshine_layernorm(**arguments),
+                glue=build_moonshine_glue(**arguments),
+                mlp=build_moonshine_mlp(**arguments),
+                attention=build_moonshine_attention(**arguments),
+            )
+        self.decoder_libraries = libraries
+        return libraries
+
+    def set_encoder_state(
+        self,
+        encoder_hidden: np.ndarray,
+        attention_mask: np.ndarray,
+    ) -> None:
+        """Upload one certified encoder bucket and invalidate stale cross K/V."""
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if self.self_cache_length or self.decode_position is not None:
+            raise RuntimeError("reset generation before replacing encoder state")
+        hidden = np.asarray(encoder_hidden)
+        mask = np.asarray(attention_mask)
+        expected_hidden = (1, self.encoder_frames, self.spec.hidden_size)
+        expected_mask = (1, self.encoder_frames)
+        if hidden.shape != expected_hidden or hidden.dtype != np.float16:
+            raise ValueError(
+                f"encoder hidden must be float16 with shape {expected_hidden}"
+            )
+        if mask.shape != expected_mask or mask.dtype != np.int32:
+            raise ValueError(f"encoder attention mask must be int32 with shape {expected_mask}")
+        if not bool(np.isfinite(hidden).all()):
+            raise ValueError("encoder hidden must contain only finite values")
+        if not bool(np.isin(mask, (0, 1)).all()) or not bool(mask.any()):
+            raise ValueError("encoder attention mask must contain visible 0/1 entries")
+        copy_host_to_device(
+            self.workspace.allocation("encoder_hidden").buffer,
+            host_array_ptr(np.ascontiguousarray(hidden)),
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.workspace.allocation("encoder_attention_mask").buffer,
+            host_array_ptr(np.ascontiguousarray(mask)),
+            runtime=self.runtime,
+        )
+        self.encoder_state_valid = True
+        self.cross_cache_valid = False
+
+    def precompute_cross_kv(self) -> None:
+        """Project encoder rows once into all eight resident head-major caches."""
+
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        libraries = self.decoder_libraries
+        if libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        if not self.encoder_state_valid:
+            raise RuntimeError("Moonshine encoder state is not loaded")
+        from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+            moonshine_f16_projection_pair_head_major,
+        )
+
+        encoder_ptr = self.tensor("encoder_hidden").ptr
+        for layer in range(self.spec.decoder_layers):
+            prefix = f"model.decoder.layers.{layer}.encoder_attn"
+            cache = self.cross_cache(layer)
+            moonshine_f16_projection_pair_head_major(
+                encoder_ptr,
+                self.weights[f"{prefix}.k_proj.weight"].ptr,
+                self.weights[f"{prefix}.v_proj.weight"].ptr,
+                cache.key.ptr,
+                cache.value.ptr,
+                self.encoder_frames,
+                self.spec.hidden_size,
+                self.spec.decoder_kv_heads * self.spec.head_dim,
+                self.spec.decoder_kv_heads * self.spec.head_dim,
+                self.spec.head_dim,
+                stream=self.stream,
+                library=libraries.projection,
+                runtime=self.runtime,
+            )
+        self.runtime.stream_synchronize(self.stream)
+        self.mark_cross_cache_ready(self.encoder_frames)
+
+    def set_decode_state(self, *, token_id: int, position: int) -> None:
+        """Set the next device token/position under strict sequential-cache ownership."""
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if self.decoder_libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine cross cache is not ready")
+        if isinstance(token_id, bool) or not isinstance(token_id, int):
+            raise ValueError("token_id must be an integer")
+        if token_id < 0 or token_id >= self.spec.vocab_size:
+            raise ValueError("token_id is outside the Moonshine vocabulary")
+        if isinstance(position, bool) or not isinstance(position, int):
+            raise ValueError("position must be an integer")
+        if position != self.self_cache_length:
+            raise ValueError(
+                f"decode positions must be sequential: expected {self.self_cache_length}, "
+                f"got {position}"
+            )
+        if position < 0 or position >= self.spec.self_cache_capacity:
+            raise ValueError("decode position is outside self-cache capacity")
+        token = np.asarray([token_id], dtype=np.int64)
+        position_array = np.asarray([position], dtype=np.int64)
+        copy_host_to_device(
+            self.workspace.allocation("token").buffer,
+            host_array_ptr(token),
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.workspace.allocation("position").buffer,
+            host_array_ptr(position_array),
+            runtime=self.runtime,
+        )
+        self.decode_position = position
+
+    def token_step(
+        self,
+        *,
+        boundary_callback: Callable[[str, Tensor], None] | None = None,
+    ) -> None:
+        """Enqueue one complete unfused FP16 decoder step on the resident stream."""
+
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        libraries = self.decoder_libraries
+        if libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine cross cache is not ready")
+        if self.decode_position != self.self_cache_length:
+            raise RuntimeError("Moonshine device token/position state is not set")
+        from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
+            moonshine_cross_attention_fp16,
+            moonshine_self_attention_fp16,
+        )
+        from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
+            moonshine_argmax_fp16,
+            moonshine_embedding_lookup_fp16,
+            moonshine_partial_rope_cache_append_fp16,
+            moonshine_residual_fp16,
+        )
+        from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import (
+            moonshine_gated_silu_fp16,
+        )
+        from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+            moonshine_f16_projection,
+            moonshine_f16_projection_bias,
+            moonshine_f16_projection_triple,
+        )
+        from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
+            moonshine_layernorm_fp16,
+        )
+
+        spec = self.spec
+        stream = self.stream
+        hidden = self.tensor("hidden")
+        normalized = self.tensor("normalized")
+        query = self.tensor("query")
+        key = self.tensor("key")
+        value = self.tensor("value")
+        attention = self.tensor("attention")
+        projection = self.tensor("projection")
+        position = self.tensor("position")
+        common = {"stream": stream, "runtime": self.runtime}
+        moonshine_embedding_lookup_fp16(
+            self.weights[spec.embedding_weight_name].ptr,
+            self.tensor("token").ptr,
+            hidden.ptr,
+            spec.hidden_size,
+            spec.vocab_size,
+            library=libraries.glue,
+            **common,
+        )
+        for layer in range(spec.decoder_layers):
+            prefix = f"model.decoder.layers.{layer}"
+            moonshine_layernorm_fp16(
+                hidden.ptr,
+                self.weights[f"{prefix}.input_layernorm.weight"].ptr,
+                normalized.ptr,
+                1,
+                spec.hidden_size,
+                eps=spec.layer_norm_epsilon,
+                library=libraries.layernorm,
+                **common,
+            )
+            moonshine_f16_projection_triple(
+                normalized.ptr,
+                self.weights[f"{prefix}.self_attn.q_proj.weight"].ptr,
+                self.weights[f"{prefix}.self_attn.k_proj.weight"].ptr,
+                self.weights[f"{prefix}.self_attn.v_proj.weight"].ptr,
+                query.ptr,
+                key.ptr,
+                value.ptr,
+                1,
+                spec.hidden_size,
+                spec.hidden_size,
+                spec.hidden_size,
+                spec.hidden_size,
+                library=libraries.projection,
+                **common,
+            )
+            self_cache = self.self_cache(layer)
+            moonshine_partial_rope_cache_append_fp16(
+                query.ptr,
+                key.ptr,
+                value.ptr,
+                self.tensor("rope_cos").ptr,
+                self.tensor("rope_sin").ptr,
+                position.ptr,
+                attention.ptr,
+                projection.ptr,
+                self_cache.key.ptr,
+                self_cache.value.ptr,
+                spec.decoder_attention_heads,
+                spec.head_dim,
+                spec.rotary_dim,
+                spec.self_cache_capacity,
+                spec.max_positions,
+                library=libraries.glue,
+                **common,
+            )
+            moonshine_self_attention_fp16(
+                attention.ptr,
+                self_cache.key.ptr,
+                self_cache.value.ptr,
+                position.ptr,
+                attention.ptr,
+                spec.decoder_attention_heads,
+                spec.head_dim,
+                spec.self_cache_capacity,
+                library=libraries.attention,
+                **common,
+            )
+            moonshine_f16_projection(
+                attention.ptr,
+                self.weights[f"{prefix}.self_attn.o_proj.weight"].ptr,
+                projection.ptr,
+                1,
+                spec.hidden_size,
+                spec.hidden_size,
+                library=libraries.projection,
+                **common,
+            )
+            moonshine_residual_fp16(
+                hidden.ptr,
+                projection.ptr,
+                hidden.ptr,
+                spec.hidden_size,
+                library=libraries.glue,
+                **common,
+            )
+            if boundary_callback is not None:
+                boundary_callback(f"layer_{layer}.after_self_attention", hidden)
+            moonshine_layernorm_fp16(
+                hidden.ptr,
+                self.weights[f"{prefix}.post_attention_layernorm.weight"].ptr,
+                normalized.ptr,
+                1,
+                spec.hidden_size,
+                eps=spec.layer_norm_epsilon,
+                library=libraries.layernorm,
+                **common,
+            )
+            moonshine_f16_projection(
+                normalized.ptr,
+                self.weights[f"{prefix}.encoder_attn.q_proj.weight"].ptr,
+                query.ptr,
+                1,
+                spec.hidden_size,
+                spec.hidden_size,
+                library=libraries.projection,
+                **common,
+            )
+            cross_cache = self.cross_cache(layer)
+            moonshine_cross_attention_fp16(
+                query.ptr,
+                cross_cache.key.ptr,
+                cross_cache.value.ptr,
+                self.tensor("encoder_attention_mask").ptr,
+                attention.ptr,
+                spec.decoder_attention_heads,
+                spec.head_dim,
+                self.encoder_frames,
+                library=libraries.attention,
+                **common,
+            )
+            moonshine_f16_projection(
+                attention.ptr,
+                self.weights[f"{prefix}.encoder_attn.o_proj.weight"].ptr,
+                projection.ptr,
+                1,
+                spec.hidden_size,
+                spec.hidden_size,
+                library=libraries.projection,
+                **common,
+            )
+            moonshine_residual_fp16(
+                hidden.ptr,
+                projection.ptr,
+                hidden.ptr,
+                spec.hidden_size,
+                library=libraries.glue,
+                **common,
+            )
+            if boundary_callback is not None:
+                boundary_callback(f"layer_{layer}.after_cross_attention", hidden)
+            moonshine_layernorm_fp16(
+                hidden.ptr,
+                self.weights[f"{prefix}.final_layernorm.weight"].ptr,
+                normalized.ptr,
+                1,
+                spec.hidden_size,
+                eps=spec.layer_norm_epsilon,
+                library=libraries.layernorm,
+                **common,
+            )
+            moonshine_f16_projection_bias(
+                normalized.ptr,
+                self.weights[f"{prefix}.mlp.fc1.weight"].ptr,
+                self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
+                self.tensor("mlp_fc1").ptr,
+                1,
+                spec.hidden_size,
+                2 * spec.intermediate_size,
+                library=libraries.projection,
+                **common,
+            )
+            moonshine_gated_silu_fp16(
+                self.tensor("mlp_fc1").ptr,
+                self.tensor("mlp_intermediate").ptr,
+                1,
+                spec.intermediate_size,
+                library=libraries.mlp,
+                **common,
+            )
+            moonshine_f16_projection_bias(
+                self.tensor("mlp_intermediate").ptr,
+                self.weights[f"{prefix}.mlp.fc2.weight"].ptr,
+                self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
+                projection.ptr,
+                1,
+                spec.intermediate_size,
+                spec.hidden_size,
+                library=libraries.projection,
+                **common,
+            )
+            moonshine_residual_fp16(
+                hidden.ptr,
+                projection.ptr,
+                hidden.ptr,
+                spec.hidden_size,
+                library=libraries.glue,
+                **common,
+            )
+            if boundary_callback is not None:
+                boundary_callback(f"layer_{layer}.after_mlp", hidden)
+        moonshine_layernorm_fp16(
+            hidden.ptr,
+            self.weights["model.decoder.norm.weight"].ptr,
+            normalized.ptr,
+            1,
+            spec.hidden_size,
+            eps=spec.layer_norm_epsilon,
+            library=libraries.layernorm,
+            **common,
+        )
+        if boundary_callback is not None:
+            boundary_callback("final_hidden", normalized)
+        moonshine_f16_projection(
+            normalized.ptr,
+            self.weights[spec.lm_head_alias_name].ptr,
+            self.tensor("logits").ptr,
+            1,
+            spec.hidden_size,
+            spec.vocab_size,
+            library=libraries.projection,
+            **common,
+        )
+        moonshine_argmax_fp16(
+            self.tensor("logits").ptr,
+            self.tensor("token").ptr,
+            spec.vocab_size,
+            library=libraries.glue,
+            **common,
+        )
+        self.self_cache_length += 1
+        self.decode_position = None
+
+    def read_token(self) -> int:
+        """Synchronize the resident stream and read the selected int64 token."""
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        self.runtime.stream_synchronize(self.stream)
+        output = np.empty((1,), dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(output),
+            self.workspace.allocation("token").buffer,
+            runtime=self.runtime,
+        )
+        token_id = int(output[0])
+        if token_id < 0 or token_id >= self.spec.vocab_size:
+            raise RuntimeError(f"Moonshine decoder returned invalid token ID {token_id}")
+        return token_id
 
     def allocation_contract(self) -> dict[str, int | bool | None]:
         current = memory_stats()
@@ -304,6 +763,9 @@ class MoonshineResidentRuntime:
             "resident_nbytes": self.resident_nbytes,
             "current_allocated_bytes": current["current_allocated_bytes"],
             "current_active_allocations": current["active_allocations"],
+            "decoder_kernels_prepared": self.decoder_libraries is not None,
+            "encoder_state_valid": self.encoder_state_valid,
+            "cross_cache_valid": self.cross_cache_valid,
             "teardown_returned_to_baseline": self.teardown_returned_to_baseline,
         }
 
@@ -311,6 +773,7 @@ class MoonshineResidentRuntime:
         if self.closed:
             return
         self.closed = True
+        self.decoder_libraries = None
         loaded = self.loaded_model
         try:
             if self.stream:
@@ -347,6 +810,7 @@ class MoonshineResidentRuntime:
 
 __all__ = [
     "MoonshineCacheView",
+    "MoonshineDecoderLibraries",
     "MoonshineResidentRuntime",
     "NoAllocationError",
 ]
