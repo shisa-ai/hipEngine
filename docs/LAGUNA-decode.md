@@ -8554,6 +8554,23 @@ The remaining attention sequence is:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json).
 
+The committed post-halfdot two-queue census confirms the retained mechanism
+on the critical path. Across the final 127 transitions, union-busy GPU time is
+**41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
+**1.501782 ms/token** uncovered. That is **0.903386 ms/token faster** than
+Vulkan's complete same-GGUF wall in device-union work, even though clean
+hipEngine production remains **0.479846 ms/token** slower. Perfect feed would
+leave only **0.259469 ms/token** of device work above 24 tok/s.
+
+The largest repeated uncovered boundaries are selected-down to MoE tail
+**0.354617 ms/token**, source-F16 output to router **0.263561**, router
+selection to selected gate/up **0.211476**, and SWA projection to attention
+**0.202899**. Attention itself is only **1.114084 ms/token**. The next bounded
+screen therefore transfers the now-proven native FP16-dot2 premise to selected
+down at the actual-weight leaf; it advances to recurrent quality and the
+complete two-queue wall only if the production-shape leaf wins:
+[`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
+
 Current decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

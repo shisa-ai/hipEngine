@@ -196262,3 +196262,33 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json`,
   and
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json`.
+
+## 2026-07-31 19:47 JST — Reprofile the quality-gated halfdot default
+
+- A tracked-clean, require-cached `rocprofv3` run at `1883ea376` records the
+  final **127** decode transitions at unchanged **481 model kernels + two
+  D2H copies/token**. The candidate trajectory is intentionally different
+  because selected halfdot is quality-gated; its independent recurrent gate
+  remains the correctness authority. Allocation recovery is complete and no
+  compiler runs under profiling.
+- Inclusive work is **49.936127 ms/token**, but the secondary queue remains
+  almost entirely hidden. Critical interval-union work is
+  **41.926136 ms/token** inside a **43.420396-ms** span, leaving
+  **1.501782 ms/token** uncovered. Versus the pre-halfdot census, union and
+  span fall **0.015905/0.144609 ms/token** and uncovered idle falls
+  **0.122318 ms/token**. The seven-pair wall gate's
+  **0.161670-ms/token** paired saving remains the authoritative retention
+  measurement.
+- hipEngine device-union work is now **0.903386 ms/token faster** than
+  Vulkan's complete **42.829522-ms/token** same-GGUF wall, while clean
+  production remains **0.479846 ms/token** slower. Perfect feed leaves
+  **0.259469 ms/token** of critical-path work above 24 tok/s.
+- The largest repeated uncovered boundaries are selected-down to tail
+  **0.354617**, output to router **0.263561**, router selection to selected
+  gate/up **0.211476**, and SWA projection to attention
+  **0.202899 ms/token**. Total attention is only **1.114084 ms/token**.
+  Next screen: transfer native FP16 dot2 to selected down at the actual-weight
+  leaf, then require recurrent quality and complete-wall gates.
+- Trace/child SHA-256 values are
+  `f57f347c...7aba53` / `a831bc30...f05d0`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json`.
