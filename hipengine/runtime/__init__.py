@@ -18,6 +18,7 @@ from hipengine.runtime.moonshine import (
     MoonshineCacheView,
     MoonshineDecoderLibraries,
     MoonshineResidentRuntime,
+    MoonshineTokenGraph,
     NoAllocationError,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -69,6 +70,7 @@ __all__ = [
     "MoonshineCacheView",
     "MoonshineDecoderLibraries",
     "MoonshineResidentRuntime",
+    "MoonshineTokenGraph",
     "NoAllocationError",
     "PrefillConfig",
     "Qwen35GGUFFullStackRunner",

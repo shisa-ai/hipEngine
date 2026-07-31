@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Callable, Iterator
 
 import numpy as np
@@ -42,6 +43,28 @@ def _moonshine_self_attention_threads(position: int) -> int:
     return 256
 
 
+def _moonshine_token_graph_bucket(
+    position: int,
+    *,
+    capacity: int = 194,
+) -> tuple[str, int, int]:
+    """Return the general self-attention launch bucket for one decode position."""
+
+    if isinstance(position, bool) or not isinstance(position, int):
+        raise ValueError("position must be an integer")
+    if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
+        raise ValueError("capacity must be a positive integer")
+    if position < 0 or position >= capacity:
+        raise ValueError("position is outside self-cache capacity")
+    if position == 0:
+        return ("position_0", 0, 0)
+    if position == 1:
+        return ("position_1", 1, 1)
+    if position <= 3:
+        return ("positions_2_3", 2, min(3, capacity - 1))
+    return (f"positions_4_{capacity - 1}", 4, capacity - 1)
+
+
 class NoAllocationError(RuntimeError):
     """Raised when a future timed region allocates through hipEngine memory."""
 
@@ -54,7 +77,7 @@ class MoonshineCacheView:
 
 @dataclass(frozen=True)
 class MoonshineDecoderLibraries:
-    """Prebuilt code objects used by the unfused decoder chain."""
+    """Prebuilt code objects used by the resident decoder chain."""
 
     projection: object
     dense_projection: object
@@ -62,6 +85,40 @@ class MoonshineDecoderLibraries:
     glue: object
     mlp: object
     attention: object
+
+
+@dataclass
+class MoonshineTokenGraph:
+    """One captured fixed-address token DAG for a self-cache launch bucket."""
+
+    owner: "MoonshineResidentRuntime"
+    bucket: str
+    minimum_position: int
+    maximum_position: int
+    capture_position: int
+    graph: int
+    graph_exec: int
+    capture_wall_ms: float
+    instantiate_wall_ms: float
+    replay_count: int = 0
+    closed: bool = False
+
+    @property
+    def position_range(self) -> tuple[int, int]:
+        return (self.minimum_position, self.maximum_position)
+
+    def accepts(self, position: int) -> bool:
+        return self.minimum_position <= int(position) <= self.maximum_position
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.owner.runtime.graph_exec_destroy(self.graph_exec)
+        self.owner.runtime.graph_destroy(self.graph)
+        current = self.owner._token_graphs.get(self.bucket)
+        if current is self:
+            del self.owner._token_graphs[self.bucket]
 
 
 class MoonshineResidentRuntime:
@@ -110,6 +167,7 @@ class MoonshineResidentRuntime:
         self.encoder_state_valid = False
         self.decode_position: int | None = None
         self.decoder_libraries: MoonshineDecoderLibraries | None = None
+        self._token_graphs: dict[str, MoonshineTokenGraph] = {}
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         try:
@@ -369,6 +427,8 @@ class MoonshineResidentRuntime:
                 mlp=build_moonshine_mlp(**arguments),
                 attention=build_moonshine_attention(**arguments),
             )
+        if self._token_graphs:
+            self._close_token_graphs()
         self.decoder_libraries = libraries
         return libraries
 
@@ -483,12 +543,41 @@ class MoonshineResidentRuntime:
         )
         self.decode_position = position
 
+    def _require_token_step_ready(self) -> int:
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if self.decoder_libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine cross cache is not ready")
+        if self.decode_position != self.self_cache_length:
+            raise RuntimeError("Moonshine device token/position state is not set")
+        return int(self.decode_position)
+
     def token_step(
         self,
         *,
         boundary_callback: Callable[[str, Tensor], None] | None = None,
     ) -> None:
-        """Enqueue one complete unfused FP16 decoder step on the resident stream."""
+        """Enqueue one complete FP16 decoder step through eager Python dispatch."""
+
+        route_position = self._require_token_step_ready()
+        self._enqueue_token_step(
+            route_position=route_position,
+            stream=self.stream,
+            boundary_callback=boundary_callback,
+        )
+        self.self_cache_length += 1
+        self.decode_position = None
+
+    def _enqueue_token_step(
+        self,
+        *,
+        route_position: int,
+        stream: int,
+        boundary_callback: Callable[[str, Tensor], None] | None = None,
+    ) -> None:
+        """Enqueue the fixed-address token DAG without changing host-owned state."""
 
         if self.closed or self.spec is None or self.weights is None:
             raise RuntimeError("Moonshine runtime is closed")
@@ -497,8 +586,10 @@ class MoonshineResidentRuntime:
             raise RuntimeError("Moonshine decoder kernels are not prepared")
         if not self.cross_cache_valid or not self.encoder_state_valid:
             raise RuntimeError("Moonshine cross cache is not ready")
-        if self.decode_position != self.self_cache_length:
-            raise RuntimeError("Moonshine device token/position state is not set")
+        _moonshine_token_graph_bucket(
+            route_position,
+            capacity=self.spec.self_cache_capacity,
+        )
         from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
             moonshine_cross_attention_parallel_fp16,
             moonshine_self_attention_fp16,
@@ -524,7 +615,6 @@ class MoonshineResidentRuntime:
         )
 
         spec = self.spec
-        stream = self.stream
         hidden = self.tensor("hidden")
         normalized = self.tensor("normalized")
         query = self.tensor("query")
@@ -594,13 +684,13 @@ class MoonshineResidentRuntime:
             )
             self_attention = (
                 moonshine_self_attention_fp16
-                if self.decode_position == 0
+                if route_position == 0
                 else moonshine_self_attention_parallel_fp16
             )
             self_attention_options = (
                 {}
-                if self.decode_position == 0
-                else {"threads": _moonshine_self_attention_threads(self.decode_position)}
+                if route_position == 0
+                else {"threads": _moonshine_self_attention_threads(route_position)}
             )
             self_attention(
                 attention.ptr,
@@ -746,8 +836,112 @@ class MoonshineResidentRuntime:
             library=libraries.glue,
             **common,
         )
+
+    def capture_token_graphs(self) -> tuple[MoonshineTokenGraph, ...]:
+        """Capture one reusable token DAG for each general self-cache launch bucket."""
+
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if self.decoder_libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine cross cache is not ready")
+        if self.decode_position is not None:
+            raise RuntimeError("capture token graphs before setting device decode state")
+        if self._token_graphs:
+            return tuple(self._token_graphs.values())
+
+        representatives = tuple(
+            position
+            for position in (0, 1, 2, 4)
+            if position < self.spec.self_cache_capacity
+        )
+        captures: list[MoonshineTokenGraph] = []
+        try:
+            for position in representatives:
+                bucket, minimum, maximum = _moonshine_token_graph_bucket(
+                    position,
+                    capacity=self.spec.self_cache_capacity,
+                )
+                self.runtime.stream_synchronize(self.stream)
+                graph = 0
+                capture_start = time.perf_counter_ns()
+                self.runtime.stream_begin_capture(self.stream)
+                try:
+                    self._enqueue_token_step(
+                        route_position=position,
+                        stream=self.stream,
+                    )
+                    graph = self.runtime.stream_end_capture(self.stream)
+                except Exception:
+                    try:
+                        self.runtime.stream_end_capture(self.stream)
+                    except Exception:
+                        pass
+                    raise
+                capture_wall_ms = (time.perf_counter_ns() - capture_start) / 1.0e6
+                instantiate_start = time.perf_counter_ns()
+                try:
+                    graph_exec = self.runtime.graph_instantiate(graph)
+                except Exception:
+                    self.runtime.graph_destroy(graph)
+                    raise
+                instantiate_wall_ms = (time.perf_counter_ns() - instantiate_start) / 1.0e6
+                captures.append(
+                    MoonshineTokenGraph(
+                        owner=self,
+                        bucket=bucket,
+                        minimum_position=minimum,
+                        maximum_position=maximum,
+                        capture_position=position,
+                        graph=graph,
+                        graph_exec=graph_exec,
+                        capture_wall_ms=float(capture_wall_ms),
+                        instantiate_wall_ms=float(instantiate_wall_ms),
+                    )
+                )
+        except Exception:
+            for capture in reversed(captures):
+                capture.close()
+            raise
+        self._token_graphs = {capture.bucket: capture for capture in captures}
+        return tuple(captures)
+
+    def graph_token_step(self) -> None:
+        """Launch the captured token DAG selected by the current cache position."""
+
+        route_position = self._require_token_step_ready()
+        assert self.spec is not None
+        bucket, _, _ = _moonshine_token_graph_bucket(
+            route_position,
+            capacity=self.spec.self_cache_capacity,
+        )
+        capture = self._token_graphs.get(bucket)
+        if capture is None or capture.closed:
+            raise RuntimeError(f"Moonshine token graph bucket {bucket!r} is not captured")
+        if not capture.accepts(route_position):
+            raise RuntimeError("Moonshine token graph bucket does not cover decode position")
+        self.runtime.graph_launch(capture.graph_exec, self.stream)
+        capture.replay_count += 1
         self.self_cache_length += 1
         self.decode_position = None
+
+    def token_graph_contract(self) -> dict[str, object]:
+        captures = tuple(self._token_graphs.values())
+        return {
+            "captured": bool(captures),
+            "graph_count": len(captures),
+            "buckets": [capture.bucket for capture in captures],
+            "capture_positions": [capture.capture_position for capture in captures],
+            "capture_wall_ms": sum(capture.capture_wall_ms for capture in captures),
+            "instantiate_wall_ms": sum(capture.instantiate_wall_ms for capture in captures),
+            "replay_count": sum(capture.replay_count for capture in captures),
+        }
+
+    def _close_token_graphs(self) -> None:
+        for capture in reversed(tuple(self._token_graphs.values())):
+            capture.close()
+        self._token_graphs.clear()
 
     def read_token(self) -> int:
         """Synchronize the resident stream and read the selected int64 token."""
@@ -790,6 +984,7 @@ class MoonshineResidentRuntime:
         if self.closed:
             return
         self.closed = True
+        self._close_token_graphs()
         self.decoder_libraries = None
         loaded = self.loaded_model
         try:
@@ -829,5 +1024,6 @@ __all__ = [
     "MoonshineCacheView",
     "MoonshineDecoderLibraries",
     "MoonshineResidentRuntime",
+    "MoonshineTokenGraph",
     "NoAllocationError",
 ]
