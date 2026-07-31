@@ -8608,6 +8608,30 @@ The remaining attention sequence is:
      weights arrive faster. Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-halfdot-rejected.json).
 
+181. Consume load-time sparse-layer validation instead of walking the immutable
+     contract in every MoE call.
+     **Rejected at the complete wall and removed.**
+
+     `LagunaGGUFResidentSession._validate_resident_weights()` already calls
+     `validate_laguna_moe_layer()` for all 47 sparse layers after
+     materialization. The candidate let only that immutable resident path skip
+     the repeated Python shape/layout/byte-stride walk during c=1 and rows
+     execution; standalone callers still validated by default. Focused
+     RED/GREEN covers both ownership paths. GPU kernels, launches, pointers,
+     arithmetic, and resident bytes are unchanged.
+
+     Seven same-resident p512/d128 pairs reject the cleanup:
+     **23.091996 -> 23.089754 tok/s (-0.00971%)**, endpoint median
+     **+0.004206 ms/token**, paired median **+0.007185 ms/token**, and only
+     **3/7** candidate wins. Generated IDs, final positions, repeat
+     determinism, and allocation recovery remain exact.
+
+     Remove the temporary validation API, session route, comparison selector,
+     and tests. The contract walk is already submitted far enough ahead of GPU
+     execution to remain hidden; it does not explain the measured feed gaps.
+     Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-hotpath-prevalidation-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8625,7 +8649,8 @@ the saving is not exposed on the two-queue wall. Item 180 also closes
 source-F16 dot2: the exact leaf already streams at about 235 GB/s. The next
 bounded attack must therefore contract an uncovered dependency boundary or
 the 1.501782-ms/token feed gap, rather than improving another independently
-overlapped or bandwidth-ceiling leaf:
+overlapped or bandwidth-ceiling leaf. Item 181 additionally proves that the
+gap is not the redundant resident-layer Python validation walk:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
