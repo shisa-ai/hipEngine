@@ -111,6 +111,14 @@ production advances **22.891692 -> 23.017271 tok/s (+0.54858%,
 -0.238335 ms/token)**, with exact trajectories, unchanged residency, and a
 remaining same-GGUF Vulkan gap of **0.616114 ms/token / 1.4385%**.
 [`F16 tile2 production`](results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json).
+The refreshed 127-transition census shows the tile2 family saving transfers
+to the critical path: source-F16 falls **24.349 -> 24.128 ms/token**,
+union-busy falls **42.157 -> 41.942**, and span falls
+**43.774 -> 43.565 ms/token**, while uncovered queue idle remains
+**1.624 ms/token**. Device-union work is now **0.887 ms/token faster** than
+Vulkan's complete wall; host queue feed is the primary remaining comparator
+gap.
+[`post-tile2 wall census`](results/2026-07-31-gfx1151-laguna-post-f16-tile2-wall-reprofile.json).
 The corresponding two-queue census measures **42.158779 ms/token** of union
 GPU busy time inside a **43.834293-ms/token** dispatch span. That is already
 **1.500421 ms/token below** Vulkan's logged kernel sum even though clean

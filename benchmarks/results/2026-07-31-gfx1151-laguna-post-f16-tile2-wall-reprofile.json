@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T15:47:00+09:00",
+  "kind": "hipengine_laguna_decode_two_queue_wall_census",
+  "status": "accepted_attribution",
+  "performance_claim": false,
+  "source_revision": "1e4879ce13cb5fde278446d7e9d7bab6a7d5051f",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 481,
+    "runtime_copies_per_token": 2,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "two_queue_timeline_ms_per_token": {
+    "inclusive_kernel_sum": 47.369596,
+    "kernel_interval_union_busy": 41.942041,
+    "dispatch_span": 43.565005,
+    "median_union_idle": 1.6241,
+    "queue_overlap": 5.427555,
+    "primary_queue_kernel_sum": 41.942041,
+    "decode_shared_queue_kernel_sum": 5.427342,
+    "primary_queue_calls": 387,
+    "decode_shared_queue_calls": 94,
+    "note": "Every secondary-queue interval remains hidden under primary-queue work; union-busy equals primary-queue inclusive work."
+  },
+  "inclusive_family_medians_ms_per_token": {
+    "source_f16_projection_composites": 24.12844,
+    "selected_q4_gate_up": 8.944545,
+    "selected_q4_q6_down": 4.743139,
+    "dense_shared_quant_projection": 5.835385,
+    "router": 1.061945,
+    "attention_total": 1.112693,
+    "swa_attention": 0.71186,
+    "global_attention": 0.400833,
+    "norm_rope_outside_projection_composites": 0.414537,
+    "lm_head_argmax": 1.123508
+  },
+  "change_from_pre_tile2_census_ms_per_token": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-split-priority-wall-reprofile.json",
+    "inclusive_kernel_sum": -0.253874,
+    "kernel_interval_union_busy": -0.215442,
+    "dispatch_span": -0.208798,
+    "median_union_idle": -0.001679,
+    "queue_overlap": -0.029846,
+    "source_f16_projection_composites": -0.22094,
+    "interpretation": "The F16 tile2 device-work reduction transfers nearly one-for-one to the critical-path union and span; uncovered queue idle is unchanged."
+  },
+  "same_gguf_vulkan": {
+    "revision": "c0bc8591e",
+    "production_tok_s": 23.348381,
+    "production_wall_ms_per_token": 42.8295220983,
+    "hipengine_kernel_interval_union_delta_vs_vulkan_wall_ms": -0.8874810983,
+    "hipengine_clean_production_tok_s": 23.017271331798604,
+    "hipengine_clean_production_wall_ms_per_token": 43.445636347801546,
+    "hipengine_clean_production_wall_delta_ms": 0.6161142495,
+    "hipengine_throughput_gap_percent": -1.438527
+  },
+  "target_24_tok_s": {
+    "wall_ms_per_token": 41.6666666667,
+    "current_wall_gap_ms_per_token": 1.7789696811,
+    "union_busy_gap_ms_per_token": 0.2753743333,
+    "interpretation": "Perfect queue feed would nearly reach 24 tok/s; only 0.275 ms/token of critical-path device work remains above the target wall."
+  },
+  "repeated_union_idle_boundaries_ms_per_token": {
+    "selected_down_to_moe_tail": 0.348999,
+    "source_f16_output_to_router": 0.259604,
+    "router_to_selected_gate_up": 0.243998,
+    "swa_projection_head_kv_to_attention": 0.198787,
+    "selected_gate_up_to_selected_down": 0.187341,
+    "global_projection_head_kv_to_attention": 0.064117
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-post-tile2-census.87oxzf --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-post-tile2-census.87oxzf/bench.json",
+    "segmentation": "Sort by start timestamp and dispatch id; discard warmup128 and timed prefill512; report medians over the final 127 length-one embedding-through-published-control-argmax segments; merge overlapping intervals across both queues.",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "7a38a028a7e31e8d85a30a61b6acf3a68140880c3bcfc923a39e6ea64ecbb50b",
+    "bench_sha256": "3cd78dba54cb8ce0f25c104371c8cbfa6aafadfbc25bd00df2bf99692ce7035a"
+  },
+  "interpretation": {
+    "result": "Tile2 removes real critical-path device work, but the remaining Vulkan gap is dominated by 1.624 ms/token of uncovered queue-feed idle.",
+    "primary_bottleneck": "Host enqueue order leaves the primary queue idle after router selection while the host submits the secondary shared branch.",
+    "next_screen": "Keep the after-router event and all kernels unchanged, submit selected gate/up on the primary queue before enqueueing the secondary shared branch, and hide the host submission delay under selected gate/up execution."
+  }
+}

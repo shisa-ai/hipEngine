@@ -8132,6 +8132,35 @@ The remaining attention sequence is:
      [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json).
 
+162. Reprofile the post-tile2 production critical path.
+     **Complete; queue feed is the primary remaining Vulkan gap.**
+
+     The clean 127-transition census keeps **481 model kernels + two D2H
+     copies/token**. Tile2 lowers source-F16 work
+     **24.349380 -> 24.128440 ms/token**, inclusive work
+     **47.623470 -> 47.369596**, interval-union busy
+     **42.157483 -> 41.942041**, and dispatch span
+     **43.773803 -> 43.565005**. The **0.220940-ms** family saving therefore
+     transfers almost one-for-one to the critical path. Median uncovered idle
+     remains **1.624100 ms/token**.
+
+     The distinction from llama.cpp is now sharper: hipEngine's device-union
+     work is **0.887481 ms/token faster** than Vulkan's complete
+     **42.829522-ms/token** production wall, while hipEngine clean wall remains
+     **0.616114 ms/token slower**. Reaching **24 tok/s** needs
+     **1.778970 ms/token** from clean wall, but only **0.275374 ms/token** from
+     union-busy work after perfect queue feed.
+
+     The next non-repeated schedule seam is host enqueue order, not a new
+     dependency point. Keep the retained after-router event, normal-priority
+     shared stream, kernels, and overlap. Submit selected gate/up to the
+     primary queue immediately after recording the event, then enqueue the
+     secondary shared branch while that **8.944545-ms/token** family runs.
+     This moves the host's shared-wrapper submission delay under device work
+     instead of leaving **0.243998 ms/token** between router and selected
+     gate/up:
+     [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-tile2-wall-reprofile.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
