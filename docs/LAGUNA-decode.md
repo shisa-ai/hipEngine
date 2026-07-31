@@ -9016,6 +9016,34 @@ The remaining attention sequence is:
      eliminates many Python→ctypes boundaries together:
      [`rejected`](../benchmarks/results/2026-08-01-gfx1151-laguna-ctypes-hot-wrapper-slimming-rejected.json).
 
+195. Replace raw Q6_K shared-down residency with byte-neutral Q6T16.
+     **Rejected and completely removed.**
+
+     The existing dense Q6T16 owner looks compelling in isolation. Across all
+     **23** actual Q6 shared-down weights it wins **253/253** counterbalanced
+     pairs, moves the family leaf **0.363864 -> 0.291356 ms
+     (-19.927%)**, preserves every tested BF16 output bit, and uses exactly
+     the same **2,580,480 bytes/weight** as raw Q6_K. The production screen
+     preserves the retained one-call shared-down+D9 host boundary.
+
+     The complete two-queue result rejects the extrapolation:
+
+     | p512/d128 | quiet production | Q6T16 shared down | Delta |
+     | --- | ---: | ---: | ---: |
+     | decode | **23.220755 tok/s** | 23.214558 tok/s | **-0.02669%** |
+     | wall/token | **43.065 ms** | 43.076 ms | **+0.011496 ms** |
+     | final token | **74825** | 9253 | **trajectory mismatch** |
+
+     The secondary shared branch becomes faster, but that saving remains
+     hidden behind the primary selected-expert branch and does not shorten the
+     critical path. Actual recurrent activations also expose arithmetic
+     differences not covered by the synthetic one-row BF16 leaf. Remove the
+     materialization route, dispatch table entry, native-batch alias,
+     validation route, and tests. Raw Q6_K remains the shared-down resident
+     layout:
+     [`leaf`](../benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-leaf.json) ·
+     [`runtime rejection`](../benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-runtime-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -9058,7 +9086,10 @@ signal vanishes under the counterbalanced steady-state gate.
 Item 193 retains the smaller host-feed win from process-wide registry
 memoization, but its **0.015-0.039 ms/token** saving is not enough to close the
 remaining comparator gap alone. Item 194 then rejects broad per-wrapper ctypes
-slimming at **-0.09311%**. The next executor must span a materially longer
+slimming at **-0.09311%**. Item 195 shows why a **19.93%** faster concurrent
+shared-down leaf is also not a wall win: the saving stays hidden behind the
+selected-expert branch and the replacement changes the recurrent trajectory.
+The next executor must span a materially longer
 fixed launch schedule while preserving routed IDs, the two-stream shared
 branch, and the any-order output→router dependency.
 Source census:
