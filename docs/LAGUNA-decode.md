@@ -7559,6 +7559,40 @@ The remaining attention sequence is:
      instructions. Production remains **22.780604 tok/s /
      43.896992 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-lb2-codegen-equivalent.json).
+145. Transfer llama.cpp Vulkan's streaming-weight cache premise to the exact
+     source-F16 decode composites.
+     **Retained and default on gfx1151; tracked-clean publication pending.**
+     Source-F16 Q/K/V/gate and output weights are consumed once per layer,
+     while activations and attention working sets are small enough to reuse.
+     The exact candidate changes only those FP16 weight reads to
+     `__builtin_nontemporal_load`. Fixed-K column ownership, activation loads,
+     F32 FMA/reduction association, BF16 projection and recurrent boundaries,
+     launch grids, counters, resident bytes, and dispatch count remain fixed.
+
+     All four natural leaf roles are byte-exact and faster. Full/SWA
+     QKV+gate improve **0.222357 -> 0.215101 ms (-3.263%)** and
+     **0.301776 -> 0.291756 ms (-3.320%)**; full/SWA output improve
+     **0.165555 -> 0.160563 ms (-3.015%)** and
+     **0.247186 -> 0.238511 ms (-3.509%)**. The 12-global/36-SWA weighting
+     falls **24.417559 -> 23.597587 ms/token (-3.358%)**, and effective
+     QKV weight bandwidth rises from **227.7-230.8 GB/s** to
+     **235.4-238.7 GB/s**.
+
+     Natural global/SWA projection→head/KV fixtures and K6144/K9216
+     output→add/RMSNorm fixtures match every output/cache/state byte and reset
+     every completion counter. Cache-only profiling names the intended
+     `<GlobalSpans,true>` and `<K,true>` templates at
+     local256/VGPR24/SGPR128/LDS512/scratch0.
+
+     Seven counterbalanced same-resident p512/d128 pairs all improve
+     **22.792512 -> 22.855773 tok/s (+0.27755%)**. Endpoint medians save
+     **0.121436 ms/token** and paired deltas save **0.123855 ms/token**.
+     Every pair preserves token **2930 -> 74107**, final position **638**,
+     generated-ID SHA-256 `94f803f7...bda32`,
+     **79,066,169,172-byte** residency, determinism, and complete allocation
+     recovery. Promote the gfx1151 capability with constructor `false`
+     rollback; peer backends remain unchanged:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json).
 
 Current exact decode checkpoint:
 
@@ -7584,6 +7618,7 @@ Current exact decode checkpoint:
 | hipEngine retained c=1 routed/shared overlap gate | **22.749657 tok/s** | **43.957 ms** | **+98.400%** |
 | hipEngine prior tracked-clean c=1 routed/shared overlap production | **22.752894 tok/s** | **43.950 ms** | **+98.426%** |
 | hipEngine current tracked-clean paired-Q4 selected-down production | **22.780604 tok/s** | **43.897 ms** | **+98.668%** |
+| hipEngine retained source-F16 non-temporal same-resident gate | **22.855773 tok/s** | **43.753 ms** | **+99.323%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining tracked-clean wall gap | — | **1.067 ms/token** | hipEngine is **2.432%** below Vulkan throughput |
 

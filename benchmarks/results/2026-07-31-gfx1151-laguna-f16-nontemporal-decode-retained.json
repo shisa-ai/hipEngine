@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_decode_kernel_retention",
+  "status": "retained_default_pending_clean_publication",
+  "performance_claim": true,
+  "created_at": "2026-07-31T09:19:00+09:00",
+  "scope": "gfx1151 Poolside Laguna S 2.1 Q4_K_M BF16-KV eager c=1 source-F16 attention projections",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "change": {
+    "description": "Use cache-bypassing loads for the one-pass FP16 weight streams inside the exact projection/head/KV and output-projection/add/RMSNorm decode composites. Activation loads, fixed-K ownership, F32 FMA/reduction association, BF16 boundaries, grids, launches, and resident bytes are unchanged.",
+    "source_premise": "llama.cpp Vulkan's fast non-quant path treats decode weights as streaming traffic while preserving cache for the much smaller reused activation and attention working sets.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": 0,
+    "launch_count_changed": 0,
+    "rollback": "LagunaGGUFResidentSession(use_f16_nontemporal_decode=False)"
+  },
+  "correctness": {
+    "natural_shape_output_mismatches": 0,
+    "projection_head_kv_state_mismatches": 0,
+    "completion_counter_nonzero": 0,
+    "full_decode_generated_ids_exact": true,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "kl": 0.0,
+    "top1_agreement_percent": 100.0,
+    "lifecycle_recovered": true
+  },
+  "leaf": {
+    "protocol": "four natural source-F16 roles, 21 counterbalanced samples x 20 launches after 5 warmups",
+    "full_qkv_ms": {
+      "control": 0.22235660552978515,
+      "candidate": 0.21510050296783448,
+      "delta_percent": -3.26327277063001,
+      "effective_weight_gb_s": {
+        "control": 227.68183512865536,
+        "candidate": 235.36235062904782
+      }
+    },
+    "swa_qkv_ms": {
+      "control": 0.30177605152130127,
+      "candidate": 0.2917557954788208,
+      "delta_percent": -3.3204278444120217,
+      "effective_weight_gb_s": {
+        "control": 230.79493435244902,
+        "candidate": 238.72150983563213
+      }
+    },
+    "full_output_ms": {
+      "control": 0.16555454730987548,
+      "candidate": 0.1605631947517395,
+      "delta_percent": -3.014929302300262
+    },
+    "swa_output_ms": {
+      "control": 0.24718575477600097,
+      "candidate": 0.23851149082183837,
+      "delta_percent": -3.509208676698705
+    },
+    "weighted_family_ms_per_token": {
+      "control": 24.417558860778804,
+      "candidate": 23.597586679458615,
+      "delta_percent": -3.3581251344387497,
+      "saving": 0.819972181320189
+    },
+    "all_shapes_byte_exact": true,
+    "all_shapes_faster": true
+  },
+  "same_resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix rows 2048, attention rows 128",
+    "protocol": "seven counterbalanced pairs in one resident session; load excluded",
+    "control_median_tok_s": 22.79251151881731,
+    "candidate_median_tok_s": 22.85577267457142,
+    "throughput_delta_percent": 0.2775523693467452,
+    "control_ms_per_token": 43.87405921345738,
+    "candidate_ms_per_token": 43.75262277230151,
+    "endpoint_wall_delta_ms_per_token": -0.12143644115587193,
+    "paired_median_wall_delta_ms_per_token": -0.12385480538538592,
+    "paired_wins": 7,
+    "pairs": 7
+  },
+  "trace": {
+    "protocol": "cache-only rocprofv3 kernel trace over natural global/SWA and K6144/K9216 fixtures; no compiler under profiler",
+    "expected_projection_head_kv_templates": [
+      "laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel<true, true>",
+      "laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel<false, true>"
+    ],
+    "expected_output_templates": [
+      "laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<6144, true>",
+      "laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<9216, true>"
+    ],
+    "resources": "local256/VGPR24/SGPR128/LDS512/scratch0",
+    "expected_symbols_present": true
+  },
+  "commands": {
+    "leaf": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 -u scripts/laguna_f16_decode_onebarrier_leaf.py --candidate nontemporal --samples 21 --warmups 5 --burst 20 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-nontemporal-fused-all-leaf.json",
+    "model_gate": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-f16-nontemporal-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-f16-nontemporal-sevenpair.json",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-nt-trace.Fk2Cx3 --output-file trace -- .venv/bin/python3 -m pytest -q <two nontemporal projection-head-KV nodes> <two output-add-RMSNorm natural-shape nodes>",
+    "focused_tests": "uv run pytest -q tests/test_gfx1151_backend.py tests/test_laguna_gguf_runner.py::{test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi,test_laguna_f16_output_add_rmsnorm_runtime_uses_registered_resident_abi} tests/test_laguna_f16_projection.py::{test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes,test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes,test_laguna_f16_projection_quad_matches_triple_plus_single_bytes} tests/test_laguna_head_kv_fusion.py::test_laguna_f16_projection_head_kv_is_bit_exact_to_quad_chain"
+  },
+  "raw_sha256": {
+    "leaf": "5437cf782081ddf732897e8eeda539dd565c9a8ff1ed574dcc39f758727a4080",
+    "seven_pair": "0edb8e4cd29384dfc0375a6181235753b548695105b132efc45725ef7bb3a3ce",
+    "kernel_trace_csv": "6c174127e4c1a752422e4e05a27a2a5d27478be12d0a2cdbfedd638d420c2434"
+  },
+  "source_revision": "851b0ea66642695ccebbb35a2f9594e67f2b7758",
+  "decision": "Retain as the gfx1151 default. Every natural leaf and all seven model pairs improve, exact state and resident bytes are unchanged, and cache-only tracing proves the intended production templates. Publish a tracked-clean selector-unset run before updating the canonical topline."
+}

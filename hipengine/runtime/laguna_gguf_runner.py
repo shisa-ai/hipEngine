@@ -1498,6 +1498,7 @@ def launch_laguna_f16_projection_head_kv(
     stream: int,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
+    use_nontemporal: bool = False,
 ) -> bool:
     """Launch the exact c=1 source-F16 projection/head/KV composite."""
 
@@ -1514,11 +1515,18 @@ def launch_laguna_f16_projection_head_kv(
     expected_q_heads = 48 if attention_type == FULL_ATTENTION else 72
     if num_q_heads != expected_q_heads:
         return False
-    variant = (
-        "global_fixedk_bf16_f32_spans"
-        if attention_type == FULL_ATTENTION
-        else "swa_fixedk_bf16_f32_spans"
-    )
+    if attention_type == FULL_ATTENTION:
+        variant = (
+            "global_fixedk_nontemporal_bf16_f32_spans"
+            if use_nontemporal
+            else "global_fixedk_bf16_f32_spans"
+        )
+    else:
+        variant = (
+            "swa_fixedk_nontemporal_bf16_f32_spans"
+            if use_nontemporal
+            else "swa_fixedk_bf16_f32_spans"
+        )
     key = KernelKey(
         backend,
         _F16_PROJECTION_HEAD_KV_LAYER,
@@ -1583,6 +1591,7 @@ def launch_laguna_f16_output_add_rmsnorm(
     stream: int,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
+    use_nontemporal: bool = False,
 ) -> bool:
     """Launch the exact c=1 output-projection/add/RMSNorm composite."""
 
@@ -1596,7 +1605,11 @@ def launch_laguna_f16_output_add_rmsnorm(
         backend,
         _F16_OUTPUT_ADD_RMSNORM_LAYER,
         _F16_OUTPUT_ADD_RMSNORM_QUANT,
-        "fixedk_onebarrier_bf16_out",
+        (
+            "fixedk_nontemporal_bf16_out"
+            if use_nontemporal
+            else "fixedk_onebarrier_bf16_out"
+        ),
     )
     if not is_registered(key):
         return False
@@ -2339,6 +2352,7 @@ class LagunaGGUFResidentSession:
         use_f16_attention_quad_decode: bool | None = None,
         use_f16_projection_head_kv_decode: bool | None = None,
         use_f16_output_add_rmsnorm_decode: bool | None = None,
+        use_f16_nontemporal_decode: bool | None = None,
         use_mixed_q5_q6_attention: bool | None = None,
         use_mixed_q6_fixed_meta_attention: bool | None = None,
         use_mixed_local32_fixed_meta_attention: bool | None = None,
@@ -2656,6 +2670,15 @@ class LagunaGGUFResidentSession:
             )
             if use_f16_output_add_rmsnorm_decode is None
             else use_f16_output_add_rmsnorm_decode
+        )
+        self.use_f16_nontemporal_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_F16_NONTEMPORAL_DECODE",
+                False,
+            )
+            if use_f16_nontemporal_decode is None
+            else use_f16_nontemporal_decode
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -5241,6 +5264,7 @@ class LagunaGGUFResidentSession:
                 stream=stream,
                 libraries=self.libraries,
                 runtime=self.runtime,
+                use_nontemporal=self.use_f16_nontemporal_decode,
             )
         if not projection_head_kv:
             launch_laguna_attention_projections(
@@ -5366,6 +5390,7 @@ class LagunaGGUFResidentSession:
                 stream=stream,
                 libraries=self.libraries,
                 runtime=self.runtime,
+                use_nontemporal=self.use_f16_nontemporal_decode,
             )
         if not output_add_rmsnorm:
             launch_laguna_weight_linear(

@@ -517,19 +517,23 @@ def test_laguna_p4_fused_head_kv_is_bit_exact_to_registered_chain(
         ),
     ],
 )
+@pytest.mark.parametrize("nontemporal", [False, True])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_f16_projection_head_kv_is_bit_exact_to_quad_chain(
     attention_type: str,
     q_heads: int,
     rope: LagunaRopeConfig,
     position: int,
+    nontemporal: bool,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
         laguna_global_f16_projection_head_kv_bf16_spans,
+        laguna_global_f16_projection_head_kv_nontemporal_bf16_spans,
         laguna_global_head_rmsnorm_rope_write_kv_f32_spans,
         laguna_swa_f16_projection_head_kv_bf16_spans,
+        laguna_swa_f16_projection_head_kv_nontemporal_bf16_spans,
         laguna_swa_head_rmsnorm_rope_write_kv_f32_spans,
     )
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
@@ -627,10 +631,18 @@ def test_laguna_f16_projection_head_kv_is_bit_exact_to_quad_chain(
         )
         if attention_type == FULL_ATTENTION:
             control_head_kv = laguna_global_head_rmsnorm_rope_write_kv_f32_spans
-            fused = laguna_global_f16_projection_head_kv_bf16_spans
+            fused = (
+                laguna_global_f16_projection_head_kv_nontemporal_bf16_spans
+                if nontemporal
+                else laguna_global_f16_projection_head_kv_bf16_spans
+            )
         else:
             control_head_kv = laguna_swa_head_rmsnorm_rope_write_kv_f32_spans
-            fused = laguna_swa_f16_projection_head_kv_bf16_spans
+            fused = (
+                laguna_swa_f16_projection_head_kv_nontemporal_bf16_spans
+                if nontemporal
+                else laguna_swa_f16_projection_head_kv_bf16_spans
+            )
         control_head_kv(
             control_projection[0].ptr,
             control_projection[1].ptr,

@@ -14,6 +14,21 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna gfx1151 source-F16 non-temporal decode comparison seam
+
+- Added 2026-07-31 as a gfx1151 default plus
+  `--compare-f16-nontemporal-decode` same-resident profiling seam after all
+  four natural leaves improved **3.015-3.509%** and all seven exact
+  p512/d128 pairs improved **22.792512 -> 22.855773 tok/s (+0.27755%)**.
+- Keep the comparison switch through tracked-clean selector-unset publication
+  and the next source-F16/kernel-span census, then remove the CLI switch.
+  Retain constructor `false` and the cached-load registered composites as the
+  exact peer-backend/rollback path.
+- The standalone single/triple/quad non-temporal wrappers are leaf diagnostics,
+  not production dispatch. After the census freezes the family attribution,
+  collapse any wrappers no longer used by a retained benchmark or exact
+  regression test while preserving the production composite variants.
+
 ## Laguna gfx1151 exact global local1024 selector
 
 - Added 2026-07-31 as a default-off `LAGUNA_GLOBAL_LOCAL1024` capability and

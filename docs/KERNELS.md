@@ -2480,6 +2480,19 @@ gap. Evidence:
 
 ### Laguna post-350 selected-expert screens
 
+gfx1151 source-F16 decode now applies cache-bypassing weight loads inside the
+exact projection→head/KV and output-projection→add/RMSNorm composites.
+Fixed-K ownership, FP32 association, BF16 boundaries, grids, launches, and
+resident bytes are unchanged. The four natural leaves are byte-exact and
+improve **3.015-3.509%**; the weighted source-F16 family falls
+**24.417559 -> 23.597587 ms/token (-3.358%)**. All seven same-resident
+p512/d128 pairs improve **22.792512 -> 22.855773 tok/s (+0.27755%)**.
+Cache-only tracing names the intended non-temporal global/SWA and
+K6144/K9216 templates at local256/VGPR24/LDS512/scratch0. gfx1151 defaults
+the path with constructor-false rollback; peer backends retain cached loads.
+Evidence:
+`benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json`.
+
 gfx1151 c=1 now reuses the exact routed/shared branch-concurrency resources
 previously admitted for row-batched prefill. After router correction selection,
 the specialized shared Q4T16 gate/up+SiLU and shared-down kernels run on the
