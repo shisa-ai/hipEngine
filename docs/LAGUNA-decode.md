@@ -8949,6 +8949,29 @@ The remaining attention sequence is:
      **23.231783 tok/s / 43.044479 ms/token**:
      [`rejected`](../benchmarks/results/2026-08-01-gfx1151-laguna-moe-tail-anyorder-rejected.json).
 
+192. Batch router selection, the existing shared-ready event, and production
+     selected gate/up inside one native host call.
+     **Rejected and completely removed.**
+
+     This preserves the two-stream dependency exactly and invokes the
+     unchanged GPU wrappers, grids, arithmetic, and resident allocations.
+     Live HIP proves byte-identical routing tensors, selected IDs, and BF16
+     gate/up output. A one-pair directional screen appears positive
+     (**23.215030 -> 23.235774 tok/s**), but the required seven-pair
+     counterbalance reverses it:
+
+     | p512/d128 median | separate calls | native host batch | Delta |
+     | --- | ---: | ---: | ---: |
+     | 7x alternating | **23.237538 tok/s** | 23.233438 tok/s | **-0.01764%** |
+     | wall/token | **43.033819 ms** | 43.041414 ms | **+0.007594 ms** |
+
+     The steady-state device feed is already tight enough that collapsing
+     this adjacent host handoff is neutral-to-negative. Remove the wrapper,
+     registry key, runtime route, constructor/setter, harness option, and
+     tests. A future native executor must own a materially longer schedule,
+     not another two-kernel seam:
+     [`rejected`](../benchmarks/results/2026-08-01-gfx1151-laguna-router-gate-host-batch-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8986,6 +9009,8 @@ with an isolated on-device continuation while preserving producer ordering.
 Item 191 closes the analogous selected-down→D9 continuation: unlike the
 output→router consumer, D9 waits long enough and with enough resident lanes
 to slow the producer it is intended to overlap.
+Item 192 closes native host batching at router-select→gate/up: its first-pair
+signal vanishes under the counterbalanced steady-state gate.
 Source census:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
