@@ -123,6 +123,10 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
     - [x] Prove fake-runtime state/lifecycle contracts and real gfx1151 graph/eager parity with zero timed allocation.
     - [x] Compare eager Python launch, available C-dispatch routes, graph replay, and capture/instantiate startup cost.
     - [x] Retain or reject graph replay from repeated selected-position and complete-generation evidence, then publish the result.
+- [ ] Close the Phase-4 bounded-fusion and megakernel ladder.
+  - [ ] Model each prototype rung from the final graph-era profile, 40-CU cooperative residency, synchronization, and weight traffic.
+  - [ ] Prototype only an admitted rung; otherwise apply the plan's Amdahl stop rule and retain explicit fallbacks.
+  - [ ] Publish the measured megakernel verdict and Phase-5 handoff.
 
 ## Notes
 
