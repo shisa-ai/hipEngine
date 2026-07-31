@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T17:58:22+09:00",
+  "kind": "hipengine_laguna_global_wmma_qk_current_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "repo": {
+    "baseline_revision": "01772fe26a7e47bfb85947a80eb8f3c7a4497529"
+  },
+  "scope": "actual-shape global-attention decode leaf",
+  "workload": {
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 4096,
+    "live_counts": [
+      513,
+      576,
+      639
+    ],
+    "control": "retained exact mixed40 local1024 producer-max DPP-QK dense-prefix probability-cache scalar-FP32 attention",
+    "candidate": "preserved three-term BF16 WMMA-QK hybrid with producer max, ordered exp32 softmax, and exact scalar-FP32 PV"
+  },
+  "protocol": {
+    "timing": "counterbalanced HIP events",
+    "warmups": 5,
+    "samples": 9,
+    "burst": 50,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate wmma-qk-three-term-mixed32-exact-pv-vs-current --samples 9 --warmups 5 --burst 50 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-wmma-qk-vs-current.json",
+    "raw_artifact": {
+      "path": "/tmp/laguna-global-wmma-qk-vs-current.json",
+      "sha256": "68daf28a7ea64a1cfe0fb447f0c18c3b5861ae35e7463b370fe85a2ccc8c5d0a"
+    }
+  },
+  "rows": [
+    {
+      "live_count": 513,
+      "control_ms": 0.0313386607170105,
+      "candidate_ms": 0.05904252052307129,
+      "latency_change_percent": 88.40154356380407,
+      "context_f32_byte_exact": false,
+      "context_max_abs": 5.587935447692871e-09,
+      "gated_bf16_mismatches": 1
+    },
+    {
+      "live_count": 576,
+      "control_ms": 0.03369271993637085,
+      "candidate_ms": 0.06319754123687744,
+      "latency_change_percent": 87.5703159502315,
+      "context_f32_byte_exact": false,
+      "context_max_abs": 3.725290298461914e-09,
+      "gated_bf16_mismatches": 1
+    },
+    {
+      "live_count": 639,
+      "control_ms": 0.03651324033737183,
+      "candidate_ms": 0.07348085880279541,
+      "latency_change_percent": 101.24442017156908,
+      "context_f32_byte_exact": false,
+      "context_max_abs": 3.725290298461914e-09,
+      "gated_bf16_mismatches": 0
+    }
+  ],
+  "decision": {
+    "result": "reject before recurrent-quality gate",
+    "reason": "The hybrid's earlier 15.9-20.9% gain was measured against a superseded mixed32 owner. Against the retained local1024 owner it is 87.6-101.2% slower at all natural live-count seams and is not BF16 exact at two of three seams.",
+    "production_change": false
+  },
+  "llama_cpp_audit": {
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "attention_host_source": "ggml/src/ggml-vulkan/ggml-vulkan.cpp:10476",
+    "command_submission_source": "ggml/src/ggml-vulkan/ggml-vulkan.cpp:16540",
+    "findings": [
+      "Decode N=1 is folded into the GQA ratio when the query/KV head ratio fits the flash-attention block, avoiding a scalar N=1 path.",
+      "The comparator chooses F16 cooperative accumulation for F16 K/V unless F32 precision is explicitly requested.",
+      "The flash-attention path uses online tiled softmax and split-K sized to expose about twice the shader-core count when the unsplit grid is too small.",
+      "Vulkan batches graph nodes into command buffers and submits by accumulated work/node count while explicitly overlapping CPU command generation with GPU execution."
+    ]
+  },
+  "production": {
+    "tok_per_s": 23.0172713318,
+    "ms_per_token": 43.4456363478
+  }
+}

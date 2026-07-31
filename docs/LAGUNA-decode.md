@@ -8383,6 +8383,37 @@ The remaining attention sequence is:
      43.445636 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-persistent-selected-ffn-rejected.json).
 
+173. Rebaseline the preserved Vulkan-style WMMA-QK hybrid against the current
+     exact global-attention owner.
+     **Rejected before recurrent quality and left diagnostic-only.**
+
+     The older three-term BF16 WMMA-QK experiment combines cooperative QK with
+     producer max, ordered FP32 softmax, and the scalar FP32 PV path. It had
+     improved **15.9-20.9%** against the then-current mixed32 owner, leaving an
+     unfinished recurrent-quality gate. That comparison is now superseded by
+     the retained exact mixed40/local1024 owner.
+
+     A direct cached 9x50 actual-shape screen at live **513 / 576 / 639**
+     measures **0.031339 -> 0.059043 ms (+88.402%)**,
+     **0.033693 -> 0.063198 ms (+87.570%)**, and
+     **0.036513 -> 0.073481 ms (+101.244%)**. The hybrid also changes one
+     gated BF16 output at the first two seams. It therefore fails the current
+     performance prerequisite before recurrent quality; do not spend a
+     576-step gate on this superseded primitive.
+
+     The accompanying source audit at llama.cpp Vulkan `c0bc8591e` separates
+     two comparator advantages. Its flash-attention host path folds decode
+     `N=1` into the six- or nine-head GQA ratio, uses F16 cooperative
+     accumulation for the same-GGUF F16 K/V path, online tiled softmax, and
+     occupancy-driven split-K. Independently, its graph executor batches nodes
+     into command buffers by work/node budget and overlaps CPU command
+     recording with GPU execution. hipEngine has already transferred the
+     quality-safe grouped ownership and exact occupancy mechanisms; copying
+     the comparator's looser cooperative arithmetic is neither exact nor fast
+     against today's owner. The remaining transferable gap is submission/feed,
+     not this old QK leaf:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-wmma-qk-current-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -8469,8 +8500,11 @@ and PV, plus split-K when the grouped grid does not fill the device. With F16
 K/V and default precision, `f32acc` is false; the shader therefore uses the
 fast F16-accumulation contract. hipEngine's BF16-KV path preserves the
 established scalar FP32 QK/PV association. The prior three-term cooperative
-screens proved the cost of this distinction: they were much faster pointwise
-but recurrently exceeded KL even when only a handful of BF16 outputs changed.
+screens proved the cost of this distinction: they were faster against their
+then-current owners but recurrently exceeded KL even when only a handful of
+BF16 outputs changed. The preserved global-QK hybrid is now also
+**87.6-101.2% slower** than the retained exact local1024 owner at natural
+live-count seams, so its unfinished recurrent gate is closed on performance.
 The next attention-core attempt must therefore add a cheap, independently
 valid exact-replay certificate or preserve exact association; another
 unqualified F16/BF16 cooperative port is already closed.
@@ -8527,6 +8561,12 @@ Next attention-core attack:
    **0.042101 ms/token**:
    [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-production.json),
    [`census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-global-local1024-wall-reprofile.json).
+7. **Closed against the current owner:** the preserved three-term
+   WMMA-QK/exact-PV hybrid loses **87.6-101.2%** at live 513/576/639 and
+   changes one gated BF16 value at two seams. Its earlier pointwise win was
+   against a superseded mixed32 owner. Stop before recurrent quality and keep
+   the primitive diagnostic-only:
+   [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-wmma-qk-current-rejected.json).
 
 The Vulkan review changes the next move from another attention-math rewrite
 to exact device-dispatch contraction. llama.cpp does not expose a reusable

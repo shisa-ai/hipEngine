@@ -196105,3 +196105,25 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required pre-port lineage audit remains blocked because the read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent. This
   candidate was designed in-tree and copied no external code.
+
+## 2026-07-31 17:58 JST — Reject preserved global WMMA-QK against current owner
+
+- Re-audited llama.cpp Vulkan `c0bc8591e` rather than treating Vulkan as a
+  black box. Its decode flash-attention path folds `N=1` into the six-/nine-head
+  GQA ratio, uses F16 cooperative accumulation for the same-GGUF F16 K/V
+  contract, online tiled softmax, and occupancy-driven split-K. Separately,
+  the graph executor batches recorded nodes by FLOPs/node count and overlaps
+  CPU command recording with GPU execution.
+- The preserved three-term BF16 WMMA-QK/exact-scalar-PV hybrid's earlier
+  **15.9-20.9%** pointwise win used a superseded mixed32 control. Added a
+  temporary direct comparison against current exact mixed40/local1024 and ran
+  cached 9x50 natural live **513/576/639**. It regresses
+  **0.031339 -> 0.059043 ms (+88.402%)**,
+  **0.033693 -> 0.063198 ms (+87.570%)**, and
+  **0.036513 -> 0.073481 ms (+101.244%)**. It also changes one gated BF16
+  output at the first two seams.
+- Stop before the expensive recurrent-quality gate and remove the temporary
+  comparison hook byte-for-byte. The existing diagnostic primitive remains;
+  production remains **23.017271 tok/s / 43.445636 ms/token**. Raw JSON
+  SHA-256 is `68daf28a...c5d0a`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-wmma-qk-current-rejected.json`.
