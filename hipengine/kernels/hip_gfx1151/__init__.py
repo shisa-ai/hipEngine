@@ -605,6 +605,15 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_"
             "bf16_bf16_out",
         ),
+        # H6F pairs two independent H6D output reductions to amortize gfx1100
+        # barriers and remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_paired_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(

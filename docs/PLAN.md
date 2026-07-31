@@ -1936,17 +1936,23 @@ request is **1,519.289 ms / 2,192 dispatches** in a **1,541.013-ms** median
 span; IQ-down/Q5/attention/gate-up/Q6 gaps rank **320.074/186.357/146.489/
 71.686/70.012 ms** and explain **99.197%** of the **801.048-ms** kernel gap.
 
-Select **WPF-H6F exact IQ3 paired-output reduction amortization** as a target,
-not a speed claim. H6D owns **465.480 ms / 45 calls**. Every P256 block visits
-12 strided output columns with one reduction plus one reuse barrier each. Carry
-two independent output accumulator sets through one exact four-wave reduction
-epoch while preserving all useful IQ3 decode/FMA/wave0..3/store operations,
-loads, P256/P64 grid, and active traversal; modeled barriers fall **24 -> 12 per
-rowbatch (-50%)**. The modeled cost is accumulators **8 -> 16** and LDS **512
--> 1,024 bytes**, so admission requires complete H6D/CPU bytes, physical half-
-barrier evidence, scratch0/no spills, bounded VGPR/LDS, and all **45/45** actual
-layers positive in both event and synchronized wall before runtime ownership
-([post-H6E residual / H6F target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json) ·
+Admit **WPF-H6F exact IQ3 paired-output reduction amortization** as a standalone
+gfx1100 leaf, not yet a runtime/source default. H6D owns **465.480 ms / 45
+calls**. H6F carries two independent P256/P64/local128 rowbatch8 outputs through
+one exact wave0..3 reduction epoch while preserving every per-output IQ3
+decode/FMA/reduction/store operation, load, address, grid, and active traversal.
+ISA changes output stride **0x100 -> 0x200** with two barriers in each body,
+physically proving **24 -> 12 dynamic barriers per rowbatch (-50%)**. Metadata/
+runtime is private0/spill0/scratch0 at **VGPR146/152, LDS256/512**, within the
+frozen bounds and unchanged local128/grid32768x64. Rows1/7/8/9/M512, P64/P65,
+pair-boundary, complete H6D, and CPU bytes pass. Every **45/45** actual layer is
+exact and wins both clocks: event/wall moves **445.316/436.801 ->
+352.255/360.918 ms (-20.898%/-17.372%, 1.264x/1.210x)**; minimum layer speedup
+is **1.253x/1.202x** and **98/98** guards pass. Next freeze bounded default-off
+runtime ownership and require complete natural-M512 state, exact 45-call cached
+topology, and clean 512/1K/4K before source adjudication
+([H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
+[post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json) ·
 [H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
 [H6E candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
 [post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).

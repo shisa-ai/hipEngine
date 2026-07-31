@@ -134,7 +134,7 @@ def test_h6d_registry_source_schedule_and_production_immutability() -> None:
     source = Path(_module().__file__).with_suffix(".hip").read_text()
     assert source.count(_SYMBOL) == 1
     assert source.count(_KERNEL_NAME) == 2
-    assert source.count(_HELPER_NAME) == 2
+    assert source.count(f"__device__ inline void {_HELPER_NAME}") == 1
 
     helper = _function_body(
         source,
@@ -162,7 +162,9 @@ def test_h6d_registry_source_schedule_and_production_immutability() -> None:
     assert "constexpr int row_batch = 8;" in candidate_body
     assert "active_index += expert_partitions" in candidate_body
     assert "out_col += OUTPUT_PARTITIONS" in candidate_body
-    assert f"{_HELPER_NAME}(segment, activation, acc);" in candidate_body
+    assert candidate_body.count(
+        f"{_HELPER_NAME}(segment, activation, acc);"
+    ) == 1
     assert "reduce_block_batched(acc, wave_sums);" in candidate_body
     assert "float_to_bf16_bits(acc[row_idx])" in candidate_body
     assert "dot_iq3_segment(segment, activation[row_idx])" not in candidate_body
