@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T10:16:04+09:00",
+  "kind": "hipengine_laguna_vulkan_source_transfer_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "b395ac013bc7423341a9267252c80fc070d0e1743",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "hip_wavefront": 64
+  },
+  "comparator_source": {
+    "repository": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "dispatch": "ggml/src/ggml-vulkan/ggml-vulkan.cpp:7489-7601,9224-9422",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec.comp:118-262",
+    "selected_specialization": {
+      "pipeline": "mul_mat_vec_f16_f16_f32 or mul_mat_vec_f16_f32_f32 according to activation storage",
+      "block_size": 64,
+      "num_rows": 2,
+      "num_cols_decode_c1": 1,
+      "k_per_iter": 4,
+      "reduction": "subgroupAdd over RADV subgroupSize=64",
+      "ownership": "one wave64 owns two adjacent output rows and each lane consumes contiguous K4 vectors"
+    }
+  },
+  "candidate": {
+    "description": "An isolated -mwavefrontsize64 HIP code object mirroring Vulkan's aligned non-quant K4/two-output ownership with non-temporal F16 weight loads and F32 accumulation.",
+    "cross_half_detail": "gfx11 wave64 executes on physical 32-lane halves; the correct HIP reduction used wave32 shuffles followed by __builtin_amdgcn_permlane64.",
+    "arithmetic_change": "F32 dot/reduction association differs from retained local256 scalar-K ownership.",
+    "removed_after_gate": true
+  },
+  "correctness": {
+    "red": "The natural-K fixture failed because the wave64 wrappers did not exist.",
+    "green": "K3072/K6144/K9216 F32 and BF16 fixtures passed against the retained implementation after the gfx11 cross-half reduction repair.",
+    "gate_scope": "synthetic deterministic nonzero BF16 activations and F16 weights",
+    "full_model_quality_gate_run": false,
+    "reason_full_gate_skipped": "Every natural performance leaf regressed by at least 40%, so the candidate stopped before runtime integration or the full KL/top-1 gate."
+  },
+  "leaf_protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 - <<'PY'  # inline 11-sample counterbalanced event-timing screen, 5 warmups, 30-launch bursts",
+    "rows": 1,
+    "samples_per_mode": 11,
+    "warmups_per_mode": 5,
+    "launches_per_sample": 30,
+    "order": "counterbalanced by repetition",
+    "data": "deterministic nonzero BF16 activations and F16 weights, seed 20260731",
+    "baseline": "retained fixed-K local256 non-temporal source-F16 projection",
+    "candidate": "wave64/K4/two-output non-temporal source-F16 projection"
+  },
+  "results": [
+    {
+      "role": "full_q",
+      "shape": "K3072/N6144",
+      "baseline_ms": 0.162005,
+      "candidate_ms": 0.245075,
+      "latency_delta_percent": 51.276,
+      "baseline_effective_weight_gb_s": 233.01,
+      "candidate_effective_weight_gb_s": 154.03
+    },
+    {
+      "role": "swa_q",
+      "shape": "K3072/N9216",
+      "baseline_ms": 0.240888,
+      "candidate_ms": 0.33772,
+      "latency_delta_percent": 40.198,
+      "baseline_effective_weight_gb_s": 235.06,
+      "candidate_effective_weight_gb_s": 167.66
+    },
+    {
+      "role": "key_or_value",
+      "shape": "K3072/N1024",
+      "baseline_ms": 0.026377,
+      "candidate_ms": 0.04268,
+      "latency_delta_percent": 61.805,
+      "baseline_effective_weight_gb_s": 238.52,
+      "candidate_effective_weight_gb_s": 147.41
+    },
+    {
+      "role": "full_gate",
+      "shape": "K3072/N48",
+      "baseline_ms": 0.002927,
+      "candidate_ms": 0.00479,
+      "latency_delta_percent": 63.671,
+      "baseline_effective_weight_gb_s": 100.76,
+      "candidate_effective_weight_gb_s": 61.56
+    },
+    {
+      "role": "swa_gate",
+      "shape": "K3072/N72",
+      "baseline_ms": 0.00298,
+      "candidate_ms": 0.004824,
+      "latency_delta_percent": 61.855,
+      "baseline_effective_weight_gb_s": 148.45,
+      "candidate_effective_weight_gb_s": 91.71
+    },
+    {
+      "role": "full_output",
+      "shape": "K6144/N3072",
+      "baseline_ms": 0.160748,
+      "candidate_ms": 0.318451,
+      "latency_delta_percent": 98.105,
+      "baseline_effective_weight_gb_s": 234.83,
+      "candidate_effective_weight_gb_s": 118.54
+    },
+    {
+      "role": "swa_output",
+      "shape": "K9216/N3072",
+      "baseline_ms": 0.241823,
+      "candidate_ms": 0.34542,
+      "latency_delta_percent": 42.84,
+      "baseline_effective_weight_gb_s": 234.15,
+      "candidate_effective_weight_gb_s": 163.93
+    }
+  ],
+  "interpretation": {
+    "result": "Vulkan's wave64/two-output geometry is not the missing gfx1151 F16 optimization. The retained HIP owner already streams large natural roles at roughly 233-239 GB/s, while the source-shaped candidate cuts achieved bandwidth sharply.",
+    "llama_advantage": "llama.cpp's remaining short-decode advantage is primarily evaluation-wide command recording, fusion, and queue feed; it is not a faster transferable F16 leaf on this runtime.",
+    "production": "Unchanged at 22.856155 tok/s / 43.751890 ms/token.",
+    "next": "Keep the retained local256 non-temporal F16 owners and inspect command-feed/dependency seams that can contract the measured 1.687293 ms/token union-idle time without sacrificing useful two-queue overlap."
+  }
+}
