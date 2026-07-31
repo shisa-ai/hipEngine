@@ -2004,24 +2004,24 @@ plus the three exact raw fallbacks in H6F/H6E production at **353.798 tok/s**
 ([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
-Admit **WPF-H6I exact IQ3 triple-output reduction amortization** as a standalone
-gfx1100 leaf after the distinct H6G/H6H Q5/Q6 screens. It keeps H6F's
-P256/P64/local128/rowbatch8 loads, row-interleaved VOPD FMA order, per-output
-wave32 tree, serial wave0..3 sum, BF16 store, grid, and active traversal while
-carrying three strided outputs through one publication/reuse epoch. Frozen
-rows1/7/8/9/M512, P64/P65, triplet-boundary, complete-H6F, and sampled-CPU
-coverage passes **9/9**; the retained bundle passes **112/112**. Cached ISA
-proves stride **0x300**, 216 useful FMAs, and **6 -> 4 epochs / 12 -> 8 dynamic
-barriers**. Metadata/runtime are private0/spill0/scratch0 at **VGPR164/168,
-LDS384/512**, local128/grid32768x64. All **45/45** actual IQ3 layers are
-complete-byte exact and improve both clocks: H6F -> H6I event/wall sums move
-**362.558/359.595 -> 328.206/332.468 ms (-9.475%/-7.544%,
-1.105x/1.082x)**, with minimum per-layer **1.094x/1.073x**. Add no package
-capability, runtime ABI, allocation, workspace, sidecar, or source selection in
-this unit. Production remains H6F at **353.798 tok/s** versus exact llama.cpp
-HIP **696.342**; next freeze bounded default-off ownership and require complete
-M512 state, exact topology, and clean 512/1K/4K
-([H6I candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
+Qualify **WPF-H6I exact IQ3 triple-output reduction amortization** as a bounded
+default-off gfx1100 runtime owner after its standalone leaf passes all physical
+and actual-layer gates. Complete natural M512 is KL0 and byte-exact across
+logits, final/post hidden, all **48/48** boundaries, K/V/`KVLiveSpans`, repeat,
+and teardown at unchanged **161,120,256-byte** workspace / **600,141,856-byte**
+scratch. Four cached requests preserve **2,192 dispatches**, Q5/attention/Q6/
+gate-up counts, and Q6 sequence while substituting exact **45 H6F -> 45 H6I**.
+IQ3/request-kernel-sum/span moves **367.025/1,458.371/1,484.313 ->
+331.939/1,430.581/1,451.659 ms (-9.559%/-1.906%/-2.200%)**, with H6I
+local128/VGPR168/LDS512/scratch0. Default-off 512/1K/4K improves
+**336.367/278.146/181.511 -> 343.761/282.840/182.691 tok/s
+(+2.198%/+1.688%/+0.650%)**, 3/3 exact wins each; **191/191** retained guards
+pass. Add only one existing-ABI capability; no adapter, allocation, workspace,
+sidecar, public selector, or source change. Production remains H6F at
+**353.798 tok/s** versus exact llama.cpp HIP **696.342**. Next freeze a
+separate source-default contract and require fixed C4096/M512 plus
+selector-unset 512/1K/4K exact wins
+([H6I candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
