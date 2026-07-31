@@ -817,6 +817,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     mmq_scratch = None
     mmq_parallel_scratch = None
     down_rowvec_scratch = None
+    down_rows32_scratch = None
+    down_rows32_weight = None
     concurrent_scratch = None
     concurrent_stream = 0
     concurrent_input_ready = 0
@@ -1125,6 +1127,58 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(down_wavecols_direct_actual),
             _f32_to_bf16_u16(down_wavecols_actual),
         )
+        down_rows64_reference_actual = down_wavecols_direct_actual
+        if down_qtype == GGMLQuantizationType.Q6_K:
+            # The current gfx1151 Q6 resident contains planar qmicro records.
+            # Row32 predates that layout and decodes interleaved qmicro bytes,
+            # so compare equivalent D4 arithmetic using a separately packed
+            # interleaved resident rather than misreading the production bytes.
+            assert plan.q6_qmicro_planar
+            down_source = tensor_info(
+                "synthetic.ffn_down_exps",
+                (e, h, f),
+                GGMLQuantizationType.Q6_K,
+            )
+            down_rows32_weight = _materialize_spec(
+                _spec_for_tensor("layers.1.ffn_down_exps", down_source),
+                _ArrayReader(down_source.name, down_experts),
+                device=None,
+                runtime=_runtime(),
+                backend="hip_gfx1151",
+                q6_qmicro=True,
+                q6_qmicro_planar=False,
+            )
+            down_rows32_plan = resolve_laguna_moe_plan(
+                config,
+                backend="hip_gfx1151",
+                q6_qmicro=True,
+                q6_qmicro_planar=False,
+            )
+            assert not down_rows32_plan.q6_qmicro_planar
+            down_rows32_layer = LagunaGGUFResidentLayerWeights(
+                layer_id=1,
+                attention_type=SLIDING_ATTENTION,
+                mlp_type=SPARSE_MOE,
+                weights=MappingProxyType(
+                    {**resident, "ffn_down_exps": down_rows32_weight}
+                ),
+            )
+            down_rows32_scratch = allocate_laguna_moe_scratch(
+                down_rows32_plan,
+                max_rows=3,
+            )
+            down_rows32_output = run_laguna_moe_rows(
+                bulk_hidden_buffer.ptr,
+                down_rows32_layer,
+                down_rows32_scratch,
+                rows=3,
+                selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+                selected_down_mode="mmq64x32_d4_f32_wavecols_direct_q4",
+            )
+            down_rows64_reference_actual = _read_bf16(
+                down_rows32_output,
+                (3, h),
+            )
         down_q6_rows64_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
             layer,
@@ -1199,7 +1253,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         )
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(down_q6_rows64_actual),
-            _f32_to_bf16_u16(down_wavecols_direct_actual),
+            _f32_to_bf16_u16(down_rows64_reference_actual),
         )
         fused_silu_pack_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
@@ -1322,6 +1376,10 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             router_tile8_scratch.free()
         if mmq_parallel_scratch is not None:
             mmq_parallel_scratch.free()
+        if down_rows32_scratch is not None:
+            down_rows32_scratch.free()
+        if down_rows32_weight is not None:
+            down_rows32_weight.free()
         if down_rowvec_scratch is not None:
             down_rowvec_scratch.free()
         if mmq_scratch is not None:
