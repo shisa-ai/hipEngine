@@ -1238,19 +1238,20 @@ at **194.868/187.775/150.723/78.345/71.906 ms**. Exact topology retains
 **45 H6I + two H5J**, **46 IQ2 + one H6C**, **48 global + 144 SWA H6A**, and
 unchanged H5Y/H6E routes with no H6F escape.
 
-**WPF-H6J exact dense-initial SWA qrow4 unscaled-dot replay** is the next target-
-only screen. H6A SWA owns **115.555 ms / 144 calls** and recomputes every ordered
-128-dimension K dot plus wave32 tree in both softmax passes. A separate local32
-sibling will retain H6A's exact first-pass order, `dot*scale-max`, denominator,
-token-ordered PV, division/store, bytes, cache layout, complete `KVLiveSpans`,
-grid, maps, workspace, and fallbacks while writing the first-pass unscaled dot
-to a **4x512 F32 / 8,192-byte LDS** plane and reloading it in the second pass.
-This is not yet a speed/default claim. Require RED first at starts
-0/128/256/384, complete H6A/CPU bytes, immutable spans, physical local32/
-LDS8192/scratch0/private0 with one dot pass and no second-pass K loads/tree,
-unchanged grid, and every start plus the 144-call aggregate positive on HIP
-events and synchronized wall before runtime ownership
-([artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
+**WPF-H6J exact dense-initial SWA qrow4 unscaled-dot replay is rejected.** The
+local32 leaf matches complete H6A bytes and sampled CPU rows at starts
+0/128/256/384, leaves all five `KVLiveSpans` fields immutable, and recovers
+allocations. Cached ISA proves four second-pass K-load and 20 wave-reduction
+sites removed, four LDS stores plus four loads, unchanged exp/PV/store sites,
+and metadata VGPR54/LDS8192/private0/spill0. rocprof records local32,
+grid2304x32, LDS8192, scratch0, but runtime **VGPR248** versus H6A VGPR64. Every
+start loses both clocks: weighted H6A -> H6J moves **95.924 -> 133.542 ms event
+(0.718x)** and **97.607 -> 139.600 ms wall (0.699x)**. Skip runtime ownership,
+remove every HIP/Python/key/exclusion/test surface, retain H6A, and do not retry
+full 4x512 LDS score replay without a materially different occupancy-preserving
+mechanism
+([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
