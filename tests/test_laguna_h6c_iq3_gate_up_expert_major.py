@@ -117,7 +117,7 @@ def test_h6c_registry_source_scope_and_production_immutability() -> None:
 
     assert hip_gfx1100.LAGUNA_SELECTED_GATE_UP_MODE == "grouped_pair16"
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {
-        "gguf_iq3_xxs": _H6F_VARIANT,
+        "gguf_iq3_xxs": _H6I_VARIANT,
         "gguf_iq4_xs": _H5J_IQ4_VARIANT,
     }
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {

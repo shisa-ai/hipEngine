@@ -1208,8 +1208,8 @@ H6E/H5I/raw production
 ([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
-**WPF-H6I exact IQ3 triple-output reduction amortization** now has a qualified
-bounded default-off owner through the existing `grouped_raw_iq_active_experts`
+**WPF-H6I exact IQ3 triple-output reduction amortization** is now the retained
+gfx1100 IQ3 source default through the existing `grouped_raw_iq_active_experts`
 ABI/raw allocation/`grouped_iq_prefill` library. The leaf remains stride
 **0x300**, 216 FMAs, private0/spill0/scratch0 at metadata/runtime
 **VGPR164/168, LDS384/512**, and exact/both-clock positive on **45/45** actual
@@ -1218,11 +1218,15 @@ hidden, all **48/48** boundaries, K/V/`KVLiveSpans`, repeat, and teardown at
 unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch. Four
 cached requests preserve **2,192 dispatches** and every non-IQ3 family while
 substituting exact **45 H6F -> 45 H6I**; IQ3/request-sum/span falls
-**9.559%/1.906%/2.200%** with H6I local128/VGPR168/LDS512/scratch0. Clean
-default-off 512/1K/4K gains **2.198%/1.688%/0.650%**, 3/3 exact wins each;
-**191/191** guards pass. H6F remains selected source production pending a
-separate source-default contract and matched gates
-([H6I candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
+**9.559%/1.906%/2.200%** with H6I local128/VGPR168/LDS512/scratch0. Selector-
+unset H6F rollback -> H6I source at 512/1K/4K gains
+**2.304%/1.650%/0.719%**, 3/3 exact wins each; fixed C4096/M512 gains
+**2.036% with 5/5 wins**, reaches **360.154 tok/s**, and is **1.93346x** behind
+llama.cpp HIP **696.342**. **192/192** guards pass. Keep H6F/H6D/H5Z/H5Q as
+registered rollback and reprofile clean production before selecting another
+kernel target
+([H6I production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json) ·
+[H6I candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

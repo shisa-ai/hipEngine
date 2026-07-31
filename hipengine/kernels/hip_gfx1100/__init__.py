@@ -163,10 +163,10 @@ LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS = {
 # after KL0 complete state, exact 45-call integration, and positive selector-
 # unset 512/1K/4K timing. H5Q remains registered rollback through the same
 # bounded active-expert ABI. H6D retains exact row-interleaved VOPD rollback.
-# H6F promotes paired-output source ownership through the unchanged ABI after
-# complete state, exact topology, and positive short/matched gates. H6I retains
-# a default-off triple-output capability through that same raw allocation and
-# library; H5J and H6F source selection remain unchanged.
+# H6F promotes paired-output ownership through the unchanged ABI after complete
+# state, exact topology, and positive short/matched gates. H6I then promotes
+# triple-output source ownership through that same raw allocation and library;
+# H6F remains the immediate registered rollback and H5J remains unchanged.
 _H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "resident_rowbatch8_bf16_bf16_out"
@@ -190,7 +190,7 @@ _H6I_IQ3_TRIPLE_OUTPUT_VARIANT = (
     "rowbatch8_bf16_bf16_out"
 )
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
-    "gguf_iq3_xxs": _H6F_IQ3_PAIRED_OUTPUT_VARIANT,
+    "gguf_iq3_xxs": _H6I_IQ3_TRIPLE_OUTPUT_VARIANT,
     "gguf_iq4_xs": (
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),

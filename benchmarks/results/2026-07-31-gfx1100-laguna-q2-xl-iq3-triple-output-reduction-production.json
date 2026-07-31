@@ -1,0 +1,361 @@
+{
+  "canonical_dashboard": {
+    "current_h6i_h6e_h6c_h6a_h5y_tok_s": {
+      "1024": 283.7006587089945,
+      "4096": 182.9822843600211,
+      "512": 344.82644123693893
+    },
+    "gain_percent": {
+      "1024": 1.7750952104420126,
+      "4096": 0.7815900689469135,
+      "512": 2.3739136493497126
+    },
+    "matched_c4096_m512_tok_s": 360.15363726886056,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "matched_llamacpp_over_current": 1.9334581910113249,
+    "preceding_h6f_h6e_h6c_h6a_h5y_tok_s": {
+      "1024": 278.752535797075,
+      "4096": 181.56320438568085,
+      "512": 336.8303788971433
+    },
+    "shape_note": "Canonical rows use selector-unset source-publication sessions; fixed C4096/direct-M512 is separately paired."
+  },
+  "commands": {
+    "complete_state_reused": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u /tmp/laguna_wpfh6i_runtime_m512_full_state.py",
+    "guards": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q <192-test retained source guard bundle>",
+    "integrated_trace_reused": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6i-runtime-integrated-triple-rocprof --output-file h6i-triple -- python3 -u /tmp/laguna_wpfh6i_runtime_trace_integrated_triple.py",
+    "matched": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6i_matched_c4096_m512.py",
+    "source_default_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6i_source_default_clean_512_4k.py"
+  },
+  "correctness": {
+    "all_lifecycles_recovered": true,
+    "complete_kv_and_live_spans_exact": true,
+    "complete_state_and_repeat_byte_exact": true,
+    "exact_hidden_boundaries": 48,
+    "leaf_all_45_actual_layers_byte_exact": true,
+    "matched_all_repetitions_exact": true,
+    "natural_m512_kl_max": 0.0,
+    "natural_m512_kl_mean": 0.0,
+    "natural_m512_top1_agreement": 1.0,
+    "selector_unset_all_finite": true,
+    "selector_unset_all_repetitions_exact": true
+  },
+  "correctness_claim": true,
+  "date": "2026-07-31",
+  "decision": {
+    "gfx1151_policy_changed": false,
+    "new_kernel_body_or_allocation": false,
+    "next_action": "Reprofile exact promoted C4096/direct-M512 production and rerank the matched component residual.",
+    "promoted_package_default": true,
+    "retained_h6d_h5z_h5q_rollback": true,
+    "retained_h6f_rollback": true,
+    "runtime_default_changed": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_triple_output_reduction_production",
+  "lineage": {
+    "candidate_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json",
+    "candidate_artifact_sha256": "7c4def811ac0d76a02aa43a1d66ac3de347476af1e25005fa375b557aa4c725d",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "488b3cb9d355072534f2e9ba997c7ce5176dc1402637baca082451f78dae686b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "35f91534188f9e254e063ed68f0a3f41543ebcd5e79d029b3c3cf5596fb0cad0",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "743d62d05ba81e73889d67f7451369e89dc5f20fcef5f61cf714a91698acdd6d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "56d70376ac980228bbc22fe8dfe4b92b5bd4f731091315b36bdcc615940a91e8",
+      "tests/test_laguna_h5q_runtime_policy.py": "77b31fbeaf3023f713b219e7fbebef28a31b34a6d1111c54d4d5bc7e442be983",
+      "tests/test_laguna_h5z_runtime_policy.py": "e2b3136b0e5eafcf4c4a0796efaf6fcfa9969e53029bef7fccdbf17ae1b20934",
+      "tests/test_laguna_h5z_source_default.py": "fcb2f70973169dbd91dcedeeee501c416eef13609a81ea01526a440e48fbe6e4",
+      "tests/test_laguna_h6c_iq3_gate_up_expert_major.py": "b26ec2866047c5ed817e85afd14f2c008943ffa371bc5d17bbfe2011b98084b4",
+      "tests/test_laguna_h6c_runtime_policy.py": "041afa8b9c021e128933f8a637fdd7db2e11ca024548560480ee259c74ebd0aa",
+      "tests/test_laguna_h6c_source_default.py": "41d3fcacad47546acb72ee6f54de173d48e998ee6875918d1735fc5ad384fb8a",
+      "tests/test_laguna_h6d_iq3_row_interleaved_vopd.py": "887b88b13c59aa81c5735fd6537776654bf52fed59a718c2c5fd33be39189a06",
+      "tests/test_laguna_h6d_runtime_policy.py": "8235205d0f67e391c3422d18bda044606a404a6cda8deea08eee8b5a49a3b18e",
+      "tests/test_laguna_h6d_source_default.py": "a5d0d13839ae97ba7c6199efea0353464a1c18f807a20bed0f345c0101c4d04b",
+      "tests/test_laguna_h6f_iq3_paired_output_reduction.py": "22e123bd8b8ea7c4371fdb24b18dc8867b188647508d8688361c6d306f452a0d",
+      "tests/test_laguna_h6f_runtime_policy.py": "290c1318c188edb9c9d28f242673fe1dc86f61aa11838214b1f88365c61b3714",
+      "tests/test_laguna_h6f_source_default.py": "6c1b91cda715b3cd6a78a0ad09e53411999736356d005ee01252fff839bd7af9",
+      "tests/test_laguna_h6i_iq3_triple_output_reduction.py": "7203eaf5a4adf3cc955169a79e3823d6754a840c3ca00097482ad1b494fb32e5",
+      "tests/test_laguna_h6i_runtime_policy.py": "644d9b6be9369feb840050a1356cd21aca25e39089c710e6ba4cb4af47022227",
+      "tests/test_laguna_h6i_source_default.py": "2aa5fe01eb8675a2281d361b287c025bf767f016b62d36904cf1ed059165be8c"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "leaf_red_revision": "53df4547dd25ed3333cbe126e04ba8cb4200d5e5",
+    "leaf_revision": "b6d7bded6",
+    "preceding_production_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json",
+    "preceding_production_artifact_sha256": "40a289735c150451d61b97a0e4bb0633bd67cd493cc56d2d6c5e81863e892361",
+    "runtime_qualification_revision": "2e8bf3600",
+    "runtime_red_revision": "26ca9bd96a9f46c998bf2157877b9cae94e7d73b",
+    "selection_revision": "616001d4bdcdcd7fa0e2d23d1cd47fb961db13f0",
+    "source": "Net-new in-tree H6F sibling; no external device body copied.",
+    "source_default_red_revision": "f4cc7c25e",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json",
+    "target_artifact_sha256": "26f787e2d1eb897d9d1f28a217cba7474633076e3eef0bad875b23b51f42a6fd"
+  },
+  "matched_c4096_m512": {
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "campaign_start_tok_s": 169.516472,
+    "complete_state_exact": true,
+    "gain_over_campaign_start_percent": 112.45937519798107,
+    "gain_percent": 2.0363204757247066,
+    "h6f_median_tok_s": 352.9661159768537,
+    "h6f_samples_tok_s": [
+      355.5075817413402,
+      353.75727686297637,
+      352.9661159768537,
+      352.32644069522166,
+      351.98968126606667
+    ],
+    "h6i_median_tok_s": 360.15363726886056,
+    "h6i_samples_tok_s": [
+      361.7640630085251,
+      360.3207583206298,
+      360.15363726886056,
+      360.04278760739896,
+      358.80709634996117
+    ],
+    "llamacpp_hip_tok_s": 696.342,
+    "llamacpp_over_h6i": 1.9334581910113249,
+    "paired_h6i_wins": 5,
+    "paired_total": 5,
+    "protocol": {
+      "acceptance": "exact state/lifecycle, five paired wins, and positive candidate median on fixed natural M512 admitted at C4096",
+      "attention_rows": 128,
+      "candidate_package_default": true,
+      "candidate_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "candidate_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "context_length": 4096,
+      "control_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "control_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "counter_rotated_repetitions": 5,
+      "fresh_request_session_per_sample": true,
+      "lengths": [
+        512
+      ],
+      "matched_llamacpp_hip_tok_s": 696.342,
+      "matrix_rows": 512,
+      "model_load_excluded": true,
+      "pinned_token_ids": "/tmp/laguna-matched-m512-token-ids.json",
+      "pinned_token_ids_file_sha256": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+      "same_resident_weights": true,
+      "selector": "selector-unset source H6I triple-output P256 package default versus scoped H6F paired-output P256 rollback",
+      "shared_total_scratch_bytes": 600141856,
+      "shared_workspace_bytes": 161120256,
+      "warmups_per_mode_length": 1
+    },
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "total_scratch_bytes": 600141856,
+    "workspace_bytes": 161120256
+  },
+  "model": {
+    "attention_rows": 128,
+    "compact_rows": 5120,
+    "context_length": 4096,
+    "expert_count": 256,
+    "final_position": 511,
+    "in_features": 1024,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "ownership": {
+    "existing_active_expert_abi_reused": true,
+    "new_allocations": 0,
+    "new_kernel_bodies_at_promotion": 0,
+    "new_launches_per_request": 0,
+    "new_workspace_bytes": 0,
+    "persistent_sidecar_bytes": 0,
+    "q5_ordered_workspace_bytes": 161120256,
+    "total_scratch_bytes": 600141856
+  },
+  "performance_claim": true,
+  "production_identical_cached_trace": {
+    "control_down_topology": {
+      "h5j_iq4": 2,
+      "h6f_iq3_p256_paired_output": 45
+    },
+    "control_iq3_median_ms": 367.0246825000001,
+    "control_kernel_sum_median_ms": 1458.3713955,
+    "control_resources": "local128/VGPR152/SGPR128/LDS512/scratch0/grid32768x64",
+    "control_span_median_ms": 1484.3132905,
+    "dispatches_per_request": 2192,
+    "family_dispatches_each_request": {
+      "attention": 192,
+      "gate_up": 47,
+      "iq_down": 47,
+      "q5": 658,
+      "q6": 431,
+      "remaining": 817
+    },
+    "iq3_reduction_percent": 9.559424930501804,
+    "kernel_sum_reduction_percent": 1.9055501970039912,
+    "no_compiler_under_profile": true,
+    "production_down_topology": {
+      "h5j_iq4": 2,
+      "h6i_iq3_p256_triple_output": 45
+    },
+    "production_iq3_median_ms": 331.9392335,
+    "production_kernel_sum_median_ms": 1430.5813965,
+    "production_resources": "local128/VGPR168/SGPR128/LDS512/scratch0/grid32768x64",
+    "production_span_median_ms": 1451.65922,
+    "q6_topology_unchanged_and_exact": true,
+    "reuse_rationale": "The source publication selects the same H6I key measured in the bounded candidate trace.",
+    "span_reduction_percent": 2.199944628199091,
+    "summary_sha256": "630b79a01ba57b2bd639b725288f8b6991b796a0cb06555886814a4ce830a890",
+    "trace_sha256": "467eaafa39c3b648dc104e5b6eab7a742f5789020fb764ebdf93e1bb6233ea1b"
+  },
+  "production_policy": {
+    "gfx1151_fail_closed": true,
+    "h5j_iq4_unchanged": true,
+    "h6c_special_gate_up_unchanged": true,
+    "public_or_session_selector": false,
+    "retained_h5q_rollback": true,
+    "retained_h5z_rollback": true,
+    "retained_h6d_rollback": true,
+    "retained_h6f_rollback": true,
+    "selected_variants": {
+      "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out",
+      "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+    },
+    "variant_abis": {
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+    },
+    "wrong_shape_registration_backend_fallback": "generic exact grouped-IQ rowbatch8 ABI"
+  },
+  "raw_evidence_sha256": {
+    "candidate_artifact": "7c4def811ac0d76a02aa43a1d66ac3de347476af1e25005fa375b557aa4c725d",
+    "focused_green_stdout": "498e6947c683cfc4d9d8dd6500f7bced1426c92501b2b6f938049aa6eb2024c6",
+    "matched_harness": "23faadac23308d62ca5a1082b52093ebb2f8c1ae5b01f096e1e44602d53a7448",
+    "matched_json": "91e3ac3917b80d11bd245b5794872b87adb9041ce3f9843ec996f36250d5b08a",
+    "matched_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "matched_stdout": "c5b3d5670d03bf35cd5cb460d2f6ae35262edc812bffe23ed44de76fc8d85717",
+    "pinned_token_ids": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+    "preceding_production_artifact": "40a289735c150451d61b97a0e4bb0633bd67cd493cc56d2d6c5e81863e892361",
+    "retained_guards_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retained_guards_stdout": "b503211d79d89534556339f122403cf79a91bd1ff63f77441f8c7118dbd7d7c1",
+    "source_harness": "2804631c4a17c1d65b1f0aa7d77f1eba59db8d15a4e2047876f8539367c93221",
+    "source_json": "d0ea9f0c7eef422ab16d7b7acf7f856f1ef73ee7a78c7e8ccc3f7b87ad552e46",
+    "source_red_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_red_stdout": "58c8b51f081d7f35ee5d98d08e994160e2858a8769deffb7146c93216e28f70c",
+    "source_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "source_stdout": "f81b66bb7bb363eba66617335a46dd2bc2aa5794f41921c2a1b7b59824c8d25f",
+    "target_artifact": "26f787e2d1eb897d9d1f28a217cba7474633076e3eef0bad875b23b51f42a6fd"
+  },
+  "retained_guards": {
+    "failed": 0,
+    "passed": 192,
+    "scope": "H6I source/runtime/leaf, H6F/H6D/H5Z/H5Q rollback and ABI, H6C source/runtime/leaf, H6E Q6, selected IQ, Laguna runner/MoE, gfx1151, and registry"
+  },
+  "schema": 1,
+  "selector_unset_publication": {
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "exact_all_repetitions": true,
+    "next_token_ids": {
+      "1024": 95,
+      "4096": 7772,
+      "512": 2930
+    },
+    "protocol": {
+      "attention_rows": 128,
+      "candidate_package_default": true,
+      "candidate_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "candidate_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "control_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "control_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "counter_rotated_repetitions": 3,
+      "fresh_request_session_per_sample": true,
+      "lengths": [
+        512,
+        1024,
+        4096
+      ],
+      "matrix_rows": 512,
+      "model_load_excluded": true,
+      "same_resident_weights": true,
+      "selector": "selector-unset source H6I triple-output P256 package default versus scoped H6F paired-output P256 rollback",
+      "shared_total_scratch_bytes": 600141856,
+      "shared_workspace_bytes": 161120256,
+      "warmups_per_mode_length": 1
+    },
+    "rows": {
+      "1024": {
+        "gain_percent": 1.6502939592859533,
+        "h6f_rollback_median_tok_s": 279.09477450466136,
+        "h6i_source_median_tok_s": 283.7006587089945,
+        "paired_h6i_wins": 3,
+        "paired_total": 3
+      },
+      "4096": {
+        "gain_percent": 0.7187773127356856,
+        "h6f_rollback_median_tok_s": 181.67643536006605,
+        "h6i_source_median_tok_s": 182.9822843600211,
+        "paired_h6i_wins": 3,
+        "paired_total": 3
+      },
+      "512": {
+        "gain_percent": 2.304295746111573,
+        "h6f_rollback_median_tok_s": 337.05959141021236,
+        "h6i_source_median_tok_s": 344.82644123693893,
+        "paired_h6i_wins": 3,
+        "paired_total": 3
+      }
+    },
+    "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1",
+    "total_scratch_bytes": 600141856,
+    "workspace_bytes": 161120256
+  },
+  "status": "retained_exact_package_default"
+}
