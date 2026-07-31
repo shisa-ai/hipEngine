@@ -366,19 +366,23 @@ attention **488.304/148.104/21.624**, Q6 **157.073/86.987/14.455**, gate/up
 kernel sum is **1,309.339 vs 718.241 ms** and the clean wall gap is **1.79952x**.
 Q5 remains numerically first but its exact mechanisms are closed by H5/H6G/H6M.
 After H6N supplies the distinct attention interval, **WPF-H6P exact staged-wave-
-publication triple-output IQ3 is retained as a bounded default-off gfx1100
-owner**. Sequential A/B/C publication preserves H6I bytes/arithmetic and reduces
-runtime VGPR **168 -> 112**. Complete natural M512 is KL0/byte-exact across
-logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown.
-Four cached requests preserve **2,192 dispatches** and substitute exact **45
-H6I -> 45 H6P**, cutting IQ3/request-sum/span **2.757%/0.291%/0.645%**. Clean
-512/1K/4K improves **363.446/296.015/188.932 -> 366.223/297.245/189.389 tok/s
-(+0.764%/+0.416%/+0.242%)**, **3/3** exact wins each; fixed C4096/M512 improves
-**387.746 -> 388.293 tok/s (+0.141%, 4/5 wins)**. Workspace/scratch remain
-**161,120,256/600,141,856 bytes**, **246/246** guards pass, and E255 now fails
-closed. Source production remains H6I at clean **386.959 tok/s** pending a
-separate source-default gate
-([H6P candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
+publication triple-output IQ3 is the retained gfx1100 source default**.
+Sequential A/B/C publication preserves H6I bytes/arithmetic and reduces runtime
+VGPR **168 -> 112**. Complete natural M512 is KL0/byte-exact across logits, all
+**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached
+requests preserve **2,192 dispatches** and substitute exact **45 H6I -> 45
+H6P**, cutting IQ3/request-sum/span **2.757%/0.291%/0.645%**. Fresh
+selector-unset 512/1K/4K improves **363.420/295.760/188.704 ->
+365.186/296.589/189.108 tok/s (+0.486%/+0.280%/+0.214%)**, **3/3** exact wins
+each; fixed natural C4096/M512 improves **387.780 -> 388.320 tok/s (+0.139%,
+4/5 wins)**. A fresh matched llama.cpp HIP rerun is **690.791 tok/s** median
+with **5/5** top-1 token 2930, leaving a **1.77892x** wall gap; the
+user-reported **714.07** is the synthetic/random default `pp512` path.
+Workspace/scratch remain **161,120,256/600,141,856 bytes**, H6I remains same-ABI
+rollback, **240/240** guards pass, E255 fails closed, and gfx1151 remains
+excluded
+([H6P production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json) ·
+[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
 [post-H6N residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 Both short

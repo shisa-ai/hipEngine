@@ -131,7 +131,7 @@ def test_h6d_registry_source_schedule_and_production_immutability() -> None:
     ) is candidate
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {
-        "gguf_iq3_xxs": _H6I_VARIANT,
+        "gguf_iq3_xxs": _H6P_VARIANT,
         "gguf_iq4_xs": _H5J_IQ4_VARIANT,
     }
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {

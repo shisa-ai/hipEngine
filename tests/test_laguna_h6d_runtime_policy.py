@@ -44,7 +44,7 @@ _H6P_IQ3 = (
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 
 
-def test_h6d_runtime_capability_is_retained_under_h6i_source_and_fail_closed(
+def test_h6d_runtime_capability_is_retained_under_h6p_source_and_fail_closed(
     monkeypatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
@@ -52,7 +52,7 @@ def test_h6d_runtime_capability_is_retained_under_h6i_source_and_fail_closed(
         "gguf_iq3_xxs": _H6D_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
-    production_variants = {**rollback_variants, "gguf_iq3_xxs": _H6I_IQ3}
+    production_variants = {**rollback_variants, "gguf_iq3_xxs": _H6P_IQ3}
     qualified_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
@@ -69,7 +69,7 @@ def test_h6d_runtime_capability_is_retained_under_h6i_source_and_fail_closed(
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H6I_IQ3
+        _H6P_IQ3
     )
     route = package_default.grouped_exact_down_routes["gguf_iq3_xxs"]
     assert route.abi == _ACTIVE_EXPERT_ABI
@@ -115,7 +115,7 @@ def test_h6d_runtime_capability_is_retained_under_h6i_source_and_fail_closed(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6I_IQ3 and original_is_registered(key),
+        lambda key: key.variant != _H6P_IQ3 and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
