@@ -39,15 +39,15 @@ _H6C_VARIANT = (
 )
 
 
-def test_h6d_source_default_promotes_only_iq3_selected_down(
+def test_h6d_source_default_is_retained_as_h6f_rollback_and_fail_closed(
     monkeypatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     rollback_variants = {
-        "gguf_iq3_xxs": _H5Z_IQ3,
+        "gguf_iq3_xxs": _H6D_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
-    production_variants = {**rollback_variants, "gguf_iq3_xxs": _H6D_IQ3}
+    production_variants = {**rollback_variants, "gguf_iq3_xxs": _H6F_IQ3}
     production_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
@@ -66,7 +66,7 @@ def test_h6d_source_default_promotes_only_iq3_selected_down(
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     key = package_default.grouped_exact_down_keys["gguf_iq3_xxs"]
     route = package_default.grouped_exact_down_routes["gguf_iq3_xxs"]
-    assert key.variant == _H6D_IQ3
+    assert key.variant == _H6F_IQ3
     assert route.abi == _ACTIVE_EXPERT_ABI
     assert route.allocation_name == "raw"
     assert route.library_key == "grouped_iq_prefill"
@@ -84,7 +84,7 @@ def test_h6d_source_default_promotes_only_iq3_selected_down(
         rollback_variants,
     )
     rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H5Z_IQ3
+    assert rollback.grouped_exact_down_keys["gguf_iq3_xxs"].variant == _H6D_IQ3
     assert rollback.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         _ACTIVE_EXPERT_ABI
     )
@@ -110,7 +110,7 @@ def test_h6d_source_default_promotes_only_iq3_selected_down(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6D_IQ3 and original_is_registered(key),
+        lambda key: key.variant != _H6F_IQ3 and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (

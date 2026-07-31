@@ -1936,9 +1936,9 @@ request is **1,519.289 ms / 2,192 dispatches** in a **1,541.013-ms** median
 span; IQ-down/Q5/attention/gate-up/Q6 gaps rank **320.074/186.357/146.489/
 71.686/70.012 ms** and explain **99.197%** of the **801.048-ms** kernel gap.
 
-Admit **WPF-H6F exact IQ3 paired-output reduction amortization** as a standalone
-gfx1100 leaf and qualify a bounded default-off runtime owner; H6D remains the
-source default. H6F carries two independent P256/P64/local128 rowbatch8 outputs
+Promote **WPF-H6F exact IQ3 paired-output reduction amortization** as the
+retained gfx1100 IQ3 source default; H6D remains the immediate registered
+rollback. H6F carries two independent P256/P64/local128 rowbatch8 outputs
 through one exact wave0..3 reduction epoch while preserving every per-output
 IQ3 decode/FMA/reduction/store operation, load, address, grid, and active
 traversal. ISA changes output stride **0x100 -> 0x200** with two barriers in
@@ -1950,20 +1950,22 @@ layer is exact and wins both clocks: event/wall moves **445.316/436.801 ->
 352.255/360.918 ms (-20.898%/-17.372%, 1.264x/1.210x)**; minimum layer speedup
 is **1.253x/1.202x**.
 
-The bounded owner reuses the existing raw allocation, grouped-IQ library, and
+The source owner reuses the existing raw allocation, grouped-IQ library, and
 `grouped_raw_iq_active_experts` ABI with zero workspace, sidecar, or dispatch
 growth. Complete natural-M512 control/candidate/repeat is KL0 and byte-exact
 across logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, and teardown
 at unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch.
 Four cached requests preserve **2,192 dispatches** and substitute exactly **45
 H6D -> 45 H6F**, moving IQ3/request-sum/span **464.484/1,540.306/1,567.420 ->
-366.610/1,458.072/1,479.670 ms (-21.072%/-5.339%/-5.598%)**. Default-off
-512/1K/4K improves **319.794/266.955/176.514 -> 336.271/278.788/181.545 tok/s
-(+5.152%/+4.432%/+2.850%)**, with 3/3 exact wins at each length and **155/155**
-retained guards passing. Next freeze a separate source-default contract, then
-require fixed C4096/M512 and selector-unset 512/1K/4K publication gates before
-changing the H6D selected map
-([H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
+366.610/1,458.072/1,479.670 ms (-21.072%/-5.339%/-5.598%)**. Selector-unset
+512/1K/4K improves **320.079/267.093/176.521 -> 336.830/278.753/181.563 tok/s
+(+5.234%/+4.365%/+2.856%)**, with 3/3 exact wins at each length and **156/156**
+retained guards passing. Fixed C4096/direct-M512 improves **333.248 -> 352.761
+tok/s (+5.856%, 5/5 wins)**, reaches **+108.099%** over campaign start, and
+narrows exact llama.cpp HIP **696.342 tok/s** to **1.97397x**. Reprofile clean
+promoted production and select the next distinct exact residual target
+([H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
+[H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
 [post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json) ·
 [H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
 [H6E candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
