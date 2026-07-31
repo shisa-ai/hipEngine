@@ -561,6 +561,20 @@ gfx1151 defaults the paired payload; the scalar-column registered weighted
 owner is the explicit constructor rollback:
 [`paired Q4 down retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json).
 
+The separately registered `argmax/f32/top1_i64_publish_control` primitive
+preserves the retained two-stage top-1 reduction and minimum-index tie break,
+then lets stage 2's winning thread publish the next embedding token plus the
+next scratch/KV row positions. gfx1151 Laguna c=1 consumes those scalars only
+when the following host token and serial position match the synchronized
+winner; forced tokens, registry misses, rows/verifier, and peer backends retain
+ordinary host publication. The GPU fixture matches the baseline ID and FP32
+value bits and all control values. Seven same-resident p512/d128 pairs improve
+**22.853913 -> 22.868721 tok/s (+0.06479%, 7/7 wins)**. Cache-only tracing
+proves **482 unchanged model kernels + two D2H copies** per steady transition
+instead of **482 + five**, with the candidate stage 2 at
+local256/VGPR16/SGPR128/LDS0/scratch0 and **2.043 us median**:
+[`argmax control retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-retained.json).
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 The source-F16 catalog now also includes a separately registered

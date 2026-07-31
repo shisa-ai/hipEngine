@@ -79,6 +79,11 @@ LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE = True
 # p512/d128 pairs improve without changing arithmetic or resident bytes.
 # Explicit false and peer backends retain the cached-load owner.
 LAGUNA_F16_NONTEMPORAL_DECODE = True
+# The greedy argmax winner also owns the next embedding token and scratch/KV
+# positions. The following exact autoregressive step validates the host token
+# and consumes those device-published scalars without three synchronous H2D
+# copies; forced-token and peer-backend paths retain ordinary publication.
+LAGUNA_ARGMAX_CONTROL_PUBLISH = True
 # Exact c=1 router projection wave-level reduction. Seven same-resident
 # p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
 # registered rollback.

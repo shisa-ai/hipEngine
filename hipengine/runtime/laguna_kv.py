@@ -365,6 +365,12 @@ class LagunaKVCache:
     def pending_positions(self) -> tuple[int, ...]:
         return self._pending_positions
 
+    @property
+    def row_position_ptr(self) -> int:
+        """Expose the stable scalar publication target to fused producers."""
+
+        return self._row_position.ptr
+
     def layer(self, layer_id: int) -> LagunaKVLayerState:
         self._check_open()
         layer = int(layer_id)
@@ -386,6 +392,21 @@ class LagunaKVCache:
                 f"Laguna KV owner is token-serial: expected {self.position + 1}, got {parsed}"
             )
         _copy_i64(self._row_position, parsed, self.runtime)
+        self.position = parsed
+
+    def adopt_prepublished_position(self, position: int) -> None:
+        """Advance token-serial host state after a device producer published it."""
+
+        self._check_open()
+        if self._pending_positions:
+            raise RuntimeError("cannot prepare one token while bulk positions are pending")
+        parsed = int(position)
+        if parsed < 0 or parsed >= self.context_length:
+            raise ValueError("position must be within the admitted context")
+        if parsed != self.position + 1:
+            raise ValueError(
+                f"Laguna KV owner is token-serial: expected {self.position + 1}, got {parsed}"
+            )
         self.position = parsed
 
     def prepare_rows(self, positions: Sequence[int]) -> None:

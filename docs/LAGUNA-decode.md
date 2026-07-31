@@ -7693,6 +7693,46 @@ The remaining attention sequence is:
      **22.856155 tok/s / 43.751890 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-vulkan-wave64-f16-rejected.json).
 
+149. Move the next-token control publication across the device/host boundary
+     instead of retrying host-side copy coalescing.
+     **Retained/default pending tracked-clean publication.**
+
+     The five-copy trace contains three synchronous H2D publications before
+     every embedding: token id, scratch position, and the same KV row
+     position. Prior shared-buffer publication failed because the host still
+     owned all three values. The new registered
+     `argmax/top1_i64_publish_control` primitive is materially different:
+     stage 2's winning thread writes the ordinary top-1 ID/value plus the next
+     embedding token and both next-position scalars. The following
+     `forward_token()` reuses them only when its position and supplied token
+     exactly match the previous synchronized argmax result. A forced token
+     republishes only that token; first-step, registry-miss, constructor-false,
+     rows/verifier, and peer-backend paths retain the ordinary three H2D
+     copies. Stop-token visibility and the two ordinary D2H reads are
+     unchanged.
+
+     RED fails on the absent primitive, KV adoption contract, and guarded
+     runtime path. GREEN makes the candidate top-1 ID and FP32 value
+     bit-identical to the retained reduction across a minimum-index tie
+     fixture, publishes all three exact scalars, and advances KV host
+     bookkeeping without a copy. The full p512/d128 trajectory remains token
+     **2930 -> 74107**, position **638**, generated-ID SHA
+     `94f803f7...bda32`, KL **0**, top-1 **100%**, unchanged
+     **79,066,169,172-byte** residency, and complete lifecycle recovery.
+
+     All seven same-resident counterbalanced pairs improve
+     **22.853913 -> 22.868721 tok/s (+0.06479%, 7/7 wins)**. Endpoint medians
+     save **0.028333 ms/token** and paired deltas save
+     **0.026536 ms/token**. Cache-only tracing records 127 candidate stage-2
+     calls. Every one of the 126 steady argmax-to-argmax segments contains
+     exactly **484 dispatches = 482 model kernels + two D2H runtime copies**,
+     down from **487 = 482 + five copies**. The candidate stage 2 is
+     local256/VGPR16/SGPR128/LDS0/scratch0 at **2.043 us median**.
+
+     Retain the gfx1151 capability and ordinary registered fallback. Remove
+     the temporary comparison switch before publication:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

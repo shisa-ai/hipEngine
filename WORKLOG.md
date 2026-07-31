@@ -195342,3 +195342,36 @@ Vulkan local sizes verbatim will close the measured gap.
   retains **1.687293 ms/token** union-idle holes.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-vulkan-wave64-f16-rejected.json`.
+
+## 2026-07-31 10:42 JST — Retain argmax-owned next-control publication
+
+- Re-ranked the 127-transition post-F16 trace after the Vulkan-shaped F16
+  rejection. Each decode step still contained five runtime copies: three
+  synchronous H2D token/scratch-position/KV-position publications and two D2H
+  argmax reads. Prior host-side publication/readback coalescing is closed; this
+  candidate instead moves the producer/consumer boundary onto the device.
+- Added registered `argmax/f32/top1_i64_publish_control`. Its unchanged
+  two-stage reduction writes the ordinary ID/value plus the next embedding
+  token and both next-position scalars. `forward_token()` reuses them only for
+  the exact previous synchronized winner/serial position. Forced tokens copy
+  only the token; ordinary argmax plus three H2D publications remains the
+  constructor/registry/peer-backend fallback.
+- RED failed on the absent primitive, KV adoption contract, and guarded runtime
+  path. GREEN matches baseline top-1 ID and FP32 value bits under a stable tie,
+  publishes all three exact scalars, and advances KV bookkeeping without a
+  host copy. Focused runtime and prior rejection contracts pass.
+- Seven counterbalanced same-resident p512/d128 pairs all improve
+  **22.853913 -> 22.868721 tok/s (+0.06479%)**, saving
+  **0.026536 ms/token** by paired median. Every arm preserves token
+  **2930 -> 74107**, position **638**, generated-ID SHA
+  `94f803f7...bda32`, **79,066,169,172-byte** residency, determinism, and
+  allocation recovery.
+- One require-cached `rocprofv3` run records 127 candidate stage-2 calls. All
+  126 steady transitions contain exactly **484 dispatches = 482 unchanged
+  model kernels + two D2H copies**, versus the prior **487 = 482 + five**.
+  The new stage 2 is local256/VGPR16/SGPR128/LDS0/scratch0 at
+  **2.043 us median**. No compiler ran under profiling.
+- Removed the temporary comparison switch. Retain/default the gfx1151
+  capability pending a tracked-clean three-run publication.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-retained.json`.
