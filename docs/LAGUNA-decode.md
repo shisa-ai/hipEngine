@@ -8057,6 +8057,43 @@ The remaining attention sequence is:
      consumer fusion:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-moe-tail-fused-rejected.json).
 
+160. Test compact midpoint router selectors without repeating the rejected
+     one-wave production schedule. **Rejected under complete decode and
+     removed.**
+
+     The existing compact top-k template supports an exact intermediate
+     ownership: local64 produces two wave-local top-10 lists, while local128
+     produces four and merges their 40 sufficient candidates after one
+     barrier. Both preserve stable sigmoid, corrected selection scores, the
+     lower-expert-ID tie rule, selected order, the uncorrected-probability
+     denominator, normalization, routed scale, and all five output fields.
+     Decode alone is eligible; row/prefill selection remains local256.
+
+     A counterbalanced 15x100 synthetic 47-layer window is bit-exact across
+     random, all-tie, cross-wave/cross-item-tie, finite-extreme, and
+     signed-zero cases. Local64 improves the selector window
+     **0.366385 -> 0.323409 ms (-11.730%)** and local128 improves it to
+     **0.314262 ms (-14.226%)**. The pre-existing local32 diagnostic is faster
+     still, but its gfx1100 complete-model reversal already forbids promotion;
+     local128 is the only midpoint advanced to the gfx1151 resident gate.
+
+     The complete two-queue p512/d128 gate reverses the leaf result in every
+     pair. Seven same-resident counterbalanced runs move
+     **22.877083 -> 22.757663 tok/s (-0.5220%)**, add
+     **0.229377 ms/token** by endpoint medians and
+     **0.228317 ms/token** by paired median, and win **0/7**. Every run keeps
+     token **2930 -> 74107**, position **638**, trajectory SHA, deterministic
+     repeat, and allocation recovery exact.
+
+     Remove the local64/local128 exports, wrappers, keys, runtime owner,
+     session/CLI controls, comparison harness, and candidate tests
+     byte-for-byte. This closes the compact-selector family on current
+     scheduling: fewer selector barriers worsen complete decode through
+     scheduling/cache interaction, so router microseconds cannot be optimized
+     independently of the following selected-expert stream. Production
+     remains **22.891692 tok/s / 43.683971 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-selector-compact-wave128-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

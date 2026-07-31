@@ -187,7 +187,12 @@ def test_compact_wave32_is_excluded_from_gfx1151_aliasing(
 
     backend.register_gfx1151_kernels()
 
-    assert registered == []
+    assert not any(
+        key.layer == _KEY.layer
+        and key.quant == _KEY.quant
+        and key.variant == _KEY.variant
+        for key in registered
+    )
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

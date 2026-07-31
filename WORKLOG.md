@@ -195807,3 +195807,37 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw 21x100 JSON SHA-256 is `f077a8f9...7cb`; cached trace SHA-256 is
   `56d27071...5fd07`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-moe-tail-fused-rejected.json`.
+
+## 2026-07-31 14:57 JST — Reject compact-local128 router selection
+
+- Audited the retained local256 correction selector, the exact compact-wave
+  template, the prior gfx1100 local32 leaf/runtime rejection, and current
+  gfx1151 closed-work ledger. Local64/local128 had only appeared as untaken
+  gfx1100 leaf controls, so the architecture-local midpoint was not a repeat
+  of a closed complete-model screen.
+- RED required separately registered local64/local128 wrappers and gfx1151
+  aliasing. GREEN preserves stable sigmoid, corrected score, lower-ID ties,
+  selected order, uncorrected-probability normalization, routed scale, and all
+  five output fields. Random, all-tie, cross-wave/cross-item-tie,
+  finite-extreme, and signed-zero cases are byte-exact.
+- The 15x100 47-call leaf window measures local256 **0.366385 ms**, local64
+  **0.323409 ms (-11.730%)**, and local128 **0.314262 ms (-14.226%)**.
+  Local128 advanced to an explicit-only same-resident gate; rows/prefill
+  retained local256.
+- Seven counterbalanced p512/d128 pairs reject it **0/7**:
+  **22.877083 -> 22.757663 tok/s (-0.5220%)** and
+  **43.711866 -> 43.941243 ms/token (+0.229377 ms)**. Paired median regression
+  is **+0.228317 ms/token**. Every token **2930 -> 74107**, position **638**,
+  trajectory SHA, deterministic repeat, and allocation lifecycle is exact.
+- Removed both midpoint exports/wrappers/keys, capability/plan/session/CLI
+  integration, comparison harness, and candidate tests. All production paths
+  match `29de634a2` byte-for-byte. The local256 selector remains the sole
+  production owner and production stays **22.891692 tok/s / 43.683971
+  ms/token**.
+- The restored focused router/long-profile bundle passes **53/53**; Python
+  compilation and diff checks pass. Its stale gfx1151 wave32 exclusion oracle
+  now ignores unrelated hardcoded override registrations and checks the
+  intended excluded key directly.
+- Raw leaf/runtime SHA-256 values are `090c9c04...8cd` /
+  `2de3911e...2a8`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-router-selector-compact-wave128-rejected.json`.
