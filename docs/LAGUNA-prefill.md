@@ -3722,13 +3722,15 @@ two-queue policy, but their timing scopes are not interchangeable.
 | Repeated short prefill, 512/1K/4K | **656.990 / 579.699 / 468.608 tok/s** | Tracked-clean paired-layout pp512 production; 1K/4K carry the prior repeated closure |
 | Canonical clean one-pass capacity sweep, 512/1K/4K/32K/64K/128K | **614.031 / 666.901 / 609.879 / 365.481 / 247.408 / 149.308 tok/s** | Clean anti-overtuning closure; exact positions and lifecycle |
 | Post-pair one-pass capacity confirmation, same shapes | **597.902 / 664.805 / 606.498 / 365.623 / 246.748 / 148.780 tok/s** | Candidate-tree confirmation; 32K/64K/128K are **+0.039%/-0.267%/-0.354%** versus clean closure, with exact positions/lifecycle |
-| Simple p512/d128 eager c=1 decode | **22.262504 tok/s** | Tracked-clean exact byte-neutral paired expert production; exactly 127 timed `forward_token` calls |
+| Fresh matched one-pass prefill, 1K/4K/16K/32K/64K/128K | **648.346 / 609.277 / 479.700 / 364.877 / 246.996 / 148.869 tok/s** | Same-process current production at `275ba9a89`; exact positions/lifecycle |
+| Same-GGUF llama.cpp Vulkan, same depths | **343.547 / 334.693 / 281.022 / 212.741 / 127.186 / 65.539 tok/s** | One pass, `c0bc8591e`, FA on, `-b 2048 -ub 512` |
+| Simple p512/d128 eager c=1 decode | **23.220755 tok/s** | Quiet tracked-clean current production; exactly 127 timed `forward_token` calls; **0.7070%** below Vulkan |
 | Prefill paired with the decode snapshot | **656.990 tok/s** | Tracked-clean three-run production packet; same-revision ordinary-layout A/B control is 654.569 tok/s |
 | Absolute quality | **0.049542582 max KL; 316/320 top-1** | Complete ten-prompt all-exact gate passes |
 | Next short-prefill target | **700 tok/s / 731.429 ms** | Current pp512 wall **779.312 ms**; **47.883 ms** remains |
 
-All three p512/d128 production runs produce token **2930** first, token
-**74107** last, position **638**, and the same complete 128-token hash.
+The quiet p512/d128 production runs produce token **2930** first, token
+**74825** last, position **638**, and the same complete 128-token hash.
 Tracked allocations return to zero. Exact native head/KV fusion, the
 global/SWA/tile16 split-attention bundle, and D9 MoE-tail/RMSNorm fusion are
 retained gfx1100-to-gfx1151 transfers and improve the refreshed post-merge
@@ -3747,9 +3749,16 @@ confirms **597.902/664.805/606.498/365.623/246.748/148.780 tok/s** at
 512/1K/4K/32K/64K/128K. The long-context tail stays within **0.354%** of the
 prior clean closure; the singleton 512 row is **-2.627%** and remains
 subordinate to the positive repeated pp512 A/B. The current eager
-global-attention ABI admits cache capacity only
-through 4,096, so the 1K–128K publication remains prefill-only; no
-long-context decode number is inferred.
+global-attention ABI now admits the true 128K+127-transition horizon through
+its exact generic fallback. The matched depth run proves that prefill is not
+short-context overtuned: hipEngine beats same-GGUF Vulkan by
+**1.887x/1.820x/1.707x/1.715x/1.942x/2.271x** at
+1K/4K/16K/32K/64K/128K and retains **22.961%** of d1K throughput at d128K,
+versus Vulkan's **19.077%**. Decode is a different result: the generic
+long-global-attention route falls from **20.638 tok/s at d1K** to
+**1.313 tok/s at d128K**, versus Vulkan **23.366 -> 14.237 tok/s**. That
+attack and its mandatory 128K gate live in `LAGUNA-decode.md`; no long-decode
+conclusion is inferred from the strong prefill curve.
 
 Evidence:
 [`retained GQA3 score owner`](../benchmarks/results/2026-07-28-gfx1151-laguna-swa-gqa3-scores-retained.json) ·
@@ -3759,7 +3768,8 @@ Evidence:
 [`pre-transfer p512/d128 snapshot`](../benchmarks/results/2026-07-28-gfx1151-laguna-p512-d128-eager-snapshot.json) ·
 [`short production`](../benchmarks/results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json) ·
 [`paired expert production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-production.json) ·
-[`final six-shape sweep`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json).
+[`final six-shape sweep`](../benchmarks/results/2026-07-28-gfx1151-laguna-long-context-final-sweep.json) ·
+[`fresh matched prefill/decode depth sweep`](../benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json).
 
 ### gfx1100 decode transfer closure
 
