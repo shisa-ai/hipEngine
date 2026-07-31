@@ -561,6 +561,17 @@ gfx1151 defaults the paired payload; the scalar-column registered weighted
 owner is the explicit constructor rollback:
 [`paired Q4 down retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-retained.json).
 
+A physical-local256 selected-down/D9 successor is rejected and removed. It
+kept the first 191 weighted output tiles on the unchanged local128 owner, then
+launched only the final 16-column tile as ten local256 route blocks so the
+last producer could run the exact wave-0 D9 tree with 256 physical lanes and
+without a second output-tile completion tier. All selected/routed/hidden/norm
+BF16 fields were byte-exact, but actual Q4 and planar-Q6 leaves regressed
+**5.625%/5.188%** versus retained selected-down plus standalone D9. Together
+with the earlier local128 logical-lane rejection, this closes
+selected-down-integrated D9 absent a different consumer or persistent design:
+[`rejected final-tile local256 owner`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-lasttile256-moe-tail-rejected.json).
+
 The separately registered `argmax/f32/top1_i64_publish_control` primitive
 preserves the retained two-stage top-1 reduction and minimum-index tie break,
 then lets stage 2's winning thread publish the next embedding token plus the

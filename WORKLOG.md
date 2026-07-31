@@ -196366,3 +196366,27 @@ Vulkan local sizes verbatim will close the measured gap.
   interval. Production remains **23.089693 tok/s / 43.309368 ms/token**.
   Raw SHA-256 is `b4c4f46d...27df`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-moe-hotpath-prevalidation-rejected.json`.
+
+## 2026-07-31 20:53 JST — Reject final-tile local256 selected-down/D9 owner
+
+- The required kernel-lineage check again stopped before a diff because
+  optional `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. ROCm and
+  native gfx1151 remain healthy.
+- RED failed on the absent Q4 and planar-Q6 final-tile wrappers. GREEN kept
+  output tiles 0..190 on the production local128 weighted kernel, then
+  launched tile 191 as ten local256 route blocks. Lanes 0..127 replayed the
+  four exact producer waves; the last route producer ran the retained wave-0
+  D9 tree on all 256 physical lanes. Stream order removed item 159's second
+  output-tile completion tier.
+- Selected rows, routed output, hidden output, normalized output, and counter
+  reset are BF16-bit exact for both families. The 21x100 actual-weight gate is
+  nevertheless negative: Q4 **0.063669 -> 0.067250 ms (+5.625%)** and planar
+  Q6 **0.079800 -> 0.083939 ms (+5.188%)**. Both routes retain two launches;
+  splitting the grid and widening the final ten blocks costs more than the
+  standalone local256 D9 launch.
+- Removed the HIP kernels, exports, Python wrappers, harness mode, and test
+  additions before runtime integration. The retained focused test passes from
+  cached production code. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
+  `8dfca7d0...038c96`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-lasttile256-moe-tail-rejected.json`.
