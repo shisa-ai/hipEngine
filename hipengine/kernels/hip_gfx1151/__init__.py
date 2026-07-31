@@ -596,6 +596,15 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             )
             for output_partition in (256,)
         ),
+        # H6D interleaves independent H5Z row accumulators specifically for
+        # gfx1100 VOPD and remains absent without a gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_"
+            "bf16_bf16_out",
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(

@@ -1086,18 +1086,22 @@ over campaign start and **2.11293x** behind exact llama.cpp HIP **696.342**.
 Its representative cached request is **1,546.351 ms / 2,050 dispatches** in a
 **1,567.000-ms** span. Fresh gaps rank IQ-down/Q5/attention/Q6/gate-up at
 **334.482/186.766/146.896/79.035/74.403 ms**; H5Z is **480.299 ms / 45 calls**.
-Current H5Z ISA uses **72** issue slots for 72 useful row-dot/scale FMAs and has
-no FMA/FMA VOPD pair. Select **WPF-H6D exact row-interleaved IQ3 VOPD** as a
-separate gfx1100 H5Z sibling. Interleave only the eight independent rowbatch8
-accumulators while preserving each row's exact FMA order, reductions, BF16
-boundary, P64 active-expert traversal, P256 output sweep, metadata, allocation,
-and H5Z fallback. An out-of-tree AMD-clang-22 feasibility probe keeps all 72
-useful FMAs, 13 global loads, 52 DS operations, and two barriers while forming
-**17** math-math pairs, cutting FMA issue slots **72 -> 55**, function slots
-**859 -> 775**, and code-object VGPR **107 -> 99**. This is not a speed or
-correctness claim; require separate RED, physical VOPD, scratch0/no resource
-growth, and exact all-45-layer both-clock wins before ownership
-([post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
+**WPF-H6D exact row-interleaved IQ3 VOPD** now registers a separate gfx1100
+H5Z sibling. The helper interleaves low `sum0..sum7`, then high `sum0..sum7`
+inside each unchanged j0..3 step; H5Z remains untouched rollback. Strict
+K1024/N3072/E256 preflight, P64/P65 row tails, P256 boundaries, empty-route,
+complete H5Z bytes, sampled CPU, package immutability, and gfx1151 absence pass;
+**87/87** broader guards are green. Cached metadata/ISA keeps **72 FMAs, 13
+global loads, 52 DS operations, two barriers, SGPR58, private0, and spill0**,
+forms **17** FMA/FMA pairs, and cuts issue slots **72 -> 55**, function slots
+**859 -> 775**, metadata VGPR **107 -> 99**, and runtime VGPR **112 -> 104** at
+LDS512/scratch0. The expected local128/grid256x64 kernel is present in
+`rocprofv3`. All **45/45** actual IQ3 layers with natural M512 routing are exact
+and win both clocks: H5Z -> H6D event/wall sums move **451.460/452.002 ->
+438.525/438.322 ms (-2.865%/-3.027%)**. Admit only the leaf; H5Z remains
+production until bounded runtime state/topology/512/1K/4K qualification
+([H6D leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
+[post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
