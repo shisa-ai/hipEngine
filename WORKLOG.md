@@ -196127,3 +196127,21 @@ Vulkan local sizes verbatim will close the measured gap.
   production remains **23.017271 tok/s / 43.445636 ms/token**. Raw JSON
   SHA-256 is `68daf28a...c5d0a`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-wmma-qk-current-rejected.json`.
+
+## 2026-07-31 18:12 JST — Reject D9-integrated Q8 activation publication
+
+- Built a RED/GREEN exact primitive that emits GGML Q8_1 activation blocks
+  from the retained D9 aggregate/tail/next-RMSNorm owner. The focused gfx1151
+  fixture matches hidden BF16, normalized BF16, and every byte of all
+  **96** Q8_1 blocks.
+- Cached counterbalanced 21x100 timing is decisively negative:
+  D9 plus the separate Q8 pack is **0.007578 ms**, while the fused owner is
+  **0.009251 ms (+22.085%)** and adds **74.699%** over D9 alone. The one-block,
+  eight-wave D9 grid serializes the 96 pack blocks through twelve wave rounds;
+  the standalone pack's 96-workgroup grid is faster despite the extra launch
+  and activation load.
+- Remove the kernel, ABI, wrapper, temporary test, and harness before runtime
+  integration. Production remains **23.017271 tok/s /
+  43.445636 ms/token**. Raw JSON SHA-256 is
+  `81f04e42...e0182734`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json`.
