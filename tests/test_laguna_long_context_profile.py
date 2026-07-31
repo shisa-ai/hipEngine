@@ -9,7 +9,6 @@ from scripts.laguna_long_context_profile import (
     ATTACK_LENGTHS,
     COMPARISON_ARGUMENTS,
     DECODE_OUTPUT_TOKENS,
-    EAGER_DECODE_CONTEXT_LIMIT,
     FINAL_SWEEP_LENGTHS,
     LAP0_LENGTHS,
     LC0_TRACE_LENGTHS,
@@ -53,7 +52,6 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert STANDARD_DECODE_LENGTHS == (512,)
     assert STANDARD_DECODE_LENGTHS in PROFILE_LENGTH_SETS
     assert DECODE_OUTPUT_TOKENS == (1, 128)
-    assert EAGER_DECODE_CONTEXT_LIMIT == 4096
     assert _parse_decode_output_tokens("1") == 1
     assert _parse_decode_output_tokens("128") == 128
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)

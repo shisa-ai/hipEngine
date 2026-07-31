@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile Laguna prefill at retained long-context and LAP-0 row lengths."""
+"""Profile Laguna prefill and fixed-horizon decode at retained row lengths."""
 
 from __future__ import annotations
 
@@ -46,7 +46,6 @@ FINAL_SWEEP_LENGTHS = (512, 1024, 4096, 32768, 65536, 131072)
 MATCHED_LONG_SWEEP_LENGTHS = (1024, 4096, 16384, 32768, 65536, 131072)
 STANDARD_DECODE_LENGTHS = (512,)
 DECODE_OUTPUT_TOKENS = (1, 128)
-EAGER_DECODE_CONTEXT_LIMIT = 4096
 PROFILE_LENGTH_SETS = (
     DEFAULT_LENGTHS,
     LAP0_LENGTHS,
@@ -434,11 +433,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.context_length < required_context:
         raise ValueError(
             "largest Laguna prompt plus output horizon exceeds admitted context"
-        )
-    if output_tokens > 1 and args.context_length > EAGER_DECODE_CONTEXT_LIMIT:
-        raise ValueError(
-            "fixed-horizon eager decode requires context length at most "
-            f"{EAGER_DECODE_CONTEXT_LIMIT}"
         )
     if args.repetitions <= 0:
         raise ValueError("LPF-5 repetitions must be positive")
@@ -1396,7 +1390,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             else [
                 "This is a fixed-shape eager c=1 decode snapshot, not a decode speedup claim.",
                 "Decode throughput covers 127 synchronized forward_token calls after the first prefill-produced token.",
-                "The eager global-attention decode ABI currently admits cache capacity at most 4096.",
+                "Capacity 4096 may select the qualified fixed-shape global-attention specialization; larger admitted capacities use exact generic split attention.",
             ]
         ),
     }
