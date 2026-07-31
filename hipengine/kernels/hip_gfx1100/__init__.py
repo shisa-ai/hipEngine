@@ -144,6 +144,24 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
+# WPF-H6L retains one exact K3072/N1024/E256 rowbatch16 capability through the
+# existing grouped raw-IQ dual-SiLU ABI after complete default-off qualification.
+# Rowbatch8 remains source production until separate source-default gates pass.
+_WPF2B_IQ2_PAIR16_VARIANT = (
+    "selected_dual_silu_grouped_prefill_compact_"
+    "pair16_rowbatch8_bf16_bf16_out"
+)
+_H6L_IQ2_PAIR16_ROWBATCH16_VARIANT = (
+    "selected_dual_silu_grouped_prefill_compact_"
+    "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
+)
+LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS = {
+    "gguf_iq2_xs": _WPF2B_IQ2_PAIR16_VARIANT
+}
+LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANT_ABIS = {
+    _WPF2B_IQ2_PAIR16_VARIANT: "grouped_raw_iq_dual_silu",
+    _H6L_IQ2_PAIR16_ROWBATCH16_VARIANT: "grouped_raw_iq_dual_silu",
+}
 # WPF-H6C promotes the exact K3072/N1024/E256 fused-SiLU rowbatch4 leaf for
 # only the qualified layer-47 IQ3 role after exact state, physical topology,
 # clean 512/1K/4K, and matched C4096/M512 wins. An empty role map remains the
@@ -328,6 +346,8 @@ __all__ = [
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",
     "LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS",
+    "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS",
+    "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANT_ABIS",
     "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
     "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
     "LAGUNA_IQ2_GRID64",
