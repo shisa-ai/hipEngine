@@ -790,10 +790,13 @@ def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         build_laguna_f16_projection,
+        laguna_f16w_fixedk_nontemporal_gemv_bf16_bf16_out,
+        laguna_f16w_fixedk_nontemporal_gemv_bf16_f32_out,
         laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out,
         laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_gemv_bf16_bf16_out,
         laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_triple_fixedk_nontemporal_gemv_bf16_f32_out,
         laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
     )
@@ -824,6 +827,18 @@ def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
         candidate_c = _alloc((rows, out_c), np.float32, runtime, allocations)
         baseline_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
         candidate_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
+        nontemporal_a = _alloc(
+            (rows, out_a), np.float32, runtime, allocations
+        )
+        nontemporal_b = _alloc(
+            (rows, out_b), np.float32, runtime, allocations
+        )
+        nontemporal_c = _alloc(
+            (rows, out_c), np.float32, runtime, allocations
+        )
+        nontemporal_bf16 = _alloc(
+            (rows, out_a), np.uint16, runtime, allocations
+        )
 
         laguna_f16w_gemv_bf16_f32_out(
             dx.ptr,
@@ -865,6 +880,26 @@ def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
             library=library,
             runtime=runtime,
         )
+        laguna_f16w_fixedk_nontemporal_gemv_bf16_f32_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            nontemporal_a.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_fixedk_nontemporal_gemv_bf16_bf16_out(
+            dx.ptr,
+            device_weights[0].ptr,
+            nontemporal_bf16.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
         laguna_f16w_triple_gemv_bf16_f32_out(
             dx.ptr,
             *(weight.ptr for weight in device_weights),
@@ -893,12 +928,35 @@ def test_laguna_f16_projection_fixedk_onebarrier_matches_gemv_bytes(
             library=library,
             runtime=runtime,
         )
+        laguna_f16w_triple_fixedk_nontemporal_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            nontemporal_a.ptr,
+            nontemporal_b.ptr,
+            nontemporal_c.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            out_c,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         for baseline, candidate, shape, dtype in (
             (baseline_a, candidate_a, (rows, out_a), np.float32),
+            (baseline_a, nontemporal_a, (rows, out_a), np.float32),
             (baseline_b, candidate_b, (rows, out_b), np.float32),
+            (baseline_b, nontemporal_b, (rows, out_b), np.float32),
             (baseline_c, candidate_c, (rows, out_c), np.float32),
+            (baseline_c, nontemporal_c, (rows, out_c), np.float32),
             (baseline_bf16, candidate_bf16, (rows, out_a), np.uint16),
+            (
+                baseline_bf16,
+                nontemporal_bf16,
+                (rows, out_a),
+                np.uint16,
+            ),
         ):
             np.testing.assert_array_equal(
                 _download(candidate, shape, dtype, runtime),
@@ -921,6 +979,7 @@ def test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes(
     )
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         build_laguna_f16_projection,
+        laguna_f16w_fixedk_nontemporal_output_add_rmsnorm_bf16,
         laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out,
         laguna_f16w_fixedk_output_add_rmsnorm_bf16,
     )
@@ -959,6 +1018,15 @@ def test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes(
         )
         candidate_norm = _alloc((hidden_size,), np.uint16, runtime, allocations)
         candidate_residual = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        nontemporal_projection = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        nontemporal_norm = _alloc(
+            (hidden_size,), np.uint16, runtime, allocations
+        )
+        nontemporal_residual = _alloc(
             (hidden_size,), np.uint16, runtime, allocations
         )
         counter = _alloc((1,), np.int32, runtime, allocations)
@@ -1002,12 +1070,31 @@ def test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes(
             library=linear_library,
             runtime=runtime,
         )
+        laguna_f16w_fixedk_nontemporal_output_add_rmsnorm_bf16(
+            dx.ptr,
+            dw.ptr,
+            nontemporal_projection.ptr,
+            dresidual.ptr,
+            dnorm_weight.ptr,
+            nontemporal_norm.ptr,
+            nontemporal_residual.ptr,
+            counter.ptr,
+            1,
+            in_features,
+            hidden_size,
+            1.0e-6,
+            library=linear_library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
 
         for control, candidate in (
             (control_projection, candidate_projection),
+            (control_projection, nontemporal_projection),
             (control_norm, candidate_norm),
+            (control_norm, nontemporal_norm),
             (control_residual, candidate_residual),
+            (control_residual, nontemporal_residual),
         ):
             np.testing.assert_array_equal(
                 _download(candidate, (hidden_size,), np.uint16, runtime),
@@ -1028,6 +1115,7 @@ def test_laguna_f16_projection_quad_matches_triple_plus_single_bytes() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         build_laguna_f16_projection,
         laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
+        laguna_f16w_quad_fixedk_nontemporal_gemv_bf16_f32_out,
         laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
         laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
     )
@@ -1055,6 +1143,10 @@ def test_laguna_f16_projection_quad_matches_triple_plus_single_bytes() -> None:
             for width in widths
         )
         candidate = tuple(
+            _alloc((rows, width), np.float32, runtime, allocations)
+            for width in widths
+        )
+        nontemporal = tuple(
             _alloc((rows, width), np.float32, runtime, allocations)
             for width in widths
         )
@@ -1089,12 +1181,25 @@ def test_laguna_f16_projection_quad_matches_triple_plus_single_bytes() -> None:
             library=library,
             runtime=runtime,
         )
+        laguna_f16w_quad_fixedk_nontemporal_gemv_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            *(out.ptr for out in nontemporal),
+            rows,
+            in_features,
+            *widths,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
-        for expected, actual, width in zip(baseline, candidate, widths, strict=True):
-            np.testing.assert_array_equal(
-                _download(actual, (rows, width), np.float32, runtime),
-                _download(expected, (rows, width), np.float32, runtime),
-            )
+        for outputs in (candidate, nontemporal):
+            for expected, actual, width in zip(
+                baseline, outputs, widths, strict=True
+            ):
+                np.testing.assert_array_equal(
+                    _download(actual, (rows, width), np.float32, runtime),
+                    _download(expected, (rows, width), np.float32, runtime),
+                )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)

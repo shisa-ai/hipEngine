@@ -1000,7 +1000,10 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     }
 
 
-def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi() -> None:
+@pytest.mark.parametrize("nontemporal", [False, True])
+def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi(
+    nontemporal: bool,
+) -> None:
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.registry import register, resolve
 
@@ -1009,7 +1012,11 @@ def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi() ->
         "hip_gfx1151",
         "attention_projection+head_rmsnorm+partial_rotary+kv_write",
         "fp16_weight+laguna_f32_weight",
-        "swa_fixedk_bf16_f32_spans",
+        (
+            "swa_fixedk_nontemporal_bf16_f32_spans"
+            if nontemporal
+            else "swa_fixedk_bf16_f32_spans"
+        ),
     )
     original = resolve(
         backend=key.backend,
@@ -1072,6 +1079,7 @@ def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi() ->
             stream=7,
             libraries=libraries,
             runtime="runtime-sentinel",
+            use_nontemporal=nontemporal,
         )
     finally:
         register(key, original, replace=True)
@@ -1115,7 +1123,10 @@ def test_laguna_f16_projection_head_kv_runtime_uses_registered_resident_abi() ->
     ]
 
 
-def test_laguna_f16_output_add_rmsnorm_runtime_uses_registered_resident_abi() -> None:
+@pytest.mark.parametrize("nontemporal", [False, True])
+def test_laguna_f16_output_add_rmsnorm_runtime_uses_registered_resident_abi(
+    nontemporal: bool,
+) -> None:
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.registry import register, resolve
 
@@ -1124,7 +1135,11 @@ def test_laguna_f16_output_add_rmsnorm_runtime_uses_registered_resident_abi() ->
         "hip_gfx1151",
         "linear+add+rmsnorm",
         "fp16_weight+gguf_f32_weight",
-        "fixedk_onebarrier_bf16_out",
+        (
+            "fixedk_nontemporal_bf16_out"
+            if nontemporal
+            else "fixedk_onebarrier_bf16_out"
+        ),
     )
     original = resolve(
         backend=key.backend,
@@ -1168,6 +1183,7 @@ def test_laguna_f16_output_add_rmsnorm_runtime_uses_registered_resident_abi() ->
             stream=7,
             libraries=libraries,
             runtime="runtime-sentinel",
+            use_nontemporal=nontemporal,
         )
     finally:
         register(key, original, replace=True)

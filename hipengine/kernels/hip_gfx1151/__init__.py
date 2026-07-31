@@ -74,6 +74,11 @@ LAGUNA_F16_PROJECTION_HEAD_KV_DECODE = True
 # and standalone local256 add/RMSNorm trees while removing 48 launches/token.
 # Seven exact same-resident pairs are all positive.
 LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE = True
+# Exact source-F16 decode streams each weight once. Cache-bypassing loads cut
+# the complete six-role leaf family 3.36%, and all seven same-resident
+# p512/d128 pairs improve without changing arithmetic or resident bytes.
+# Explicit false and peer backends retain the cached-load owner.
+LAGUNA_F16_NONTEMPORAL_DECODE = True
 # Exact c=1 router projection wave-level reduction. Seven same-resident
 # p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
 # registered rollback.
@@ -896,6 +901,7 @@ __all__ = [
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
     "LAGUNA_F16_ATTENTION_QUAD_DECODE",
+    "LAGUNA_F16_NONTEMPORAL_DECODE",
     "LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE",
     "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE",
     "LAGUNA_F16_DECODE_FIXEDK",

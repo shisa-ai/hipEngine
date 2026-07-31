@@ -195212,3 +195212,37 @@ Vulkan local sizes verbatim will close the measured gap.
   **22.780604 tok/s / 43.896992 ms/token**.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-lb2-codegen-equivalent.json`.
+
+## 2026-07-31 09:19 JST — Retain cache-bypassing source-F16 decode
+
+- Reviewed llama.cpp Vulkan `c0bc8591e881` beyond its cooperative attention:
+  its fast decode path treats one-pass weights as streaming traffic and keeps
+  the smaller reused activation/attention working sets cache-resident.
+- Added exact non-temporal FP16 weight loads to Laguna's fused
+  projection→head/KV and output-projection→add/RMSNorm c=1 owners. Fixed-K
+  column ownership, activation reads, F32 FMA/reduction association, BF16
+  boundaries, grids, counters, resident bytes, and launch count are unchanged.
+- Twenty-one counterbalanced 20-launch leaf samples are byte-exact and improve
+  every natural role: full/SWA QKV+gate **3.263%/3.320%**, full/SWA output
+  **3.015%/3.509%**. The 12-global/36-SWA weighted family falls
+  **24.417559 -> 23.597587 ms/token (-3.358%)**, saving a modeled
+  **0.819972 ms/token**.
+- Seven same-resident p512/d128 pairs all improve
+  **22.792512 -> 22.855773 tok/s (+0.27755%)**, saving
+  **0.121436 ms/token** by endpoint medians and **0.123855 ms/token** by
+  paired median. Tokens **2930 -> 74107**, position **638**, generated SHA
+  `94f803f7...bda32`, **79,066,169,172-byte** residency, determinism, and
+  lifecycle are exact.
+- Cache-only rocprofv3 names the intended `<GlobalSpans,true>` and `<K,true>`
+  production templates at local256/VGPR24/SGPR128/LDS512/scratch0; no compiler
+  ran under the profiler. Focused CPU/runtime/GPU validation passes 37 tests
+  plus four profiled fixtures.
+- Promote `LAGUNA_F16_NONTEMPORAL_DECODE=True` only on gfx1151; constructor
+  `false` and peer backends retain cached loads. Tracked-clean selector-unset
+  publication and a post-promotion source-F16/span census remain next.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is currently
+  blocked before reporting Laguna files because the manifest references the
+  absent external repo `/home/lhl/amd-gpu-tuning/reference/atlas`; ROCm and
+  gfx1151 health checks pass.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json`.

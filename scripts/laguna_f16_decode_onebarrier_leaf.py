@@ -25,13 +25,18 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
     build_laguna_f16_projection,
+    laguna_f16w_fixedk_nontemporal_gemv_bf16_bf16_out,
+    laguna_f16w_fixedk_nontemporal_gemv_bf16_f32_out,
     laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out,
     laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out,
     laguna_f16w_gemv_bf16_bf16_out,
     laguna_f16w_gemv_bf16_f32_out,
     laguna_f16w_onebarrier_gemv_bf16_bf16_out,
     laguna_f16w_onebarrier_gemv_bf16_f32_out,
+    laguna_f16w_quad_fixedk_nontemporal_gemv_bf16_f32_out,
+    laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out,
     laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out,
+    laguna_f16w_triple_fixedk_nontemporal_gemv_bf16_f32_out,
     laguna_f16w_triple_gemv_bf16_f32_out,
     laguna_f16w_triple_onebarrier_gemv_bf16_f32_out,
 )
@@ -58,7 +63,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument(
         "--candidate",
-        choices=("onebarrier", "fixedk"),
+        choices=("onebarrier", "fixedk", "nontemporal"),
         default="onebarrier",
     )
     parser.add_argument("--output", type=Path)
@@ -135,6 +140,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     rng = np.random.default_rng(args.seed)
     results: list[dict[str, object]] = []
     for name, in_features, widths, kind, calls_per_token in _SHAPES:
+        if args.candidate == "nontemporal" and name in {
+            "full_gate",
+            "swa_gate",
+        }:
+            continue
+        if args.candidate == "nontemporal" and name == "full_qkv":
+            widths = (*widths, 48)
+            kind = "quad_f32"
+        elif args.candidate == "nontemporal" and name == "swa_qkv":
+            widths = (*widths, 72)
+            kind = "quad_f32"
         allocations = []
         try:
             x = float_array_to_bf16_bits(
@@ -159,11 +175,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             )
             allocations.extend((*baseline_outputs, *candidate_outputs))
 
-            if kind == "triple_f32":
+            if kind == "quad_f32":
                 baseline_fn = (
-                    laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
-                    if args.candidate == "fixedk"
-                    else laguna_f16w_triple_gemv_bf16_f32_out
+                    laguna_f16w_quad_fixedk_onebarrier_gemv_bf16_f32_out
+                )
+                candidate_fn = (
+                    laguna_f16w_quad_fixedk_nontemporal_gemv_bf16_f32_out
                 )
                 baseline = lambda: baseline_fn(
                     dx.ptr,
@@ -175,10 +192,45 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     library=library,
                     runtime=runtime,
                 )
-                candidate_fn = (
-                    laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out
-                    if args.candidate == "fixedk"
-                    else laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
+                candidate = lambda: candidate_fn(
+                    dx.ptr,
+                    *(weight.ptr for weight in dweights),
+                    *(out.ptr for out in candidate_outputs),
+                    1,
+                    in_features,
+                    *widths,
+                    library=library,
+                    runtime=runtime,
+                )
+            elif kind == "triple_f32":
+                if args.candidate == "nontemporal":
+                    baseline_fn = (
+                        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out
+                    )
+                    candidate_fn = (
+                        laguna_f16w_triple_fixedk_nontemporal_gemv_bf16_f32_out
+                    )
+                elif args.candidate == "fixedk":
+                    baseline_fn = (
+                        laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
+                    )
+                    candidate_fn = (
+                        laguna_f16w_triple_fixedk_onebarrier_gemv_bf16_f32_out
+                    )
+                else:
+                    baseline_fn = laguna_f16w_triple_gemv_bf16_f32_out
+                    candidate_fn = (
+                        laguna_f16w_triple_onebarrier_gemv_bf16_f32_out
+                    )
+                baseline = lambda: baseline_fn(
+                    dx.ptr,
+                    *(weight.ptr for weight in dweights),
+                    *(out.ptr for out in baseline_outputs),
+                    1,
+                    in_features,
+                    *widths,
+                    library=library,
+                    runtime=runtime,
                 )
                 candidate = (
                     lambda: candidate_fn(
@@ -193,32 +245,39 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     )
                 )
             else:
-                baseline_fn = (
-                    (
-                        laguna_f16w_onebarrier_gemv_bf16_bf16_out
-                        if kind == "single_bf16"
-                        else laguna_f16w_onebarrier_gemv_bf16_f32_out
-                    )
-                    if args.candidate == "fixedk"
-                    else (
-                        laguna_f16w_gemv_bf16_bf16_out
-                        if kind == "single_bf16"
-                        else laguna_f16w_gemv_bf16_f32_out
-                    )
-                )
-                candidate_fn = (
-                    (
+                if args.candidate == "nontemporal":
+                    baseline_fn = (
                         laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out
                         if kind == "single_bf16"
                         else laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out
                     )
-                    if args.candidate == "fixedk"
-                    else (
+                    candidate_fn = (
+                        laguna_f16w_fixedk_nontemporal_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_fixedk_nontemporal_gemv_bf16_f32_out
+                    )
+                elif args.candidate == "fixedk":
+                    baseline_fn = (
                         laguna_f16w_onebarrier_gemv_bf16_bf16_out
                         if kind == "single_bf16"
                         else laguna_f16w_onebarrier_gemv_bf16_f32_out
                     )
-                )
+                    candidate_fn = (
+                        laguna_f16w_fixedk_onebarrier_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_fixedk_onebarrier_gemv_bf16_f32_out
+                    )
+                else:
+                    baseline_fn = (
+                        laguna_f16w_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_gemv_bf16_f32_out
+                    )
+                    candidate_fn = (
+                        laguna_f16w_onebarrier_gemv_bf16_bf16_out
+                        if kind == "single_bf16"
+                        else laguna_f16w_onebarrier_gemv_bf16_f32_out
+                    )
                 baseline = lambda: baseline_fn(
                     dx.ptr,
                     dweights[0].ptr,
