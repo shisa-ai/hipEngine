@@ -196473,3 +196473,26 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
   `c2d08c19...6b705`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-shared-down-after-selected-gate-rejected.json`.
+
+## 2026-07-31 21:45 JST — Reject selected half-dot tile4
+
+- Audited the already-closed whole-window graph route before coding: the
+  exact 127-transition replay at `6deda42ad` regressed **1.3582%**, so a
+  smaller dependent-token graph would duplicate a stronger rejection.
+- ROCm/gfx1151 remained healthy. The required kernel-lineage command again
+  stopped before reporting diffs solely because optional
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- The selected half-dot geometry audit found interleaved tile16/tile12 and
+  local64/tile8 already closed, leaving local128/tile4 as the bounded seam.
+  RED failed on the absent wrapper. GREEN halved the gate/up accumulator tile,
+  doubled the output grid, and used split Q loads to keep useful Q traffic and
+  resident bytes unchanged. The production-shape HIP fixture matched every
+  retained half-dot BF16 output bit.
+- The actual layer-1 E256/K3072/N1024/top-10 counterbalanced 21x100 gate
+  rejects the candidate: **0.092815 -> 0.094319 ms (+1.620%)**. Stop before
+  runtime integration or a complete p512/d128 run.
+- Removed the HIP specialization/export, Python wrapper, leaf harness mode,
+  and RED/GREEN fixture additions. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
+  `8ff7e9bc...16f2f1`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-tile4-rejected.json`.
