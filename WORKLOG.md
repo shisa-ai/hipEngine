@@ -195394,3 +195394,29 @@ Vulkan local sizes verbatim will close the measured gap.
   all three prior H2D token/position control publications are absent.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-production.json`.
+
+## 2026-07-31 11:15 JST — Reject selected-down/event/D9 host batch
+
+- Re-ranked the argmax-control trace. Selected-down -> D9 is the largest
+  named model-boundary idle at **0.352199 ms/token**. Tested one native host
+  call that enqueues the unchanged route-parallel selected-down kernel, waits
+  on the existing shared-output event, then enqueues unchanged local256 D9.
+  No math, kernel, event, scratch, or residency changes.
+- RED failed on the absent Q4/Q6 registered host-batch routes. GREEN and the
+  complete model preserve token **2930 -> 74107**, position **638**,
+  generated-ID SHA `94f803f7...bda32`, KL0/top-1 100%, residency, and
+  lifecycle. The rough pair improves **22.830991 -> 22.869242 tok/s**.
+- Seven same-resident pairs are nominally positive at
+  **22.863105 -> 22.873451 tok/s (+0.04525%,
+  -0.019784 ms/token)** with **5/7 wins**, but one candidate run falls to
+  **22.665393 tok/s**.
+- The cache-only trace rejects attribution. Both routes retain
+  **484 steady dispatches = 482 model kernels + two D2H copies**.
+  Selected-down -> D9 remains **8.376 us median/layer** and changes
+  **0.352199 -> 0.354066 ms/token**; mean union idle changes
+  **2.276944 -> 2.379369 ms/token**. The host already queues the asynchronous
+  operations before their GPU dependency resolves.
+- Remove the native symbol, registry routes, runtime/default/CLI plumbing, and
+  tests. Production remains **22.865539 tok/s / 43.733936 ms/token**.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-event-tail-batch-rejected.json`.
