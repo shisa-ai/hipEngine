@@ -1990,21 +1990,19 @@ the unchanged post-H6F residual for a materially different exact operation
 [H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json)).
 
 The post-H6G residency audit rejects persistent exact-Q6 F32 weights before
-implementation. Expanding the **143** H6E/H5I-selected tensors would add
-**1,787,658,240 bytes (1.665 GiB)** while removing only **2.049 ms / 143
-producer launches**, a modeled upper bound of **353.798 -> 354.304 tok/s**;
-Q5 still needs the existing **161,120,256-byte** serial plane. Select target-only
-**WPF-H6H bounded source-F16 rocBLAS on the three exact-Q6 raw fallbacks**
-instead. Those BF16 K9216/N3072, BF16 K12288/N3072, and F32 K3072/N9216 calls
-own **28.405 ms** in current H6F, while the retained H4 leaf measured the same
-three shapes at **2.211 ms**. The **26.193-ms / 1.825%-of-kernel-sum** delta and
-**360.374-tok/s** estimate are models, not claims. H6H may borrow **97,517,568
-bytes** inside the existing serial plane with no allocation, but it must first
-freeze a three-shape/M512/gfx1100-only RED and then pass the complete
-18-prompt/**576-step** quality gate at KL <= 0.05 before any performance or
-default claim. All **143** ordered Q6 calls, non-M512 shapes, misses, and gfx1151
-remain exact
-([H6H target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
+implementation, then rejects **WPF-H6H bounded source-F16 raw fallbacks** at the
+mandatory quality gate. H6H borrows **97,517,568 bytes** inside the existing
+**161,120,256-byte** serial plane with no allocation and exposes only three
+raw-M512 roles. Natural M512 passes at KL **0.000685**, top-1 **100%**, token
+**2930**, deterministic repeat, all **48/48** hidden boundaries changed, and
+clean lifecycle. The quality-only 18-prompt/**576-step** lane reaches max KL
+**0.411789 > 0.05** despite **565/576 (98.09%)** top-1; all comparisons exercise
+changed arithmetic and Poolside passes at KL **0.000157**. Run no promotion
+performance timing. Remove every runtime package/context/library/handle/test
+surface, retain the unchanged H4 leaf, and preserve all **143** ordered Q6 calls
+plus the three exact raw fallbacks in H6F/H6E production at **353.798 tok/s**
+([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent

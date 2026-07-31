@@ -1192,21 +1192,21 @@ new physical mechanism
 [post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
 [H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json)).
 
-The post-H6G Q6 audit rejects persistent exact F32 residency before code:
-**143** selected tensors would add **1,787,658,240 bytes (1.665 GiB)** to erase
-only **2.049 ms / 143** producer launches, while Q5 still owns the live serial
-scratch. The modeled wall ceiling is only **+0.506 tok/s**. Target-only
-**WPF-H6H** instead reuses the retained H4 source-F16 producer/rocBLAS/cast
-chain solely on the three raw exact fallbacks: BF16 K9216/N3072, BF16
-K12288/N3072, and F32 K3072/N9216. Current trace time is **28.405 ms**; retained
-H4 leaf measurements sum to **2.211 ms**, so the **26.193-ms** saving is a
-selection model, not a new performance claim. Its **97,517,568-byte** plane set
-fits inside H5Y/H6E's existing **161,120,256-byte** same-stream scratch with no
-allocation. RED must freeze three-shape/M512 scope, scratch alias bounds,
-ordered-Q6/exact rollback, and gfx1151 absence. Runtime admission then requires
-the complete 18-prompt/**576-step** KL <= 0.05/top-1 gate before cached topology
-or paired wall timing; broad H4 remains rejected
-([H6H target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
+The post-H6G Q6 audit rejects persistent exact-F32 residency before code, then
+rejects **WPF-H6H bounded source-F16 fallbacks** at complete quality. The
+three-shape owner borrowed **97,517,568 bytes** inside H5Y/H6E's existing
+**161,120,256-byte** serial scratch with no allocation and reused the retained
+H4 producer/rocBLAS/cast body unchanged. Natural M512 passes at KL
+**0.000685**, top-1 **100%**, token **2930**, deterministic repeat, all **48/48**
+hidden boundaries changed, and clean lifecycle. The quality-only 18-prompt/
+**576-step** gate then reaches max KL **0.411789 > 0.05** at **565/576
+(98.09%)** top-1; all steps exercise changed arithmetic and Poolside separately
+passes at KL **0.000157**. Per the frozen stop rule, run no topology or wall
+timing and remove the policy, context ABI, conditional eager library/rocBLAS
+handle, and RED test. Preserve the separately registered H4 leaf and all exact
+H6E/H5I/raw production
+([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
