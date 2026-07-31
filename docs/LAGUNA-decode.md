@@ -7951,7 +7951,7 @@ The remaining attention sequence is:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json).
 
 157. Split the retained shared-MoE priority policy by workload.
-     **Retained as the gfx1151 default; clean publication pending.**
+     **Retained, published, and default on gfx1151.**
 
      A direct policy recheck first compares complete sessions. Moving the
      existing shared stream from least priority **+1** to normal priority
@@ -7973,9 +7973,17 @@ The remaining attention sequence is:
      boundary, token **2930 -> 74107**, position **638**, trajectory SHA,
      deterministic repeat, and tracked allocation remains exact. gfx1151 now
      defaults `LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY=true`; constructor
-     false retains the previous all-low-priority rollback. Do not advance the
-     **22.873989 tok/s** headline until a tracked-clean selector-unset run:
-     [`retained candidate`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-retained.json).
+     false retains the previous all-low-priority rollback.
+
+     Tracked-clean selector-unset revision `db53a6f96` measures
+     **22.877787/22.891692/22.894326 tok/s**, median
+     **22.891692 tok/s / 43.683971 ms/token**. This advances the prior
+     **22.873989 tok/s** packet by **0.07739%** and saves
+     **0.033808 ms/token**. Residency remains **79,066,169,172 bytes** and
+     every run preserves the exact trajectory. The remaining same-GGUF Vulkan
+     gap is **0.854449 ms/token / 1.9950%**:
+     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-production.json).
 
 Current exact decode checkpoint:
 
@@ -8003,11 +8011,12 @@ Current exact decode checkpoint:
 | hipEngine prior tracked-clean paired-Q4 selected-down production | **22.780604 tok/s** | **43.897 ms** | **+98.668%** |
 | hipEngine prior source-F16 non-temporal production | **22.856155 tok/s** | **43.752 ms** | **+99.327%** |
 | hipEngine prior argmax-control production | **22.865539 tok/s** | **43.734 ms** | **+99.408%** |
-| hipEngine current Q6 LM-head tilemax production | **22.873989 tok/s** | **43.718 ms** | **+99.482%** |
+| hipEngine prior Q6 LM-head tilemax production | **22.873989 tok/s** | **43.718 ms** | **+99.482%** |
 | hipEngine retained D9 wave-0 same-resident gate | **22.873287 tok/s** | **43.719 ms** | **+99.476%** |
 | hipEngine D9 wave-0 tracked-clean sample | **22.861339 tok/s** | **43.742 ms** | **+99.372%** |
+| hipEngine current split-priority production | **22.891692 tok/s** | **43.684 ms** | **+99.636%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **0.888 ms/token** | hipEngine is **2.074%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **0.854 ms/token** | hipEngine is **1.995%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently
@@ -8033,8 +8042,8 @@ The newer post-F16 two-queue census supersedes the single-queue kernel-sum
 comparison for scheduling decisions. It measures **42.158779 ms/token** of
 union-busy GPU time inside a **43.834293-ms/token** dispatch span, so current
 device work is already **1.500421 ms/token below** Vulkan's logged kernel sum.
-The clean wall gap after Q6 LM-head tilemax publication is
-**0.888256 ms/token**. The next retained
+The clean wall gap after split-priority publication is
+**0.854449 ms/token**. The next retained
 candidate must contract the dispatch span/idle holes or reduce damaging
 cross-queue memory contention; a faster isolated attention leaf is no longer
 the leading cross-backend explanation. The exact Vulkan F16 source transfer

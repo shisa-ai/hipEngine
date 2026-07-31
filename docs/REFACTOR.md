@@ -2496,3 +2496,7 @@ should be boring.
   one-off harness after tracked-clean selector-unset publication. Retain the
   constructor rollback, gfx1151 capability, separate c=1 stream, and the
   all-low-priority fallback.
+- Tracked-clean publication passes at
+  **22.891692 tok/s / 43.683971 ms/token**. The setter, direct CLI/protocol
+  field, and one-off harness are removed. Retain only the constructor rollback,
+  gfx1151 capability, separate c=1 stream, and all-low-priority fallback.

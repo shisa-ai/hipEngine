@@ -52,7 +52,7 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.873989 tok/s / 43.718 ms/token**, up **99.482%** from the
+**22.891692 tok/s / 43.684 ms/token**, up **99.636%** from the
 **11.466687 tok/s** sprint start. The exact selected-Q4 down owner now shares
 adjacent-column nibble and coefficient transport while preserving each F32
 FMA/reduction/BF16/weighted boundary. Seven same-resident pairs improve
@@ -94,10 +94,18 @@ prior clean packet despite the positive controlled A/B. The exact sub-window
 win is retained without advancing the clean headline.
 [`D9 wave-0 retention`](results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json).
 [`D9 wave-0 production`](results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-production.json).
+The current gfx1151 schedule keeps bulk/prefill shared MoE on the retained
+least-priority stream but gives c=1 shared MoE its own normal-priority stream.
+All seven exact same-session pairs improve
+**22.869628 -> 22.891888 tok/s (+0.09733%)**. Tracked-clean selector-unset
+production advances **22.873989 -> 22.891692 tok/s (+0.07739%,
+-0.033808 ms/token)** at unchanged residency and dispatch topology. The
+remaining same-GGUF Vulkan gap is **0.854449 ms/token / 1.9950%**.
+[`split-priority production`](results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-production.json).
 The corresponding two-queue census measures **42.158779 ms/token** of union
 GPU busy time inside a **43.834293-ms/token** dispatch span. That is already
 **1.500421 ms/token below** Vulkan's logged kernel sum even though clean
-hipEngine wall is now **0.888256 ms/token slower**. The remaining short
+hipEngine wall is now **0.854449 ms/token slower**. The remaining short
 decode priority is queue-feed/dependency placement; current shared work
 overlaps selected gate/up while selected down runs alone.
 [`post-F16 wall census`](results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json).
