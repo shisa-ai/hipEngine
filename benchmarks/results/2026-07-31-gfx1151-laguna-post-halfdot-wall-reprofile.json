@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T19:47:00+09:00",
+  "kind": "hipengine_laguna_decode_two_queue_wall_census",
+  "status": "accepted_attribution",
+  "performance_claim": false,
+  "source_revision": "1883ea376b26647a6911bd61a43f08dd3c652ede",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 481,
+    "runtime_copies_per_token": 2,
+    "correct_next_token": 2930,
+    "quality_gated_final_token": 74825,
+    "quality_gated_generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "tracked_allocations_returned_to_zero": true,
+    "note": "The selected-halfdot default is intentionally approximate. Its independent recurrent quality evidence, not exact agreement with the old trajectory, is the correctness gate."
+  },
+  "two_queue_timeline_ms_per_token": {
+    "inclusive_kernel_sum": 49.936127,
+    "kernel_interval_union_busy": 41.926136,
+    "dispatch_span": 43.420396,
+    "median_union_idle": 1.501782,
+    "queue_overlap": 8.013876,
+    "primary_queue_kernel_sum": 41.888138,
+    "decode_shared_queue_kernel_sum": 8.05251,
+    "primary_queue_model_calls": 387,
+    "decode_shared_queue_model_calls": 94,
+    "note": "Secondary shared work is almost entirely hidden. Its cross-run inclusive increase is not a production regression claim; the retained seven-pair wall gate remains authoritative."
+  },
+  "inclusive_family_medians_ms_per_token": {
+    "source_f16_projection_composites": 24.127929,
+    "selected_q4_gate_up_halfdot": 8.877184,
+    "selected_q4_q6_down": 4.75925,
+    "dense_shared_quant_projection": 8.457636,
+    "router": 1.051492,
+    "attention_total": 1.114084,
+    "swa_attention": 0.715377,
+    "global_attention": 0.398707,
+    "lm_head_argmax": 1.114171
+  },
+  "change_from_pre_halfdot_census_ms_per_token": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-tile2-wall-reprofile.json",
+    "inclusive_kernel_sum": 2.566531,
+    "kernel_interval_union_busy": -0.015905,
+    "dispatch_span": -0.144609,
+    "median_union_idle": -0.122318,
+    "selected_q4_gate_up": -0.067361,
+    "interpretation": "The quality-gated dot2 owner shortens the primary critical path and allows more secondary work to remain hidden. The isolated seven-pair wall gate measures the retained 0.161670-ms/token paired saving; cross-profile secondary-queue timing is contention- and clock-sensitive."
+  },
+  "largest_repeated_uncovered_boundaries_ms_per_token": {
+    "selected_down_to_moe_tail": 0.354617,
+    "source_f16_output_to_router": 0.263561,
+    "router_selection_to_selected_gate_up": 0.211476,
+    "swa_projection_head_kv_to_attention": 0.202899,
+    "tail_to_next_projection": 0.089611,
+    "selected_gate_up_to_selected_down": 0.063327,
+    "global_projection_head_kv_to_attention": 0.064841
+  },
+  "same_gguf_vulkan": {
+    "revision": "c0bc8591e",
+    "production_tok_s": 23.348381,
+    "production_wall_ms_per_token": 42.8295220983,
+    "hipengine_kernel_interval_union_delta_vs_vulkan_wall_ms": -0.9033860983,
+    "hipengine_clean_production_tok_s": 23.089692642,
+    "hipengine_clean_production_wall_ms_per_token": 43.309368189,
+    "hipengine_clean_production_wall_delta_ms": 0.4798460907,
+    "hipengine_throughput_gap_percent": -1.10795
+  },
+  "target_24_tok_s": {
+    "wall_ms_per_token": 41.6666666667,
+    "current_wall_gap_ms_per_token": 1.6427015223,
+    "union_busy_gap_ms_per_token": 0.2594693333,
+    "interpretation": "Perfect feed alone is insufficient but would leave only 0.259 ms/token of critical-path device work above 24 tok/s."
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-halfdot-wall.xA3yZk --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-halfdot-wall.xA3yZk/bench.json",
+    "segmentation": "Sort by start timestamp and dispatch id; use the last 127 embedding-delimited transitions; exclude two copyBuffer rows/token from model work; report medians of per-transition interval sums, unions, spans, and uncovered idle.",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "f57f347cae5248b6ce11cd23222ac5a0aeb7a21ce7b60fdd83c189d2977aba53",
+    "bench_sha256": "a831bc302e8dfd7cc8a5462586a0f87947eb6d70a5babff2c7e6350feacf05d0"
+  },
+  "interpretation": {
+    "result": "The retained selected-halfdot owner transfers onto the primary critical path, but the remaining wall is still dominated by 1.502 ms/token of uncovered dispatch/feed idle.",
+    "primary_bottleneck": "Four repeated dependency boundaries account for about 1.033 ms/token: selected-down to tail, source-F16 output to router, router selection to selected gate/up, and SWA projection to attention.",
+    "next_screen": "Use the same native FP16-dot2 premise on selected down at the actual production leaf, then advance only a positive candidate to the recurrent quality and complete two-queue wall gates."
+  }
+}
