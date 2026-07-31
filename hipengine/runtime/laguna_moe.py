@@ -64,6 +64,11 @@ _GROUPED_IQ_DOWN_BASELINE_ABI = "grouped_raw_iq"
 _GROUPED_IQ_DOWN_SUPPORTED_ABIS = frozenset(
     {_GROUPED_IQ_DOWN_BASELINE_ABI, "grouped_raw_iq_active_experts"}
 )
+_GROUPED_GATE_UP_ROLE_SPECS = MappingProxyType(
+    {"layer47_iq3_k3072_n1024_e256": (47, "gguf_iq3_xxs")}
+)
+_GROUPED_GATE_UP_ROLE_SHAPE = (48, 3072, 1024, 256)
+_GROUPED_GATE_UP_SUPPORTED_ABIS = frozenset({"grouped_raw_iq_dual_silu"})
 _IQ3_WAVE10_FUSED_VARIANT = (
     "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
 )
@@ -393,6 +398,73 @@ def _resolve_laguna_grouped_iq_down_variants(
     return MappingProxyType(selected)
 
 
+def _resolve_laguna_grouped_gate_up_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[tuple[int, str], tuple[str, str]]:
+    """Resolve exact role-scoped grouped gate/up candidates fail-closed."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped gate/up role variants must be a mapping")
+    parsed: dict[tuple[int, str], str] = {}
+    for raw_role, raw_variant in raw_variants.items():
+        role = str(raw_role)
+        try:
+            route_key = _GROUPED_GATE_UP_ROLE_SPECS[role]
+        except KeyError as exc:
+            raise ValueError(
+                f"Laguna grouped gate/up policy has unsupported role {role!r}"
+            ) from exc
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError(
+                "Laguna grouped gate/up policy requires non-empty variants"
+            )
+        parsed[route_key] = variant
+
+    raw_variant_abis = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS",
+        {},
+    )
+    if not isinstance(raw_variant_abis, Mapping):
+        raise ValueError("Laguna grouped gate/up variant ABIs must be a mapping")
+    variant_abis: dict[str, str] = {}
+    for raw_variant, raw_abi in raw_variant_abis.items():
+        variant = str(raw_variant).strip()
+        abi = str(raw_abi).strip()
+        if not variant or abi not in _GROUPED_GATE_UP_SUPPORTED_ABIS:
+            raise ValueError(
+                "Laguna grouped gate/up policy has unsupported variant ABI"
+            )
+        variant_abis[variant] = abi
+
+    shape = (
+        config.block_count,
+        config.hidden_size,
+        config.expert_feed_forward_length,
+        config.expert_count,
+    )
+    if shape != _GROUPED_GATE_UP_ROLE_SHAPE:
+        return MappingProxyType({})
+
+    selected: dict[tuple[int, str], tuple[str, str]] = {}
+    for route_key, variant in parsed.items():
+        abi = variant_abis.get(variant)
+        if abi is None:
+            continue
+        key = KernelKey(backend, "moe_linear", route_key[1], variant)
+        if is_registered(key):
+            selected[route_key] = (variant, abi)
+    return MappingProxyType(selected)
+
+
 @dataclass(frozen=True)
 class LagunaMoESelectedRoute:
     """One registry-resolved selected-expert ABI and resident allocation."""
@@ -440,6 +512,10 @@ class LagunaMoEKernelPlan:
     c1_selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     grouped_pair16_gate_up_keys: Mapping[str, KernelKey]
     grouped_pair16_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
+    grouped_special_gate_up_keys: Mapping[tuple[int, str], KernelKey]
+    grouped_special_gate_up_routes: Mapping[
+        tuple[int, str], LagunaMoESelectedRoute
+    ]
     grouped_exact_down_keys: Mapping[str, KernelKey]
     grouped_exact_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
@@ -519,6 +595,7 @@ class LagunaMoEKernelPlan:
             self.fused_selected_silu_pack_key,
             *tuple(self.c1_selected_gate_up_keys.values()),
             *tuple(self.grouped_pair16_gate_up_keys.values()),
+            *tuple(self.grouped_special_gate_up_keys.values()),
             *tuple(self.grouped_exact_down_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
@@ -1034,6 +1111,29 @@ def resolve_laguna_moe_plan(
             for quant, key in grouped_pair16_gate_up_keys.items()
         }
     )
+    grouped_special_gate_up_policies = (
+        _resolve_laguna_grouped_gate_up_variants(config, backend=backend)
+    )
+    grouped_special_gate_up_keys = MappingProxyType(
+        {
+            route_key: KernelKey(backend, "moe_linear", route_key[1], variant)
+            for route_key, (variant, _abi) in (
+                grouped_special_gate_up_policies.items()
+            )
+        }
+    )
+    grouped_special_gate_up_routes = MappingProxyType(
+        {
+            route_key: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi=grouped_special_gate_up_policies[route_key][1],
+                allocation_name="raw",
+                library_key="grouped_iq_prefill",
+            )
+            for route_key, key in grouped_special_gate_up_keys.items()
+        }
+    )
     grouped_exact_down_policies = _resolve_laguna_grouped_iq_down_variants(
         config,
         backend=backend,
@@ -1178,6 +1278,8 @@ def resolve_laguna_moe_plan(
         c1_selected_gate_up_routes=c1_selected_gate_up_routes,
         grouped_pair16_gate_up_keys=grouped_pair16_gate_up_keys,
         grouped_pair16_gate_up_routes=grouped_pair16_gate_up_routes,
+        grouped_special_gate_up_keys=grouped_special_gate_up_keys,
+        grouped_special_gate_up_routes=grouped_special_gate_up_routes,
         grouped_exact_down_keys=grouped_exact_down_keys,
         grouped_exact_down_routes=grouped_exact_down_routes,
         selected_silu_key=keys["selected_silu"],
@@ -1659,44 +1761,53 @@ def _launch_selected_gate_up_grouped_exact(
         ),
     )
     # Preserve the independently registered c=1 gate/up route for decode.
-    if pair16 and tokens > 1:
-        gate = layer.weight("ffn_gate_exps")
+    gate = layer.weight("ffn_gate_exps")
+    route = None
+    if tokens > 1:
         up = layer.weight("ffn_up_exps")
-        route = plan.grouped_pair16_gate_up_routes.get(gate.spec.quant_key)
-        if route is not None and up.spec.quant_key == gate.spec.quant_key:
-            plan.grouped_gather(
-                hidden_ptr,
-                scratch.grouped_sorted_lanes.ptr,
-                scratch.expert_down.ptr,
-                lanes * plan.hidden_size,
-                tokens,
-                plan.top_k,
-                plan.hidden_size,
-                **_stage_kwargs(
-                    "grouped_gather",
-                    libraries,
-                    stream=stream,
-                    runtime=active_runtime,
-                ),
-            )
-            route.function(
-                scratch.expert_down.ptr,
-                scratch.grouped_expert_start.ptr,
-                gate.allocation(route.allocation_name).tensor.ptr,
-                up.allocation(route.allocation_name).tensor.ptr,
-                scratch.expert_gate.ptr,
-                compact_rows=lanes,
-                in_features=plan.hidden_size,
-                out_features=plan.expert_ffn_size,
-                num_experts=plan.expert_count,
-                **_stage_kwargs(
-                    route.library_key,
-                    libraries,
-                    stream=stream,
-                    runtime=active_runtime,
-                ),
-            )
-            return True
+        if up.spec.quant_key == gate.spec.quant_key:
+            if plan.grouped_special_gate_up_routes:
+                route = plan.grouped_special_gate_up_routes.get(
+                    (layer.layer_id, gate.spec.quant_key)
+                )
+            if route is None and pair16:
+                route = plan.grouped_pair16_gate_up_routes.get(
+                    gate.spec.quant_key
+                )
+    if route is not None:
+        plan.grouped_gather(
+            hidden_ptr,
+            scratch.grouped_sorted_lanes.ptr,
+            scratch.expert_down.ptr,
+            lanes * plan.hidden_size,
+            tokens,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "grouped_gather",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
+        route.function(
+            scratch.expert_down.ptr,
+            scratch.grouped_expert_start.ptr,
+            gate.allocation(route.allocation_name).tensor.ptr,
+            up.allocation(route.allocation_name).tensor.ptr,
+            scratch.expert_gate.ptr,
+            compact_rows=lanes,
+            in_features=plan.hidden_size,
+            out_features=plan.expert_ffn_size,
+            num_experts=plan.expert_count,
+            **_stage_kwargs(
+                route.library_key,
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
+        return True
 
     # Unsupported pair16 keys fail closed to the retained route-major exact
     # gate/up plus sorted post-SiLU gather before exact grouped down.

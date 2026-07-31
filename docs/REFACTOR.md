@@ -205,6 +205,16 @@ should be removed or collapsed.
   **+1.819%/+1.452%/+0.872%**, 3/3 wins each. Keep both ABI entries and H5Q as
   registered rollback beneath H5Z production. Do not add another adapter,
   allocation, workspace, sidecar, or public selector.
+- WPF-H6C adds an empty-by-default `LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS`
+  admission seam plus one qualified variant-to-`grouped_raw_iq_dual_silu` ABI.
+  The default-off owner is exact and positive at 512/1K/4K with no allocation,
+  workspace, sidecar, library, or public/session selector. Keep this seam only
+  through the separate selector-unset publication decision: if publication is
+  exact and non-regressive, promote the one layer-47 IQ3 role and then consider
+  folding the stable ABI into the grouped gate/up plan after one release
+  checkpoint; if publication fails, remove the runtime role/ABI resolver and
+  focused runtime test while retaining the standalone H6C leaf and its required
+  route-major fallback.
 
 ## Laguna exact qrow4 SWA prefill selector
 
