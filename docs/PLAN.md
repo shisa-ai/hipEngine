@@ -1874,23 +1874,25 @@ cached request reconciles **1,546.351 ms / 2,050 dispatches** in a
 Q6 **93.490/14.455**, gate/up **475.796/401.393**, and remaining
 **74.124/67.598**. Gaps rank **334.482/186.766/146.896/79.035/74.403 ms**.
 
-**WPF-H6D exact row-interleaved IQ3 VOPD** is now a separately registered
-gfx1100 H5Z sibling with a bounded default-off owner through the unchanged
-`grouped_raw_iq_active_experts` ABI. Strict K1024/N3072/E256, registration, and
-backend misses fail closed; H5Z remains the selected source map and gfx1151 stays
-absent. Complete natural-M512 state is KL0/byte-exact across all **48** hidden
-boundaries, complete logits, K/V/`KVLiveSpans`, and repeat with unchanged
-**161,120,256-byte** workspace and **600,141,856-byte** total scratch. Four
-counter-rotated cached requests retain **2,050** dispatches and exact **45 H5Z or
-45 H6D + two H5J IQ4** topology; IQ3/request/span moves
+**WPF-H6D exact row-interleaved IQ3 VOPD** is now the retained gfx1100 IQ3
+source default through the unchanged `grouped_raw_iq_active_experts` ABI. Strict
+K1024/N3072/E256, registration, and backend misses fail closed; H5Z/H5Q remain
+registered rollback and gfx1151 stays absent. Complete natural-M512 state is
+KL0/byte-exact across all **48** hidden boundaries, logits, K/V/`KVLiveSpans`,
+and repeat with unchanged **161,120,256-byte** workspace and **600,141,856-byte**
+total scratch. Four cached requests retain **2,050** dispatches and exact **45
+H5Z or 45 H6D + two H5J** topology; IQ3/request/span moves
 **475.549/1,552.920/1,583.786 -> 463.354/1,549.015/1,570.143 ms
 (-2.564%/-0.251%/-0.861%)** with H6D local128/VGPR104/LDS512/scratch0.
-One-queue default-off 512/1K/4K improves **315.793/263.995/175.354 ->
-318.762/266.122/176.221 tok/s (+0.940%/+0.806%/+0.495%)**, 3/3 wins each,
-exact outputs, unchanged scratch, and full lifecycle recovery; **88/88** retained
-guards pass. Keep H5Z package production and next freeze a separate
-source-default contract plus selector-unset publication gate
-([H6D leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
+Selector-unset 512/1K/4K improves H5Z rollback **315.267/264.136/175.276 ->
+319.072/265.872/176.138 tok/s (+1.207%/+0.657%/+0.492%)**, 3/3 wins each.
+Fixed natural-M512/C4096 improves **329.327 -> 332.308 tok/s (+0.905%, 5/5
+wins)**, reaches **+96.033%** over campaign start, and is **2.09547x** behind
+exact llama.cpp HIP **696.342**. All state/output/scratch/lifecycle checks and
+**92/92** retained guards pass. Next reprofile exact promoted C4096/M512 and
+rerank its component gaps
+([H6D production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json) ·
+[H6D candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
 [post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,

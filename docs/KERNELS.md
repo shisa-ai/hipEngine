@@ -1086,23 +1086,23 @@ over campaign start and **2.11293x** behind exact llama.cpp HIP **696.342**.
 Its representative cached request is **1,546.351 ms / 2,050 dispatches** in a
 **1,567.000-ms** span. Fresh gaps rank IQ-down/Q5/attention/Q6/gate-up at
 **334.482/186.766/146.896/79.035/74.403 ms**; H5Z is **480.299 ms / 45 calls**.
-**WPF-H6D exact row-interleaved IQ3 VOPD** registers a separate gfx1100 H5Z
-sibling and now qualifies a bounded default-off owner through the existing raw
-active-expert ABI. The helper interleaves low `sum0..sum7`, then high
-`sum0..sum7` inside each unchanged j0..3 step; H5Z remains untouched source
-rollback. Cached metadata/ISA keeps **72 FMAs, 13 global loads, 52 DS operations,
-two barriers, SGPR58, private0, and spill0**, forms **17** FMA/FMA pairs, and
-cuts issue slots **72 -> 55**, function slots **859 -> 775**, metadata VGPR
-**107 -> 99**, and runtime VGPR **112 -> 104** at LDS512/scratch0. Complete
-natural-M512 state is KL0/byte-exact across all **48** boundaries, logits,
-K/V/`KVLiveSpans`, and repeat at unchanged **161,120,256-byte** workspace and
-**600,141,856-byte** scratch. Four cached requests retain exact **45 H5Z or 45
-H6D + two H5J** topology at **2,050** dispatches, cutting IQ3/request/span
-**2.564%/0.251%/0.861%**. Default-off 512/1K/4K is
-**+0.940%/+0.806%/+0.495%**, 3/3 wins each with exact output and lifecycle;
-**88/88** guards pass. Keep H5Z production until the separate H6D source-default
-contract and selector-unset gate pass
-([H6D leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
+**WPF-H6D exact row-interleaved IQ3 VOPD** is the retained gfx1100 IQ3 source
+default through the existing raw active-expert ABI. The helper interleaves low
+`sum0..sum7`, then high `sum0..sum7` inside each unchanged j0..3 step; H5Z/H5Q
+remain registered rollback. Cached metadata/ISA keeps **72 FMAs, 13 global
+loads, 52 DS operations, two barriers, SGPR58, private0, and spill0**, forms
+**17** FMA/FMA pairs, and cuts issue slots **72 -> 55**, function slots **859 ->
+775**, metadata VGPR **107 -> 99**, and runtime VGPR **112 -> 104** at
+LDS512/scratch0. Complete natural-M512 state is KL0/byte-exact across all **48**
+boundaries, logits, K/V/`KVLiveSpans`, and repeat at unchanged
+**161,120,256-byte** workspace / **600,141,856-byte** scratch. Four cached
+requests retain exact **45 H5Z or 45 H6D + two H5J** topology at **2,050**
+dispatches and cut IQ3/request/span **2.564%/0.251%/0.861%**. Selector-unset
+512/1K/4K is **+1.207%/+0.657%/+0.492%**, 3/3 wins each; fixed C4096/M512 is
+**329.327 -> 332.308 tok/s (+0.905%, 5/5 wins)** and **2.09547x** behind exact
+llama.cpp HIP. **92/92** guards pass. Reprofile promoted C4096/M512 next
+([H6D production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json) ·
+[H6D candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
 [post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
