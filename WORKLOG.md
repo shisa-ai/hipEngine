@@ -196830,3 +196830,20 @@ Vulkan local sizes verbatim will close the measured gap.
   a second 79-GB model load to cover the requested comparison.
 - The parser/ordering test now freezes the new tuple and its membership in the
   admitted profile sets. Runtime/model behavior is unchanged.
+
+## 2026-08-01 03:55 JST — Admit long-capacity Laguna decode measurement
+
+- Removed the obsolete **4,096-capacity** ceiling from the benchmark harness,
+  not from a production kernel or dispatch route. Current gfx1151 sessions
+  already select exact generic split global attention above the qualified
+  capacity-4,096 fixed-shape specialization.
+- The focused long-context harness suite passes **39 tests**. A cached
+  capacity-4,224 p512/d128 smoke reaches **21.846364 tok/s** over 127 timed
+  transitions and exactly matches the clean capacity-4,096 production
+  trajectory: first/final token **2930/74825**, final position **638**, and
+  generated-ID SHA-256 `1840dd35...56fa`. All tracked
+  **79,079,011,672 bytes / 1,439 allocations** return to zero.
+- The generic-capacity path is **5.919%** below the clean capacity-4,096
+  fixed-shape median **23.220755 tok/s**. That is a measured specialization
+  seam, not a correctness failure. Smoke raw SHA-256 is
+  `00d8ed3787883c57282d0863987d2d665faa92e0db423a334731f6486e1a8a71`.
