@@ -9153,6 +9153,38 @@ The remaining attention sequence is:
      micro-tuning are subordinate until this route is repaired:
      [`matched depth sweep`](../benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json).
 
+199. Remove the false allocated-capacity seam from exact short global decode.
+     **Retained and production-default; LC-D1 complete.**
+
+     The existing fused mixed40 owner now consumes the real capacity and block
+     table from `KVLiveSpans`; allocation size no longer disqualifies short
+     live work. Selection remains resource-bounded rather than depth-tuned:
+     dense prefixes use local1024 with double-buffered V64 through 4,000 live
+     slots, local512 with one V64 plane through 6,000, and exact generic split
+     attention after that. Non-dense metadata retains the 4,000-slot local512
+     bound. Resident bytes and allocation count are unchanged.
+
+     A clean real-capacity-131,200 short guard and the mandatory long gate
+     measure:
+
+     | Decode depth | Before | LC-D1 | Delta | Vulkan | LC-D1 vs Vulkan |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 1K | 20.637969 | **23.068316 tok/s** | **+11.776%** | 23.366162 | **-1.275%** |
+     | 4K | 15.477837 | **21.666976 tok/s** | **+39.987%** | 23.037017 | **-5.947%** |
+     | 16K | 7.731808 | **7.735836 tok/s** | +0.052% | 21.728347 | -64.397% |
+     | 64K | 2.506331 | **2.512652 tok/s** | +0.252% | 17.737473 | -85.834% |
+     | 128K | 1.312921 | **1.317400 tok/s** | +0.341% | 14.237076 | -90.747% |
+
+     The d4K result repeats at **21.681852 tok/s** in the clean short guard.
+     All generated-ID hashes, final positions, and **87,407,934,744 bytes /
+     1,452 allocations** recover exactly. A cached trace at capacity 8,192
+     names both local1024/live1,024 and local512/live4,097 instances; the
+     fixture matches generic exact attention bit-for-bit in FP32 context and
+     BF16 gated output. The unchanged 16K/64K/128K rows prove the promotion is
+     bounded and does not hide a long-context regression. LC-D2 now owns the
+     remaining generic-route gap:
+     [`capacity-independent production`](../benchmarks/results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9160,11 +9192,10 @@ Use one-run passes while changes are architectural. A candidate must move
 Correctness, recurrent trajectory, `KVLiveSpans`, eviction/wrap behavior, and
 allocation teardown remain mandatory at every retained step.
 
-1. **LC-D1 — remove the false capacity seam.** Decouple the existing
-   live-`<=4000` exact global specialization from
-   `allocated_capacity == 4096`. Give it capacity-independent block/span
-   addressing and bounded 4K scratch so d1K and d4K do not fall onto the
-   generic route merely because the session reserves 128K.
+1. **LC-D1 — remove the false capacity seam. Complete.** The existing exact
+   global specialization is capacity-independent and resource-bounded at
+   4,000/6,000 live slots. Clean d1K/d4K improve **11.776%/39.987%** and the
+   mandatory 16K/64K/128K gate is neutral-to-positive with exact state.
 2. **LC-D2 — profile the real generic route at 4K/16K/64K/128K.** Record
    score production, softmax reduction, PV, scratch bytes, launches, achieved
    K/V bandwidth, and depth slope. Keep the d128K gate even when the earlier

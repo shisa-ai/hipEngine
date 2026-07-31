@@ -75,17 +75,20 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
-Long decode does not preserve that parity. A fresh one-pass
-1K/4K/16K/32K/64K/128K depth sweep measures hipEngine
-**20.638/15.478/7.732/4.566/2.506/1.313 tok/s** versus Vulkan
-**23.366/23.037/21.728/20.212/17.737/14.237 tok/s**. The deficit expands
-from **11.676%** at d1K to **90.778%** at d128K; Vulkan is **10.844x**
-faster at the endpoint and retains **60.930%** of d1K throughput, versus
-hipEngine's **6.362%**. The capacity-qualified short attention owner is not
-the long route: capacity above 4,096 selects generic exact split global
-attention. Capacity-independent and bounded-tile global attention is now the
-first decode priority.
-[`matched prefill/decode depth sweep`](results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json).
+Long decode still does not preserve short parity, but the first structural
+seam is closed. The exact fused global owner now follows live work and LDS
+bounds instead of requiring allocation capacity 4,096. With real capacity
+131,200, clean d1K/d4K improve
+**20.637969 -> 23.068316 tok/s (+11.776%)** and
+**15.477837 -> 21.666976 tok/s (+39.987%)**, landing only
+**1.275%/5.947%** behind same-GGUF Vulkan. The mandatory fallback gate is
+neutral-to-positive at 16K/64K/128K:
+**7.735836/2.512652/1.317400 tok/s**, with exact trajectories and lifecycle
+recovery. The earlier 32K row remains **4.566032 tok/s** until the complete
+LC-D6 curve is repeated. Above 6,000 live slots the exact generic score-plane
+route remains the dominant gap and is now LC-D2's profiling target.
+[`capacity-independent short-global production`](results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json),
+[`matched prefill/decode depth baseline`](results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven

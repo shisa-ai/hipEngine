@@ -2483,9 +2483,14 @@ live span falls back to exact generic split attention. The bounds follow LDS
 usage rather than benchmark depths: two V64 stages plus score planes fit
 through 4,000, while one V64 stage plus score planes fits through 6,000.
 A cached gfx1151 trace at capacity 8,192 names both fixed-shape template
-instantiations at live 1,024 and 4,097 with **VGPR48/LDS512/scratch0**; both
-produce bit-identical FP32 context and BF16 gated output against the generic
-exact route.
+instantiations at live 1,024 and 4,097 with
+**VGPR48/reported-static-LDS512/scratch0**; launch-time dynamic LDS follows the
+resource formulas above. Both produce bit-identical FP32 context and BF16
+gated output against the generic exact route. Clean capacity-131,200
+production improves d1K/d4K
+**11.776%/39.987%** while the mandatory 16K/64K/128K fallback gate remains
+neutral-to-positive:
+[`capacity-independent production`](../benchmarks/results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json).
 The exact two-launch split32 successor is removed as well. Sixteen pair-owner
 local256 blocks plus sixteen singleton-owner local128 blocks preserve four
 K/V owners and byte-exact output, but regress live513/576/639
