@@ -195953,3 +195953,21 @@ Vulkan local sizes verbatim will close the measured gap.
   submission even before capture cost; continue with bounded exact composites
   that remove launches and device work. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-whole-window-graph-rejected.json`.
+
+## 2026-07-31 16:22 JST — Reject source-F16 projection tile4
+
+- Extended the retained llama.cpp-derived adjacent-row reuse from two to four
+  Q/K/V/gate columns per local256 workgroup. Each output kept its original F32
+  FMA and eight-wave reduction sequence. RED failed on the absent ABI; GREEN
+  passed both global and SWA fixtures with every projection/head/KV bit,
+  `KVLiveSpans` field, and completion-counter lifecycle exact.
+- The first same-resident p512/d128 directional pair is decisively negative:
+  **22.984343 -> 22.675497 tok/s (-1.34372%)**, adding **0.592587
+  ms/token**. Token **2930 -> 74107**, final position **638**, trajectory SHA,
+  **79,066,169,172-byte** residency, determinism, and allocation recovery are
+  exact. Raw JSON SHA-256 is `f46850ac...bef83`.
+- Stop before the seven-pair gate and remove the HIP specialization, C/Python
+  wrappers, comparison selector, and temporary tests. The additional live
+  accumulators/reduction state cost more than the extra activation reuse;
+  retained tile2 remains production at **23.017271 tok/s**. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile4-rejected.json`.
