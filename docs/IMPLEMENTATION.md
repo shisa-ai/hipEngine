@@ -106,6 +106,9 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Prove primitive CPU-oracle parity and cached gfx1151 kernel names.
 - [x] Add logical-dim-52 fixed self-cache and resident cross-cache attention kernels.
 - [ ] Compose the exact unfused FP16 decoder fallback after attention kernels land.
+  - [ ] Add head-major cross-K/V precompute and deterministic device FP16 argmax glue.
+  - [ ] Wire prepared kernels, encoder state, and sequential token steps into the resident runtime.
+  - [ ] Validate selected golden-fixture positions and prove timed steps do not allocate.
 
 ## Notes
 
