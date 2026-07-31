@@ -2513,6 +2513,19 @@ the path with constructor-false rollback; peer backends retain cached loads.
 Evidence:
 `benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json`.
 
+The gfx1151 projection→head/KV composite additionally owns two adjacent
+source-F16 output columns per local256 block. This is the exact reusable-row
+idea from llama.cpp Vulkan's AMD `NUM_ROWS=2` F16 DMMV specialization at
+`c0bc8591e`, without the rejected wave64/local64 geometry. Both output
+accumulators preserve the one-column FMA and wave32 reduction trees while
+sharing each BF16 activation load/conversion and one barrier. Global/SWA
+specializations trace as `<true,true,2>`/`<false,true,2>` at
+local256/VGPR32/SGPR128/LDS512/scratch0, and seven complete-model pairs improve
+**22.886574 -> 22.994503 tok/s (+0.47158%, 7/7)**. The ordinary output
+projection stays one-column after its tile2 screen regressed **8.598-10.489%**;
+gfx1100 remains on the one-column composite:
+`benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json`.
+
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
 full-logit argmax stage-1 scan and one model launch while preserving all logits,

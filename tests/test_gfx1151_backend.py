@@ -17,12 +17,16 @@ from hipengine.kernels.backends import (
     resolve_backend,
     select_backend,
 )
-from hipengine.kernels.hip_gfx1100.norm import (
-    paro_rmsnorm_out_fp16,
-    register_qwen35_rmsnorm_kernels,
+from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+    laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
+    laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
+)
+from hipengine.kernels.hip_gfx1100.norm import (
+    paro_rmsnorm_out_fp16,
+    register_qwen35_rmsnorm_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
@@ -801,6 +805,28 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "LAGUNA_Q4_SHARED_DOWN_T16_DECODE",
         )
         is True
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer=(
+                "attention_projection+head_rmsnorm+partial_rotary+kv_write"
+            ),
+            quant="fp16_weight+laguna_f32_weight",
+            variant="global_fixedk_nontemporal_bf16_f32_spans",
+        )
+        is laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer=(
+                "attention_projection+head_rmsnorm+partial_rotary+kv_write"
+            ),
+            quant="fp16_weight+laguna_f32_weight",
+            variant="swa_fixedk_nontemporal_bf16_f32_spans",
+        )
+        is laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans
     )
     assert (
         resolve(

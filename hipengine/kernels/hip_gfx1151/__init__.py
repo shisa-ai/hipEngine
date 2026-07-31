@@ -12,6 +12,10 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
+from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+    laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
+    laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
 )
@@ -744,6 +748,20 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     }
 )
 _GFX1151_OVERRIDES = {
+    # Source-faithful Vulkan DMMV output-row reuse, adapted without Vulkan's
+    # rejected wave64/local64 geometry: one retained local256 block owns two
+    # adjacent F16 columns, shares the BF16 activation load/conversion, and
+    # reduces both exact accumulator trees through one barrier.
+    (
+        "attention_projection+head_rmsnorm+partial_rotary+kv_write",
+        "fp16_weight+laguna_f32_weight",
+        "global_fixedk_nontemporal_bf16_f32_spans",
+    ): laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
+    (
+        "attention_projection+head_rmsnorm+partial_rotary+kv_write",
+        "fp16_weight+laguna_f32_weight",
+        "swa_fixedk_nontemporal_bf16_f32_spans",
+    ): laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     # F3Q caches 24 of 128 FP32 state rows across the GDN dependency barrier.
     # Its 15 KiB LDS footprint preserves four resident blocks on gfx1151.
     (

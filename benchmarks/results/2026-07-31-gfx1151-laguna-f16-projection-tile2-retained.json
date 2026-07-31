@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T15:30:00+09:00",
+  "kind": "hipengine_laguna_f16_projection_head_kv_tile2",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "source_parent_revision": "3ee9043eebbe9da86e674108162ba51421eced8f",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "source_analysis": {
+    "comparator": "llama.cpp Vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "files": [
+      "ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec.comp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_base.glsl"
+    ],
+    "finding": "The AMD F16 DMMV pipeline specializes NUM_ROWS=2, so one workgroup reuses each activation load across two adjacent output rows.",
+    "adaptation": "Keep hipEngine local256 ownership and the exact two-wave32 reduction trees, but accumulate two adjacent F16 columns per block and share the BF16 activation load/conversion and one synchronization."
+  },
+  "rejected_proxies": {
+    "naive_two_reduction_family_change_percent": 28.718,
+    "joint_reduction_output_projection_change_percent_range": [
+      8.598,
+      10.489
+    ],
+    "decision": "Remove ordinary and output-projection tile2 kernels; retain tile2 only inside the Q/K/V/gate projection-to-head/KV composite."
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_transitions": 127,
+    "repetitions": 7,
+    "warmup_rows": 128,
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "same_resident_counterbalanced": true
+  },
+  "performance": {
+    "control_decode_samples_tok_s": [
+      22.86338269085409,
+      22.892737893282,
+      22.877560943104726,
+      22.886573972303406,
+      22.895218587780843,
+      22.873989118012755,
+      22.887120464507532
+    ],
+    "candidate_decode_samples_tok_s": [
+      23.000742500648283,
+      22.964575179515265,
+      22.994502935940268,
+      22.986867764678728,
+      22.980690216251123,
+      22.994806361789088,
+      22.9957855105917
+    ],
+    "control_median_tok_s": 22.886573972303406,
+    "candidate_median_tok_s": 22.994502935940268,
+    "throughput_change_percent": 0.47158200160266617,
+    "control_median_seconds": 5.549104909878224,
+    "candidate_median_seconds": 5.523059156956151,
+    "saving_ms_per_token": 0.2050846686777402,
+    "pair_wins": 7,
+    "pair_count": 7
+  },
+  "correctness": {
+    "pass": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "control_candidate_exact": true,
+    "tracked_allocations_returned_to_zero": true,
+    "projection_f32_bits_exact": true,
+    "head_f32_bits_exact": true,
+    "kv_bf16_bits_exact": true,
+    "kvlivespans_exact": true,
+    "completion_counters_reset": true
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-tile2-final-trace.EFaDzm --output-file trace -- .venv/bin/python3 -m pytest -q tests/test_laguna_head_kv_fusion.py -k tile2",
+    "global_specialization": "<true, true, 2>",
+    "swa_specialization": "<false, true, 2>",
+    "global_duration_us": 265.018,
+    "swa_duration_us": 195.607,
+    "local_size": 256,
+    "vgpr": 32,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "csv_sha256": "9afab279aa7479c0544f34ca0b764061a6fb4be42a0be2cf4b7c05503496e988",
+    "compiler_spawned": false
+  },
+  "validation": {
+    "focused_tests_passed": 72,
+    "test_files": [
+      "tests/test_gfx1151_backend.py",
+      "tests/test_laguna_head_kv_fusion.py",
+      "tests/test_laguna_long_context_profile.py"
+    ],
+    "profiled_tile2_tests_passed": 2,
+    "python_compile_pass": true
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-f16-projection-tile2 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-f16-projection-tile2-ab.json",
+    "raw_sha256": "cb43884be2c32d849cfa8cd1eb7752fda204a019cf65bc8a98dab9ff641e1df3",
+    "compiler_spawned": false,
+    "tracked_clean": false,
+    "temporary_comparison_route_removed_after_gate": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "gfx1100_unchanged": true,
+    "ordinary_output_projection_unchanged": true,
+    "rollback": "hip_gfx1100 registered one-column implementation",
+    "clean_production_refresh_pending": true
+  }
+}
