@@ -84,9 +84,13 @@ def test_anyorder_output_and_router_wrappers_are_exposed() -> None:
 
 def test_anyorder_runtime_is_gfx1151_available_and_default_on() -> None:
     import hipengine.kernels.hip_gfx1151 as gfx1151
+    import hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection as linear
+    import hipengine.kernels.hip_gfx1100.moe.router as router
     from hipengine.kernels.registry import KernelKey, is_registered
     from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 
+    linear.register_laguna_f16_projection_kernels(replace=True)
+    router.register_qwen35_router_kernels(replace=True)
     gfx1151.register_gfx1151_kernels(replace=True)
     assert gfx1151.LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE is True
     assert gfx1151.LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE is True
