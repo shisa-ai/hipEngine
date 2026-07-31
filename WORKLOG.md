@@ -195246,3 +195246,19 @@ Vulkan local sizes verbatim will close the measured gap.
   gfx1151 health checks pass.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json`.
+
+## 2026-07-31 09:30 JST — Publish non-temporal source-F16 decode
+
+- Tracked-clean selector-unset production at `c3b4aeb39` measures
+  **22.838639/22.858662/22.856155 tok/s**, median
+  **22.856155 tok/s / 43.751890 ms/token**.
+- This advances the preceding **22.780604 tok/s** checkpoint
+  **0.33165%**, saves **0.145102 ms/token**, and reaches **+99.327%** from
+  the **11.466687 tok/s** sprint start. The same-GGUF Vulkan gap contracts to
+  **0.922368 ms/token** or **2.15358%** throughput.
+- All three runs preserve next/final tokens **2930/74107**, final position
+  **638**, generated-ID SHA `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete allocation recovery.
+  Load is excluded and cached-build enforcement is active.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-production.json`.

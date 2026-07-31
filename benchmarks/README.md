@@ -52,7 +52,7 @@ local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
 The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**22.780604 tok/s / 43.897 ms/token**, up **98.668%** from the
+**22.856155 tok/s / 43.752 ms/token**, up **99.327%** from the
 **11.466687 tok/s** sprint start. The exact selected-Q4 down owner now shares
 adjacent-column nibble and coefficient transport while preserving each F32
 FMA/reduction/BF16/weighted boundary. Seven same-resident pairs improve
@@ -61,13 +61,14 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 (+0.12179%, -0.053461 ms/token)** with exact trajectories and unchanged
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
-The next retained gfx1151 default marks one-pass source-F16 projection weights
+The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve
 **22.792512 -> 22.855773 tok/s (+0.27755%, -0.123855 ms/token paired
-median)** with exact trajectories and unchanged residency; tracked-clean
-selector-unset publication is pending.
-[`non-temporal F16 retention`](results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json).
+median)** with exact trajectories and unchanged residency. Tracked-clean
+selector-unset production advances **22.780604 -> 22.856155 tok/s
+(+0.33165%, -0.145102 ms/token)**.
+[`non-temporal F16 production`](results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-production.json).
 The preceding exact low-priority routed/shared overlap
 moves **94 of 482 kernels/token** to the existing secondary stream after
 router selection. Seven matched pairs improve
