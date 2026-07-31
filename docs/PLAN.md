@@ -2211,21 +2211,25 @@ request-sum/span **4.725%/0.487%/1.076%**. Fresh selector-unset 512/1K/4K gains
 HIP **690.791**. Workspace/scratch remain unchanged, gfx1151 remains excluded,
 and **156/156** guards pass.
 
-The clean committed H6Q reprofile remains **390.947 tok/s / 1,301.236 ms /
-2,192 dispatches**, **+130.625%** over campaign start and **1.76697x** behind
-matched llama.cpp HIP **690.791 tok/s / 714.008 ms**. **WPF-H6R exact DPP
-peer-exchange staged-wave IQ3 now passes its one-shot standalone leaf gate.**
-Frozen rows 1/7/8/9/M512, reversed P64/P65, sampled CPU values, and all **45/45**
-actual IQ3 layers are byte-exact. Every layer wins both clocks: H6Q -> H6R event
-**311.597 -> 269.365 ms (-13.554%, 1.1568x)** and synchronized wall **317.309 ->
-265.667 ms (-16.275%, 1.1944x)**, with minimum layer **1.1425x/1.1785x**.
-Arch-tagged ISA emits zero bpermutes and exact **24 permlanex16 + 96 DPP** while
-preserving 216 FMAs, 24 LDS loads/12 stores, stride `0x300`, two/eight barriers,
-local128/grid32768x64/LDS512, and complete bytes. Metadata/runtime is VGPR
-**101/104**, private0/spill0/scratch0. Retain only the separate key/wrapper/
-kernel and gfx1151 exclusion; H6Q remains source/runtime owner with unchanged
-allocation/ABI/policy until bounded H6R qualification
-([H6R candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
+The clean committed H6Q production baseline remains **390.947 tok/s /
+1,301.236 ms / 2,192 dispatches**, **+130.625%** over campaign start and
+**1.76697x** behind matched llama.cpp HIP **690.791 tok/s / 714.008 ms**.
+**WPF-H6R exact DPP peer-exchange staged-wave IQ3 is now a qualified bounded
+default-off runtime owner.** Its admitted leaf remains exact and both-clock
+positive on all **45/45** actual layers, with zero bpermutes, exact **24
+permlanex16 + 96 DPP**, unchanged math/topology, and metadata/runtime VGPR
+**101/104** at private0/spill0/scratch0. Complete natural M512 is KL0/byte-exact
+across logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and
+teardown. Four cached requests preserve exactly **2,192 dispatches** and replace
+only **45 H6Q -> 45 H6R**, moving IQ3/request-sum/span
+**310.159/1,332.893/1,362.094 -> 267.241/1,285.199/1,307.416 ms
+(-13.837%/-3.578%/-4.014%)**. Default-off 512/1K/4K gains
+**+4.055%/+3.151%/+1.873%**, all 3/3 exact wins; fixed C4096/M512 gains
+**+4.489% (5/5)** at **408.222 tok/s**, **1.69220x** behind matched llama.cpp.
+Allocation, ABI, workspace/scratch, sidecar, dispatch count, and H6Q source map
+remain unchanged; gfx1151 fails closed and **218/218** guards pass. Freeze and
+commit a separate source-default RED before changing the selected map
+([H6R candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
 [post-H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
 [H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json)).

@@ -30,8 +30,8 @@ ownership with WPF-2b rowbatch8 same-ABI rollback, H6M rejects exact explicit
 wait-split Q5 record pipelining, H6N promotes exact global dense-initial
 fixed-512 source ownership with H6A global rollback, H6Q promotes exact
 compact-shuffle-loop staged-wave IQ3 source ownership with H6P rollback, H6R
-retains an exact DPP peer-exchange IQ3 leaf pending bounded runtime
-qualification, and 16K+ remains deferred**.
+qualifies as an exact bounded default-off DPP peer-exchange IQ3 runtime owner
+pending source adjudication, and 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -789,17 +789,22 @@ stays registered rollback
 [H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
 [post-H6P target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json)).
 
-**WPF-H6R exact DPP peer-exchange staged-wave IQ3 now passes its one-shot
-standalone leaf gate.** Frozen rows 1/7/8/9/M512, reversed P64/P65, sampled CPU
-values, and all **45/45** actual layers are byte-exact and both-clock positive.
-H6Q -> H6R event moves **311.597 -> 269.365 ms (-13.554%, 1.1568x)** and
-synchronized wall **317.309 -> 265.667 ms (-16.275%, 1.1944x)**; minimum layer
-wins are **1.1425x/1.1785x**. ISA emits zero bpermutes, exact **24 permlanex16 +
-96 DPP**, unchanged 216 FMAs/LDS/barriers/stride/grid, and
-private0/spill0/scratch0 at metadata/runtime VGPR **101/104**. Retain the leaf
-with gfx1151 excluded; H6Q remains source/runtime owner until a separate bounded
-H6R qualification
-([H6R candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
+**WPF-H6R exact DPP peer-exchange staged-wave IQ3 now qualifies as a bounded
+default-off runtime owner.** The admitted leaf remains exact and both-clock
+positive on all **45/45** actual layers, with zero bpermutes, exact **24
+permlanex16 + 96 DPP**, unchanged arithmetic/topology, and metadata/runtime VGPR
+**101/104** at private0/spill0/scratch0. Complete natural M512 is KL0/byte-exact
+across logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and
+teardown. Four cached requests preserve exactly **2,192 dispatches** and change
+only **45 H6Q -> 45 H6R** calls, moving IQ3/request-sum/span
+**310.159/1,332.893/1,362.094 -> 267.241/1,285.199/1,307.416 ms
+(-13.837%/-3.578%/-4.014%)**. Default-off 512/1K/4K gains
+**+4.055%/+3.151%/+1.873%**, all 3/3 exact wins; fixed C4096/M512 gains
+**+4.489% (5/5)** at **408.222 tok/s**. H6R reuses raw allocation and
+`grouped_iq_prefill`; ABI, workspace/scratch, sidecar, dispatch count, and H6Q
+source map remain unchanged. gfx1151 fails closed and **218/218** guards pass.
+Freeze source-default RED before changing H6Q
+([H6R candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
 [post-H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
@@ -1566,7 +1571,7 @@ heldouts before any clean publication.
 | **WPF-H6N exact global dense-initial fixed-512 score arena** | **Complete; retained gfx1100 global dense-initial production through 4K** | Leaf **6/6** H6A/CPU/span checks and **16,928 -> 2,592-byte** storage pass. Complete natural M512 is KL0/byte-exact across all 48 boundaries, K/V/spans, repeat, and teardown at unchanged workspace/scratch. Four cached requests preserve **2,192 dispatches** and substitute exact **48 H6A global -> 48 H6N**, moving global/attention/request-sum/span **57.126/169.556/1,320.178/1,346.667 -> 31.969/148.140/1,305.325/1,327.300 ms (-44.038%/-12.631%/-1.125%/-1.438%)**. Fresh selector-unset fixed C4096/M512 reaches **387.571 tok/s (+1.519%, 5/5 wins)** and is **1.79668x** behind llama.cpp HIP. Selector-unset 512/1K/4K is **-0.054%/+0.199%/+0.054%**, exact/finite and lifecycle-clean; 4K wins **3/3**. H6A global remains registered rollback, H6A SWA stays source, gfx1151 stays excluded, and **81/81** guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json) · [`candidate/runtime`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) · [`target`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json). |
 | **WPF-H6P exact staged-wave-publication triple-output IQ3** | **Retained bounded default-off gfx1100 owner; source remains H6I** | Leaf **9/9** and all **45/45** actual-layer both-clock gates pass at runtime VGPR112. Complete M512 is KL0/byte-exact across all 48 boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192 dispatches** and substitute exact **45 H6I -> 45 H6P**, cutting IQ3/request-sum/span **2.757%/0.291%/0.645%**. Default-off 512/1K/4K gains **+0.764%/+0.416%/+0.242%**, 3/3 exact wins each; fixed C4096/M512 gains **+0.141% (4/5 wins)**. Workspace/scratch are unchanged, E255 fails closed, and **246/246** guards pass. Keep H6I source **386.959 tok/s** pending source-default RED/publication. [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json). |
 | **WPF-H6Q exact compact-shuffle-loop staged-wave IQ3** | **Qualified bounded default-off gfx1100 owner; H6P remains source** | Separate no-unroll helper preserves H6P bytes, 216 FMAs, 120 dynamic shuffles/order, stride `0x300`, three staged scopes, and two/eight barriers while reducing static bpermutes **120 -> 24**, code **8,360 -> 6,620 B**, and metadata/runtime VGPR **107/112 -> 95/96** at private0/spill0/scratch0. Frozen **9/9** and all **45/45** actual layers pass both clocks: event **329.124 -> 313.405 ms (-4.776%, 1.050x)** and wall **326.037 -> 317.946 (-2.481%, 1.025x)**, minimum layer **1.038x/1.016x**. Complete M512 is KL0/byte-exact across all 48 boundaries/KV/spans; exact 45-call substitution cuts IQ3/request/span **4.725%/0.487%/1.076%**. Default-off 512/1K/4K gains **+0.586%/+0.486%/+0.366%** and fixed M512 gains **+0.373% (5/5)**; **155/155** guards pass. [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json). |
-| **WPF-H6R exact DPP peer-exchange staged-wave IQ3** | **Retained standalone gfx1100 leaf; H6Q source/runtime unchanged** | Candidate-local permlanex16 then DPP 8/4/2/1 preserves H6Q bytes, 216 FMAs, staged scopes, stride `0x300`, and two/eight barriers while replacing bpermutes with exact **24 permlanex16 + 96 DPP**. Frozen **9/9** and all **45/45** actual layers pass both clocks: event **311.597 -> 269.365 ms (-13.554%, 1.1568x)** and wall **317.309 -> 265.667 (-16.275%, 1.1944x)**, minimum layer **1.1425x/1.1785x**. Metadata/runtime is VGPR **101/104**, LDS512, private0/spill0/scratch0; **151/151** guards pass and gfx1151 is excluded. [`candidate`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json). |
+| **WPF-H6R exact DPP peer-exchange staged-wave IQ3** | **Qualified bounded default-off gfx1100 owner; H6Q remains source** | Candidate-local permlanex16 then DPP 8/4/2/1 preserves H6Q bytes, 216 FMAs, staged scopes, stride `0x300`, and two/eight barriers while replacing bpermutes with exact **24 permlanex16 + 96 DPP**. Frozen **9/9** and all **45/45** actual layers pass both clocks; complete M512 is KL0/byte-exact across all 48 boundaries/KV/spans. Exact 45-call substitution cuts IQ3/request-sum/span **13.837%/3.578%/4.014%**. Default-off 512/1K/4K gains **+4.055%/+3.151%/+1.873%**, all 3/3 wins; fixed M512 gains **+4.489% (5/5)** at **408.222 tok/s**. Workspace/scratch are unchanged, gfx1151 fails closed, and **218/218** guards pass. [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh H5W M512 span-minus-sum is only **26.726 ms / 1.461%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | H6L/H6I/H6E/H6C/H6N/H5Y selector-unset 4K is **188.858 tok/s**; fixed natural C4096/M512 is **387.571 tok/s**. First reach matched direct-M512 HIP parity **696.342 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |
