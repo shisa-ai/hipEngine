@@ -1208,19 +1208,23 @@ H6E/H5I/raw production
 ([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
-Select target-only **WPF-H6I exact IQ3 triple-output reduction amortization**
-after the distinct H6G/H6H family screens. The proposed separate H6F sibling
-keeps P256/P64/local128/rowbatch8 and every per-output load, row-interleaved
-VOPD FMA, wave32 tree, wave0..3 sum, BF16 store, grid, and active traversal.
-Three outputs share one publication/reuse epoch, so fixed N3072 changes H6F
-**6 -> 4 epochs** and **12 -> 8 dynamic barriers (-33.333%)** while modeled
-accumulators/storage rise **16 -> 24 floats/thread** and **256 -> 384 bytes**.
-The H6D/H6F two-point model suggests **360.918 -> 335.623 ms** wall and
-**353.798 -> 360.092 tok/s**, but is not measured H6I evidence. Require RED,
-compiled stride 0x300, 216 useful FMAs, private0/spill0/scratch0, bounded
-VGPR/LDS, unchanged grid, exact complete H6F bytes, and every **45/45** actual
-layer positive on both clocks before runtime ownership
-([H6I target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
+**WPF-H6I exact IQ3 triple-output reduction amortization** is now an admitted
+standalone gfx1100 leaf. The separate H6F sibling keeps P256/P64/local128/
+rowbatch8 and every per-output load, row-interleaved VOPD FMA, wave32 tree,
+wave0..3 sum, BF16 store, grid, and active traversal. Three outputs share one
+publication/reuse epoch: compiled stride **0x300** and two barriers/body prove
+fixed-N3072 **6 -> 4 epochs / 12 -> 8 dynamic barriers**; the body retains
+exactly **216** useful FMAs. Candidate metadata/runtime is private0/spill0/
+scratch0 at **VGPR164/168, LDS384/512**, local128/grid32768x64. Frozen
+rows1/7/8/9/M512, P64/P65, every triplet boundary, complete H6F bytes, and
+sampled CPU bytes pass **9/9**. All **45/45** actual IQ3 layers are byte-exact
+and both-clock positive: H6F -> H6I event/wall sums move **362.558/359.595 ->
+328.206/332.468 ms (-9.475%/-7.544%, 1.105x/1.082x)**, with minimum
+**1.094x/1.073x**. The retained bundle passes **112/112**. Runtime capability,
+package maps, workspace, and H6F source production remain unchanged pending a
+separate bounded-owner gate
+([H6I candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

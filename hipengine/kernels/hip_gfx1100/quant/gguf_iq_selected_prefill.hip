@@ -366,6 +366,53 @@ __device__ inline void reduce_local128_pairs_batched(
   }
 }
 
+// H6I carries a third independent H6F output through the same local128
+// publication epoch. Each output retains its own wave32 tree and wave0..3
+// serial sum; one barrier publishes all three wave-sum planes.
+template <int ROW_BATCH>
+__device__ inline void reduce_local128_triples_batched(
+    float (&value_a)[ROW_BATCH],
+    float (&value_b)[ROW_BATCH],
+    float (&value_c)[ROW_BATCH],
+    float* __restrict__ wave_sums_a,
+    float* __restrict__ wave_sums_b,
+    float* __restrict__ wave_sums_c) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      value_a[row] += __shfl_down(value_a[row], offset);
+      value_b[row] += __shfl_down(value_b[row], offset);
+      value_c[row] += __shfl_down(value_c[row], offset);
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      wave_sums_a[row * 4 + wave] = value_a[row];
+      wave_sums_b[row * 4 + wave] = value_b[row];
+      wave_sums_c[row * 4 + wave] = value_c[row];
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_BATCH; ++row) {
+      value_a[row] = 0.0f;
+      value_b[row] = 0.0f;
+      value_c[row] = 0.0f;
+#pragma unroll
+      for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+        value_a[row] += wave_sums_a[row * 4 + wave_idx];
+        value_b[row] += wave_sums_b[row * 4 + wave_idx];
+        value_c[row] += wave_sums_c[row * 4 + wave_idx];
+      }
+    }
+  }
+}
+
 template <int ROW_BATCH>
 __device__ inline void reduce_local64_pairs_batched(
     float (&value_a)[ROW_BATCH],
@@ -1355,6 +1402,109 @@ __global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_exper
   }
 }
 
+// H6I keeps every H6F per-output operation but groups three strided columns
+// into one publication/reuse epoch. N3072/P256 has four complete triplets.
+template <int OUTPUT_PARTITIONS>
+__launch_bounds__(128, 1)
+__global__ void gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_triple_output_rowbatch8_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ active_experts,
+    const int64_t* __restrict__ active_count_ptr,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int out_features,
+    int num_experts) {
+  constexpr int expert_partitions = 64;
+  constexpr int in_features = 1024;
+  constexpr int row_batch = 8;
+  constexpr int row_bytes =
+      (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
+  const int active_count = static_cast<int>(
+      min(max(*active_count_ptr, static_cast<int64_t>(0)),
+          static_cast<int64_t>(num_experts)));
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int x_offset = threadIdx.x * 8;
+  __shared__ float wave_sums_a[row_batch * 4];
+  __shared__ float wave_sums_b[row_batch * 4];
+  __shared__ float wave_sums_c[row_batch * 4];
+
+  for (int active_index = blockIdx.y; active_index < active_count;
+       active_index += expert_partitions) {
+    const int64_t expert64 = active_experts[active_index];
+    if (expert64 < 0 || expert64 >= num_experts) continue;
+    const int expert = static_cast<int>(expert64);
+    const int64_t begin = expert_start_compact[expert];
+    const int64_t end = expert_start_compact[expert + 1];
+    if (begin >= end) continue;
+    const int64_t expert_weight_offset =
+        static_cast<int64_t>(expert) * expert_bytes;
+
+    for (int64_t row_base = begin; row_base < end; row_base += row_batch) {
+      ushort8_t activation[row_batch] = {};
+#pragma unroll
+      for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+          activation[row_idx] =
+              *reinterpret_cast<const ushort8_t*>(
+                  x + row * in_features + x_offset);
+        }
+      }
+      for (int out_col = blockIdx.x; out_col < out_features;
+           out_col += 3 * OUTPUT_PARTITIONS) {
+        const int second_out_col = out_col + OUTPUT_PARTITIONS;
+        const int third_out_col = second_out_col + OUTPUT_PARTITIONS;
+        const int64_t weight_offset_a =
+            expert_weight_offset + static_cast<int64_t>(out_col) * row_bytes;
+        float acc_a[row_batch] = {};
+        {
+          const IQ3Segment segment_a =
+              load_iq3_segment(qweight + weight_offset_a, threadIdx.x);
+          dot_iq3_segment_rowbatch8_interleaved(segment_a, activation, acc_a);
+        }
+        const int64_t weight_offset_b =
+            expert_weight_offset +
+            static_cast<int64_t>(second_out_col) * row_bytes;
+        float acc_b[row_batch] = {};
+        {
+          const IQ3Segment segment_b =
+              load_iq3_segment(qweight + weight_offset_b, threadIdx.x);
+          dot_iq3_segment_rowbatch8_interleaved(segment_b, activation, acc_b);
+        }
+        const int64_t weight_offset_c =
+            expert_weight_offset +
+            static_cast<int64_t>(third_out_col) * row_bytes;
+        float acc_c[row_batch] = {};
+        {
+          const IQ3Segment segment_c =
+              load_iq3_segment(qweight + weight_offset_c, threadIdx.x);
+          dot_iq3_segment_rowbatch8_interleaved(segment_c, activation, acc_c);
+        }
+        reduce_local128_triples_batched(
+            acc_a, acc_b, acc_c,
+            wave_sums_a, wave_sums_b, wave_sums_c);
+        if (threadIdx.x == 0) {
+#pragma unroll
+          for (int row_idx = 0; row_idx < row_batch; ++row_idx) {
+            const int64_t row = row_base + row_idx;
+            if (row < end) {
+              out[row * out_features + out_col] =
+                  float_to_bf16_bits(acc_a[row_idx]);
+              out[row * out_features + second_out_col] =
+                  float_to_bf16_bits(acc_b[row_idx]);
+              out[row * out_features + third_out_col] =
+                  float_to_bf16_bits(acc_c[row_idx]);
+            }
+          }
+        }
+        __syncthreads();
+      }
+    }
+  }
+}
+
 __launch_bounds__(128, 2)
 __global__ void gguf_iq4_xs_selected_dual_grouped_prefill_compact_kernel(
     const uint16_t* __restrict__ x,
@@ -2314,6 +2464,43 @@ extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_act
   }
   hipLaunchKernelGGL(
       (gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_paired_output_rowbatch8_kernel<256>),
+      dim3(256, 64),
+      dim3(128),
+      0,
+      stream,
+      x,
+      expert_start_compact,
+      active_experts,
+      active_count,
+      qweight,
+      out,
+      static_cast<int>(compact_rows),
+      static_cast<int>(out_features),
+      static_cast<int>(num_experts));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* active_experts,
+    const int64_t* active_count,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!valid_common(
+          x, expert_start_compact, qweight, out, compact_rows, in_features,
+          out_features, num_experts) ||
+      active_experts == nullptr || active_count == nullptr ||
+      in_features != 1024 || out_features != 3072 || num_experts != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_triple_output_rowbatch8_kernel<256>),
       dim3(256, 64),
       dim3(128),
       0,
