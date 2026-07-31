@@ -64,6 +64,19 @@ _GROUPED_IQ_DOWN_BASELINE_ABI = "grouped_raw_iq"
 _GROUPED_IQ_DOWN_SUPPORTED_ABIS = frozenset(
     {_GROUPED_IQ_DOWN_BASELINE_ABI, "grouped_raw_iq_active_experts"}
 )
+_GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS = MappingProxyType(
+    {
+        "gguf_iq2_xs": (
+            "selected_dual_silu_grouped_prefill_compact_"
+            "pair16_rowbatch8_bf16_bf16_out"
+        )
+    }
+)
+_GROUPED_PAIR16_GATE_UP_ROLE = (3072, 1024, 256)
+_GROUPED_PAIR16_GATE_UP_BASELINE_ABI = "grouped_raw_iq_dual_silu"
+_GROUPED_PAIR16_GATE_UP_SUPPORTED_ABIS = frozenset(
+    {_GROUPED_PAIR16_GATE_UP_BASELINE_ABI}
+)
 _GROUPED_GATE_UP_ROLE_SPECS = MappingProxyType(
     {"layer47_iq3_k3072_n1024_e256": (47, "gguf_iq3_xxs")}
 )
@@ -395,6 +408,77 @@ def _resolve_laguna_grouped_iq_down_variants(
                 variant,
                 variant_abis.get(variant, _GROUPED_IQ_DOWN_BASELINE_ABI),
             )
+    return MappingProxyType(selected)
+
+
+def _resolve_laguna_grouped_pair16_gate_up_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[str, tuple[str, str]]:
+    """Resolve quant-wide pair16 gate/up variants with exact-shape fallback."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS",
+        _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS,
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped pair16 gate/up variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for raw_quant, raw_variant in raw_variants.items():
+        quant = str(raw_quant)
+        if quant not in _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS:
+            raise ValueError(
+                f"Laguna grouped pair16 gate/up policy has unsupported quant {quant!r}"
+            )
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError(
+                "Laguna grouped pair16 gate/up policy requires non-empty variants"
+            )
+        parsed[quant] = variant
+
+    raw_variant_abis = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANT_ABIS",
+        {},
+    )
+    if not isinstance(raw_variant_abis, Mapping):
+        raise ValueError("Laguna grouped pair16 gate/up variant ABIs must be a mapping")
+    variant_abis: dict[str, str] = {}
+    for raw_variant, raw_abi in raw_variant_abis.items():
+        variant = str(raw_variant).strip()
+        abi = str(raw_abi).strip()
+        if not variant or abi not in _GROUPED_PAIR16_GATE_UP_SUPPORTED_ABIS:
+            raise ValueError(
+                "Laguna grouped pair16 gate/up policy has unsupported variant ABI"
+            )
+        variant_abis[variant] = abi
+
+    selected = {
+        quant: (variant, _GROUPED_PAIR16_GATE_UP_BASELINE_ABI)
+        for quant, variant in _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS.items()
+    }
+    role = (
+        config.hidden_size,
+        config.expert_feed_forward_length,
+        config.expert_count,
+    )
+    if role != _GROUPED_PAIR16_GATE_UP_ROLE:
+        return MappingProxyType(selected)
+    for quant, variant in parsed.items():
+        baseline = _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS[quant]
+        abi = (
+            _GROUPED_PAIR16_GATE_UP_BASELINE_ABI
+            if variant == baseline
+            else variant_abis.get(variant)
+        )
+        if abi is None:
+            continue
+        key = KernelKey(backend, "moe_linear", quant, variant)
+        if is_registered(key):
+            selected[quant] = (variant, abi)
     return MappingProxyType(selected)
 
 
@@ -1084,13 +1168,12 @@ def resolve_laguna_moe_plan(
             for quant, key in c1_selected_gate_up_keys.items()
         }
     )
+    grouped_pair16_gate_up_policies = (
+        _resolve_laguna_grouped_pair16_gate_up_variants(config, backend=backend)
+    )
     grouped_pair16_gate_up_specs = {
-        "gguf_iq2_xs": KernelKey(
-            backend,
-            "moe_linear",
-            "gguf_iq2_xs",
-            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out",
-        )
+        quant: KernelKey(backend, "moe_linear", quant, variant)
+        for quant, (variant, _abi) in grouped_pair16_gate_up_policies.items()
     }
     grouped_pair16_gate_up_keys = MappingProxyType(
         {
@@ -1104,7 +1187,7 @@ def resolve_laguna_moe_plan(
             quant: LagunaMoESelectedRoute(
                 key=key,
                 function=_resolve_exact(key),
-                abi="grouped_raw_iq_dual_silu",
+                abi=grouped_pair16_gate_up_policies[quant][1],
                 allocation_name="raw",
                 library_key="grouped_iq_prefill",
             )

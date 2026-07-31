@@ -1269,24 +1269,28 @@ materially occupancy-preserving mechanism
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)).
 
 **WPF-H6L exact IQ2 pair16 grouped gate/up rowbatch16 decode amortization** is a
-retained gfx1100 leaf pending runtime qualification. It instantiates the frozen
+retained gfx1100 bounded default-off runtime owner. It instantiates the frozen
 WPF-2b template only at K3072/N1024/E256 `<16>` and preserves local64/pair16 K
 ownership, one output/expert block, every row's FMA/two-wave sum/BF16 gate-up
 boundary/SiLU/store, activation/useful work, grid, allocation, workspace, and
-rowbatch8 source policy. The boundary/CPU matrix passes **10/10**. Code-object
-metadata is VGPR112/SGPR86/LDS256/private0/spill0/wave32; cached rocprof records
+rowbatch8 source policy. The boundary/CPU matrix passes **10/10** and all
+**46/46** actual layers are byte-exact/both-clock positive. Code-object metadata
+is VGPR112/SGPR86/LDS256/private0/spill0/wave32; cached rocprof records
 local64/grid65536x256, runtime VGPR112/LDS512/scratch0, and no compiler activity.
 
-All **46/46** actual IQ2 layers are complete-byte exact and positive on both
-clocks under natural-M512 routing. Rowbatch8 -> rowbatch16 event falls **487.782
--> 404.377 ms (-17.099%, 1.206x)** and wall falls **485.883 -> 408.587 ms
-(-15.908%, 1.189x)**, with minimum per-layer **1.196x/1.178x**. Epochs replay
-**34,292 -> 20,307**, and **132/132** retained guards pass. Keep runtime/default
-on WPF-2b rowbatch8/H6I at **359.963 tok/s** until a separate bounded capability
-proves complete state, exact 46-call topology, unchanged scratch/dispatches, and
-clean 512/1K/4K plus fixed C4096/M512 wins; the modeled **381.267 tok/s** is not
-a claim
-([candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
+Natural-M512 control/candidate/repeat is KL0 and byte-exact across logits, all
+**48/48** hidden boundaries, complete K/V/`KVLiveSpans`, and teardown at
+unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch. Four
+cached requests preserve **2,192 dispatches** and replace exactly **46
+rowbatch8 -> 46 H6L** with unchanged H6C/H6I/Q5/Q6/attention topology. IQ2/
+request-sum/span moves **460.772/1,424.447/1,452.975 ->
+377.540/1,351.047/1,372.593 ms (-18.064%/-5.153%/-5.532%)**. Clean default-off
+512/1K/4K improves **343.915/283.504/182.781 -> 363.373/296.023/188.661 tok/s
+(+5.658%/+4.416%/+3.217%)**, 3/3 exact wins each; **211/211** guards pass. Keep
+source production on WPF-2b rowbatch8/H6I at **359.963 tok/s** until a separate
+source-default contract, fixed natural-token C4096/M512, and selector-unset
+512/1K/4K gates pass
+([candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

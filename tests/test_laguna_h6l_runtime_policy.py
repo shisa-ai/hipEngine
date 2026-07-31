@@ -107,7 +107,7 @@ def test_h6l_runtime_capability_is_default_off_bounded_and_fail_closed(
     candidate_scratch = _prefill_scratch(config, candidate)
     assert candidate_scratch.q5_f32_ordered_nbytes == package_scratch.q5_f32_ordered_nbytes
     assert candidate_scratch.total_nbytes == package_scratch.total_nbytes
-    assert len(candidate.all_keys) == len(package_default.all_keys)
+    assert len(candidate.kernel_keys) == len(package_default.kernel_keys)
 
     for wrong_config in (
         replace(config, hidden_size=1024),

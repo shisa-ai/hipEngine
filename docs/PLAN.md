@@ -2075,25 +2075,28 @@ materially occupancy-preserving mechanism
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)).
 
 Retain **WPF-H6L exact IQ2 pair16 grouped rowbatch16 decode amortization** as a
-gfx1100 leaf after its frozen and binding gates. It instantiates the existing
-WPF-2b local64/pair16 fused-SiLU template only at K3072/N1024/E256 while keeping
-one output/expert block, every row's FMA/two-wave sum/BF16 gate-up boundary/
-SiLU/store, grid, activation/useful work, allocation, workspace, and production
-policy. The frozen boundary/CPU matrix passes **10/10**. Cached code-object and
-rocprof evidence remains private0/spill0/scratch0 at metadata/runtime
-**VGPR112/112, LDS256/512**, local64, and grid65536x256.
+gfx1100 bounded default-off runtime owner. It instantiates the existing WPF-2b
+local64/pair16 fused-SiLU template only at K3072/N1024/E256 while keeping one
+output/expert block, every row's FMA/two-wave sum/BF16 gate-up boundary/
+SiLU/store, grid, activation/useful work, allocation, and workspace. The frozen
+boundary/CPU matrix passes **10/10**; all **46/46** actual layers are byte-exact
+and both-clock positive. Cached code-object and rocprof evidence remains
+private0/spill0/scratch0 at metadata/runtime **VGPR112/112, LDS256/512**,
+local64, and grid65536x256.
 
-On all **46/46** actual IQ2 layers and natural-M512 routing, complete outputs are
-byte-exact and every layer wins both clocks. Rowbatch8 -> rowbatch16 event moves
-**487.782 -> 404.377 ms (-17.099%, 1.206x)** and synchronized wall moves
-**485.883 -> 408.587 ms (-15.908%, 1.189x)**; minimum layer speedups are
-**1.196x/1.178x**. Epochs replay **34,292 -> 20,307 (-40.782%)**, and **132/132**
-retained guards pass. Admit only the leaf: runtime and source production remain
-WPF-2b rowbatch8/H6I at **359.963 tok/s**. The scaled **381.267 tok/s** estimate
-is explicitly non-claiming. Next freeze a bounded default-off runtime capability
-and require complete natural-M512 state/topology/scratch plus clean 512/1K/4K
-and fixed C4096/M512 wins before source promotion
-([candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
+Natural-M512 rowbatch8 control/H6L candidate/repeat is KL0 and byte-exact across
+complete logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, and
+teardown at unchanged **161,120,256-byte** workspace / **600,141,856-byte**
+scratch. Four cached requests preserve **2,192 dispatches** and substitute exact
+**46 rowbatch8 -> 46 H6L** while leaving H6C/H6I/Q5/Q6/attention topology
+unchanged. IQ2/request-sum/span moves **460.772/1,424.447/1,452.975 ->
+377.540/1,351.047/1,372.593 ms (-18.064%/-5.153%/-5.532%)**. Clean default-off
+512/1K/4K improves **343.915/283.504/182.781 -> 363.373/296.023/188.661 tok/s
+(+5.658%/+4.416%/+3.217%)**, with 3/3 exact wins each and **211/211** guards.
+Source production remains WPF-2b rowbatch8/H6I at **359.963 tok/s**. Next freeze
+a separate source-default contract and require fixed natural-token C4096/M512
+plus selector-unset 512/1K/4K before changing the selected map
+([candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

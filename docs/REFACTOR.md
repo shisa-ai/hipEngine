@@ -179,6 +179,14 @@ should be removed or collapsed.
   now defaults gate/up to `grouped_pair16` plus `grouped_exact` down; c=1,
   unsupported keys, explicit `grouped_exact`, and paired `direct` remain exact
   fallbacks.
+- WPF-H6L temporarily adds `LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS` plus its
+  same-ABI map and bounded resolver so exact rowbatch16 can be qualified while
+  rowbatch8 remains source production. Complete state, exact 46-call topology,
+  clean 512/1K/4K, and **211/211** guards pass with no allocation/workspace/
+  dispatch change. After the separate source-default decision, remove this
+  candidate-only indirection if H6L is rejected; if promoted, collapse it to
+  the source map and retain rowbatch8 through the built-in baseline fallback
+  after one rollback checkpoint.
 - The cleanup trigger is closed. Cleanup removed the unowned Laguna rowbatch8
   and fused-SiLU local256/group8 gate/up variants, IQ3 down rowbatch4, and
   losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and focused tests.
