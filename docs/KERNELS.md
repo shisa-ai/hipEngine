@@ -2597,6 +2597,12 @@ and regresses the actual layer-1 leaf
 **0.092815 -> 0.094319 ms (+1.620%)**. The candidate is removed; tile8 remains
 canonical:
 `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-tile4-rejected.json`.
+The barrier-free selector→gate contraction is also closed. Recomputing the
+exact corrected top-10 inside every selected local128 workgroup preserves all
+router fields and BF16 output, and removes one launch, but regresses the actual
+two-kernel chain **0.104777 -> 0.125216 ms (+19.506%)**. The composite is
+removed:
+`benchmarks/results/2026-07-31-gfx1151-laguna-selector-selected-gate-fusion-rejected.json`.
 
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
