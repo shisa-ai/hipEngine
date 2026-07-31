@@ -13,6 +13,26 @@ typedef laguna_bf16_t __attribute__((ext_vector_type(16))) laguna_bf16x16_t;
 typedef float __attribute__((ext_vector_type(8))) laguna_float8_t;
 using laguna_half_t = _Float16;
 
+constexpr int64_t kLagunaGlobalFusedMaxScan = 4000;
+constexpr int64_t kLagunaGlobalDensePrefixMaxScan = 6000;
+
+inline bool laguna_global_fused_shape_valid(
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t max_scan,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  return capacity > 0 && block_size == 256 &&
+      block_table_len == (capacity + block_size - 1) / block_size &&
+      scratch_stride == capacity && scan_slots > 0 &&
+      scan_slots <= capacity && scan_slots <= max_scan &&
+      num_q_heads == 48 && num_kv_heads == 8 && head_dim == 128;
+}
+
 __device__ inline float laguna_bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -1656,7 +1676,6 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
     const int64_t* row_positions,
     int scan_slots,
     float scale) {
-  constexpr int kCapacity = 4096;
   constexpr int kBlockSize = 256;
   constexpr int kNumKvHeads = 8;
   constexpr int kHeadDim = 128;
@@ -1726,8 +1745,7 @@ void laguna_global_attention_fused_exact_gated_fixedshape_kernel(
   const int lane = tid & 31;
   const int wave = tid >> 5;
   int context_len = static_cast<int>(
-      live_counts[0] < kCapacity ? live_counts[0] : kCapacity);
-  context_len = context_len < scan_slots ? context_len : scan_slots;
+      live_counts[0] < scan_slots ? live_counts[0] : scan_slots);
   if (context_len <= 0 || row_positions[0] < 0) return;
 
   if constexpr (kWmmaThreeTermQk) {
@@ -8845,10 +8863,17 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp3
       score_scratch == nullptr || physical_scratch == nullptr ||
       base_offsets == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
-      block_table_len != 16 || scratch_stride != 4096 ||
-      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
-      num_kv_heads != 8 || head_dim != 128) {
+      row_positions == nullptr ||
+      !laguna_global_fused_shape_valid(
+          capacity,
+          block_size,
+          block_table_len,
+          scratch_stride,
+          scan_slots,
+          kLagunaGlobalFusedMaxScan,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int kOwnedQueries = 2;
@@ -8930,10 +8955,17 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp3
       score_scratch == nullptr || physical_scratch == nullptr ||
       base_offsets == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
-      block_table_len != 16 || scratch_stride != 4096 ||
-      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
-      num_kv_heads != 8 || head_dim != 128) {
+      row_positions == nullptr ||
+      !laguna_global_fused_shape_valid(
+          capacity,
+          block_size,
+          block_table_len,
+          scratch_stride,
+          scan_slots,
+          kLagunaGlobalDensePrefixMaxScan,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int kOwnedQueries = 2;
@@ -9016,10 +9048,17 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp3
       score_scratch == nullptr || physical_scratch == nullptr ||
       base_offsets == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
-      block_table_len != 16 || scratch_stride != 4096 ||
-      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
-      num_kv_heads != 8 || head_dim != 128) {
+      row_positions == nullptr ||
+      !laguna_global_fused_shape_valid(
+          capacity,
+          block_size,
+          block_table_len,
+          scratch_stride,
+          scan_slots,
+          kLagunaGlobalFusedMaxScan,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int kOwnedQueries = 2;
@@ -9103,10 +9142,17 @@ hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp
       score_scratch == nullptr || physical_scratch == nullptr ||
       base_offsets == nullptr || live_counts == nullptr ||
       token_positions == nullptr || evict_mask == nullptr ||
-      row_positions == nullptr || capacity != 4096 || block_size != 256 ||
-      block_table_len != 16 || scratch_stride != 4096 ||
-      scan_slots <= 0 || scan_slots > 4000 || num_q_heads != 48 ||
-      num_kv_heads != 8 || head_dim != 128) {
+      row_positions == nullptr ||
+      !laguna_global_fused_shape_valid(
+          capacity,
+          block_size,
+          block_table_len,
+          scratch_stride,
+          scan_slots,
+          kLagunaGlobalFusedMaxScan,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int kOwnedQueries = 2;
