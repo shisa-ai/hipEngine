@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_moe_tail_wave0_tree_production",
+  "status": "accepted_default_exact_paired_win_clean_wall_variance",
+  "created_at": "2026-07-31T12:46:14+09:00",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "repo": {
+    "revision": "3d0f2b272c9993c3321eb9387c0c1f48d1240955",
+    "tracked_clean": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_bytes": 79066169172
+  },
+  "production": {
+    "selector": "LAGUNA_MOE_TAIL_WAVE0_TREE=true",
+    "decode_samples_tok_s": [
+      22.844101106006576,
+      22.861339147283037,
+      22.867586029253648
+    ],
+    "decode_median_tok_s": 22.861339147283037,
+    "decode_median_ms_per_token": 43.741969512702205,
+    "prior_clean_tok_s": 22.873989323,
+    "prior_clean_ms_per_token": 43.71777855970629,
+    "clean_delta_percent": -0.05530375807355492,
+    "clean_delta_ms_per_token": 0.024190952995915893,
+    "paired_gate_tok_s": {
+      "scalar_control": 22.869082286485522,
+      "wave0_candidate": 22.873287477405167,
+      "delta_percent": 0.018388105246058828,
+      "paired_median_saving_ms_per_token": 0.0050728828976238805,
+      "wins": 5,
+      "samples": 7
+    },
+    "sprint_start_tok_s": 11.466687,
+    "sprint_delta_percent": 99.37179018911945,
+    "same_gguf_vulkan_tok_s": 23.348381,
+    "same_gguf_vulkan_ms_per_token": 42.829522098341634,
+    "remaining_vulkan_gap_ms_per_token": 0.912447414360571,
+    "remaining_vulkan_throughput_gap_percent": 2.130416987295547
+  },
+  "correctness": {
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "allocation_recovery": true,
+    "resident_bytes_unchanged": true
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-moe-tail-wave0-production-clean.json",
+  "raw_sha256": "69689f3b1bfb93d819c5f795ce084b25029a7c3be86c264a2ca00ac09eed44d9",
+  "decision": {
+    "retained": true,
+    "headline_advanced": false,
+    "reason": "The controlled same-resident exact A/B and leaf gates are positive, while the independent clean process moved by only 0.0553% in the opposite direction. Retain the exact measured sub-window win and report the clean-wall variance rather than attributing it to the kernel.",
+    "rollback": "LagunaGGUFResidentSession(use_moe_tail_wave0_tree=False)"
+  },
+  "retention_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json"
+}
