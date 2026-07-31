@@ -1,0 +1,207 @@
+{
+  "schema": "hipengine.laguna_16k_decode_profile_comparison.v1",
+  "created_at": "2026-08-01T08:52:45+09:00",
+  "status": "accepted_attribution",
+  "performance_claim": false,
+  "scope": "Matched same-GGUF 16K-depth c=1 decode device attribution on gfx1151",
+  "repo": {
+    "revision": "fc8e1e9e4912823a95b64401927b600fd3c10148",
+    "tracked_clean": true
+  },
+  "platform": {
+    "cpu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "vulkan_driver": "RADV STRIX_HALO",
+    "vulkan_subgroup_size": 64,
+    "vulkan_matrix_core_mode": "KHR_coopmat"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "file_bytes": 75169369088,
+    "parameters": 117561977600,
+    "hipengine_resident_bytes": 87407934744,
+    "kv": "BF16 in hipEngine; F16 in llama.cpp Vulkan"
+  },
+  "protocol": {
+    "depth": 16384,
+    "output_tokens": 128,
+    "hipengine_timed_forward_transitions": 127,
+    "vulkan_selected_decode_sections": 127,
+    "hipengine_chunk_size": 2048,
+    "vulkan_batch": 2048,
+    "vulkan_ubatch": 512,
+    "repetitions": 1,
+    "notes": [
+      "The hipEngine trace segments the 127 synchronized one-row transitions after the first prefill-produced token.",
+      "The Vulkan log contains 32 depth-fill sections and 128 generation sections; the final 127 generation sections are selected to match hipEngine's transition count.",
+      "Vulkan operation logging groups concurrently scheduled nodes on one line. Its global FLASH_ATTN_EXT row also names the concurrent F16 output projection, so the reported global interval is an upper bound on pure Vulkan attention time.",
+      "Clean production walls come from the already-published matched depth packet. The profile-run walls are diagnostic and are not substituted for the clean topline."
+    ]
+  },
+  "commands": {
+    "hipengine": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lcd2-hip16k.9QByGA --output-file hip16k -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 16384 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd2-hip16k.9QByGA/child.json",
+    "vulkan": "HIP_VISIBLE_DEVICES=0 GGML_VK_VISIBLE_DEVICES=0 GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_CONCURRENT=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 0 -n 128 -d 16384 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress"
+  },
+  "clean_production_anchor": {
+    "source": "benchmarks/results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json and benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json",
+    "hipengine_tok_s": 7.735836,
+    "hipengine_ms_per_token": 129.268511,
+    "vulkan_tok_s": 21.728347,
+    "vulkan_ms_per_token": 46.022829,
+    "wall_gap_ms_per_token": 83.245682,
+    "vulkan_over_hipengine": 2.808791
+  },
+  "profiled_hipengine": {
+    "decode_tok_s": 7.707542567547963,
+    "decode_wall_ms_per_token": 129.743032,
+    "kernel_sum_ms_per_token_mean": 136.182804,
+    "kernel_sum_ms_per_token_median": 136.210272,
+    "interval_union_ms_per_token_mean": 127.89211,
+    "interval_union_ms_per_token_median": 127.908568,
+    "kernel_span_ms_per_token_mean": 129.581336,
+    "kernel_span_ms_per_token_median": 129.468309,
+    "wall_minus_interval_union_ms_per_token": 1.850922,
+    "dispatches_per_transition": 493,
+    "global_attention": {
+      "calls_per_transition": 24,
+      "ms_per_token_mean": 86.240275,
+      "share_of_interval_union": 0.674321,
+      "score_producer": {
+        "calls_per_transition": 12,
+        "ms_per_token_mean": 9.713018,
+        "kernel": "laguna_global_attention_split_exact_scores_kernel",
+        "workgroup_size": 32,
+        "vgpr": 16,
+        "reported_lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "gated_reducer_pv": {
+        "calls_per_transition": 12,
+        "ms_per_token_mean": 76.527257,
+        "share_of_interval_union": 0.598374,
+        "kernel": "laguna_global_attention_split_exact_gated_reduce_kernel",
+        "workgroup_size": 256,
+        "vgpr": 24,
+        "reported_lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    },
+    "swa_attention": {
+      "calls_per_transition": 36,
+      "ms_per_token_mean": 0.719395
+    },
+    "other_families_ms_per_token_mean": {
+      "source_f16_projection": 24.189332,
+      "selected_q4_gate_up": 8.908892,
+      "dense_shared_quant_projection": 8.448506,
+      "selected_q4_q6_down": 4.777648,
+      "router": 1.338729,
+      "lm_head_argmax": 1.132765,
+      "norm_rope_gate": 0.422768
+    },
+    "correctness": {
+      "pass": true,
+      "decode_forward_calls": 127,
+      "prefill_final_position": 16383,
+      "final_position": 16510,
+      "next_token_id": 81,
+      "final_token_id": 13815,
+      "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+      "tracked_allocations_returned_to_zero": true
+    }
+  },
+  "profiled_vulkan": {
+    "llama_cpp_revision": "c0bc8591e",
+    "logger_sections_found": 160,
+    "selected_sections": 127,
+    "bench_tok_s": 21.091865,
+    "bench_wall_ms_per_token": 47.411644,
+    "logged_gpu_ms_per_token": 45.337251,
+    "bench_wall_minus_logged_gpu_ms_per_token": 2.074393,
+    "logged_dispatches_per_token": 766,
+    "flash_attention_group": {
+      "ms_per_token": 4.493972,
+      "share_of_logged_gpu": 0.099123,
+      "global_group_ms_per_token": 3.692811,
+      "global_group_calls_per_token": 12,
+      "global_group_shape": "Q(128,1,48), K/V(128,16640,8), GQA ratio 6",
+      "swa_group_ms_per_token": 0.801161,
+      "swa_group_calls_per_token": 36,
+      "swa_group_shape": "Q(128,1,72), K/V(128,1024,8), GQA ratio 9",
+      "qualification": "The global and SWA rows include concurrently named F16 output projection work; they are scheduled-group intervals and upper bounds on pure FA time."
+    },
+    "source_mechanism": {
+      "path": "wave64 KHR cooperative-matrix flash attention",
+      "tile": "Br=16, Bc=64, four subgroup64 groups/local256",
+      "gqa": "The host folds N=1 into six query rows per global KV head, reducing 48 query-head owners to 8 KV-head owners.",
+      "context_parallelism": "Occupancy-derived split-K partitions the long KV axis and reduces only online-softmax output/max/denominator partials.",
+      "materialized_score_plane": false,
+      "arithmetic_contract": "F16 K/V and default F16 cooperative accumulation; comparator only, not hipEngine's exact scalar FP32 association."
+    }
+  },
+  "comparison": {
+    "profiled_device_gap_ms_per_token": 82.554859,
+    "scheduled_global_group_gap_ms_per_token": 82.547464,
+    "scheduled_global_group_share_of_device_gap": 0.99991,
+    "hipengine_global_over_vulkan_global_group": 23.353556,
+    "hipengine_reducer_over_complete_vulkan_global_group": 20.723306,
+    "hipengine_swa_vs_vulkan_swa_group_delta_ms_per_token": -0.081766,
+    "hipengine_swa_vs_vulkan_swa_group_delta_percent": -10.206,
+    "interpretation": "Within profiler resolution, the complete device-active 16K gap is the generic global-attention route. hipEngine SWA is below Vulkan's complete SWA-plus-output scheduled group, but this is not a pure-FA comparison. Host dispatch and the rest of the overlapped device schedule are not the long-context limiter."
+  },
+  "traffic_model": {
+    "laguna_global_layers": 12,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "gqa_ratio": 6,
+    "head_dim": 128,
+    "hipengine_mean_live_tokens": 16448,
+    "vulkan_padded_kv_tokens": 16640,
+    "unique_bf16_kv_payload_bytes_per_hipengine_token": 808452096,
+    "hipengine_qhead_owned_kv_load_request_bytes": 4850712576,
+    "hipengine_full_score_plus_physical_plane_bytes_one_way": 75792384,
+    "hipengine_score_workgroups_per_token": 9474048,
+    "effective_requested_bandwidth_gb_s": {
+      "hipengine_score_k_repeated_six_way": 249.701614,
+      "hipengine_reducer_v_repeated_six_way": 31.692712,
+      "vulkan_unique_padded_kv_lower_bound": 221.481474
+    },
+    "qualification": "These are source-derived logical load-request ledgers, not DRAM counters. Cache broadcasts/reuse can reduce physical traffic. The contrast remains structural: hipEngine owns QK/PV per query head and materializes the full score/physical plane; Vulkan owns six queries per KV head and retains only split online-softmax partials."
+  },
+  "decision": {
+    "lc_d2": "complete",
+    "lc_d3": "active",
+    "next_owner": "An exact GQA6 context-parallel tiled global owner that removes the full score/physical plane and replaces the one-workgroup-per-query-head serial PV reducer with bounded split partials.",
+    "first_gate": "At 16K, reduce global attention from 86.240 ms/token to <=20 ms/token while preserving exact recurrent state; then require positive one-run 4K/16K/64K and mandatory 128K before promotion.",
+    "stretch_gate": "Vulkan-class <=5 ms/token scheduled global interval at 16K, subject to hipEngine's stricter arithmetic/correctness contract."
+  },
+  "raw_sources": {
+    "hipengine_child": {
+      "path": "/tmp/laguna-lcd2-hip16k.9QByGA/child.json",
+      "sha256": "30340ff8f17019254fa4d692831a716b8d14106b3a968098a64a2a6a37fbac7f"
+    },
+    "hipengine_trace": {
+      "path": "/tmp/laguna-lcd2-hip16k.9QByGA/hip16k_kernel_trace.csv",
+      "sha256": "2d64fb9e764567777c468f6ed1d5d37dc8f74f5f685466eab62539bb8539f0d8"
+    },
+    "hipengine_summary": {
+      "path": "/tmp/laguna-lcd2-hip16k.9QByGA/summary.json",
+      "sha256": "5af26ad12fe41008ff08131547a767fa71ab9b0516dd5646c820b5730a20b5b1"
+    },
+    "vulkan_bench": {
+      "path": "/tmp/laguna-lcd2-vk16k.aLCjV3/bench.json",
+      "sha256": "c16201dacd5de0f9c0a3c651c466a90faedef63b91863cc46ba9f46a33971d99"
+    },
+    "vulkan_log": {
+      "path": "/tmp/laguna-lcd2-vk16k.aLCjV3/profile.log",
+      "sha256": "ef0781c78e335e301a7689839fa8ba2b9f83d580dbb3dceafc3dd7107eb3b438"
+    },
+    "vulkan_summary": {
+      "path": "/tmp/laguna-lcd2-vk16k.aLCjV3/summary.json",
+      "sha256": "4f1dc59cbefddbc74cdc65baa57915b75aeac1bdfc7cc67e59b223aebd648718"
+    }
+  }
+}
