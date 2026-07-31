@@ -8923,6 +8923,32 @@ The remaining attention sequence is:
      [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json).
 
+191. Apply the same any-order continuation to selected-down→D9.
+     **Rejected and completely removed.**
+
+     The fresh default-on trace refines the dependency. Across **5,969**
+     layer transitions, selected down is the last MoE producer in **5,968**;
+     shared down finishes a median **111.649 us** earlier. The exact D9
+     consumer starts a median **8.416 us** after selected down, totaling
+     **0.356407 ms/token** of latest-producer boundary. Publish one completion
+     signal per 16-column selected-down tile and launch the unchanged D9
+     aggregate/residual/next-RMSNorm body any-order. Q4, paired-Q4, and planar
+     Q6 producer output/sums are bit-exact, D9 is bit-exact, and both reset
+     reuse cycles pass.
+
+     | p512/d128 median | ordered | any-order D9 | Delta |
+     | --- | ---: | ---: | ---: |
+     | all-lane polling | 23.223407 tok/s | 23.202540 tok/s | **-0.08985%** |
+     | one leader per 16 lanes | 23.229909 tok/s | 23.193309 tok/s | **-0.15755%** |
+
+     The consumer must occupy compute resources while it waits; that
+     contention costs more than the ordinary 8-us launch boundary. Reducing
+     atomic pressure by 16x does not fix the mechanism and worsens the
+     complete-model result. Remove every candidate kernel, ABI, wrapper,
+     runtime switch, harness option, and test. Production stays
+     **23.231783 tok/s / 43.044479 ms/token**:
+     [`rejected`](../benchmarks/results/2026-08-01-gfx1151-laguna-moe-tail-anyorder-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8957,6 +8983,9 @@ every output block from VGPR24 to VGPR64. Item 189 closes uncalibrated
 one-plane Q8 source-F16 at every individual Q/K/V/gate and global/SWA scope.
 Item 190 then removes most of the source-F16 output→router uncovered boundary
 with an isolated on-device continuation while preserving producer ordering.
+Item 191 closes the analogous selected-down→D9 continuation: unlike the
+output→router consumer, D9 waits long enough and with enough resident lanes
+to slow the producer it is intended to overlap.
 Source census:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
