@@ -196022,3 +196022,21 @@ Vulkan local sizes verbatim will close the measured gap.
   temporary leaf route. Production remains **23.017271 tok/s /
   43.445636 ms/token**. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-shared-q8-activation-rejected.json`.
+
+## 2026-07-31 16:55 JST — Reject paired-tile Q6 LM-head producer
+
+- Built an exact scheduling screen that packs two independent retained
+  16-logit Q6T16 producers into one local256 workgroup, halving the producer
+  grid **6,272 -> 3,136** without changing K ownership, FMA/reduction order,
+  FP32 logits, tile-max/tie semantics, layout, residency, or stage-2 control.
+  RED failed on the absent ABI; GREEN passed the tie-sensitive GPU fixture
+  with every FP32 logit, top-1 ID, and top-1 value bit-exact.
+- The actual root M1/K3072/N100352 counterbalanced 21x8 leaf regresses
+  **1.125175 -> 1.131562 ms (+0.568%)**; median paired delta is
+  **+0.004403 ms**. Raw JSON SHA-256 is `60afa2dc...07749dea`.
+- Stop before resident integration and remove the kernel, wrapper, harness
+  mode, and temporary test. The retained local128 grid already supplies
+  sufficient parallelism; coarser scheduling does not reduce the streaming
+  weight traffic. Production remains **23.017271 tok/s /
+  43.445636 ms/token**. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-paired-tile-rejected.json`.

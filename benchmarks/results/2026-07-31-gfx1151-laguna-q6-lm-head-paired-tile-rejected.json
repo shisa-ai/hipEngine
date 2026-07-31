@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T07:53:45.146340+00:00",
+  "kind": "hipengine_laguna_q6_lm_head_paired_tile_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with Q6_K LM head",
+    "weights": "actual root LM head",
+    "shape": "M1/K3072/N100352"
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_lm_head_top1_leaf.py --candidate paired-tile2 --samples 21 --warmups 5 --burst 8 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-lmhead-tile2-leaf.json",
+    "raw_json": "/tmp/laguna-q6-lmhead-tile2-leaf.json",
+    "raw_sha256": "60afa2dcce18199ad8c3de81af55f54f2763f8f4e040d122c54ab64107749dea",
+    "timing": "counterbalanced HIP events over retained producer plus unchanged stage-2 reducer",
+    "samples": 21,
+    "launches_per_sample": 8
+  },
+  "candidate": {
+    "description": "Pair two independent 16-logit Q6T16 producers in one local256 workgroup. Each 128-thread half preserves the retained K ownership, FMA order, four-wave reduction, FP32 logits, tile maximum, layout, and residency while halving the producer workgroup count.",
+    "red": "The focused test failed to import the absent paired-tile wrapper.",
+    "green": "The tie-sensitive GPU fixture matched all FP32 logits, top-1 ID, and top-1 value bit-for-bit."
+  },
+  "result": {
+    "control_median_ms": 1.1251753568649292,
+    "candidate_median_ms": 1.131562352180481,
+    "candidate_delta_percent": 0.5676444366278899,
+    "median_paired_delta_ms": 0.004403352737426758,
+    "exact_logits": true,
+    "exact_top1_id": true,
+    "exact_top1_value": true,
+    "control_top1_id": 81364,
+    "candidate_top1_id": 81364
+  },
+  "decision": {
+    "run_resident_gate": false,
+    "retain": false,
+    "reason": "Halving the workgroup count does not reduce weight or arithmetic traffic and slightly worsens the actual-weight leaf. The smaller retained workgroups already expose enough parallelism; the paired scheduling screen was removed completely.",
+    "production_decode_tok_s": 23.0172713318,
+    "production_ms_per_token": 43.4456363478
+  }
+}
