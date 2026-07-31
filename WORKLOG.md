@@ -196821,3 +196821,12 @@ Vulkan local sizes verbatim will close the measured gap.
   cyclic GC reaches **23.211222 tok/s (-0.04106%)**. Retain ordinary process
   affinity and GC. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-current-wall-host-housekeeping-rejected.json`.
+
+## 2026-08-01 02:36 JST — Admit matched 1K–128K Laguna sweep shape
+
+- Added the exact requested one-process profile tuple
+  **1K/4K/16K/32K/64K/128K** to the strict Laguna long-context harness. The
+  existing final sweep included 512 but omitted 16K, which would have required
+  a second 79-GB model load to cover the requested comparison.
+- The parser/ordering test now freezes the new tuple and its membership in the
+  admitted profile sets. Runtime/model behavior is unchanged.

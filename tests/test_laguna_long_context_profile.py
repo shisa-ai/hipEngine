@@ -13,6 +13,7 @@ from scripts.laguna_long_context_profile import (
     FINAL_SWEEP_LENGTHS,
     LAP0_LENGTHS,
     LC0_TRACE_LENGTHS,
+    MATCHED_LONG_SWEEP_LENGTHS,
     PROFILE_LENGTH_SETS,
     STANDARD_DECODE_LENGTHS,
     _active_comparison_count,
@@ -40,6 +41,15 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert LC0_TRACE_LENGTHS in PROFILE_LENGTH_SETS
     assert FINAL_SWEEP_LENGTHS == (512, 1024, 4096, 32768, 65536, 131072)
     assert FINAL_SWEEP_LENGTHS in PROFILE_LENGTH_SETS
+    assert MATCHED_LONG_SWEEP_LENGTHS == (
+        1024,
+        4096,
+        16384,
+        32768,
+        65536,
+        131072,
+    )
+    assert MATCHED_LONG_SWEEP_LENGTHS in PROFILE_LENGTH_SETS
     assert STANDARD_DECODE_LENGTHS == (512,)
     assert STANDARD_DECODE_LENGTHS in PROFILE_LENGTH_SETS
     assert DECODE_OUTPUT_TOKENS == (1, 128)
