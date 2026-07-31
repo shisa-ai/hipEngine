@@ -104,6 +104,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Add FP16 LayerNorm, residual, embedding, RoPE, and self-cache glue primitives.
 - [x] Add decoder gated-MLP activation and bias/residual primitives.
 - [x] Prove primitive CPU-oracle parity and cached gfx1151 kernel names.
+- [ ] Add logical-dim-52 fixed self-cache and resident cross-cache attention kernels.
 - [ ] Compose the exact unfused FP16 decoder fallback after attention kernels land.
 
 ## Notes
