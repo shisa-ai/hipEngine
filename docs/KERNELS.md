@@ -357,6 +357,16 @@ composite is byte-equal to the two-kernel chain. Cache-only gfx1151 tracing
 reports embedding/residual/RoPE/cache/composite at
 3.166/1.443/2.885/1.763/1.643 us, local256, LDS0, scratch0, and maximum VGPR24.
 
+`fused/moonshine_mlp.{hip,py}` registers
+`moonshine_gated_silu/fp16/value_gate_split`: it consumes the bias-aware FP16
+`fc1` boundary as `[value,gate]`, evaluates SiLU in FP32, multiplies in FP32,
+and writes FP16. The complete unfused production-shape chain is bias-aware
+`416->3328` projection, gated SiLU to 1664, bias-aware `1664->416`
+projection, and the registered residual primitive. It is byte-equal to the
+NumPy decoder-MLP-plus-residual oracle. Cached gfx1151 tracing reports
+51.497/4.289/12.664/2.966 us for fc1/activation/fc2/residual; the activation is
+local256/VGPR16/LDS0/scratch0. No fused whole-MLP claim is made.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
