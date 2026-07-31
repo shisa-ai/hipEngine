@@ -420,26 +420,40 @@ and is superseded as synthetic evidence. A clean c0bc8591 patched rebuild bound
 to both binaries and **5/5 top-1 2930** markers measures exact natural/C4096/
 BF16 llama.cpp HIP at **696.342 tok/s**. Synthetic pp512 is **711.410 tok/s**,
 consistent with the user's **714.07**. H6C's production-identical matched arm
-reaches **328.863 tok/s**, narrowing the exact wall gap to **2.11742x**;
-current/llama kernel sums are **1,550.161/718.241 ms**.
+first establishes **328.863 tok/s / 2.11742x**. A clean source-default refresh
+at `4b02f4d13` reaches **329.563 tok/s** from five exact token-2930 samples,
+**+94.413%** over campaign start and **2.11293x** behind llama.cpp; its cached
+representative request is **1,546.351 ms / 2,050 dispatches** in a
+**1,567.000-ms** span versus llama.cpp **718.241 ms / 2,824 dispatches**.
 
 | Matched M512 component | Campaign start | Current H6C | llama.cpp HIP exact |
 | --- | ---: | ---: | ---: |
-| IQ3/IQ4 down | 557.091 ms | **483.963 ms** | **154.434 ms** |
-| Q5 projections | 1,270.458 ms | **243.164 ms** | **58.737 ms** |
-| Attention | 488.304 ms | **192.339 ms** | **21.624 ms** |
-| IQ2/special-IQ3 gate/up | 460.143 ms | **465.700 ms** | **401.393 ms** |
-| Q6 projections | 157.073 ms | **92.342 ms** | **14.455 ms** |
-| Remaining | 68.623 ms | **72.652 ms** | **67.598 ms** |
-| **Kernel sum** | **3,001.692 ms** | **1,550.161 ms** | **718.241 ms** |
-| **Prefill** | **169.516 tok/s** | **328.863 tok/s** | **696.342 tok/s** |
+| IQ3/IQ4 down | 557.091 ms | **488.916 ms** | **154.434 ms** |
+| Q5 projections | 1,270.458 ms | **245.503 ms** | **58.737 ms** |
+| Attention | 488.304 ms | **168.520 ms** | **21.624 ms** |
+| IQ2/special-IQ3 gate/up | 460.143 ms | **475.796 ms** | **401.393 ms** |
+| Q6 projections | 157.073 ms | **93.490 ms** | **14.455 ms** |
+| Remaining | 68.623 ms | **74.124 ms** | **67.598 ms** |
+| **Kernel sum** | **3,001.692 ms** | **1,546.351 ms** | **718.241 ms** |
+| **Prefill** | **169.516 tok/s** | **329.563 tok/s** | **696.342 tok/s** |
 
-Production-identical paired-trace residuals rank IQ-down/Q5/attention/Q6/
-gate-up at **329.529/184.427/170.715/77.887/64.307 ms**. Untouched-family
-movement remains cross-trace variance, not paired regression. Immediate IQ ownership/tile
-premises are exhausted, so **WPF-H6B exact active-IQ3 signed-magnitude segment
-plane** screens a materially new operation. Complete 16-byte records match the
-pinned scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
+Fresh production residuals rank IQ-down/Q5/attention/Q6/gate-up at
+**334.482/186.766/146.896/79.035/74.403 ms**, explaining **99.212%** of the
+**828.109-ms** kernel gap. H5Z IQ3 alone is **480.299 ms / 45 calls**. The
+production function has 72 useful row-dot/scale FMAs in 72 issue slots and no
+FMA/FMA VOPD pair. Select **WPF-H6D exact row-interleaved IQ3 VOPD**: schedule
+the eight independent rowbatch8 accumulators together while preserving every
+row's low/high j0..3 FMA sequence, scale, four wave trees, serial partition sum,
+BF16 store, P64 traversal, P256 sweep, metadata, allocation, and fallback. An
+out-of-tree static probe forms **17** math-math pairs, lowers FMA issue slots
+**72 -> 55**, function slots **859 -> 775**, and code-object VGPR **107 -> 99**
+while keeping all 72 useful FMAs, 13 global loads, 52 DS operations, and two
+barriers. This is target feasibility only; freeze independent byte/CPU RED and
+require physical VOPD plus all-45-layer event+wall wins before runtime ownership
+([post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
+Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
+used a materially new operation. Complete 16-byte records match the pinned
+scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
 **45/45** actual-layer outputs are byte-exact. It is nevertheless decisively
 slower: producer-inclusive H5Z -> H6B event/wall moves
 **462.301/450.204 -> 575.804/587.342 ms (+24.552%/+30.461%)**, and no layer
