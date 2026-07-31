@@ -195971,3 +195971,20 @@ Vulkan local sizes verbatim will close the measured gap.
   accumulators/reduction state cost more than the extra activation reuse;
   retained tile2 remains production at **23.017271 tok/s**. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile4-rejected.json`.
+
+## 2026-07-31 16:40 JST — Reject selected-gate nontemporal transport
+
+- Added an arithmetic-identical cache-bypassing sibling for the production
+  layer-1 E256/K3072/N1024/top-10 dual-interleaved Q4 gate/up owner. RED failed
+  on the absent ABI; GREEN matched every production BF16 bit.
+- Bypassing Q plus scale/min/d/dmin loads regresses the 21x100 actual-weight
+  leaf **0.126216 -> 0.198603 ms (+57.352%)**. Keeping reusable metadata
+  cached and bypassing only the dominant Q payload still regresses
+  **0.118395 -> 0.159165 ms (+34.435%)**. Both screens have zero mismatches.
+  Raw JSON SHA-256 values are `4cd6bc33...a7cca` and
+  `0986bd63...d789f`.
+- Stop before resident integration and remove the specialization, wrapper,
+  leaf selector, and temporary test. Ordinary loads are materially better for
+  the selected T16 access pattern on gfx1151. Production remains
+  **23.017271 tok/s / 43.445636 ms/token**. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-nontemporal-rejected.json`.
