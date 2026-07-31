@@ -367,6 +367,20 @@ NumPy decoder-MLP-plus-residual oracle. Cached gfx1151 tracing reports
 51.497/4.289/12.664/2.966 us for fc1/activation/fc2/residual; the activation is
 local256/VGPR16/LDS0/scratch0. No fused whole-MLP claim is made.
 
+`attention/moonshine_attention.{hip,py}` registers
+`moonshine_self_attention/fp16/fixed_cache_logical_dim` and
+`moonshine_cross_attention/fp16/resident_masked_logical_dim`, with matching
+explicit CPU fallback keys. One wave32 owns each of the eight heads, reduces
+only the logical 52 dimensions, and maintains FP32 online-softmax max,
+denominator, and output state without 56-dimension padding or score scratch.
+Self-cache past lengths 0/1/2/8/32/64/128/193 and masked resident cross-cache
+lengths 40/207/1248 pass the NumPy oracle. The maximum-length smoke is finite;
+self output is byte-equal and masked cross output has max absolute error
+`4.768e-7` and relative L2 `7.961e-6`. Cache-only gfx1151 tracing names the
+self/cross kernels at 96.982/558.650 us for lengths 194/1248, local32,
+VGPR32/SGPR128/LDS0/scratch0. These are correctness fallback diagnostics, not
+tuned-attention performance claims.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

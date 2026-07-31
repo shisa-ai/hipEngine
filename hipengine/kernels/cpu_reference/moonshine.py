@@ -380,6 +380,49 @@ def moonshine_attention(
     return output
 
 
+def moonshine_self_attention(
+    query: ArrayLike,
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    *,
+    position: int,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Attend one query over the fixed cache prefix through ``position``."""
+
+    key_arr = _fp16("key_cache", key_cache)
+    value_arr = _fp16("value_cache", value_cache)
+    if key_arr.ndim != 4 or value_arr.shape != key_arr.shape:
+        raise ValueError("key_cache and value_cache must share [batch, heads, capacity, dim]")
+    if (
+        isinstance(position, bool)
+        or not isinstance(position, int)
+        or position < 0
+        or position >= key_arr.shape[2]
+    ):
+        raise ValueError("position must be in 0..capacity-1")
+    visible_length = position + 1
+    return moonshine_attention(
+        query,
+        key_arr[:, :, :visible_length],
+        value_arr[:, :, :visible_length],
+        scale=scale,
+    )
+
+
+def moonshine_cross_attention(
+    query: ArrayLike,
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    *,
+    mask: ArrayLike,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Attend one query over resident encoder K/V with an encoder mask."""
+
+    return moonshine_attention(query, key_cache, value_cache, mask=mask, scale=scale)
+
+
 def moonshine_projection(
     x: ArrayLike,
     weight: ArrayLike,
@@ -489,6 +532,14 @@ def register_moonshine_cpu_reference_kernels(*, replace: bool = True) -> None:
         ("moonshine_partial_rope", "interleaved"): moonshine_apply_partial_rope,
         ("moonshine_self_cache", "fixed"): moonshine_fixed_cache_write,
         ("moonshine_attention", "logical_head_dim"): moonshine_attention,
+        (
+            "moonshine_self_attention",
+            "fixed_cache_logical_dim",
+        ): moonshine_self_attention,
+        (
+            "moonshine_cross_attention",
+            "resident_masked_logical_dim",
+        ): moonshine_cross_attention,
         ("moonshine_projection", "fp32_accum"): moonshine_projection,
         ("moonshine_qkv_proj", "triple"): moonshine_triple_projection,
         ("moonshine_gated_silu", "value_gate_split"): moonshine_gated_silu,
