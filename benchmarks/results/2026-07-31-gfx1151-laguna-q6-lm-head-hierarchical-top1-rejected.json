@@ -1,0 +1,60 @@
+{
+  "schema": "hipengine.laguna_q6_lm_head_hierarchical_top1_rejection.v1",
+  "created_at": "2026-07-31T18:55:00+09:00",
+  "revision": "53176f65978ef265ead2fda086edfee710f325f0",
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon Graphics (gfx1151)"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "lm_head_quant": "Q6_K_T16"
+  },
+  "shape": {
+    "rows": 1,
+    "hidden_size": 3072,
+    "vocab_size": 100352,
+    "producer_tiles": 6272
+  },
+  "candidate": {
+    "description": "Two-tier producer-integrated exact top-1: 98 independent 64-tile completion groups, one leader per group, then a final local128 min-index stage.",
+    "group_size_tiles": 64,
+    "completion_groups": 98,
+    "counter_reset_exact": true
+  },
+  "correctness": {
+    "full_logits_exact": true,
+    "top1_id_exact": true,
+    "top1_value_exact": true,
+    "minimum_index_tie_fixture_exact": true,
+    "all_completion_counters_reset": true,
+    "actual_weight_top1_id": 81364,
+    "passed": true
+  },
+  "timing": {
+    "protocol": "21 counterbalanced samples, 5 warmups, 8 launches per timed burst",
+    "control": "retained Q6 tile maxima plus separate local256 stage-2 reducer",
+    "control_median_ms": 1.1252012252807617,
+    "candidate_median_ms": 1.1375243663787842,
+    "candidate_delta_percent": 1.095194425774615,
+    "paired_median_delta_ms": 0.0124434232711792,
+    "passed": false
+  },
+  "predecessor": {
+    "description": "Single global completion counter and last-producer stage-2",
+    "control_median_ms": 1.1393688917160034,
+    "candidate_median_ms": 1.1495819091796875,
+    "candidate_delta_percent": 0.8963749601969153
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_lm_head_top1_leaf.py --hierarchical --samples 21 --warmups 5 --burst 8 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-q6-lmhead-hierarchical-leaf.json",
+  "raw_result": {
+    "path": "/tmp/laguna-q6-lmhead-hierarchical-leaf.json",
+    "sha256": "498dfb39151b0698da8b9de66e24a62de821284a1f3e2f1de482be221a8ff479"
+  },
+  "decision": {
+    "status": "rejected_removed",
+    "reason": "Hierarchical counters remove the single-address contention premise but retain a last-producer dependency and slower local128 final reduction. The separate local256 reducer remains faster.",
+    "production_decode_tok_s": 23.0172713318,
+    "production_wall_ms_per_token": 43.4456363478
+  }
+}
