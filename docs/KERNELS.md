@@ -424,6 +424,20 @@ reduces eight past-1 cross calls from roughly 0.23 ms to 0.060 ms and moves the
 long-cache bottleneck to self attention. Detailed evidence is in the Moonshine
 experiment ledger's `results/2026-07-31-hip-phase3-cross-attention.md`.
 
+The Phase-3 self-attention route registers a branch-specialized one-wave
+candidate plus `fixed_cache_parallel_tokens` at local64/128/256. The runtime
+keeps the exact fallback at position 0, uses two waves at position 1, four waves
+at positions 2-3, and eight waves from position 4 through 193. These are general
+cache-length buckets, not fixture/token conditions. At positions 1/2/3/4/8/32/
+64/128/193, selected leaf speedups are 1.07x/1.15x/1.26x/1.33x/1.57x/3.05x/
+4.13x/5.26x/6.03x. The local256 route uses VGPR32/SGPR128/LDS2,048/scratch0
+and no score plane. Full synthetic and all six padded real Tier-B gates retain
+exact generated IDs, 100% logit top-1, zero timed allocation, and clean
+teardown. Clean position-193 profiling cuts self attention from 0.999 ms /
+57.4% to 0.192 ms / 20.0%, while the selected event median falls from 1.951 to
+1.122 ms. Evidence is in the experiment ledger's
+`results/2026-07-31-hip-phase3-self-attention.md`.
+
 `runtime/moonshine.py` composes these primitives into the complete unfused
 resident decoder. Code objects are explicitly prepared before timed work;
 validated FP16 encoder hidden state and int32 masks upload once; eight
