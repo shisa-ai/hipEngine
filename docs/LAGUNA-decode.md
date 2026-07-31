@@ -7916,6 +7916,34 @@ The remaining attention sequence is:
      **22.873989 tok/s / 43.717779 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile12-rejected.json).
 
+156. Replay the four exact tile8 partitions in two local64 phases.
+     **Rejected out of tree at the resident gate.**
+
+     This differs from the prior local32 replay: two physical waves first
+     compute retained logical waves 0/1, publish their exact reduced sums, then
+     reuse the same registers for logical waves 2/3. It preserves tile8,
+     byte-neutral interleaved weights, every per-thread K/FMA sequence, the
+     four-wave ordered merge, both BF16 projection round trips, SiLU, and the
+     final BF16 store.
+
+     The actual layer-1 21x100 leaf is exact and improves
+     **0.108431 -> 0.099529 ms (-8.210%)**. Cache-only tracing reports a
+     spill-free local64/VGPR88/SGPR128/LDS512 body versus retained
+     local128/VGPR80/SGPR128/LDS512. The required two-queue resident gate
+     reverses the result completely: seven p512/d128 pairs move
+     **22.871396 -> 22.689389 tok/s (-0.796%)**, add
+     **0.350729 ms/token** by endpoint medians and **0.348614 ms/token** by
+     paired median, and win **0/7**. Tokens, trajectory, position,
+     **79,066,169,172-byte** residency, determinism, and allocation recovery
+     remain exact.
+
+     The locally faster, finer-grained ownership increases interference with
+     the concurrent shared branch. Remove the candidate kernel, registry key,
+     runtime selector, benchmark comparison, and tests. This is direct evidence
+     that isolated selected-gate speed is no longer a valid proxy for complete
+     decode under the retained two-queue schedule:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

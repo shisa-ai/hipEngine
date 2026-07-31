@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_selected_gate_up_exact_resident_rejection",
+  "status": "rejected_out_of_tree",
+  "timestamp": "2026-07-31T13:24:00+09:00",
+  "source_revision": "6aa5e79fd7c760f44df0f5fa8027b77d0f42d8ec",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues_leaf": 1,
+    "gpu_max_hw_queues_resident": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv": "BF16"
+  },
+  "premise": "Keep the retained interleaved tile8 bytes and exact four logical wave partitions, but execute wave 0/1 and wave 2/3 as two register-disjoint phases in a local64 block. This preserves arithmetic while allowing twice as many workgroups at the same wave occupancy.",
+  "leaf": {
+    "shape": "actual layer-1 E256/top10/K3072/N1024 gate/up",
+    "protocol": "21 counterbalanced samples, five warmups, 100 launches per sample",
+    "control_ms": 0.10843107223510742,
+    "candidate_ms": 0.09952852249145508,
+    "candidate_latency_change_percent": -8.210330821362021,
+    "bf16_mismatches": 0,
+    "raw_sha256": "3d857747b2e82650aeb1984d9e598d792e16e169278a279dbdcfa13999aa6f44"
+  },
+  "codegen": {
+    "control": {
+      "local_size": 128,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "local_size": 64,
+      "vgpr": 88,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "trace_sha256": "13bd349647d386ca3963bb440411c65b767591cab5fed3848e570b296dc5a06c"
+  },
+  "resident_gate": {
+    "shape": "p512/d128 eager c=1 matrix2048 attention128",
+    "resident_nbytes": 79066169172,
+    "repetitions": 7,
+    "decode_forward_calls_per_arm": 127,
+    "control_tok_s": 22.871395883048503,
+    "candidate_tok_s": 22.689389117369576,
+    "throughput_change_percent": -0.7957833733000297,
+    "control_ms_per_token": 43.722735818724814,
+    "candidate_ms_per_token": 44.07346512623659,
+    "endpoint_delta_ms_per_token": 0.3507293075117774,
+    "paired_median_delta_ms_per_token": 0.3486142134455221,
+    "candidate_wins": 0,
+    "pairs": 7,
+    "raw_sha256": "69c3e42eed4ba7b8eb31d1e66ff59906105c6070091cbf441bcc32e8f566510a"
+  },
+  "correctness": {
+    "cpu_reference_fixture_passed": true,
+    "bf16_byte_exact": true,
+    "next_token": "2930 == 2930",
+    "final_token": "74107 == 74107",
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "allocation_recovery": true
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "environment_blocked",
+    "reason": "The manifest contains an unavailable external repository at /home/lhl/amd-gpu-tuning/reference/atlas; the local Laguna kernel and llama.cpp Vulkan c0bc8591e sources were inspected directly."
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The 8.21% isolated leaf win reverses to a stable 0.796% full-model throughput regression under the retained two-queue schedule. Local64 increases interference with the concurrent shared branch even though the kernel is exact and spill-free. All candidate kernel, registry, runtime, benchmark, and test routes were removed."
+  },
+  "production": {
+    "decode_tokens_per_second": 22.873989323,
+    "wall_ms_per_token": 43.717778559,
+    "changed": false
+  }
+}

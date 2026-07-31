@@ -195618,3 +195618,27 @@ Vulkan local sizes verbatim will close the measured gap.
   **22.873989 tok/s / 43.717779 ms/token**.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile12-rejected.json`.
+
+## 2026-07-31 13:24 JST — Reject exact tile8/local64 gate/up at resident gate
+
+- Screened a materially different midpoint after tile12: retain tile8 and all
+  four exact logical wave partitions, but execute waves 0/1 and 2/3 as two
+  register-disjoint phases in a local64 block. RED failed on the absent wrapper
+  and GREEN matches every production BF16 output byte.
+- The actual layer-1 E256/top10/K3072/N1024 21x100 leaf improves
+  **0.108431 -> 0.099529 ms (-8.210%)**. Cache-only tracing names the
+  candidate at local64/VGPR88/SGPR128/LDS512/scratch0 versus retained
+  local128/VGPR80/SGPR128/LDS512/scratch0.
+- Seven same-resident p512/d128 pairs decisively reverse the leaf:
+  **22.871396 -> 22.689389 tok/s (-0.796%)**, adding
+  **0.350729 ms/token** by endpoint medians and **0.348614 ms/token** by paired
+  median with **0/7** wins. All arms preserve token **2930 -> 74107**,
+  position **638**, trajectory SHA `94f803f7...bda32`,
+  **79,066,169,172-byte** residency, determinism, and allocation recovery.
+- Remove the complete kernel/registry/runtime/harness/test candidate. The
+  isolated ownership win increases two-queue interference with the concurrent
+  shared branch; production remains **22.873989 tok/s / 43.717779 ms/token**.
+  Leaf/trace/resident SHA-256 values are `3d857747...6f44`,
+  `13bd3496...5a06c`, and `69c3e42e...510a`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json`.
