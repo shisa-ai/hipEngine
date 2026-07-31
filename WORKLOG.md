@@ -196565,3 +196565,26 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is diagnostic ownership only; no production route, resident sidecar,
   quality claim, or throughput default changes. Next command will build one
   temporary Q8 sidecar and measure `q,k,v,gate` in a shared resident session.
+
+## 2026-07-31 22:32 JST — Reject every role-selective source-F16 Q8 lane
+
+- Ran the role-aware diagnostic twice under shared residency: first
+  `q,k,v,gate` across all 48 layers, then the same four roles over the 12
+  global and 36 SWA layer scopes. Activations stay exact BF16, accumulation
+  stays FP32, and untouched Q/K/V/gate siblings use exact source-F16.
+- All-layer max-KL/top-1 results are Q **0.481401/87.5%**, K
+  **0.685856/81.25%**, V **0.562211/87.5%**, and gate
+  **0.678714/93.75%**. Global results are Q **0.609830/100%**, K
+  **0.535149/87.5%**, V **0.852413/81.25%**, gate
+  **1.033883/93.75%**. SWA results are Q **0.598162/87.5%**, K
+  **0.586969/87.5%**, V **0.812677/87.5%**, gate
+  **0.566367/93.75%**.
+- Every arm exceeds the **0.05** max-KL ceiling by at least **9.63x**.
+  Dispatch counters prove 768/192/576 owned calls per all/global/SWA role.
+  Stop before a faster consumer, resident role sidecar, or performance gate.
+  Production remains **23.089693 tok/s / 43.309368 ms/token**.
+- Keep the role-aware diagnostic for a materially higher-precision or
+  calibrated representation. All-layer raw SHA-256 is
+  `98a84afd...9a7fd`; scoped raw SHA-256 is
+  `16320912...93cb6`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-role-isolation-rejected.json`.

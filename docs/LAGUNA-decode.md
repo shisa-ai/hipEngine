@@ -8854,6 +8854,31 @@ The remaining attention sequence is:
      adding another host launch. Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-kmajor-fusion-rejected.json).
 
+189. Reopen one-plane source-F16 Q8 only if an individual Q/K/V/gate role
+     passes recurrent quality.
+     **All roles and global/SWA scopes rejected on correctness.**
+
+     Extend the retained exact-activation diagnostic so Q, K, V, and gate can
+     be replaced independently while every untouched sibling stays on exact
+     source-F16. One temporary sidecar serves all arms; dispatch counters
+     prove **768** owned calls for each all-layer role, **192** for the 12
+     global layers, and **576** for the 36 SWA layers.
+
+     | Q8 role | all-layer max KL / top-1 | global max KL / top-1 | SWA max KL / top-1 |
+     | --- | ---: | ---: | ---: |
+     | Q | **0.481401 / 87.5%** | **0.609830 / 100%** | **0.598162 / 87.5%** |
+     | K | **0.685856 / 81.25%** | **0.535149 / 87.5%** | **0.586969 / 87.5%** |
+     | V | **0.562211 / 87.5%** | **0.852413 / 81.25%** | **0.812677 / 87.5%** |
+     | gate | **0.678714 / 93.75%** | **1.033883 / 93.75%** | **0.566367 / 93.75%** |
+
+     Every arm exceeds the **0.05** maximum-KL ceiling by at least **9.63x**.
+     Even global-Q's 100% top-1 row reaches max KL **0.609830**. Do not build
+     another fast consumer, resident sidecar, or role selector for block32
+     one-plane Q8. Keep the now role-aware diagnostic for materially
+     higher-precision/calibrated representations. Production remains
+     **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-role-isolation-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8884,7 +8909,8 @@ half-dot geometry seam before runtime integration. Item 187 closes the
 barrier-free redundant selector→gate launch contraction at the complete
 target-chain leaf. Item 188 closes the byte-neutral K-major
 output→router→selector construction because its continuation code inflates
-every output block from VGPR24 to VGPR64:
+every output block from VGPR24 to VGPR64. Item 189 closes uncalibrated
+one-plane Q8 source-F16 at every individual Q/K/V/gate and global/SWA scope:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:

@@ -2613,6 +2613,14 @@ the continuation raised every output block from **VGPR24/LDS512** to
 8 did not repair it, so the kernel, ABI, wrapper, harness, and tests are
 removed:
 `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-kmajor-fusion-rejected.json`.
+The retained source-F16 Q8 diagnostic now isolates Q, K, V, and attention
+gate roles while untouched siblings remain exact. All-layer, 12-global-layer,
+and 36-SWA-layer recurrent screens reject every role: maximum KL spans
+**0.481401-1.033883** versus the **0.05** ceiling. Global-Q preserves 100%
+top-1 but still reaches max KL **0.609830**. No one-plane Q8 consumer or
+resident role sidecar is admissible; the role-aware harness remains only for
+materially higher-precision/calibrated representations:
+`benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-role-isolation-rejected.json`.
 
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
