@@ -9185,6 +9185,63 @@ The remaining attention sequence is:
      remaining generic-route gap:
      [`capacity-independent production`](../benchmarks/results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json).
 
+200. Profile the exact 16K generic route and the same-GGUF Vulkan comparator.
+     **Accepted attribution; LC-D2 complete and LC-D3 active.**
+
+     Cached-only `rocprofv3` segments exactly **127** hipEngine transitions;
+     Vulkan's timestamp logger selects the final **127** generation sections
+     after the 32 depth-fill sections. The tracked revision is clean, both
+     processes use the exact Q4_K_M GGUF, and the hipEngine trajectory ends at
+     the established token/hash with complete allocation recovery. The
+     profile-run walls are diagnostic; the retained clean 16K anchor remains
+     **7.735836 vs 21.728347 tok/s**, or **129.269 vs 46.023 ms/token**.
+
+     | 16K scheduled interval | hipEngine | llama.cpp Vulkan | Difference |
+     | --- | ---: | ---: | ---: |
+     | Profile-run wall | **129.743 ms/token** | **47.412 ms/token** | +82.331 ms |
+     | Device interval union / logged GPU | **127.892 ms/token** | **45.337 ms/token** | **+82.555 ms** |
+     | Global attention / global FA+output group | **86.240 ms/token** | **3.693 ms/token** | **+82.547 ms** |
+     | SWA / SWA FA+output group | **0.719 ms/token** | **0.801 ms/token** | -0.082 ms |
+     | Wall minus device work | 1.851 ms/token | 2.074 ms/token | -0.223 ms |
+
+     The global scheduled-group gap is **99.991%** of the complete profiled
+     device gap. Vulkan's logger groups concurrently scheduled nodes, so its
+     3.693-ms global and 0.801-ms SWA rows include their named F16 output
+     projections and are upper bounds on pure FA time. This qualification
+     makes the result stronger, not weaker: hipEngine's exact global route is
+     **23.35x** the complete Vulkan global group, while host feed and the rest
+     of the overlapped device schedule account for effectively none of the
+     long-context deficit.
+
+     The root cause is specifically the second generic kernel. The score
+     producer costs **9.713 ms/token** and already issues its six-way repeated
+     K ledger at approximately **249.7 GB/s**. The gated reducer/PV costs
+     **76.527 ms/token**, or **59.84%** of device-union work by itself. It gives
+     one local256 workgroup to each query head, leaves half the threads without
+     an output dimension during PV, scans the complete context serially for
+     each dimension, and rereads each KV head for all six query heads. The
+     route also materializes one F32 score and one I32 physical slot for every
+     query-head/token pair.
+
+     At the mean **16,448**-token live span, twelve global layers contain only
+     **0.808 GB** of unique BF16 K+V payload per token. Query-head ownership
+     expands that logical request ledger to **4.851 GB**, adds a **75.79-MB**
+     one-way score/physical plane, and launches about **9.47 million** score
+     workgroups per token. The reducer's repeated-V ledger reaches only
+     **31.69 GB/s**. These are source-derived load requests rather than DRAM
+     counters, but they explain the trace: score production is not the wall;
+     scalar serial PV and missing GQA reuse are.
+
+     Vulkan `c0bc8591e` does the opposite. Its running wave64 KHR cooperative
+     path folds `N=1` into the six global queries per KV head, uses
+     **Br=16/Bc=64**, four subgroup64 groups/local256, online tiled softmax,
+     and occupancy-driven context split-K. Only output/max/denominator
+     partials survive between splits; there is no full score plane. The F16
+     cooperative accumulation remains a comparator rather than a numerics
+     waiver, but GQA ownership, context parallelism, and bounded partial state
+     are the transferable mechanisms:
+     [`matched 16K profiles`](../benchmarks/results/2026-08-01-gfx1151-laguna-16k-hip-vulkan-decode-profile.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9196,22 +9253,28 @@ allocation teardown remain mandatory at every retained step.
    global specialization is capacity-independent and resource-bounded at
    4,000/6,000 live slots. Clean d1K/d4K improve **11.776%/39.987%** and the
    mandatory 16K/64K/128K gate is neutral-to-positive with exact state.
-2. **LC-D2 — profile the real generic route at 4K/16K/64K/128K.** Record
-   score production, softmax reduction, PV, scratch bytes, launches, achieved
-   K/V bandwidth, and depth slope. Keep the d128K gate even when the earlier
-   samples are directionally positive.
-3. **LC-D3 — replace the full score-plane/reducer path.** Build a bounded
-   split-K global owner that emits per-block `(maximum, denominator,
-   output[D])` partials, or an exact multi-pass tiled equivalent when the
-   current ordered FP32 association cannot be replayed online. Reduce block
-   partials rather than materializing and rereading one F32 score plus
-   physical-slot metadata for every query-head/token pair.
+2. **LC-D2 — profile the real generic route. Complete at 16K.** The exact
+   matched profiles attribute **99.991%** of the device gap to the global
+   scheduled group. hipEngine's score producer is **9.713 ms/token**; its
+   reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
+   owner would not alter the decision; those depths remain directional and
+   promotion gates for LC-D3.
+3. **LC-D3 — replace the full score-plane/reducer path. Active.** Build an
+   exact GQA6 context-parallel global owner: load each KV tile once for six
+   queries, emit bounded per-split `(maximum, denominator, output[6,D])`
+   partials, then merge those partials without a query-head/token score or
+   physical-slot plane. If the current ordered FP32 association cannot be
+   replayed online, use an exact multi-pass tiled form or a separately proven
+   repair certificate. Do not tune the already-near-ceiling score producer in
+   isolation. The first 16K gate is **global <=20 ms/token**; the stretch gate
+   is **<=5 ms/token**. Every big step must move 4K/16K/64K positively and pass
+   128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
-   numerics waiver.** Audit the running wave64 Vulkan FA path's K/V staging,
-   GQA ownership, tile size, and synchronization. Port the traffic and
-   ownership ideas while preserving hipEngine's FP32/BF16 quality contract;
-   earlier approximate cooperative paths do not become admissible merely
-   because Vulkan is fast.
+   numerics waiver. Source audit complete.** The running path is wave64
+   KHR-coopmat, Br16/Bc64/local256, GQA-folded, online, and context-split.
+   Transfer its traffic and ownership ideas while preserving hipEngine's
+   FP32/BF16 quality contract; earlier approximate cooperative paths do not
+   become admissible merely because Vulkan is fast.
 5. **LC-D5 — fuse only after the tiled owner wins.** Fold denominator/PV
    reduction, softplus gating, and final store where profiling shows a real
    launch or traffic boundary. Do not re-open the rejected short-context

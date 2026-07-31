@@ -1433,9 +1433,17 @@ live-work bounds. At real capacity 131,200, clean d1K/d4K improve
 **15.477837 -> 21.666976 tok/s (+39.987%)**, landing within
 **1.275%/5.947%** of same-GGUF Vulkan. The mandatory
 16K/64K/128K gate is neutral-to-positive with exact recurrent state and full
-allocation recovery. LC-D2 now profiles the exact generic score-plane and
-reducer route above 6,000 live slots; LC-D3 replaces that materialized plane
-with bounded split-K partials or another association-exact tiled owner.
+allocation recovery. LC-D2 was assigned the exact generic score-plane and
+reducer route above 6,000 live slots. The matched 16K HIP/Vulkan capture
+completes that attribution: hipEngine spends **86.240 ms/token** in global
+attention versus a **3.693-ms** Vulkan global-FA-plus-output scheduled group,
+and the **82.547-ms** group gap explains **99.991%** of the complete profiled
+device gap. The hipEngine reducer/PV alone costs **76.527 ms/token**. LC-D3 is
+therefore active on an exact GQA6 context-parallel owner that removes the
+full score/physical plane, loads each KV tile once per six-query group, and
+reduces bounded output/max/denominator split partials. Its first 16K global
+gate is **<=20 ms/token**, with positive 4K/16K/64K direction and a mandatory
+128K gate before promotion.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

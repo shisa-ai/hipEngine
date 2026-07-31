@@ -196995,3 +196995,50 @@ Vulkan local sizes verbatim will close the measured gap.
   GREEN passes the new fixed-horizon case plus the complete long-profile and
   Vulkan perf-summary suites: **62 passed**. This tooling is required before
   the matched hipEngine `rocprofv3` and Vulkan device-timestamp captures.
+
+## 2026-08-01 08:55 JST — Attribute the complete Laguna 16K decode gap
+
+- Ran the tracked-clean exact-Q4_K_M 16K/d128 hipEngine path under cached-only
+  `rocprofv3 --kernel-trace`. The child completes exactly **127** timed
+  transitions at **7.707543 tok/s / 129.743 ms/token**; its interval union is
+  **127.892 ms/token**, span **129.581 ms**, and kernel sum **136.183 ms**
+  because selected/shared MoE overlap across two queues. The established
+  token **13815**, generated hash `b1056950...8919f6`, final position 16,510,
+  and complete allocation recovery all pass. Child/trace/summary SHA-256 are
+  `30340ff8...ac7f`, `2d64fb9e...f0d8`, and `5af26ad1...5b1`.
+- Global attention is **86.240 ms/token**: the 12 score producers cost
+  **9.713 ms**, while the 12 exact gated reducer/PV calls cost
+  **76.527 ms**, or **59.84%** of device-union work by themselves. SWA is only
+  **0.719 ms/token**. The reducer remains local256/VGPR24/LDS512/scratch0;
+  the score producer is local32/VGPR16/LDS0/scratch0.
+- Ran llama.cpp Vulkan `c0bc8591e` on the same GGUF at `-d 16384 -n 128`,
+  F16 K/V and FA enabled, with per-section concurrent timestamps. The log has
+  32 depth-fill plus 128 generation sections; selecting the final 127 gives
+  **45.337 ms/token** logged GPU work. The profile child is
+  **21.091865 tok/s / 47.412 ms/token**; the clean published comparator
+  remains **21.728347 tok/s / 46.023 ms/token**. Bench/log/summary SHA-256 are
+  `c16201da...d99`, `ef0781c7...b438`, and `4f1dc59c...718`.
+- Vulkan's complete global `FLASH_ATTN_EXT` plus concurrently named F16 output
+  group is **3.693 ms/token**; its complete flash family is **4.494 ms**.
+  Thus the scheduled global gap is **82.547 ms/token**, explaining
+  **99.991%** of the complete **82.555-ms** hipEngine-union versus
+  Vulkan-logged-device gap. Because Vulkan's row includes output projection,
+  it is an upper bound on pure FA time. Host/feed slack is only
+  **1.851/2.074 ms/token** for hipEngine/Vulkan and is not the long-context
+  limiter.
+- Source attribution matches the timings. At mean live 16,448, the twelve
+  global layers contain **0.808 GB** unique BF16 K+V per token. hipEngine's
+  per-query-head ownership expands logical K/V requests sixfold to
+  **4.851 GB**, materializes a **75.79-MB** one-way score/physical plane, and
+  launches roughly **9.47 million** score workgroups/token. Score K requests
+  reach approximately **249.7 GB/s**; the serial reducer's repeated-V ledger
+  reaches only **31.69 GB/s**. Vulkan instead folds six queries into each KV
+  owner, uses wave64 KHR-coopmat Br16/Bc64/local256 online softmax, partitions
+  the context, and retains only output/max/denominator split partials.
+- Published
+  `benchmarks/results/2026-08-01-gfx1151-laguna-16k-hip-vulkan-decode-profile.json`
+  and updated the Laguna decode plan, project plan, benchmark rollup, and
+  changelog. LC-D2 is complete. LC-D3 now owns an exact GQA6
+  context-parallel replacement for the full score-plane/reducer route, with a
+  first 16K global gate of **<=20 ms/token**, stretch **<=5 ms**, positive
+  4K/16K/64K direction, and mandatory 128K before promotion.
