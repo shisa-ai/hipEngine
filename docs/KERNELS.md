@@ -1125,9 +1125,17 @@ event/wall moves **65.969/66.187 -> 58.085/58.217 ms (-11.952%/-12.042%,
 1.136x/1.137x)** with 3/3 both-clock wins. Disassembly records 16 unchanged b32
 weight loads plus one b64 activation record and the required rowbatch5 u16 tail;
 trace resources exactly match H5W at **VGPR136/168, LDS1024/1536, scratch0** and
-matching grids. No compiler runs under profiling. Runtime/package ownership is
-unchanged; next add only a bounded default-off owner and require complete state,
-exact 142-role topology, cached integration, and 512/1K/4K non-regression
+matching grids. No compiler runs under profiling. Its bounded default-off owner
+passes complete natural-M512 at KL0/byte identity across all 48 boundaries,
+logits, K/V/`KVLiveSpans`, repeat, and teardown at unchanged **161,120,256-byte**
+workspace / **600,141,856-byte** scratch. Four cached requests preserve all
+other families while H5W controls record 2,050 dispatches and H6E candidates
+record 2,192 from the exact 142 added packs. Q6/request-sum/span moves **92.867/
+1,545.837/1,572.498 -> 84.000/1,541.912/1,563.696 ms (-9.549%/-0.254%/
+-0.560%)**. Clean one-queue 512/1K/4K improves **318.224/265.944/176.173 ->
+320.081/266.778/176.529 tok/s (+0.584%/+0.313%/+0.202%)**, 3/3 exact wins.
+Source policy remains H5W; require separate fixed C4096/M512 and selector-unset
+adjudication before promotion
 ([H6E candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
 [post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
