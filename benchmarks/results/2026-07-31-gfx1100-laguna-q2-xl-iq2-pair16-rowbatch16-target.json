@@ -1,0 +1,179 @@
+{
+  "admission": {
+    "anti_gaming": "Selection is fixed solely by backend/quant/K3072/N1024/E256 and rowbatch16; no token, prompt, expert-ID, route-count, output, or timing-dependent branch is allowed.",
+    "leaf_performance": "Run natural-M512 routing over all 46 actual IQ2 layers with five warmups, at least 15 counter-rotated samples, and five launches/sample. Every complete output must be rowbatch8-byte-exact and every layer must improve HIP-event and synchronized-wall medians; otherwise remove every H6L surface.",
+    "physical": "Require cached code-object/rocprof proof of the same local64/grid65536x256, template row increment 16, private0/spill0/scratch0, VGPR <=224, logical LDS <=512 and runtime LDS <=1024, unchanged pair16 decode/reduction/store body hashes, and no compiler under profiling.",
+    "red_first": "Freeze a separately named exact K3072/N1024/E256 rowbatch16 instantiation against complete rowbatch8 and independent CPU bytes for expert counts 0/1/7/8/9/15/16/17 plus natural M512, output boundaries 0/1023, unchanged selected maps/ABI/workspace, strict preflight before HIP load, and gfx1151 absence.",
+    "runtime_if_leaf_admitted": "Only after the leaf gate passes, freeze separate bounded default-off ownership through the existing grouped raw-IQ dual-SiLU allocation/library. Require complete natural-M512 state, exact 46-call cached topology, unchanged 161120256-byte workspace/600141856-byte scratch, and clean one-queue 512/1K/4K wins.",
+    "source_if_runtime_admitted": "Require separate source-default RED, fixed natural C4096/direct-M512 and selector-unset 512/1K/4K exact paired wins before replacing WPF-2b rowbatch8 production."
+  },
+  "authority_files": [
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/PLAN.md",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "WORKLOG.md"
+  ],
+  "baseline": {
+    "current_resources": "local64/VGPR104/SGPR128/LDS512/scratch0/grid-x65536/grid-y256",
+    "gate_up_family_ms": 479.73770899999994,
+    "gate_up_gap_ms": 78.34458399999994,
+    "gate_up_llamacpp_ms": 401.393125,
+    "h6c_special_iq3_gate_up_ms": 14.919813,
+    "iq2_calls": 46,
+    "iq2_gate_up_ms": 464.81789599999996,
+    "llamacpp_over_current": 1.9344814001349913,
+    "matched_c4096_direct_m512_tok_s": 359.9631404837535,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "production": "H6I/H6E/H6C/H6A/H5Y plus WPF-2b IQ2 pair16 rowbatch8",
+    "production_revision": "eecf0c690495c854584c345cd5fae78ee65b600f",
+    "representative_kernel_sum_ms": 1409.540287,
+    "selection_revision": "65b0bf35017e4762663f98f494b34a09297d33ca"
+  },
+  "closed_immediate_premises": {
+    "attention": "H6J physically removes duplicate SWA dot work but runtime VGPR248/LDS8192 regresses every start.",
+    "iq2_changed_association": "P6 integer MMQ and repair are complete-quality rejected; do not retry Q8_1 or changed dot association.",
+    "iq2_output_width": "The exact c=1 tile4 widening was neutral/noisy on event/wall and was removed; keep one grouped output column per block.",
+    "iq2_reduction_only": "The fixed-local64 DPP primitive won endpoints but its runtime owner regressed the family and was removed.",
+    "iq_down": "H6K proves widening exact output grouping from three to four raises runtime VGPR168 to 200 and regresses all 45 layers.",
+    "q5": "H5Y is already weight-major/tile-K-col/activation-tile-K-row/private0/scratch0; H6G compiler lookahead has zero FMA overlap and regresses."
+  },
+  "correctness_claim": false,
+  "date": "2026-07-31",
+  "decision": {
+    "next_action": "Commit this target-only packet, freeze WPF-H6L RED, then instantiate and screen only the exact rowbatch16 leaf across all 46 actual IQ2 layers.",
+    "performance_claim": false,
+    "production_changed": false,
+    "runtime_owner_added": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_iq2_pair16_rowbatch16_target",
+  "model": {
+    "context_length": 4096,
+    "logical_parameters": 117561977600,
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "top_k": 10
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "selection_model_not_a_performance_claim": {
+    "current_iq2_ms": 464.81789599999996,
+    "current_request_seconds": 1.422367854975164,
+    "current_tok_s": 359.9631404837535,
+    "fit": {
+      "fixed_ms": 360.37314224243164,
+      "inverse_batch_coefficient_ms": 973.3315658569336
+    },
+    "method": "Fit fixed + inverse-rowbatch time through retained natural-M512 all-46-layer rowbatch4 and rowbatch8 measurements, evaluate rowbatch16, then scale the ratio onto the current clean H6I IQ2 family. This ignores tails beyond their representation in the measured points, register pressure, occupancy, compiler schedule, and wall variance.",
+    "modeled_current_gate_up_ms_including_h6c": 421.077857475537,
+    "modeled_current_iq2_ms": 406.158044475537,
+    "modeled_historical_rowbatch16_ms": 421.20636510849,
+    "modeled_request_saving_ms": 58.659851524462965,
+    "modeled_request_seconds": 1.363708003450701,
+    "modeled_rowbatch8_to_rowbatch16_speedup": 1.1444261718371458,
+    "modeled_tok_s": 375.44694223722735,
+    "modeled_tok_s_gain": 15.48380175347387,
+    "retained_all_layer_ms": {
+      "rowbatch4": 603.706033706665,
+      "rowbatch8": 482.03958797454834
+    },
+    "warning": "Selection rationale only. H6K showed that static epoch savings can be erased by register pressure; compile/resource and all-layer both-clock gates are binding."
+  },
+  "source_evidence": {
+    "candidate_absent": true,
+    "frozen_body_sha256": {
+      "dot_iq2_pair16": "c08941c9a8a32560de4cf29192bd73a05da7dbcfbe5b5c8026887db0abee4db0",
+      "load_iq2_pair16": "a87eeae5027bd71139844f0b9a35afd2a227a1042b8bebe00fd80b78fe9fccc7",
+      "pair16_grouped_kernel_template": "8f869bc7483934808681a7299d2cf8035550113e2734948131f6422da084282c",
+      "reduce_local64_pairs_batched": "446b1dbdc6acbfead726e38b08a752cdf2eda51922d889b925aa2eab6ed89b90"
+    },
+    "lineage_report_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "live_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "488b3cb9d355072534f2e9ba997c7ce5176dc1402637baca082451f78dae686b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "35f91534188f9e254e063ed68f0a3f41543ebcd5e79d029b3c3cf5596fb0cad0",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "743d62d05ba81e73889d67f7451369e89dc5f20fcef5f61cf714a91698acdd6d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "56d70376ac980228bbc22fe8dfe4b92b5bd4f731091315b36bdcc615940a91e8",
+      "hipengine/runtime/laguna_moe.py": "12214eac397cc215d1ffc9e08feb92d4e4cd7980f45ed76c61a37b8d810d09dd",
+      "tests/test_gguf_iq2_xs_selected_prefill.py": "b32788eada998d460fcdb7059da875b712e82bb83cbc88cadea1109928ab500a"
+    },
+    "parent_artifacts": {
+      "h6k_rejection": {
+        "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-rejected.json",
+        "sha256": "4c7c15ce12f28fa3efae739183c88066c911cf47b0cf6f5de9e964eebc606146"
+      },
+      "post_h6i_residual": {
+        "path": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json",
+        "sha256": "de67a174ae6cfe9f8de54e366e20620da530b853bc3a26ac959332ad72e36e23"
+      },
+      "wpf2b_candidate": {
+        "path": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-candidate.json",
+        "sha256": "135a4842a72a386f4ac6cc380ba1ee8d49473c3d397bfa67aa340705759383f6"
+      },
+      "wpf2b_production": {
+        "path": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-pair16-grouped-gate-up-production.json",
+        "sha256": "b6c72ed6d3fe47ab482a1abcf9de205afd87a9d4d11e25f154963d0391c5171c"
+      }
+    },
+    "production_policy_unchanged": true,
+    "route_inventory": {
+      "harness_sha256": "2f79f8bcd8665f3be0a4cfae76c06bf293e1482a9455b4356752e66d5b08a12e",
+      "path": "/tmp/laguna-h6l-route-epoch-inventory.json",
+      "sha256": "3b19f958683cbe7ce85c1820db8da9d3788e6ec033c1983c2cd193b665fc8468",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "stdout_sha256": "7c30cd238f497a5875a7d887e04383eccb5c68ac7397baa2bd89628affdeaf26"
+    },
+    "source": "Net-new instantiation of the existing in-tree WPF-2b exact pair16 template; no external device body will be copied."
+  },
+  "status": "target_selected_no_new_performance_claim",
+  "target": {
+    "backend": "hip_gfx1100",
+    "id": "WPF-H6L",
+    "layer": "moe_linear",
+    "name": "exact IQ2 pair16 grouped gate/up rowbatch16 decode amortization",
+    "operation": "Instantiate the existing exact local64/pair16 grouped fused-SiLU template at rowbatch16. Preserve one output-column/expert block, pair16 K ownership, two-wave tree and serial wave sum, per-row BF16 gate/up boundaries, SiLU, store, grid, routing, and activation/useful dot work while decoding each gate/up weight pair once for up to 16 compact rows.",
+    "quant": "gguf_iq2_xs",
+    "shape": {
+      "actual_layers": 46,
+      "compact_rows": 5120,
+      "experts": 256,
+      "grid_x": 65536,
+      "grid_y": 256,
+      "in_features": 3072,
+      "local_size": 64,
+      "out_features": 1024,
+      "rows": 512
+    },
+    "static_schedule": {
+      "accumulator_scalars_per_thread_candidate": 32,
+      "accumulator_scalars_per_thread_control": 16,
+      "activation_reads_and_useful_dot_work_unchanged": true,
+      "actual_route_epochs_candidate": 20307,
+      "actual_route_epochs_control": 34292,
+      "dynamic_barriers_candidate": 41588736,
+      "dynamic_barriers_control": 70230016,
+      "dynamic_barriers_removed": 28641280,
+      "epoch_reduction_percent": 40.78210661378747,
+      "epochs_removed": 13985,
+      "grid_dispatch_allocation_workspace_policy_unchanged": true,
+      "rowbatch_candidate": 16,
+      "rowbatch_control": 8,
+      "source_wave_sum_bytes_candidate": 256,
+      "source_wave_sum_bytes_control": 128,
+      "weight_pair_decodes_candidate": 7985037312,
+      "weight_pair_decodes_control": 13484163072,
+      "weight_pair_decodes_removed": 5499125760
+    },
+    "variant": "selected_dual_silu_grouped_prefill_compact_k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
+  }
+}
