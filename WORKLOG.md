@@ -195290,3 +195290,27 @@ Vulkan local sizes verbatim will close the measured gap.
   diagnostics remain rollback coverage.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json`.
+
+## 2026-07-31 09:51 JST — Reject shared-after-selected-gate scheduling
+
+- Added a RED/GREEN host-order contract and a scheduling-only c=1 screen that
+  reused the existing input/output events but launched the low-priority shared
+  branch after selected gate/up instead of after router selection. Kernels,
+  math, dispatch count, event count, resident bytes, and tail ownership were
+  unchanged.
+- The exact Q4_K production-shape GPU parameter and 38 focused
+  runtime/harness tests pass. The broad two-parameter GPU node's Q6_K case
+  stopped at an existing rows>1 MMQ equality assertion before reaching this
+  c=1 schedule; preserve the completed broad result and focused Q4_K repair
+  evidence per the repository validation rule.
+- The first counterbalanced p512/d128 pair preserves token **2930 -> 74107**,
+  position **638**, generated-ID SHA `94f803f7...bda32`,
+  **79,066,169,172-byte** residency, and lifecycle, but regresses
+  **22.847147 -> 22.812600 tok/s (-0.1512%)**, adding
+  **0.066283 ms/token**.
+- Stop before seven pairs. Remove the runtime argument/setter, comparison CLI,
+  and candidate tests. Production stays **22.856155 tok/s /
+  43.751890 ms/token**. The later launch loses more useful overlap than it
+  recovers from selected-gate contention.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-shared-after-selected-gate-rejected.json`.

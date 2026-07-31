@@ -7636,6 +7636,24 @@ The remaining attention sequence is:
      that schedule on exact state and whole-model wall:
      [`post-F16 two-queue census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-nontemporal-wall-reprofile.json).
 
+147. Move the existing shared-branch dependency point after selected gate/up.
+     **Rejected at the rough whole-model gate and completely removed.**
+     The candidate reuses the same two events and two queues; kernel bodies,
+     math, dispatches, resident bytes, and synchronization count do not
+     change. RED fails on the absent schedule contract. GREEN proves the exact
+     enqueue order, the focused production-shape Q4_K GPU oracle, session
+     handoff, and profile plumbing.
+
+     The first counterbalanced p512/d128 pair is trajectory- and
+     lifecycle-exact but regresses
+     **22.847147 -> 22.812600 tok/s (-0.1512%)**, adding
+     **0.066283 ms/token**. Stop before the seven-pair gate and remove the
+     runtime argument, setter, harness switch, and tests. The later launch
+     sacrifices more useful overlap than it recovers from selected-gate
+     contention. Retain the after-router schedule and production
+     **22.856155 tok/s / 43.751890 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-after-selected-gate-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
