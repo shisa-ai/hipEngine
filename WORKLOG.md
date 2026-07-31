@@ -196005,3 +196005,20 @@ Vulkan local sizes verbatim will close the measured gap.
   than coalescer-served replicated loads on gfx1151. Production remains
   **23.017271 tok/s / 43.445636 ms/token**. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-lane0-metadata-rejected.json`.
+
+## 2026-07-31 16:46 JST — Reject shared/dense Q8 activation dots
+
+- Tested whether Q8_1 activation packing plus the existing Q4T16 dp4a
+  fused-SiLU consumer could shorten the concurrently running shared branch.
+  This is a distinct target from the rejected all-selected Q8 route because a
+  faster shared path could also reduce contention on the primary queue.
+- Inclusive actual-weight 21x100 timing is decisively negative. Layer-1 shared
+  K3072/N1024 moves **0.010381 -> 0.015332 ms (+47.686%, 0/21 wins)**;
+  layer-0 dense K3072/N12288 moves
+  **0.186246 -> 0.196749 ms (+5.639%, 0/21 wins)**. The approximate path also
+  changes **844/9,743** BF16 outputs, with maximum absolute errors
+  **0.03125/0.0625**. Raw JSON SHA-256 is `7aa5881b...525d3`.
+- Stop before a new interleaved Q8 body or recurrent gate and remove the
+  temporary leaf route. Production remains **23.017271 tok/s /
+  43.445636 ms/token**. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-shared-q8-activation-rejected.json`.
