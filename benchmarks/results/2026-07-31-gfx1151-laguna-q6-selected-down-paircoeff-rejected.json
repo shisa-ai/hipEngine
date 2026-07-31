@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T18:41:13+09:00",
+  "kind": "hipengine_laguna_q6_selected_down_paircoeff_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "repo": {
+    "baseline_revision": "81e3065176cf7033580192bd744c4840afdc2b1a"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 79066169172
+  },
+  "change": {
+    "description": "Load each planar-qmicro Q6 selected-down quartet's four aligned FP16 d coefficients with one uint64 and its four signed int8 scales with one uint32 while preserving Q6 reconstruction, F32 multiply association, four-wave reduction, BF16 stores, and slot-order weighted output.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": 0,
+    "launch_count_changed": 0
+  },
+  "leaf": {
+    "scope": "actual Q6 layer-1 E256/K1024/N3072/top10 selected-down plus fused weighting",
+    "protocol": "21 counterbalanced samples x 100 launches after 5 warmups",
+    "control_median_ms": 0.07320458889007568,
+    "candidate_median_ms": 0.06859153747558594,
+    "latency_change_percent": -6.301587761686244,
+    "bf16_mismatches": 0,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --down-candidate q6-paircoeff-weighted --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q6-selected-down-paircoeff-leaf.json",
+    "raw_sha256": "86228bbfc513256b88308d63c9188a8c1de11dd36e7d27fd7a7c6a45292b42e1"
+  },
+  "trace": {
+    "protocol": "cache-only rocprofv3 focused correctness fixture",
+    "candidate_specialization": "qk_t16_selected_natural_gemv_kernel<unsigned short, 6, true, true, true, true, true>",
+    "control_vgpr": 80,
+    "candidate_vgpr": 64,
+    "local_size": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "candidate_duration_us": 61.356,
+    "csv_sha256": "b5a2ab04ff5028d9f8d7cc008bfab26b49f71c9ea042f056df1c27b20c1c19b7"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix rows 2048, attention rows 128",
+    "protocol": "seven counterbalanced control/candidate pairs in one resident session; model load excluded",
+    "control_median_tok_s": 22.98690968298951,
+    "candidate_median_tok_s": 22.980643355738984,
+    "throughput_change_percent": -0.027260416,
+    "control_median_ms_per_token": 43.503020362,
+    "candidate_median_ms_per_token": 43.5148827,
+    "wall_change_ms_per_token": 0.011862338,
+    "candidate_pair_wins": 2,
+    "pairs": 7,
+    "correctness": {
+      "generated_ids_exact": true,
+      "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+      "next_token_id": 2930,
+      "final_token_id": 74107,
+      "final_position": 638,
+      "repeat_deterministic": true,
+      "tracked_allocations_returned_to_zero": true
+    },
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-down-q6-paircoeff-weighted-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-p512-d128-q6-down-paircoeff-sevenpair.json",
+    "raw_sha256": "6858e3b5e10576ba93c24b2caaf5eb53fac4632b7d8e4e2ddd3c071b32809d0d"
+  },
+  "source_audit": {
+    "comparator": "llama.cpp Vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "finding": "The comparator publishes Q8_1 activation blocks with broad per-block workgroups and excludes Q6_K from AMD MMVQ; it does not supply evidence for a Q6 selected-vector coefficient transport win. Its larger advantage is grouped work ownership plus cached packed activations and command-buffer submission."
+  },
+  "decision": {
+    "result": "reject and remove",
+    "reason": "The exact 6.30% Q6 leaf improvement and VGPR contraction do not shorten the complete two-queue token wall; the same-resident gate regresses median throughput and wins only two of seven pairs.",
+    "production_change": false
+  },
+  "production": {
+    "tok_per_s": 23.0172713318,
+    "ms_per_token": 43.4456363478
+  }
+}

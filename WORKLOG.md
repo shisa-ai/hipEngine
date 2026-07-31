@@ -196166,3 +196166,28 @@ Vulkan local sizes verbatim will close the measured gap.
   SHA-256 values are `6414471d...188bc6d` and
   `2ce7eda5...28138b`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-d4x3-decode-rejected.json`.
+
+## 2026-07-31 18:41 JST — Reject Q6 selected-down quartet coefficients
+
+- Reviewed llama.cpp Vulkan `c0bc8591e` selected MMVQ ownership while looking
+  for a transferable selected-expert seam. Its AMD path uses broad per-block
+  Q8_1 publication, caches packed activation rows across consumers, and
+  excludes Q6_K from MMVQ; its advantage does not establish that a Q6
+  coefficient-only leaf is wall-critical in hipEngine.
+- Built an exact planar-qmicro Q6 selected-down sibling that transports four
+  FP16 `d` values with one aligned `uint64` and four signed scales with one
+  `uint32`. RED failed on the absent ABI; GREEN passed the production-shape
+  fixture with every route BF16, weighted BF16, and completion counter exact.
+- Cached actual-weight 21x100 timing improves
+  **0.073205 -> 0.068592 ms (-6.302%)**. Cache-only tracing confirms the
+  intended local128 specialization, **VGPR80 -> VGPR64**, LDS512, scratch0.
+- The required seven-pair same-resident p512/d128 gate rejects the route:
+  **22.986910 -> 22.980643 tok/s (-0.0273%)**, a
+  **+0.011862 ms/token** regression with only **2/7** candidate wins. Tokens,
+  trajectory hash, positions, repeat determinism, and allocation recovery are
+  exact.
+- Removed the kernel, ABI, wrapper, registry entry, gfx1151 capability,
+  runtime/benchmark selectors, and tests. Production remains
+  **23.017271 tok/s / 43.445636 ms/token**. Raw leaf/resident SHA-256 values
+  are `86228bbf...2b42e1` and `6858e3b5...09d0d`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q6-selected-down-paircoeff-rejected.json`.
