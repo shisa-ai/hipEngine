@@ -2057,6 +2057,25 @@ without a materially different occupancy-preserving mechanism
 ([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
 
+After H6J supplies the required distinct-family hiatus, select target-only
+**WPF-H6K exact IQ3 quadruple-output reduction amortization** on IQ-down's
+**187.775-ms** matched gap. A live H5Y audit keeps Q5 closed: its selected bodies
+already use weight-major ownership, admitted tile-K-col `float4` records,
+packed activation-row loads, private0, and scratch0, while H6G physically proved
+compiler lookahead immediately waits without useful FMA overlap. H6K instead
+keeps H6I's P256/P64/local128/rowbatch8 loads, row-interleaved VOPD FMA order,
+per-output wave32 tree, serial wave0..3 sum, BF16 store, grid, and active
+traversal, but carries four strided outputs through one publication and one
+reuse barrier. N3072/P256 has three complete quadruplets, changing H6I reduction
+epochs **4 -> 3** and dynamic barriers **8 -> 6 per rowbatch (-25%)** while
+accumulators rise **24 -> 32 floats/thread** and source wave-sum storage rises
+**384 -> 512 bytes**. A measured H6F/H6I epoch fit suggests only **332.468 ->
+318.904 ms** all-layer wall and **359.963 -> 363.429 tok/s**; this is selection
+rationale, not a performance claim. Freeze RED and require cached stride-0x400/
+six-barrier/private0/spill0/scratch0 evidence plus complete H6I bytes and
+**45/45** both-clock wins before any runtime owner
+([H6K target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)). Production remains H6I at **359.963 tok/s**.
+
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
