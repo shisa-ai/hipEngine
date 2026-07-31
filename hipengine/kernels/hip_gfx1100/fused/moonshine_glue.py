@@ -13,6 +13,13 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("moonshine_glue.hip")
 _OUTPUT_NAME = "moonshine_glue.so"
 _ALLOWED_THREADS = {32, 64, 128, 256}
+_ARGMAX_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _EMBEDDING_ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -131,6 +138,30 @@ def _launch(
     error = fn(*arguments)
     if int(error) != HIP_SUCCESS:
         runtime.check(int(error))
+
+
+def moonshine_argmax_fp16(
+    logits_ptr: int,
+    output_ptr: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    _validate_threads(threads)
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch(
+        library,
+        "hipengine_moonshine_argmax_fp16",
+        _ARGMAX_ARGS,
+        (logits_ptr, output_ptr, vocab_size, threads, stream),
+        runtime,
+    )
 
 
 def moonshine_embedding_lookup_fp16(
@@ -339,6 +370,10 @@ def moonshine_partial_rope_cache_append_fp16(
 def register_moonshine_glue_kernels(*, replace: bool = True) -> None:
     registrations = (
         (
+            KernelKey("hip_gfx1100", "moonshine_argmax", "fp16", "lowest_id"),
+            moonshine_argmax_fp16,
+        ),
+        (
             KernelKey("hip_gfx1100", "moonshine_embedding", "fp16", "lookup_i64"),
             moonshine_embedding_lookup_fp16,
         ),
@@ -377,6 +412,7 @@ register_moonshine_glue_kernels()
 
 __all__ = [
     "build_moonshine_glue",
+    "moonshine_argmax_fp16",
     "moonshine_embedding_lookup_fp16",
     "moonshine_partial_rope_cache_append_fp16",
     "moonshine_partial_rope_fp16",

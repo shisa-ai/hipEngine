@@ -29,6 +29,40 @@ __device__ inline half_t moonshine_rotate_value(
   return static_cast<half_t>(value);
 }
 
+__global__ void moonshine_argmax_fp16_kernel(
+    const half_t* __restrict__ logits,
+    int64_t* __restrict__ output,
+    int64_t vocab_size) {
+  __shared__ float values[256];
+  __shared__ int64_t indices[256];
+  float best_value = -3.4028234663852886e38f;
+  int64_t best_index = vocab_size;
+  for (int64_t index = threadIdx.x; index < vocab_size; index += blockDim.x) {
+    const float value = static_cast<float>(logits[index]);
+    if (value > best_value || (value == best_value && index < best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  values[threadIdx.x] = best_value;
+  indices[threadIdx.x] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      const float other_value = values[threadIdx.x + stride];
+      const int64_t other_index = indices[threadIdx.x + stride];
+      if (other_value > values[threadIdx.x] ||
+          (other_value == values[threadIdx.x] &&
+           other_index < indices[threadIdx.x])) {
+        values[threadIdx.x] = other_value;
+        indices[threadIdx.x] = other_index;
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) output[0] = indices[0];
+}
+
 __global__ void moonshine_embedding_lookup_fp16_kernel(
     const half_t* __restrict__ embedding,
     const int64_t* __restrict__ token,
@@ -133,6 +167,10 @@ __global__ void moonshine_partial_rope_cache_append_fp16_kernel(
   value_cache[cache_offset] = value[index];
 }
 
+bool valid_reduction_threads(int64_t threads) {
+  return threads == 32 || threads == 64 || threads == 128 || threads == 256;
+}
+
 bool valid_threads(int64_t threads) {
   return threads > 0 && threads <= 256 && (threads % 32) == 0;
 }
@@ -149,6 +187,20 @@ bool valid_rope_shape(
 }
 
 }  // namespace
+
+extern "C" int hipengine_moonshine_argmax_fp16(
+    const half_t* logits,
+    int64_t* output,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (vocab_size <= 0 || !valid_reduction_threads(threads)) {
+    return hipErrorInvalidValue;
+  }
+  moonshine_argmax_fp16_kernel<<<dim3(1), dim3(threads), 0, stream>>>(
+      logits, output, vocab_size);
+  return hipGetLastError();
+}
 
 extern "C" int hipengine_moonshine_embedding_lookup_fp16(
     const half_t* embedding,

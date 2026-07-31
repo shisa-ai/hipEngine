@@ -18,6 +18,7 @@ from hipengine.kernels.cpu_reference.moonshine import (
     moonshine_fixed_cache_write,
     moonshine_residual,
     moonshine_rope_tables,
+    moonshine_stable_argmax,
 )
 from hipengine.kernels.registry import resolve
 
@@ -34,6 +35,7 @@ def _gfx1151_available() -> bool:
 
 def test_moonshine_glue_registry_resolves_primitives_and_composite() -> None:
     from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
+        moonshine_argmax_fp16,
         moonshine_embedding_lookup_fp16,
         moonshine_partial_rope_cache_append_fp16,
         moonshine_partial_rope_fp16,
@@ -46,6 +48,7 @@ def test_moonshine_glue_registry_resolves_primitives_and_composite() -> None:
     register_moonshine_glue_kernels()
     register_gfx1151_kernels(replace=True)
     expected = {
+        ("moonshine_argmax", "lowest_id"): moonshine_argmax_fp16,
         ("moonshine_embedding", "lookup_i64"): moonshine_embedding_lookup_fp16,
         ("moonshine_residual", "rounded"): moonshine_residual_fp16,
         ("moonshine_partial_rope", "interleaved"): moonshine_partial_rope_fp16,
@@ -66,6 +69,7 @@ def test_moonshine_glue_registry_resolves_primitives_and_composite() -> None:
 
 def test_moonshine_glue_wrappers_keep_raw_pointer_abis() -> None:
     from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
+        moonshine_argmax_fp16,
         moonshine_embedding_lookup_fp16,
         moonshine_partial_rope_cache_append_fp16,
         moonshine_partial_rope_fp16,
@@ -82,6 +86,7 @@ def test_moonshine_glue_wrappers_keep_raw_pointer_abis() -> None:
             return 0
 
     class FakeLibrary:
+        hipengine_moonshine_argmax_fp16 = FakeKernel()
         hipengine_moonshine_embedding_lookup_fp16 = FakeKernel()
         hipengine_moonshine_residual_fp16 = FakeKernel()
         hipengine_moonshine_partial_rope_fp16 = FakeKernel()
@@ -90,6 +95,7 @@ def test_moonshine_glue_wrappers_keep_raw_pointer_abis() -> None:
 
     library = FakeLibrary()
     common = {"threads": 256, "stream": 7, "library": library, "runtime": object()}
+    moonshine_argmax_fp16(1, 2, 36_864, **common)
     moonshine_embedding_lookup_fp16(1, 2, 3, 416, 36_864, **common)
     moonshine_residual_fp16(1, 2, 3, 416, **common)
     moonshine_partial_rope_fp16(1, 2, 3, 4, 5, 6, 7, 8, 52, 32, 194, **common)
@@ -97,6 +103,9 @@ def test_moonshine_glue_wrappers_keep_raw_pointer_abis() -> None:
     moonshine_partial_rope_cache_append_fp16(
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 8, 52, 32, 194, 194, **common
     )
+    assert library.hipengine_moonshine_argmax_fp16.calls == [
+        (1, 2, 36_864, 256, 7)
+    ]
     assert library.hipengine_moonshine_embedding_lookup_fp16.calls == [
         (1, 2, 3, 416, 36_864, 256, 7)
     ]
@@ -116,11 +125,14 @@ def test_moonshine_glue_wrappers_keep_raw_pointer_abis() -> None:
 
 def test_moonshine_glue_rejects_invalid_shapes_before_build() -> None:
     from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
+        moonshine_argmax_fp16,
         moonshine_embedding_lookup_fp16,
         moonshine_partial_rope_fp16,
         moonshine_residual_fp16,
     )
 
+    with pytest.raises(ValueError, match="vocab_size"):
+        moonshine_argmax_fp16(1, 2, 0)
     with pytest.raises(ValueError, match="hidden_size"):
         moonshine_embedding_lookup_fp16(1, 2, 3, 0, 36_864)
     with pytest.raises(ValueError, match="elements"):
@@ -134,6 +146,7 @@ def test_moonshine_embedding_and_residual_match_cpu_boundaries() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
         build_moonshine_glue,
+        moonshine_argmax_fp16,
         moonshine_embedding_lookup_fp16,
         moonshine_residual_fp16,
     )
@@ -144,6 +157,10 @@ def test_moonshine_embedding_and_residual_match_cpu_boundaries() -> None:
     residual = rng.normal(0.0, 0.2, size=(hidden,)).astype(np.float16)
     delta = rng.normal(0.0, 0.2, size=(hidden,)).astype(np.float16)
     expected_residual = moonshine_residual(residual, delta)
+    logits = rng.normal(0.0, 0.2, size=(36_864,)).astype(np.float16)
+    logits[7] = np.float16(4.0)
+    logits[11] = np.float16(4.0)
+    expected_argmax = moonshine_stable_argmax(logits)
     runtime = get_hip_runtime()
     library = build_moonshine_glue(load=True)
     allocations = []
@@ -154,12 +171,21 @@ def test_moonshine_embedding_and_residual_match_cpu_boundaries() -> None:
         device_residual = _upload(residual, runtime, allocations)
         device_delta = _upload(delta, runtime, allocations)
         device_sum = _empty((hidden,), np.float16, runtime, allocations)
+        device_logits = _upload(logits, runtime, allocations)
+        device_argmax = _empty((1,), np.int64, runtime, allocations)
         moonshine_embedding_lookup_fp16(
             device_embedding.ptr,
             device_token.ptr,
             device_hidden.ptr,
             hidden,
             vocab,
+            library=library,
+            runtime=runtime,
+        )
+        moonshine_argmax_fp16(
+            device_logits.ptr,
+            device_argmax.ptr,
+            logits.size,
             library=library,
             runtime=runtime,
         )
@@ -174,12 +200,14 @@ def test_moonshine_embedding_and_residual_match_cpu_boundaries() -> None:
         runtime.device_synchronize()
         actual_hidden = _download(device_hidden, (hidden,), np.float16, runtime)
         actual_sum = _download(device_sum, (hidden,), np.float16, runtime)
+        actual_argmax = _download(device_argmax, (1,), np.int64, runtime)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
     np.testing.assert_array_equal(actual_hidden, embedding[token])
     np.testing.assert_array_equal(actual_sum, expected_residual)
+    np.testing.assert_array_equal(actual_argmax, expected_argmax.reshape(1))
 
 
 @pytest.mark.parametrize("position", [0, 1, 63, 193])

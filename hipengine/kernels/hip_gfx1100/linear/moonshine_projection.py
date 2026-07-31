@@ -47,6 +47,20 @@ _PAIR_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_PAIR_HEAD_MAJOR_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _TRIPLE_ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -237,6 +251,51 @@ def moonshine_f16_projection_pair(
     _check_launch(runtime, error)
 
 
+def moonshine_f16_projection_pair_head_major(
+    input_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_a_features: int,
+    out_b_features: int,
+    head_dim: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate(rows, in_features, (out_a_features, out_b_features), threads)
+    if head_dim <= 0 or out_a_features % head_dim or out_b_features % head_dim:
+        raise ValueError("head_dim must positively divide both output widths")
+    library = library or build_moonshine_projection(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_moonshine_f16_projection_pair_head_major",
+        _PAIR_HEAD_MAJOR_ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        rows,
+        in_features,
+        out_a_features,
+        out_b_features,
+        head_dim,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, error)
+
+
 def moonshine_f16_projection_triple(
     input_ptr: int,
     weight_a_ptr: int,
@@ -330,6 +389,15 @@ def register_moonshine_projection_kernels(*, replace: bool = True) -> None:
         (
             KernelKey(
                 "hip_gfx1100",
+                "moonshine_cross_kv_precompute",
+                "fp16",
+                "pair_head_major_fp32_accum",
+            ),
+            moonshine_f16_projection_pair_head_major,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
                 "moonshine_qkv_proj",
                 "fp16",
                 "triple_fp32_accum",
@@ -348,6 +416,7 @@ __all__ = [
     "moonshine_f16_projection",
     "moonshine_f16_projection_bias",
     "moonshine_f16_projection_pair",
+    "moonshine_f16_projection_pair_head_major",
     "moonshine_f16_projection_triple",
     "plan_moonshine_projection_build",
     "register_moonshine_projection_kernels",

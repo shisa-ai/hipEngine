@@ -102,6 +102,39 @@ __global__ void moonshine_f16_projection_pair_kernel(
   }
 }
 
+__global__ void moonshine_f16_projection_pair_head_major_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight_a,
+    const half_t* __restrict__ weight_b,
+    half_t* __restrict__ output_a,
+    half_t* __restrict__ output_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a_features,
+    int64_t out_b_features,
+    int64_t head_dim) {
+  const int64_t column = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (row >= rows || column >= out_a_features + out_b_features) return;
+  const bool first = column < out_a_features;
+  const int64_t local_column = first ? column : column - out_a_features;
+  const half_t* weight = first ? weight_a : weight_b;
+  half_t* output = first ? output_a : output_b;
+  float accumulator = 0.0f;
+  for (int64_t feature = threadIdx.x; feature < in_features;
+       feature += blockDim.x) {
+    accumulator += static_cast<float>(input[row * in_features + feature]) *
+        static_cast<float>(weight[local_column * in_features + feature]);
+  }
+  const float total = moonshine_block_sum(accumulator);
+  if (threadIdx.x == 0) {
+    const int64_t head = local_column / head_dim;
+    const int64_t dimension = local_column - head * head_dim;
+    output[(head * rows + row) * head_dim + dimension] =
+        static_cast<half_t>(total);
+  }
+}
+
 __global__ void moonshine_f16_projection_triple_kernel(
     const half_t* __restrict__ input,
     const half_t* __restrict__ weight_a,
@@ -215,6 +248,31 @@ extern "C" int hipengine_moonshine_f16_projection_pair(
       dim3(out_a_features + out_b_features, rows), dim3(threads), 0, stream>>>(
       input, weight_a, weight_b, output_a, output_b, rows, in_features,
       out_a_features, out_b_features);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_moonshine_f16_projection_pair_head_major(
+    const half_t* input,
+    const half_t* weight_a,
+    const half_t* weight_b,
+    half_t* output_a,
+    half_t* output_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a_features,
+    int64_t out_b_features,
+    int64_t head_dim,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_shape(rows, in_features, threads) || out_a_features <= 0 ||
+      out_b_features <= 0 || head_dim <= 0 ||
+      (out_a_features % head_dim) != 0 || (out_b_features % head_dim) != 0) {
+    return hipErrorInvalidValue;
+  }
+  moonshine_f16_projection_pair_head_major_kernel<<<
+      dim3(out_a_features + out_b_features, rows), dim3(threads), 0, stream>>>(
+      input, weight_a, weight_b, output_a, output_b, rows, in_features,
+      out_a_features, out_b_features, head_dim);
   return hipGetLastError();
 }
 

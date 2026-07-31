@@ -21,9 +21,11 @@ from hipengine.kernels.cpu_reference.moonshine import (
     moonshine_apply_partial_rope,
     moonshine_residual,
     moonshine_rope_tables,
+    moonshine_stable_argmax,
 )
 from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
     build_moonshine_glue,
+    moonshine_argmax_fp16,
     moonshine_embedding_lookup_fp16,
     moonshine_partial_rope_cache_append_fp16,
     moonshine_partial_rope_fp16,
@@ -92,6 +94,10 @@ def main() -> int:
         rotary_dim=rotary_dim,
     )
     expected_residual = moonshine_residual(residual, delta)
+    logits = rng.normal(0.0, 0.2, size=(36_864,)).astype(np.float16)
+    logits[7] = np.float16(4.0)
+    logits[11] = np.float16(4.0)
+    expected_argmax = moonshine_stable_argmax(logits)
 
     runtime = get_hip_runtime()
     allocations = []
@@ -102,6 +108,9 @@ def main() -> int:
         device_residual = _upload(residual, runtime, allocations)
         device_delta = _upload(delta, runtime, allocations)
         residual_output = _empty((hidden,), runtime, allocations)
+        device_logits = _upload(logits, runtime, allocations)
+        argmax_output = malloc(np.dtype(np.int64).itemsize, runtime=runtime)
+        allocations.append(argmax_output)
         device_query = _upload(query, runtime, allocations)
         device_key = _upload(key, runtime, allocations)
         device_value = _upload(value, runtime, allocations)
@@ -121,6 +130,10 @@ def main() -> int:
 
         moonshine_embedding_lookup_fp16(
             device_embedding.ptr, device_token.ptr, embedding_output.ptr, hidden, vocab,
+            library=library, runtime=runtime,
+        )
+        moonshine_argmax_fp16(
+            device_logits.ptr, argmax_output.ptr, logits.size,
             library=library, runtime=runtime,
         )
         moonshine_residual_fp16(
@@ -146,6 +159,8 @@ def main() -> int:
         runtime.device_synchronize()
         actual_embedding = _download(embedding_output, (hidden,), runtime)
         actual_residual = _download(residual_output, (hidden,), runtime)
+        actual_argmax = np.empty((1,), dtype=np.int64)
+        copy_device_to_host(host_array_ptr(actual_argmax), argmax_output, runtime=runtime)
         actual_separate_query = _download(separate_query, (heads, head_dim), runtime)
         actual_separate_key = _download(separate_key, (heads, head_dim), runtime)
         actual_fused_query = _download(fused_query, (heads, head_dim), runtime)
@@ -176,6 +191,7 @@ def main() -> int:
     all_passed = bool(
         np.array_equal(actual_embedding, embedding[token])
         and np.array_equal(actual_residual, expected_residual)
+        and np.array_equal(actual_argmax, expected_argmax.reshape(1))
         and composite_exact
         and np.allclose(actual_fused_query, expected_q, rtol=1.0e-3, atol=1.0e-3)
         and np.allclose(actual_fused_key, expected_k, rtol=1.0e-3, atol=1.0e-3)
@@ -190,6 +206,7 @@ def main() -> int:
         "max_abs_rope_vs_cpu": max_abs,
         "position": position,
         "expected_kernel_names": [
+            "moonshine_argmax_fp16_kernel",
             "moonshine_embedding_lookup_fp16_kernel",
             "moonshine_residual_fp16_kernel",
             "moonshine_partial_rope_fp16_kernel",

@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
 )
 from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
     build_moonshine_glue,
+    moonshine_argmax_fp16,
     moonshine_embedding_lookup_fp16,
     moonshine_partial_rope_cache_append_fp16,
     moonshine_partial_rope_fp16,
@@ -123,6 +124,7 @@ __all__ = [
     "laguna_softplus_head_gate_f32_fp16_via_bf16_out",
     "laguna_weighted_top10_routed_hidden_bf16_out",
     "laguna_softplus_head_gate_f32_out",
+    "moonshine_argmax_fp16",
     "moonshine_embedding_lookup_fp16",
     "moonshine_gated_silu_fp16",
     "moonshine_partial_rope_cache_append_fp16",
