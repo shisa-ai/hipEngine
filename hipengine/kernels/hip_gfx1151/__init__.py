@@ -657,6 +657,16 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "staged_wave_publication_compact_shuffle_loop_triple_output_"
             "rowbatch8_bf16_bf16_out",
         ),
+        # H6R changes only H6Q's gfx1100 wave peer-exchange instructions and
+        # remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_"
+            "staged_wave_publication_dpp_peer_exchange_triple_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(
