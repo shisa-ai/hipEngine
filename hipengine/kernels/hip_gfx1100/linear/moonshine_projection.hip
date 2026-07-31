@@ -70,6 +70,31 @@ __global__ void moonshine_f16_lm_head_projection_kernel(
   }
 }
 
+__global__ void moonshine_f16_lm_head_projection_wave8_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    half_t* __restrict__ output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  const int64_t column = static_cast<int64_t>(blockIdx.x) * 8 + wave;
+  const int64_t row = blockIdx.y;
+  if (row >= rows || column >= out_features) return;
+  float accumulator = 0.0f;
+  for (int64_t feature = lane; feature < in_features; feature += 32) {
+    accumulator += static_cast<float>(input[row * in_features + feature]) *
+        static_cast<float>(weight[column * in_features + feature]);
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    accumulator += __shfl_down(accumulator, offset);
+  }
+  if (lane == 0) {
+    output[row * out_features + column] = static_cast<half_t>(accumulator);
+  }
+}
+
 __global__ void moonshine_f16_projection_bias_kernel(
     const half_t* __restrict__ input,
     const half_t* __restrict__ weight,
@@ -245,6 +270,23 @@ extern "C" int hipengine_moonshine_f16_lm_head_projection(
   }
   moonshine_f16_lm_head_projection_kernel<<<
       dim3(out_features, rows), dim3(threads), 0, stream>>>(
+      input, weight, output, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_moonshine_f16_lm_head_projection_wave8(
+    const half_t* input,
+    const half_t* weight,
+    half_t* output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0) {
+    return hipErrorInvalidValue;
+  }
+  moonshine_f16_lm_head_projection_wave8_kernel<<<
+      dim3((out_features + 7) / 8, rows), dim3(256), 0, stream>>>(
       input, weight, output, rows, in_features, out_features);
   return hipGetLastError();
 }

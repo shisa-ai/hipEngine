@@ -505,7 +505,7 @@ class MoonshineResidentRuntime:
             dense_gemv_out_fp16,
         )
         from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
-            moonshine_f16_lm_head_projection,
+            moonshine_f16_lm_head_projection_wave8,
             moonshine_f16_projection_bias,
             moonshine_f16_projection_triple,
         )
@@ -734,7 +734,7 @@ class MoonshineResidentRuntime:
         )
         if boundary_callback is not None:
             boundary_callback("final_hidden", normalized)
-        moonshine_f16_lm_head_projection(
+        moonshine_f16_lm_head_projection_wave8(
             normalized.ptr,
             self.weights[spec.lm_head_alias_name].ptr,
             self.tensor("logits").ptr,

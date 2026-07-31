@@ -33,6 +33,7 @@ def _hip_available() -> bool:
 def test_moonshine_projection_registry_resolves_explicit_gfx1151_keys() -> None:
     from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
         moonshine_f16_lm_head_projection,
+        moonshine_f16_lm_head_projection_wave8,
         moonshine_f16_projection,
         moonshine_f16_projection_bias,
         moonshine_f16_projection_pair,
@@ -47,6 +48,7 @@ def test_moonshine_projection_registry_resolves_explicit_gfx1151_keys() -> None:
     expected = {
         ("moonshine_projection", "single_fp32_accum"): moonshine_f16_projection,
         ("moonshine_lm_head", "tied_fp32_accum"): moonshine_f16_lm_head_projection,
+        ("moonshine_lm_head", "tied_wave8_fp32_accum"): moonshine_f16_lm_head_projection_wave8,
         ("moonshine_projection_rows", "single_fp32_accum"): moonshine_f16_projection,
         ("moonshine_projection_bias", "single_fp32_accum"): moonshine_f16_projection_bias,
         ("moonshine_projection_pair", "pair_fp32_accum"): moonshine_f16_projection_pair,
@@ -68,6 +70,7 @@ def test_moonshine_projection_registry_resolves_explicit_gfx1151_keys() -> None:
 def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
     from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
         moonshine_f16_lm_head_projection,
+        moonshine_f16_lm_head_projection_wave8,
         moonshine_f16_projection,
         moonshine_f16_projection_bias,
         moonshine_f16_projection_pair,
@@ -85,6 +88,7 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
 
     class FakeLibrary:
         hipengine_moonshine_f16_lm_head_projection = FakeKernel()
+        hipengine_moonshine_f16_lm_head_projection_wave8 = FakeKernel()
         hipengine_moonshine_f16_projection = FakeKernel()
         hipengine_moonshine_f16_projection_bias = FakeKernel()
         hipengine_moonshine_f16_projection_pair = FakeKernel()
@@ -95,6 +99,9 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
     common = {"threads": 256, "stream": 7, "library": library, "runtime": object()}
     moonshine_f16_projection(1, 2, 3, 1, 416, 416, **common)
     moonshine_f16_lm_head_projection(1, 2, 3, 1, 416, 36_864, **common)
+    moonshine_f16_lm_head_projection_wave8(
+        1, 2, 3, 1, 416, 36_864, stream=7, library=library, runtime=object()
+    )
     moonshine_f16_projection_bias(1, 2, 3, 4, 1, 416, 416, **common)
     moonshine_f16_projection_pair(1, 2, 3, 4, 5, 1, 416, 416, 416, **common)
     moonshine_f16_projection_pair_head_major(
@@ -108,6 +115,9 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
     ]
     assert library.hipengine_moonshine_f16_lm_head_projection.calls == [
         (1, 2, 3, 1, 416, 36_864, 256, 7)
+    ]
+    assert library.hipengine_moonshine_f16_lm_head_projection_wave8.calls == [
+        (1, 2, 3, 1, 416, 36_864, 7)
     ]
     assert library.hipengine_moonshine_f16_projection_bias.calls == [
         (1, 2, 3, 4, 1, 416, 416, 256, 7)

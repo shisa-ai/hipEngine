@@ -23,6 +23,15 @@ _SINGLE_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_LM_HEAD_WAVE8_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _BIAS_ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -203,6 +212,39 @@ def moonshine_f16_lm_head_projection(
         in_features,
         out_features,
         threads,
+        stream,
+    )
+    _check_launch(runtime, error)
+
+
+def moonshine_f16_lm_head_projection_wave8(
+    input_ptr: int,
+    weight_ptr: int,
+    output_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate(rows, in_features, (out_features,), 32)
+    library = library or build_moonshine_projection(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_moonshine_f16_lm_head_projection_wave8",
+        _LM_HEAD_WAVE8_ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        weight_ptr,
+        output_ptr,
+        rows,
+        in_features,
+        out_features,
         stream,
     )
     _check_launch(runtime, error)
@@ -402,6 +444,15 @@ def register_moonshine_projection_kernels(*, replace: bool = True) -> None:
                 "tied_fp32_accum",
             ),
             moonshine_f16_lm_head_projection,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
+                "moonshine_lm_head",
+                "fp16",
+                "tied_wave8_fp32_accum",
+            ),
+            moonshine_f16_lm_head_projection_wave8,
         ),
         (
             KernelKey(
