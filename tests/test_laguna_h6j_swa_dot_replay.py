@@ -151,7 +151,7 @@ def test_h6j_registry_source_schedule_and_production_immutability() -> None:
     assert _VARIANT not in _PRODUCTION_POLICY.values()
     assert _LDS_BYTES == 8_192
 
-    source = Path(module.__file__).with_suffix(".hip").read_text()
+    source = Path(module.__file__).with_name("laguna_kv_attention.hip").read_text()
     dense_branch = _branch_body(
         source,
         f"__global__ __launch_bounds__(32) void {_H6A_KERNEL}",
@@ -185,7 +185,7 @@ def test_h6j_registry_source_schedule_and_production_immutability() -> None:
     ) is candidate
     assert is_registered(candidate_key)
 
-    source = Path(module.__file__).with_suffix(".hip").read_text()
+    source = Path(module.__file__).with_name("laguna_kv_attention.hip").read_text()
     assert source.count(_SYMBOL) == 1
     assert source.count(_KERNEL) == 2
     candidate_body = _function_body(
