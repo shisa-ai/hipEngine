@@ -195516,3 +195516,29 @@ Vulkan local sizes verbatim will close the measured gap.
   mixed32 `0350a1e4af5858c65068bfe4586e8a27939fa678557102f9815bbd7c3cc927b7`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-vstage96-mixed32-rejected.json`.
+
+## 2026-07-31 12:28 JST — Reject probability/first-V phase overlap
+
+- Audited llama.cpp Vulkan `c0bc8591e` FlashAttention and the retained global
+  local1024 body. The comparator stages one K/V tile and performs cooperative
+  QK/PV matrix work over the whole grouped-query tile; our exact body
+  serializes probability pre-normalization and its first V64 load behind
+  separate barriers.
+- Added a RED import fixture, then a one-kernel exact candidate. Its 4–8 output
+  waves pre-normalize the same probability values while its 24–28 idle waves
+  load the same first V64 tile. This merges one barrier phase and changes no
+  QK, max, exp, denominator, PV, gate, or conversion operation.
+- GREEN passes the CPU reference and is F32/BF16 byte-exact at
+  live513/576/639. The 21x100 paired leaves improve only
+  **0.106%/0.142%/0.220%**. Local1024 already hides nearly all of this phase;
+  stop before resident integration and remove the entire candidate.
+- The mandatory lineage command was attempted but the local manifest points
+  at unavailable `/home/lhl/amd-gpu-tuning/reference/atlas`. Relevant
+  `docs/KERNELS.md`, current Laguna source, and read-only llama.cpp Vulkan
+  `c0bc8591e` were inspected directly.
+- Command:
+  `GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed40-local1024-exp32-producer-max-dpp-qk-dense-prefix-prenorm-first-value-overlap-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-prenorm-first-v-overlap-leaf.json`.
+- Raw SHA-256:
+  `fe02f6e08aec5f4dda63fb1ec1fb221e974f0c8eec3f28c1b057830a67565cfb`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-prenorm-first-v-overlap-rejected.json`.

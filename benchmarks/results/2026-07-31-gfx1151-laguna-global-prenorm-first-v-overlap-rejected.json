@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_global_attention_exact_leaf_rejection",
+  "status": "rejected_out_of_tree",
+  "timestamp": "2026-07-31T12:28:00+09:00",
+  "source_revision": "c3ef30f9476048e09ad2737f643eb55b066104f6",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "shape": {
+    "capacity": 4096,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "live_counts": [
+      513,
+      576,
+      639
+    ]
+  },
+  "protocol": {
+    "samples": 21,
+    "warmups": 5,
+    "burst": 100,
+    "paired": true,
+    "gpu_max_hw_queues": 1
+  },
+  "premise": "Use the local1024 output waves to pre-normalize exact probabilities while otherwise-idle waves load the first V64 tile, merging two block-barrier phases without changing QK, exp, denominator, PV, gate, or conversion arithmetic.",
+  "control": "mixed40/local1024/V64 dense-prefix idle-double-buffer exact FP32 QK/PV",
+  "rows": [
+    {
+      "live_count": 513,
+      "control_ms": 0.031074199676513672,
+      "candidate_ms": 0.031041340827941896,
+      "latency_change_percent": -0.10574318538800753
+    },
+    {
+      "live_count": 576,
+      "control_ms": 0.03363745927810669,
+      "candidate_ms": 0.033589749336242675,
+      "latency_change_percent": -0.14183574766917229
+    },
+    {
+      "live_count": 639,
+      "control_ms": 0.03645195007324219,
+      "candidate_ms": 0.03637180089950562,
+      "latency_change_percent": -0.21987623042258875
+    }
+  ],
+  "correctness": {
+    "cpu_reference_pass": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "raw_sha256": "fe02f6e08aec5f4dda63fb1ec1fb221e974f0c8eec3f28c1b057830a67565cfb",
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "environment_blocked",
+    "reason": "The manifest contains an unavailable external repository at /home/lhl/amd-gpu-tuning/reference/atlas; the local Laguna kernel and llama.cpp Vulkan c0bc8591e sources were inspected directly."
+  },
+  "decision": {
+    "retained": false,
+    "runtime_gate_skipped": true,
+    "reason": "The exact phase overlap saves only 0.11-0.22%, showing that local1024 already hides nearly all of this barrier/load phase. The result is far below the prior failed resident candidate. All experimental routes were removed."
+  },
+  "production": {
+    "decode_tokens_per_second": 22.873989323,
+    "wall_ms_per_token": 43.717778559,
+    "changed": false
+  }
+}

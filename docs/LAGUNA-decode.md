@@ -7837,6 +7837,23 @@ The remaining attention sequence is:
      gfx1151 CUs:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-vstage96-mixed32-rejected.json).
 
+153. Overlap exact probability pre-normalization with the first V64 load.
+     **Rejected out of tree.**
+
+     The local1024 body has 4–8 exact PV output waves and 24–28 otherwise-idle
+     loader waves. Let the output waves pre-normalize their unchanged
+     probabilities while the loader waves copy the first value tile, merging
+     two block-barrier phases without changing QK, maximum, exp, denominator,
+     PV, gate, or conversion arithmetic. The CPU reference and every F32/BF16
+     byte pass at live513/576/639, but the paired 21x100 leaves improve only
+     **0.106%/0.142%/0.220%**.
+
+     Remove the complete candidate before resident integration. Local1024
+     already hides nearly all of this phase; llama.cpp's attention advantage
+     is not a barrier-count effect in isolation, but the amount of matrix work
+     performed per staged K/V tile under its lower-precision contract:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-prenorm-first-v-overlap-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
