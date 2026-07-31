@@ -2200,19 +2200,21 @@ LDS512, and complete bytes. Static bpermutes fall **120 -> 24**, code
 unchanged 24 LDS loads/12 stores and private0/spill0/scratch0. Frozen **9/9**
 and all **45/45** actual layers are exact and both-clock positive: event
 **329.124 -> 313.405 ms (-4.776%, 1.050x)** and wall **326.037 -> 317.946 ms
-(-2.481%, 1.025x)**; minimum layer wins are **1.038x/1.016x**. H6Q now also
-qualifies as a bounded default-off same-ABI owner while H6P remains source.
-Complete natural M512 is KL0/byte-exact across all 48 boundaries, K/V/spans,
-repeat, and teardown. Four cached requests preserve **2,192 dispatches** and
-substitute exact **45 H6P -> 45 H6Q**, cutting IQ3/request-sum/span
-**4.725%/0.487%/1.076%**. Default-off 512/1K/4K gains
-**+0.586%/+0.486%/+0.366%**, 3/3 wins each; fixed C4096/M512 gains **+0.373%
-(5/5 wins)**. Workspace/scratch remain unchanged and **155/155** guards pass.
-Next freeze source-default RED and require fresh selector-unset publication
-before changing H6P
-([H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+(-2.481%, 1.025x)**; minimum layer wins are **1.038x/1.016x**. H6Q is
+subsequently retained as the source default with H6P as explicit
+same-ABI rollback. Complete natural M512 is KL0/byte-exact across all 48
+boundaries, K/V/spans, repeat, and teardown. Four cached requests preserve
+**2,192 dispatches** and substitute exact **45 H6P -> 45 H6Q**, cutting IQ3/
+request-sum/span **4.725%/0.487%/1.076%**. Fresh selector-unset 512/1K/4K gains
+**+0.730%/+0.571%/+0.359%**, 3/3 wins each; fixed C4096/M512 gains **+0.467%
+(5/5 wins)** at **390.887 tok/s**, **1.76724x** behind fresh matched llama.cpp
+HIP **690.791**. Workspace/scratch remain unchanged, gfx1151 remains excluded,
+and **156/156** guards pass. Next reprofile exact clean promoted H6Q production
+and rerank the matched residual
+([H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
 [post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
-[H6P production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
+[H6P rollback provenance](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
