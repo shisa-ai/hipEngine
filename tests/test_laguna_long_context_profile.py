@@ -438,6 +438,15 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
         ("laguna_f16w_tiled_exact_kernel<unsigned short, 16>", "source_f16_projection"),
         ("laguna_f16w_wmma_kernel<unsigned short, 4, true>", "source_f16_projection"),
         (
+            "laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_"
+            "bf16_kernel<false, true>",
+            "source_f16_projection",
+        ),
+        (
+            "laguna_f16w_fixedk_output_add_rmsnorm_bf16_kernel<9216, true>",
+            "source_f16_projection",
+        ),
+        (
             "Cijk_Alik_Bljk_HSS_BH_Bias_HA_S_SAV_UserArgs_MT96x96x32",
             "source_f16_projection",
         ),

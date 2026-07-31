@@ -78,9 +78,7 @@ def _kernel_family(name: str) -> str:
         return "lm_head_argmax"
     if (
         "laguna_f16w_" in lowered
-        and any(
-            marker in lowered for marker in ("gemv_kernel", "tiled_exact_kernel", "wmma")
-        )
+        or "laguna_f16_projection_head_" in lowered
     ) or any(
         marker in lowered
         for marker in (
