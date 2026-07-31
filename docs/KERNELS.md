@@ -2603,6 +2603,16 @@ router fields and BF16 output, and removes one launch, but regresses the actual
 two-kernel chain **0.104777 -> 0.125216 ms (+19.506%)**. The composite is
 removed:
 `benchmarks/results/2026-07-31-gfx1151-laguna-selector-selected-gate-fusion-rejected.json`.
+The byte-neutral K-major router continuation is closed too. A one-launch
+candidate preserved all 3,072 output producers, appended eight coalesced
+router tiles, and selected top-10 in the last tile. Projection/RMSNorm and
+selected IDs were exact; router error stayed below **5.96e-7**. But attaching
+the continuation raised every output block from **VGPR24/LDS512** to
+**VGPR64/LDS2048**, regressing K6144/K9216 complete chains
+**32.506%/22.111%** and the 12-full/36-SWA model **24.072%**. Launch-bounds
+8 did not repair it, so the kernel, ABI, wrapper, harness, and tests are
+removed:
+`benchmarks/results/2026-07-31-gfx1151-laguna-output-router-kmajor-fusion-rejected.json`.
 
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
