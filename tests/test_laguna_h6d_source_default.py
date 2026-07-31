@@ -26,6 +26,11 @@ _H6D_IQ3 = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out"
 )
+_H6F_IQ3 = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_paired_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 _H6C_ROLE = "layer47_iq3_k3072_n1024_e256"
 _H6C_VARIANT = (
@@ -47,6 +52,7 @@ def test_h6d_source_default_promotes_only_iq3_selected_down(
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
         _H6D_IQ3: _ACTIVE_EXPERT_ABI,
+        _H6F_IQ3: _ACTIVE_EXPERT_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants
