@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_decode_shared_stream_priority_retained",
+  "status": "retained_pending_clean_publication",
+  "timestamp": "2026-07-31T13:52:00+09:00",
+  "source_revision": "7d0cd5872d9b2a11041c51bf1c11f87e04e38b81",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 2,
+    "hip_stream_priority_range": [
+      1,
+      -1
+    ]
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv": "BF16"
+  },
+  "premise": "Preserve the retained least-priority shared stream for prefill, but dispatch the exact c=1 shared MoE branch on a separately allocated normal-priority stream so it is not unnecessarily delayed behind the now closely balanced selected branch.",
+  "global_priority_screen": {
+    "protocol": "two independent shared-weight sessions, seven alternating p512/d128 pairs",
+    "low_priority_decode_tok_s": 22.861957180587932,
+    "normal_priority_decode_tok_s": 22.886218497447416,
+    "decode_throughput_change_percent": 0.10612090936852336,
+    "decode_endpoint_saving_ms_per_token": 0.04636891384235048,
+    "decode_paired_median_saving_ms_per_token": 0.027440063010050555,
+    "decode_candidate_wins": 6,
+    "pairs": 7,
+    "low_priority_prefill_tok_s": 653.0555885171079,
+    "normal_priority_prefill_tok_s": 649.0084300404252,
+    "prefill_throughput_change_percent": -0.6197264900332122,
+    "decision": "reject a global priority flip; isolate normal priority to decode",
+    "raw_sha256": "0c458074141de48160d5efebef1d530cab62842ffc4091748ed0118e2ce98e4d"
+  },
+  "decode_only_priority_gate": {
+    "protocol": "one shared-weight session with both streams resident, seven counterbalanced p512/d128 pairs, toggle only the c=1 stream",
+    "control_decode_tok_s": 22.86962780749795,
+    "candidate_decode_tok_s": 22.891887668023823,
+    "throughput_change_percent": 0.09733372450677624,
+    "control_ms_per_token": 43.72611607050919,
+    "candidate_ms_per_token": 43.683597198357496,
+    "endpoint_saving_ms_per_token": 0.04251887215169396,
+    "paired_median_saving_ms_per_token": 0.03825107178702129,
+    "candidate_wins": 7,
+    "pairs": 7,
+    "prefill_shared_stream_low_priority_in_both_arms": true,
+    "raw_sha256": "91fd667a4f4489f6025640656ca70db1182bce856f54a36f08c5559078a57db6"
+  },
+  "correctness": {
+    "next_token": "2930 == 2930",
+    "final_token": "74107 == 74107",
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "arithmetic_changed": false,
+    "kernel_topology_changed": false,
+    "tracked_allocations_recovered": true
+  },
+  "implementation": {
+    "gfx1151_capability": "LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY=true",
+    "prefill_stream": "least priority +1",
+    "decode_stream": "normal priority 0",
+    "constructor_rollback": "moe_decode_shared_normal_priority=false",
+    "additional_tracked_device_bytes": 0
+  },
+  "validation": {
+    "red": "tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent failed because the constructor argument was absent",
+    "green": "2 targeted backend/session tests passed",
+    "adjacent_bundle": "73/74 passed; only the unchanged stale LagunaPrefillScratchPlan expected-byte assertion failed (104370208 expected versus 104370976 current)",
+    "python_compile": true,
+    "diff_check": true
+  },
+  "decision": {
+    "retained": true,
+    "gfx1151_default": true,
+    "reason": "The decode-only stream wins all seven exact same-session pairs while preserving the proven low-priority prefill schedule, every kernel and arithmetic boundary, generated trajectory, and tracked residency.",
+    "clean_selector_unset_publication_pending": true
+  },
+  "production": {
+    "prior_decode_tokens_per_second": 22.873989323,
+    "prior_wall_ms_per_token": 43.717778559,
+    "headline_changed": false
+  }
+}
