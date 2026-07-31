@@ -1100,10 +1100,33 @@ requests retain exact **45 H5Z or 45 H6D + two H5J** topology at **2,050**
 dispatches and cut IQ3/request/span **2.564%/0.251%/0.861%**. Selector-unset
 512/1K/4K is **+1.207%/+0.657%/+0.492%**, 3/3 wins each; fixed C4096/M512 is
 **329.327 -> 332.308 tok/s (+0.905%, 5/5 wins)** and **2.09547x** behind exact
-llama.cpp HIP. **92/92** guards pass. Reprofile promoted C4096/M512 next
+llama.cpp HIP. **92/92** guards pass. The clean promoted-source reprofile follows
 ([H6D production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json) ·
 [H6D candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
 [post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
+
+The clean post-H6D source-default refresh reaches **332.992 tok/s**, **+96.436%**
+over campaign start and **2.09117x** behind exact llama.cpp HIP **696.342**.
+Its representative cached request is **1,530.211 ms / 2,050 dispatches** in a
+**1,551.216-ms** median span. Fresh gaps rank IQ-down/Q5/attention/Q6/gate-up
+at **320.874/186.614/146.882/78.701/72.663 ms**. The trace preserves exact
+**45 H6D + two H5J**, **46 IQ2 + one H6C**, and **48 global + 144 SWA H6A**
+topology with H6D local128/VGPR104/LDS512/scratch0 and no compiler activity.
+
+Select **WPF-H6E exact Q6 activation-tile-K-row transfer** as a separate
+three-role gfx1100 H5W sibling. Reuse H5Y's already-live exact BF16
+`[row_group][k][row_slot]` plane for coltile16 rowbatch5 BF16 K3072/N1024,
+rowbatch4 BF16 K1024/N3072, and rowbatch5 F32 K3072/N1024. Keep the exact Q6
+F32-weight producer, row-major weight loads, local128/four-wave K ownership,
+scalar `fmaf` order, wave32 tree, serial wave sum, output store, workgroup
+order/count, H5W/H5I/raw fallbacks, allocation, and workspace unchanged. These
+**142 calls / 63.059 ms** currently issue a modeled **448,462,848** scalar
+activation loads; b64/b64+u16 records reduce that to **157,679,616 (-64.840%)**
+without a new pack body or plane. This is target rationale, not speed evidence.
+Require separate rows17/33/M512 byte/CPU RED, exact physical record loads,
+scratch0/no resource growth, and producer-inclusive all-role event+wall wins
+before runtime ownership
+([post-H6D residual / H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

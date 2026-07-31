@@ -1889,11 +1889,39 @@ Selector-unset 512/1K/4K improves H5Z rollback **315.267/264.136/175.276 ->
 Fixed natural-M512/C4096 improves **329.327 -> 332.308 tok/s (+0.905%, 5/5
 wins)**, reaches **+96.033%** over campaign start, and is **2.09547x** behind
 exact llama.cpp HIP **696.342**. All state/output/scratch/lifecycle checks and
-**92/92** retained guards pass. Next reprofile exact promoted C4096/M512 and
-rerank its component gaps
+**92/92** retained guards pass. The clean promoted-source C4096/M512 reprofile
+and reranked component gaps follow
 ([H6D production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json) ·
 [H6D candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
 [post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
+
+The clean post-H6D source-default refresh measures **332.992 tok/s** from five
+exact token-2930/lifecycle-clean samples, **+96.436%** over campaign start and
+**2.09117x** behind exact llama.cpp HIP **696.342 tok/s**. Its representative
+cached request reconciles **1,530.211 ms / 2,050 dispatches** in a
+**1,551.216-ms** median span. Current/llama component sums are IQ down
+**475.308/154.434 ms**, Q5 **245.351/58.737**, attention **168.506/21.624**,
+Q6 **93.157/14.455**, gate/up **474.056/401.393**, and remaining
+**73.833/67.598**. Gaps rank **320.874/186.614/146.882/78.701/72.663 ms** and
+explain **99.232%** of the **811.970-ms** kernel gap.
+
+Select **WPF-H6E exact Q6 activation-tile-K-row transfer**. The larger IQ-down,
+Q5, and attention residuals have no unscreened immediate exact ownership,
+geometry, layout, or schedule premise. Q6 remains **93.157 ms** versus llama.cpp
+**14.455 ms**. Its three H5W roles own **142 calls / 63.059 ms (67.691%)** and
+still issue scalar row-major BF16 activation loads even though H5Y's exact
+`[row_group][k][row_slot]` plane is already live. Add separate gfx1100
+rowbatch5-BF16, rowbatch4-BF16, and rowbatch5-F32 Q6 consumers that reuse this
+plane while retaining the exact Q6 F32-weight producer, row-major weight loads,
+scalar `fmaf` sequence, four-wave tree, serial wave sum, output store, workgroup
+order/count, and all H5W/H5I/raw fallbacks. The static model changes activation
+load instances **448,462,848 -> 157,679,616 (-64.840%)** with no new pack body,
+allocation, persistent sidecar, or increase over the existing **161,120,256-byte**
+workspace. This is not a performance claim. Freeze separate rows17/33/M512 RED,
+require b64/b64+u16 physical loads, scratch0/no resource growth, and retain only
+roles that win producer-inclusive HIP-event and synchronized wall on actual
+weights before any runtime owner
+([post-H6D residual / H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
