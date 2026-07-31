@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T12:33:34.273435+00:00",
+  "kind": "hipengine_laguna_decode_shared_down_schedule_rejection",
+  "status": "rejected_removed",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "control": "After router selection, release shared gate/up+SiLU+down as one low-priority secondary-stream chain while selected gate/up+down runs on the primary stream.",
+    "schedule": "Keep shared gate/up at the retained post-router release point, then use a second generation of the existing input-ready event to hold only shared down until selected gate/up completes; overlap shared down with selected down.",
+    "kernel_changes": 0,
+    "launch_count_change": 0,
+    "resident_byte_change": 0,
+    "arithmetic_change": "none"
+  },
+  "correctness": {
+    "red": "The production-shape Q4 c=1 oracle failed because run_laguna_moe_c1 did not accept the absent shared_down_after_selected_gate contract.",
+    "green": "The candidate matched every production-shape Q4 BF16 output bit; complete control/candidate generated IDs, next token, final token, and final position match.",
+    "generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "next_token_id": 2930,
+    "final_token_id": 74825,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "directional_complete_model": {
+    "workload": "p512/d128 eager c=1; 127 timed forward_token calls; one counterbalanced control/candidate pair after one resident load",
+    "control_decode_tok_s": 23.074629981314082,
+    "candidate_decode_tok_s": 22.93904969130195,
+    "throughput_delta_percent": -0.5875729756963599,
+    "control_ms_per_token": 43.337639685221546,
+    "candidate_ms_per_token": 43.59378498487585,
+    "candidate_delta_ms_per_token": 0.25614529965430677,
+    "resident_nbytes": 79066169172,
+    "seven_pair_gate_run": false
+  },
+  "decision": {
+    "result": "reject at the rough complete-model gate and remove",
+    "reason": "Holding shared down removes useful overlap and makes the secondary join critical; the 0.256145-ms/token loss is larger than the intended contention recovery.",
+    "closed_seam": "Do not retry moving the complete shared branch after selected gate/up or gating only shared down there. Keep the retained post-router full-branch release unless shared-down bytes are materially reduced.",
+    "production": "unchanged at 23.089693 tok/s / 43.309368 ms/token"
+  },
+  "validation": {
+    "red_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q 'tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle[GGMLQuantizationType.Q4_K]' --maxfail=1",
+    "host_contracts": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_gguf_runner.py::test_laguna_owned_session_close_frees_weights_and_is_idempotent tests/test_laguna_long_context_profile.py",
+    "complete_model": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compare-moe-shared-down-after-selected-gate --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-shared-down-after-selected-gate-onepair.json",
+    "restored": "1 production-shape GPU node plus 40 host/profile nodes passed after complete removal"
+  },
+  "raw": {
+    "path": "/tmp/laguna-shared-down-after-selected-gate-onepair.json",
+    "sha256": "c2d08c197e5f0d450b40001b3870b897858def89490a86509d35366ec416b705"
+  }
+}

@@ -8730,6 +8730,39 @@ The remaining attention sequence is:
      Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-persistent-output-rejected.json).
 
+185. Split the retained post-router shared-expert release: keep shared
+     gate/up at its current point, but hold only shared down until selected
+     gate/up completes. **Rejected at the rough complete-model gate and
+     removed.**
+
+     This is the finer-grained successor allowed by the coarse schedule
+     rejections in items 126 and 147. It keeps every kernel, launch, pointer,
+     byte, and arithmetic operation unchanged. The secondary stream consumes
+     generation one of the existing event after router selection and executes
+     shared gate/up+SiLU. The primary stream then executes selected gate/up
+     and records generation two; only shared down waits for that generation,
+     after which it overlaps selected down. The existing output-ready event
+     remains the final join.
+
+     The production-shape Q4 c=1 oracle is BF16-bit exact, and the complete
+     pair preserves generated IDs, next/final tokens, final position,
+     residency, and allocation recovery. The one-pair directional gate is
+     clearly negative:
+
+     | Schedule | Decode | Wall/token |
+     | --- | ---: | ---: |
+     | retained post-router full branch | **23.074630 tok/s** | **43.337640 ms** |
+     | split shared-down release | 22.939050 tok/s | 43.593785 ms |
+     | delta | **-0.58757%** | **+0.256145 ms** |
+
+     Holding shared down removes useful overlap and makes the secondary join
+     critical; stop before the seven-pair gate. Remove the helper split,
+     session/profile selector, and RED/GREEN additions. Together with item
+     147, this closes both delaying the entire shared branch and delaying only
+     shared down after selected gate/up. Reopen only after materially reducing
+     shared-down bytes. Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-down-after-selected-gate-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8753,7 +8786,9 @@ gap is not the redundant resident-layer Python validation walk, while item
 item 183 closes multi-expert router projection tiles under the resident
 expert-major F32 weight layout. Item 184 additionally closes the obvious
 bounded persistent output→RMSNorm→router owner: its maximum occupancy-safe
-grid already regresses before router work is attached:
+grid already regresses before router work is attached. Item 185 closes the
+remaining obvious shared-branch event split; delaying only shared down loses
+**0.256145 ms/token**:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:

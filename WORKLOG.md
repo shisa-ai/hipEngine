@@ -196449,3 +196449,27 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
   `b0734ecf...0e5df`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-persistent-output-rejected.json`.
+
+## 2026-07-31 21:33 JST — Reject split shared-down release
+
+- Selected the finer-grained successor allowed by the earlier coarse shared
+  schedule rejections. Shared gate/up kept the retained post-router release,
+  while a second generation of the existing input-ready event held only
+  shared down until selected gate/up completed; shared down then overlapped
+  selected down. Kernels, launch count, arithmetic, pointers, and resident
+  bytes were unchanged.
+- RED failed when the production-shape Q4 c=1 oracle passed the absent
+  `shared_down_after_selected_gate` contract. GREEN matched every BF16 output
+  bit. The session/profile contract tests passed while the candidate existed.
+- The agreed rough one-pair p512/d128 gate rejects the schedule:
+  **23.074630 -> 22.939050 tok/s (-0.58757%)** and
+  **43.337640 -> 43.593785 ms/token (+0.256145 ms)**. Generated IDs
+  (`1840dd35...956fa`), next/final tokens, final position, residency, and
+  allocation recovery are exact. The prefill numbers are unpaired one-run
+  noise because the selector changes c=1 decode only.
+- Removed the helper split, runtime/session/benchmark selector, and tests
+  before the seven-pair gate. The restored production-shape GPU node and
+  **40** host/profile nodes pass. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
+  `c2d08c19...6b705`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-shared-down-after-selected-gate-rejected.json`.
