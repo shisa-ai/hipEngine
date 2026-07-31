@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T07:40:06.824060+00:00",
+  "kind": "hipengine_laguna_selected_gate_lane0_metadata_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "weights": "actual layer-1 gate/up",
+    "shape": "E256/K3072/N1024/top-10"
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved-lane0meta --gate-only --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-gate-lane0meta-leaf.json",
+    "raw_json": "/tmp/laguna-gate-lane0meta-leaf.json",
+    "raw_sha256": "70d4573ac98bc70db0826043809e0c26e596a1e6170188f84fbbf70a78016ec6",
+    "ordering": "counterbalanced",
+    "samples": 21,
+    "launches_per_sample": 100
+  },
+  "candidate": {
+    "description": "Only lane 0 issues each wave-uniform scale/min load and broadcasts the uint32 word with wave shuffle; Q payload, d/dmin, dequantization, FMA, reductions, fused SiLU, layout, launch geometry, and residency are unchanged.",
+    "red": "The focused test failed to import the absent lane0-metadata wrapper.",
+    "green": "The production-shape GPU fixture matched every BF16 output bit."
+  },
+  "result": {
+    "control_median_ms_per_layer": 0.11199633598327637,
+    "candidate_median_ms_per_layer": 0.1661783218383789,
+    "candidate_delta_percent": 48.37835575548932,
+    "bf16_mismatches": 0,
+    "control_resident_bytes": 931135488,
+    "candidate_resident_bytes": 931135488
+  },
+  "decision": {
+    "run_resident_gate": false,
+    "retain": false,
+    "reason": "Wave divergence plus eight metadata broadcasts per K ownership step cost far more than the coalescer-served replicated loads. The candidate is decisively negative at the actual-weight leaf and was removed completely.",
+    "production_decode_tok_s": 23.0172713318,
+    "production_ms_per_token": 43.4456363478
+  }
+}
