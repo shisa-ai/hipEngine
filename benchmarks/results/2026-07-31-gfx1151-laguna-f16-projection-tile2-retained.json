@@ -125,6 +125,7 @@
     "gfx1100_unchanged": true,
     "ordinary_output_projection_unchanged": true,
     "rollback": "hip_gfx1100 registered one-column implementation",
-    "clean_production_refresh_pending": true
+    "clean_production_refresh_pending": false,
+    "production_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json"
   }
 }

@@ -2525,6 +2525,10 @@ local256/VGPR32/SGPR128/LDS512/scratch0, and seven complete-model pairs improve
 projection stays one-column after its tile2 screen regressed **8.598-10.489%**;
 gfx1100 remains on the one-column composite:
 `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json`.
+Tracked-clean production at `a4c2c5d26` advances
+**22.891692 -> 23.017271 tok/s (+0.54858%, -0.238335 ms/token)** at unchanged
+residency:
+`benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json`.
 
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
