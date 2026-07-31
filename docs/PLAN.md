@@ -1874,18 +1874,22 @@ cached request reconciles **1,546.351 ms / 2,050 dispatches** in a
 Q6 **93.490/14.455**, gate/up **475.796/401.393**, and remaining
 **74.124/67.598**. Gaps rank **334.482/186.766/146.896/79.035/74.403 ms**.
 
-Select **WPF-H6D exact row-interleaved IQ3 VOPD** on H5Z's **480.299-ms / 45-call**
-body. Current generated code preserves 72 useful row-dot/scale FMAs but assigns
-all 72 separate issue slots and forms no FMA/FMA VOPD pair. A target-selection
-compiler probe interleaving only the eight mathematically independent rows
-keeps all 72 FMAs, 13 global loads, 52 DS operations, and two barriers while
-forming **17** math-math VOPD pairs, reducing FMA issue slots **72 -> 55**,
-function slots **859 -> 775**, and code-object VGPR **107 -> 99**. This is
-static feasibility, not a candidate speed/correctness claim. Freeze a separate
-gfx1100 RED and require exact H5Z/CPU bytes, unchanged per-row FMA/reduction/
-BF16 order and P64/P256 metadata, physical math-math VOPD, scratch0/no resource
-growth, and all-45-layer event+wall wins before runtime ownership
-([post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
+**WPF-H6D exact row-interleaved IQ3 VOPD** is now a separately registered
+gfx1100 H5Z sibling. Its strict K1024/N3072/E256 RED freezes each row's low/high
+j0..3 dependency chain plus rowbatch8/P64/P256 metadata; complete P64/P65/tail
+bytes match H5Z and sampled CPU, the empty route is inert, gfx1151 is absent,
+and **87/87** broader guards pass. Generated code keeps all **72 FMAs, 13 global
+loads, 52 DS operations, and two barriers** while forming **17** FMA/FMA VOPD
+pairs, reducing issue slots **72 -> 55**, function slots **859 -> 775**,
+metadata VGPR **107 -> 99**, and runtime VGPR **112 -> 104** at unchanged
+LDS512/scratch0. Across all **45/45** actual IQ3 layers with natural M512
+routing, H5Z -> H6D event/wall sums move **451.460/452.002 -> 438.525/438.322
+ms (-2.865%/-3.027%)**; every layer wins both clocks and allocations recover.
+Admit the leaf, keep H5Z package production, and next require bounded default-off
+complete-state, exact 45-call topology, paired cached trace, and one-queue
+512/1K/4K non-regression before source-default adjudication
+([H6D leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
+[post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent

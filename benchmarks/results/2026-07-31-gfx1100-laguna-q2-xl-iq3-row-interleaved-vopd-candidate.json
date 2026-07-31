@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_row_interleaved_vopd_candidate",
+  "status": "retained_leaf_runtime_default_unchanged",
+  "date": "2026-07-31",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "scope": "WPF-H6D separately registered exact H5Z-derived IQ3 selected-down leaf on one Radeon Pro W7900",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "compact_rows": 5120,
+    "top_k": 10,
+    "expert_count": 256,
+    "in_features": 1024,
+    "out_features": 3072,
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "next_token_id": 2930,
+    "final_position": 511
+  },
+  "candidate": {
+    "id": "WPF-H6D",
+    "name": "exact row-interleaved IQ3 VOPD",
+    "backend": "hip_gfx1100",
+    "layer": "moe_linear",
+    "quant": "gguf_iq3_xxs",
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out",
+    "runtime_abi": "grouped_raw_iq_active_experts",
+    "runtime_abi_new": false,
+    "geometry": "expert P64 / output P256 / local128 / rowbatch8",
+    "operation": "Interleave the eight independent H5Z row accumulators inside each unchanged j=0..3 low/high IQ3 FMA step, then retain the same scale multiply, four wave32 trees, serial wave sum, and BF16 store.",
+    "separate_h5z_sibling": true,
+    "additional_workspace_bytes": 0,
+    "additional_runtime_allocations": 0,
+    "persistent_sidecar_bytes": 0,
+    "package_policy_changed": false,
+    "runtime_owner_added": false,
+    "source_default": false,
+    "gfx1151_fail_closed": true
+  },
+  "correctness": {
+    "red_revision": "5afa103a29b96e8b6dccf36ae30ccf460c20f742",
+    "red_failures": "4/4 solely absent H6D wrapper",
+    "focused_green": "4/4",
+    "broader_green": "87/87",
+    "strict_k1024_n3072_e256_preflight_before_hip_load": true,
+    "per_row_low_high_j0_j3_order_frozen": true,
+    "rowbatch8_boundary_and_tail_checked": true,
+    "active_count_p64_boundary_checked": true,
+    "active_count_p64_plus_one_tail_checked": true,
+    "output_partition_boundary_and_tail_checked": true,
+    "empty_active_list_checked": true,
+    "complete_h5z_output_byte_identity": true,
+    "sampled_independent_cpu_oracle_byte_identity": true,
+    "all_45_actual_weight_outputs_byte_exact": true,
+    "sampled_cpu_outputs_finite": true,
+    "gfx1151_absent": true,
+    "package_h5z_h5q_h5j_maps_unchanged": true,
+    "tracked_allocations_recovered": true
+  },
+  "resource_and_isa": {
+    "build_cache_key": "gguf_iq_selected_prefill-27d6cd320c97161d",
+    "control_symbol": "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_rowbatch8_kernel<256>",
+    "candidate_symbol": "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_rowbatch8_kernel<256>",
+    "control_metadata": {
+      "function_instruction_slots": 859,
+      "code_bytes": 4528,
+      "vgpr_count": 107,
+      "sgpr_count": 58,
+      "private_segment_fixed_size": 0,
+      "vgpr_spill_count": 0,
+      "sgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate_metadata": {
+      "function_instruction_slots": 775,
+      "code_bytes": 4232,
+      "vgpr_count": 99,
+      "sgpr_count": 58,
+      "private_segment_fixed_size": 0,
+      "vgpr_spill_count": 0,
+      "sgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "instruction_contract": {
+      "control_fma_operations": 72,
+      "candidate_fma_operations": 72,
+      "control_fma_issue_slots": 72,
+      "candidate_fma_issue_slots": 55,
+      "control_math_math_vopd_pairs": 0,
+      "candidate_math_math_vopd_pairs": 17,
+      "control_global_load_instructions": 13,
+      "candidate_global_load_instructions": 13,
+      "control_global_load_b128": 8,
+      "candidate_global_load_b128": 8,
+      "control_ds_instructions": 52,
+      "candidate_ds_instructions": 52,
+      "control_barriers": 2,
+      "candidate_barriers": 2
+    },
+    "cached_rocprof_trace": {
+      "candidate_calls": 2,
+      "candidate_duration_ns": [
+        926202,
+        944086
+      ],
+      "candidate_resources": "local128/VGPR104/SGPR128/LDS512/scratch0/grid-x256/grid-y64",
+      "control_calls": 2,
+      "control_duration_ns": [
+        975162,
+        954846
+      ],
+      "control_resources": "local128/VGPR112/SGPR128/LDS512/scratch0/grid-x256/grid-y64",
+      "expected_kernel_name_observed": true,
+      "no_compiler_under_profile": true
+    }
+  },
+  "performance": {
+    "protocol": {
+      "actual_weights": true,
+      "actual_natural_m512_routing": true,
+      "actual_iq3_layers": 45,
+      "deterministic_bf16_compact_input": true,
+      "warmups": 5,
+      "counter_rotated_repetitions": 15,
+      "launches_per_sample": 5,
+      "event_and_synchronized_wall": true,
+      "selection_rule": "admit only if complete bytes match and aggregate HIP-event plus synchronized-wall both improve; report the per-layer both-clock count"
+    },
+    "h5z_event_sum_ms": 451.45995025634767,
+    "candidate_event_sum_ms": 438.52489471435547,
+    "event_reduction_percent": 2.8651612473371,
+    "event_speedup": 1.0294967416853673,
+    "h5z_wall_sum_ms": 452.0022936630994,
+    "candidate_wall_sum_ms": 438.3218001574278,
+    "wall_reduction_percent": 3.0266424966127303,
+    "wall_speedup": 1.0312110725516233,
+    "both_clock_positive_layers": 45,
+    "all_layers_both_clock_positive": true,
+    "all_outputs_byte_exact": true,
+    "tracked_returned_to_baseline": true,
+    "elapsed_s": 142.7370195609983
+  },
+  "production": {
+    "unchanged": true,
+    "current_iq3_owner": "WPF-H5Z activation-resident output P256",
+    "current_special_gate_up_owner": "WPF-H6C special-IQ3 expert-major fused-SiLU",
+    "current_matched_tok_s": 329.562775,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "runtime_qualification_pending": true
+  },
+  "decision": {
+    "leaf_admitted": true,
+    "runtime_owner_added": false,
+    "production_default_changed": false,
+    "next_action": "Add a bounded default-off H6D runtime owner reusing H5Z ABI/workspace, then require complete M512 state, exact 45-call topology, cached paired trace, and one-queue 512/1K/4K non-regression before source-default adjudication."
+  },
+  "lineage": {
+    "target_revision": "ce6dd94b42d63f29d8e190d7cc532c9f908586b6",
+    "red_revision": "5afa103a29b96e8b6dccf36ae30ccf460c20f742",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json",
+    "target_artifact_sha256": "54c61f15bf61833dc19c43c6f43b9ad56d6c2403c457a31d8cdd0837a6a7adb4",
+    "source": "Net-new in-tree H5Z sibling derived from the recovered target-selection scheduling probe; no external device body copied.",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "15ee8b425085bfe359e8815b6539343079b26a3b05fe3ac43d5b7af67cfccb0b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "f28e94fb4c31c903fdb2f4c6ffdd83ce655f6401d29d2e7b10ce972c09993fac",
+      "hipengine/kernels/hip_gfx1100/quant/__init__.py": "b01c6f304a5daaac29fdc213a02fc975fad683d61bc61e8537991cb555a9d126",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "698b2f11a535c1f6c2c346fcc3ad1ee018f8cfa1a36e8af1d298498aaae5e148",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "4340ef27e37716e633e62c5979d9e352db9235e567f3219f7811671d59c48935",
+      "tests/test_laguna_h6d_iq3_row_interleaved_vopd.py": "d922440823eea26161731d68e3a6718acce7b3bf65d77cf700dcdc80a23f5912"
+    }
+  },
+  "commands": {
+    "prebuild": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -c 'from pathlib import Path; from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import build_gguf_iq_selected_prefill; print(build_gguf_iq_selected_prefill(load=False, compiler_version=Path(\"/tmp/hipengine-hipcc-version.txt\").read_text()).output_path)'",
+    "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6d_iq3_row_interleaved_vopd.py",
+    "broader_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6d_iq3_row_interleaved_vopd.py tests/test_laguna_h5z_iq3_activation_resident_output_sweep.py tests/test_gguf_iq3_active_expert_persistent.py tests/test_gguf_iq_selected_prefill.py tests/test_laguna_h5z_runtime_policy.py tests/test_laguna_h5z_source_default.py tests/test_laguna_h6c_iq3_gate_up_expert_major.py tests/test_laguna_h6c_runtime_policy.py tests/test_laguna_h6c_source_default.py tests/test_gfx1151_backend.py tests/test_kernel_registry.py",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-h6d-leaf-rocprof --output-file h6d-leaf -- uv run pytest -q tests/test_laguna_h6d_iq3_row_interleaved_vopd.py::test_h6d_complete_outputs_match_h5z_and_cpu_at_p64_boundary_and_tails",
+    "actual_layer_screen": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6d_iq3_row_interleaved_vopd_final_screen.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "raw_evidence_sha256": {
+    "compiler_version": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device_shared_object": "1e1a073209391b9ead7a4f9f9c81a5bbd5bcc10f07b92d73d453ae618a043d72",
+    "device_code_object": "f122a992b6a871125e771c5f4414d3292081a76055198ef82c241a63b77cfcda",
+    "control_isa": "aa1f956ceead426d44fda9bb69204f95dd4a07e5bc68f4dd9d4977971e7f4d87",
+    "candidate_isa": "f8dba532a83367be12d6fbb65dff328c0fcea12e766875643d69aa6484d789fe",
+    "code_object_metadata": "112f51c2c1b5a1a16977d7bcf6f0d496ac46bf67135dd834654a4b888d3c678c",
+    "isa_analysis": "a18078fe7ac8c7e3133c37c557cdb7e8bc9067ed3c8e9be19481bd54286a641c",
+    "focused_stdout": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "focused_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "broader_stdout": "cc34b63aed9ded66f0e7fe2019892e09f95bda31d78523503dd936241e3dc3f5",
+    "broader_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "resource_trace_csv": "b141d70c85b3a61c36bdde9e03aee686441e3b5f35fbaf086909c7d044ee768c",
+    "resource_trace_stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "resource_trace_stderr": "5cd6a63ddc4594bdebf6892b9a0419f0117c7515628bcd39d99a42c546088f66",
+    "actual_layer_harness": "8dcaf4673ca2b9157c3bf22fc20b0af546d86f5d3accdf142fe4737026f1e39c",
+    "actual_layer_json": "15622796b56e74a3879fa3612ec98d98c5f2eeb323a4576b37e1c3d6de4db65a",
+    "actual_layer_stdout": "dffee81942d272272a317eab0bc177004d9df9e3aae516c37e4fc376e02b4124",
+    "actual_layer_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "lineage": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b"
+  }
+}
