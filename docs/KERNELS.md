@@ -1326,22 +1326,22 @@ explicit wait-split premises before returning to a distinct residual family
 ([H6M rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) ·
 [post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
-**WPF-H6N exact global dense-initial fixed-512 score arena is target-only; no
-executable or speed claim exists yet.** The current H6A global role is
-**57.195 ms / 48 calls**, **33.048%** of the **173.066-ms** attention family,
-at local256/VGPR40/scratch0. Its strict M128 starts **0/128/256/384** prove the
-largest causal first-fill context is 512, but the wrapper still partitions
-dynamic LDS as C4096 scores + eight warp partials + 128 query values:
-**16,928 bytes**. A separate sibling will use **512 + 8 + 128 = 648 floats /
-2,592 bytes (-84.688%)** while retaining every H6A query/K/V load, QK tree,
-score/max/exp/denominator/PV operation, grid, ABI, allocation, workspace, and
-policy. The 64-KiB-LDS/32-wave mechanical model changes the LDS-only ceiling
-from **3 local256 blocks / 24 waves to 4 blocks / 32 waves**; it is not measured
-occupancy. Freeze H6A kernel/wrapper body hashes and an absent-candidate RED,
-then require full H6A/CPU/span identity, exact launch storage, private0/spill0/
-scratch0, VGPR <=48, cached rocprof naming, and both-clock wins at all four
-starts plus the weighted 48-call schedule
-([H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+**WPF-H6N exact global dense-initial fixed-512 score arena is an admitted
+standalone gfx1100 leaf; runtime and source defaults remain H6A.** The frozen
+**6/6** contract is complete-byte exact against H6A, matches independent CPU
+rows, preserves all five `KVLiveSpans` arrays, rejects invalid shapes before
+loading HIP, and recovers allocation state at starts **0/128/256/384**. Dynamic
+launch storage falls **16,928 -> 2,592 bytes (-84.688%)**. Cached code metadata
+is private0/spill0 at VGPR **33** for H6A/H6N; rocprof names both at runtime
+VGPR40/local256/grid48x128/scratch0, and selected QK/reduction/exp/PV/store
+instruction-site counts are equal. Every start wins event and synchronized
+wall; the append-inclusive weighted 48-call schedule moves event **48.928 ->
+28.425 ms (-41.905%, 1.721x)** and wall **48.227 -> 28.126 ms (-41.679%,
+1.715x)**. Keep H6A production **381.977 tok/s** until a separately frozen
+bounded owner passes complete natural-M512 state, exact 48-call substitution at
+unchanged dispatches/resources, and fixed plus selector-unset end-to-end gates
+([H6N candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+[H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

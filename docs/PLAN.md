@@ -2129,29 +2129,28 @@ unchanged post-H6L IQ-down/attention residual with a distinct operation
 ([H6M rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) ·
 [post-H6L residual / target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
-Select target-only **WPF-H6N exact global dense-initial fixed-512 score arena**
-on the distinct attention family. H6I triple-output remains the measured IQ3
-sweet spot after H6K's fourth output raised runtime VGPR **168 -> 200** and
-regressed all 45 layers; H5R global qrow4 and H6J score replay both reached
-runtime VGPR248 and lost every start. H6N instead preserves H6A's existing
-local256/grid48x128, VGPR40, eight token-strided QK owners, wave trees,
-materialized-score/max/exp/denominator order, normalized-weight-before-PV
-association, F32 division/store, complete `KVLiveSpans`, and all allocation,
-workspace, dispatch, and policy boundaries.
+Admit standalone **WPF-H6N exact global dense-initial fixed-512 score arena**
+on the distinct attention family. The separate gfx1100 sibling retains H6A's
+local256/grid48x128, token-strided QK owners, wave trees, materialized-score/
+max/exp/denominator order, normalized-weight-before-PV association, F32 store,
+complete `KVLiveSpans` ABI, allocation, workspace, dispatch, and source policy.
+The frozen **6/6** matrix is complete-byte exact against H6A, matches sampled
+CPU rows, preserves all span bytes, rejects invalid shapes before HIP loading,
+and recovers allocations at starts **0/128/256/384**.
 
-The strict H6A route admits only M128 starts **0/128/256/384**, so its maximum
-causal first-fill context is **512**, but the current wrapper reserves
-`(4096 + 8 + 128) * 4 = 16,928` dynamic-LDS bytes for score/warp/query storage.
-A separate H6N sibling targets **`(512 + 8 + 128) * 4 = 2,592` bytes
-(-84.688%)**. On the W7900's 64-KiB LDS and 32-wave/CU limits, the mechanical
-LDS-only ceiling changes **3 local256 blocks / 24 waves -> 4 blocks / 32
-waves**; this is a selection model, not achieved occupancy or speed evidence.
-Current H6A global is **57.195 ms / 48 calls**, or **33.048%** of attention.
-Freeze RED before executable work; require complete H6A/CPU/span bytes at every
-start, exact 2,592-byte launch storage, private0/spill0/scratch0, VGPR <=48,
-and every-start plus weighted-48-call HIP-event/wall wins. Any failure removes
-H6N and retains H6A
-([H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+H6N reduces exact dynamic launch storage **`(4096 + 8 + 128) * 4 = 16,928` ->
+`(512 + 8 + 128) * 4 = 2,592` bytes (-84.688%)**. Metadata/runtime stay
+private0/spill0/scratch0 at VGPR **33/40**, local256/grid48x128, and selected
+operation-site counts equal H6A. Every start wins both clocks. The append-
+inclusive weighted 48-call schedule moves event **48.928 -> 28.425 ms
+(-41.905%, 1.721x)** and synchronized wall **48.227 -> 28.126 ms (-41.679%,
+1.715x)**. This admits only the leaf; H6A remains source production at
+**381.977 tok/s**. Next freeze bounded default-off ownership, then require
+complete natural-M512 state/repeat/teardown, exact 48-call H6A-to-H6N
+substitution at unchanged **2,192** dispatches, fixed C4096/M512 both-clock
+wins, and selector-unset 512/1K/4K non-regression before source promotion
+([H6N candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+[H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

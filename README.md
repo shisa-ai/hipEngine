@@ -339,15 +339,16 @@ numbers below.
 
 The clean promoted H6L refresh reaches **381.977 tok/s**, **+125.334%** over campaign start and **1.82299x** behind matched llama.cpp HIP **696.342**. Its exact **1,326.062-ms / 2,192-dispatch** request leaves Q5/IQ-down/attention/Q6 gaps **194.004/189.827/151.442/72.392 ms**, while gate/up is already **7.498 ms faster** than llama.cpp. **WPF-H6M exact explicit wait-split Q5 pipelining is rejected**: both roles are byte-exact and physically realize **13/4 loads -> 32 current FMAs -> one wait**, but the 70-call direct event/wall aggregate regresses **194.618/195.249 -> 205.367/205.331 ms (+5.523%/+5.164%)** and inclusive regresses **215.590/216.860 -> 227.873/227.347 (+5.697%/+4.836%)**. Remove every H6M surface and retain H5Y/H6L production ([H6M rejection](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) · [post-H6L residual / H6M target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
-Target-only **WPF-H6N exact global dense-initial fixed-512 score storage** now
-returns to attention without repeating qrow grouping or score replay. H6A global
-owns **57.195 ms / 48 calls (33.048% of attention)** at local256/VGPR40, but
-its strict M128 starts cap context at 512 while the wrapper reserves a C4096
-score arena. A separate exact sibling targets dynamic LDS **16,928 -> 2,592
-bytes (-84.688%)**, mechanically raising only the LDS-residency ceiling **24 ->
-32 waves**. Production remains **381.977 tok/s**; RED, exact bytes/resources,
-and every-start plus weighted both-clock gates precede any owner
-([H6N target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+**WPF-H6N exact global dense-initial fixed-512 score storage is now an admitted
+standalone leaf.** All four M128 starts are complete-byte/CPU/span exact. The
+candidate cuts dynamic launch storage **16,928 -> 2,592 bytes (-84.688%)** while
+metadata/runtime stay private0/spill0/scratch0 at VGPR **33/40**, local256, and
+grid48x128. Every start wins both clocks; the append-inclusive weighted 48-call
+schedule moves event **48.928 -> 28.425 ms (-41.905%, 1.721x)** and wall
+**48.227 -> 28.126 ms (-41.679%, 1.715x)**. Production remains H6A at
+**381.977 tok/s** pending bounded full-state/topology/end-to-end runtime gates
+([H6N candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+[H6N target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
