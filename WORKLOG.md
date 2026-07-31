@@ -196348,3 +196348,21 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw leaf SHA-256 is
   `e1e9fe3d...a327a`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-halfdot-rejected.json`.
+
+## 2026-07-31 20:36 JST — Reject resident MoE prevalidation bypass
+
+- Session construction already walks every sparse layer through the complete
+  shape/layout/byte-stride validator. RED/GREEN added an explicit resident-only
+  bypass while preserving validation-by-default for standalone c=1/rows
+  callers; no GPU kernel, launch, pointer, arithmetic, or allocation changed.
+- Seven same-resident p512/d128 pairs reject the candidate:
+  **23.091996 -> 23.089754 tok/s (-0.00971%)**, endpoint median
+  **+0.004206 ms/token**, paired median **+0.007185 ms/token**, and **3/7**
+  wins. Generated IDs, final positions, repeat determinism, and allocation
+  recovery remain exact.
+- Removed the bypass keyword, session setter, comparison selector, and tests.
+  The redundant Python walk is evidently performed far enough ahead of the GPU
+  to stay hidden; it is not the measured 1.50-ms/token uncovered queue
+  interval. Production remains **23.089693 tok/s / 43.309368 ms/token**.
+  Raw SHA-256 is `b4c4f46d...27df`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-moe-hotpath-prevalidation-rejected.json`.

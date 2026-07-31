@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T20:33:31+09:00",
+  "kind": "hipengine_laguna_moe_hotpath_prevalidation_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "repo": {
+    "baseline_revision": "cbd0840ccfc8f561e00b3c94613c8924b3d5f764",
+    "experiment_was_dirty": true,
+    "candidate_removed": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 79066169172
+  },
+  "change": {
+    "description": "Use the complete sparse-layer layout/stride validation already performed by LagunaGGUFResidentSession._validate_resident_weights and skip the redundant validate_laguna_moe_layer walk in each resident c=1 and rows call.",
+    "standalone_contract": "Direct run_laguna_moe_c1_components/run_laguna_moe_rows callers continued to validate by default; only the immutable resident-session path requested the bypass.",
+    "gpu_kernels_changed": false,
+    "resident_bytes_changed": 0,
+    "launch_count_changed": 0
+  },
+  "red_green": {
+    "red": "Focused tests failed because c=1 and rows execution had no prevalidated-layer contract.",
+    "green": "Resident callers could explicitly consume load-time validation while standalone callers still rejected invalid layers by default.",
+    "post_removal_validation": "The temporary API, runner route, benchmark selector, and tests were removed after the complete-wall gate failed."
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix rows 2048, attention rows 128",
+    "protocol": "seven counterbalanced control/candidate pairs in one resident session; model load excluded",
+    "control_median_tok_s": 23.091996262257712,
+    "candidate_median_tok_s": 23.08975385644694,
+    "throughput_change_percent": -0.00971074906346292,
+    "control_median_ms_per_token": 43.30504771622675,
+    "candidate_median_ms_per_token": 43.30925336914269,
+    "median_wall_change_ms_per_token": 0.004205652915938633,
+    "paired_median_wall_change_ms_per_token": 0.007185377327241297,
+    "paired_ms_per_token_deltas": [
+      -0.039115095305747874,
+      -0.0030705430288249114,
+      0.0435455672912241,
+      0.01317553412843877,
+      0.027292314550186703,
+      -0.1482569216567231,
+      0.007185377327241297
+    ],
+    "candidate_pair_wins": 3,
+    "pairs": 7,
+    "generated_ids_match": true,
+    "final_positions_exact": true,
+    "repeat_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-moe-hotpath-prevalidated --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --allow-dirty --output /tmp/laguna-moe-prevalidated-ab.json",
+    "raw_sha256": "b4c4f46d08f0b1cffcf3f86ca0566a0acb0ffc95181ddf74eefaa6fe9a6b27df"
+  },
+  "decision": {
+    "result": "reject and remove",
+    "reason": "Removing repeated Python validation does not contract complete decode: endpoint medians regress, paired median wall time increases, and only three of seven candidate pairs win.",
+    "interpretation": "The immutable contract walk runs sufficiently far ahead of GPU execution to remain hidden. The measured 1.50-ms/token uncovered interval is not ordinary Python validation overhead.",
+    "production_change": false
+  },
+  "production": {
+    "tok_per_s": 23.089692642,
+    "ms_per_token": 43.309368189
+  }
+}
