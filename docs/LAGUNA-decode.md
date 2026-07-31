@@ -8456,6 +8456,35 @@ The remaining attention sequence is:
      and harness route:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-d4x3-decode-rejected.json).
 
+176. Apply Q4's paired-coefficient ownership to planar-qmicro Q6 selected
+     down.
+     **Rejected at the resident wall gate and removed.**
+
+     The exact candidate consumes each four-column Q6 record with one aligned
+     64-bit load for its FP16 `d` values and one 32-bit load for its signed
+     scales. Q6 reconstruction, F32 multiply association, four-wave
+     reduction, BF16 boundaries, and slot-order weighting are unchanged.
+     The focused GPU fixture is byte-exact; codegen contracts
+     **VGPR80 -> VGPR64** at local128/LDS512/scratch0.
+
+     Actual layer-1 E256/K1024/N3072/top-10 timing initially looks strong:
+     **0.073205 -> 0.068592 ms (-6.302%)** across 21x100 counterbalanced
+     launches. The mandatory complete two-queue gate reverses it, however.
+     Seven same-resident p512/d128 pairs move median decode
+     **22.986910 -> 22.980643 tok/s (-0.0273%)**, add
+     **0.011862 ms/token**, and win only **2/7** pairs. Every token, trajectory
+     hash, position, deterministic repeat, and allocation lifecycle matches.
+
+     The leaf is therefore not on the current token critical path often
+     enough to retain: its saving is hidden by the concurrent shared branch
+     and submission gaps seen in the clean wall census. Remove the kernel,
+     ABI, registry route, capability, runtime flag, benchmark selector, and
+     test. The llama.cpp Vulkan audit is consistent with this outcome: its AMD
+     path excludes Q6_K from MMVQ and derives its larger advantage from
+     grouped work ownership, cached activation packing, and command-buffer
+     feed rather than this coefficient seam:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-selected-down-paircoeff-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
