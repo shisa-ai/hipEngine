@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-01
 
+- [rejected gfx1151 Laguna ctypes hot-wrapper slimming] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1: cache signatures and remove call-site boxing across roughly **230 wrappers/token**, preserving exact kernels/launches/state, but the clean directional median moves **23.231783 -> 23.210151 tok/s (-0.09311%, +0.040117 ms/token)**; remove the complete candidate and require a materially longer native executor; `benchmarks/results/2026-08-01-gfx1151-laguna-ctypes-hot-wrapper-slimming-rejected.json`.
 - [retained/default gfx1151 Laguna registry-resolution cache] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1: memoize **302.44 successful registry resolutions/token** with mutation-safe invalidation; two exact seven-pair gates improve **23.218511 -> 23.226768 tok/s (+0.03556%)** and **23.203194 -> 23.224170 tok/s (+0.09040%)**, saving **0.015311-0.038926 ms/token**, while the clean **23.231783 tok/s** headline remains unchanged pending aggregation; `benchmarks/results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json`.
 
 ## 2026-07-31

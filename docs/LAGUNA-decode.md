@@ -8993,6 +8993,29 @@ The remaining attention sequence is:
      is aggregated with a material successor:
      [`retained`](../benchmarks/results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json).
 
+194. Cache ctypes signatures and remove call-site boxing across the remaining
+     hot Laguna wrappers.
+     **Rejected and completely removed.**
+
+     Convert roughly **230 wrapper calls/token** spanning source-F16
+     projection/head-KV, global/SWA attention, Q4/Q6 dense/shared projection,
+     and selected gate/up/down. This preserves every GPU symbol, launch,
+     stream, dependency, pointer, resident byte, and arithmetic operation.
+     Focused Q4/Q6, selected-MoE, head/KV, and attention gates pass; all three
+     complete trajectories remain exact.
+
+     | p512/d128 | production reference | slim wrappers | Delta |
+     | --- | ---: | ---: | ---: |
+     | median decode | **23.231783 tok/s** | 23.210151 tok/s | **-0.09311%** |
+     | wall/token | **43.044479 ms** | 43.084596 ms | **+0.040117 ms** |
+
+     The directional result is negative after the competing agentic workload
+     was stopped. Per-call signature assignment and ctypes boxing are not a
+     material complete-decode limiter. Remove all wrapper edits and the RED
+     test. Reopen only as part of a materially longer native executor that
+     eliminates many Python→ctypes boundaries together:
+     [`rejected`](../benchmarks/results/2026-08-01-gfx1151-laguna-ctypes-hot-wrapper-slimming-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -9034,9 +9057,10 @@ Item 192 closes native host batching at router-select→gate/up: its first-pair
 signal vanishes under the counterbalanced steady-state gate.
 Item 193 retains the smaller host-feed win from process-wide registry
 memoization, but its **0.015-0.039 ms/token** saving is not enough to close the
-remaining comparator gap alone. The next executor must span a materially
-longer fixed launch schedule while preserving routed IDs, the two-stream
-shared branch, and the any-order output→router dependency.
+remaining comparator gap alone. Item 194 then rejects broad per-wrapper ctypes
+slimming at **-0.09311%**. The next executor must span a materially longer
+fixed launch schedule while preserving routed IDs, the two-stream shared
+branch, and the any-order output→router dependency.
 Source census:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 

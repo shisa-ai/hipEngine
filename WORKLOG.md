@@ -196714,3 +196714,25 @@ Vulkan local sizes verbatim will close the measured gap.
   `675b6cec...964d76` and `299bc118...bd90c4`; cProfile SHA-256 is
   `0083208e...5f591`. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json`.
+
+## 2026-08-01 01:09 JST — Reject broad ctypes hot-wrapper slimming
+
+- Converted roughly **230 calls/token** across source-F16 projection/head-KV,
+  global/SWA attention, Q4/Q6 dense/shared projection, and selected
+  gate/up/down to cached signatures plus raw Python arguments. GPU kernels,
+  launches, streams, dependencies, residency, and arithmetic were unchanged.
+- Focused Q4/Q6, selected-MoE, fused head/KV, and attention gates passed. A
+  broader attention run also exposed one unrelated current-tree allocation
+  count mismatch (**245 actual versus 243 expected**); every changed
+  attention path in that run passed. The full-model candidate remained exact:
+  next token **2930**, final token **74825**, trajectory SHA-256
+  `1840dd35...56fa`, exact positions, and clean lifecycle.
+- After the competing agentic workload was stopped, the three-run directional
+  median measured **23.210151 tok/s / 43.084596 ms/token** versus the
+  tracked-clean production reference **23.231783 tok/s / 43.044479
+  ms/token**, a **-0.09311% / +0.040117 ms/token** regression. Raw SHA-256 is
+  `a1dded2e...b33a`.
+- Completely removed the wrapper conversions and RED test. Per-wrapper
+  signature assignment/boxing is not a material complete-decode limiter.
+  Reopen only through a materially longer native executor. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-ctypes-hot-wrapper-slimming-rejected.json`.
