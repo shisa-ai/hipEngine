@@ -7772,6 +7772,41 @@ The remaining attention sequence is:
      launch/dependency contraction:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-event-tail-batch-rejected.json).
 
+151. Move exact top-1 stage 1 into the existing 16-logit Q6T16 LM-head
+     producers.
+     **Retained/default; tracked-clean publication is next.**
+
+     Every local128 producer preserves the existing Q6 decode, four-wave
+     ordered merge, and FP32 logit store, then selects the best of the 16
+     logits it already owns. One local256 reducer reads the resulting
+     **6,272** `(value, int32 index)` pairs, preserves minimum-index ties, and
+     publishes the same ID/value/token/position controls. It reuses terminal
+     query/query-rotated scratch, adds zero resident bytes, and replaces the
+     full-logit stage-1 scan. Constructor `false` retains ordinary
+     logits + two-stage argmax rollback.
+
+     The first producer-finalized design is rejected and removed. Making all
+     **6,272** workgroups increment one completion counter regresses the
+     actual-weight leaf **1.139369 -> 1.149582 ms (+0.896%)**. The retained
+     counter-free form keeps a measured reserved-kernarg codegen shape but no
+     completion/finalization logic. Its final 21-pair actual-weight leaf
+     improves **1.129503 -> 1.124825 ms (-0.414%)**, saves
+     **0.004739 ms** by paired median, and wins **20/21** pairs with every
+     FP32 logit, top-1 ID/value, and tie exact.
+
+     Seven exact same-resident p512/d128 pairs move
+     **22.863175 -> 22.863567 tok/s (+0.00171%)** and save
+     **0.008087 ms/token** by paired median with **4/7** wins. Every token,
+     trajectory, position, resident byte, and allocation lifecycle matches.
+     Cache-only tracing validates the structural win: steady dispatches fall
+     **484 -> 483 = 481 model kernels + two D2H copies**. The old
+     Q6 -> full-logit stage1 -> stage2 terminal chain is
+     **1.131163 ms median**; the new tilemax producer -> stage2 chain is
+     **1.124310 ms**, saving **6.853 us**. Final-source tracing names
+     local128/VGPR104/LDS512/scratch0 and
+     local256/VGPR16/LDS0/scratch0:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

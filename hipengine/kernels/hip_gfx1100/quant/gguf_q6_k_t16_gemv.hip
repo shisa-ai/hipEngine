@@ -51,6 +51,15 @@ __device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
   return static_cast<float>(in.f16);
 }
 
+__device__ inline bool better_pair(
+    float value,
+    int32_t index,
+    float best_value,
+    int32_t best_index) {
+  return value > best_value ||
+         (value == best_value && index < best_index);
+}
+
 template <typename scalar_t>
 __device__ inline float scalar_to_float(scalar_t v) {
   return static_cast<float>(v);
@@ -150,6 +159,99 @@ __global__ __launch_bounds__(128, 4) void q6_k_t16_gemv_kernel(
   }
 }
 
+// Exact c=1 LM-head producer plus top-1 stage 1. Each existing 16-logit
+// producer writes its unchanged FP32 logits and one tile maximum. A separate
+// tiny reducer publishes the autoregressive control scalars without rereading
+// the complete logits surface.
+// The projection ownership and arithmetic above are intentionally duplicated
+// here so this route cannot perturb the registered generic fallback. The six
+// reserved pointer slots preserve the independently gated gfx1151 kernarg/
+// codegen shape; they do not restore the rejected grid-completion owner.
+__global__ __launch_bounds__(128, 4)
+void q6_k_t16_gemv_top1_stage1_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    float* __restrict__ out,
+    float* __restrict__ tile_values,
+    int32_t* __restrict__ tile_indices,
+    int64_t*,
+    float*,
+    int64_t*,
+    int64_t*,
+    int64_t*,
+    int32_t*,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t) {
+  const int64_t out_tile = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+
+  float acc[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) * Q6_T16_BLOCK_BYTES;
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const int g16 = k_in_block >> 4;
+      const int8_t* __restrict__ scales =
+          reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+      const float xv = bf16_bits_to_float(x[k_base + k_in_block]);
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        const float d =
+            fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+        const int scale_i =
+            static_cast<int>(scales[g16 * T16_COLS + col]);
+        const int q_i = t16_q6_quant(tile, k_in_block, col);
+        acc[col] += xv * (d * static_cast<float>(scale_i * q_i));
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    GGUF_T16_WAVE_REDUCE(acc[col]);
+  }
+
+  __shared__ float xchg[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg[sub_id * T16_COLS + col] = acc[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float best_value = -3.4028234663852886e+38F;
+    int32_t best_index = INT32_MAX;
+    const int sub_groups = blockDim.x >> 5;
+    float* __restrict__ out_tile_row = out + out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total = 0.0f;
+      for (int g = 0; g < sub_groups; ++g) {
+        total += xchg[g * T16_COLS + col];
+      }
+      out_tile_row[col] = total;
+      const int32_t index =
+          static_cast<int32_t>(out_tile * T16_COLS + col);
+      if (better_pair(total, index, best_value, best_index)) {
+        best_value = total;
+        best_index = index;
+      }
+    }
+    tile_values[out_tile] = best_value;
+    tile_indices[out_tile] = best_index;
+  }
+}
+
 template <typename scalar_t, typename out_t>
 int launch_q6_t16(const void* x,
                   const void* tiles,
@@ -167,6 +269,46 @@ int launch_q6_t16(const void* x,
   hipLaunchKernelGGL((q6_k_t16_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles),
                      reinterpret_cast<out_t*>(out), rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+int launch_q6_t16_top1_stage1(
+    const void* x,
+    const void* tiles,
+    void* out,
+    void* tile_values,
+    void* tile_indices,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || !tile_values || !tile_indices ||
+      in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0 ||
+      out_features > static_cast<int64_t>(INT32_MAX)) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS));
+  hipLaunchKernelGGL(
+      q6_k_t16_gemv_top1_stage1_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<float*>(out),
+      reinterpret_cast<float*>(tile_values),
+      reinterpret_cast<int32_t*>(tile_indices),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      in_features,
+      out_features,
+      0);
   return hipGetLastError();
 }
 
@@ -310,4 +452,24 @@ extern "C" int hipengine_gguf_q6_k_t16_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
     int64_t out_features, hipStream_t stream) {
   return launch_q6_t16<uint16_t, uint16_t>(x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1(
+    const void* x,
+    const void* tiles,
+    void* out,
+    void* tile_values,
+    void* tile_indices,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q6_t16_top1_stage1(
+      x,
+      tiles,
+      out,
+      tile_values,
+      tile_indices,
+      in_features,
+      out_features,
+      stream);
 }

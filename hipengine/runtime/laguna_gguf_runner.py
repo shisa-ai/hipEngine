@@ -311,6 +311,8 @@ class LagunaEagerKernelPlan:
     dense_silu_key: KernelKey
     argmax_key: KernelKey
     argmax_publish_control_key: KernelKey
+    q6_lm_head_top1_stage1_key: KernelKey
+    argmax_tile_stage2_publish_control_key: KernelKey
     f16_triple_key: KernelKey
     f16_f32_key: KernelKey
     f16_bf16_key: KernelKey
@@ -327,6 +329,8 @@ class LagunaEagerKernelPlan:
     dense_silu: Callable
     argmax: Callable
     argmax_publish_control: Callable | None
+    q6_lm_head_top1_stage1: Callable | None
+    argmax_tile_stage2_publish_control: Callable | None
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
@@ -345,6 +349,15 @@ class LagunaEagerKernelPlan:
             if self.argmax_publish_control is not None
             else ()
         )
+        optional_q6_lm_head_top1 = (
+            (
+                self.q6_lm_head_top1_stage1_key,
+                self.argmax_tile_stage2_publish_control_key,
+            )
+            if self.q6_lm_head_top1_stage1 is not None
+            and self.argmax_tile_stage2_publish_control is not None
+            else ()
+        )
         return (
             self.rmsnorm_key,
             self.rmsnorm_fp16_via_bf16_key,
@@ -357,6 +370,7 @@ class LagunaEagerKernelPlan:
             self.dense_silu_key,
             self.argmax_key,
             *optional_argmax_publish,
+            *optional_q6_lm_head_top1,
             self.f16_triple_key,
             self.f16_f32_key,
             self.f16_bf16_key,
@@ -1873,6 +1887,7 @@ def resolve_laguna_eager_kernel_plan(
     use_moe_tail_next_rmsnorm: bool = True,
     use_head_kv_fusion: bool = False,
     use_argmax_control_publish: bool = False,
+    use_q6_lm_head_top1_stage1: bool = False,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1945,6 +1960,18 @@ def resolve_laguna_eager_kernel_plan(
             "f32",
             "top1_i64_publish_control",
         ),
+        "q6_lm_head_top1_stage1": KernelKey(
+            backend,
+            "linear+argmax",
+            "gguf_q6_k_t16_v1",
+            "t16_gemv_decode_bf16_f32_top1_stage1",
+        ),
+        "argmax_tile_stage2_publish_control": KernelKey(
+            backend,
+            "argmax",
+            "f32_tile_i32",
+            "stage2_top1_i64_publish_control",
+        ),
         "f16_triple": KernelKey(backend, "linear_triple", "fp16_weight", "bf16_f32_out"),
         "f16_f32": KernelKey(backend, "linear", "fp16_weight", "bf16_f32_out"),
         "f16_bf16": KernelKey(backend, "linear", "fp16_weight", "bf16_bf16_out"),
@@ -1960,6 +1987,8 @@ def resolve_laguna_eager_kernel_plan(
         "global_head_kv",
         "swa_head_kv",
         "argmax_publish_control",
+        "q6_lm_head_top1_stage1",
+        "argmax_tile_stage2_publish_control",
     }
     required = {name: key for name, key in keys.items() if name not in optional_names}
     functions = {name: _resolve_exact(key) for name, key in required.items()}
@@ -1982,6 +2011,16 @@ def resolve_laguna_eager_kernel_plan(
         and is_registered(argmax_publish_control_key)
         else None
     )
+    q6_lm_head_keys = (
+        keys["q6_lm_head_top1_stage1"],
+        keys["argmax_tile_stage2_publish_control"],
+    )
+    q6_lm_head_top1 = (
+        tuple(_resolve_exact(key) for key in q6_lm_head_keys)
+        if bool(use_q6_lm_head_top1_stage1)
+        and all(is_registered(key) for key in q6_lm_head_keys)
+        else (None, None)
+    )
     return LagunaEagerKernelPlan(
         backend=backend,
         rmsnorm_key=keys["rmsnorm"],
@@ -1998,6 +2037,10 @@ def resolve_laguna_eager_kernel_plan(
         dense_silu_key=keys["dense_silu"],
         argmax_key=keys["argmax"],
         argmax_publish_control_key=argmax_publish_control_key,
+        q6_lm_head_top1_stage1_key=keys["q6_lm_head_top1_stage1"],
+        argmax_tile_stage2_publish_control_key=keys[
+            "argmax_tile_stage2_publish_control"
+        ],
         f16_triple_key=keys["f16_triple"],
         f16_f32_key=keys["f16_f32"],
         f16_bf16_key=keys["f16_bf16"],
@@ -2016,6 +2059,8 @@ def resolve_laguna_eager_kernel_plan(
         dense_silu=functions["dense_silu"],
         argmax=functions["argmax"],
         argmax_publish_control=argmax_publish_control,
+        q6_lm_head_top1_stage1=q6_lm_head_top1[0],
+        argmax_tile_stage2_publish_control=q6_lm_head_top1[1],
     )
 
 
@@ -2403,6 +2448,7 @@ class LagunaGGUFResidentSession:
         use_q4_expert_t16_dual_interleaved: bool | None = None,
         use_shared_down_moe_tail_host_batch: bool | None = None,
         use_argmax_control_publish: bool | None = None,
+        use_q6_lm_head_top1_stage1: bool | None = None,
         use_router_projection_wave0_tree: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -2490,6 +2536,15 @@ class LagunaGGUFResidentSession:
             )
             if use_argmax_control_publish is None
             else use_argmax_control_publish
+        )
+        requested_q6_lm_head_top1_stage1 = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1",
+                False,
+            )
+            if use_q6_lm_head_top1_stage1 is None
+            else use_q6_lm_head_top1_stage1
         )
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
@@ -3109,6 +3164,9 @@ class LagunaGGUFResidentSession:
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
                 use_head_kv_fusion=requested_head_kv_fusion,
                 use_argmax_control_publish=requested_argmax_control_publish,
+                use_q6_lm_head_top1_stage1=(
+                    requested_q6_lm_head_top1_stage1
+                ),
             )
             self.use_head_kv_fusion = (
                 self.kernel_plan.global_head_kv is not None
@@ -3116,6 +3174,12 @@ class LagunaGGUFResidentSession:
             )
             self.use_argmax_control_publish = (
                 self.kernel_plan.argmax_publish_control is not None
+            )
+            self.use_q6_lm_head_top1_stage1 = (
+                self.kernel_plan.q6_lm_head_top1_stage1 is not None
+                and self.kernel_plan.argmax_tile_stage2_publish_control
+                is not None
+                and self.use_argmax_control_publish
             )
             self.libraries = load_laguna_eager_libraries(
                 backend=self.backend,
@@ -3539,6 +3603,21 @@ class LagunaGGUFResidentSession:
             self.backend,
             mode,
         )
+
+    def set_q6_lm_head_top1_stage1(self, enabled: bool) -> None:
+        """Select exact Q6T16 producer tile maxima plus final top-1."""
+
+        selected = bool(enabled)
+        if selected and (
+            self.kernel_plan is None
+            or self.kernel_plan.q6_lm_head_top1_stage1 is None
+            or self.kernel_plan.argmax_tile_stage2_publish_control is None
+            or not self.use_argmax_control_publish
+        ):
+            raise RuntimeError(
+                "Q6T16 LM-head top-1 stage1 is unavailable for this session"
+            )
+        self.use_q6_lm_head_top1_stage1 = selected
 
     def set_selected_natural_decode(self, enabled: bool) -> None:
         """Select the exact natural-shape c=1 selected-MoE siblings."""
@@ -5722,22 +5801,6 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         scratch = self.scratch
         # Sparse layer 47 emits the exact final output_norm into final_norm.
-        launch_gguf_linear(
-            self.weights.root("lm_head"),
-            scratch.final_norm.ptr,
-            scratch.logits.ptr,
-            1,
-            config.hidden_size,
-            config.vocab_size,
-            output_dtype=GGUF_OUTPUT_F32,
-            backend=self.backend,
-            stream=stream,
-            libraries=self.libraries.linear,
-            runtime=self.runtime,
-            use_wmma_prefill=False,
-            use_gemv_decode=True,
-            registered_variant=self._q4_lm_head_variant,
-        )
         publish_control = (
             getattr(
                 self.kernel_plan,
@@ -5751,7 +5814,58 @@ class LagunaGGUFResidentSession:
             )
             else None
         )
-        if publish_control is None:
+        producer_top1 = (
+            bool(getattr(self, "use_q6_lm_head_top1_stage1", False))
+            and publish_control is not None
+            and self.kernel_plan.q6_lm_head_top1_stage1 is not None
+            and self.kernel_plan.argmax_tile_stage2_publish_control is not None
+        )
+        if producer_top1:
+            assert self.kv_cache is not None
+            self.kernel_plan.q6_lm_head_top1_stage1(
+                scratch.final_norm.ptr,
+                self.weights.root("lm_head").allocation("tiles").tensor.ptr,
+                scratch.logits.ptr,
+                scratch.query.ptr,
+                scratch.query_rotated.ptr,
+                config.hidden_size,
+                config.vocab_size,
+                stream=stream,
+                library=self.libraries.q6_t16_linear,
+                runtime=self.runtime,
+            )
+            self.kernel_plan.argmax_tile_stage2_publish_control(
+                scratch.query.ptr,
+                scratch.query_rotated.ptr,
+                scratch.argmax_id.ptr,
+                scratch.argmax_value.ptr,
+                scratch.token_id.ptr,
+                scratch.position.ptr,
+                self.kv_cache.row_position_ptr,
+                config.vocab_size // 16,
+                position + 1,
+                stream=stream,
+                library=self.libraries.argmax,
+                runtime=self.runtime,
+            )
+        else:
+            launch_gguf_linear(
+                self.weights.root("lm_head"),
+                scratch.final_norm.ptr,
+                scratch.logits.ptr,
+                1,
+                config.hidden_size,
+                config.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                backend=self.backend,
+                stream=stream,
+                libraries=self.libraries.linear,
+                runtime=self.runtime,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+                registered_variant=self._q4_lm_head_variant,
+            )
+        if not producer_top1 and publish_control is None:
             self.kernel_plan.argmax(
                 scratch.logits.ptr,
                 scratch.argmax_block_values.ptr,
@@ -5763,7 +5877,7 @@ class LagunaGGUFResidentSession:
                 library=self.libraries.argmax,
                 runtime=self.runtime,
             )
-        else:
+        elif not producer_top1:
             assert self.kv_cache is not None
             publish_control(
                 scratch.logits.ptr,

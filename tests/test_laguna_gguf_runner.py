@@ -1639,6 +1639,43 @@ def test_laguna_p4_head_kv_is_gfx11_default_and_rollbackable() -> None:
     assert rollback.global_head_kv_key not in rollback.kernel_keys
     assert rollback.swa_head_kv_key not in rollback.kernel_keys
 
+
+def test_laguna_q6_t16_lm_head_tilemax_is_gfx1151_default_and_rollbackable() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1",
+        False,
+    )
+
+    candidate = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1151",
+        use_argmax_control_publish=True,
+        use_q6_lm_head_top1_stage1=True,
+    )
+    assert candidate.q6_lm_head_top1_stage1 is not None
+    assert candidate.argmax_tile_stage2_publish_control is not None
+    assert candidate.q6_lm_head_top1_stage1_key in candidate.kernel_keys
+    assert (
+        candidate.argmax_tile_stage2_publish_control_key
+        in candidate.kernel_keys
+    )
+
+    rollback = resolve_laguna_eager_kernel_plan(
+        _config(),
+        backend="hip_gfx1151",
+        use_argmax_control_publish=True,
+        use_q6_lm_head_top1_stage1=False,
+    )
+    assert rollback.q6_lm_head_top1_stage1 is None
+    assert rollback.argmax_tile_stage2_publish_control is None
+    assert rollback.q6_lm_head_top1_stage1_key not in rollback.kernel_keys
+    assert (
+        rollback.argmax_tile_stage2_publish_control_key
+        not in rollback.kernel_keys
+    )
+
+
 def test_laguna_mixed_attention_projection_default_is_gfx1100_only_and_rollbackable() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "LAGUNA_MIXED_ATTENTION_PROJECTIONS", False

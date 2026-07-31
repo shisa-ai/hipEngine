@@ -1,0 +1,101 @@
+{
+  "schema": "hipengine.laguna_q6_lm_head_tilemax_retained.v1",
+  "created_at": "2026-07-31T11:48:16+09:00",
+  "status": "retained_default",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "hidden_size": 3072,
+    "vocab_size": 100352,
+    "resident_nbytes": 79066169172
+  },
+  "change": {
+    "description": "Each existing 16-logit Q6T16 producer writes one exact tile maximum. One local256 reducer consumes 6272 tile pairs, publishes top-1/control, and replaces the full-logit stage-1 scan.",
+    "model_kernels_per_token_before": 482,
+    "model_kernels_per_token_after": 481,
+    "steady_dispatches_including_two_d2h_before": 484,
+    "steady_dispatches_including_two_d2h_after": 483,
+    "resident_nbytes_delta": 0,
+    "scratch": "reuses terminal query/query_rotated buffers",
+    "rollback": "LagunaGGUFResidentSession(use_q6_lm_head_top1_stage1=False)"
+  },
+  "correctness": {
+    "full_logits_f32_bit_exact": true,
+    "top1_id_exact": true,
+    "top1_value_f32_bit_exact": true,
+    "minimum_index_ties": true,
+    "next_token_and_positions_exact": true,
+    "p512_d128_generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "final_position": 638,
+    "allocation_recovery": true,
+    "kl": 0.0,
+    "top1_agreement": 1.0
+  },
+  "rejected_predecessor": {
+    "description": "All 6272 producers incremented one completion counter and the last producer finalized top-1.",
+    "control_median_ms": 1.1393688917160034,
+    "candidate_median_ms": 1.1495819091796875,
+    "delta_percent": 0.8963749614316896,
+    "median_paired_delta_ms": 0.012824058532714844,
+    "reason": "same-address completion contention and last-producer tail"
+  },
+  "actual_weight_leaf": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_lm_head_top1_leaf.py --samples 21 --warmups 5 --burst 8 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-q6-lmhead-tilemax-padded-final-leaf.json",
+    "control_median_ms": 1.1295034885406494,
+    "candidate_median_ms": 1.1248246431350708,
+    "delta_percent": -0.4142391283469049,
+    "median_paired_delta_ms": -0.004739046096801758,
+    "candidate_wins": 20,
+    "pairs": 21,
+    "source_sha256": "bebe2635056ba23c75e82586dfc1b02ad57161f99cef307384c284e179de30e3"
+  },
+  "resident_pair_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-q6-lm-head-top1-stage1 --allow-dirty --output /tmp/laguna-q6-lmhead-tilemax-pairs7.json",
+    "control_median_tok_s": 22.863175193065814,
+    "candidate_median_tok_s": 22.863567004135597,
+    "delta_percent": 0.0017137211540951824,
+    "control_median_ms_per_token": 43.73845677844828,
+    "candidate_median_ms_per_token": 43.737707236107056,
+    "median_paired_delta_ms_per_token": -0.00808693607902433,
+    "candidate_wins": 4,
+    "pairs": 7,
+    "source_sha256": "c042c6e4ceb340a1755907a47c7f283c97c9c8c94a4f74bd2617ab254ef9839e"
+  },
+  "trace": {
+    "full_model_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --output-format csv --output-directory /tmp/laguna-q6-tilemax-trace.EDhxR9 --output-file candidate -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --q6-lm-head-top1-stage1 --allow-dirty --output /tmp/laguna-q6-tilemax-trace.EDhxR9/bench.json",
+    "steady_segments": 126,
+    "steady_dispatches_including_two_copy_kernels": 483,
+    "old_terminal_chain_median_ms": 1.131163,
+    "new_terminal_chain_median_ms": 1.12431,
+    "terminal_chain_saving_us": 6.853,
+    "producer": {
+      "kernel": "q6_k_t16_gemv_top1_stage1_kernel",
+      "local_size": 128,
+      "workgroups": 6272,
+      "vgpr": 104,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "final_source_trace_median_us": 1102.869
+    },
+    "reducer": {
+      "kernel": "argmax_tile_stage2_publish_control_i32_kernel",
+      "local_size": 256,
+      "workgroups": 1,
+      "vgpr": 16,
+      "scratch_bytes": 0,
+      "final_source_trace_median_us": 8.376
+    },
+    "full_model_kernel_trace_sha256": "d67c576b50feb6e0e876e798ec43f592a54822808b7f1b7aba776fd055b95141",
+    "full_model_memory_copy_trace_sha256": "a9cc9b0d0f074f0a657e6360a852b436ac43d54a1a72f81efccb9f1712a2f873",
+    "final_source_kernel_trace_sha256": "768a19df6dbd41543eb5e33e34cb26233f666bd42d0ccf14ca246af19852b3d2"
+  },
+  "validation": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_laguna_argmax_control_publish.py tests/test_laguna_gguf_runner.py::test_laguna_q6_t16_lm_head_tilemax_is_gfx1151_default_and_rollbackable tests/test_laguna_gguf_runner.py::test_laguna_eager_plan_rejects_non_s21_shapes tests/test_laguna_gguf_runner.py::test_laguna_p4_head_kv_is_gfx11_default_and_rollbackable",
+    "passed": 13
+  }
+}
