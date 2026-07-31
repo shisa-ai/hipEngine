@@ -17,10 +17,14 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
-from hipengine.kernels.cpu_reference.moonshine import moonshine_layernorm
+from hipengine.kernels.cpu_reference.moonshine import (
+    moonshine_layernorm,
+    moonshine_residual_layernorm,
+)
 from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
     build_moonshine_layernorm,
     moonshine_layernorm_fp16,
+    moonshine_residual_layernorm_fp16,
 )
 
 
@@ -56,15 +60,22 @@ def main() -> int:
     rng = np.random.default_rng(0x1A92)
     rows, hidden = 7, 416
     inputs = rng.normal(0.0, 0.6, size=(rows, hidden)).astype(np.float16)
+    updates = rng.normal(0.0, 0.2, size=(rows, hidden)).astype(np.float16)
     weights = rng.normal(1.0, 0.08, size=(hidden,)).astype(np.float16)
     expected = moonshine_layernorm(inputs, weights)
+    expected_residual, expected_fused_norm = moonshine_residual_layernorm(
+        inputs, updates, weights
+    )
     runtime = get_hip_runtime()
     allocations = []
     try:
         device_input = _upload(inputs, runtime, allocations)
+        device_update = _upload(updates, runtime, allocations)
         device_weight = _upload(weights, runtime, allocations)
         device_output = malloc(expected.nbytes, runtime=runtime)
-        allocations.append(device_output)
+        fused_residual = malloc(expected_residual.nbytes, runtime=runtime)
+        fused_norm = malloc(expected_fused_norm.nbytes, runtime=runtime)
+        allocations.extend((device_output, fused_residual, fused_norm))
         moonshine_layernorm_fp16(
             device_input.ptr,
             device_weight.ptr,
@@ -74,27 +85,68 @@ def main() -> int:
             library=library,
             runtime=runtime,
         )
+        moonshine_residual_layernorm_fp16(
+            device_input.ptr,
+            device_update.ptr,
+            device_weight.ptr,
+            fused_residual.ptr,
+            fused_norm.ptr,
+            rows,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         actual = np.empty_like(expected)
+        actual_residual = np.empty_like(expected_residual)
+        actual_fused_norm = np.empty_like(expected_fused_norm)
         copy_device_to_host(host_array_ptr(actual), device_output, runtime=runtime)
+        copy_device_to_host(
+            host_array_ptr(actual_residual), fused_residual, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_fused_norm), fused_norm, runtime=runtime
+        )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
-    difference = np.abs(actual.astype(np.float32) - expected.astype(np.float32))
-    finite = bool(np.isfinite(actual).all())
-    all_close = bool(np.allclose(actual, expected, rtol=3.0e-3, atol=3.0e-3))
+    differences = (
+        np.abs(actual.astype(np.float32) - expected.astype(np.float32)),
+        np.abs(
+            actual_residual.astype(np.float32) - expected_residual.astype(np.float32)
+        ),
+        np.abs(
+            actual_fused_norm.astype(np.float32)
+            - expected_fused_norm.astype(np.float32)
+        ),
+    )
+    finite = bool(
+        np.isfinite(actual).all()
+        and np.isfinite(actual_residual).all()
+        and np.isfinite(actual_fused_norm).all()
+    )
+    all_close = bool(
+        np.allclose(actual, expected, rtol=3.0e-3, atol=3.0e-3)
+        and np.array_equal(actual_residual, expected_residual)
+        and np.allclose(
+            actual_fused_norm, expected_fused_norm, rtol=3.0e-3, atol=3.0e-3
+        )
+    )
     report = {
         "all_passed": bool(finite and all_close),
         "finite": finite,
         "hidden_size": hidden,
-        "max_abs": float(np.max(difference)),
+        "max_abs": max(float(np.max(value)) for value in differences),
         "relative_l2": float(
-            np.linalg.norm(difference.ravel())
+            np.linalg.norm(differences[0].ravel())
             / max(np.linalg.norm(expected.astype(np.float32).ravel()), 1.0e-12)
         ),
         "rows": rows,
-        "expected_kernel_names": ["moonshine_layernorm_fp16_kernel"],
+        "expected_kernel_names": [
+            "moonshine_layernorm_fp16_kernel",
+            "moonshine_residual_layernorm_fp16_kernel",
+        ],
     }
     text = json.dumps(report, sort_keys=True)
     print(text)

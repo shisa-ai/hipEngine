@@ -32,6 +32,8 @@ from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import (
 from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     build_moonshine_projection,
     moonshine_f16_projection_bias,
+    moonshine_f16_projection_bias_gated_silu,
+    moonshine_f16_projection_bias_residual,
 )
 
 
@@ -141,6 +143,30 @@ def main() -> int:
             library=glue,
             runtime=runtime,
         )
+        moonshine_f16_projection_bias_gated_silu(
+            device_normalized.ptr,
+            device_fc1_weight.ptr,
+            device_fc1_bias.ptr,
+            intermediate_output.ptr,
+            rows,
+            hidden,
+            intermediate,
+            library=projection,
+            runtime=runtime,
+        )
+        moonshine_f16_projection_bias_residual(
+            intermediate_output.ptr,
+            device_fc2_weight.ptr,
+            device_fc2_bias.ptr,
+            device_residual.ptr,
+            final_output.ptr,
+            rows,
+            intermediate,
+            hidden,
+            threads=64,
+            library=projection,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         actual = np.empty_like(expected)
         copy_device_to_host(host_array_ptr(actual), final_output, runtime=runtime)
@@ -165,6 +191,8 @@ def main() -> int:
             "moonshine_f16_projection_bias_kernel",
             "moonshine_gated_silu_fp16_kernel",
             "moonshine_residual_fp16_kernel",
+            "moonshine_f16_projection_bias_gated_silu_kernel",
+            "moonshine_f16_projection_bias_residual_kernel",
         ],
     }
     text = json.dumps(report, sort_keys=True)
