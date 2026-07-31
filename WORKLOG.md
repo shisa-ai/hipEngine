@@ -195784,3 +195784,26 @@ Vulkan local sizes verbatim will close the measured gap.
   cost consumes the launch/kernel saving.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-post-split-priority-wall-reprofile.json`.
+
+## 2026-07-31 14:32 JST — Reject selected-down -> D9 finalizer fusion
+
+- RED adds an absent production-shape Q4/planar-Q6 selected-down + weighting +
+  D9 primitive. GREEN keeps the current route-parallel GEMV and 192
+  per-output-tile weighting finalizers, then elects one finalizer through a
+  second completion counter. Its local128 block reproduces D9's 256 logical
+  lanes as two independent lanes/thread, including every 12-term sum and the
+  existing wave-0 reduction tree.
+- Synthetic production shapes are byte-exact for selected rows, routed BF16,
+  hidden BF16, normalized BF16, and both zeroed completion planes.
+- The decisive 21x100 actual-weight leaf rejects both families:
+  Q4 moves **0.063858 -> 0.072980 ms/layer (+14.285%)** and Q6 moves
+  **0.080036 -> 0.080677 (+0.802%)**. Cached tracing names both candidate
+  specializations at local128/VGPR80/SGPR128/LDS1536/scratch0 versus
+  local128/VGPR80/LDS512 selected-down and local256/VGPR16/LDS1024 D9.
+- The local128 last-producer section costs more than the deleted D9 launch.
+  Stop before runtime integration and remove every candidate kernel, wrapper,
+  correctness extension, and leaf-harness seam byte-for-byte. Production
+  remains **22.891692 tok/s / 43.683971 ms/token**.
+- Raw 21x100 JSON SHA-256 is `f077a8f9...7cb`; cached trace SHA-256 is
+  `56d27071...5fd07`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-moe-tail-fused-rejected.json`.
