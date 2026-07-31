@@ -56,7 +56,7 @@ _H6C_VARIANT = (
 _PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
 
 
-def test_h6i_source_default_is_retained_as_h6p_rollback(
+def test_h6i_source_default_is_retained_under_h6q_source(
     monkeypatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
@@ -64,7 +64,10 @@ def test_h6i_source_default_is_retained_as_h6p_rollback(
         "gguf_iq3_xxs": _H6I_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
-    production_variants = {**rollback_variants, "gguf_iq3_xxs": _H6P_IQ3}
+    production_variants = {
+        **rollback_variants,
+        "gguf_iq3_xxs": _H6Q_RUNTIME_VARIANT,
+    }
     qualified_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
@@ -86,7 +89,7 @@ def test_h6i_source_default_is_retained_as_h6p_rollback(
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     key = package_default.grouped_exact_down_keys["gguf_iq3_xxs"]
     route = package_default.grouped_exact_down_routes["gguf_iq3_xxs"]
-    assert key.variant == _H6P_IQ3
+    assert key.variant == _H6Q_RUNTIME_VARIANT
     assert route.abi == _ACTIVE_EXPERT_ABI
     assert route.allocation_name == "raw"
     assert route.library_key == "grouped_iq_prefill"
@@ -132,7 +135,7 @@ def test_h6i_source_default_is_retained_as_h6p_rollback(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6P_IQ3 and original_is_registered(key),
+        lambda key: key.variant != _H6Q_RUNTIME_VARIANT and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
