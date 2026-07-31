@@ -114,7 +114,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Publish the Phase-2 correctness, dispatch, latency, and Amdahl baseline in the experiment ledger.
 - [ ] Tune and promote the Phase-3 resident decoder route.
   - [x] Tune source-F16 singleton, triple-QKV, and bias-aware MLP projections.
-  - [ ] Tune tied LM-head/argmax and self/cross attention from refreshed profiles.
+  - [x] Tune tied LM-head/argmax with grouped exact wave32 rows.
+  - [ ] Tune self/cross attention from refreshed profiles.
   - [ ] Test bounded fusions and fixed-address graph replay only after structural wins.
 
 ## Notes
