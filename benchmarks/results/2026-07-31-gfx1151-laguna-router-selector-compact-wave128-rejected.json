@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T05:57:34+00:00",
+  "kind": "hipengine_laguna_router_selector_compact_wave128_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "source_revision": "29de634a29a08a9dcd7ad4d5189479a64a2ea703",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "architecture": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "design": {
+    "control": "one local256 block per token; ten block-wide top-1 rounds",
+    "candidate": "one local128 block per token; four wave32 local top-10 lists, one barrier, then a wave-0 merge of 40 sufficient candidates",
+    "arithmetic": "stable sigmoid, corrected selection score, lower-expert-id tie break, selected order, uncorrected-probability denominator, normalization, routed scale, and all output fields are unchanged",
+    "scope": "c=1 E256 top-10 only; rows and prefill retain the control selector",
+    "motivation": "test an architecture-local midpoint between the retained local256 selector and the previously rejected local32 compact schedule"
+  },
+  "leaf_screen": {
+    "shape": "47 independent c=1 E256 top-10 selector calls per window",
+    "protocol": {
+      "warmups": 5,
+      "samples": 15,
+      "burst_windows": 100,
+      "counterbalanced": true
+    },
+    "correctness": {
+      "routing_scores_bit_exact": true,
+      "selection_scores_bit_exact": true,
+      "selected_experts_bit_exact": true,
+      "routing_weights_bit_exact": true,
+      "scaled_routing_weights_bit_exact": true,
+      "cases": [
+        "random",
+        "all ties",
+        "cross-lane/cross-item ties",
+        "finite extremes",
+        "signed zero"
+      ]
+    },
+    "event_median_ms_per_47_calls": {
+      "control_local256": 0.3663848114013672,
+      "compact_local32_diagnostic": 0.29224023818969724,
+      "compact_local64": 0.3234091567993164,
+      "compact_local128": 0.3142623519897461
+    },
+    "event_delta_percent_vs_control": {
+      "compact_local32_diagnostic": -20.23680319281742,
+      "compact_local64": -11.729649610112192,
+      "compact_local128": -14.226151791680575
+    },
+    "selected_for_runtime_gate": "compact_local128",
+    "raw_json": "/tmp/laguna-router-selector-compact-midpoint.json",
+    "raw_json_sha256": "090c9c041218e974a05756e1db202ec5b6f162e8cac9efc98afde939111a58cd",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python -u scripts/laguna_router_selector_compact_bench.py --warmups 5 --samples 15 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-router-selector-compact-midpoint.json"
+  },
+  "complete_model_gate": {
+    "workload": "Laguna S 2.1 Q4_K_M; prompt 512; one prefill-produced token plus 127 synchronized c=1 decode calls",
+    "protocol": {
+      "same_resident_session": true,
+      "counterbalanced_pairs": 7,
+      "matrix_chunk_rows": 2048,
+      "warmup_rows": 128,
+      "gpu_max_hw_queues": 2
+    },
+    "correctness": {
+      "next_token": 2930,
+      "final_token": 74107,
+      "final_position": 638,
+      "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+      "all_pairs_exact": true,
+      "deterministic": true,
+      "allocation_lifecycle_recovered": true
+    },
+    "control": {
+      "median_decode_seconds_127": 5.551406982121989,
+      "median_tok_s": 22.87708330680794,
+      "median_ms_per_token": 43.71186600096055
+    },
+    "candidate": {
+      "median_decode_seconds_127": 5.580537887988612,
+      "median_tok_s": 22.75766289005064,
+      "median_ms_per_token": 43.94124321250876,
+      "wins": 0,
+      "losses": 7
+    },
+    "delta": {
+      "throughput_percent": -0.5220089255074001,
+      "wall_percent": 0.524748157727184,
+      "endpoint_ms_per_token": 0.229377211548212,
+      "paired_median_ms_per_token": 0.22831652496802055
+    },
+    "raw_json": "/tmp/laguna-router-selector-wave128-ab.json",
+    "raw_json_sha256": "2de3911ede2089f462a15150d93ebcf7a22f6bacb7fe4d2d42cbbc7fc493c2a8",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-router-selector-compact-wave128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-router-selector-wave128-ab.json"
+  },
+  "decision": {
+    "reason": "The 14.23% isolated selector win reverses under the complete two-queue resident schedule and adds 0.229 ms/token. This repeats the core scheduling/cache-pressure lesson from the rejected gfx1100 compact-local32 selector.",
+    "action": "Remove both midpoint exports, wrappers, registry keys, runtime capability/plan/session/CLI routes, comparison harness, and candidate tests. Keep local256 correction_bias as the sole production selector.",
+    "production_paths_match_source_revision_byte_for_byte": true,
+    "production_topline_unchanged": {
+      "tok_s": 22.891691783,
+      "ms_per_token": 43.6839709997
+    }
+  },
+  "validation_after_removal": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python -m pytest -q tests/test_laguna_router_compact_wave32_gpu.py tests/test_laguna_router_compact_wave32_runtime.py tests/test_laguna_router_gpu.py tests/test_laguna_long_context_profile.py",
+    "passed": 53,
+    "failed": 0,
+    "python_compile": true,
+    "diff_check": true,
+    "note": "The stale wave32 exclusion oracle now ignores unrelated hardcoded gfx1151 overrides and asserts only that the intended wave32 key is not aliased."
+  }
+}
