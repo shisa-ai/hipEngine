@@ -8972,6 +8972,27 @@ The remaining attention sequence is:
      not another two-kernel seam:
      [`rejected`](../benchmarks/results/2026-08-01-gfx1151-laguna-router-gate-host-batch-rejected.json).
 
+193. Memoize successful four-axis kernel-registry resolution.
+     **Retained/default-on; production headline unchanged pending aggregation.**
+
+     A production `cProfile` records **38,410** registry resolutions over
+     **127** decode forwards, or **302.44/token**. Cache the resolved callable
+     by `(backend, layer, quant, variant)` and invalidate on every register,
+     unregister, or test-only clear. This changes no GPU kernel, launch,
+     pointer, stream, dependency, or arithmetic.
+
+     Two independent seven-pair same-resident gates are positive. The first
+     moves **23.218511 -> 23.226768 tok/s (+0.03556%,
+     -0.015311 ms/token)** with **6/7** wins. After stopping a competing
+     agentic workload, the clean repeat moves
+     **23.203194 -> 23.224170 tok/s (+0.09040%,
+     -0.038926 ms/token)** with **5/7** wins. All 28 trajectories have the
+     exact retained hash, positions, and allocation lifecycle. Keep the
+     process-wide cache, remove the temporary comparison switch, and leave the
+     tracked-clean **23.231783 tok/s** production headline unchanged until it
+     is aggregated with a material successor:
+     [`retained`](../benchmarks/results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -9011,6 +9032,11 @@ output→router consumer, D9 waits long enough and with enough resident lanes
 to slow the producer it is intended to overlap.
 Item 192 closes native host batching at router-select→gate/up: its first-pair
 signal vanishes under the counterbalanced steady-state gate.
+Item 193 retains the smaller host-feed win from process-wide registry
+memoization, but its **0.015-0.039 ms/token** saving is not enough to close the
+remaining comparator gap alone. The next executor must span a materially
+longer fixed launch schedule while preserving routed IDs, the two-stream
+shared branch, and the any-order output→router dependency.
 Source census:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 

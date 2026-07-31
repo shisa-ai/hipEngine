@@ -48,6 +48,7 @@ class MissingKernelError(LookupError):
 
 
 _KERNELS: dict[KernelKey, Kernel] = {}
+_RESOLVE_CACHE: dict[tuple[str, str, str, str], tuple[KernelKey, Kernel]] = {}
 
 # Monotonic counter bumped on every registry mutation. Lets hot-path callers
 # (e.g. the GGUF linear dispatch cache) memoize resolution results and cheaply
@@ -74,6 +75,7 @@ def register(key: KernelKey, kernel: Kernel, *, replace: bool = False) -> Kernel
     if key in _KERNELS and not replace:
         raise DuplicateKernelError(f"kernel already registered for {key.display()}")
     _KERNELS[key] = kernel
+    _RESOLVE_CACHE.clear()
     _GENERATION += 1
     return kernel
 
@@ -81,6 +83,7 @@ def register(key: KernelKey, kernel: Kernel, *, replace: bool = False) -> Kernel
 def unregister(key: KernelKey) -> None:
     global _GENERATION
     _KERNELS.pop(key, None)
+    _RESOLVE_CACHE.clear()
     _GENERATION += 1
 
 
@@ -146,11 +149,18 @@ def resolve(
     The resolver applies generic fallback rules; callers do not branch on backend/quant.
     """
 
+    cache_key = (backend, layer, quant, variant)
+    cached = _RESOLVE_CACHE.get(cache_key)
+    if cached is not None and _KERNELS.get(cached[0]) is cached[1]:
+        return cached[1]
+    if cached is not None:
+        _RESOLVE_CACHE.pop(cache_key, None)
     requested = KernelKey(backend=backend, layer=layer, quant=quant, variant=variant)
     candidates = _candidate_keys(requested)
     for candidate in candidates:
         kernel = _KERNELS.get(candidate)
         if kernel is not None:
+            _RESOLVE_CACHE[cache_key] = (candidate, kernel)
             return kernel
     if missing == "none":
         return None
@@ -172,4 +182,5 @@ def clear_registry_for_tests() -> None:
 
     global _GENERATION
     _KERNELS.clear()
+    _RESOLVE_CACHE.clear()
     _GENERATION += 1

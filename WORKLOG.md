@@ -196688,3 +196688,29 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.231783 tok/s / 43.044479 ms/token**. Directional/admission raw SHA-256
   values are `75a3741f...58f2d` and `3634467c...67dc5`. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-router-gate-host-batch-rejected.json`.
+
+## 2026-08-01 00:52 JST — Retain mutation-safe kernel-registry resolution cache
+
+- A production `cProfile` records **38,410** successful four-axis registry
+  resolutions over 127 decode forwards (**302.44/token**). Added a
+  process-wide callable memo keyed by `(backend, layer, quant, variant)` and
+  invalidated it on register, unregister, and test-only clear. GPU kernels,
+  launch topology, streams, dependencies, pointers, and arithmetic are
+  unchanged.
+- RED proved repeated resolution rebuilt candidate keys. GREEN proves the
+  second lookup is memoized and replacing a registered kernel invalidates the
+  memo and returns the new callable. The focused registry, GGUF dispatch-cache,
+  and long-profile bundle passes **48 tests**.
+- The first seven-pair same-resident p512/d128 gate improves
+  **23.218511 -> 23.226768 tok/s (+0.03556%, -0.015311 ms/token)** with
+  **6/7** wins. After the human stopped a competing agentic workload, the
+  clean repeat improves **23.203194 -> 23.224170 tok/s (+0.09040%,
+  -0.038926 ms/token)** with **5/7** wins. All 28 generated trajectories,
+  positions, and allocation lifecycles are exact.
+- Removed the temporary cache on/off comparison route. Retain the default-on
+  memo as a small exact host-feed win, but do not advance the tracked-clean
+  **23.231783 tok/s** production headline until it is aggregated with the next
+  material decode optimization. Raw SHA-256 values are
+  `675b6cec...964d76` and `299bc118...bd90c4`; cProfile SHA-256 is
+  `0083208e...5f591`. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json`.

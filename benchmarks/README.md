@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-07-31**
+Last updated: **2026-08-01**
 
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -140,6 +140,13 @@ headline **0.61538% / -0.264889 ms/token** with unchanged residency. The
 remaining same-GGUF Vulkan gap is **0.214957 ms/token / 0.5019%**.
 [`retention`](results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json),
 [`production`](results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json).
+The four-axis kernel registry now memoizes successful resolutions and
+invalidates on every mutation. Two exact seven-pair same-resident gates improve
+decode by **0.03556%** and **0.09040%**, saving **0.015311** and
+**0.038926 ms/token** respectively, while all 28 trajectories match. This
+micro-win is retained without advancing the clean **23.231783 tok/s**
+headline pending aggregation with the next material decode change.
+[`registry-resolution cache`](results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json).
 The refreshed 127-transition census shows the tile2 family saving transfers
 to the critical path: source-F16 falls **24.349 -> 24.128 ms/token**,
 union-busy falls **42.157 -> 41.942**, and span falls

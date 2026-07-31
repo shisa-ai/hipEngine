@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-01
+
+- [retained/default gfx1151 Laguna registry-resolution cache] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1: memoize **302.44 successful registry resolutions/token** with mutation-safe invalidation; two exact seven-pair gates improve **23.218511 -> 23.226768 tok/s (+0.03556%)** and **23.203194 -> 23.224170 tok/s (+0.09040%)**, saving **0.015311-0.038926 ms/token**, while the clean **23.231783 tok/s** headline remains unchanged pending aggregation; `benchmarks/results/2026-08-01-gfx1151-laguna-registry-resolution-cache-retained.json`.
+
 ## 2026-07-31
 
 - [accepted production/default gfx1151 Laguna exact output→router any-order continuation] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV p512/d128 eager c=1: tracked-clean default-on production advances **23.089693 -> 23.231783 tok/s (+0.61538%, -0.264889 ms/token)** with deterministic IDs, clean lifecycle, unchanged residency, and a remaining same-GGUF Vulkan gap of **0.214957 ms/token / 0.5019%**; `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json`.

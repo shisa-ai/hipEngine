@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import hipengine.kernels.registry as registry
 from hipengine.kernels.registry import (
     DuplicateKernelError,
     KernelKey,
@@ -69,3 +70,42 @@ def test_missing_kernel_error_is_clean_and_specific() -> None:
     assert "not_registered" in message
     assert "w4_paro" in message
     assert "cpu_reference" in message
+
+
+def test_resolve_memoizes_candidates_and_invalidates_on_mutation(monkeypatch) -> None:
+    key = KernelKey("hip_gfx1151", "linear", "gguf_q4_k", "decode")
+    first = lambda: "first"
+    second = lambda: "second"
+    candidate_calls = 0
+    original_candidate_keys = registry._candidate_keys
+
+    def counting_candidate_keys(requested):
+        nonlocal candidate_calls
+        candidate_calls += 1
+        return original_candidate_keys(requested)
+
+    monkeypatch.setattr(registry, "_candidate_keys", counting_candidate_keys)
+    register(key, first)
+
+    assert resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    ) is first
+    assert resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    ) is first
+    assert candidate_calls == 1
+
+    register(key, second, replace=True)
+    assert resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    ) is second
+    assert candidate_calls == 2
