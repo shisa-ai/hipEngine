@@ -187389,3 +187389,8 @@ Vulkan local sizes verbatim will close the measured gap.
 ## 2026-07-30 — Production inference repository rename
 
 - The private experiment ledger is now `shisa-ai/moonshine-prod-inference` at sibling path `../moonshine-prod-inference`, replacing `amd-moonshine-onnx`. The backend-neutral name reflects the retained ONNX/PyTorch/MIGraphX/custom-HIP evidence and upcoming `cuda_sm120a` port. Historical WORKLOG paths above remain unchanged as provenance; use the new path for all future commands and reports.
+
+## 2026-07-31 — Moonshine Phase-7 CUDA handoff
+
+- The backend-neutral CUDA port contract is frozen in `../moonshine-prod-inference/docs/CUDA-SM120A-HANDOFF.md`. It explicitly requires a lazy CUDA runtime/NVCC build path, runtime/library injection into the resident decoder, peer kernels under `hipengine/kernels/cuda_sm120a`, unchanged model/fixture/cache contracts, exact eager Tier-B bring-up before CUDA graphs, and independent Blackwell launch/library retuning. No CUDA code or performance claim is made on the Radeon-only source host.
+- Fresh PyTorch ROCm direct-decoder throughput retains batch 2/4 only as token-qualified microstep evidence. Batch 8 is rejected because repeated identical rows change cached-step IDs under eager, default, and max-autotune modes; custom HIP/MIGraphX remain batch-one by contract. Evidence: `../moonshine-prod-inference/results/2026-07-31-phase7-throughput-cuda-handoff.md` and `moonshine-phase7-throughput-v1.json`.
