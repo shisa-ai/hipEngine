@@ -14,7 +14,7 @@
     "format": "GGUF",
     "quant": "Q4_K_M",
     "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
-    "sha256": "7da520c5d9806c104fa97d14f2dc7f3738511625667bc97d229532d8375753f",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
     "kv": "BF16 hipEngine / F16 llama.cpp Vulkan"
   },
   "protocol": {
@@ -27,14 +27,14 @@
       131072
     ],
     "prefill": {
-      "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 1024,4096,16384,32768,65536,131072 --chunk-size 2048 --decode-output-tokens 1 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5d9806c104fa97d14f2dc7f3738511625667bc97d229532d8375753f --output /tmp/laguna-matched-long-sweep-hipengine.json",
+      "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131072 --lengths 1024,4096,16384,32768,65536,131072 --chunk-size 2048 --decode-output-tokens 1 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-matched-long-sweep-hipengine.json",
       "hipengine_raw_sha256": "07fd79f3ad802f62c728c505f1279c0593ea93618a676ff58229216a61d1fee0",
       "vulkan_command": "HIP_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 128,1024,4096,16384,32768,65536,131072 -n 0 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress",
       "vulkan_raw_sha256": "93396cb70d881ff687b1cddb6627b4885eab0f6ef02d0eb8a2ef0c853155e765",
       "notes": "One process and one measured pass per depth. The Vulkan p128 row is warmup-only and excluded."
     },
     "decode": {
-      "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 1024,4096,16384,32768,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5d9806c104fa97d14f2dc7f3738511625667bc97d229532d8375753f --output /tmp/laguna-matched-depth-decode-hipengine.json",
+      "hipengine_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 1024,4096,16384,32768,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-matched-depth-decode-hipengine.json",
       "hipengine_raw_sha256": "472fc1c82d101dd4b0d828d6aa7fead4ef8a1c05fabda5977b05637143e4ac1f",
       "vulkan_command": "HIP_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 0 -n 128 -d 1024,4096,16384,32768,65536,131072 -r 1 --no-warmup -o json -fa on -b 2048 -ub 512 -ctk f16 -ctv f16 -ngl -1 -dev Vulkan0 --progress",
       "vulkan_raw_sha256": "1fd60858f1f47b32d7b51f86172d1e060d12d43c3b098644d3060feaaa6f9f92",
