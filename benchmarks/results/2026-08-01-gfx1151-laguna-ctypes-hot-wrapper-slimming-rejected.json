@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-01T01:09:00+09:00",
+  "kind": "hipengine_gfx1151_laguna_ctypes_hot_wrapper_slimming_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "bf1399b4a6f6aeca53431e65a2c1781de3183b5b",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79066169172
+  },
+  "candidate": {
+    "mechanism": "cache ctypes signatures and pass raw Python integers/pointers through argtypes conversion in approximately 230 hot wrappers per token",
+    "families": [
+      "source-F16 projection plus fused head/KV",
+      "global and SWA attention",
+      "Q4 dense/shared projection",
+      "Q6 shared down projection",
+      "selected Q4 gate/up",
+      "selected Q4/Q6 weighted down"
+    ],
+    "gpu_kernels_changed": false,
+    "launches_changed": false,
+    "resident_bytes_delta": 0,
+    "arithmetic_changed": false
+  },
+  "validation": {
+    "red_green": "a fake ctypes function proved the production Q4 dense wrapper previously assigned argtypes twice; the candidate assigned once and passed raw integer arguments",
+    "focused": "Q4/Q6 projection, selected MoE, fused head/KV, global attention, and SWA attention paths passed; one unrelated pre-existing KV-owner allocation-count assertion expected 243 allocations while current production creates 245",
+    "full_model": "all three runs generate next token 2930, final token 74825, and trajectory SHA-256 1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "positions_and_lifecycle": "exact"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "repetitions": 3,
+    "warmup_rows": 128,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-ctypes-hotpath-directional.json",
+    "raw_sha256": "a1dded2e4f0a6537e74d67cfc9cfa5df636d84743a33970d6df7278583c8b33a"
+  },
+  "performance": {
+    "production_reference_tok_s": 23.231783028068968,
+    "candidate_samples_tok_s": [
+      23.17692213004116,
+      23.210151370661464,
+      23.214604523321533
+    ],
+    "candidate_median_tok_s": 23.210151370661464,
+    "production_reference_ms_per_token": 43.04447914272382,
+    "candidate_median_ms_per_token": 43.08459621956791,
+    "delta_percent": -0.09311234260998003,
+    "delta_ms_per_token": 0.040117076844090604
+  },
+  "decision": {
+    "action": "reject and completely remove the candidate wrapper conversions and RED test",
+    "reason": "The exact directional result is negative and does not support retaining a broad launch-wrapper rewrite. Per-wrapper signature assignment and ctypes boxing are not the material complete-decode bottleneck.",
+    "production": "unchanged at 23.231783 tok/s / 43.044479 ms/token",
+    "reopen_only_if": "a longer native executor eliminates materially more Python-to-ctypes transitions while preserving the existing GPU schedule and dependencies"
+  }
+}
