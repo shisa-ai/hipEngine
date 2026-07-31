@@ -537,6 +537,14 @@ def register_moonshine_cpu_reference_kernels(*, replace: bool = True) -> None:
             "fixed_cache_logical_dim",
         ): moonshine_self_attention,
         (
+            "moonshine_self_attention",
+            "fixed_cache_branch_online",
+        ): moonshine_self_attention,
+        (
+            "moonshine_self_attention",
+            "fixed_cache_parallel_tokens",
+        ): moonshine_self_attention,
+        (
             "moonshine_cross_attention",
             "resident_masked_logical_dim",
         ): moonshine_cross_attention,

@@ -26,6 +26,7 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 
 MOONSHINE_CROSS_KV_THREADS = 32
 MOONSHINE_CROSS_ATTENTION_THREADS = 256
+MOONSHINE_SELF_ATTENTION_THREADS = 256
 MOONSHINE_TRIPLE_QKV_THREADS = 32
 MOONSHINE_SINGLE_PROJECTION_THREADS = 64
 MOONSHINE_MLP_FC1_THREADS = 32
@@ -491,7 +492,8 @@ class MoonshineResidentRuntime:
             raise RuntimeError("Moonshine device token/position state is not set")
         from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
             moonshine_cross_attention_parallel_fp16,
-            moonshine_self_attention_fp16,
+            moonshine_self_attention_branch_fp16,
+            moonshine_self_attention_parallel_fp16,
         )
         from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
             moonshine_argmax_fp16,
@@ -583,7 +585,15 @@ class MoonshineResidentRuntime:
                 library=libraries.glue,
                 **common,
             )
-            moonshine_self_attention_fp16(
+            self_attention = (
+                moonshine_self_attention_branch_fp16
+                if self.decode_position == 0
+                else moonshine_self_attention_parallel_fp16
+            )
+            self_attention_options = (
+                {} if self.decode_position == 0 else {"threads": MOONSHINE_SELF_ATTENTION_THREADS}
+            )
+            self_attention(
                 attention.ptr,
                 self_cache.key.ptr,
                 self_cache.value.ptr,
@@ -593,6 +603,7 @@ class MoonshineResidentRuntime:
                 spec.head_dim,
                 spec.self_cache_capacity,
                 library=libraries.attention,
+                **self_attention_options,
                 **common,
             )
             dense_gemv_out_fp16(

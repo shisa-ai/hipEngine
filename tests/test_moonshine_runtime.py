@@ -320,6 +320,8 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         attention=FakeLibrary(
             "hipengine_moonshine_cross_attention_fp16",
             "hipengine_moonshine_cross_attention_parallel_fp16",
+            "hipengine_moonshine_self_attention_branch_fp16",
+            "hipengine_moonshine_self_attention_parallel_fp16",
             "hipengine_moonshine_self_attention_fp16",
         ),
     )
@@ -356,7 +358,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             "hipengine_moonshine_layernorm_fp16",
             "hipengine_moonshine_f16_projection_triple",
             "hipengine_moonshine_partial_rope_cache_append_fp16",
-            "hipengine_moonshine_self_attention_fp16",
+            "hipengine_moonshine_self_attention_branch_fp16",
             "hipengine_dense_gemv_out_fp16",
             "hipengine_moonshine_residual_fp16",
             "hipengine_moonshine_layernorm_fp16",
@@ -401,7 +403,13 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             )
         with pytest.raises(ValueError, match="sequential"):
             resident.set_decode_state(token_id=1, position=2)
+        trace.clear()
         resident.set_decode_state(token_id=1, position=1)
+        with resident.no_allocation_region("decoder-token-step-position-1"):
+            resident.token_step()
+        names = [name for name, _ in trace]
+        assert names.count("hipengine_moonshine_self_attention_parallel_fp16") == 8
+        assert "hipengine_moonshine_self_attention_branch_fp16" not in names
         resident.reset_generation(clear_cross_cache=False)
         assert resident.cross_cache_valid is True
         assert resident.decode_position is None

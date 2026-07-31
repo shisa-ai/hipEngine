@@ -112,6 +112,117 @@ def moonshine_self_attention_fp16(
     """Attend through the current device position in a fixed FP16 self cache."""
 
     _validate_shape(heads, head_dim, threads)
+    _launch_self_attention(
+        "hipengine_moonshine_self_attention_fp16",
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        position_ptr,
+        output_ptr,
+        heads,
+        head_dim,
+        capacity,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def moonshine_self_attention_branch_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    position_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    capacity: int,
+    *,
+    scale: float | None = None,
+    threads: int = _THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Use one wave per head with branch-specialized FP32 online softmax."""
+
+    _validate_shape(heads, head_dim, threads)
+    _launch_self_attention(
+        "hipengine_moonshine_self_attention_branch_fp16",
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        position_ptr,
+        output_ptr,
+        heads,
+        head_dim,
+        capacity,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def moonshine_self_attention_parallel_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    position_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    capacity: int,
+    *,
+    scale: float | None = None,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Partition the visible self cache across 2/4/8 waves per head."""
+
+    _validate_shape(heads, head_dim, _THREADS)
+    if threads not in (64, 128, 256):
+        raise ValueError("threads must be one of 64, 128, or 256")
+    _launch_self_attention(
+        "hipengine_moonshine_self_attention_parallel_fp16",
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        position_ptr,
+        output_ptr,
+        heads,
+        head_dim,
+        capacity,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _launch_self_attention(
+    symbol: str,
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    position_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    capacity: int,
+    *,
+    scale: float | None,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
     if capacity <= 0:
         raise ValueError("capacity must be positive")
     scale_value = _scale(head_dim, scale)
@@ -119,7 +230,7 @@ def moonshine_self_attention_fp16(
     runtime = runtime or get_hip_runtime()
     _launch(
         library,
-        "hipengine_moonshine_self_attention_fp16",
+        symbol,
         (
             query_ptr,
             key_cache_ptr,
@@ -305,6 +416,24 @@ def register_moonshine_attention_kernels(*, replace: bool = True) -> None:
         (
             KernelKey(
                 "hip_gfx1100",
+                "moonshine_self_attention",
+                "fp16",
+                "fixed_cache_branch_online",
+            ),
+            moonshine_self_attention_branch_fp16,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
+                "moonshine_self_attention",
+                "fp16",
+                "fixed_cache_parallel_tokens",
+            ),
+            moonshine_self_attention_parallel_fp16,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
                 "moonshine_cross_attention",
                 "fp16",
                 "resident_masked_logical_dim",
@@ -341,7 +470,9 @@ __all__ = [
     "moonshine_cross_attention_fp16",
     "moonshine_cross_attention_grouped_fp16",
     "moonshine_cross_attention_parallel_fp16",
+    "moonshine_self_attention_branch_fp16",
     "moonshine_self_attention_fp16",
+    "moonshine_self_attention_parallel_fp16",
     "plan_moonshine_attention_build",
     "register_moonshine_attention_kernels",
 ]
