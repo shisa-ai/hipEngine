@@ -68,7 +68,6 @@ COMPARISON_ARGUMENTS = (
     "compare_swa_attention_hipblaslt",
     "compare_f16_decode_onebarrier",
     "compare_f16_decode_fixedk",
-    "compare_f16_nontemporal_decode",
     "compare_swa_fixed512_reduce",
     "compare_swa_fused_fixed512",
     "compare_swa_gqa3_local384",
@@ -237,11 +236,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-f16-decode-fixedk",
         action="store_true",
         help="counterbalance one-barrier source-F16 decode against fixed-K",
-    )
-    parser.add_argument(
-        "--compare-f16-nontemporal-decode",
-        action="store_true",
-        help="counterbalance exact fixed-K F16 decode against streamed weight loads",
     )
     parser.add_argument(
         "--compare-swa-fixed512-reduce",
@@ -870,10 +864,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
                             "fixedk" if mode == "candidate" else "onebarrier"
                         )
-                    if args.compare_f16_nontemporal_decode:
-                        owner.use_f16_nontemporal_decode = (
-                            mode == "candidate"
-                        )
                     if args.compare_swa_fixed512_reduce:
                         owner.kv_cache.swa_split_fixed512_reduce = (
                             mode == "candidate"
@@ -1158,9 +1148,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_f16_decode_onebarrier
             ),
             "compare_f16_decode_fixedk": args.compare_f16_decode_fixedk,
-            "compare_f16_nontemporal_decode": (
-                args.compare_f16_nontemporal_decode
-            ),
             "compare_swa_fixed512_reduce": (
                 args.compare_swa_fixed512_reduce
             ),

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T09:39:00+09:00",
+  "kind": "hipengine_laguna_decode_two_queue_wall_census",
+  "status": "accepted_attribution",
+  "performance_claim": false,
+  "source_revision": "f4cc2f50259b558ee2216305dd54b9a12c4e982f",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "profiled_decode_transitions": 127,
+    "model_dispatches_per_token": 482,
+    "correct_next_token": 2930,
+    "correct_final_token": 74107,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "tracked_allocations_returned_to_zero": true
+  },
+  "two_queue_timeline_ms_per_token": {
+    "inclusive_kernel_sum": 48.73289,
+    "kernel_interval_union_busy": 42.158779,
+    "dispatch_span": 43.834293,
+    "median_union_idle": 1.687293,
+    "queue_overlap": 6.571019,
+    "dispatches": 482,
+    "busy_intervals": 388,
+    "note": "Inclusive family and kernel sums double-count simultaneous work on the primary and shared-expert queues; interval union is the actual device-busy wall proxy."
+  },
+  "inclusive_family_medians_ms_per_token": {
+    "source_f16_projection_composites": 24.362893,
+    "selected_q4_gate_up": 8.903994,
+    "selected_q4_q6_down": 4.74166,
+    "dense_shared_quant_projection": 6.990043,
+    "router": 1.054218,
+    "attention_total": 1.11601,
+    "swa_attention": 0.715979,
+    "global_attention": 0.400031,
+    "norm_rope_outside_projection_composites": 0.4389,
+    "lm_head_argmax": 1.117457
+  },
+  "change_from_post_router_wave0_census": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-post-router-wave0-wall-reprofile.json",
+    "source_f16_projection_composites_ms_per_token": -0.176015,
+    "source_f16_projection_composites_percent": -0.717292,
+    "kernel_interval_union_busy_vs_pre_f16_overlap_ms_per_token": -0.189493,
+    "dispatch_span_vs_pre_f16_overlap_ms_per_token": -0.208382,
+    "dispatches_per_token": 0,
+    "qualification": "The post-router census was single-queue and predates retained overlap. Union-busy/span comparisons use the retained pre-F16 overlap trace, not its single-queue kernel sum."
+  },
+  "moe_overlap_anatomy_ms_per_token": {
+    "selected_gate_up": 8.903994,
+    "selected_down": 4.74166,
+    "shared_gate_up": 3.900369,
+    "shared_down": 3.091803,
+    "tail": 0.426801,
+    "selected_gate_shared_gate_overlap": 3.704469,
+    "selected_gate_shared_down_overlap": 2.868895,
+    "shared_selected_down_overlap": 0.0,
+    "prior_no_contention_selected_gate_up": 7.785973,
+    "selected_gate_up_contention_delta": 1.118021
+  },
+  "same_gguf_vulkan": {
+    "logged_gpu_ms_per_token": 43.6592,
+    "production_wall_ms_per_token": 42.829522098341634,
+    "hipengine_kernel_interval_union_delta_ms": -1.500421,
+    "hipengine_clean_production_wall_ms_per_token": 43.751890098341634,
+    "hipengine_clean_production_wall_delta_ms": 0.922368,
+    "hipengine_throughput_gap_percent": -2.15358
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-f16-nt-census.pgi5uZ --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-nt-census.pgi5uZ/bench.json",
+    "segmentation": "sort by start timestamp and dispatch id; discard warmup128 and timed prefill512; report medians over the final 127 length-one embedding-through-argmax segments; merge overlapping kernel intervals across both queues for union-busy time",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "bc886866ab9107203c2e4e53af474976447d0924521da71733f1e484180c138a",
+    "bench_sha256": "8e5486c5777253c0e71c7e05883554cf594871dbe00b19f509720d3d1d3976d2"
+  },
+  "interpretation": {
+    "result": "The retained non-temporal source-F16 direction transfers to the integrated two-queue route and current aggregate GPU work is already below the Vulkan comparator.",
+    "primary_bottleneck": "hipEngine remains slower in clean wall despite lower union-busy device work; host submission, dependency placement, and cross-queue memory contention are the leading remaining mechanisms.",
+    "next_screen": "Move the existing shared-branch record/wait point after selected gate/up so shared gate/down overlaps selected down without adding an event, launch, resident allocation, or arithmetic change."
+  }
+}
