@@ -7891,6 +7891,31 @@ The remaining attention sequence is:
      leaves **0.912447 ms/token / 2.13042%** to same-GGUF Vulkan:
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-production.json).
 
+155. Screen a middle 12-column selected gate/up geometry.
+     **Rejected out of tree.**
+
+     The retained byte-neutral interleaved body owns eight output columns per
+     workgroup; the earlier 16-column screen reduced the grid but crossed a
+     severe register/occupancy cliff. A 12-column sibling tests the missing
+     midpoint. The first cross-tile implementation is exact but regresses the
+     layer-1 actual-weight leaf **0.138210 -> 0.203722 ms (+47.401%)**.
+     Hoisting both activation halves and mapping three workgroups to a
+     **12/12/8** 32-column supertile removes repeated division and cross-tile
+     address work, but still regresses its ordinary-tile8 control
+     **0.134089 -> 0.139576 ms (+4.092%)**.
+
+     More importantly, the retained interleaved tile8 recheck is
+     **0.116112 ms**, making optimized tile12 **20.208% slower** than the
+     production leaf. Cache-only tracing explains the miss: tile12 reduces
+     ownership to **96 workgroups per selected row**, but allocates
+     **VGPR104** versus the retained body's **VGPR80**. It uses
+     local128/SGPR128/LDS384/scratch0. The production-bit fixture passes with
+     zero BF16 mismatches, but the resource cliff dominates the smaller grid.
+     Remove every candidate source, wrapper, test, and harness route; skip
+     resident integration and leave production at
+     **22.873989 tok/s / 43.717779 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile12-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
