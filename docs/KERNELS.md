@@ -398,6 +398,15 @@ guard. Do not retry this persistent composition without a higher-occupancy
 reduction or lower-byte projection representation:
 [`rejected persistent output owner`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-persistent-output-rejected.json).
 
+The finer-grained c=1 shared-branch event split is rejected and fully removed
+as well. Retaining post-router shared gate/up but holding shared down until
+selected gate/up is exact and changes no kernels or launches, yet the rough
+complete p512/d128 pair regresses **23.074630 -> 22.939050 tok/s (-0.58757%,
++0.256145 ms/token)**. The secondary join becomes critical. Keep the retained
+post-router full-branch release; do not retry this event split without first
+reducing shared-down bytes:
+[`rejected shared-down split`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-down-after-selected-gate-rejected.json).
+
 The diagnostic-only prefill routing replay also captures the normalized F32
 weight beside every selected expert ID. Normal generation allocates neither
 capture plane. `scripts/laguna_routing_replay.py` reports the final-one and
