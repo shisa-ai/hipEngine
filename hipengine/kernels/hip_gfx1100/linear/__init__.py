@@ -38,6 +38,7 @@ from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
 from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     build_moonshine_projection,
     moonshine_f16_lm_head_projection,
+    moonshine_f16_lm_head_projection_wave8,
     moonshine_f16_projection,
     moonshine_f16_projection_bias,
     moonshine_f16_projection_pair,
@@ -97,6 +98,7 @@ __all__ = [
     "lm_head_fp16_argmax_bf16_rows_i32",
     "build_moonshine_projection",
     "moonshine_f16_lm_head_projection",
+    "moonshine_f16_lm_head_projection_wave8",
     "moonshine_f16_projection",
     "moonshine_f16_projection_bias",
     "moonshine_f16_projection_pair",

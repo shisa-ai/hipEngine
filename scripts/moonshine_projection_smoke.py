@@ -21,6 +21,7 @@ from hipengine.kernels.cpu_reference.moonshine import moonshine_projection
 from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     build_moonshine_projection,
     moonshine_f16_lm_head_projection,
+    moonshine_f16_lm_head_projection_wave8,
     moonshine_f16_projection,
     moonshine_f16_projection_bias,
     moonshine_f16_projection_pair,
@@ -88,6 +89,7 @@ def main() -> int:
         device_bias = _upload(bias, runtime, allocations)
         single = _output((rows, hidden), runtime, allocations)
         lm_head = _output((rows, hidden), runtime, allocations)
+        lm_head_wave8 = _output((rows, hidden), runtime, allocations)
         biased = _output((rows, hidden), runtime, allocations)
         pair = tuple(_output((rows, hidden), runtime, allocations) for _ in range(2))
         head_major = tuple(_output((8, rows, 52), runtime, allocations) for _ in range(2))
@@ -106,6 +108,16 @@ def main() -> int:
             device_input.ptr,
             device_weights[0].ptr,
             lm_head.ptr,
+            rows,
+            hidden,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
+        moonshine_f16_lm_head_projection_wave8(
+            device_input.ptr,
+            device_weights[0].ptr,
+            lm_head_wave8.ptr,
             rows,
             hidden,
             hidden,
@@ -165,6 +177,7 @@ def main() -> int:
         runtime.device_synchronize()
         actual_single = _download(single, (rows, hidden), runtime)
         actual_lm_head = _download(lm_head, (rows, hidden), runtime)
+        actual_lm_head_wave8 = _download(lm_head_wave8, (rows, hidden), runtime)
         actual_bias = _download(biased, (rows, hidden), runtime)
         actual_pair = tuple(_download(output, (rows, hidden), runtime) for output in pair)
         actual_head_major = tuple(
@@ -183,12 +196,14 @@ def main() -> int:
     comparisons = (
         actual_single,
         actual_lm_head,
+        actual_lm_head_wave8,
         actual_bias,
         *actual_pair,
         *actual_head_major,
         *actual_triple,
     )
     references = (
+        expected[0],
         expected[0],
         expected[0],
         expected_bias,
@@ -215,6 +230,7 @@ def main() -> int:
         "expected_kernel_names": [
             "moonshine_f16_projection_kernel",
             "moonshine_f16_lm_head_projection_kernel",
+            "moonshine_f16_lm_head_projection_wave8_kernel",
             "moonshine_f16_projection_bias_kernel",
             "moonshine_f16_projection_pair_kernel",
             "moonshine_f16_projection_pair_head_major_kernel",

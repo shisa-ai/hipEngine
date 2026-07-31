@@ -302,6 +302,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
     libraries = MoonshineDecoderLibraries(
         projection=FakeLibrary(
             "hipengine_moonshine_f16_lm_head_projection",
+            "hipengine_moonshine_f16_lm_head_projection_wave8",
             "hipengine_moonshine_f16_projection",
             "hipengine_moonshine_f16_projection_bias",
             "hipengine_moonshine_f16_projection_pair_head_major",
@@ -374,7 +375,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         expected.extend(
             [
                 "hipengine_moonshine_layernorm_fp16",
-                "hipengine_moonshine_f16_lm_head_projection",
+                "hipengine_moonshine_f16_lm_head_projection_wave8",
                 "hipengine_moonshine_argmax_fp16",
             ]
         )
@@ -383,14 +384,12 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             name: [args[-2] for call_name, args in trace if call_name == name]
             for name in (
                 "hipengine_dense_gemv_out_fp16",
-                "hipengine_moonshine_f16_lm_head_projection",
                 "hipengine_moonshine_f16_projection_bias",
                 "hipengine_moonshine_f16_projection_triple",
             )
         }
         assert projection_threads == {
             "hipengine_dense_gemv_out_fp16": [64] * 24,
-            "hipengine_moonshine_f16_lm_head_projection": [256],
             "hipengine_moonshine_f16_projection_bias": [32, 64] * 8,
             "hipengine_moonshine_f16_projection_triple": [32] * 8,
         }

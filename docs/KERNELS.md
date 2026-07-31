@@ -330,9 +330,12 @@ encoder-frame K/V materialization. The keys are
 `moonshine_cross_kv_precompute/pair_head_major_fp32_accum`, and
 `moonshine_qkv_proj/triple_fp32_accum`, all under `quant="fp16"`; gfx1151
 uses the peer backend alias and native `gfx1151` code object. The tied LM-head
-entry preserves the singleton reduction byte-for-byte under a distinct HIP
-kernel symbol so whole-token profiles can separate its 30.671-MB stream from
-other 416-wide projections. The cross-K/V variant preserves the same dot products but writes direct resident
+entry preserves the singleton reduction under a distinct HIP kernel symbol so
+whole-token profiles can separate its 30.671-MB stream from other 416-wide
+projections. Phase-3 runtime uses the separately registered
+`tied_wave8_fp32_accum` symbol: one local256 block owns eight independent
+wave32 vocabulary rows. The one-row-per-block local256 wrapper remains the
+explicit fallback. The cross-K/V variant preserves the same dot products but writes direct resident
 `[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
 separate transpose or temporary frame buffer. Four-row output matches the
 transposed NumPy projection within max absolute error `3.052e-5`; cache-only
