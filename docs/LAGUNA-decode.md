@@ -7654,6 +7654,45 @@ The remaining attention sequence is:
      **22.856155 tok/s / 43.751890 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-after-selected-gate-rejected.json).
 
+148. Reproduce llama.cpp Vulkan's actual source-F16 decode specialization
+     instead of inferring its geometry from the generic matvec family.
+     **Rejected at every natural leaf and completely removed.**
+
+     Source tracing at llama.cpp Vulkan `c0bc8591e` resolves the gfx1151 c=1
+     path precisely. AMD keeps the subgroup-sized DMMV pipeline, so RADV's
+     subgroup size 64 selects `BLOCK_SIZE=64`, `NUM_ROWS=2`,
+     `NUM_COLS=1`, and `K_PER_ITER=4`. One wave64 owns two adjacent output
+     rows, each lane consumes contiguous K4 activation/weight vectors, and
+     `subgroupAdd` reduces both F32 accumulators. This is distinct from the
+     earlier rejected exact pair owner, which retained four local128 K
+     partitions and the original association.
+
+     RED fails on the absent source-shaped wrappers. An isolated
+     `-mwavefrontsize64` code object then passes K3072/K6144/K9216 F32 and
+     BF16 fixtures. gfx11's physical wave32 halves require
+     `permlane64` after the two half-wave reductions; ordinary HIP shuffle
+     width 64 does not cross that seam.
+
+     The performance gate is decisive. Eleven counterbalanced 30-launch
+     bursts regress every natural role:
+
+     | Role | Retained local256 | Vulkan-shaped wave64 | Delta |
+     | --- | ---: | ---: | ---: |
+     | full query K3072/N6144 | **0.162005 ms / 233.01 GB/s** | 0.245075 ms / 154.03 GB/s | **+51.276%** |
+     | SWA query K3072/N9216 | **0.240888 ms / 235.06 GB/s** | 0.337720 ms / 167.66 GB/s | **+40.198%** |
+     | key/value K3072/N1024 | **0.026377 ms / 238.52 GB/s** | 0.042680 ms / 147.41 GB/s | **+61.805%** |
+     | full/SWA gate | **0.002927/0.002980 ms** | 0.004790/0.004824 ms | **+63.671%/+61.855%** |
+     | full output K6144/N3072 | **0.160748 ms / 234.83 GB/s** | 0.318451 ms / 118.54 GB/s | **+98.105%** |
+     | SWA output K9216/N3072 | **0.241823 ms / 234.15 GB/s** | 0.345420 ms / 163.93 GB/s | **+42.840%** |
+
+     The retained non-temporal scalar-K owner is already close to achievable
+     LPDDR bandwidth on every large role. Stop before runtime integration or
+     the full quality gate and remove the code object, wrappers, and fixtures.
+     The comparator's transferable advantage is evaluation-wide command
+     recording/fusion and feed, not this F16 leaf. Production remains
+     **22.856155 tok/s / 43.751890 ms/token**:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-vulkan-wave64-f16-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -7709,7 +7748,10 @@ device work is already **1.500421 ms/token below** Vulkan's logged kernel sum.
 The clean wall gap is nevertheless **0.922368 ms/token**. The next retained
 candidate must contract the dispatch span/idle holes or reduce damaging
 cross-queue memory contention; a faster isolated attention leaf is no longer
-the leading cross-backend explanation.
+the leading cross-backend explanation. The exact Vulkan F16 source transfer
+now closes another false lead: our retained large F16 leaves already reach
+**233-239 GB/s**, while Vulkan-shaped wave64 ownership regresses every natural
+role. Do not reopen it without a different data-layout or traffic premise.
 
 The producer-max and local1024 results capture two exact pieces of llama.cpp's
 advantage: cooperative work should be computed by the waves that already own

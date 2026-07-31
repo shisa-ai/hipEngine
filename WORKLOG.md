@@ -195314,3 +195314,31 @@ Vulkan local sizes verbatim will close the measured gap.
   recovers from selected-gate contention.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-shared-after-selected-gate-rejected.json`.
+
+## 2026-07-31 10:16 JST — Reject Vulkan-shaped source-F16 wave64 transfer
+
+- Traced same-GGUF llama.cpp Vulkan `c0bc8591e` through its actual pipeline
+  chooser and shader specialization. On RADV/gfx1151, AMD keeps the
+  subgroup-sized DMMV route: local64, two adjacent output rows, contiguous K4
+  vectors per lane, one c=1 input column, and subgroup64 F32 reduction.
+- Added a RED fixture and isolated `-mwavefrontsize64` diagnostic code object.
+  The first repair exposed the gfx11 architectural seam directly: ordinary HIP
+  shuffles do not cross the two physical wave32 halves. Two half reductions
+  plus `__builtin_amdgcn_permlane64` pass K3072/K6144/K9216 F32/BF16
+  correctness fixtures.
+- Eleven counterbalanced 30-launch bursts reject every natural role. Full/SWA
+  query regress **51.276%/40.198%**, K/V **61.805%**, full/SWA gate
+  **63.671%/61.855%**, and full/SWA output **98.105%/42.840%**. The retained
+  non-temporal local256 path reaches **233-239 GB/s** on every large role;
+  wave64/two-output reaches only **118-168 GB/s**.
+- Stop before runtime integration or the full model quality gate. Remove the
+  code object, wrappers, and temporary fixture. Production remains
+  **22.856155 tok/s / 43.751890 ms/token**.
+- Source review also confirms why copying another leaf is now low priority.
+  Vulkan records up to 100 graph nodes per command submission with a dynamic
+  FLOP budget to overlap CPU command-buffer generation and GPU execution, and
+  applies evaluation-wide operator fusions. hipEngine already has
+  **42.158779 ms/token** union-busy work, below Vulkan's logged GPU sum, but
+  retains **1.687293 ms/token** union-idle holes.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-vulkan-wave64-f16-rejected.json`.
