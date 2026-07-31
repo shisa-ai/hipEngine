@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T16:27:04.084078+00:00",
+  "kind": "hipengine_laguna_q6_t16_dense_single_decode_leaf",
+  "status": "candidate",
+  "performance_claim": false,
+  "repo_revision": "40e77ef7b8de39a0bf3b718eeb60cbc6ddebb628",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_t16_dense_single_decode_leaf.py --warmups 3 --samples 11 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q6-t16-dense-single-decode-leaf.json",
+    "warmups": 3,
+    "samples": 11,
+    "burst": 100,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "weights": "all 23 actual rank-2 Q6_K shared-down tensors",
+    "activation": "deterministic synthetic BF16 post-SiLU row",
+    "control": "resident raw Q6_K BF16 owner",
+    "candidate": "byte-neutral dense Q6T16 BF16 owner"
+  },
+  "result": {
+    "control_family_ms": 0.3638636887073517,
+    "candidate_family_ms": 0.29135603666305543,
+    "candidate_delta_percent": -19.92714697690341,
+    "candidate_wins": 253,
+    "pair_count": 253,
+    "all_23_weights_positive": true,
+    "per_weight_delta_percent_range": [
+      -20.333802973513304,
+      -19.047863508398542
+    ],
+    "bf16_mismatches": 0,
+    "resident_bytes_per_weight": {
+      "control_raw": 2580480,
+      "candidate_t16": 2580480
+    }
+  },
+  "correctness_pass": true,
+  "raw_artifact": {
+    "path": "/tmp/laguna-q6-t16-dense-single-decode-leaf.json",
+    "sha256": "f8f89beeb36e0f916a98705bda8fccdc7373b03c9e094dc592bc4b2426cebc41"
+  },
+  "decision": "Advance the byte-neutral Q6T16 shared-down replacement to a full-model production A/B; do not promote from this isolated leaf alone."
+}
