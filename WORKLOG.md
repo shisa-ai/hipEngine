@@ -196420,3 +196420,32 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **23.089693 tok/s / 43.309368 ms/token**. Raw output SHA-256 is
   `0f44daa2...47b001c`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-router-expert-tiles-rejected.json`.
+
+## 2026-07-31 21:22 JST — Reject bounded persistent F16 output owner
+
+- ROCm/gfx1151 remained healthy. The required kernel-lineage command again
+  stopped before a diff solely because the optional
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent.
+- RED failed on the absent persistent wrapper. GREEN replaced 3,072
+  one-column local256 output producers with 40/80 persistent owners that walk
+  complete columns at grid stride, preserve the exact K/FMA/wave/BF16 and
+  add/RMSNorm trees, and reduce the completion protocol to one atomic per
+  persistent block. K6144/K9216 projection, residual, and normalized BF16
+  arrays are bit exact; KL is zero, top-1 is 100%, and counters reset.
+- Counterbalanced 21x100 timing rejects both resident-safe grids. Grid40
+  regresses full/SWA **7.468%/23.369%**. Maximum-safe grid80 regresses
+  **0.163074 -> 0.164981 ms (+1.170%)** and
+  **0.244182 -> 0.247949 ms (+1.542%)**; the 12-full/36-SWA family adds
+  **0.158479 ms/token (+1.475%)** before any router work. Its effective weight
+  rate falls from **231.48/231.89** to **228.81/228.37 GB/s**.
+- `hipOccupancyMaxActiveBlocksPerMultiprocessor` reports only two local256
+  blocks/CU for the compiled candidate; the guarded 120/160 probes return
+  `hipErrorInvalidConfiguration` before launch. Grid80 is therefore the
+  maximum safe owner and already spends **60.13%** of the complete measured
+  **0.263561-ms/token** output→router boundary.
+- Removed the HIP body/export, Python wrapper, test additions, and diagnostic
+  script before fusion/runtime integration. The restored focused production
+  fixture passes **2/2** from cache. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
+  `b0734ecf...0e5df`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-persistent-output-rejected.json`.

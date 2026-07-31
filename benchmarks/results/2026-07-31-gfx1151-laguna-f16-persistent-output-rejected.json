@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T12:20:37.539618+00:00",
+  "kind": "hipengine_laguna_f16_persistent_output_rejection",
+  "status": "rejected_removed",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M with source-F16 attention projections and BF16 activation boundaries",
+    "workload": "c=1 natural K6144/K9216 N3072 output-projection + residual-add/RMSNorm leaves"
+  },
+  "candidate": {
+    "description": "Replace 3072 one-column local256 producers with a bounded local256 grid that walks columns at grid stride, preserves the exact per-column FMA/reduction/BF16 tree, and elects one final add/RMSNorm owner.",
+    "workgroups": [
+      40,
+      80,
+      120,
+      160
+    ],
+    "occupancy_guard": "hipOccupancyMaxActiveBlocksPerMultiprocessor admits at most 80 blocks device-wide for the compiled candidate; 120 and 160 return hipErrorInvalidConfiguration before launch."
+  },
+  "correctness": {
+    "red": "The focused K6144 node failed by ImportError on the absent candidate wrapper.",
+    "green": "K6144 and K9216 projection, residual, and normalized BF16 arrays are bit-exact to the retained registered chain at workgroups 40 and 80; the completion counter resets to zero.",
+    "restored_production": "2 passed after complete candidate removal",
+    "quality_gate": {
+      "kl_max": 0.0,
+      "top1_agreement": 1.0
+    }
+  },
+  "performance": {
+    "protocol": "21 counterbalanced samples, 10 warmups/mode, burst 100, deterministic nonzero natural-shape BF16/F16/F32 buffers",
+    "full_k6144_n3072": {
+      "retained_ms": 0.16307369232177735,
+      "persistent40_ms": 0.1752519989013672,
+      "persistent40_delta_percent": 7.467977456204022,
+      "persistent80_ms": 0.16498144149780272,
+      "persistent80_delta_percent": 1.1698693694020212,
+      "retained_effective_weight_gb_s": 231.48268407091757,
+      "persistent80_effective_weight_gb_s": 228.80595330780127
+    },
+    "swa_k9216_n3072": {
+      "retained_ms": 0.2441823387145996,
+      "persistent40_ms": 0.3012450408935547,
+      "persistent40_delta_percent": 23.368890018556996,
+      "persistent80_ms": 0.2479486083984375,
+      "persistent80_delta_percent": 1.5424005289096376,
+      "retained_effective_weight_gb_s": 231.88861364040378,
+      "persistent80_effective_weight_gb_s": 228.36629076381146
+    },
+    "modeled_12_full_36_swa_ms_per_token": {
+      "retained": 10.747448501586915,
+      "persistent40": 12.947845458984375,
+      "persistent80": 10.905927200317382,
+      "persistent80_regression_ms": 0.15847869873046716,
+      "persistent80_regression_percent": 1.4745908575433766
+    },
+    "measured_output_to_router_uncovered_boundary_ms_per_token": 0.263561
+  },
+  "decision": {
+    "result": "reject and remove before projection-to-router fusion or runtime integration",
+    "reason": "The maximum occupancy-safe grid regresses both natural shapes and spends 60.13% of the total measured output-to-router boundary before adding any router work. Lower grids lose monotonically; higher grids are not resident-safe.",
+    "closed_seam": "Do not retry a bounded persistent output owner with this local256 reduction/resource footprint. Reopen only if a different reduction materially raises active blocks per CU or a representation change lowers the streamed projection bytes.",
+    "production": "unchanged at 23.089693 tok/s / 43.309368 ms/token"
+  },
+  "commands": {
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat (blocked only by absent optional /home/lhl/amd-gpu-tuning/reference/atlas)",
+    "red_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_f16_projection.py::test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes --maxfail=1",
+    "leaf": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_persistent_output_leaf.py --samples 21 --warmups 10 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-persistent-output-leaf.json",
+    "restored": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_f16_projection.py::test_laguna_f16_output_add_rmsnorm_matches_registered_chain_bytes --maxfail=1"
+  },
+  "raw": {
+    "path": "/tmp/laguna-f16-persistent-output-leaf.json",
+    "sha256": "b0734ecf5f2534a68196b35348986fcb94d8346426ac1717dd719227e890e5df"
+  }
+}
