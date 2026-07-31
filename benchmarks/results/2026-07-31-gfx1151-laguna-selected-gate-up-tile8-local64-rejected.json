@@ -60,6 +60,22 @@
     "pairs": 7,
     "raw_sha256": "69c3e42eed4ba7b8eb31d1e66ff59906105c6070091cbf441bcc32e8f566510a"
   },
+  "resident_gate_normal_priority_followup": {
+    "shape": "p512/d128 eager c=1 matrix2048 attention128",
+    "shared_moe_stream_priority": 0,
+    "repetitions": 7,
+    "decode_forward_calls_per_arm": 127,
+    "control_tok_s": 22.884811813233863,
+    "candidate_tok_s": 22.68540216496183,
+    "throughput_change_percent": -0.8713624123258934,
+    "control_ms_per_token": 43.69710392032669,
+    "candidate_ms_per_token": 44.08121102408865,
+    "endpoint_delta_ms_per_token": 0.3841071037619628,
+    "paired_median_delta_ms_per_token": 0.38117073351649317,
+    "candidate_wins": 0,
+    "pairs": 7,
+    "raw_sha256": "2fbe7997f71dfb0e67e91533921e6888b475084971bcef131df1990871828858"
+  },
   "correctness": {
     "cpu_reference_fixture_passed": true,
     "bf16_byte_exact": true,
@@ -77,7 +93,7 @@
   },
   "decision": {
     "retained": false,
-    "reason": "The 8.21% isolated leaf win reverses to a stable 0.796% full-model throughput regression under the retained two-queue schedule. Local64 increases interference with the concurrent shared branch even though the kernel is exact and spill-free. All candidate kernel, registry, runtime, benchmark, and test routes were removed."
+    "reason": "The 8.21% isolated leaf win reverses to a stable 0.796% full-model throughput regression under the retained low-priority two-queue schedule and a 0.871% regression with the shared branch at normal priority. The failure is therefore not low-priority starvation; the finer local64 ownership loses under complete-model concurrent scheduling/cache pressure even though the leaf is exact and spill-free. All candidate kernel, registry, runtime, benchmark, and test routes were removed."
   },
   "production": {
     "decode_tokens_per_second": 22.873989323,

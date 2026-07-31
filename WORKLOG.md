@@ -195642,3 +195642,25 @@ Vulkan local sizes verbatim will close the measured gap.
   `13bd3496...5a06c`, and `69c3e42e...510a`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json`.
+
+## 2026-07-31 13:37 JST — Close local64 shared-priority hypothesis
+
+- Reopened only the exact tile8/local64 selector long enough to test the
+  remaining scheduling explanation: run the same seven same-resident
+  p512/d128 pairs with `--no-moe-shared-low-priority`, so both selected and
+  shared MoE branches use priority 0.
+- Normal priority does not recover the isolated leaf win. The control moves
+  **22.884812 tok/s / 43.697104 ms/token** and local64 moves
+  **22.685402 tok/s / 44.081211 ms/token**: **-0.871362%** throughput,
+  **+0.384107 ms/token** by endpoint medians, and **+0.381171 ms/token** by
+  paired median with **0/7** wins.
+- Both arms remain exact at token **2930 -> 74107**, final position **638**,
+  trajectory SHA `94f803f7...bda32`, repeat determinism, state, lifecycle, and
+  allocation recovery. Raw JSON SHA-256 is `2fbe7997...8858`.
+- Removed the complete reopened source/wrapper/registry/runtime/harness/test
+  candidate and verified those tracked paths match `HEAD` byte-for-byte. This
+  closes low-priority starvation as the explanation: local64 loses under the
+  full concurrent schedule at both shared-stream priorities. Production
+  remains **22.873989 tok/s / 43.717779 ms/token**.
+- Updated evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json`.
