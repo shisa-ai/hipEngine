@@ -195888,3 +195888,26 @@ Vulkan local sizes verbatim will close the measured gap.
   **24 tok/s** still requires **1.778970 ms/token**. Raw JSON SHA-256 is
   `15aab7fe...8267`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json`.
+
+## 2026-07-31 15:47 JST — Reprofile the post-tile2 decode wall
+
+- A tracked-clean, require-cached `rocprofv3` run at `1e4879ce1` records the
+  final **127** exact transitions at **481 model kernels + two D2H
+  copies/token**. No compiler runs under profiling; token **2930 -> 74107**,
+  position **638**, trajectory SHA, and teardown remain exact.
+- Source-F16 work falls **24.349380 -> 24.128440 ms/token** versus the
+  pre-tile2 census. Inclusive work falls **47.623470 -> 47.369596**,
+  interval-union busy **42.157483 -> 41.942041**, and span
+  **43.773803 -> 43.565005**. Median uncovered idle is essentially unchanged
+  at **1.624100 ms/token**.
+- hipEngine device-union work is now **0.887481 ms/token faster** than
+  Vulkan's complete **42.829522-ms/token** wall, while clean hipEngine wall is
+  still **0.616114 ms/token slower**. Perfect feed leaves only
+  **0.275374 ms/token** of device work above the **24 tok/s** target.
+- The next screen preserves the after-router event and overlap but submits
+  selected gate/up before the host enqueues the secondary shared branch. This
+  should hide shared-wrapper submission under the **8.944545-ms** selected
+  gate/up family instead of paying the measured **0.243998-ms/token**
+  router→selected gap. Trace/child SHA-256 values are
+  `7a38a028...bb50b` / `3cd78dba...7035a`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-post-f16-tile2-wall-reprofile.json`.
