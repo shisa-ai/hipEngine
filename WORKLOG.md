@@ -196914,3 +196914,42 @@ Vulkan local sizes verbatim will close the measured gap.
   the previous value preserved only the real prefix/suffix around an invalid
   middle. Measurements, raw-result digests, and benchmark conclusions are
   unchanged.
+
+## 2026-08-01 06:45 JST — Remove Laguna's short-global capacity seam
+
+- `scripts/check_lineage.py --kind kernel --diff stat` could not complete
+  because the configured read-only parent path
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. The change extends an
+  existing in-tree Laguna specialization and copies no external kernel code.
+- RED coverage first proved both defects at capacity 8,192: runtime selected
+  generic split attention despite a short dense live prefix, and the current
+  C/Python wrappers rejected the real capacity. The implementation now passes
+  capacity from `KVLiveSpans` into the exact fused kernel while retaining
+  resource-derived scan bounds: dense local1024 double-buffer through 4,000,
+  dense local512 single-buffer through 6,000, non-dense local512 through
+  4,000, then exact generic split attention.
+- The focused large-capacity gate passes **3 tests**. Its HIP fixture compares
+  capacity-8,192 live-1,024 and live-4,097 candidate calls with generic exact
+  split attention and gets bit-identical FP32 context plus BF16 gated bytes.
+  A cached-only `rocprofv3 --kernel-trace` run passes and names the local1024
+  and local512 template instances at **0.068769/0.229310 ms**, both
+  **VGPR48/LDS512/scratch0**. Raw trace SHA-256 is
+  `049cac007b0d0921fc4894fb200fe8716429f9e4ceebf5e5f70f64e4a513ab76`.
+- The broader KV-attention plus long-profile run establishes **63 passed / 1
+  failed**. The isolated failure is a pre-existing allocation-count assertion
+  expecting 243 while current main allocates 245; this route adds no
+  allocation and all other tests passed, so repository policy keeps the broad
+  evidence and the repaired focused result rather than rerunning it.
+- One-pass dirty direction checks on gfx1151 with the exact Q4_K_M GGUF and
+  capacity 131,200 move d1K **20.637969 -> 23.055331 tok/s (+11.713%)** and
+  d4K **15.477837 -> 21.679412 tok/s (+40.067%)**. The new rows sit only
+  **1.330%/5.893%** below same-GGUF Vulkan. Exact token trajectories and all
+  **87,407,934,744 bytes / 1,452 allocations** recover. A capacity-4,224 p512
+  countercheck moves the old generic **21.846364 -> 23.210332 tok/s
+  (+6.244%)** with the exact established trajectory and lifecycle recovery.
+  Dirty raw JSON SHA-256 values are
+  `77c9ae97813d77a4fa7d2756a3010b5ec2ad4cae901648cb37fc7ca67b29651c`
+  and
+  `89a64f4a328b49cf885366eef857e5aea9d8d28ce5de2d406d64e11ddf6b2db1`.
+  These are directional implementation gates, not the clean production claim;
+  the mandatory clean 4K/16K/64K/128K run follows the implementation commit.

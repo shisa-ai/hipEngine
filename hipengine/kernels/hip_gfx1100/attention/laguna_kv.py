@@ -13,6 +13,8 @@ from hipengine.kvcache import KVLiveSpans
 
 _SOURCE = Path(__file__).with_name("laguna_kv_attention.hip")
 _OUTPUT_NAME = "laguna_kv_attention.so"
+_GLOBAL_FUSED_MAX_SCAN = 4000
+_GLOBAL_DENSE_PREFIX_MAX_SCAN = 6000
 _SYMBOL_GLOBAL_HEAD_KV = "hipengine_laguna_global_head_rmsnorm_rope_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_HEAD_KV_WAVE0_TREE = (
     "hipengine_laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_bf16_spans"
@@ -3176,19 +3178,16 @@ def laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_prod
 
     capacity = _check_global_spans(spans, num_kv_heads, head_dim)
     parsed_scan = _check_split_scan_slots(scan_slots, capacity)
-    if (
-        capacity != 4096
-        or parsed_scan > 4000
-        or int(max_context_len) != 4096
-        or int(num_q_heads) != 48
-        or int(num_kv_heads) != 8
-        or int(head_dim) != 128
-    ):
-        raise ValueError(
-            "fused global mixed40 local512 exp32 producer-max DPP-QK "
-            "probability-vec4 prenorm requires capacity 4096, scan slots at "
-            "most 4000, 48 query heads, 8 KV heads, and D128"
-        )
+    _check_capacity_independent_global_fused_shape(
+        capacity,
+        parsed_scan,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        max_scan=_GLOBAL_FUSED_MAX_SCAN,
+        label="fused global mixed40 local512",
+    )
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
@@ -3254,19 +3253,16 @@ def laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_prod
 
     capacity = _check_global_spans(spans, num_kv_heads, head_dim)
     parsed_scan = _check_split_scan_slots(scan_slots, capacity)
-    if (
-        capacity != 4096
-        or parsed_scan > 4000
-        or int(max_context_len) != 4096
-        or int(num_q_heads) != 48
-        or int(num_kv_heads) != 8
-        or int(head_dim) != 128
-    ):
-        raise ValueError(
-            "fused global mixed40 local512 exp32 producer-max DPP-QK "
-            "dense-prefix probability-vec4 prenorm requires capacity 4096, "
-            "scan slots at most 4000, 48 query heads, 8 KV heads, and D128"
-        )
+    _check_capacity_independent_global_fused_shape(
+        capacity,
+        parsed_scan,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        max_scan=_GLOBAL_DENSE_PREFIX_MAX_SCAN,
+        label="fused global mixed40 local512 dense-prefix",
+    )
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
@@ -3332,18 +3328,16 @@ def laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_prod
 
     capacity = _check_global_spans(spans, num_kv_heads, head_dim)
     parsed_scan = _check_split_scan_slots(scan_slots, capacity)
-    if (
-        capacity != 4096
-        or parsed_scan > 4000
-        or int(max_context_len) != 4096
-        or int(num_q_heads) != 48
-        or int(num_kv_heads) != 8
-        or int(head_dim) != 128
-    ):
-        raise ValueError(
-            "fused global dense-prefix idle-double-buffer requires capacity "
-            "4096, scan slots at most 4000, 48 query heads, 8 KV heads, and D128"
-        )
+    _check_capacity_independent_global_fused_shape(
+        capacity,
+        parsed_scan,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        max_scan=_GLOBAL_FUSED_MAX_SCAN,
+        label="fused global local512 dense-prefix idle-double-buffer",
+    )
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
@@ -3409,19 +3403,16 @@ def laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_pro
 
     capacity = _check_global_spans(spans, num_kv_heads, head_dim)
     parsed_scan = _check_split_scan_slots(scan_slots, capacity)
-    if (
-        capacity != 4096
-        or parsed_scan > 4000
-        or int(max_context_len) != 4096
-        or int(num_q_heads) != 48
-        or int(num_kv_heads) != 8
-        or int(head_dim) != 128
-    ):
-        raise ValueError(
-            "fused global dense-prefix local1024 idle-double-buffer requires "
-            "capacity 4096, scan slots at most 4000, 48 query heads, 8 KV "
-            "heads, and D128"
-        )
+    _check_capacity_independent_global_fused_shape(
+        capacity,
+        parsed_scan,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        max_scan=_GLOBAL_FUSED_MAX_SCAN,
+        label="fused global local1024 dense-prefix idle-double-buffer",
+    )
     library = library or build_laguna_kv_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(
@@ -8385,6 +8376,30 @@ def _check_split_scan_slots(scan_slots: int, capacity: int) -> int:
     if parsed <= 0 or parsed > int(capacity):
         raise ValueError("scan_slots must be within [1, span capacity]")
     return parsed
+
+
+def _check_capacity_independent_global_fused_shape(
+    capacity: int,
+    scan_slots: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    max_scan: int,
+    label: str,
+) -> None:
+    if (
+        int(max_context_len) != int(capacity)
+        or int(scan_slots) > int(max_scan)
+        or int(num_q_heads) != 48
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+    ):
+        raise ValueError(
+            f"{label} requires max_context_len equal to capacity, scan slots "
+            f"at most {int(max_scan)}, 48 query heads, 8 KV heads, and D128"
+        )
 
 
 def _check_nonzero_device_pointers(*pointers: tuple[str, int]) -> None:

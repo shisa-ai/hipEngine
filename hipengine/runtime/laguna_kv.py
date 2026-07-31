@@ -23,6 +23,8 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 _GLOBAL_BLOCK_SIZE = 256
 _LAGUNA_KV_HEADS = 8
 _LAGUNA_HEAD_DIM = 128
+_GLOBAL_FUSED_MAX_SCAN = 4000
+_GLOBAL_DENSE_PREFIX_MAX_SCAN = 6000
 _BASELINE_GLOBAL_PREFILL_VARIANT = "global_context_rows_spans"
 _CACHED_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_cached_online_spans"
 _CACHED_META_GLOBAL_PREFILL_VARIANT = (
@@ -1030,19 +1032,31 @@ class LagunaKVCache:
                 and use_gated
                 and self.global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
                 and self.global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape
-                and live_count <= 4000
-                and state.capacity == 4096
+                and live_count
+                <= (
+                    _GLOBAL_DENSE_PREFIX_MAX_SCAN
+                    if self.global_dense_prefix
+                    and self._dense_initial_metadata_valid
+                    else _GLOBAL_FUSED_MAX_SCAN
+                )
                 and state.q_heads == 48
             ):
+                use_dense_prefix = bool(
+                    self.global_dense_prefix
+                    and self._dense_initial_metadata_valid
+                )
+                use_idle_double_buffer = bool(
+                    use_dense_prefix
+                    and self.global_dense_prefix_idle_double_buffer
+                    and live_count <= _GLOBAL_FUSED_MAX_SCAN
+                )
                 variant = (
                     "global_context_fused_exact_gated_mixed40_"
                     + (
                         "local1024_"
                         if (
                             self.global_local1024
-                            and self.global_dense_prefix_idle_double_buffer
-                            and self.global_dense_prefix
-                            and self._dense_initial_metadata_valid
+                            and use_idle_double_buffer
                         )
                         else "local512_"
                     )
@@ -1052,14 +1066,11 @@ class LagunaKVCache:
                         "dense_prefix_"
                         + (
                             "idle_double_buffer_"
-                            if self.global_dense_prefix_idle_double_buffer
+                            if use_idle_double_buffer
                             else ""
                         )
                         + "probability_vec4_prenorm_vstage64_"
-                        if (
-                            self.global_dense_prefix
-                            and self._dense_initial_metadata_valid
-                        )
+                        if use_dense_prefix
                         else "probability_vec4_prenorm_vstage64_"
                     )
                     + "vec16_direct_assume_exp_fixedshape_spans"

@@ -4624,6 +4624,289 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
         cache.free()
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+        laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        laguna_global_attention_decode_split_exact_gated_bf16_spans,
+    )
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    capacity = 8192
+    rows = 4224
+    config = SimpleNamespace(
+        block_count=1,
+        layer_types=(FULL_ATTENTION,),
+        head_counts=(48,),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    cache = allocate_laguna_kv_cache(
+        config,
+        context_length=capacity,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    rng = np.random.default_rng(0x1CD1)
+    keys = rng.normal(0.0, 0.12, size=(rows, 8, 128)).astype(np.float32)
+    values = rng.normal(0.0, 0.12, size=(rows, 8, 128)).astype(np.float32)
+    query = rng.normal(0.0, 0.12, size=(48, 128)).astype(np.float32)
+    gate = rng.normal(0.0, 0.4, size=48).astype(np.float32)
+    allocations = []
+    try:
+        key_device = malloc(keys.nbytes, runtime=runtime)
+        value_device = malloc(values.nbytes, runtime=runtime)
+        query_device = malloc(query.nbytes, runtime=runtime)
+        gate_device = malloc(gate.nbytes, runtime=runtime)
+        control_out = malloc(query.nbytes, runtime=runtime)
+        candidate_out = malloc(query.nbytes, runtime=runtime)
+        control_gated = malloc(query.size * 2, runtime=runtime)
+        candidate_gated = malloc(query.size * 2, runtime=runtime)
+        allocations.extend(
+            (
+                key_device,
+                value_device,
+                query_device,
+                gate_device,
+                control_out,
+                candidate_out,
+                control_gated,
+                candidate_gated,
+            )
+        )
+        for device, host in (
+            (key_device, keys),
+            (value_device, values),
+            (query_device, query),
+            (gate_device, gate),
+        ):
+            copy_host_to_device(
+                device,
+                host_array_ptr(host),
+                host.nbytes,
+                runtime=runtime,
+            )
+        cache.prepare_rows(tuple(range(rows)))
+        cache.append_rows(
+            0,
+            key_device.ptr,
+            value_device.ptr,
+            rows,
+            library=library,
+        )
+        cache.commit_rows()
+        cache.prepare_position(rows)
+        state = cache.layer(0)
+        assert cache._split_score_scratch is not None
+        assert cache._split_physical_scratch is not None
+        common = (
+            query_device.ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+        )
+        for scan_slots, candidate_fn in (
+            (
+                1024,
+                laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+            ),
+            (
+                4097,
+                laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+            ),
+        ):
+            tail = (
+                cache._split_score_scratch.ptr,
+                cache._split_physical_scratch.ptr,
+                state.spans,
+                scan_slots,
+                capacity,
+                48,
+                8,
+                128,
+                128**-0.5,
+            )
+            laguna_global_attention_decode_split_exact_gated_bf16_spans(
+                *common,
+                control_out.ptr,
+                gate_device.ptr,
+                control_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            candidate_fn(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            control = np.empty_like(query)
+            candidate = np.empty_like(query)
+            control_gate_bits = np.empty(query.shape, dtype=np.uint16)
+            candidate_gate_bits = np.empty_like(control_gate_bits)
+            for host, device in (
+                (control, control_out),
+                (candidate, candidate_out),
+                (control_gate_bits, control_gated),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        cache.free()
+
+
+def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -> None:
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = _FakeRuntime()
+    cache = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=8192,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    resolved: list[str] = []
+
+    def resolve_probe(layer: str, variant: str):
+        assert layer == "laguna_attention_decode"
+        resolved.append(variant)
+        return lambda *args, **kwargs: None
+
+    try:
+        cache._resolve = resolve_probe
+        cache.position = 1023
+        cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.position = 4096
+        cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.position = 5999
+        cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.position = 6000
+        cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache._dense_initial_metadata_valid = False
+        cache.position = 1023
+        cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+    finally:
+        cache.free()
+    assert runtime.allocations == {}
+    assert resolved == [
+        (
+            "global_context_fused_exact_gated_mixed40_local1024_exp32_"
+            "producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_"
+            "vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_spans"
+        ),
+        (
+            "global_context_fused_exact_gated_mixed40_local512_exp32_"
+            "producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_"
+            "vstage64_vec16_direct_assume_exp_fixedshape_spans"
+        ),
+        (
+            "global_context_fused_exact_gated_mixed40_local512_exp32_"
+            "producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_"
+            "vstage64_vec16_direct_assume_exp_fixedshape_spans"
+        ),
+        "global_context_split_exact_gated_spans",
+        (
+            "global_context_fused_exact_gated_mixed40_local512_exp32_"
+            "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_"
+            "direct_assume_exp_fixedshape_spans"
+        ),
+    ]
+
+
+def test_laguna_large_capacity_dense_prefix_wrappers_forward_real_capacity() -> None:
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+        laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
+    )
+
+    capacity = 8192
+    spans = KVLiveSpans.paged_dense(
+        block_table=_tensor(0x1000, (capacity // 256,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        token_positions=_tensor(0x3000, (capacity,), "int64"),
+        evict_mask=_tensor(0x4000, (capacity,), "bool"),
+        row_positions=_tensor(0x5000, (1,), "int64"),
+        capacity=capacity,
+        block_size=256,
+        storage_dtype="bf16",
+    )
+    calls: list[tuple[object, ...]] = []
+
+    class FakeFn:
+        argtypes = None
+        restype = None
+
+        def __call__(self, *args):
+            calls.append(args)
+            return 0
+
+    local1024 = FakeFn()
+    local512 = FakeFn()
+    library = SimpleNamespace(
+        hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans=local1024,
+        hipengine_laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans=local512,
+    )
+    common = (1, 2, 3, 4, 5, 6, 7, 8, spans)
+    laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+        *common,
+        1024,
+        capacity,
+        48,
+        8,
+        128,
+        128**-0.5,
+        library=library,
+        runtime=SimpleNamespace(),
+    )
+    laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans(
+        *common,
+        4097,
+        capacity,
+        48,
+        8,
+        128,
+        128**-0.5,
+        library=library,
+        runtime=SimpleNamespace(),
+    )
+    assert len(calls) == 2
+    assert int(calls[0][13].value) == capacity
+    assert int(calls[0][15].value) == capacity // 256
+    assert int(calls[0][16].value) == capacity
+    assert int(calls[1][13].value) == capacity
+    assert int(calls[1][17].value) == 4097
+
+
 def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback() -> None:
     from hipengine.runtime.laguna_kv import (
         allocate_laguna_kv_cache,

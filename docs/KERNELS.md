@@ -2473,6 +2473,19 @@ or launch count. Live513/576/639 byte-exact 21x100 leaves improve
 `LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER`; single-buffer dense-prefix
 remains the exact peer/non-dense fallback:
 [`retained global idle-wave V ping-pong`](../benchmarks/results/2026-07-30-gfx1151-laguna-global-idle-double-buffer-retained.json).
+The same exact fused body is now capacity-independent for dense, identity
+prefixes. Allocated KV capacity is forwarded through the `KVLiveSpans` ABI
+instead of being compiled as 4,096; the scan remains resource-bounded. gfx1151
+uses the double-buffered local1024 owner through 4,000 live slots, then the
+single-buffered dense-prefix local512 owner through 6,000 slots. Non-dense
+metadata remains limited to the local512 4,000-slot band, and every larger
+live span falls back to exact generic split attention. The bounds follow LDS
+usage rather than benchmark depths: two V64 stages plus score planes fit
+through 4,000, while one V64 stage plus score planes fits through 6,000.
+A cached gfx1151 trace at capacity 8,192 names both fixed-shape template
+instantiations at live 1,024 and 4,097 with **VGPR48/LDS512/scratch0**; both
+produce bit-identical FP32 context and BF16 gated output against the generic
+exact route.
 The exact two-launch split32 successor is removed as well. Sixteen pair-owner
 local256 blocks plus sixteen singleton-owner local128 blocks preserve four
 K/V owners and byte-exact output, but regress live513/576/639

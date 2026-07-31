@@ -1390,7 +1390,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             else [
                 "This is a fixed-shape eager c=1 decode snapshot, not a decode speedup claim.",
                 "Decode throughput covers 127 synchronized forward_token calls after the first prefill-produced token.",
-                "Capacity 4096 may select the qualified fixed-shape global-attention specialization; larger admitted capacities use exact generic split attention.",
+                "Dense-prefix global decode selects the capacity-independent "
+                "exact fused specialization through the resource-qualified "
+                "live-context bands (local1024 through 4000 slots, local512 "
+                "through 6000); larger live contexts use exact generic split "
+                "attention.",
             ]
         ),
     }
