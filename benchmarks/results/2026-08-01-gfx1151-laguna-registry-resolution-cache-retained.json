@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "date": "2026-08-01",
+  "status": "retained",
+  "decision": {
+    "retain": true,
+    "default_enabled": true,
+    "scope": "process-wide four-axis kernel registry resolution",
+    "production_headline_advanced": false,
+    "reason": "both seven-pair same-resident gates improved while every generated trajectory remained exact"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79066169172
+  },
+  "platform": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "implementation": {
+    "change": "memoize successful resolve(backend, layer, quant, variant) results",
+    "invalidation": "register, unregister, and test-only clear invalidate the memo",
+    "gpu_kernels_changed": false,
+    "launch_topology_changed": false,
+    "arithmetic_changed": false
+  },
+  "attribution": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m cProfile -o /tmp/laguna-production-feed.pstats scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-production-feed-profile.json",
+    "resolve_calls_over_127_decode_steps": 38410,
+    "resolve_calls_per_token": 302.4409448818898,
+    "pstats_sha256": "0083208e375623b53994d078557c30b3d95ef955fde607e4f2c7d649cec5f591"
+  },
+  "performance": {
+    "workload": "p512/d128 eager c=1, 127 synchronized decode forwards, seven alternating same-resident pairs",
+    "primary_clean_repeat": {
+      "control_median_tok_s": 23.203193796198597,
+      "candidate_median_tok_s": 23.22417025394606,
+      "throughput_delta_percent": 0.09040332090359815,
+      "control_ms_per_token": 43.09751531549209,
+      "candidate_ms_per_token": 43.05858892117312,
+      "saved_ms_per_token": 0.03892639431897111,
+      "paired_wins": 5,
+      "paired_samples": 7,
+      "raw_path": "/tmp/laguna-registry-cache-ab7-clean-repeat.json",
+      "raw_sha256": "299bc11895330d16a748347d4449e76891140373f3e6f7f4876d5bb1d6bd90c4"
+    },
+    "corroborating_repeat": {
+      "control_median_tok_s": 23.21851071848139,
+      "candidate_median_tok_s": 23.22676792494575,
+      "throughput_delta_percent": 0.03556303229124147,
+      "control_ms_per_token": 43.06908449576068,
+      "candidate_ms_per_token": 43.053773268470614,
+      "saved_ms_per_token": 0.015311227290062452,
+      "paired_wins": 6,
+      "paired_samples": 7,
+      "raw_path": "/tmp/laguna-registry-cache-ab7.json",
+      "raw_sha256": "675b6cec221249ae5cff89ee5cff5447058e21d5cba809943eb04fc135964d76"
+    },
+    "production_headline_tok_s": 23.231783028254925,
+    "production_headline_note": "unchanged pending aggregation with the next material decode optimization"
+  },
+  "correctness": {
+    "generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "all_28_trajectories_match": true,
+    "next_token_id": 2930,
+    "final_token_id": 74825,
+    "final_positions_exact": true,
+    "allocation_lifecycle_exact": true,
+    "registry_replacement_invalidation_test": true
+  },
+  "validation": {
+    "tests": [
+      "tests/test_kernel_registry.py",
+      "tests/test_gguf_linear_dispatch_cache.py",
+      "tests/test_laguna_long_context_profile.py"
+    ],
+    "result": "48 passed"
+  }
+}
