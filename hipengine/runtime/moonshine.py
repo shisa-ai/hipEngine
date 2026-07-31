@@ -26,11 +26,20 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 
 MOONSHINE_CROSS_KV_THREADS = 32
 MOONSHINE_CROSS_ATTENTION_THREADS = 256
-MOONSHINE_SELF_ATTENTION_THREADS = 256
 MOONSHINE_TRIPLE_QKV_THREADS = 32
 MOONSHINE_SINGLE_PROJECTION_THREADS = 64
 MOONSHINE_MLP_FC1_THREADS = 32
 MOONSHINE_MLP_FC2_THREADS = 64
+
+
+def _moonshine_self_attention_threads(position: int) -> int:
+    if position <= 0:
+        raise ValueError("parallel self-attention position must be positive")
+    if position == 1:
+        return 64
+    if position <= 3:
+        return 128
+    return 256
 
 
 class NoAllocationError(RuntimeError):
@@ -591,7 +600,9 @@ class MoonshineResidentRuntime:
                 else moonshine_self_attention_parallel_fp16
             )
             self_attention_options = (
-                {} if self.decode_position == 0 else {"threads": MOONSHINE_SELF_ATTENTION_THREADS}
+                {}
+                if self.decode_position == 0
+                else {"threads": _moonshine_self_attention_threads(self.decode_position)}
             )
             self_attention(
                 attention.ptr,
