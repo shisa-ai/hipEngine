@@ -177,6 +177,11 @@ _H6D_IQ3_ROW_INTERLEAVED_VOPD_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out"
 )
+_H6F_IQ3_PAIRED_OUTPUT_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_paired_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
     "gguf_iq3_xxs": _H6D_IQ3_ROW_INTERLEAVED_VOPD_VARIANT,
     "gguf_iq4_xs": (
@@ -187,6 +192,7 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
     _H5Q_IQ3_ACTIVE_EXPERT_VARIANT: "grouped_raw_iq_active_experts",
     _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT: "grouped_raw_iq_active_experts",
     _H6D_IQ3_ROW_INTERLEAVED_VOPD_VARIANT: "grouped_raw_iq_active_experts",
+    _H6F_IQ3_PAIRED_OUTPUT_VARIANT: "grouped_raw_iq_active_experts",
 }
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short

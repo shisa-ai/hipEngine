@@ -1144,19 +1144,31 @@ promotion adds no body, allocation, workspace, sidecar, or selector
 The clean H6E source refresh reaches **334.512 tok/s**, **+97.333%** over
 campaign start and **2.08166x** behind llama.cpp HIP; IQ down remains the
 largest **320.074-ms** family gap. **WPF-H6F exact IQ3 paired-output reduction
-amortization** is now an admitted standalone gfx1100 leaf on H6D's
-**465.480 ms / 45 calls**. It keeps P256/P64/local128, rowbatch8, all per-output
-segment decode/FMA/wave0..3/store operations, loads, addresses, and active
-traversal while carrying two strided outputs through one reduction epoch.
-Compiled output stride is **0x200** versus H6D **0x100** with two barrier
-instructions in each loop body, physically proving **24 -> 12 dynamic barriers
-per rowbatch (-50%)**. Candidate metadata/runtime is private0/spill0/scratch0 at
-**VGPR146/152, LDS256/512**, and local/grid remains **128 / 32768x64**. Frozen
-rows1/7/8/9/M512, P64/P65, pair boundaries, and CPU bytes pass **9/9**. All
-**45/45** actual-layer outputs are exact and win both clocks: event/wall moves
-**445.316/436.801 -> 352.255/360.918 ms (-20.898%/-17.372%,
-1.264x/1.210x)**; **98/98** retained guards pass. Keep H6D source production
-until bounded runtime qualification
+amortization** is now an admitted standalone gfx1100 leaf and qualified bounded
+default-off owner on H6D's **465.480 ms / 45 calls**. It keeps
+P256/P64/local128, rowbatch8, all per-output segment decode/FMA/wave0..3/store
+operations, loads, addresses, and active traversal while carrying two strided
+outputs through one reduction epoch. Compiled output stride is **0x200** versus
+H6D **0x100** with two barrier instructions in each loop body, physically
+proving **24 -> 12 dynamic barriers per rowbatch (-50%)**. Candidate metadata/
+runtime is private0/spill0/scratch0 at **VGPR146/152, LDS256/512**, and
+local/grid remains **128 / 32768x64**. Frozen rows1/7/8/9/M512, P64/P65, pair
+boundaries, and CPU bytes pass **9/9**. All **45/45** actual-layer outputs are
+exact and win both clocks: event/wall moves **445.316/436.801 ->
+352.255/360.918 ms (-20.898%/-17.372%, 1.264x/1.210x)**.
+
+The owner adds only the H6F variant capability to the existing raw active-
+expert ABI; H6D remains the selected source. Complete natural-M512 is KL0 and
+byte-exact across all **48/48** hidden boundaries, logits, K/V/`KVLiveSpans`,
+repeat, and lifecycle at unchanged **161,120,256-byte** workspace /
+**600,141,856-byte** scratch. Four cached requests retain **2,192 dispatches**
+and substitute exact **45 H6D -> 45 H6F**, cutting IQ3/request-sum/span
+**464.484/1,540.306/1,567.420 -> 366.610/1,458.072/1,479.670 ms
+(-21.072%/-5.339%/-5.598%)**. Default-off 512/1K/4K improves
+**319.794/266.955/176.514 -> 336.271/278.788/181.545 tok/s
+(+5.152%/+4.432%/+2.850%)**, 3/3 exact wins each; **155/155** retained guards
+pass. Keep H6D source production until the separate source-default contract and
+fixed/selector-unset publication gates pass
 ([H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
 [post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
 
