@@ -196145,3 +196145,24 @@ Vulkan local sizes verbatim will close the measured gap.
   43.445636 ms/token**. Raw JSON SHA-256 is
   `81f04e42...e0182734`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json`.
+
+## 2026-07-31 18:26 JST — Reject residual-D4x3 selected decode
+
+- Screened the already-registered prefill residual-D4x3 primitive at c=1
+  before writing a decode sibling. Ten one-row experts pad to **320** MMQ
+  rows: exact **0.140512 ms**, one-plane MMQ32 **0.212597 ms (+51.302%)**,
+  and D4x3 MMQ32 **0.407580 ms (+190.069%)**.
+- Built a RED/GREEN decode-vector sibling that reuses each Q4T16 weight load
+  across a primary Q8_1 plane and two recursively quantized residual planes.
+  The first GREEN repair fixed an actual two-wave/four-slot reduction bug.
+  The corrected focused fixture is finite and strictly closer to exact than
+  one-plane Q8_1.
+- Cached actual layer-1 K3072/N1024/top-10 21x100 timing nevertheless moves
+  the inclusive fused-SiLU leaf **0.115100 -> 0.121026 ms (+5.148%)**.
+  It leaves **51** BF16 mismatches at max absolute error **0.0078125**, but
+  fails performance before recurrent quality.
+- Remove the kernel, ABI, wrapper, registry entry, temporary test, and harness
+  route. Production remains **23.017271 tok/s / 43.445636 ms/token**. Raw
+  SHA-256 values are `6414471d...188bc6d` and
+  `2ce7eda5...28138b`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-d4x3-decode-rejected.json`.

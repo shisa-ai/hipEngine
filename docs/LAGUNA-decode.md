@@ -8432,6 +8432,30 @@ The remaining attention sequence is:
      parallelism and optimize the consumer or complete schedule instead:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json).
 
+175. Revisit selected gate/up with three residual Q8_1 planes rather than the
+     rejected one-plane approximation.
+     **Rejected before recurrent quality and removed.**
+
+     Direct reuse of the retained prefill MMQ32 body is structurally wrong at
+     c=1: ten one-row experts pad to **320** rows, moving the actual layer-1
+     leaf from **0.140512 ms** exact to **0.212597 ms (+51.302%)** one-plane
+     and **0.407580 ms (+190.069%)** D4x3.
+
+     A new decode-vector sibling removes that padding, loads each selected
+     Q4T16 weight once, and applies the primary plus two recursively quantized
+     activation-residual planes in registers. RED/GREEN proves D4x3 is finite
+     and strictly closer to the exact fused-SiLU output than one-plane Q8_1.
+     On actual layer-1 K3072/N1024 weights it leaves only **51** BF16
+     mismatches at max absolute error **0.0078125**.
+
+     The performance gate still fails: inclusive 21x100 timing moves
+     **0.115100 -> 0.121026 ms (+5.148%)**. The extra two integer-dot planes
+     and pack launch erase the one-plane consumer's arithmetic advantage.
+     Stop before recurrent quality, runtime integration, or an interleaved
+     specialization; remove the kernel, ABI, wrapper, registry entry, test,
+     and harness route:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-d4x3-decode-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
