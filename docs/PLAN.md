@@ -1929,9 +1929,25 @@ each length, with unchanged **161,120,256-byte** workspace and
 333.329 tok/s (+0.266%, 5/5 wins)**, reaches **+96.635%** over campaign start,
 and is **2.08905x** behind exact llama.cpp HIP **696.342**. Promote H6E as Q6
 source production; retain H5W/H5I exact rollback and add no kernel, allocation,
-workspace, sidecar, or public selector. Next reprofile exact promoted production
-and rerank family residuals against the matched comparator
-([H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
+workspace, sidecar, or public selector. The clean promoted-source refresh reaches
+**334.512 tok/s** from five exact token-2930/lifecycle-clean samples, **+97.333%**
+over campaign start and **2.08166x** behind llama.cpp HIP. Its representative
+request is **1,519.289 ms / 2,192 dispatches** in a **1,541.013-ms** median
+span; IQ-down/Q5/attention/gate-up/Q6 gaps rank **320.074/186.357/146.489/
+71.686/70.012 ms** and explain **99.197%** of the **801.048-ms** kernel gap.
+
+Select **WPF-H6F exact IQ3 paired-output reduction amortization** as a target,
+not a speed claim. H6D owns **465.480 ms / 45 calls**. Every P256 block visits
+12 strided output columns with one reduction plus one reuse barrier each. Carry
+two independent output accumulator sets through one exact four-wave reduction
+epoch while preserving all useful IQ3 decode/FMA/wave0..3/store operations,
+loads, P256/P64 grid, and active traversal; modeled barriers fall **24 -> 12 per
+rowbatch (-50%)**. The modeled cost is accumulators **8 -> 16** and LDS **512
+-> 1,024 bytes**, so admission requires complete H6D/CPU bytes, physical half-
+barrier evidence, scratch0/no spills, bounded VGPR/LDS, and all **45/45** actual
+layers positive in both event and synchronized wall before runtime ownership
+([post-H6E residual / H6F target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json) ·
+[H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
 [H6E candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
 [post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
