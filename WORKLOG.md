@@ -195595,3 +195595,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `69689f3b1bfb93d819c5f795ce084b25029a7c3be86c264a2ca00ac09eed44d9`.
   Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-production.json`.
+
+## 2026-07-31 13:04 JST — Reject selected gate/up interleaved tile12
+
+- Screened the missing ownership midpoint between retained interleaved tile8
+  and rejected tile16 on actual layer-1 selected gate/up weights
+  (E256/K3072/N1024/top10). The first exact cross-tile body regresses
+  **0.138210 -> 0.203722 ms (+47.401%)**.
+- Reworked it as a **12/12/8** 32-column supertile, hoisted both activation
+  halves, and removed repeated division/modulo and cross-tile addressing. The
+  exact 21x100 leaf still regresses its ordinary-tile8 control
+  **0.134089 -> 0.139576 ms (+4.092%)** with zero BF16 mismatches.
+- A fresh retained interleaved tile8 leaf measures **0.116112 ms**, so the
+  optimized candidate is **20.208% slower than production**. Cache-only
+  tracing reports local128/VGPR104/SGPR128/LDS384/scratch0 and 96 workgroups
+  per selected row; the retained body uses VGPR80. The middle geometry crosses
+  the same resource/address-quality cliff it was intended to avoid.
+- Removed all candidate kernel/wrapper/test/harness code and skipped resident
+  integration. Raw SHA-256 values are `bae9175d...df21`,
+  `f4c3f6a2...f795f`, and `412b646f...6e88a`; trace DB SHA-256 is
+  `452f3d83...8a17`. Production remains
+  **22.873989 tok/s / 43.717779 ms/token**.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-interleaved-tile12-rejected.json`.

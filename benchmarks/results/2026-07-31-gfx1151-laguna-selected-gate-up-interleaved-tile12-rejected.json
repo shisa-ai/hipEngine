@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_selected_gate_up_exact_leaf_rejection",
+  "status": "rejected_out_of_tree",
+  "timestamp": "2026-07-31T13:04:00+09:00",
+  "source_revision": "37a0d2ff879782120e0952b9581fb1caa3026539",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "shape": {
+    "layer": 1,
+    "experts": 256,
+    "selected_experts": 10,
+    "k": 3072,
+    "n": 1024
+  },
+  "protocol": {
+    "samples": 21,
+    "warmups": 5,
+    "burst": 100,
+    "paired": true,
+    "actual_resident_weights": true
+  },
+  "premise": "Screen a middle 12-column ownership geometry between the retained 8-column interleaved kernel and the rejected 16-column kernel, reducing workgroups without crossing the latter's VGPR cliff.",
+  "rows": [
+    {
+      "candidate": "naive_cross_tile_12_column",
+      "control_ms": 0.138210,
+      "candidate_ms": 0.203722,
+      "latency_change_percent": 47.401,
+      "raw_sha256": "bae9175d9ead3ec123c0c6d4e06fde0c673ce5c3d7e477457f8199767c67df21"
+    },
+    {
+      "candidate": "12_12_8_supertile",
+      "control_ms": 0.1340885066986084,
+      "candidate_ms": 0.13957588195800782,
+      "latency_change_percent": 4.092353,
+      "raw_sha256": "f4c3f6a23b227b3ae1039a7aab2249a516791bdc4461a12bfced8f2b84ef795f"
+    },
+    {
+      "candidate": "retained_interleaved_tile8_recheck",
+      "ordinary_tile8_control_ms": 0.12245397567749024,
+      "retained_interleaved_tile8_ms": 0.11611215591430664,
+      "latency_change_percent": -5.17894,
+      "raw_sha256": "412b646fe96eacc3db1859f629b2b3a5f6c091ab2611e2e85b774f682306e88a"
+    }
+  ],
+  "comparison_to_production": {
+    "candidate_ms": 0.13957588195800782,
+    "retained_interleaved_tile8_ms": 0.11611215591430664,
+    "candidate_latency_regression_percent": 20.207812
+  },
+  "correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_laguna_t16_natural_selected_decode_matches_production_bits",
+    "passed": true,
+    "bf16_byte_exact": true,
+    "bf16_mismatches": 0
+  },
+  "codegen": {
+    "candidate": {
+      "local_size": 128,
+      "workgroups_per_selected_row": 96,
+      "vgpr": 104,
+      "sgpr": 128,
+      "lds_bytes": 384,
+      "scratch_bytes": 0
+    },
+    "retained_interleaved_tile8_vgpr": 80,
+    "trace_db_sha256": "452f3d838e27808e616443bf21d1c3a2e62c35ab10b8a622a55c2e3ef9698a17"
+  },
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "environment_blocked",
+    "reason": "The manifest contains an unavailable external repository at /home/lhl/amd-gpu-tuning/reference/atlas; the local Laguna kernel and llama.cpp Vulkan c0bc8591e sources were inspected directly."
+  },
+  "decision": {
+    "retained": false,
+    "runtime_gate_skipped": true,
+    "reason": "The optimized middle geometry is exact but raises VGPR allocation from 80 to 104 and is 20.21% slower than the actual retained interleaved tile-8 leaf. All candidate code, tests, and harness routes were removed."
+  },
+  "production": {
+    "decode_tokens_per_second": 22.873989323,
+    "wall_ms_per_token": 43.717778559,
+    "changed": false
+  }
+}
