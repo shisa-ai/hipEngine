@@ -1127,8 +1127,8 @@ weight loads plus one b64 activation record and the required rowbatch5 u16 tail;
 trace resources exactly match H5W at **VGPR136/168, LDS1024/1536, scratch0** and
 matching grids. No compiler runs under profiling. Complete natural-M512 is
 KL0/byte-identical across all 48 boundaries, logits, K/V/`KVLiveSpans`,
-repeat, and teardown at unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch. Four cached requests preserve all
-other families while H5W controls record 2,050 dispatches and H6E candidates
+repeat, and teardown at unchanged **161,120,256-byte** workspace /
+**600,141,856-byte** scratch. Four cached requests preserve all other families while H5W controls record 2,050 dispatches and H6E candidates
 record 2,192 from the exact 142 added packs. Q6/request-sum/span moves **92.867/
 1,545.837/1,572.498 -> 84.000/1,541.912/1,563.696 ms (-9.549%/-0.254%/
 -0.560%)**. Selector-unset H5W rollback -> H6E source 512/1K/4K improves
@@ -1140,6 +1140,21 @@ promotion adds no body, allocation, workspace, sidecar, or selector
 ([H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
 [H6E candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
 [post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
+
+The clean H6E source refresh reaches **334.512 tok/s**, **+97.333%** over
+campaign start and **2.08166x** behind llama.cpp HIP. Its representative request
+is **1,519.289 ms / 2,192 dispatches**; IQ-down/Q5/attention/gate-up/Q6 gaps
+rank **320.074/186.357/146.489/71.686/70.012 ms**. Select target-only
+**WPF-H6F exact IQ3 paired-output reduction amortization** on H6D's
+**465.480 ms / 45 calls**. Keep P256/P64/local128, rowbatch8, all segment
+decode/FMA/wave0..3/store operations, loads, addresses, and active traversal;
+carry two independent outputs through one reduction epoch so the 12 output-loop
+iterations become six and modeled barriers fall **24 -> 12 per rowbatch**. RED
+must freeze P64/P65, odd/even pair tails, rows1/7/8/9/M512 and H6D/CPU bytes.
+Admission requires physical half-barrier evidence, scratch0/no spills, bounded
+VGPR, LDS <=1024, unchanged grids, and all 45 actual layers positive on event
+and wall before runtime ownership
+([post-H6E residual / H6F target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
