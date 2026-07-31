@@ -195375,3 +195375,22 @@ Vulkan local sizes verbatim will close the measured gap.
   capability pending a tracked-clean three-run publication.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-retained.json`.
+
+## 2026-07-31 10:49 JST — Publish argmax-owned decode controls
+
+- Tracked-clean selector-unset production at `7d85771a8` measures
+  **22.845642/22.867176/22.865539 tok/s**, median
+  **22.865539 tok/s / 43.733936 ms/token**.
+- This advances the preceding **22.856155 tok/s** checkpoint **0.04105%**,
+  saves **0.017954 ms/token**, and reaches **+99.408%** from the
+  **11.466687 tok/s** sprint start. The same-GGUF Vulkan gap contracts to
+  **0.904414 ms/token** or **2.11166%** throughput.
+- Every run preserves next/final tokens **2930/74107**, final position
+  **638**, generated-ID SHA `94f803f7...bda32`, repeat determinism,
+  **79,066,169,172-byte** residency, and complete allocation recovery.
+  Load is excluded and cached-build enforcement is active.
+- Combined with the retention trace, steady transitions now contain
+  **484 dispatches = 482 unchanged model kernels + two D2H result copies**;
+  all three prior H2D token/position control publications are absent.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-production.json`.

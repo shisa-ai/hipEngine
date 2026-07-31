@@ -574,6 +574,12 @@ proves **482 unchanged model kernels + two D2H copies** per steady transition
 instead of **482 + five**, with the candidate stage 2 at
 local256/VGPR16/SGPR128/LDS0/scratch0 and **2.043 us median**:
 [`argmax control retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-retained.json).
+Tracked-clean selector-unset production at `7d85771a8` measures
+**22.865539 tok/s / 43.733936 ms/token**, up **0.04105%** and
+**0.017954 ms/token** from the preceding clean checkpoint with exact state,
+unchanged residency, and a remaining **0.904414-ms/token** same-GGUF Vulkan
+gap:
+[`argmax control production`](../benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-production.json).
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
