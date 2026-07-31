@@ -2,6 +2,7 @@
 
 #include <hip/hip_runtime.h>
 #include <cstdint>
+#include <math.h>
 
 namespace {
 
@@ -231,6 +232,74 @@ __global__ void moonshine_f16_projection_triple_kernel(
   }
 }
 
+__global__ __launch_bounds__(32)
+void moonshine_f16_projection_bias_gated_silu_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    const half_t* __restrict__ bias,
+    half_t* __restrict__ output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t intermediate_size) {
+  const int64_t column = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (row >= rows || column >= intermediate_size) return;
+  float value_accumulator = 0.0f;
+  float gate_accumulator = 0.0f;
+  const int64_t gate_column = column + intermediate_size;
+  for (int64_t feature = threadIdx.x; feature < in_features; feature += 32) {
+    const float input_value =
+        static_cast<float>(input[row * in_features + feature]);
+    value_accumulator += input_value *
+        static_cast<float>(weight[column * in_features + feature]);
+    gate_accumulator += input_value *
+        static_cast<float>(weight[gate_column * in_features + feature]);
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value_accumulator += __shfl_down(value_accumulator, offset);
+    gate_accumulator += __shfl_down(gate_accumulator, offset);
+  }
+  if (threadIdx.x == 0) {
+    const half_t value_boundary = static_cast<half_t>(
+        value_accumulator + static_cast<float>(bias[column]));
+    const half_t gate_boundary = static_cast<half_t>(
+        gate_accumulator + static_cast<float>(bias[gate_column]));
+    const float value = static_cast<float>(value_boundary);
+    const float gate = static_cast<float>(gate_boundary);
+    const float activated_gate = gate / (1.0f + expf(-gate));
+    output[row * intermediate_size + column] =
+        static_cast<half_t>(value * activated_gate);
+  }
+}
+
+__global__ void moonshine_f16_projection_bias_residual_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    const half_t* __restrict__ bias,
+    const half_t* __restrict__ residual,
+    half_t* __restrict__ output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t column = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (row >= rows || column >= out_features) return;
+  float accumulator = 0.0f;
+  for (int64_t feature = threadIdx.x; feature < in_features;
+       feature += blockDim.x) {
+    accumulator += static_cast<float>(input[row * in_features + feature]) *
+        static_cast<float>(weight[column * in_features + feature]);
+  }
+  const float total = moonshine_block_sum(accumulator) +
+      static_cast<float>(bias[column]);
+  if (threadIdx.x == 0) {
+    const half_t projection_boundary = static_cast<half_t>(total);
+    output[row * out_features + column] = static_cast<half_t>(
+        static_cast<float>(residual[row * out_features + column]) +
+        static_cast<float>(projection_boundary));
+  }
+}
+
 bool valid_shape(int64_t rows, int64_t in_features, int64_t threads) {
   return rows > 0 && in_features > 0 && threads > 0 && threads <= 256 &&
       (threads % 32) == 0;
@@ -307,6 +376,45 @@ extern "C" int hipengine_moonshine_f16_projection_bias(
   moonshine_f16_projection_bias_kernel<<<
       dim3(out_features, rows), dim3(threads), 0, stream>>>(
       input, weight, bias, output, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_moonshine_f16_projection_bias_gated_silu(
+    const half_t* input,
+    const half_t* weight,
+    const half_t* bias,
+    half_t* output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t intermediate_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || intermediate_size <= 0 || threads != 32) {
+    return hipErrorInvalidValue;
+  }
+  moonshine_f16_projection_bias_gated_silu_kernel<<<
+      dim3(intermediate_size, rows), dim3(threads), 0, stream>>>(
+      input, weight, bias, output, rows, in_features, intermediate_size);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_moonshine_f16_projection_bias_residual(
+    const half_t* input,
+    const half_t* weight,
+    const half_t* bias,
+    const half_t* residual,
+    half_t* output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_shape(rows, in_features, threads) || out_features <= 0) {
+    return hipErrorInvalidValue;
+  }
+  moonshine_f16_projection_bias_residual_kernel<<<
+      dim3(out_features, rows), dim3(threads), 0, stream>>>(
+      input, weight, bias, residual, output, rows, in_features, out_features);
   return hipGetLastError();
 }
 

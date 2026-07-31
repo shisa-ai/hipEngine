@@ -508,21 +508,19 @@ class MoonshineResidentRuntime:
             moonshine_argmax_fp16,
             moonshine_embedding_lookup_fp16,
             moonshine_partial_rope_cache_append_fp16,
-            moonshine_residual_fp16,
-        )
-        from hipengine.kernels.hip_gfx1100.fused.moonshine_mlp import (
-            moonshine_gated_silu_fp16,
         )
         from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
             dense_gemv_out_fp16,
         )
         from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
             moonshine_f16_lm_head_projection_wave8,
-            moonshine_f16_projection_bias,
+            moonshine_f16_projection_bias_gated_silu,
+            moonshine_f16_projection_bias_residual,
             moonshine_f16_projection_triple,
         )
         from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
             moonshine_layernorm_fp16,
+            moonshine_residual_layernorm_fp16,
         )
 
         spec = self.spec
@@ -628,19 +626,11 @@ class MoonshineResidentRuntime:
                 library=libraries.dense_projection,
                 **common,
             )
-            moonshine_residual_fp16(
+            moonshine_residual_layernorm_fp16(
                 hidden.ptr,
                 projection.ptr,
-                hidden.ptr,
-                spec.hidden_size,
-                library=libraries.glue,
-                **common,
-            )
-            if boundary_callback is not None:
-                boundary_callback(f"layer_{layer}.after_self_attention", hidden)
-            moonshine_layernorm_fp16(
-                hidden.ptr,
                 self.weights[f"{prefix}.post_attention_layernorm.weight"].ptr,
+                hidden.ptr,
                 normalized.ptr,
                 1,
                 spec.hidden_size,
@@ -648,6 +638,8 @@ class MoonshineResidentRuntime:
                 library=libraries.layernorm,
                 **common,
             )
+            if boundary_callback is not None:
+                boundary_callback(f"layer_{layer}.after_self_attention", hidden)
             dense_gemv_out_fp16(
                 normalized.ptr,
                 self.weights[f"{prefix}.encoder_attn.q_proj.weight"].ptr,
@@ -684,19 +676,11 @@ class MoonshineResidentRuntime:
                 library=libraries.dense_projection,
                 **common,
             )
-            moonshine_residual_fp16(
+            moonshine_residual_layernorm_fp16(
                 hidden.ptr,
                 projection.ptr,
-                hidden.ptr,
-                spec.hidden_size,
-                library=libraries.glue,
-                **common,
-            )
-            if boundary_callback is not None:
-                boundary_callback(f"layer_{layer}.after_cross_attention", hidden)
-            moonshine_layernorm_fp16(
-                hidden.ptr,
                 self.weights[f"{prefix}.final_layernorm.weight"].ptr,
+                hidden.ptr,
                 normalized.ptr,
                 1,
                 spec.hidden_size,
@@ -704,44 +688,31 @@ class MoonshineResidentRuntime:
                 library=libraries.layernorm,
                 **common,
             )
-            moonshine_f16_projection_bias(
+            if boundary_callback is not None:
+                boundary_callback(f"layer_{layer}.after_cross_attention", hidden)
+            moonshine_f16_projection_bias_gated_silu(
                 normalized.ptr,
                 self.weights[f"{prefix}.mlp.fc1.weight"].ptr,
                 self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
-                self.tensor("mlp_fc1").ptr,
+                self.tensor("mlp_intermediate").ptr,
                 1,
                 spec.hidden_size,
-                2 * spec.intermediate_size,
+                spec.intermediate_size,
                 threads=MOONSHINE_MLP_FC1_THREADS,
                 library=libraries.projection,
                 **common,
             )
-            moonshine_gated_silu_fp16(
-                self.tensor("mlp_fc1").ptr,
-                self.tensor("mlp_intermediate").ptr,
-                1,
-                spec.intermediate_size,
-                library=libraries.mlp,
-                **common,
-            )
-            moonshine_f16_projection_bias(
+            moonshine_f16_projection_bias_residual(
                 self.tensor("mlp_intermediate").ptr,
                 self.weights[f"{prefix}.mlp.fc2.weight"].ptr,
                 self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
-                projection.ptr,
+                hidden.ptr,
+                hidden.ptr,
                 1,
                 spec.intermediate_size,
                 spec.hidden_size,
                 threads=MOONSHINE_MLP_FC2_THREADS,
                 library=libraries.projection,
-                **common,
-            )
-            moonshine_residual_fp16(
-                hidden.ptr,
-                projection.ptr,
-                hidden.ptr,
-                spec.hidden_size,
-                library=libraries.glue,
                 **common,
             )
             if boundary_callback is not None:

@@ -43,6 +43,14 @@ _BIAS_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_BIAS_RESIDUAL_ARGS = (
+    *(ctypes.c_void_p for _ in range(5)),
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _PAIR_ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -287,6 +295,84 @@ def moonshine_f16_projection_bias(
     _check_launch(runtime, error)
 
 
+def moonshine_f16_projection_bias_gated_silu(
+    input_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    output_ptr: int,
+    rows: int,
+    in_features: int,
+    intermediate_size: int,
+    *,
+    threads: int = 32,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate(rows, in_features, (intermediate_size,), threads)
+    if threads != 32:
+        raise ValueError("threads must be 32 for paired gated-SiLU projection")
+    library = library or build_moonshine_projection(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_moonshine_f16_projection_bias_gated_silu",
+        _BIAS_ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        weight_ptr,
+        bias_ptr,
+        output_ptr,
+        rows,
+        in_features,
+        intermediate_size,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, error)
+
+
+def moonshine_f16_projection_bias_residual(
+    input_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    residual_ptr: int,
+    output_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate(rows, in_features, (out_features,), threads)
+    library = library or build_moonshine_projection(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_moonshine_f16_projection_bias_residual",
+        _BIAS_RESIDUAL_ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        weight_ptr,
+        bias_ptr,
+        residual_ptr,
+        output_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, error)
+
+
 def moonshine_f16_projection_pair(
     input_ptr: int,
     weight_a_ptr: int,
@@ -475,6 +561,24 @@ def register_moonshine_projection_kernels(*, replace: bool = True) -> None:
         (
             KernelKey(
                 "hip_gfx1100",
+                "moonshine_mlp_fc1",
+                "fp16",
+                "bias_gated_silu_fp32_accum",
+            ),
+            moonshine_f16_projection_bias_gated_silu,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
+                "moonshine_mlp_fc2_residual",
+                "fp16",
+                "bias_rounded_residual_fp32_accum",
+            ),
+            moonshine_f16_projection_bias_residual,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
                 "moonshine_projection_pair",
                 "fp16",
                 "pair_fp32_accum",
@@ -511,6 +615,8 @@ __all__ = [
     "moonshine_f16_lm_head_projection",
     "moonshine_f16_projection",
     "moonshine_f16_projection_bias",
+    "moonshine_f16_projection_bias_gated_silu",
+    "moonshine_f16_projection_bias_residual",
     "moonshine_f16_projection_pair",
     "moonshine_f16_projection_pair_head_major",
     "moonshine_f16_projection_triple",

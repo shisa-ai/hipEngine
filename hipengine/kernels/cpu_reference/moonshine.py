@@ -467,6 +467,27 @@ def moonshine_gated_silu(fc1_output: ArrayLike) -> np.ndarray:
     return output
 
 
+def moonshine_mlp_fc1_gated_silu(
+    x: ArrayLike,
+    fc1_weight: ArrayLike,
+    fc1_bias: ArrayLike,
+) -> np.ndarray:
+    """Bias-aware paired fc1 projection through the exact FP16 SiLU boundary."""
+
+    return moonshine_gated_silu(_linear_fp16(x, fc1_weight, fc1_bias))
+
+
+def moonshine_projection_bias_residual(
+    x: ArrayLike,
+    weight: ArrayLike,
+    bias: ArrayLike,
+    residual: ArrayLike,
+) -> np.ndarray:
+    """Bias-aware projection followed by the rounded FP16 residual boundary."""
+
+    return moonshine_residual(residual, _linear_fp16(x, weight, bias))
+
+
 def moonshine_decoder_mlp(
     x: ArrayLike,
     fc1_weight: ArrayLike,
@@ -495,6 +516,18 @@ def moonshine_residual(hidden: ArrayLike, residual: ArrayLike) -> np.ndarray:
     output = np.add(hidden_arr, residual_arr, dtype=np.float16)
     _finite("residual output", output)
     return output
+
+
+def moonshine_residual_layernorm(
+    hidden: ArrayLike,
+    residual: ArrayLike,
+    weight: ArrayLike,
+    eps: float = 1.0e-5,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the rounded residual boundary and its following LayerNorm."""
+
+    output = moonshine_residual(hidden, residual)
+    return output, moonshine_layernorm(output, weight, eps)
 
 
 def moonshine_tied_lm_logits(
@@ -529,6 +562,10 @@ def register_moonshine_cpu_reference_kernels(*, replace: bool = True) -> None:
 
     kernels = {
         ("moonshine_layernorm", "fp32_stats"): moonshine_layernorm,
+        (
+            "moonshine_residual+moonshine_layernorm",
+            "rounded_fp32_stats",
+        ): moonshine_residual_layernorm,
         ("moonshine_partial_rope", "interleaved"): moonshine_apply_partial_rope,
         ("moonshine_self_cache", "fixed"): moonshine_fixed_cache_write,
         ("moonshine_attention", "logical_head_dim"): moonshine_attention,
@@ -560,6 +597,14 @@ def register_moonshine_cpu_reference_kernels(*, replace: bool = True) -> None:
         ("moonshine_qkv_proj", "triple"): moonshine_triple_projection,
         ("moonshine_gated_silu", "value_gate_split"): moonshine_gated_silu,
         ("moonshine_decoder_mlp", "gated_silu"): moonshine_decoder_mlp,
+        (
+            "moonshine_mlp_fc1",
+            "bias_gated_silu_fp32_accum",
+        ): moonshine_mlp_fc1_gated_silu,
+        (
+            "moonshine_mlp_fc2_residual",
+            "bias_rounded_residual_fp32_accum",
+        ): moonshine_projection_bias_residual,
         ("moonshine_residual", "rounded"): moonshine_residual,
         ("moonshine_lm_head", "tied"): moonshine_tied_lm_logits,
         ("moonshine_argmax", "lowest_id"): moonshine_stable_argmax,

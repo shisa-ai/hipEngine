@@ -316,11 +316,16 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             "hipengine_moonshine_f16_lm_head_projection_wave8",
             "hipengine_moonshine_f16_projection",
             "hipengine_moonshine_f16_projection_bias",
+            "hipengine_moonshine_f16_projection_bias_gated_silu",
+            "hipengine_moonshine_f16_projection_bias_residual",
             "hipengine_moonshine_f16_projection_pair_head_major",
             "hipengine_moonshine_f16_projection_triple",
         ),
         dense_projection=FakeLibrary("hipengine_dense_gemv_out_fp16"),
-        layernorm=FakeLibrary("hipengine_moonshine_layernorm_fp16"),
+        layernorm=FakeLibrary(
+            "hipengine_moonshine_layernorm_fp16",
+            "hipengine_moonshine_residual_layernorm_fp16",
+        ),
         glue=FakeLibrary(
             "hipengine_moonshine_argmax_fp16",
             "hipengine_moonshine_embedding_lookup_fp16",
@@ -371,17 +376,13 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             "hipengine_moonshine_partial_rope_cache_append_fp16",
             "hipengine_moonshine_self_attention_fp16",
             "hipengine_dense_gemv_out_fp16",
-            "hipengine_moonshine_residual_fp16",
-            "hipengine_moonshine_layernorm_fp16",
+            "hipengine_moonshine_residual_layernorm_fp16",
             "hipengine_dense_gemv_out_fp16",
             "hipengine_moonshine_cross_attention_parallel_fp16",
             "hipengine_dense_gemv_out_fp16",
-            "hipengine_moonshine_residual_fp16",
-            "hipengine_moonshine_layernorm_fp16",
-            "hipengine_moonshine_f16_projection_bias",
-            "hipengine_moonshine_gated_silu_fp16",
-            "hipengine_moonshine_f16_projection_bias",
-            "hipengine_moonshine_residual_fp16",
+            "hipengine_moonshine_residual_layernorm_fp16",
+            "hipengine_moonshine_f16_projection_bias_gated_silu",
+            "hipengine_moonshine_f16_projection_bias_residual",
         ]
         expected = ["hipengine_moonshine_embedding_lookup_fp16"]
         for _ in range(8):
@@ -398,13 +399,15 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
             name: [args[-2] for call_name, args in trace if call_name == name]
             for name in (
                 "hipengine_dense_gemv_out_fp16",
-                "hipengine_moonshine_f16_projection_bias",
+                "hipengine_moonshine_f16_projection_bias_gated_silu",
+                "hipengine_moonshine_f16_projection_bias_residual",
                 "hipengine_moonshine_f16_projection_triple",
             )
         }
         assert projection_threads == {
             "hipengine_dense_gemv_out_fp16": [64] * 24,
-            "hipengine_moonshine_f16_projection_bias": [32, 64] * 8,
+            "hipengine_moonshine_f16_projection_bias_gated_silu": [32] * 8,
+            "hipengine_moonshine_f16_projection_bias_residual": [64] * 8,
             "hipengine_moonshine_f16_projection_triple": [32] * 8,
         }
         with pytest.raises(RuntimeError, match="reset generation"):
