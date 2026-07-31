@@ -7741,6 +7741,37 @@ The remaining attention sequence is:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-argmax-control-publish-production.json).
 
+150. Batch selected-down, the existing shared-output event wait, and D9
+     inside one native host call.
+     **Rejected after the full seven-pair and trace gates; completely
+     removed.**
+
+     This is distinct from the rejected producer-integrated tail: the
+     candidate preserves the route-parallel Q4/planar-Q6 selected-down
+     kernels, the existing two-stream event, and D9's local256 kernel. It
+     changes only the three host calls into one native command batch. RED
+     fails on the absent registered Q4/Q6 batch routes. GREEN preserves token
+     **2930 -> 74107**, position **638**, generated-ID SHA
+     `94f803f7...bda32`, KL **0**, top-1 **100%**, residency, and lifecycle.
+
+     The rough pair improves **22.830991 -> 22.869242 tok/s (+0.168%)**.
+     Seven same-resident pairs remain nominally positive at
+     **22.863105 -> 22.873451 tok/s (+0.04525%,
+     -0.019784 ms/token)** with **5/7 wins**, but one candidate run falls to
+     **22.665393 tok/s**.
+
+     The mandatory trace rejects the mechanism. Both routes execute
+     **484 steady dispatches = 482 model kernels + two D2H copies**.
+     Selected-down -> D9 remains **8.376 us median per layer** and changes
+     **0.352199 -> 0.354066 ms/token**; mean union idle changes
+     **2.276944 -> 2.379369 ms/token**. The host already prequeues both
+     asynchronous operations, so returning through Python is not the source
+     of this device gap. Remove the native symbol, registry routes, runtime
+     flag, comparison switch, and tests. Production remains
+     **22.865539 tok/s / 43.733936 ms/token**. Reopen only with a true model
+     launch/dependency contraction:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-event-tail-batch-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

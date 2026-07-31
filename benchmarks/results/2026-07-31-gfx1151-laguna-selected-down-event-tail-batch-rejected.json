@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_decode_optimization_rejection",
+  "status": "rejected_removed",
+  "created_at": "2026-07-31T11:15:20+09:00",
+  "scope": "gfx1151 Laguna c=1 native selected-down plus event wait plus D9 host batch",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "baseline": {
+    "production_tok_s": 22.86553858840366,
+    "production_ms_per_token": 43.73393594617327,
+    "revision": "ca2534ac3cac00f3468fd2f2c3c923ae34163569"
+  },
+  "candidate": {
+    "description": "Within one native host call, enqueue the retained route-parallel weighted selected-down kernel, wait on the already-existing shared-output event, and enqueue the retained local256 D9 kernel.",
+    "arithmetic_changed": false,
+    "model_kernels_changed": false,
+    "events_changed": false,
+    "scratch_or_residency_changed": false,
+    "unfused_fallback_preserved_during_gate": true
+  },
+  "correctness": {
+    "passed": true,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "kl": 0.0,
+    "top1_agreement_percent": 100.0,
+    "resident_nbytes": 79066169172,
+    "tracked_allocations_recovered": true
+  },
+  "directional_gate": {
+    "control_tok_s": 22.830990850352265,
+    "candidate_tok_s": 22.869242282804585,
+    "throughput_delta_percent": 0.1675417075191905,
+    "decision": "continue to seven pairs and trace"
+  },
+  "seven_pair_gate": {
+    "control_median_tok_s": 22.86310460456083,
+    "candidate_median_tok_s": 22.873451038370295,
+    "throughput_delta_percent": 0.04525384451681269,
+    "endpoint_wall_delta_ms_per_token": -0.019784441115113793,
+    "paired_median_wall_delta_ms_per_token": -0.019784441115113793,
+    "candidate_wins": 5,
+    "pairs": 7,
+    "candidate_outlier_tok_s": 22.665392551742453
+  },
+  "cache_only_trace": {
+    "steady_segments": 126,
+    "control_dispatches_per_segment": 484,
+    "candidate_dispatches_per_segment": 484,
+    "model_kernels_per_segment": 482,
+    "control_selected_down_to_tail_ms_per_token": 0.3521985476190476,
+    "candidate_selected_down_to_tail_ms_per_token": 0.3540655793650794,
+    "control_selected_down_to_tail_median_gap_us": 8.376,
+    "candidate_selected_down_to_tail_median_gap_us": 8.376,
+    "control_union_idle_mean_ms_per_token": 2.2769435952380936,
+    "candidate_union_idle_mean_ms_per_token": 2.379369420634919,
+    "candidate_trace_sha256": "a03e1adb5b4a83de3286124fb12b35d17ae7e90b8516328f152ff7c68ea3614b",
+    "candidate_benchmark_sha256": "3638ba1117b9529cff3a4d3031579c8e0a2eeaaef94bdefe4b64e90951a9a2f8"
+  },
+  "decision": {
+    "retained": false,
+    "reason": "The native call did not contract the measured GPU boundary: selected-down to D9 remained 8.376 us per layer and slightly increased in aggregate. The small positive seven-pair median is not attributable to the proposed mechanism and includes one severe candidate outlier.",
+    "candidate_code_removed": true,
+    "comparison_cli_removed": true,
+    "production_changed": false,
+    "production_tok_s": 22.86553858840366,
+    "reopen_only_if": "A true model-launch contraction removes a kernel or dependency instead of merely moving already-asynchronous host calls into C."
+  },
+  "commands": {
+    "seven_pair": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --compare-selected-down-event-tail-host-batch --allow-dirty --output /tmp/laguna-selected-down-event-tail-batch-ab7.json",
+    "trace": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-tail-batch-trace.json"
+  },
+  "raw_seven_pair_sha256": "632b60658440f2a44d3272bbabb9826bf4f785abb90245ada7770a8f36601096"
+}
