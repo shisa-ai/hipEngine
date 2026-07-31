@@ -2169,22 +2169,24 @@ IQ-down, attention, Q6, gate/up, and remaining are **254.689/58.737**,
 
 Do not reopen Q5: H6M physically realized the final explicit wait-split premise
 and still lost both clocks. H6N provides the distinct attention interval.
-**WPF-H6P exact staged-wave-publication triple-output IQ3 now passes standalone
-leaf admission.** It preserves H6I P256/P64/rowbatch8, three outputs, all
-**216** useful FMAs, per-output wave32 and serial wave0..3 order, stride
-`0x300`, four epochs/eight dynamic barriers, local128/grid32768x64, and bytes.
-Computing and publishing A/B/C to separate LDS planes sequentially reduces
-metadata/runtime VGPR **164/168 -> 107/112** at private0/spill0/scratch0; the
-mechanical 1536-VGPR/SIMD wave ceiling moves **9 -> 13** for the runtime count.
+**WPF-H6P exact staged-wave-publication triple-output IQ3 is now a qualified
+bounded default-off owner.** It preserves H6I P256/P64/rowbatch8 bytes and
+arithmetic while reducing runtime VGPR **168 -> 112**. Complete natural M512 is
+KL0/byte-exact across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, and teardown. Four cached requests retain **2,192
+dispatches**, exact all-family topology, and substitute **45 H6I -> 45 H6P**;
+IQ3/request-sum/span moves **335.561/1,350.501/1,377.064 -> 326.309/1,346.568/
+1,368.182 ms (-2.757%/-0.291%/-0.645%)**.
 
-The frozen rows **1/7/8/9/M512** plus P64/P65 matrix passes **9/9** against H6I
-and sampled CPU bytes. Under natural-M512 routing, all **45/45** actual IQ3
-layers are complete-byte exact and win both HIP-event and synchronized-wall
-medians: aggregate H6I -> H6P moves **333.218 -> 323.882 ms (-2.802%, 1.029x)**
-and **331.534 -> 326.105 ms (-1.637%, 1.017x)**; minimum layer speedup is
-**1.017x/1.003x**. Keep H6I as source production and freeze a separate bounded
-default-off same-ABI runtime owner before any package-map change
-([H6P leaf](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
+Default-off 512/1K/4K improves **363.446/296.015/188.932 -> 366.223/297.245/
+189.389 tok/s (+0.764%/+0.416%/+0.242%)**, 3/3 exact wins each. Fixed natural
+C4096/M512 improves **387.746 -> 388.293 tok/s (+0.141%, 4/5 wins)** and remains
+**1.79334x** behind llama.cpp HIP. Workspace/scratch stay **161,120,256/
+600,141,856 bytes**; generic grouped-IQ role resolution is now exact at
+K1024/N3072/E256, all misses fail closed, and **246/246** guards pass. Keep H6I
+as source production and freeze an independent source-default contract before
+changing the one selected-map value
+([H6P candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
 [post-H6N residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
