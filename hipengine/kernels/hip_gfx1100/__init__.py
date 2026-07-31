@@ -162,8 +162,9 @@ LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS = {
 # WPF-H5Z promotes exact K1024/N3072 activation-resident P256 IQ3 ownership
 # after KL0 complete state, exact 45-call integration, and positive selector-
 # unset 512/1K/4K timing. H5Q remains registered rollback through the same
-# bounded active-expert ABI. H5J's exact IQ4 owner and every shape/registration/
-# backend fallback remain unchanged.
+# bounded active-expert ABI. H6D qualifies a default-off row-interleaved VOPD
+# capability through that unchanged ABI; H5Z stays source default pending the
+# separate source-default adjudication. H5J IQ4 and every fallback are unchanged.
 _H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "resident_rowbatch8_bf16_bf16_out"
@@ -171,6 +172,10 @@ _H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
 _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_rowbatch8_bf16_bf16_out"
+)
+_H6D_IQ3_ROW_INTERLEAVED_VOPD_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out"
 )
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
     "gguf_iq3_xxs": _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT,
@@ -181,6 +186,7 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
 LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
     _H5Q_IQ3_ACTIVE_EXPERT_VARIANT: "grouped_raw_iq_active_experts",
     _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT: "grouped_raw_iq_active_experts",
+    _H6D_IQ3_ROW_INTERLEAVED_VOPD_VARIANT: "grouped_raw_iq_active_experts",
 }
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short

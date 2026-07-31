@@ -1875,19 +1875,21 @@ Q6 **93.490/14.455**, gate/up **475.796/401.393**, and remaining
 **74.124/67.598**. Gaps rank **334.482/186.766/146.896/79.035/74.403 ms**.
 
 **WPF-H6D exact row-interleaved IQ3 VOPD** is now a separately registered
-gfx1100 H5Z sibling. Its strict K1024/N3072/E256 RED freezes each row's low/high
-j0..3 dependency chain plus rowbatch8/P64/P256 metadata; complete P64/P65/tail
-bytes match H5Z and sampled CPU, the empty route is inert, gfx1151 is absent,
-and **87/87** broader guards pass. Generated code keeps all **72 FMAs, 13 global
-loads, 52 DS operations, and two barriers** while forming **17** FMA/FMA VOPD
-pairs, reducing issue slots **72 -> 55**, function slots **859 -> 775**,
-metadata VGPR **107 -> 99**, and runtime VGPR **112 -> 104** at unchanged
-LDS512/scratch0. Across all **45/45** actual IQ3 layers with natural M512
-routing, H5Z -> H6D event/wall sums move **451.460/452.002 -> 438.525/438.322
-ms (-2.865%/-3.027%)**; every layer wins both clocks and allocations recover.
-Admit the leaf, keep H5Z package production, and next require bounded default-off
-complete-state, exact 45-call topology, paired cached trace, and one-queue
-512/1K/4K non-regression before source-default adjudication
+gfx1100 H5Z sibling with a bounded default-off owner through the unchanged
+`grouped_raw_iq_active_experts` ABI. Strict K1024/N3072/E256, registration, and
+backend misses fail closed; H5Z remains the selected source map and gfx1151 stays
+absent. Complete natural-M512 state is KL0/byte-exact across all **48** hidden
+boundaries, complete logits, K/V/`KVLiveSpans`, and repeat with unchanged
+**161,120,256-byte** workspace and **600,141,856-byte** total scratch. Four
+counter-rotated cached requests retain **2,050** dispatches and exact **45 H5Z or
+45 H6D + two H5J IQ4** topology; IQ3/request/span moves
+**475.549/1,552.920/1,583.786 -> 463.354/1,549.015/1,570.143 ms
+(-2.564%/-0.251%/-0.861%)** with H6D local128/VGPR104/LDS512/scratch0.
+One-queue default-off 512/1K/4K improves **315.793/263.995/175.354 ->
+318.762/266.122/176.221 tok/s (+0.940%/+0.806%/+0.495%)**, 3/3 wins each,
+exact outputs, unchanged scratch, and full lifecycle recovery; **88/88** retained
+guards pass. Keep H5Z package production and next freeze a separate
+source-default contract plus selector-unset publication gate
 ([H6D leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) ·
 [post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
 

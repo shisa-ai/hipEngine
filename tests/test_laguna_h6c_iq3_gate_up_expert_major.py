@@ -53,6 +53,10 @@ _H5Z_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_rowbatch8_bf16_bf16_out"
 )
+_H6D_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out"
+)
 _H5Q_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "resident_rowbatch8_bf16_bf16_out"
@@ -109,6 +113,7 @@ def test_h6c_registry_source_scope_and_production_immutability() -> None:
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {
         _H5Q_VARIANT: _ACTIVE_EXPERT_ABI,
         _H5Z_VARIANT: _ACTIVE_EXPERT_ABI,
+        _H6D_VARIANT: _ACTIVE_EXPERT_ABI,
     }
 
     load_backend_kernel_package("hip_gfx1151")

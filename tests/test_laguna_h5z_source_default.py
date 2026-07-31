@@ -19,6 +19,10 @@ _H5Z_IQ3 = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_rowbatch8_bf16_bf16_out"
 )
+_H6D_IQ3 = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out"
+)
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 
 
@@ -34,6 +38,7 @@ def test_h5z_source_default_is_promoted_bounded_and_fail_closed(
     production_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
+        _H6D_IQ3: _ACTIVE_EXPERT_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants
