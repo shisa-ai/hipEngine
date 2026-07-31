@@ -8879,6 +8879,47 @@ The remaining attention sequence is:
      **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-role-isolation-rejected.json).
 
+190. Replace the uncovered ordered output→router queue boundary with a
+     dependency-safe gfx11 any-order continuation.
+     **Retained/default-on pending tracked-clean publication.**
+
+     ROCm 7.15 exposes graph device-launch/programmatic-edge declarations, but
+     its HIP tests and `clr/hip_graph.cpp` still classify/reject device graph
+     launch as unimplemented. The usable gfx11 primitive is
+     `hipExtAnyOrderLaunch`, which clears the AQL barrier bit. Keep the
+     source-F16 output/add/RMSNorm producer as an ordinary ordered dispatch so
+     it cannot bypass attention/head-KV. After the exact norm row is visible,
+     the last producer publishes a device flag. Submit only the separate
+     wave-0 router projection any-order; its 256 blocks wait on the flag and
+     collectively reset the reusable continuation gate before the normal
+     ordered selector.
+
+     The first design relaxed both producer and consumer. Its synthetic leaf
+     looked positive but the real recurrent gate correctly rejected it:
+     greedy replay diverged after ten tokens, repeat was nondeterministic, and
+     candidate-vs-exact maximum KL reached **20.452903**. Add a live
+     predecessor D2D-copy sentinel to the focused test, keep the producer
+     ordered, and rerun the complete state gate. The corrected design passes
+     **16/16** greedy tokens, repeat logits are bit-identical,
+     candidate-vs-ordered KL is **0**, and all allocations return to baseline.
+
+     | Corrected ordered-producer chain | ordered control | any-order router | Delta |
+     | --- | ---: | ---: | ---: |
+     | K6144 event | 0.176289 ms | **0.170716 ms** | **-3.161%** |
+     | K9216 event | 0.257225 ms | **0.251612 ms** | **-2.182%** |
+     | p512/d128 two-pair median | 23.087307 tok/s | **23.233248 tok/s** | **+0.63213%** |
+     | wall/token | 43.313844 ms | **43.041765 ms** | **-0.272079 ms** |
+
+     Both complete-model pairs improve and generated IDs are identical.
+     Cached tracing names the signal producer at local256/VGPR24/LDS512/
+     scratch0 and the any-order router at local256/VGPR24/dynamic-LDS1024/
+     scratch0. The router begins **0.320-7.262 us** before the producer packet
+     retires, without the VGPR24→64 contamination that rejected item 188.
+     Promote this exact continuation as the gfx1151 default; retain the
+     constructor-false fully ordered fallback. Publish the clean headline
+     next:
+     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8910,7 +8951,10 @@ barrier-free redundant selector→gate launch contraction at the complete
 target-chain leaf. Item 188 closes the byte-neutral K-major
 output→router→selector construction because its continuation code inflates
 every output block from VGPR24 to VGPR64. Item 189 closes uncalibrated
-one-plane Q8 source-F16 at every individual Q/K/V/gate and global/SWA scope:
+one-plane Q8 source-F16 at every individual Q/K/V/gate and global/SWA scope.
+Item 190 then removes most of the source-F16 output→router uncovered boundary
+with an isolated on-device continuation while preserving producer ordering.
+Source census:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
@@ -8945,8 +8989,9 @@ Current decode checkpoint:
 | hipEngine prior split-priority production | **22.891692 tok/s** | **43.684 ms** | **+99.636%** |
 | hipEngine current source-F16 tile2 production | **23.017271 tok/s** | **43.446 ms** | **+100.732%** |
 | hipEngine current quality-gated selected-halfdot production | **23.089693 tok/s** | **43.309 ms** | **+101.364%** |
+| hipEngine retained output→router any-order same-resident gate | **23.233248 tok/s** | **43.042 ms** | **+102.615%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining production wall gap | — | **0.480 ms/token** | hipEngine is **1.108%** below Vulkan throughput |
+| Remaining retained-gate wall gap | — | **0.212 ms/token** | hipEngine is **0.496%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently

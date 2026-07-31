@@ -59,6 +59,9 @@ class LagunaMoETailHostBatchContext:
 
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
 _ROUTER_LOGITS_WAVE0_TREE_VARIANT = "bf16_hidden_wave0_tree"
+_ROUTER_LOGITS_WAVE0_TREE_ANYORDER_VARIANT = (
+    "bf16_hidden_wave0_tree_anyorder"
+)
 _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DUAL_NATURAL_VARIANT = (
@@ -1006,6 +1009,12 @@ def resolve_laguna_moe_plan(
                 "router_logits",
                 "f32",
                 _ROUTER_LOGITS_WAVE0_TREE_VARIANT,
+            ),
+            "wave0_tree_anyorder": KernelKey(
+                backend,
+                "router_logits",
+                "f32",
+                _ROUTER_LOGITS_WAVE0_TREE_ANYORDER_VARIANT,
             ),
         }
     )
@@ -3003,6 +3012,8 @@ def run_laguna_moe_c1_components(
     use_q4_decode_t16_dual_interleaved: bool = True,
     use_q4_shared_down_t16_decode: bool = False,
     use_router_projection_wave0_tree: bool = False,
+    use_output_router_anyorder_decode: bool = False,
+    output_router_completion_counter_ptr: int = 0,
     tail_context: LagunaMoETailHostBatchContext | None = None,
     shared_after_router: bool = False,
     shared_stream: int = 0,
@@ -3078,20 +3089,47 @@ def run_laguna_moe_c1_components(
     if shared_concurrent and not shared_after_router:
         launch_concurrent_shared()
 
-    router_logits = (
-        plan.router_logits_functions["wave0_tree"]
-        if use_router_projection_wave0_tree
-        else plan.router_logits
-    )
-    router_logits(
-        hidden_bf16_ptr,
-        router,
-        scratch.router_logits.ptr,
-        1,
-        h,
-        e,
-        **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
-    )
+    if use_output_router_anyorder_decode:
+        if not output_router_completion_counter_ptr:
+            raise ValueError(
+                "output-router any-order decode requires completion counters"
+            )
+        router_logits = plan.router_logits_functions["wave0_tree_anyorder"]
+        router_logits(
+            hidden_bf16_ptr,
+            router,
+            scratch.router_logits.ptr,
+            output_router_completion_counter_ptr,
+            1,
+            h,
+            e,
+            **_stage_kwargs(
+                "router_logits",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
+    else:
+        router_logits = (
+            plan.router_logits_functions["wave0_tree"]
+            if use_router_projection_wave0_tree
+            else plan.router_logits
+        )
+        router_logits(
+            hidden_bf16_ptr,
+            router,
+            scratch.router_logits.ptr,
+            1,
+            h,
+            e,
+            **_stage_kwargs(
+                "router_logits",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
     plan.router_select(
         scratch.router_logits.ptr,
         correction,

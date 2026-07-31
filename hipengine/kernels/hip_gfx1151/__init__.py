@@ -96,6 +96,10 @@ LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1 = True
 # p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
 # registered rollback.
 LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = True
+# gfx11 any-order dispatch lets the exact router projection wait on the ordered
+# output/add/RMSNorm producer without holding the queue at that boundary.
+LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE = True
+LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE = True
 # Exact D9 wave-0 RMS reduction preserves the local256 partials and complete
 # FP32 addition tree while removing seven workgroup barriers. The gfx1151
 # production-shape leaf improves 3.66%; the scalar tree remains rollback.

@@ -2,6 +2,7 @@
 // Kernel bodies are preserved from the Qwen3.5 native router family; wrappers are hipEngine C ABI.
 
 #include <hip/hip_runtime.h>
+#include <hip/hip_ext.h>
 #include <stdint.h>
 
 using half_t = _Float16;
@@ -136,6 +137,83 @@ void qwen35_router_logits_bf16_f32w_wave0_tree_kernel(
     }
     if (lane == 0) {
       logits[token * num_experts + expert] = value0;
+    }
+  }
+}
+
+// gfx11 any-order continuation screen. The producer publishes norm_out by
+// setting completion_counter[1]. Every router block enters through that
+// release/acquire gate; completion_counter[2] lets the last admitted block
+// reset the reusable gate without racing a not-yet-admitted block.
+__global__ __launch_bounds__(256, 1)
+void qwen35_router_logits_bf16_f32w_wave0_tree_anyorder_kernel(
+    const uint16_t* __restrict__ hidden,
+    const float* __restrict__ weight,
+    float* __restrict__ logits,
+    int32_t* __restrict__ completion_counter,
+    int64_t hidden_size,
+    int64_t num_experts) {
+  if (threadIdx.x == 0) {
+    while (atomicAdd(completion_counter + 1, 0) == 0) {
+      __builtin_amdgcn_s_sleep(1);
+    }
+    const int prior = atomicAdd(completion_counter + 2, 1);
+    if (prior + 1 == num_experts) {
+      atomicExch(completion_counter + 2, 0);
+      __threadfence();
+      atomicExch(completion_counter + 1, 0);
+    }
+  }
+  __syncthreads();
+
+  extern __shared__ float partial[];
+  const int64_t expert = static_cast<int64_t>(blockIdx.x);
+  if (expert >= num_experts) {
+    return;
+  }
+  float acc = 0.0f;
+  const int64_t weight_row = expert * hidden_size;
+  constexpr int64_t kThreads = 256;
+  constexpr int64_t kItems = 8;
+  constexpr int64_t kStride = kThreads * kItems;
+  for (int64_t k = static_cast<int64_t>(threadIdx.x) * kItems;
+       k + 7 < hidden_size;
+       k += kStride) {
+    acc += bf16_bits_to_float(hidden[k + 0]) * weight[weight_row + k + 0];
+    acc += bf16_bits_to_float(hidden[k + 1]) * weight[weight_row + k + 1];
+    acc += bf16_bits_to_float(hidden[k + 2]) * weight[weight_row + k + 2];
+    acc += bf16_bits_to_float(hidden[k + 3]) * weight[weight_row + k + 3];
+    acc += bf16_bits_to_float(hidden[k + 4]) * weight[weight_row + k + 4];
+    acc += bf16_bits_to_float(hidden[k + 5]) * weight[weight_row + k + 5];
+    acc += bf16_bits_to_float(hidden[k + 6]) * weight[weight_row + k + 6];
+    acc += bf16_bits_to_float(hidden[k + 7]) * weight[weight_row + k + 7];
+  }
+  for (int64_t k = (hidden_size & ~7) + threadIdx.x;
+       k < hidden_size;
+       k += kThreads) {
+    acc += bf16_bits_to_float(hidden[k]) * weight[weight_row + k];
+  }
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  if (threadIdx.x < 32) {
+    const int lane = static_cast<int>(threadIdx.x);
+    float value0 = partial[lane];
+    value0 += partial[lane + 128];
+    float value64 = partial[lane + 64];
+    value64 += partial[lane + 192];
+    value0 += value64;
+    float value32 = partial[lane + 32];
+    value32 += partial[lane + 160];
+    float value96 = partial[lane + 96];
+    value96 += partial[lane + 224];
+    value32 += value96;
+    value0 += value32;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      value0 += __shfl_down(value0, offset);
+    }
+    if (lane == 0) {
+      logits[expert] = value0;
     }
   }
 }
@@ -799,6 +877,39 @@ extern "C" int hipengine_qwen35_router_logits_bf16_f32w_wave0_tree(
       hidden,
       weight,
       logits,
+      hidden_size,
+      num_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_logits_bf16_f32w_wave0_tree_anyorder(
+    const uint16_t* hidden,
+    const float* weight,
+    float* logits,
+    int32_t* completion_counter,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (hidden == nullptr || weight == nullptr || logits == nullptr ||
+      completion_counter == nullptr || tokens != 1 || hidden_size <= 0 ||
+      num_rows <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipExtLaunchKernelGGL(
+      qwen35_router_logits_bf16_f32w_wave0_tree_anyorder_kernel,
+      dim3(static_cast<unsigned int>(num_rows), 1, 1),
+      dim3(256, 1, 1),
+      static_cast<size_t>(256) * sizeof(float),
+      stream,
+      nullptr,
+      nullptr,
+      hipExtAnyOrderLaunch,
+      hidden,
+      weight,
+      logits,
+      completion_counter,
       hidden_size,
       num_rows);
   return static_cast<int>(hipGetLastError());

@@ -2622,6 +2622,22 @@ resident role sidecar is admissible; the role-aware harness remains only for
 materially higher-precision/calibrated representations:
 `benchmarks/results/2026-07-31-gfx1151-laguna-f16-q8-role-isolation-rejected.json`.
 
+gfx1151 c=1 output→router decode now uses an exact isolated any-order
+continuation. The source-F16 output/add/RMSNorm producer remains an ordinary
+ordered dispatch and publishes `attention_projection_counters[1]` only after
+the BF16 norm row is complete. The separate
+`bf16_hidden_wave0_tree_anyorder` router consumes that row through
+`hipExtAnyOrderLaunch`; all 256 blocks wait on the publication and use counter
+slot 2 to reset the reusable gate. The normal ordered top-10 selector remains
+the downstream barrier. Do not mark the producer any-order: that precursor
+bypassed preceding attention/head-KV work and failed recurrent correctness at
+maximum KL **20.452903**. The corrected chain passes the live predecessor
+sentinel, exact 16-step state/repeat/lifecycle, and improves the natural
+K6144/K9216 leaves **3.161%/2.182%**. Both kernels remain VGPR24/scratch0;
+same-resident p512/d128 moves
+**23.087307 -> 23.233248 tok/s (+0.63213%, -0.272079 ms/token)**:
+`benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json`.
+
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
 full-logit argmax stage-1 scan and one model launch while preserving all logits,

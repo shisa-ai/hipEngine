@@ -125,6 +125,18 @@ teacher-forced top-1 is **30/32 = 93.75%**; the exact interleaved owner remains
 the constructor rollback. The same-GGUF Vulkan gap is now
 **0.479846 ms/token / 1.108%**.
 [`selected-halfdot production`](results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json).
+The next exact gfx1151 default attacks the queue boundary instead of changing
+the projection arithmetic. The ordinary ordered source-F16 output/add/RMSNorm
+producer publishes one device flag; the separate wave-0 router projection is
+submitted with gfx11 any-order launch and waits on that flag on-device. A
+predecessor-copy sentinel and 16-step full-state gate catch and reject the
+unsafe variant that also relaxed the producer. The corrected chain is
+bit-exact, leaves both kernels at VGPR24/scratch0, improves the K6144/K9216
+leaves **3.161%/2.182%**, and advances the two-pair same-resident screen
+**23.087307 -> 23.233248 tok/s (+0.63213%, -0.272079 ms/token)** with both
+pairs positive and identical trajectories. The tracked-clean production
+publication is pending.
+[`output→router any-order retention`](results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json).
 The refreshed 127-transition census shows the tile2 family saving transfers
 to the critical path: source-F16 falls **24.349 -> 24.128 ms/token**,
 union-busy falls **42.157 -> 41.942**, and span falls
