@@ -2004,6 +2004,21 @@ plus the three exact raw fallbacks in H6F/H6E production at **353.798 tok/s**
 ([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
+After the distinct H6G/H6H Q5/Q6 screens, select target-only **WPF-H6I exact
+IQ3 triple-output reduction amortization** on the largest **221.737-ms** family
+gap. H6I keeps H6F's P256/P64/local128/rowbatch8 loads, row-interleaved VOPD
+FMA order, per-output wave32 tree, serial wave0..3 sum, BF16 store, grid, and
+active traversal, but carries three strided outputs through one publication and
+one reuse barrier. N3072/P256 has four complete triplets, changing H6F reduction
+epochs **6 -> 4** and dynamic barriers **12 -> 8 per rowbatch (-33.333%)**
+while accumulators rise **16 -> 24 floats/thread** and source wave-sum storage
+rises **256 -> 384 bytes**. A two-point H6D/H6F epoch model suggests only
+**360.918 -> 335.623 ms** all-layer wall and **353.798 -> 360.092 tok/s**; this
+is selection rationale, not a performance claim. Freeze RED and require cached
+stride-0x300/eight-barrier/private0/spill0/scratch0 evidence plus complete H6F
+bytes and **45/45** both-clock wins before any runtime owner
+([H6I target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)). Production remains H6F at **353.798 tok/s**.
+
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
