@@ -196795,3 +196795,29 @@ Vulkan local sizes verbatim will close the measured gap.
   contention—is the blocker. Production remains the retained two-queue
   output→router continuation. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-quiet-decode-gap-scheduling-rejected.json`.
+
+## 2026-08-01 02:33 JST — Reprofile current decode and close host housekeeping
+
+- Tracked-clean, cache-only `rocprofv3` at `573446d7b` records the final
+  **127** exact transitions at **481 model kernels/token**. Median kernel sum
+  is **50.174013 ms/token**, interval-union busy is **41.894800 ms**, dispatch
+  span is **43.149952 ms**, and uncovered union idle is
+  **1.252339 ms/token**.
+- Current inclusive families are source-F16 **24.119073 ms/token**, selected
+  gate/up **8.870636**, dense/shared quant **8.431853**, selected down
+  **4.758448**, router **1.337592**, LM-head/argmax **1.114170**, SWA attention
+  **0.715183**, and global attention **0.396824**.
+- hipEngine's union-busy work is already **0.865643 ms/token faster** than the
+  complete same-GGUF Vulkan wall, while quiet end-to-end hipEngine remains
+  **0.304479 ms/token slower**. The residual is queue feed/dependency latency,
+  not aggregate GPU work or a multi-millisecond attention core.
+- The largest uncovered boundaries are head/KV→SWA
+  **0.212523 ms/token**, selector→selected gate/up **0.210592**, Q4/Q6
+  selected down→D9 **0.200896/0.171441**, and router projection→selector
+  **0.091573**. Their obvious fusion/waiting-consumer/graph/native-wrapper
+  constructions are already rejected in the decode ledger.
+- One-run host screens preserve the exact trajectory but do not help:
+  CPUs 0–7 affinity reaches **23.223042 tok/s (+0.00984%)**, and disabled
+  cyclic GC reaches **23.211222 tok/s (-0.04106%)**. Retain ordinary process
+  affinity and GC. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-current-wall-host-housekeeping-rejected.json`.
