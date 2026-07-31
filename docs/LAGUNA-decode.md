@@ -8122,8 +8122,15 @@ The remaining attention sequence is:
      `<false,true,2>` SWA specializations at local256/VGPR32/SGPR128/
      LDS512/scratch0. gfx1151 overrides the existing production registry
      keys directly; gfx1100 and the one-column fallback remain unchanged.
-     A tracked-clean production refresh is the next publication step:
-     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json).
+     Tracked-clean selector-unset revision `a4c2c5d26` measures
+     **23.000380/23.024513/23.017271 tok/s**, median
+     **23.017271 tok/s / 43.445636 ms/token**. This advances the prior clean
+     packet **0.54858%**, saves **0.238335 ms/token**, and reaches
+     **+100.732%** over sprint start at unchanged **79,066,169,172-byte**
+     residency. The same-GGUF Vulkan wall gap is now
+     **0.616114 ms/token / 1.4385%**:
+     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json).
 
 Current exact decode checkpoint:
 
@@ -8154,9 +8161,10 @@ Current exact decode checkpoint:
 | hipEngine prior Q6 LM-head tilemax production | **22.873989 tok/s** | **43.718 ms** | **+99.482%** |
 | hipEngine retained D9 wave-0 same-resident gate | **22.873287 tok/s** | **43.719 ms** | **+99.476%** |
 | hipEngine D9 wave-0 tracked-clean sample | **22.861339 tok/s** | **43.742 ms** | **+99.372%** |
-| hipEngine current split-priority production | **22.891692 tok/s** | **43.684 ms** | **+99.636%** |
+| hipEngine prior split-priority production | **22.891692 tok/s** | **43.684 ms** | **+99.636%** |
+| hipEngine current source-F16 tile2 production | **23.017271 tok/s** | **43.446 ms** | **+100.732%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **0.854 ms/token** | hipEngine is **1.995%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **0.616 ms/token** | hipEngine is **1.439%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently

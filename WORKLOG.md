@@ -195871,3 +195871,20 @@ Vulkan local sizes verbatim will close the measured gap.
   registry switch is removed after the gate. Clean production publication
   remains next. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json`.
+
+## 2026-07-31 15:42 JST — Publish source-F16 tile2 production
+
+- Tracked-clean selector-unset revision `a4c2c5d26` measures
+  **23.000380/23.024513/23.017271 tok/s**, median
+  **23.017271 tok/s / 43.445636 ms/token**. This advances the prior
+  **22.891692 tok/s / 43.683971 ms/token** packet by **0.548581%** and saves
+  **0.238335 ms/token**.
+- All three runs keep token **2930 -> 74107**, position **638**, trajectory SHA
+  `94f803f7...ebda32`, deterministic repeats, and return **79,066,169,172**
+  tracked bytes to zero. Median pp512 is **655.713 tok/s** and residency is
+  unchanged.
+- Decode is now **+100.7317%** over the **11.466687 tok/s** sprint start. The
+  same-GGUF llama.cpp Vulkan gap falls to **0.616114 ms/token / 1.4385%**;
+  **24 tok/s** still requires **1.778970 ms/token**. Raw JSON SHA-256 is
+  `15aab7fe...8267`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json`.
