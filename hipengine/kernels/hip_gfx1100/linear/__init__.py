@@ -35,6 +35,14 @@ from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
     plan_laguna_f16_projection_build,
     register_laguna_f16_projection_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+    build_moonshine_projection,
+    moonshine_f16_projection,
+    moonshine_f16_projection_pair,
+    moonshine_f16_projection_triple,
+    plan_moonshine_projection_build,
+    register_moonshine_projection_kernels,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     argmax_f32_rows_i32,
@@ -84,6 +92,12 @@ __all__ = [
     "lm_head_argmax_stage1_blocks",
     "lm_head_fp16_argmax_bf16",
     "lm_head_fp16_argmax_bf16_rows_i32",
+    "build_moonshine_projection",
+    "moonshine_f16_projection",
+    "moonshine_f16_projection_pair",
+    "moonshine_f16_projection_triple",
+    "plan_moonshine_projection_build",
+    "register_moonshine_projection_kernels",
     "plan_laguna_f16_projection_build",
     "plan_lm_head_build",
     "register_laguna_f16_projection_kernels",
