@@ -116,7 +116,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Tune source-F16 singleton, triple-QKV, and bias-aware MLP projections.
   - [x] Tune tied LM-head/argmax with grouped exact wave32 rows.
   - [x] Tune masked resident cross attention.
-  - [ ] Tune short/long self-cache attention from refreshed profiles.
+  - [x] Tune short/long self-cache attention from refreshed profiles.
   - [ ] Test bounded fusions and fixed-address graph replay only after structural wins.
 
 ## Notes
