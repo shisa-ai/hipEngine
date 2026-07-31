@@ -8485,6 +8485,31 @@ The remaining attention sequence is:
      feed rather than this coefficient seam:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-selected-down-paircoeff-rejected.json).
 
+177. Replace the rejected single-address Q6 LM-head completion counter with
+     hierarchical producer-integrated exact top-1.
+     **Rejected before runtime integration and removed.**
+
+     This is a materially different completion design from the earlier
+     all-producer counter. The **6,272** Q6 tile producers report to **98**
+     independent 64-tile groups; only one leader per group touches the final
+     counter, and the last leader performs an exact local128 minimum-index
+     reduction over the 98 group winners. RED/GREEN covers full logits,
+     top-1 ID/value, minimum-index ties, and reset of both counter tiers.
+
+     The actual K3072/N100352 LM-head gate is nevertheless negative:
+     retained tile maxima plus the separate local256 reducer take
+     **1.125201 ms**, while hierarchical integration takes
+     **1.137524 ms (+1.095%)**, with a **+0.012443 ms** paired median.
+     Sharding fixes the single-address contention but not the last-producer
+     dependency; it also replaces the retained **8.4 us** local256 reducer
+     with a slower local128 terminal stage.
+
+     Stop before runtime integration and remove the candidate kernel, ABI,
+     wrapper, harness route, and test. Together with the preceding
+     single-counter rejection, this closes producer-integrated Q6 LM-head
+     argmax on gfx1151. Retain exact tile maxima plus the independent reducer:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-hierarchical-top1-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

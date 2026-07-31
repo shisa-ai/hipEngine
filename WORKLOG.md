@@ -196191,3 +196191,23 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.017271 tok/s / 43.445636 ms/token**. Raw leaf/resident SHA-256 values
   are `86228bbf...2b42e1` and `6858e3b5...09d0d`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q6-selected-down-paircoeff-rejected.json`.
+
+## 2026-07-31 18:55 JST — Reject hierarchical Q6 LM-head top-1
+
+- Replaced the previously rejected all-6,272-producer completion counter with
+  a materially different exact hierarchy: 98 independent 64-tile counters,
+  one leader per group, and one final local128 minimum-index stage. RED/GREEN
+  proves exact full logits, top-1 ID/value, minimum-index ties, and reset of
+  both counter tiers.
+- Cached actual K3072/N100352 Q6 LM-head timing rejects the design:
+  retained tile maxima plus the separate local256 reducer take
+  **1.125201 ms**, while hierarchical integration takes
+  **1.137524 ms (+1.095%)**, with a **+0.012443 ms** paired median.
+- Hierarchical sharding fixes single-address contention but not the
+  last-producer dependency. The retained independent reducer is only about
+  **8.4 us** and remains faster. Removed the kernel, ABI, wrapper, test, and
+  harness route before runtime integration; the focused retained-path
+  exactness fixture passes after cleanup. Production remains
+  **23.017271 tok/s / 43.445636 ms/token**. Raw JSON SHA-256 is
+  `498dfb39...8ff479`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-hierarchical-top1-rejected.json`.
