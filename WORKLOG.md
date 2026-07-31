@@ -196040,3 +196040,24 @@ Vulkan local sizes verbatim will close the measured gap.
   weight traffic. Production remains **23.017271 tok/s /
   43.445636 ms/token**. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-paired-tile-rejected.json`.
+
+## 2026-07-31 17:27 JST — Reject shared-MoE CU partitioning
+
+- Added a temporary HIP CU-mask stream ABI plus exact same-resident comparison
+  controls to test whether restricting the concurrent shared-MoE branch could
+  protect selected gate/up. gfx1151 exposes **20 CU-mask bits** through HIP.
+  Stream-0 diagnostics lost approximately **6.7%** at both 8 and 16 bits,
+  identifying legacy-stream synchronization rather than a width response.
+- Ordinary nonblocking primary streams removed that confound and produced
+  rough **+0.114%** one-pair signals, but neither frozen gate passed. Primary
+  nonblocking plus a 16-bit secondary mask measures
+  **23.016569 -> 23.010971 tok/s (-0.02432%, +0.010570 ms/token, 2/7
+  wins)**. Primary nonblocking alone measures
+  **23.019761 -> 23.012933 tok/s (-0.02966%, +0.012888 ms/token, 1/7
+  wins)**.
+- Every token, trajectory hash, position, deterministic repeat, and allocation
+  lifecycle matches. Removed the HIP ABI, harness routes, and temporary tests;
+  production remains **23.017271 tok/s / 43.445636 ms/token**. Raw SHA-256
+  values for the combined/primary gates are `35c4c393...34f62` and
+  `6c5d2378...f651`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-shared-cu-mask-rejected.json`.
