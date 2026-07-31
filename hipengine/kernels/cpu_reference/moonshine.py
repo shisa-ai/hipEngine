@@ -540,6 +540,14 @@ def register_moonshine_cpu_reference_kernels(*, replace: bool = True) -> None:
             "moonshine_cross_attention",
             "resident_masked_logical_dim",
         ): moonshine_cross_attention,
+        (
+            "moonshine_cross_attention",
+            "resident_masked_grouped_heads",
+        ): moonshine_cross_attention,
+        (
+            "moonshine_cross_attention",
+            "resident_masked_parallel_tokens",
+        ): moonshine_cross_attention,
         ("moonshine_projection", "fp32_accum"): moonshine_projection,
         ("moonshine_qkv_proj", "triple"): moonshine_triple_projection,
         ("moonshine_gated_silu", "value_gate_split"): moonshine_gated_silu,

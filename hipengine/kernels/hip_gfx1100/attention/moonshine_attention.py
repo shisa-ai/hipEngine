@@ -156,6 +156,116 @@ def moonshine_cross_attention_fp16(
     """Attend over resident encoder K/V while applying its int32 visibility mask."""
 
     _validate_shape(heads, head_dim, threads)
+    _launch_cross_attention(
+        "hipengine_moonshine_cross_attention_fp16",
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        mask_ptr,
+        output_ptr,
+        heads,
+        head_dim,
+        encoder_length,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def moonshine_cross_attention_grouped_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    encoder_length: int,
+    *,
+    scale: float | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the exact fallback math with all eight head waves in one workgroup."""
+
+    _validate_shape(heads, head_dim, _THREADS)
+    _launch_cross_attention(
+        "hipengine_moonshine_cross_attention_grouped_fp16",
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        mask_ptr,
+        output_ptr,
+        heads,
+        head_dim,
+        encoder_length,
+        scale=scale,
+        threads=heads * _THREADS,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def moonshine_cross_attention_parallel_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    encoder_length: int,
+    *,
+    scale: float | None = None,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Partition masked tokens across 2/4/8 waves per head and merge in LDS."""
+
+    _validate_shape(heads, head_dim, _THREADS)
+    if threads not in (64, 128, 256):
+        raise ValueError("threads must be one of 64, 128, or 256")
+    _launch_cross_attention(
+        "hipengine_moonshine_cross_attention_parallel_fp16",
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        mask_ptr,
+        output_ptr,
+        heads,
+        head_dim,
+        encoder_length,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _launch_cross_attention(
+    symbol: str,
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    encoder_length: int,
+    *,
+    scale: float | None,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
     if encoder_length <= 0:
         raise ValueError("encoder_length must be positive")
     scale_value = _scale(head_dim, scale)
@@ -163,7 +273,7 @@ def moonshine_cross_attention_fp16(
     runtime = runtime or get_hip_runtime()
     _launch(
         library,
-        "hipengine_moonshine_cross_attention_fp16",
+        symbol,
         (
             query_ptr,
             key_cache_ptr,
@@ -201,6 +311,24 @@ def register_moonshine_attention_kernels(*, replace: bool = True) -> None:
             ),
             moonshine_cross_attention_fp16,
         ),
+        (
+            KernelKey(
+                "hip_gfx1100",
+                "moonshine_cross_attention",
+                "fp16",
+                "resident_masked_grouped_heads",
+            ),
+            moonshine_cross_attention_grouped_fp16,
+        ),
+        (
+            KernelKey(
+                "hip_gfx1100",
+                "moonshine_cross_attention",
+                "fp16",
+                "resident_masked_parallel_tokens",
+            ),
+            moonshine_cross_attention_parallel_fp16,
+        ),
     )
     for key, kernel in registrations:
         register(key, kernel, replace=replace)
@@ -211,6 +339,8 @@ register_moonshine_attention_kernels()
 __all__ = [
     "build_moonshine_attention",
     "moonshine_cross_attention_fp16",
+    "moonshine_cross_attention_grouped_fp16",
+    "moonshine_cross_attention_parallel_fp16",
     "moonshine_self_attention_fp16",
     "plan_moonshine_attention_build",
     "register_moonshine_attention_kernels",

@@ -41,6 +41,8 @@ def test_moonshine_attention_registry_resolves_hip_and_cpu_fallbacks() -> None:
     )
     from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
         moonshine_cross_attention_fp16,
+        moonshine_cross_attention_grouped_fp16,
+        moonshine_cross_attention_parallel_fp16,
         moonshine_self_attention_fp16,
         register_moonshine_attention_kernels,
     )
@@ -62,6 +64,18 @@ def test_moonshine_attention_registry_resolves_hip_and_cpu_fallbacks() -> None:
             moonshine_cross_attention_fp16,
             moonshine_cross_attention,
         ),
+        (
+            "moonshine_cross_attention",
+            "resident_masked_grouped_heads",
+            moonshine_cross_attention_grouped_fp16,
+            moonshine_cross_attention,
+        ),
+        (
+            "moonshine_cross_attention",
+            "resident_masked_parallel_tokens",
+            moonshine_cross_attention_parallel_fp16,
+            moonshine_cross_attention,
+        ),
     )
     for layer, variant, hip_kernel, cpu_kernel in cases:
         assert resolve(
@@ -81,6 +95,8 @@ def test_moonshine_attention_registry_resolves_hip_and_cpu_fallbacks() -> None:
 def test_moonshine_attention_wrappers_keep_raw_pointer_abis() -> None:
     from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
         moonshine_cross_attention_fp16,
+        moonshine_cross_attention_grouped_fp16,
+        moonshine_cross_attention_parallel_fp16,
         moonshine_self_attention_fp16,
     )
 
@@ -95,11 +111,30 @@ def test_moonshine_attention_wrappers_keep_raw_pointer_abis() -> None:
     class FakeLibrary:
         hipengine_moonshine_self_attention_fp16 = FakeKernel()
         hipengine_moonshine_cross_attention_fp16 = FakeKernel()
+        hipengine_moonshine_cross_attention_grouped_fp16 = FakeKernel()
+        hipengine_moonshine_cross_attention_parallel_fp16 = FakeKernel()
 
     library = FakeLibrary()
     common = {"threads": 32, "stream": 7, "library": library, "runtime": object()}
     moonshine_self_attention_fp16(1, 2, 3, 4, 5, HEADS, HEAD_DIM, SELF_CAPACITY, **common)
     moonshine_cross_attention_fp16(1, 2, 3, 4, 5, HEADS, HEAD_DIM, 1248, **common)
+    moonshine_cross_attention_grouped_fp16(
+        1, 2, 3, 4, 5, HEADS, HEAD_DIM, 1248, stream=7, library=library, runtime=object()
+    )
+    moonshine_cross_attention_parallel_fp16(
+        1,
+        2,
+        3,
+        4,
+        5,
+        HEADS,
+        HEAD_DIM,
+        1248,
+        threads=128,
+        stream=7,
+        library=library,
+        runtime=object(),
+    )
     self_call = library.hipengine_moonshine_self_attention_fp16.calls[0]
     cross_call = library.hipengine_moonshine_cross_attention_fp16.calls[0]
     assert self_call[:8] == (1, 2, 3, 4, 5, HEADS, HEAD_DIM, SELF_CAPACITY)
@@ -108,11 +143,20 @@ def test_moonshine_attention_wrappers_keep_raw_pointer_abis() -> None:
     assert cross_call[:8] == (1, 2, 3, 4, 5, HEADS, HEAD_DIM, 1248)
     assert cross_call[8] == pytest.approx(HEAD_DIM**-0.5)
     assert cross_call[9:] == (32, 7)
+    grouped_call = library.hipengine_moonshine_cross_attention_grouped_fp16.calls[0]
+    assert grouped_call[:8] == cross_call[:8]
+    assert grouped_call[8] == pytest.approx(HEAD_DIM**-0.5)
+    assert grouped_call[9:] == (256, 7)
+    parallel_call = library.hipengine_moonshine_cross_attention_parallel_fp16.calls[0]
+    assert parallel_call[:8] == cross_call[:8]
+    assert parallel_call[8] == pytest.approx(HEAD_DIM**-0.5)
+    assert parallel_call[9:] == (128, 7)
 
 
 def test_moonshine_attention_rejects_non_contract_shapes_before_build() -> None:
     from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
         moonshine_cross_attention_fp16,
+        moonshine_cross_attention_parallel_fp16,
         moonshine_self_attention_fp16,
     )
 
@@ -127,6 +171,10 @@ def test_moonshine_attention_rejects_non_contract_shapes_before_build() -> None:
     with pytest.raises(ValueError, match="scale"):
         moonshine_cross_attention_fp16(
             1, 2, 3, 4, 5, HEADS, HEAD_DIM, 40, scale=float("nan")
+        )
+    with pytest.raises(ValueError, match="threads"):
+        moonshine_cross_attention_parallel_fp16(
+            1, 2, 3, 4, 5, HEADS, HEAD_DIM, 40, threads=32
         )
 
 
@@ -193,6 +241,8 @@ def test_moonshine_masked_cross_attention_matches_cpu_at_all_buckets() -> None:
     from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
         build_moonshine_attention,
         moonshine_cross_attention_fp16,
+        moonshine_cross_attention_grouped_fp16,
+        moonshine_cross_attention_parallel_fp16,
     )
 
     rng = np.random.default_rng(0xC2055)
@@ -216,25 +266,38 @@ def test_moonshine_masked_cross_attention_matches_cpu_at_all_buckets() -> None:
             device_value = _upload(value, runtime, allocations)
             device_mask = _upload(mask, runtime, allocations)
             device_output = _empty(expected.shape, np.float16, runtime, allocations)
-            moonshine_cross_attention_fp16(
-                device_query.ptr,
-                device_key.ptr,
-                device_value.ptr,
-                device_mask.ptr,
-                device_output.ptr,
-                HEADS,
-                HEAD_DIM,
-                encoder_length,
-                library=library,
-                runtime=runtime,
+            candidates = (
+                (moonshine_cross_attention_fp16, {}),
+                (moonshine_cross_attention_grouped_fp16, {}),
+                (moonshine_cross_attention_parallel_fp16, {"threads": 64}),
+                (moonshine_cross_attention_parallel_fp16, {"threads": 128}),
+                (moonshine_cross_attention_parallel_fp16, {"threads": 256}),
             )
-            runtime.device_synchronize()
-            actual = _download(device_output, expected.shape, np.float16, runtime)
+            actuals = []
+            for launch, options in candidates:
+                launch(
+                    device_query.ptr,
+                    device_key.ptr,
+                    device_value.ptr,
+                    device_mask.ptr,
+                    device_output.ptr,
+                    HEADS,
+                    HEAD_DIM,
+                    encoder_length,
+                    library=library,
+                    runtime=runtime,
+                    **options,
+                )
+                runtime.device_synchronize()
+                actuals.append(
+                    _download(device_output, expected.shape, np.float16, runtime)
+                )
         finally:
             for allocation in reversed(allocations):
                 free(allocation, runtime=runtime)
-        assert np.isfinite(actual).all()
-        np.testing.assert_allclose(actual, expected, rtol=5.0e-3, atol=5.0e-3)
+        for actual in actuals:
+            assert np.isfinite(actual).all()
+            np.testing.assert_allclose(actual, expected, rtol=5.0e-3, atol=5.0e-3)
 
 
 def _upload(array: np.ndarray, runtime, allocations):
