@@ -8224,6 +8224,29 @@ The remaining attention sequence is:
      source-F16 endpoint:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile4-rejected.json).
 
+166. Apply cache-bypassing transport to the one-pass selected-expert stream.
+     **Rejected at the actual-weight leaf and removed.**
+
+     The candidate preserves the resident dual-interleaved T16 bytes,
+     local128/tile8 ownership, every Q4 dequantization/F32 FMA, four-wave
+     reduction, BF16 gate/up round trips, SiLU, output, grid, and scratch.
+     RED fails on the absent wrapper; GREEN matches every production BF16 bit.
+
+     Bypassing all Q/scale/min/d/dmin loads is catastrophic:
+     **0.126216 -> 0.198603 ms/layer (+57.352%)**. The result identifies
+     metadata reuse as essential, so a second bounded form bypasses only the
+     dominant one-pass Q payload while leaving metadata cached. It is still
+     decisively slower:
+     **0.118395 -> 0.159165 ms/layer (+34.435%)**, with zero BF16
+     mismatches across both 21x100 counterbalanced screens.
+
+     Stop before the 79-GB resident gate and remove the kernel specialization,
+     wrapper, leaf selector, and temporary test. Unlike source F16, the
+     selected T16 access pattern benefits materially from gfx1151's ordinary
+     cache/coalescer path; do not apply blanket or Q-only nontemporal loads to
+     this owner:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-nontemporal-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
