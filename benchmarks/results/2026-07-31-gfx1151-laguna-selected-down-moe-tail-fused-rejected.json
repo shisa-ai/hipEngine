@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T14:32:00+09:00",
+  "kind": "hipengine_laguna_selected_down_moe_tail_fusion_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "daf5e2eaeb61d5912aeb5d902e2ba87b1b7949f4",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "candidate": {
+    "description": "Keep the production route-parallel selected-down and per-output-tile weighted finalizers, then let the last of 192 tile finalizers execute the exact D9 aggregate/residual/next-RMSNorm tree.",
+    "launches": 1,
+    "control_launches": 2,
+    "local_size": 128,
+    "logical_tail_lanes": 256,
+    "tail_mapping": "two independent production-order logical lanes per physical thread",
+    "vgpr": 80,
+    "sgpr": 128,
+    "lds_bytes": 1536,
+    "scratch_bytes": 0,
+    "retained": false,
+    "code_removed": true
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --down-candidate weighted-moe-tail --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-down-weighted-moe-tail-leaf.json",
+    "timing": "21 counterbalanced HIP-event samples, each the average of 100 launches, after five warmups",
+    "raw_sha256": "f077a8f9fd393c0af23ce1421659bb232d2c321896084eb93c9ca22ae5ca57cb",
+    "trace_command": "rocprofv3 --kernel-trace with one cached control/candidate sample",
+    "trace_sha256": "56d2707131727da564edae34f86f61b30b45b5a415109bee02bcc4c092f5fd07",
+    "trace_child_sha256": "2501d8041ee406b86327a81d3ac1991a9f711b506ab5fca85f78b14e120bd186",
+    "compiler_spawned_under_profiler": false
+  },
+  "correctness": {
+    "q4_selected_rows_bf16_mismatches": 0,
+    "q4_routed_bf16_mismatches": 0,
+    "q4_hidden_bf16_mismatches": 0,
+    "q4_norm_bf16_mismatches": 0,
+    "q6_selected_rows_bf16_mismatches": 0,
+    "q6_routed_bf16_mismatches": 0,
+    "q6_hidden_bf16_mismatches": 0,
+    "q6_norm_bf16_mismatches": 0,
+    "selected_completion_nonzero": 0,
+    "tail_completion_nonzero": 0
+  },
+  "actual_weight_leaf_ms": {
+    "q4_paircoeff_weighted_plus_d9_control": 0.0638577509,
+    "q4_fused_candidate": 0.072980051,
+    "q4_delta_percent": 14.285345,
+    "q6_weighted_plus_d9_control": 0.080035696,
+    "q6_fused_candidate": 0.080677309,
+    "q6_delta_percent": 0.801659
+  },
+  "interpretation": {
+    "result": "The fused finalizer loses both actual-weight family gates despite deleting one launch and preserving every arithmetic bit.",
+    "mechanism": "The local128 finalizer adds a second completion tier and serializes two local256 logical D9 lanes per thread. The candidate keeps VGPR80 and scratch0 but raises LDS from 512 to 1536 bytes; its tail work costs more than the standalone local256 D9 launch.",
+    "decision": "Stop before runtime integration and remove the candidate. Keep the production selected-down kernel plus standalone wave0-tree D9.",
+    "reopen_only_if": "A successor preserves local256-or-wider physical D9 ownership or removes the tail through a different consumer fusion without a last-producer serial section."
+  }
+}

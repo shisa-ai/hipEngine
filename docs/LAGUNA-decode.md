@@ -8029,6 +8029,34 @@ The remaining attention sequence is:
      finalizer per 16-column output tile:
      [`post-split-priority census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-split-priority-wall-reprofile.json).
 
+159. Execute D9 in the route-parallel selected-down finalizer.
+     **Rejected at the actual-weight leaf and removed.**
+
+     The candidate keeps the production Q4 pair-coefficient and planar-Q6
+     GEMV, per-route BF16 stores, one completion counter per 16-column output
+     tile, slot-order FP32 weighting, and routed BF16 store. A second
+     completion tier elects the last of the 192 output-tile finalizers to run
+     D9. Its local128 block represents D9's 256 production logical lanes as
+     two independent lanes per thread, preserving every 12-term sum, wave-0
+     addition, hidden BF16 boundary, normalization value, and normalized BF16
+     store.
+
+     The production-shape Q4 and Q6 gates are byte-exact for all selected
+     rows, routed output, hidden output, normalized output, and both
+     self-resetting counter planes. Cached tracing reports local128/VGPR80/
+     SGPR128/LDS1536/scratch0 for both candidates.
+
+     Removing the standalone local256 D9 launch is still slower. The 21x100
+     actual-weight screen moves Q4
+     **0.063858 -> 0.072980 ms/layer (+14.285%)** and Q6
+     **0.080036 -> 0.080677 (+0.802%)**. The local128 last-producer section
+     costs more than the deleted local256 kernel and launch. Stop before
+     runtime integration, remove the kernel/wrappers/tests/harness seam, and
+     keep the current selected-down plus standalone wave0-tree D9 route.
+     Reopen only with local256-or-wider physical tail ownership or a different
+     consumer fusion:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-moe-tail-fused-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
