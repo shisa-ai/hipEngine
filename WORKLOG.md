@@ -195574,3 +195574,24 @@ Vulkan local sizes verbatim will close the measured gap.
   constructor rollback. Tracked-clean selector-unset production is next.
   Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json`.
+
+## 2026-07-31 12:46 JST — Publish gfx1151 D9 wave-0 default
+
+- Committed the exact/default unit as `3d0f2b272`, then ran the tracked-clean
+  selector-unset p512/d128 production protocol with cached-build enforcement.
+- Three decode samples are **22.844101/22.861339/22.867586 tok/s**, median
+  **22.861339 tok/s / 43.741970 ms/token**. This is **0.05530%** below the
+  prior clean **22.873989 tok/s** packet and adds **0.024191 ms/token**, while
+  the controlled same-resident gate improves **0.01839%** and saves
+  **0.005073 ms/token** by paired median.
+- Retain the exact leaf/paired sub-window win under the repository variance
+  rule, but do not claim a clean-headline advance. Every run preserves token
+  **2930 -> 74107**, position **638**, trajectory SHA
+  `94f803f7...bda32`, **79,066,169,172-byte** residency, determinism, and
+  allocation recovery. Load is excluded and no compiler runs.
+- The latest clean sample is **+99.372%** from the **11.466687 tok/s** sprint
+  start and leaves **0.912447 ms/token / 2.13042%** to same-GGUF Vulkan.
+- Raw SHA-256 is
+  `69689f3b1bfb93d819c5f795ce084b25029a7c3be86c264a2ca00ac09eed44d9`.
+  Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-production.json`.

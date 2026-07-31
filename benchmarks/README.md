@@ -89,8 +89,11 @@ The next exact gfx1151 default replaces only D9's local256 RMS reduction
 transport: all partials and FP32 additions remain fixed while barriers contract
 **9 -> 2**. The hidden3072 leaf improves **3.660%**, and seven same-resident
 pairs improve **22.869082 -> 22.873287 tok/s (+0.01839%)** with exact state;
-tracked-clean publication is pending.
+tracked-clean publication measures **22.861339 tok/s**, **0.05530%** below the
+prior clean packet despite the positive controlled A/B. The exact sub-window
+win is retained without advancing the clean headline.
 [`D9 wave-0 retention`](results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json).
+[`D9 wave-0 production`](results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-production.json).
 The corresponding two-queue census measures **42.158779 ms/token** of union
 GPU busy time inside a **43.834293-ms/token** dispatch span. That is already
 **1.500421 ms/token below** Vulkan's logged kernel sum even though clean

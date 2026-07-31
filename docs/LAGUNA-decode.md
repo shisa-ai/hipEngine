@@ -7855,7 +7855,7 @@ The remaining attention sequence is:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-prenorm-first-v-overlap-rejected.json).
 
 154. Re-screen D9's exact wave-0 RMS tree on gfx1151.
-     **Retained/default pending tracked-clean publication.**
+     **Retained/default and cleanly published.**
 
      This is an architecture-local transfer of the existing gfx1100
      diagnostic primitive, not a new arithmetic tree. All 256 local partials
@@ -7880,6 +7880,16 @@ The remaining attention sequence is:
      comparison CLI/setter and keep constructor `false` as explicit scalar
      rollback:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json).
+
+     Tracked-clean selector-unset production at `3d0f2b272` measures
+     **22.844101/22.861339/22.867586 tok/s**, median
+     **22.861339 tok/s / 43.741970 ms/token**. This does not advance the
+     preceding clean **22.873989 tok/s** packet: it is **0.05530%** lower and
+     adds **0.024191 ms/token**, opposite the controlled same-resident result.
+     Retain the exact measured leaf/paired sub-window win under the repository
+     variance rule, but do not claim a new clean headline. The latest sample
+     leaves **0.912447 ms/token / 2.13042%** to same-GGUF Vulkan:
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-production.json).
 
 Current exact decode checkpoint:
 
@@ -7909,6 +7919,7 @@ Current exact decode checkpoint:
 | hipEngine prior argmax-control production | **22.865539 tok/s** | **43.734 ms** | **+99.408%** |
 | hipEngine current Q6 LM-head tilemax production | **22.873989 tok/s** | **43.718 ms** | **+99.482%** |
 | hipEngine retained D9 wave-0 same-resident gate | **22.873287 tok/s** | **43.719 ms** | **+99.476%** |
+| hipEngine D9 wave-0 tracked-clean sample | **22.861339 tok/s** | **43.742 ms** | **+99.372%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining tracked-clean wall gap | — | **0.888 ms/token** | hipEngine is **2.074%** below Vulkan throughput |
 
