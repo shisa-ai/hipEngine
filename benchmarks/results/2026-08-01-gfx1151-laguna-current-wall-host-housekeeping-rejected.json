@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_current_decode_wall_attribution",
+  "created_at": "2026-08-01T02:33:44+09:00",
+  "status": "accepted_attribution_host_screens_rejected",
+  "performance_claim": false,
+  "source_revision": "573446d7b6a87b75f224ff452017199ffaf8e8ea",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "workload": {
+    "prompt_tokens": 512,
+    "decode_output_tokens_including_first": 128,
+    "decode_forward_calls": 127,
+    "model_kernels_per_token": 481
+  },
+  "timeline_median_ms_per_token": {
+    "inclusive_kernel_sum": 50.174013,
+    "interval_union_busy": 41.894800,
+    "dispatch_span": 43.149952,
+    "uncovered_union_idle": 1.252339
+  },
+  "inclusive_family_median_ms_per_token": {
+    "source_f16_projection": 24.119073,
+    "selected_q4_gate_up": 8.870636,
+    "dense_shared_quant_projection": 8.431853,
+    "selected_q4_q6_down": 4.758448,
+    "router": 1.337592,
+    "lm_head_argmax": 1.114170,
+    "swa_attention": 0.715183,
+    "global_attention": 0.396824,
+    "norm_rope_gate": 0.426078
+  },
+  "largest_repeated_uncovered_boundaries_ms_per_token": {
+    "head_kv_to_swa_attention": 0.212523,
+    "router_selector_to_selected_gate_up": 0.210592,
+    "q4_selected_down_to_moe_tail": 0.200896,
+    "q6_selected_down_to_moe_tail": 0.171441,
+    "router_projection_to_selector": 0.091573,
+    "swa_attention_to_output_projection": 0.070536,
+    "head_kv_to_global_attention": 0.069531
+  },
+  "same_gguf_vulkan": {
+    "decode_median_tok_s": 23.3861,
+    "wall_ms_per_token": 42.76044316923301,
+    "hipengine_quiet_decode_median_tok_s": 23.220754751333512,
+    "hipengine_quiet_wall_ms_per_token": 43.06492233738812,
+    "hipengine_wall_gap_ms_per_token": 0.3044791689426063,
+    "hipengine_union_busy_advantage_ms_per_token": 0.865643169233009
+  },
+  "host_screens": [
+    {
+      "name": "process_affinity_cpus_0_7",
+      "decode_tok_s": 23.223041750798927,
+      "delta_vs_quiet_median_percent": 0.009844636301714393,
+      "correctness": "exact retained trajectory",
+      "decision": "reject as neutral",
+      "raw_artifact": "/tmp/laguna-production-affinity0-7-directional.json",
+      "raw_sha256": "7ec21376b66949775bcfda57dac579888480d24b4f70b1f21530f991c05b0951"
+    },
+    {
+      "name": "cyclic_gc_disabled",
+      "decode_tok_s": 23.21122204675327,
+      "delta_vs_quiet_median_percent": -0.041055977187687276,
+      "correctness": "exact retained trajectory",
+      "decision": "reject",
+      "raw_artifact": "/tmp/laguna-production-gc-disabled-directional.json",
+      "raw_sha256": "d1f257e982b039e3806c101860da764b38b68ffdf7fad3e83eb5803f2aa0aa9a"
+    }
+  ],
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-current-wall-20260801 --output-file current -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-current-wall-20260801/bench.json",
+    "segmentation": "Sort by start timestamp and dispatch id; use the final 127 embedding-delimited transitions; exclude copyBuffer rows; report medians of per-transition interval sums, unions, spans, idle, and family sums.",
+    "compiler_spawned_under_profiler": false,
+    "tracked_clean": true,
+    "trace_sha256": "d4bc458ea6bd3b9c6615193cfa4264e4a52fb5e9a58a04825bcc68b96e0492ea",
+    "bench_sha256": "89904d8b4d3fa901205aee6ba7c03df7ce057dea9b4d1fd558e645517e32177c"
+  },
+  "conclusion": "Current hipEngine GPU union-busy work is already 0.865643 ms/token below the complete same-GGUF Vulkan wall. The remaining 0.304479-ms clean-wall deficit is queue feed/dependency latency. CPU affinity and cyclic-GC housekeeping are not material. Previously rejected graph, native-wrapper, any-order consumer, and fused-tail designs cover the largest visible gaps; do not reopen them without a materially different command-submission mechanism."
+}

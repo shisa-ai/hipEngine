@@ -9078,6 +9078,41 @@ The remaining attention sequence is:
      the retained item-190 continuation through another waiting consumer:
      [`quiet comparison and rejections`](../benchmarks/results/2026-08-01-gfx1151-laguna-quiet-decode-gap-scheduling-rejected.json).
 
+197. Reprofile the committed current wall and close CPU affinity/GC
+     housekeeping. **Attribution accepted; both host screens rejected.**
+
+     A tracked-clean, cached-only `rocprofv3` run records exactly **481 model
+     kernels/token** across the final 127 transitions. Median inclusive kernel
+     work is **50.174013 ms/token**, with the secondary shared branch hidden
+     under the primary path. Interval-union busy time is only
+     **41.894800 ms/token** inside a **43.149952-ms** dispatch span, leaving
+     **1.252339 ms/token** uncovered.
+
+     This device union is already **0.865643 ms/token faster** than the
+     complete same-GGUF Vulkan wall (**42.760443 ms/token**), even though
+     quiet hipEngine remains **0.304479 ms/token slower** end to end. Current
+     attention is only **1.112007 ms/token** total
+     (**0.396824 global + 0.715183 SWA**). Source-F16 remains the dominant
+     inclusive family at **24.119073 ms/token**, but its natural output leaves
+     already stream at about **235 GB/s** and the dot2/tile-width directions
+     are closed.
+
+     The largest uncovered boundaries remain head/KV→SWA attention
+     **0.212523**, selector→selected gate/up **0.210592**, Q4/Q6 selected
+     down→D9 **0.200896/0.171441**, and router projection→selector
+     **0.091573 ms/token**. Items 129, 131/132/164, 172, 182, 190/191/196,
+     and the head/KV→attention fusion screen already reject the obvious
+     last-producer, graph, persistent, fused-tail, or waiting-consumer forms.
+
+     Constraining the process to CPUs 0–7 is neutral at
+     **23.223042 tok/s (+0.00984%)**. Disabling cyclic GC is negative at
+     **23.211222 tok/s (-0.04106%)**. Both preserve the exact trajectory.
+     Do not attribute the remaining gap to CPU migration or collection.
+     A successor needs a materially different below-HIP command-submission
+     path or a new critical-path byte reduction; ordinary Python cleanup,
+     nested launch wrappers, and another waiting consumer are closed:
+     [`current census and host screens`](../benchmarks/results/2026-08-01-gfx1151-laguna-current-wall-host-housekeeping-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
