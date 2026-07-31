@@ -2098,11 +2098,34 @@ C4096/direct-M512 improves **360.451 -> 381.893 tok/s (+5.949%, 5/5 wins)**,
 reaches **+125.284%** over campaign start, and narrows exact llama.cpp HIP
 **696.342** to **1.82340x**; **212/212** guards pass. Reuse the existing pair16
 ABI and raw owner; add no adapter, allocation, workspace, sidecar, public
-selector, or kernel body. Keep rowbatch8 as same-ABI rollback and reprofile
-clean promoted production before choosing the next matched residual target
+selector, or kernel body. Keep rowbatch8 as same-ABI rollback
 ([production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)).
+
+The clean H6L refresh reaches **381.977 tok/s**, **+125.334%** over campaign
+start, **+6.116%** over clean H6I, and is **1.82299x** behind exact llama.cpp
+HIP **696.342**. The representative exact trace is **1,326.062 ms / 2,192
+dispatches**. Q5/IQ-down/attention/Q6 gaps are
+**194.004/189.827/151.442/72.392 ms**; gate/up now measures **393.895 vs
+401.393 ms**, already **7.498 ms faster** than llama.cpp.
+
+Select target-only **WPF-H6M exact explicit wait-split Q5 K-record pipeline**
+after H6L supplies the distinct-family interval. Q5 is **252.742 vs 58.737 ms
+(4.303x)**; H5Y consumers own **220.092 ms**, and the two dominant 35-call
+roles own **158.004 ms / 71.79%** of consumer time. Do not repeat H6G's
+high-level lookahead: it preserved bytes and VGPR but issued zero useful FMAs
+before immediate `s_waitcnt vmcnt(0)` and regressed both roles on direct and
+inclusive event/wall. Freeze a separate gfx1100 sibling that preserves every
+H5Y plane, local128/four-wave K owner, K-ordered `fmaf`, reduction/store, grid,
+workspace, and policy while using an explicit inline-ISA/builtin ping-pong
+block. Physical admission requires at least 32 useful current-record FMA/VOPD
+issue sites between lookahead loads and their consuming wait, private0/spill0/
+scratch0, bounded VGPR, and no compiler under profiling. Runtime work is
+forbidden until both actual roles and their 70-call producer/pack-inclusive
+aggregate are complete-byte exact and positive on HIP events plus synchronized
+wall
+([post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
