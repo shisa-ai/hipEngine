@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T12:43:42.612510+00:00",
+  "kind": "hipengine_laguna_selected_halfdot_tile4_rejected",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "tensor": "blk.1.ffn_gate_exps.weight + blk.1.ffn_up_exps.weight",
+    "resident_layout": "gguf_q4_k_t16_dual_interleaved_v1"
+  },
+  "workload": {
+    "shape": "c=1/top-10/E256/K3072/N1024",
+    "control": "local128/tile8 interleaved halfdot",
+    "candidate": "local128/tile4 interleaved halfdot",
+    "warmups": 5,
+    "samples": 21,
+    "burst": 100
+  },
+  "results": {
+    "control_median_ms": 0.09281509399414062,
+    "candidate_median_ms": 0.0943187141418457,
+    "candidate_delta_percent": 1.620016834546334,
+    "bf16_mismatches": 0,
+    "resident_bytes_control": 931135488,
+    "resident_bytes_candidate": 931135488
+  },
+  "decision": {
+    "retained": "local128/tile8 interleaved halfdot",
+    "removed": [
+      "tile4 HIP specialization and C ABI",
+      "Python wrapper",
+      "leaf harness mode",
+      "RED/GREEN fixture additions"
+    ],
+    "reason": "The candidate fails the mandatory actual-weight leaf gate, so no runtime or complete-model gate is warranted.",
+    "production_unchanged": {
+      "decode_tok_s": 23.089692642099697,
+      "decode_ms_per_token": 43.30936818897638
+    }
+  },
+  "protocol": {
+    "command": "PYTHONPATH=. python3 scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile4-parallel-silu-interleaved-halfdot --gate-only --warmups 5 --samples 21 --burst 100 --allow-dirty --output /tmp/laguna-selected-halfdot-tile4-leaf.json",
+    "timing": "counterbalanced HIP-event elapsed time",
+    "correctness": "BF16 bit equality to the retained tile8 halfdot output",
+    "raw_output": "/tmp/laguna-selected-halfdot-tile4-leaf.json",
+    "raw_sha256": "8ff7e9bcce4cac66ac98ca649cfff29b8522e942acae419a6fe274e7c816f2f1"
+  },
+  "repo": {
+    "baseline_revision": "f1a125968c979e218865a6d290ce940677d205ba",
+    "candidate_committed": false
+  },
+  "notes": [
+    "RED failed on the absent tile4 wrapper; GREEN passed the production-shape HIP fixture before timing.",
+    "The candidate preserved the resident byte count and split Q payload loads so aggregate useful Q bytes did not grow.",
+    "The candidate was completely removed before this artifact was committed."
+  ]
+}

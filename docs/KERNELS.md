@@ -2591,6 +2591,12 @@ Seven complete-model pairs improve **22.999793 -> 23.084044 tok/s
 `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json`
 and
 `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json`.
+The final simple geometry seam is also closed: local128/tile4 preserves every
+halfdot BF16 output bit and resident byte, but doubles the selected-row grid
+and regresses the actual layer-1 leaf
+**0.092815 -> 0.094319 ms (+1.620%)**. The candidate is removed; tile8 remains
+canonical:
+`benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-tile4-rejected.json`.
 
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the

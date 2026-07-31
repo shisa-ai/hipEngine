@@ -8763,6 +8763,33 @@ The remaining attention sequence is:
      shared-down bytes. Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-down-after-selected-gate-rejected.json).
 
+186. Halve the retained selected gate/up half-dot accumulator tile from eight
+     to four outputs while keeping local128 ownership.
+     **Rejected at the actual-weight leaf and removed.**
+
+     This is the last untested simple geometry around the retained half-dot
+     body: interleaved tile16 and tile12, plus local64/tile8, were already
+     rejected at complete-model gates. Tile4 halves the gate/up accumulator
+     count per workgroup and splits the Q payload loads so total useful
+     weight bytes remain unchanged, but doubles the X grid from 128 to 256
+     workgroups per selected row.
+
+     RED fails on the absent tile4 wrapper. GREEN is BF16-bit equal to the
+     retained half-dot output at the production E256/K3072/N1024/top-10
+     shape. The counterbalanced actual layer-1 21x100 gate is nevertheless
+     negative:
+
+     | Geometry | Median | Delta |
+     | --- | ---: | ---: |
+     | retained local128/tile8 half-dot | **0.092815 ms** | baseline |
+     | local128/tile4 half-dot | 0.094319 ms | **+1.620%** |
+
+     The lower accumulator footprint does not repay the doubled workgroup
+     grid. Stop before runtime integration or a complete p512/d128 run and
+     remove the HIP body/export, wrapper, harness route, and fixture
+     additions. Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-tile4-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8788,7 +8815,8 @@ expert-major F32 weight layout. Item 184 additionally closes the obvious
 bounded persistent output→RMSNorm→router owner: its maximum occupancy-safe
 grid already regresses before router work is attached. Item 185 closes the
 remaining obvious shared-branch event split; delaying only shared down loses
-**0.256145 ms/token**:
+**0.256145 ms/token**. Item 186 closes the remaining simple selected gate/up
+half-dot geometry seam before runtime integration:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
