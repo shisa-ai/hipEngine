@@ -1296,6 +1296,31 @@ the next matched residual target
 [candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)).
 
+The clean H6L source refresh reaches **381.977 tok/s**, **+125.334%** over
+campaign start, **+6.116%** over clean H6I, and **1.82299x** behind matched
+llama.cpp HIP **696.342**. Its representative cached request is
+**1,326.062 ms / 2,192 dispatches**. Q5/IQ-down/attention/Q6 gaps are
+**194.004/189.827/151.442/72.392 ms**; H6L moves gate/up to **393.895 ms**, or
+**7.498 ms faster** than llama.cpp's **401.393 ms**. Exact topology is **46 H6L
++ one H6C**, **45 H6I + two H5J**, **48 global + 144 SWA H6A**, and unchanged
+H5Y/H6E. No compiler runs under cached profiling.
+
+Select target-only **WPF-H6M exact explicit wait-split Q5 K-record pipeline**.
+Current Q5 is **252.742 vs 58.737 ms (4.303x)**. H5Y consumers own
+**220.092 ms**; BF16 K9216/N3072 row-major 12x8 plus F32 K3072/N9216
+tile-K-col 8x10 own **158.004 ms / 70 calls**, **71.79%** of consumer time.
+H6G's high-level prefetch already proved byte identity and unchanged VGPR, but
+both symbols issued zero current FMAs before immediate `s_waitcnt vmcnt(0)` and
+regressed direct plus producer/pack-inclusive event/wall. H6M is not that
+source retry: a separate gfx1100 sibling must use an explicit inline-ISA/
+builtin ping-pong block, preserve every H5Y plane, local128/four-wave K owner,
+K-ordered `fmaf`, reduction, store, grid, workspace, and policy, and physically
+place at least 32 useful current-record FMA/VOPD issue sites between lookahead
+loads and the consuming wait. Admit only with private0/spill0/scratch0, bounded
+VGPR, complete H5Y/CPU bytes, and both-role plus 70-call inclusive wins on HIP
+events and synchronized wall; otherwise remove every H6M surface
+([post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
