@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "hipengine_laguna_decode_shared_stream_priority_retained",
-  "status": "retained_pending_clean_publication",
+  "status": "retained_and_published",
   "timestamp": "2026-07-31T13:52:00+09:00",
   "source_revision": "7d0cd5872d9b2a11041c51bf1c11f87e04e38b81",
   "hardware": {
@@ -78,7 +78,8 @@
     "retained": true,
     "gfx1151_default": true,
     "reason": "The decode-only stream wins all seven exact same-session pairs while preserving the proven low-priority prefill schedule, every kernel and arithmetic boundary, generated trajectory, and tracked residency.",
-    "clean_selector_unset_publication_pending": true
+    "clean_selector_unset_publication_pending": false,
+    "production_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-production.json"
   },
   "production": {
     "prior_decode_tokens_per_second": 22.873989323,

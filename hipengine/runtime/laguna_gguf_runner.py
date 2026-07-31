@@ -3498,13 +3498,6 @@ class LagunaGGUFResidentSession:
 
         self.moe_shared_after_router = bool(enabled)
 
-    def set_moe_decode_shared_normal_priority(self, enabled: bool) -> None:
-        """Select the separately allocated priority-0 c=1 shared stream."""
-
-        if enabled and not self._moe_decode_shared_stream:
-            raise ValueError("normal-priority decode shared stream is unavailable")
-        self.moe_decode_shared_normal_priority = bool(enabled)
-
     def set_router_logits_mode(self, mode: str) -> None:
         """Select the exact rows>1 router-logit token-reuse schedule."""
 

@@ -195699,3 +195699,26 @@ Vulkan local sizes verbatim will close the measured gap.
   publication.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-retained.json`.
+
+## 2026-07-31 14:00 JST — Publish decode-only normal-priority shared MoE
+
+- Tracked-clean selector-unset revision `db53a6f96` resolves automatic two
+  queues, prefill shared priority **+1**, and decode shared priority **0**.
+  Three p512/d128 repetitions measure
+  **22.877787/22.891692/22.894326 tok/s**, median
+  **22.891692 tok/s / 43.683971 ms/token**.
+- This advances the prior clean **22.873989 tok/s / 43.717779 ms/token** by
+  **+0.077391%** and saves **0.033808 ms/token**. Relative to the
+  **11.466687 tok/s** sprint start, production is now **+99.636%**.
+- All three runs preserve token **2930 -> 74107**, final position **638**,
+  trajectory SHA `94f803f7...bda32`, determinism, and lifecycle. Tracked
+  residency remains **79,066,169,172 bytes** and dispatch topology remains
+  **483 = 481 model kernels + two D2H copies**.
+- Against same-GGUF llama.cpp Vulkan **23.348381 tok/s / 42.829522
+  ms/token**, the remaining gap is **0.854449 ms/token / 1.9950%**
+  throughput. Raw JSON SHA-256 is `78d46df3...e3556`.
+- Removed the temporary session setter, direct profiling CLI/protocol field,
+  and one-off priority A/B harness. Retain the constructor false rollback,
+  gfx1151 capability, separate c=1 stream, and prior all-low-priority fallback.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-decode-shared-normal-priority-production.json`.

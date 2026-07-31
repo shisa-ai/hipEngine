@@ -1511,8 +1511,6 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.moe_shared_low_priority is True
     assert session.moe_shared_priority_range == (1, -1)
     assert session.moe_decode_shared_normal_priority is True
-    session.set_moe_decode_shared_normal_priority(False)
-    assert session.moe_decode_shared_normal_priority is False
     assert session.verifier_scratch is None
     session.close()
     session.close()

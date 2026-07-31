@@ -210,11 +210,6 @@ def _parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
-        "--moe-decode-shared-normal-priority",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-    )
-    parser.add_argument(
         "--head-kv-fusion",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -534,7 +529,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_q6_qmicro_planar = False
     active_moe_shared_after_router = False
     active_moe_shared_low_priority = False
-    active_moe_decode_shared_normal_priority = False
     active_moe_shared_priority_range: tuple[int, int] | None = None
     active_moe_tail_next_rmsnorm = False
     active_head_kv_fusion = False
@@ -625,9 +619,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
-            moe_decode_shared_normal_priority=(
-                args.moe_decode_shared_normal_priority
-            ),
             use_moe_tail_next_rmsnorm=args.moe_tail_next_rmsnorm,
             use_head_kv_fusion=args.head_kv_fusion,
             global_split_min_live=(
@@ -691,9 +682,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_q6_qmicro_planar = owner.q6_qmicro_planar
         active_moe_shared_after_router = owner.moe_shared_after_router
         active_moe_shared_low_priority = owner.moe_shared_low_priority
-        active_moe_decode_shared_normal_priority = (
-            owner.moe_decode_shared_normal_priority
-        )
         active_moe_shared_priority_range = owner.moe_shared_priority_range
         active_moe_tail_next_rmsnorm = (
             owner.kernel_plan.moe_tail_next_rmsnorm is not None
@@ -1150,9 +1138,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "moe_branch_concurrency": active_moe_branch_concurrency,
             "moe_shared_after_router": active_moe_shared_after_router,
             "moe_shared_low_priority": active_moe_shared_low_priority,
-            "moe_decode_shared_normal_priority": (
-                active_moe_decode_shared_normal_priority
-            ),
             "moe_shared_priority_range": active_moe_shared_priority_range,
             "moe_tail_next_rmsnorm": active_moe_tail_next_rmsnorm,
             "moe_tail_next_rmsnorm_requested": args.moe_tail_next_rmsnorm,
