@@ -348,6 +348,20 @@ claims. The bias-aware sibling adds each FP16 bias to the FP32 reduced dot
 before the FP16 boundary, matching decoder `fc1`/`fc2`; its cache-only
 four-row trace is 10.620 us at the same local256/VGPR16/LDS512/scratch0 tuple.
 
+The Phase-3 gfx1151 decode route retains every key above as a fallback but uses
+measured production geometry: local32 for triple QKV, bias-aware fc1, and
+head-major cross-K/V; local64 for bias-aware fc2; and the existing vectorized
+`dense_gemv_out_fp16` local64 kernel for the 24 unbiased singleton Q/O calls.
+The generic Moonshine reduction now returns directly from wave32 and removes an
+unneeded second block barrier for larger groups; thread-0 arithmetic is
+unchanged. A 15x20-launch event matrix measures single/triple/fc1/fc2/cross at
+3.436/4.963/12.373/6.665/52.251 us versus the original local256
+5.783/10.324/25.142/7.035/165.463 us. Existing dense three-dispatch triple,
+WMMA, rocBLAS GEMM-ex, and inclusive hipBLASLt candidates are slower. Full
+fixture/token/selected-region promotion evidence remains in the Moonshine
+experiment ledger rather than treating these leaf numbers as a standalone
+speed claim.
+
 `norm/moonshine_layernorm.{hip,py}` registers
 `moonshine_layernorm/fp16/fp32_stats`. One local256 block computes the FP32
 mean and centered variance in two passes, then writes the weighted FP16

@@ -13,6 +13,7 @@ __device__ inline float moonshine_block_sum(float value) {
   for (int offset = 16; offset > 0; offset >>= 1) {
     value += __shfl_down(value, offset);
   }
+  if (blockDim.x == 32) return value;
   __shared__ float partial[8];
   if (lane == 0) partial[wave] = value;
   __syncthreads();
@@ -20,10 +21,9 @@ __device__ inline float moonshine_block_sum(float value) {
     float total = 0.0f;
     const int waves = (blockDim.x + 31) >> 5;
     for (int index = 0; index < waves; ++index) total += partial[index];
-    partial[0] = total;
+    return total;
   }
-  __syncthreads();
-  return partial[0];
+  return 0.0f;
 }
 
 __global__ void moonshine_f16_projection_kernel(
