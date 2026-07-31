@@ -23,7 +23,9 @@ from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
     moonshine_cross_attention_fp16,
     moonshine_cross_attention_grouped_fp16,
     moonshine_cross_attention_parallel_fp16,
+    moonshine_self_attention_branch_fp16,
     moonshine_self_attention_fp16,
+    moonshine_self_attention_parallel_fp16,
 )
 
 
@@ -127,6 +129,32 @@ def main() -> int:
             library=library,
             runtime=runtime,
         )
+        moonshine_self_attention_branch_fp16(
+            device_query_self.ptr,
+            device_key_self.ptr,
+            device_value_self.ptr,
+            device_position.ptr,
+            output_self.ptr,
+            heads,
+            head_dim,
+            capacity,
+            library=library,
+            runtime=runtime,
+        )
+        for threads in (64, 128, 256):
+            moonshine_self_attention_parallel_fp16(
+                device_query_self.ptr,
+                device_key_self.ptr,
+                device_value_self.ptr,
+                device_position.ptr,
+                output_self.ptr,
+                heads,
+                head_dim,
+                capacity,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
         moonshine_cross_attention_fp16(
             device_query_cross.ptr,
             device_key_cross.ptr,
@@ -186,6 +214,10 @@ def main() -> int:
         "cross_relative_l2": cross_relative_l2,
         "expected_kernel_names": [
             "moonshine_self_attention_fp16_kernel",
+            "moonshine_self_attention_branch_fp16_kernel",
+            "moonshine_self_attention_parallel_fp16_kernel<2>",
+            "moonshine_self_attention_parallel_fp16_kernel<4>",
+            "moonshine_self_attention_parallel_fp16_kernel<8>",
             "moonshine_cross_attention_fp16_kernel",
             "moonshine_cross_attention_grouped_fp16_kernel",
             "moonshine_cross_attention_parallel_fp16_kernel<2>",
