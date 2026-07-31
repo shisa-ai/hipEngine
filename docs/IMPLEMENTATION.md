@@ -112,17 +112,17 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Validate selected golden-fixture positions and prove timed steps do not allocate.
   - [x] Validate padded 40/207-bucket position-0/193 boundaries for all six real Japanese fixtures.
   - [x] Publish the Phase-2 correctness, dispatch, latency, and Amdahl baseline in the experiment ledger.
-- [ ] Tune and promote the Phase-3 resident decoder route.
+- [x] Tune and promote the Phase-3 resident decoder route.
   - [x] Tune source-F16 singleton, triple-QKV, and bias-aware MLP projections.
   - [x] Tune tied LM-head/argmax with grouped exact wave32 rows.
   - [x] Tune masked resident cross attention.
   - [x] Tune short/long self-cache attention from refreshed profiles.
   - [x] Test and promote bounded residual/LayerNorm and gated-MLP fusions.
-  - [ ] Capture/replay the fixed-address token DAG after structural wins.
+  - [x] Capture/replay the fixed-address token DAG after structural wins.
     - [x] Add a lifecycle-safe four-bucket HIP graph API over the fixed resident token step.
     - [x] Prove fake-runtime state/lifecycle contracts and real gfx1151 graph/eager parity with zero timed allocation.
     - [x] Compare eager Python launch, available C-dispatch routes, graph replay, and capture/instantiate startup cost.
-    - [ ] Retain or reject graph replay from repeated selected-position and complete-generation evidence, then publish the result.
+    - [x] Retain or reject graph replay from repeated selected-position and complete-generation evidence, then publish the result.
 
 ## Notes
 
