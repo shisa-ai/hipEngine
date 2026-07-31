@@ -2074,8 +2074,32 @@ materially occupancy-preserving mechanism
 ([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)).
 
-The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
-changed-association attention, H5O representation, H5P geometry, H5S persistent
+Rerank the unchanged post-H6I residual after H6K. Q5 remains the largest gap
+but its exact representation/geometry/activation/prefetch dimensions are closed;
+IQ-down wider grouping and attention LDS replay now also have binding negative
+evidence. Gate/up is next at **479.738 vs 401.393 ms (78.345 ms, 1.195x)**,
+with current IQ2/H6C contributions **464.818/14.920 ms**. Select target-only
+**WPF-H6L exact IQ2 pair16 grouped rowbatch16 decode amortization**. Instantiate
+the existing WPF-2b local64/pair16 fused-SiLU template at 16 rows while keeping
+one output column/expert block, pair16 K ownership, every row's FMA/tree/
+wave0..1 sum, BF16 gate/up boundary, SiLU/store, grid, activation traffic,
+useful dot work, allocation, workspace, and production policy.
+
+A fresh natural-M512 route inventory over all **46** IQ2 layers counts rowbatch
+epochs **34,292 -> 20,307 (-40.782%)**, pair16 gate/up weight decodes **13.484B
+-> 7.985B (-5.499B)**, and publication/reuse barriers **70.230M -> 41.589M
+(-28.641M)**; accumulator scalars rise **16 -> 32** and source wave sums **128
+-> 256 bytes**. A fixed-plus-inverse-batch fit through retained all-layer
+rowbatch4/8 **603.706/482.040 ms** models rowbatch16 at **421.206 ms**, current
+IQ2 **464.818 -> 406.158 ms**, and matched **359.963 -> 375.447 tok/s**. These
+are selection models only. Require strict RED, cached local64/grid65536x256,
+private0/spill0/scratch0, VGPR <=224, unchanged frozen template bodies, complete
+rowbatch8/CPU bytes, and every **46/46** actual layer positive on events plus
+synchronized wall before runtime ownership
+([H6L target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)). Production remains H6I plus WPF-2b rowbatch8 at **359.963 tok/s**.
+
+The old wider-qrow, cross-head/key-split, attention-rowbatch16,
+attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
 P6/repair routes remain closed.
 Launch fusion remains deferred.
