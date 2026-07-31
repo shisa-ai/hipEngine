@@ -325,9 +325,15 @@ encoder-frame K/V materialization. The keys are
 `moonshine_projection/single_fp32_accum`,
 `moonshine_projection_rows/single_fp32_accum`,
 `moonshine_projection_bias/single_fp32_accum`,
-`moonshine_projection_pair/pair_fp32_accum`, and
+`moonshine_projection_pair/pair_fp32_accum`,
+`moonshine_cross_kv_precompute/pair_head_major_fp32_accum`, and
 `moonshine_qkv_proj/triple_fp32_accum`, all under `quant="fp16"`; gfx1151
-uses the peer backend alias and native `gfx1151` code object.
+uses the peer backend alias and native `gfx1151` code object. The cross-K/V
+variant preserves the same dot products but writes direct resident
+`[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
+separate transpose or temporary frame buffer. Four-row output matches the
+transposed NumPy projection within max absolute error `3.052e-5`; cache-only
+tracing names the head-major pair at 17.073 us, local256/VGPR16/LDS512/scratch0.
 
 The production-shape fixture covers hidden 416, batch-one single/triple, and a
 40-row paired cross-K/V baseline against the independent NumPy oracle. Maximum
@@ -349,13 +355,15 @@ or alter the Qwen/PARO RMSNorm math.
 
 `fused/moonshine_glue.{hip,py}` registers explicit FP16 primitives for device
 int64 embedding lookup, rounded residual add, pair-interleaved partial RoPE,
-and fixed self-cache append. It also registers
+fixed self-cache append, and deterministic lowest-ID FP16-logit argmax. It also registers
 `moonshine_partial_rope+moonshine_self_cache/interleaved_fixed_append`; the
 separate RoPE and cache keys remain its required unfused fallback. Positions
 0/1/63/193 and logical 8x52 heads are byte-equal to the NumPy oracle, and the
 composite is byte-equal to the two-kernel chain. Cache-only gfx1151 tracing
 reports embedding/residual/RoPE/cache/composite at
-3.166/1.443/2.885/1.763/1.643 us, local256, LDS0, scratch0, and maximum VGPR24.
+3.326/1.403/2.645/1.844/1.763 us, local256, LDS0, scratch0, and maximum VGPR24.
+The 36,864-way argmax is tie-stable and traces at 31.219 us,
+local256/VGPR16/LDS3072/scratch0; it uses no caller scratch allocation.
 
 `fused/moonshine_mlp.{hip,py}` registers
 `moonshine_gated_silu/fp16/value_gate_split`: it consumes the bias-aware FP16

@@ -35,6 +35,7 @@ def test_moonshine_projection_registry_resolves_explicit_gfx1151_keys() -> None:
         moonshine_f16_projection,
         moonshine_f16_projection_bias,
         moonshine_f16_projection_pair,
+        moonshine_f16_projection_pair_head_major,
         moonshine_f16_projection_triple,
         register_moonshine_projection_kernels,
     )
@@ -47,6 +48,10 @@ def test_moonshine_projection_registry_resolves_explicit_gfx1151_keys() -> None:
         ("moonshine_projection_rows", "single_fp32_accum"): moonshine_f16_projection,
         ("moonshine_projection_bias", "single_fp32_accum"): moonshine_f16_projection_bias,
         ("moonshine_projection_pair", "pair_fp32_accum"): moonshine_f16_projection_pair,
+        (
+            "moonshine_cross_kv_precompute",
+            "pair_head_major_fp32_accum",
+        ): moonshine_f16_projection_pair_head_major,
         ("moonshine_qkv_proj", "triple_fp32_accum"): moonshine_f16_projection_triple,
     }
     for (layer, variant), function in expected.items():
@@ -63,6 +68,7 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
         moonshine_f16_projection,
         moonshine_f16_projection_bias,
         moonshine_f16_projection_pair,
+        moonshine_f16_projection_pair_head_major,
         moonshine_f16_projection_triple,
     )
 
@@ -78,6 +84,7 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
         hipengine_moonshine_f16_projection = FakeKernel()
         hipengine_moonshine_f16_projection_bias = FakeKernel()
         hipengine_moonshine_f16_projection_pair = FakeKernel()
+        hipengine_moonshine_f16_projection_pair_head_major = FakeKernel()
         hipengine_moonshine_f16_projection_triple = FakeKernel()
 
     library = FakeLibrary()
@@ -85,6 +92,9 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
     moonshine_f16_projection(1, 2, 3, 1, 416, 416, **common)
     moonshine_f16_projection_bias(1, 2, 3, 4, 1, 416, 416, **common)
     moonshine_f16_projection_pair(1, 2, 3, 4, 5, 1, 416, 416, 416, **common)
+    moonshine_f16_projection_pair_head_major(
+        1, 2, 3, 4, 5, 40, 416, 416, 416, 52, **common
+    )
     moonshine_f16_projection_triple(
         1, 2, 3, 4, 5, 6, 7, 1, 416, 416, 416, 416, **common
     )
@@ -96,6 +106,9 @@ def test_moonshine_projection_wrappers_keep_raw_pointer_abi() -> None:
     ]
     assert library.hipengine_moonshine_f16_projection_pair.calls == [
         (1, 2, 3, 4, 5, 1, 416, 416, 416, 256, 7)
+    ]
+    assert library.hipengine_moonshine_f16_projection_pair_head_major.calls == [
+        (1, 2, 3, 4, 5, 40, 416, 416, 416, 52, 256, 7)
     ]
     assert library.hipengine_moonshine_f16_projection_triple.calls == [
         (1, 2, 3, 4, 5, 6, 7, 1, 416, 416, 416, 416, 256, 7)
@@ -121,6 +134,7 @@ def test_moonshine_projection_single_pair_triple_match_cpu_oracle() -> None:
         moonshine_f16_projection,
         moonshine_f16_projection_bias,
         moonshine_f16_projection_pair,
+        moonshine_f16_projection_pair_head_major,
         moonshine_f16_projection_triple,
     )
 
@@ -149,6 +163,7 @@ def test_moonshine_projection_single_pair_triple_match_cpu_oracle() -> None:
         biased = _alloc((1, hidden), runtime, allocations)
         triple = tuple(_alloc((1, hidden), runtime, allocations) for _ in range(3))
         pair = tuple(_alloc((40, hidden), runtime, allocations) for _ in range(2))
+        head_major = tuple(_alloc((8, 40, 52), runtime, allocations) for _ in range(2))
 
         moonshine_f16_projection(
             dx_one.ptr, device_weights[0].ptr, single.ptr, 1, hidden, hidden,
@@ -157,6 +172,20 @@ def test_moonshine_projection_single_pair_triple_match_cpu_oracle() -> None:
         moonshine_f16_projection_bias(
             dx_one.ptr, device_weights[0].ptr, device_bias.ptr, biased.ptr,
             1, hidden, hidden, library=library, runtime=runtime,
+        )
+        moonshine_f16_projection_pair_head_major(
+            dx_rows.ptr,
+            device_weights[0].ptr,
+            device_weights[1].ptr,
+            head_major[0].ptr,
+            head_major[1].ptr,
+            40,
+            hidden,
+            hidden,
+            hidden,
+            52,
+            library=library,
+            runtime=runtime,
         )
         moonshine_f16_projection_triple(
             dx_one.ptr,
@@ -188,6 +217,9 @@ def test_moonshine_projection_single_pair_triple_match_cpu_oracle() -> None:
         actual_bias = _download(biased, (1, hidden), runtime)
         actual_triple = tuple(_download(output, (1, hidden), runtime) for output in triple)
         actual_pair = tuple(_download(output, (40, hidden), runtime) for output in pair)
+        actual_head_major = tuple(
+            _download(output, (8, 40, 52), runtime) for output in head_major
+        )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -198,7 +230,13 @@ def test_moonshine_projection_single_pair_triple_match_cpu_oracle() -> None:
         np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-3)
     for actual, expected in zip(actual_pair, expected_rows, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-3)
-    assert all(np.isfinite(value).all() for value in (*actual_triple, *actual_pair))
+    for actual, expected in zip(actual_head_major, expected_rows, strict=True):
+        expected_layout = expected.reshape(40, 8, 52).transpose(1, 0, 2)
+        np.testing.assert_allclose(actual, expected_layout, rtol=2e-3, atol=2e-3)
+    assert all(
+        np.isfinite(value).all()
+        for value in (*actual_triple, *actual_pair, *actual_head_major)
+    )
 
 
 def _upload(array: np.ndarray, runtime, allocations):

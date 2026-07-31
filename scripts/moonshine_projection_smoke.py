@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     moonshine_f16_projection,
     moonshine_f16_projection_bias,
     moonshine_f16_projection_pair,
+    moonshine_f16_projection_pair_head_major,
     moonshine_f16_projection_triple,
 )
 
@@ -87,6 +88,7 @@ def main() -> int:
         single = _output((rows, hidden), runtime, allocations)
         biased = _output((rows, hidden), runtime, allocations)
         pair = tuple(_output((rows, hidden), runtime, allocations) for _ in range(2))
+        head_major = tuple(_output((8, rows, 52), runtime, allocations) for _ in range(2))
         triple = tuple(_output((rows, hidden), runtime, allocations) for _ in range(3))
         moonshine_f16_projection(
             device_input.ptr,
@@ -122,6 +124,20 @@ def main() -> int:
             library=library,
             runtime=runtime,
         )
+        moonshine_f16_projection_pair_head_major(
+            device_input.ptr,
+            device_weights[0].ptr,
+            device_weights[1].ptr,
+            head_major[0].ptr,
+            head_major[1].ptr,
+            rows,
+            hidden,
+            hidden,
+            hidden,
+            52,
+            library=library,
+            runtime=runtime,
+        )
         moonshine_f16_projection_triple(
             device_input.ptr,
             *(weight.ptr for weight in device_weights),
@@ -138,6 +154,9 @@ def main() -> int:
         actual_single = _download(single, (rows, hidden), runtime)
         actual_bias = _download(biased, (rows, hidden), runtime)
         actual_pair = tuple(_download(output, (rows, hidden), runtime) for output in pair)
+        actual_head_major = tuple(
+            _download(output, (8, rows, 52), runtime) for output in head_major
+        )
         actual_triple = tuple(
             _download(output, (rows, hidden), runtime) for output in triple
         )
@@ -145,8 +164,24 @@ def main() -> int:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
-    comparisons = (actual_single, actual_bias, *actual_pair, *actual_triple)
-    references = (expected[0], expected_bias, expected[0], expected[1], *expected)
+    expected_head_major = tuple(
+        value.reshape(rows, 8, 52).transpose(1, 0, 2) for value in expected[:2]
+    )
+    comparisons = (
+        actual_single,
+        actual_bias,
+        *actual_pair,
+        *actual_head_major,
+        *actual_triple,
+    )
+    references = (
+        expected[0],
+        expected_bias,
+        expected[0],
+        expected[1],
+        *expected_head_major,
+        *expected,
+    )
     max_abs = max(
         float(np.max(np.abs(actual.astype(np.float32) - reference.astype(np.float32))))
         for actual, reference in zip(comparisons, references, strict=True)
@@ -166,6 +201,7 @@ def main() -> int:
             "moonshine_f16_projection_kernel",
             "moonshine_f16_projection_bias_kernel",
             "moonshine_f16_projection_pair_kernel",
+            "moonshine_f16_projection_pair_head_major_kernel",
             "moonshine_f16_projection_triple_kernel",
         ],
     }
