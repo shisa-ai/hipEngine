@@ -1345,6 +1345,33 @@ pass
 [candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
+The clean post-H6N cached reprofile is **386.959 tok/s / 1,309.339 ms / 2,192
+dispatches** versus matched llama.cpp HIP **696.342 tok/s / 718.241 ms**.
+Q5/IQ-down/attention/Q6 gaps are **195.952/191.674/126.480/72.532 ms**;
+gate/up is **3.851 ms faster** than llama.cpp. Q5's exact geometry, plane,
+ownership, and prefetch/wait-split routes are closed. H6N supplies the distinct
+attention interval, so **WPF-H6P exact staged-wave-publication triple-output
+IQ3** targets only H6I's register liveness.
+
+The frozen H6I body carries `acc_a[8]`, `acc_b[8]`, and `acc_c[8]` together into
+`reduce_local128_triples_batched`, then publishes all three wave planes through
+one barrier. It compiles **216** useful FMAs, **44** FMA/FMA VOPD pairs, stride
+`0x300`, two barrier instructions/eight dynamic barriers per rowbatch, and
+runs local128/VGPR168/LDS512/scratch0/grid32768x64. The H6P target computes and
+wave-reduces A, writes lane-0 partials without a barrier, ends the accumulator
+scope, repeats B/C, then uses one publication barrier, original per-output
+wave0..3 sums/stores, and the reuse barrier. It must not change useful math,
+bytes, grouping width, rowbatch, traversal, grid, allocation, workspace, or
+source policy.
+
+Before timing, cached source/ISA/rocprof must prove three no-barrier
+publications, unchanged 216-FMA/stride/barrier/grid/LDS facts, private0/spill0/
+scratch0, no compiler activity, and metadata/runtime VGPR **<=128/128**; this
+moves only the mechanical 1536-VGPR/SIMD wave ceiling **9 -> 12**. Then exact
+rows1/7/8/9/M512/P64/P65 and all **45/45** actual-layer both-clock gates must
+pass. Any higher VGPR or losing layer removes every H6P surface and retains H6I
+([post-H6N residual / H6P target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

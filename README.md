@@ -356,6 +356,26 @@ unchanged, gfx1151 stays excluded, and **81/81** guards pass
 [candidate/runtime](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
 [target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
+The clean post-H6N source refresh is **386.959 tok/s** from
+**386.959/386.988/387.860/386.261/386.435**, all exact token 2930 and
+lifecycle-clean. Its representative cached request is **1,309.339 ms / 2,192
+dispatches**. Campaign-start/current/llama.cpp HIP component milliseconds are
+Q5 **1,270.458/254.689/58.737**, IQ-down **557.091/346.108/154.434**,
+attention **488.304/148.104/21.624**, Q6 **157.073/86.987/14.455**, gate/up
+**460.143/397.542/401.393**, and remaining **68.623/75.908/67.598**; current
+kernel sum is **1,309.339 vs 718.241 ms** and the clean wall gap is **1.79952x**.
+Q5 remains numerically first but its exact mechanisms are closed by H5/H6G/H6M.
+After H6N supplies the distinct attention interval, **WPF-H6P exact staged-wave-
+publication triple-output IQ3** targets H6I's measured **VGPR168** liveness.
+The separate target keeps all three outputs, 216 FMAs, stride `0x300`, eight
+dynamic barriers, local128/grid32768x64, and exact per-output arithmetic, but
+publishes A/B/C wave sums sequentially before one barrier so only one eight-row
+accumulator set remains live. Admission requires metadata/runtime VGPR
+**<=128/128**, private/spill/scratch0, complete H6I/CPU bytes, and **45/45**
+actual-layer wins on both clocks; this is target rationale, not a speed/default
+claim
+([post-H6N residual / H6P target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

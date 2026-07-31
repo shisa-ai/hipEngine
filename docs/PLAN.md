@@ -2153,11 +2153,39 @@ campaign start and **1.79668x** behind llama.cpp HIP **696.342**. Selector-
 unset 512/1K/4K moves **363.520/295.622/188.755 -> 363.324/296.211/188.858
 tok/s (-0.054%/+0.199%/+0.054%)** with exact outputs and clean teardown; 4K
 wins **3/3**. H6A global remains registered rollback, H6A SWA is unchanged,
-gfx1151 stays excluded, and **81/81** guards pass. Next reprofile exact promoted
-C4096/direct-M512 production and rerank the matched component residual
+gfx1151 stays excluded, and **81/81** guards pass
 ([H6N production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+
+The clean promoted-source reprofile reaches **386.959 tok/s** from five exact
+token-2930/lifecycle-clean samples, **+128.272%** over campaign start and
+**1.79952x** behind llama.cpp HIP. Its representative request is **1,309.339
+ms / 2,192 dispatches** in a **1,333.225-ms** median span. Current/llama Q5,
+IQ-down, attention, Q6, gate/up, and remaining are **254.689/58.737**,
+**346.108/154.434**, **148.104/21.624**, **86.987/14.455**,
+**397.542/401.393**, and **75.908/67.598 ms**. Gaps rank **195.952/191.674/
+126.480/72.532 ms**; kernel sum is **1,309.339 vs 718.241 ms**.
+
+Do not reopen Q5: H6M physically realized the final explicit wait-split premise
+and still lost both clocks. H6N provides the distinct attention interval, so
+select target-only **WPF-H6P exact staged-wave-publication triple-output IQ3**.
+Current H6I keeps three eight-row accumulator arrays live together through one
+batched reducer and runs at local128/VGPR168/LDS512/scratch0/grid32768x64.
+H6P must preserve P256/P64/rowbatch8, three outputs, all **216** useful FMAs,
+per-output wave32 and serial wave0..3 order, stride `0x300`, four epochs, and
+eight dynamic barriers. It may only compute/reduce/publish A, then B, then C to
+separate LDS planes without intervening barriers, use one publication barrier,
+serially sum/store each output, and retain the reuse barrier. This is a register-
+liveness target with no speed/default claim.
+
+Freeze H6I source/body hashes and exact rows **1/7/8/9/M512** plus P64/P65
+before executable changes. Physical admission requires the same ISA operation/
+barrier/grid/LDS contract, private0/spill0/scratch0, no compiler under profiling,
+and metadata/runtime VGPR **<=128/128**; higher VGPR rejects before timing. Then
+require complete H6I/CPU bytes and **45/45** actual-layer HIP-event plus
+synchronized-wall wins before bounded runtime ownership
+([post-H6N residual / H6P target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
