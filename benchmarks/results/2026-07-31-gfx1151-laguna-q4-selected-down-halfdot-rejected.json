@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T20:09:15+09:00",
+  "kind": "hipengine_laguna_q4_selected_down_halfdot_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "repo": {
+    "baseline_revision": "8739a5fd797c4305e433348591bae6ebcaea3a11",
+    "experiment_was_dirty": true,
+    "candidate_removed": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 79066169172
+  },
+  "change": {
+    "description": "Keep the exact selected-down local128/tile16 ownership and fused slot-order weighted tail, but let each thread own one adjacent K pair, convert BF16 activations and dequantized Q4 weights to FP16 in registers, and accumulate native v_dot2_f32_f16 into FP32.",
+    "source_premise": "llama.cpp Vulkan c0bc8591e explicitly detects mixed FP16 dot2 with FP32 accumulation; only that instruction premise was transferred, not Vulkan's shader geometry.",
+    "resident_layout_changed": false,
+    "resident_bytes_changed": 0,
+    "launch_count_changed": 0
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_diff",
+    "reason": "The optional external /home/lhl/amd-gpu-tuning/reference/atlas repository is absent."
+  },
+  "red_green": {
+    "red": "The production-shape test failed at collection because the requested halfdot wrapper did not exist.",
+    "green": "The candidate completed the actual Q4 selected-down production shape with finite BF16 outputs, p99 relative error within 0.05, and a reset completion counter.",
+    "post_removal_validation": "Focused retained-path validation passed after the rejected implementation and selectors were removed."
+  },
+  "leaf": {
+    "scope": "actual Q4 layer-1 E256/K1024/N3072/top10 selected-down plus fused weighting",
+    "protocol": "21 counterbalanced samples x 100 launches after 5 warmups; local queue only",
+    "control": "exact paired-coefficient weighted owner",
+    "control_median_ms": 0.05768219947814941,
+    "candidate_median_ms": 0.04698091983795166,
+    "latency_change_percent": -18.552135211576836,
+    "bf16_mismatches": 3696,
+    "down_max_abs_error": 0.0078125,
+    "down_mean_abs_error": 0.00009032824891619384,
+    "down_p99_abs_error": 0.001953125,
+    "routed_max_abs_error": 0.0078125,
+    "routed_mean_abs_error": 0.00021406511950772256,
+    "routed_p99_abs_error": 0.00390625,
+    "completion_counter_nonzero": 0,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate tile8-parallel-silu-interleaved-halfdot --down-candidate halfdot-weighted --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-q4-down-halfdot-leaf2.json",
+    "raw_sha256": "dde6a94a5eac3f333b2bd74a9790b64ba4ca0f917f48c97f39c91c7c80324006"
+  },
+  "recurrent_quality_gate": {
+    "scope": "retained selected gate/up halfdot plus candidate selected-down halfdot for 32 teacher-forced decode steps",
+    "pass": true,
+    "candidate_vs_exact_max_kl": 0.005952773300189443,
+    "candidate_vs_exact_mean_kl": 0.0009061173663500195,
+    "teacher_forced_top1_agreement": 1.0,
+    "greedy_matching_prefix_tokens": 32,
+    "greedy_tokens": 32,
+    "first_token_kl": 0.000017512451201671218,
+    "repeat_exact": true,
+    "tracked_allocations_returned_to_zero": true,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gguf_correctness.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --greedy-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --selected-halfdot --selected-down-halfdot --output /tmp/laguna-selected-both-halfdot-quality32-kl.json",
+    "raw_sha256": "d2e2cd8cbde151c79dbf689fd26ce695430b4ac6bfecc457c6910b2288e0fb8f"
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, matrix rows 2048, attention rows 128",
+    "protocol": "seven counterbalanced control/candidate pairs in one resident session; model load excluded",
+    "control_median_tok_s": 23.086282491371335,
+    "candidate_median_tok_s": 23.08461899762686,
+    "throughput_change_percent": -0.007205550504,
+    "control_median_ms_per_token": 43.315765557913,
+    "candidate_median_ms_per_token": 43.318886922188,
+    "median_wall_change_ms_per_token": 0.003121364275,
+    "paired_median_wall_change_ms_per_token": 0.007595725754,
+    "paired_ms_per_token_deltas": [
+      0.021192701680,
+      0.007595725754,
+      0.001172843118,
+      0.039077228243,
+      0.013243102681,
+      -0.016951614507,
+      -0.000010684543
+    ],
+    "candidate_pair_wins": 2,
+    "pairs": 7,
+    "candidate_repeat_deterministic": true,
+    "control_repeat_deterministic": true,
+    "tracked_allocations_returned_to_zero": true,
+    "note": "The approximate candidate intentionally changes the generated trajectory; its independent recurrent candidate-vs-exact gate is the correctness authority. Performance is negative independently of that harness status.",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-down-q4-halfdot --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-down-q4-halfdot-ab.json",
+    "raw_sha256": "6b1b5ed5d1f1e72f538d406511f4d50e0d62bf20ce4da144693ab5b89602b6d7"
+  },
+  "decision": {
+    "result": "reject and remove",
+    "reason": "The 18.55% leaf win and recurrent quality pass do not shorten the complete two-queue token wall. Median throughput regresses, the paired wall delta is positive, and only two of seven candidate pairs win.",
+    "interpretation": "The isolated selected-down saving is hidden by the concurrent shared branch and the dominant submission gaps. A faster leaf is not sufficient unless it contracts the interval-union critical path or an uncovered boundary.",
+    "production_change": false
+  },
+  "production": {
+    "tok_per_s": 23.089692642,
+    "ms_per_token": 43.309368189
+  }
+}

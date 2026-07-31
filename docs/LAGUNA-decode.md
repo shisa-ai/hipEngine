@@ -8554,6 +8554,33 @@ The remaining attention sequence is:
      [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json),
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json).
 
+179. Transfer the same native FP16-dot2 premise to Q4 selected down.
+     **Quality-passing, rejected at the complete wall, and removed.**
+
+     The candidate keeps the exact local128/tile16 route ownership and fused
+     slot-order weighted tail, while each thread consumes an adjacent K pair
+     and accumulates native `v_dot2_f32_f16` into FP32. The actual layer-1
+     E256/K1024/N3072/top-10 leaf improves
+     **0.057682 -> 0.046981 ms (-18.552%)**. Approximation remains small:
+     down/routed p99 absolute error is **0.001953/0.003906**, maximum error is
+     **0.0078125**, and the completion counter resets.
+
+     The cumulative 32-step recurrent gate with the already-retained
+     gate/up halfdot also passes: candidate-vs-exact maximum/mean KL is
+     **0.005953/0.000906**, teacher-forced top-1 is **32/32**, greedy prefix
+     equality is **32/32**, and deterministic/lifecycle checks pass.
+
+     The mandatory complete two-queue gate nevertheless rejects it. Seven
+     same-resident p512/d128 pairs move
+     **23.086282 -> 23.084619 tok/s (-0.00721%)**, add
+     **0.007596 ms/token** by paired median, and win only **2/7** pairs.
+     This reproduces the exact Q6 selected-down result: a strong isolated
+     leaf saving can be hidden behind the concurrent shared branch and does
+     not contract the complete token critical path. Remove the kernel, ABI,
+     wrapper, registry/plan route, runtime selector, harness selectors, and
+     tests. Production remains **23.089693 tok/s / 43.309 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-halfdot-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8565,10 +8592,11 @@ leave only **0.259469 ms/token** of device work above 24 tok/s.
 The largest repeated uncovered boundaries are selected-down to MoE tail
 **0.354617 ms/token**, source-F16 output to router **0.263561**, router
 selection to selected gate/up **0.211476**, and SWA projection to attention
-**0.202899**. Attention itself is only **1.114084 ms/token**. The next bounded
-screen therefore transfers the now-proven native FP16-dot2 premise to selected
-down at the actual-weight leaf; it advances to recurrent quality and the
-complete two-queue wall only if the production-shape leaf wins:
+**0.202899**. Attention itself is only **1.114084 ms/token**. Item 179 now
+closes a direct selected-down arithmetic attack despite its 18.55% leaf win:
+the saving is not exposed on the two-queue wall. The next bounded attack must
+therefore contract an uncovered dependency boundary or the 1.501782-ms/token
+feed gap, rather than improving another independently overlapped leaf:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
