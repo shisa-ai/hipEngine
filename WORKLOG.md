@@ -196550,3 +196550,18 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw leaf SHA-256 is
   `05e65521...1d6ccc`; trace SHA-256 is `0bd79b91...7d99e0`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-kmajor-fusion-rejected.json`.
+
+## 2026-07-31 22:24 JST — Isolate source-F16 Q8 roles
+
+- Extended the retained source-F16 Q8 full-model diagnostic from only
+  `qkv_gate`/`output` bundles to independent `q`, `k`, `v`, and `gate`
+  modes. Individual Q/K/V screens keep untouched siblings on the exact
+  source-F16 single-projection path while replacing only the requested
+  Q8-weight role; the historical bundled modes retain their prior dispatch.
+- RED proved the role modes were absent. GREEN passes all five focused
+  harness tests, including an explicit Q-only dispatch contract
+  (**one Q8 + two exact** projection calls) and restoration of all production
+  fused-owner flags.
+- This is diagnostic ownership only; no production route, resident sidecar,
+  quality claim, or throughput default changes. Next command will build one
+  temporary Q8 sidecar and measure `q,k,v,gate` in a shared resident session.

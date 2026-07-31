@@ -7,6 +7,7 @@ import numpy as np
 from scripts.laguna_f16_decode_q8_full_gate import (
     _classify_source_name,
     _kl_divergence,
+    _mode_owns,
     _q8_weight_only_decode_owner,
     _scope_layers,
     _summarize_records,
@@ -18,6 +19,15 @@ def test_laguna_f16_decode_q8_full_gate_classifies_projection_slots() -> None:
     assert _classify_source_name("blk.47.attn_gate.weight") == "gate"
     assert _classify_source_name("blk.23.attn_output.weight") == "output"
     assert _classify_source_name("blk.1.ffn_gate_exps.weight") is None
+
+
+def test_laguna_f16_decode_q8_full_gate_modes_isolate_qkv_roles() -> None:
+    assert _mode_owns("all", "q")
+    assert _mode_owns("qkv_gate", "q")
+    assert _mode_owns("qkv_gate", "gate")
+    assert _mode_owns("q", "q")
+    assert not _mode_owns("q", "k")
+    assert not _mode_owns("gate", "q")
 
 
 def test_laguna_f16_decode_q8_full_gate_metrics_enforce_max_kl_and_top1() -> None:
@@ -181,3 +191,41 @@ def test_laguna_f16_decode_q8_weight_only_owner_keeps_activations_exact(
     assert owner.use_f16_projection_head_kv_decode is True
     assert owner.use_f16_attention_quad_decode is True
     assert owner.use_f16_output_add_rmsnorm_decode is True
+
+    calls.clear()
+    with _q8_weight_only_decode_owner(
+        owner,
+        sidecar,
+        "q",
+        frozenset({0}),
+        raw_library=object(),
+        t16_library=object(),
+    ) as counters:
+        runner.launch_f16_weight_linear_triple(
+            q,
+            k,
+            v,
+            13,
+            23,
+            24,
+            25,
+            1,
+            3072,
+            3072,
+            512,
+            512,
+            stream=7,
+        )
+
+    assert [call[0] for call in calls] == [
+        "raw_q8",
+        "exact_single",
+        "exact_single",
+    ]
+    assert counters == {
+        "q8_weight_gate": 0,
+        "q8_weight_output": 0,
+        "q8_weight_qkv": 1,
+        "exact_single": 2,
+        "exact_triple": 0,
+    }

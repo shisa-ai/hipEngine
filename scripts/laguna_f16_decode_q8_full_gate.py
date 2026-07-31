@@ -65,7 +65,7 @@ from scripts.laguna_target_ar_bench import (
 )
 
 _BLOCK = 32
-_MODES = ("all", "qkv_gate", "output")
+_MODES = ("all", "qkv_gate", "q", "k", "v", "gate", "output")
 _MODE_CHOICES = ("control", *_MODES)
 _ACTIVATION_PATHS = ("q8_1_dp4a", "exact")
 _SCOPES = (
@@ -388,7 +388,13 @@ class Q8WeightOnlySidecar:
 
 
 def _mode_owns(mode: str, family: str) -> bool:
-    return mode == "all" or mode == family
+    if mode == "all":
+        return True
+    if mode == "qkv_gate":
+        return family in {"q", "k", "v", "gate", "qkv"}
+    if family == "qkv":
+        return mode in {"q", "k", "v"}
+    return mode == family
 
 
 @contextmanager
@@ -467,13 +473,13 @@ def _q8_decode_owner(
         family = _classify_source_name(source_name)
         layer = _layer_id(source_name)
         stream = int(kwargs.get("stream", 0))
-        owns_qkv_gate = _mode_owns(mode, "qkv_gate")
+        owns_gate = _mode_owns(mode, "gate")
         owns_output = _mode_owns(mode, "output")
         if (
             rows == 1
             and layer in selected_layers
             and family == "gate"
-            and owns_qkv_gate
+            and owns_gate
         ):
             expected = (int(x_ptr), int(in_features), stream)
             if reusable_key != expected:
@@ -545,31 +551,64 @@ def _q8_decode_owner(
         family = _classify_source_name(source_name)
         layer = _layer_id(source_name)
         stream = int(kwargs.get("stream", 0))
+        owns_qkv = _mode_owns(mode, "qkv")
         if (
             rows == 1
             and layer in selected_layers
             and family == "qkv"
-            and _mode_owns(mode, "qkv_gate")
+            and owns_qkv
         ):
             quantize(x_ptr, in_features, stream)
-            gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out(
-                sidecar.activation.ptr,
-                sidecar.weights[q_weight.spec.source.name].ptr,
-                sidecar.weights[k_weight.spec.source.name].ptr,
-                sidecar.weights[v_weight.spec.source.name].ptr,
-                q_ptr,
-                k_ptr,
-                v_ptr,
-                1,
-                in_features,
-                q_features,
-                k_features,
-                v_features,
-                stream=stream,
-                library=dp4a_library,
-                runtime=owner.runtime,
-            )
-            counters["q8_triple"] += 1
+            if mode in {"all", "qkv_gate"}:
+                gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out(
+                    sidecar.activation.ptr,
+                    sidecar.weights[q_weight.spec.source.name].ptr,
+                    sidecar.weights[k_weight.spec.source.name].ptr,
+                    sidecar.weights[v_weight.spec.source.name].ptr,
+                    q_ptr,
+                    k_ptr,
+                    v_ptr,
+                    1,
+                    in_features,
+                    q_features,
+                    k_features,
+                    v_features,
+                    stream=stream,
+                    library=dp4a_library,
+                    runtime=owner.runtime,
+                )
+                counters["q8_triple"] += 1
+                return
+            for role, weight, target_ptr, features in (
+                ("q", q_weight, q_ptr, q_features),
+                ("k", k_weight, k_ptr, k_features),
+                ("v", v_weight, v_ptr, v_features),
+            ):
+                if _mode_owns(mode, role):
+                    gguf_q8_0_dp4a_gemv_f32_f32_out(
+                        sidecar.activation.ptr,
+                        sidecar.weights[weight.spec.source.name].ptr,
+                        target_ptr,
+                        1,
+                        in_features,
+                        features,
+                        stream=stream,
+                        library=dp4a_library,
+                        runtime=owner.runtime,
+                    )
+                    counters["q8_triple"] += 1
+                else:
+                    original_single(
+                        weight,
+                        x_ptr,
+                        target_ptr,
+                        rows,
+                        in_features,
+                        features,
+                        **kwargs,
+                    )
+                    counters["exact_single"] += 1
+            reusable_key = None
             return
         counters["exact_triple"] += 1
         reusable_key = None
@@ -642,7 +681,7 @@ def _q8_weight_only_decode_owner(
             rows == 1
             and layer in selected_layers
             and family == "gate"
-            and _mode_owns(mode, "qkv_gate")
+            and _mode_owns(mode, "gate")
         ):
             gguf_q8_0_gemv_bf16_f32_out(
                 x_ptr,
@@ -710,25 +749,37 @@ def _q8_weight_only_decode_owner(
             rows == 1
             and layer in selected_layers
             and family == "qkv"
-            and _mode_owns(mode, "qkv_gate")
+            and _mode_owns(mode, "qkv")
         ):
-            for weight, target_ptr, features in (
-                (q_weight, q_ptr, q_features),
-                (k_weight, k_ptr, k_features),
-                (v_weight, v_ptr, v_features),
+            for role, weight, target_ptr, features in (
+                ("q", q_weight, q_ptr, q_features),
+                ("k", k_weight, k_ptr, k_features),
+                ("v", v_weight, v_ptr, v_features),
             ):
-                gguf_q8_0_gemv_bf16_f32_out(
-                    x_ptr,
-                    sidecar.raw_weights[weight.spec.source.name].ptr,
-                    target_ptr,
-                    1,
-                    in_features,
-                    features,
-                    stream=stream,
-                    library=raw_library,
-                    runtime=owner.runtime,
-                )
-                counters["q8_weight_qkv"] += 1
+                if _mode_owns(mode, role):
+                    gguf_q8_0_gemv_bf16_f32_out(
+                        x_ptr,
+                        sidecar.raw_weights[weight.spec.source.name].ptr,
+                        target_ptr,
+                        1,
+                        in_features,
+                        features,
+                        stream=stream,
+                        library=raw_library,
+                        runtime=owner.runtime,
+                    )
+                    counters["q8_weight_qkv"] += 1
+                else:
+                    original_single(
+                        weight,
+                        x_ptr,
+                        target_ptr,
+                        rows,
+                        in_features,
+                        features,
+                        **kwargs,
+                    )
+                    counters["exact_single"] += 1
             return
         counters["exact_triple"] += 1
         original_triple(
