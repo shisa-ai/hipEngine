@@ -55,6 +55,12 @@ _H6L_IQ2_GATE_UP = (
     "selected_dual_silu_grouped_prefill_compact_"
     "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
 )
+_H6Q_RUNTIME_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_"
+    "staged_wave_publication_compact_shuffle_loop_triple_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 _PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
 _PRODUCTION_WORKSPACE_BYTES = 161_120_256
@@ -91,6 +97,7 @@ def test_h6p_source_default_promotes_only_iq3_selected_down(
         _H6F_IQ3: _ACTIVE_EXPERT_ABI,
         _H6I_IQ3: _ACTIVE_EXPERT_ABI,
         _H6P_IQ3: _ACTIVE_EXPERT_ABI,
+        _H6Q_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants

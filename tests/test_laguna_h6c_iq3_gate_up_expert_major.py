@@ -79,6 +79,12 @@ _H5Q_VARIANT = (
 _H5J_IQ4_VARIANT = (
     "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
 )
+_H6Q_RUNTIME_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_"
+    "staged_wave_publication_compact_shuffle_loop_triple_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 
 
@@ -132,6 +138,7 @@ def test_h6c_registry_source_scope_and_production_immutability() -> None:
         _H6F_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6I_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6P_VARIANT: _ACTIVE_EXPERT_ABI,
+        _H6Q_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
     }
 
     load_backend_kernel_package("hip_gfx1151")

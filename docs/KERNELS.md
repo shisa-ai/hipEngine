@@ -1399,10 +1399,16 @@ VGPR **107/112 -> 95/96**, while LDS loads/stores remain **24/12** and
 private/spill/scratch remain zero. Frozen **9/9** and all **45/45** actual layers
 are exact and win both clocks: event **329.124 -> 313.405 ms (-4.776%, 1.050x)**
 and wall **326.037 -> 317.946 ms (-2.481%, 1.025x)**, with minimum layer wins
-**1.038x/1.016x**. Retain only H6Q's leaf/key/export and explicit gfx1151
-exclusion; add no ABI/package/runtime owner until a separate bounded RED and
-complete-state/topology/clean wall gate
-([H6Q candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+**1.038x/1.016x**. H6Q now also qualifies as a bounded default-off owner
+through the existing `grouped_raw_iq_active_experts` ABI/raw allocation/library;
+H6P remains source. Complete natural M512 is KL0/byte-exact across logits, all
+**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four
+cached requests preserve **2,192 dispatches** and substitute exact **45 H6P ->
+45 H6Q**, cutting IQ3/request-sum/span **4.725%/0.487%/1.076%**. Default-off
+512/1K/4K gains **+0.586%/+0.486%/+0.366%**, 3/3 wins each; fixed C4096/M512
+gains **+0.373% (5/5 wins)**. Workspace/scratch remain unchanged and **155/155**
+guards pass. Freeze an independent source-default RED before changing H6P
+([H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
 [post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
 [H6P production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 
