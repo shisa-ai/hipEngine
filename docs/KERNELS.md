@@ -1305,21 +1305,26 @@ llama.cpp HIP **696.342**. Its representative cached request is
 + one H6C**, **45 H6I + two H5J**, **48 global + 144 SWA H6A**, and unchanged
 H5Y/H6E. No compiler runs under cached profiling.
 
-Select target-only **WPF-H6M exact explicit wait-split Q5 K-record pipeline**.
-Current Q5 is **252.742 vs 58.737 ms (4.303x)**. H5Y consumers own
-**220.092 ms**; BF16 K9216/N3072 row-major 12x8 plus F32 K3072/N9216
-tile-K-col 8x10 own **158.004 ms / 70 calls**, **71.79%** of consumer time.
-H6G's high-level prefetch already proved byte identity and unchanged VGPR, but
-both symbols issued zero current FMAs before immediate `s_waitcnt vmcnt(0)` and
-regressed direct plus producer/pack-inclusive event/wall. H6M is not that
-source retry: a separate gfx1100 sibling must use an explicit inline-ISA/
-builtin ping-pong block, preserve every H5Y plane, local128/four-wave K owner,
-K-ordered `fmaf`, reduction, store, grid, workspace, and policy, and physically
-place at least 32 useful current-record FMA/VOPD issue sites between lookahead
-loads and the consuming wait. Admit only with private0/spill0/scratch0, bounded
-VGPR, complete H5Y/CPU bytes, and both-role plus 70-call inclusive wins on HIP
-events and synchronized wall; otherwise remove every H6M surface
-([post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
+**WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected with
+every candidate surface removed.** Frozen rows17/33/M512 and both actual roles
+preserve complete H5Y output/activation/weight-plane bytes, sampled CPU quality,
+policy, workspace, and gfx1151 exclusion. Cached ISA realizes the new physical
+premise—not H6G's failed scheduling—with exact **13/4 next-record global loads,
+32 useful current-record `v_fmac_f32` sites, no intermediate wait or loaded-value
+use, then one `s_waitcnt vmcnt(0)`**. Metadata/runtime remains private0/scratch0
+at VGPR **194/200** BF16 and **162/168** F32, local128, LDS1536, and exact M512
+grids.
+
+That physical overlap is slower. On actual BF16 K9216/N3072 row-major 12x8 and
+F32 K3072/N9216 tile-K-col 8x10 weights, direct weighted event/wall moves
+**194.618/195.249 -> 205.367/205.331 ms (+5.523%/+5.164%)** and the 70-call
+producer/pack-inclusive aggregate moves **215.590/216.860 -> 227.873/227.347
+(+5.697%/+4.836%)**; both roles lose both clocks. Skip runtime ownership,
+remove HIP/Python/key/exclusion/RED surfaces, retain H5Y/H6L production
+**381.977 tok/s**, and close Q5 geometry/plane/ownership/compiler-managed plus
+explicit wait-split premises before returning to a distinct residual family
+([H6M rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) ·
+[post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

@@ -2110,22 +2110,24 @@ dispatches**. Q5/IQ-down/attention/Q6 gaps are
 **194.004/189.827/151.442/72.392 ms**; gate/up now measures **393.895 vs
 401.393 ms**, already **7.498 ms faster** than llama.cpp.
 
-Select target-only **WPF-H6M exact explicit wait-split Q5 K-record pipeline**
-after H6L supplies the distinct-family interval. Q5 is **252.742 vs 58.737 ms
-(4.303x)**; H5Y consumers own **220.092 ms**, and the two dominant 35-call
-roles own **158.004 ms / 71.79%** of consumer time. Do not repeat H6G's
-high-level lookahead: it preserved bytes and VGPR but issued zero useful FMAs
-before immediate `s_waitcnt vmcnt(0)` and regressed both roles on direct and
-inclusive event/wall. Freeze a separate gfx1100 sibling that preserves every
-H5Y plane, local128/four-wave K owner, K-ordered `fmaf`, reduction/store, grid,
-workspace, and policy while using an explicit inline-ISA/builtin ping-pong
-block. Physical admission requires at least 32 useful current-record FMA/VOPD
-issue sites between lookahead loads and their consuming wait, private0/spill0/
-scratch0, bounded VGPR, and no compiler under profiling. Runtime work is
-forbidden until both actual roles and their 70-call producer/pack-inclusive
-aggregate are complete-byte exact and positive on HIP events plus synchronized
-wall
-([post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
+**WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
+rows17/33/M512 matrix and both actual roles preserve complete H5Y/CPU/plane
+bytes. Cached ISA physically realizes exact **13/4 next-record loads -> 32
+current-record `v_fmac_f32` sites -> one wait** with no intermediate wait or
+loaded-value use; metadata/runtime remains private0/scratch0 at VGPR **194/200
+and 162/168** within the frozen ceilings. The new premise therefore succeeds
+physically, unlike H6G.
+
+It fails the binding timing gate. Actual-weight 70-call direct event/wall moves
+**194.618/195.249 -> 205.367/205.331 ms (+5.523%/+5.164%)** and
+producer/pack-inclusive moves **215.590/216.860 -> 227.873/227.347
+(+5.697%/+4.836%)**; both roles lose both clocks. Remove every source/key/
+exclusion/test surface, skip runtime ownership, retain H5Y/H6L production
+**381.977 tok/s**, and close exact Q5 geometry, plane, ownership,
+compiler-managed prefetch, and explicit wait-split premises. Return to the
+unchanged post-H6L IQ-down/attention residual with a distinct operation
+([H6M rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) ·
+[post-H6L residual / target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
