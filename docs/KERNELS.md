@@ -1268,26 +1268,26 @@ materially occupancy-preserving mechanism
 ([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)).
 
-Select target-only **WPF-H6L exact IQ2 pair16 grouped gate/up rowbatch16 decode
-amortization** on the **78.345-ms** gate/up gap after Q5, wider IQ3 grouping, and
-SWA replay close their immediate exact premises. The existing WPF-2b template
-already preserves local64/pair16 K ownership, two-wave reduction, BF16 gate/up
-projection boundaries, fused SiLU, and one output-column/expert grid while
-reusing decoded gate/up weights across eight rows. Instantiate only exact
-K3072/N1024/E256 rowbatch16; do not repeat rejected c=1 tile4, DPP-only runtime,
-Q8_1/MMQ, or output-width paths.
+**WPF-H6L exact IQ2 pair16 grouped gate/up rowbatch16 decode amortization** is a
+retained gfx1100 leaf pending runtime qualification. It instantiates the frozen
+WPF-2b template only at K3072/N1024/E256 `<16>` and preserves local64/pair16 K
+ownership, one output/expert block, every row's FMA/two-wave sum/BF16 gate-up
+boundary/SiLU/store, activation/useful work, grid, allocation, workspace, and
+rowbatch8 source policy. The boundary/CPU matrix passes **10/10**. Code-object
+metadata is VGPR112/SGPR86/LDS256/private0/spill0/wave32; cached rocprof records
+local64/grid65536x256, runtime VGPR112/LDS512/scratch0, and no compiler activity.
 
-The current natural-M512 route has **34,292** rowbatch8 epochs versus **20,307**
-rowbatch16 epochs (**-40.782%**), reducing pair16 gate/up weight decodes
-**13.484B -> 7.985B** and dynamic publication/reuse barriers **70.230M ->
-41.589M** while activation/useful dots/grid/dispatch/allocation remain unchanged.
-Accumulator scalars and logical wave-sum LDS rise **16 -> 32** and **128 -> 256
-bytes**. A retained rowbatch4/8 fit models all-layer **482.040 -> 421.206 ms**
-and matched **359.963 -> 375.447 tok/s**, but H6K makes compile/resource and
-every-layer timing binding. Require exact rowbatch8/CPU bytes, frozen template
-hashes, local64/grid65536x256, private0/spill0/scratch0, VGPR <=224, and **46/46**
-both-clock wins before runtime
-([H6L target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)).
+All **46/46** actual IQ2 layers are complete-byte exact and positive on both
+clocks under natural-M512 routing. Rowbatch8 -> rowbatch16 event falls **487.782
+-> 404.377 ms (-17.099%, 1.206x)** and wall falls **485.883 -> 408.587 ms
+(-15.908%, 1.189x)**, with minimum per-layer **1.196x/1.178x**. Epochs replay
+**34,292 -> 20,307**, and **132/132** retained guards pass. Keep runtime/default
+on WPF-2b rowbatch8/H6I at **359.963 tok/s** until a separate bounded capability
+proves complete state, exact 46-call topology, unchanged scratch/dispatches, and
+clean 512/1K/4K plus fixed C4096/M512 wins; the modeled **381.267 tok/s** is not
+a claim
+([candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-candidate.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
