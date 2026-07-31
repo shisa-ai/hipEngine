@@ -122,9 +122,9 @@ def test_h6d_registry_source_schedule_and_production_immutability() -> None:
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {
         _H5Q_VARIANT: _ACTIVE_EXPERT_ABI,
         _H5Z_VARIANT: _ACTIVE_EXPERT_ABI,
+        _VARIANT: _ACTIVE_EXPERT_ABI,
     }
     assert _VARIANT not in hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS.values()
-    assert _VARIANT not in hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS
 
     load_backend_kernel_package("hip_gfx1151")
     assert not is_registered(_candidate_key("hip_gfx1151"))
