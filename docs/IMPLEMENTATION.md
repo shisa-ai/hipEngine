@@ -121,7 +121,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [ ] Capture/replay the fixed-address token DAG after structural wins.
     - [x] Add a lifecycle-safe four-bucket HIP graph API over the fixed resident token step.
     - [x] Prove fake-runtime state/lifecycle contracts and real gfx1151 graph/eager parity with zero timed allocation.
-    - [ ] Compare eager Python launch, available C-dispatch routes, graph replay, and capture/instantiate startup cost.
+    - [x] Compare eager Python launch, available C-dispatch routes, graph replay, and capture/instantiate startup cost.
     - [ ] Retain or reject graph replay from repeated selected-position and complete-generation evidence, then publish the result.
 
 ## Notes
