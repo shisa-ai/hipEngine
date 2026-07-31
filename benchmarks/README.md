@@ -3,8 +3,8 @@
 Last updated: **2026-08-01**
 
 The canonical clean W7900 Laguna UD-Q2_K_XL matched packet is now
-[`2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json), measuring the H6N source production defined by
-[`2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json).
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json), measuring the H6P source production defined by
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
 WPF-2b rowbatch8 same-ABI rollback, H6P staged-wave-publication triple-output IQ3
 with H6I/H6F/H6D/H5Z/H5Q registered rollback, H6C special-IQ3 gate/up with its
@@ -293,25 +293,26 @@ remains same-ABI rollback
 The clean promoted H6L refresh reached **381.977 tok/s** from
 **381.790/382.000/382.469/381.977/381.665**, all exact token 2930 and
 lifecycle-clean. The fair paired H6A rollback -> H6N source adjudication reaches
-**381.772 -> 387.571 tok/s (+1.519%, 5/5 wins)**. The independent clean
-post-commit H6N refresh is **386.959 tok/s** from **386.959/386.988/387.860/
-386.261/386.435**, all exact token 2930 and lifecycle-clean. It is **+128.272%**
-over campaign start, **+1.304%** over clean H6L, and **1.79952x** behind matched
-llama.cpp HIP **696.342 tok/s**. The cached clean source trace preserves **2,192
-dispatches** and reconciles a **1,309.339-ms** representative kernel sum in a
-**1,333.225-ms** median span. All component values below are milliseconds and
-lower is better; wall is tok/s and higher is better.
+**381.772 -> 387.571 tok/s (+1.519%, 5/5 wins)**. The independent clean post-commit H6P refresh is **389.145 tok/s** from
+**389.145/389.310/390.187/388.384/388.354**, all exact token 2930 and
+lifecycle-clean. It is **+129.562%** over campaign start, **+0.565%** over clean
+H6N, and **1.77515x** behind the freshly rerun matched llama.cpp HIP median
+**690.791 tok/s**; all five comparator top-1 markers are token 2930. Cached
+tracing on both engines preserves the exact matched shape: hipEngine records
+**1,302.492 ms / 2,192 dispatches** in a **1,326.116-ms** median span, while
+llama.cpp records **714.008 ms / 2,824 dispatches**. All component values below
+are milliseconds and lower is better; wall is tok/s and higher is better.
 
-| Matched family | Campaign start | Pre-H6N H6L | Current clean H6N | llama.cpp HIP | Current - llama |
+| Matched family | Campaign start | Pre-H6P H6N | Current clean H6P | llama.cpp HIP | Current - llama |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| IQ down | 557.091 | 344.261 | **346.108** | 154.434 | +191.674 |
-| Q5 | 1,270.458 | 252.742 | **254.689** | 58.737 | +195.952 |
-| Attention | 488.304 | 173.066 | **148.104** | 21.624 | +126.480 |
-| Gate/up | 460.143 | 393.895 | **397.542** | 401.393 | **-3.851** |
-| Q6 | 157.073 | 86.847 | **86.987** | 14.455 | +72.532 |
-| Remaining | 68.623 | 75.252 | **75.908** | 67.598 | +8.310 |
-| **Kernel sum** | **3,001.692** | **1,326.062** | **1,309.339** | **718.241** | **+591.097** |
-| **Wall tok/s** | **169.516** | **381.977** | **386.959** | **696.342** | **1.79952x llama/current** |
+| IQ down | 557.091 | 346.108 | **337.353** | 153.860 | +183.493 |
+| Q5 | 1,270.458 | 254.689 | **254.839** | 58.314 | +196.525 |
+| Attention | 488.304 | 148.104 | **148.927** | 21.512 | +127.415 |
+| Gate/up | 460.143 | 397.542 | **397.616** | 397.805 | **-0.189** |
+| Q6 | 157.073 | 86.987 | **87.346** | 14.668 | +72.679 |
+| Remaining | 68.623 | 75.908 | **76.410** | 67.849 | +8.561 |
+| **Kernel sum** | **3,001.692** | **1,309.339** | **1,302.492** | **714.008** | **+588.483** |
+| **Wall tok/s** | **169.516** | **386.959** | **389.145** | **690.791** | **1.77515x llama/current** |
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
@@ -367,6 +368,19 @@ excluded, and **240/240** retained guards pass
 ([H6P production](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json) ·
 [candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
 [post-H6N residual / target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+
+**WPF-H6Q exact compact-shuffle-loop staged-wave IQ3 is target-only.** H6P and
+H6I have identical static LDS publication loads/stores (**24 `ds_load_b128` +
+12 `ds_store_2addr_b32`**), but H6P unrolls three five-step shuffle loops into
+**120 static `ds_bpermute_b32`** and **8,360 code bytes**; H6I emits a compact
+loop with **24** and **6,264 bytes**. H6Q will explicitly disable only that
+fixed offset16/8/4/2/1 unroll while retaining H6P VGPR112, all **216 FMAs**, the
+same 120 dynamic shuffles/order, stride `0x300`, three disjoint accumulator
+scopes, two barriers/eight dynamic barriers, local128/grid32768x64/LDS512, and
+complete bytes. Admission requires exactly 24 static bpermutes, code <=7,000
+bytes, runtime VGPR <=128, and **45/45** actual-layer both-clock wins; otherwise
+all H6Q surfaces are removed
+([post-H6P residual / H6Q target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json)).
 
 WPF-H6B historically screens a materially new active-expert IQ3 segment plane
 rather than another tile sweep. Its aligned
@@ -2102,6 +2116,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 direct-T16 MMQ32 natural-shape gate | 2026-07-25 | clean measured `272ee08d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit primitive; LAP-1 leaf gate passed; runtime default unchanged pending repair**: direct T16 reads the existing resident bytes with no layout transpose or sidecar. Producer-pack-inclusive T16 speedups over retained direct are **1.174/1.528/1.662/2.464/2.502/3.959/5.502x**; M128/M256/M512 are only **4.66%/4.05%/3.02%** behind X8. T16/X8 checksums are exact at every shape; focused tests report 31 passes; cached resources are local128/VGPR48/LDS2048B/scratch0 and device ISA contains `v_dot4_i32_iu8`. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json). | Yes for the one-layer natural-routing leaf scope only; no full-model/default claim | Calibrate residual/repair arithmetic, then integrate the sole-resident T16 route and run all-layer performance, category quality, decode, milestone-shape, and lifecycle gates. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 exact X8 decode gate | 2026-07-25 | clean measured `420bf8392`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; c1/c2/c4/c8 producer rows with top-10 | **Rejected sole-resident X8 premise; current T16 residency unchanged**: the optimized local128 X8 fallback is BF16-bit exact at every shape and catches T16 at c4/c8, but c1/c2 T16 -> X8 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate. X8/T16 pair bytes are **905,969,664/931,135,488**; the temporary comparison peaks at **1,837,482,624 bytes** and returns to zero. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json). | Negative layout decision; no runtime/default claim | Superseded by the retained direct-T16 LAP-1 leaf; do not retry dynamic X8-to-T16 reconstruction or add a complete T16 sidecar. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit prefill control; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**. The 2026-07-25 exact-decode row supersedes X8 as a resident candidate but preserves it as the MMQ ceiling. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Direct T16 now passes the same leaf gate; retain X8 only as the arithmetic ceiling while repair and runtime integration proceed. |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL post-H6P matched residual / WPF-H6Q compact-shuffle-loop staged-wave IQ3 target | 2026-08-01 | clean H6P source revision `9cb0d674d`; fixed natural C4096/direct-M512 wall; cached-only five-request hipEngine trace; freshly rerun patched llama.cpp HIP wall/trace; exact model SHA-256 `8fe1170f...2679`; BF16 K/V; AMD clang 22/HIP 7.2; one queue | **Accepted matched reprofile; target only, no executable/default claim**: clean H6P is **389.145 tok/s / 1,302.492 ms**, **1.77515x** behind fresh matched llama.cpp HIP **690.791 tok/s / 714.008 ms** with **5/5** top-1 token 2930. Q5/IQ-down/attention/Q6 gaps are **196.525/183.493/127.415/72.679 ms**; gate/up is **0.189 ms faster**. Q5 remains closed. H6P's code object retains VGPR112 but unrolls the fixed shuffle loops to **120 static `ds_bpermute_b32` / 8,360 bytes** versus H6I's compact **24 / 6,264**, while both have identical 24 LDS loads + 12 stores. H6Q targets only forced compact shuffle-loop code, preserving all 216 FMAs, 120 dynamic shuffles/order, stride `0x300`, three staged scopes, eight barriers, local128/grid32768x64/LDS512, and bytes. Require static bpermutes **120 -> 24**, code <=7,000 bytes, VGPR <=128, and **45/45** both-clock wins. [`artifact`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json). | Selection rationale plus exact matched wall/trace evidence; no H6Q implementation/default claim | Freeze separate H6Q RED before any executable change; remove all candidate surfaces on any physical/exact/layer-clock failure. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL WPF-H6P exact staged-wave-publication triple-output IQ3 production | 2026-08-01 | leaf `c420e8f6d`; bounded runtime `327a6451b`; source RED `b6127b0cd`; complete natural-M512 state; production-identical four-request cached topology; selector-unset 512/1K/4K and fixed C4096/M512; fresh patched llama.cpp HIP natural-M512 comparator; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Current retained W7900 IQ3 source default**: complete M512 is KL0/byte-exact across all 48 boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192 dispatches** and substitute exact **45 H6I -> 45 H6P**, moving IQ3/request-sum/span **335.561/1,350.501/1,377.064 -> 326.309/1,346.568/1,368.182 ms (-2.757%/-0.291%/-0.645%)**. Selector-unset 512/1K/4K improves **363.420/295.760/188.704 -> 365.186/296.589/189.108 tok/s (+0.486%/+0.280%/+0.214%)**, 3/3 exact wins each. Fixed natural C4096/M512 improves **387.780 -> 388.320 (+0.139%, 4/5 wins)** and is **1.77892x** behind fresh matched llama.cpp HIP **690.791 tok/s**; all five comparator top-1 markers are 2930. H6I remains same-ABI rollback, workspace/scratch are unchanged, gfx1151 is excluded, and **240/240** guards pass. [`production`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json) · [`candidate/runtime`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json). | Yes for exact selector-unset one-queue 512/1K/4K and fixed natural C4096/M512 plus declared leaf/state/topology/lifecycle and matched-comparator scope | Reprofile exact clean promoted production and rerank matched component residuals against fresh llama.cpp HIP. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL WPF-H6P exact staged-wave-publication triple-output IQ3 candidate/runtime | 2026-08-01 | leaf `c420e8f6d`; runtime RED `f271454e1`; complete natural-M512 state; four-request cached topology; default-off 512/1K/4K and fixed C4096/M512; cached code-object/rocprof; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Retained exact bounded default-off owner; source remains H6I**: complete M512 is KL0/byte-exact across all 48 boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192 dispatches** and substitute exact **45 H6I -> 45 H6P**, moving IQ3/request-sum/span **335.561/1,350.501/1,377.064 -> 326.309/1,346.568/1,368.182 ms (-2.757%/-0.291%/-0.645%)**. Default-off 512/1K/4K improves **363.446/296.015/188.932 -> 366.223/297.245/189.389 tok/s (+0.764%/+0.416%/+0.242%)**, 3/3 exact wins each; fixed C4096/M512 is **387.746 -> 388.293 (+0.141%, 4/5 wins)**. Workspace/scratch are unchanged, E255 fails closed, and **246/246** guards pass. Source stays H6I at clean **386.959 tok/s** pending source-default adjudication. [`artifact`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json). | Yes for exact standalone leaf plus bounded default-off complete-state/topology/fixed/512/1K/4K scope; no source-default claim | Freeze source-default RED, then require fresh selector-unset fixed C4096/M512 and 512/1K/4K evidence before changing the H6I map. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL post-H6N matched residual / WPF-H6P exact staged-wave-publication IQ3 target | 2026-08-01 | clean H6N source revision `f622024c3`; fixed natural C4096/direct-M512 wall; cached-only five-request trace; exact 2,192-dispatch topology; H6I/H6K/H6M source and artifact audit; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Accepted matched reprofile; target only, no executable/default claim**: clean production is **386.959 tok/s / 1,309.339 ms**, **1.79952x** behind llama.cpp HIP **696.342 / 718.241 ms**. Q5/IQ-down/attention/Q6 gaps are **195.952/191.674/126.480/72.532 ms**. Q5 is closed; H6P targets H6I VGPR168 by sequential A/B/C wave publication while preserving 216 FMAs, stride `0x300`, rowbatch8, eight dynamic barriers, local128/grid32768x64, and bytes. Require VGPR **<=128**, private/spill/scratch0, and **45/45** both-clock wins. [`artifact`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json). |
