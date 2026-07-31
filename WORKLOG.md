@@ -187385,3 +187385,7 @@ Vulkan local sizes verbatim will close the measured gap.
 - After landing `hipEngine@2b6024148`, reran the authoritative 10/30 paired benchmark, 100-clip broader Japanese comparison, and selected-region profiler with hipEngine clean. Six-file decoder median is **5.445 -> 5.430 ms (1.003x)**, but P95 median regresses **5.784 -> 6.556 ms (0.882x)** and position 193 regresses **1.033 -> 1.037 ms**. Earlier repeat-to-repeat selected-position direction changes remain evidence that the sub-1% median signal is not stable enough for retention.
 - Broader quality reproduces exactly: five changed token sequences, 17 differential character errors, proxy micro-CER **0.54518 -> 0.54886**, and deterministic reset 100/100. The clean profile again names the W8A16 `fc1` kernel at 8 calls/cached token and 40 calls/five-token generation with all correctness gates green.
 - Final decision remains no W8A16 promotion. The compact artifact now pins clean hipEngine commit `2b6024148b14cc4a815c8ded1f7fd37c5311f935` and refreshed raw hashes.
+
+## 2026-07-30 — Production inference repository rename
+
+- The private experiment ledger is now `shisa-ai/moonshine-prod-inference` at sibling path `../moonshine-prod-inference`, replacing `amd-moonshine-onnx`. The backend-neutral name reflects the retained ONNX/PyTorch/MIGraphX/custom-HIP evidence and upcoming `cuda_sm120a` port. Historical WORKLOG paths above remain unchanged as provenance; use the new path for all future commands and reports.
