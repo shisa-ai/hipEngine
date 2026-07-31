@@ -205,16 +205,18 @@ should be removed or collapsed.
   **+1.819%/+1.452%/+0.872%**, 3/3 wins each. Keep both ABI entries and H5Q as
   registered rollback beneath H5Z production. Do not add another adapter,
   allocation, workspace, sidecar, or public selector.
-- WPF-H6C adds an empty-by-default `LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS`
-  admission seam plus one qualified variant-to-`grouped_raw_iq_dual_silu` ABI.
-  The default-off owner is exact and positive at 512/1K/4K with no allocation,
-  workspace, sidecar, library, or public/session selector. Keep this seam only
-  through the separate selector-unset publication decision: if publication is
-  exact and non-regressive, promote the one layer-47 IQ3 role and then consider
-  folding the stable ABI into the grouped gate/up plan after one release
-  checkpoint; if publication fails, remove the runtime role/ABI resolver and
-  focused runtime test while retaining the standalone H6C leaf and its required
-  route-major fallback.
+- WPF-H6C's grouped gate/up role-map cleanup trigger is closed. Complete M512
+  state is KL0/byte-exact, paired tracing records exact **46 IQ2 + one H6C** at
+  unchanged **2,050** dispatches, default-off 512/1K/4K is
+  **+1.148%/+0.796%/+0.560%**, and selector-unset publication confirms
+  **+1.326%/+0.897%/+0.490%**, 3/3 wins each. Fixed natural-M512/C4096 also wins
+  **5/5** at **325.211 -> 328.863 tok/s (+1.123%)**. Keep the one-entry
+  `LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS` map and qualified
+  `grouped_raw_iq_dual_silu` ABI through one release checkpoint; then consider
+  folding the stable role into the grouped gate/up plan while preserving the
+  empty-map route-major rollback, bounded fail-closed checks, and no
+  allocation/workspace/sidecar/public selector. See the
+  [H6C production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-production.json).
 
 ## Laguna exact qrow4 SWA prefill selector
 

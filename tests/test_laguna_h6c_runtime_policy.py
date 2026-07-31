@@ -126,37 +126,40 @@ def _launch(
     )
 
 
-def test_h6c_runtime_capability_is_default_off_bounded_and_fail_closed(
+def test_h6c_runtime_capability_is_source_default_bounded_and_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
+    production_roles = {_ROLE: _H6C_VARIANT}
 
-    assert getattr(hip_gfx1100, _CAPABILITY) == {}
+    assert getattr(hip_gfx1100, _CAPABILITY) == production_roles
     assert getattr(hip_gfx1100, _ABI_CAPABILITY) == {_H6C_VARIANT: _H6C_ABI}
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert not hasattr(hip_gfx1151, _ABI_CAPABILITY)
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert package_default.grouped_special_gate_up_keys == {}
-    assert package_default.grouped_special_gate_up_routes == {}
+    assert package_default.grouped_special_gate_up_keys[_ROUTE_KEY].variant == (
+        _H6C_VARIANT
+    )
+    route = package_default.grouped_special_gate_up_routes[_ROUTE_KEY]
+    assert route.abi == _H6C_ABI
+    assert route.allocation_name == "raw"
+    assert route.library_key == "grouped_iq_prefill"
     assert package_default.grouped_exact_down_keys[_QUANT].variant == _H5Z_VARIANT
     assert package_default.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
         _IQ2_VARIANT
     )
 
-    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, {_ROLE: _H6C_VARIANT})
-    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert candidate.grouped_special_gate_up_keys[_ROUTE_KEY].variant == _H6C_VARIANT
-    assert candidate.grouped_special_gate_up_routes[_ROUTE_KEY].abi == _H6C_ABI
-    assert candidate.grouped_special_gate_up_routes[_ROUTE_KEY].allocation_name == "raw"
-    assert candidate.grouped_special_gate_up_routes[_ROUTE_KEY].library_key == (
-        "grouped_iq_prefill"
-    )
-    assert candidate.grouped_exact_down_keys[_QUANT].variant == _H5Z_VARIANT
-    assert candidate.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, {})
+    rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert rollback.grouped_special_gate_up_keys == {}
+    assert rollback.grouped_special_gate_up_routes == {}
+    assert rollback.grouped_exact_down_keys[_QUANT].variant == _H5Z_VARIANT
+    assert rollback.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
         _IQ2_VARIANT
     )
 
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, production_roles)
     wrong_shape = resolve_laguna_moe_plan(
         replace(config, expert_feed_forward_length=2048),
         backend="hip_gfx1100",
