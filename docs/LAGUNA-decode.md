@@ -7816,6 +7816,27 @@ The remaining attention sequence is:
      **2.07394%** throughput:
      [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-production.json).
 
+152. Re-screen the retained exact global local1024 body at the two closest
+     llama.cpp-inspired ownership/transport seams.
+     **Both rejected out of tree.**
+
+     Widening the existing mixed40 ping-pong value stage from **64 -> 96**
+     rows preserves every F32 context and gated BF16 byte, but improves the
+     21x100 live513/576/639 leaves only **0.719%/0.598%/0.709%**. Reducing
+     duplicated KV ownership from five to four workgroups per KV head while
+     keeping local1024 is also byte-exact, but grid32 leaves eight of the
+     device's 40 CUs without a block and saves only
+     **0.298%/0.063%/0.129%**.
+
+     Both results are smaller than the exact V128 leaf win that already
+     failed the resident gate. Stop before loading the 79-GB model; remove
+     every candidate kernel, wrapper, registry, test, and harness route.
+     Production remains **22.873989 tok/s / 43.717779 ms/token**. The result
+     narrows the transferable llama.cpp lesson: KV reuse helps only when the
+     cooperative tile also exposes enough independent blocks to fill all
+     gfx1151 CUs:
+     [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-vstage96-mixed32-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

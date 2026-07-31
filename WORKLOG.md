@@ -195489,3 +195489,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `ebb5a02e80a23df52f968d54e047ff8070c56411a318e2c3cdd4f3f170521d49`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-production.json`.
+
+## 2026-07-31 12:14 JST — Reject global V96 and mixed32/local1024
+
+- Revisited the retained exact global-attention local1024 body using the two
+  closest remaining llama.cpp-inspired seams: widen ping-pong staged V from
+  64 to 96 rows, and reduce duplicated KV ownership from five mixed40 blocks
+  to four mixed32 blocks per KV head.
+- RED import tests fail on each absent route. GREEN passes the CPU reference
+  and preserves every F32 context and gated BF16 byte at live counts
+  513/576/639.
+- Twenty-one paired 100-launch bursts show V96 improves only
+  **0.719%/0.598%/0.709%**. The mixed32/local1024 route improves only
+  **0.298%/0.063%/0.129%**: saving one KV scan is canceled by launching only
+  32 blocks on a 40-CU device.
+- Both candidates are materially weaker than the prior exact V128 leaf win,
+  which already failed a seven-pair resident gate. Stop before another
+  79-GB model load and remove all experimental source, wrapper, registry,
+  test, and harness routes. Tracked production remains
+  **22.873989 tok/s / 43.717779 ms/token**.
+- Commands:
+  `GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate fused-mixed32-local1024-exp32-producer-max-dpp-qk-dense-prefix-idle-double-buffer-probability-vec4-prenorm-vstage64-vec16-direct-assume-exp --samples 21 --warmups 5 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-global-mixed32-local1024-leaf.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction --tb=short`.
+- Raw SHA-256:
+  V96 `3b1e6dadc69693823d35219279efe2f89f68fe321340481244ac9ec71b2efe26`;
+  mixed32 `0350a1e4af5858c65068bfe4586e8a27939fa678557102f9815bbd7c3cc927b7`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-global-local1024-vstage96-mixed32-rejected.json`.

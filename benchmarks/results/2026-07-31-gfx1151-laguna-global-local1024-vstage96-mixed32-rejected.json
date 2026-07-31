@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_global_attention_exact_leaf_rejection",
+  "status": "rejected_out_of_tree",
+  "timestamp": "2026-07-31T12:13:44+09:00",
+  "source_revision": "c2a140fbf5dbb5659a634c791f89af38b58c15e2",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "shape": {
+    "capacity": 4096,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "live_counts": [
+      513,
+      576,
+      639
+    ]
+  },
+  "protocol": {
+    "samples": 21,
+    "warmups": 5,
+    "burst": 100,
+    "paired": true,
+    "gpu_max_hw_queues": 1
+  },
+  "control": "mixed40/local1024/V64 dense-prefix idle-double-buffer exact FP32 QK/PV",
+  "candidates": [
+    {
+      "name": "mixed40/local1024/V96",
+      "premise": "widen each exact ping-pong V stage from 64 to 96 rows",
+      "raw_sha256": "3b1e6dadc69693823d35219279efe2f89f68fe321340481244ac9ec71b2efe26",
+      "rows": [
+        {
+          "live_count": 513,
+          "control_ms": 0.031120460033416748,
+          "candidate_ms": 0.03089655876159668,
+          "latency_change_percent": -0.7194664589779354
+        },
+        {
+          "live_count": 576,
+          "control_ms": 0.0334675407409668,
+          "candidate_ms": 0.03326741933822632,
+          "latency_change_percent": -0.5979567016572429
+        },
+        {
+          "live_count": 639,
+          "control_ms": 0.03640064954757691,
+          "candidate_ms": 0.03614254951477051,
+          "latency_change_percent": -0.7090533713390301
+        }
+      ]
+    },
+    {
+      "name": "mixed32/local1024/V64",
+      "premise": "reduce duplicated KV ownership from five to four workgroups per KV head",
+      "raw_sha256": "0350a1e4af5858c65068bfe4586e8a27939fa678557102f9815bbd7c3cc927b7",
+      "rows": [
+        {
+          "live_count": 513,
+          "control_ms": 0.031139888763427735,
+          "candidate_ms": 0.031047029495239256,
+          "latency_change_percent": -0.2982003850236503
+        },
+        {
+          "live_count": 576,
+          "control_ms": 0.03358536958694458,
+          "candidate_ms": 0.033564140796661375,
+          "latency_change_percent": -0.06320844624992938
+        },
+        {
+          "live_count": 639,
+          "control_ms": 0.036433138847351075,
+          "candidate_ms": 0.03638626098632813,
+          "latency_change_percent": -0.12866819194293777
+        }
+      ]
+    }
+  ],
+  "correctness": {
+    "cpu_reference_pass": true,
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0
+  },
+  "decision": {
+    "retained": false,
+    "runtime_gate_skipped": true,
+    "reason": "Both candidates are materially smaller than the previously rejected V128 leaf win. V96 saves only 0.60-0.72%; mixed32 saves only 0.06-0.30%, showing that reduced KV duplication is canceled by underfilling the 40-CU device. All experimental source, wrapper, registry, harness, and test routes were removed."
+  },
+  "production": {
+    "decode_tokens_per_second": 22.873989323,
+    "wall_ms_per_token": 43.717778559,
+    "changed": false
+  }
+}
