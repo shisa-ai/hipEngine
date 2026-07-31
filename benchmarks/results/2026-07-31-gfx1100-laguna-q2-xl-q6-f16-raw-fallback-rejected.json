@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_wpfh6h_q6_f16_raw_fallback_rejection",
+  "date": "2026-07-31",
+  "status": "rejected_complete_quality_gate_runtime_removed",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2.53211 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "target_revision": "4f6d067fc",
+    "red_revision": "3552ffb52",
+    "retained_leaf_revision": "941158ba3",
+    "runtime_qualification": "uncommitted temporary owner removed after binding failure",
+    "production_revision": "837c1c742"
+  },
+  "candidate": {
+    "id": "WPF-H6H",
+    "shape_policy": [
+      {
+        "output_dtype": "bf16",
+        "in_features": 9216,
+        "out_features": 3072,
+        "role": "layer-47 attention output"
+      },
+      {
+        "output_dtype": "bf16",
+        "in_features": 12288,
+        "out_features": 3072,
+        "role": "layer-0 dense FFN down"
+      },
+      {
+        "output_dtype": "f32",
+        "in_features": 3072,
+        "out_features": 9216,
+        "role": "layer-47 attention Q"
+      }
+    ],
+    "production_rows": 512,
+    "ordered_q6_calls_preserved": 143,
+    "candidate_calls_at_m512": 3,
+    "workspace": {
+      "weight_f16_bytes": 75497472,
+      "input_f16_bytes": 12582912,
+      "output_f16_bytes": 9437184,
+      "required_bytes": 97517568,
+      "existing_serial_owner_bytes": 161120256,
+      "spare_bytes": 63602688,
+      "additional_allocation_bytes": 0
+    },
+    "kernel_body_changed": false,
+    "public_selector_added": false,
+    "source_default_changed": false
+  },
+  "natural_m512_state": {
+    "pass": true,
+    "rows": 512,
+    "token_source": {
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "source_tokens": 122,
+      "requested_tokens": 512,
+      "extension": "repeat_without_leading_bos"
+    },
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "finite": true,
+    "kl_mean": 0.0006849853334941434,
+    "kl_max": 0.0006849853334941434,
+    "top1_agreement": 1.0,
+    "next_token_id": 2930,
+    "next_token_match": true,
+    "changed_hidden_boundaries": 48,
+    "hidden_boundaries_checked": 48,
+    "candidate_repeat_exact": true,
+    "complete_logits_hidden_kv_live_spans_checked": true,
+    "tracked_returned_to_baseline": true
+  },
+  "complete_quality_gate": {
+    "pass": false,
+    "timing_performed": false,
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "teacher_forced_steps_per_prompt": 32,
+    "teacher_forced_steps": 576,
+    "changed_arithmetic_steps": 576,
+    "explicit_quality_min_rows": 16,
+    "production_min_rows": 512,
+    "finite": true,
+    "max_kl_divergence": 0.4117887626548114,
+    "kl_threshold": 0.05,
+    "top1_matches": 565,
+    "top1_agreement": 0.9809027777777778,
+    "top1_threshold": 0.9,
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.12129881894880615,
+        "steps": 192,
+        "top1_agreement": 0.9947916666666666,
+        "top1_matches": 191
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 0.1422512767957441,
+        "steps": 128,
+        "top1_agreement": 0.9765625,
+        "top1_matches": 125
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.4117887626548114,
+        "steps": 128,
+        "top1_agreement": 0.984375,
+        "top1_matches": 126
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 0.2140233707520257,
+        "steps": 128,
+        "top1_agreement": 0.9609375,
+        "top1_matches": 123
+      }
+    },
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 0.00015682291693663912,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "performance": {
+    "promotion_timing_performed": false,
+    "reason": "The predeclared complete quality gate failed before performance timing.",
+    "target_model_current_raw_ms": 28.404581,
+    "target_model_leaf_ms": 2.211402972539266,
+    "target_model_saving_ms": 26.193178027460736,
+    "target_model_tok_s": 360.37402944864044,
+    "model_values_validated": false,
+    "retained_matched_c4096_direct_m512_tok_s": 353.79806733444565,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "retained_gap": 1.9681905140022917
+  },
+  "cleanup": {
+    "runtime_owner_removed": true,
+    "package_policy_removed": true,
+    "context_local_abi_removed": true,
+    "conditional_eager_library_removed": true,
+    "rocblas_handle_owner_removed": true,
+    "dedicated_device_allocation_ever_added": false,
+    "red_test_removed_from_live_tree": true,
+    "red_test_retained_at_revision": "3552ffb52",
+    "retained_leaf_preserved": true,
+    "live_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py": "4345f8a01a9bb0b56934d0738d858100010d192147b42db5a46bc765930ad313",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.hip": "2d1cbd2e99a082e1a347308b338536b4a097a7512f53272374b02bf16b71c90f",
+      "hipengine/runtime/gguf_linear.py": "8e40f81a21ecaf6d7cc2a13d62eab142fe23401e3af028bafa1aaaf169341f40",
+      "hipengine/runtime/laguna_gguf_runner.py": "184f3bef57164068fa8f8e9e9227cc43db1774e06550cbfa13c48b2dbe07ae5e",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d8e5eaeeab403dda226b95a1ea6703b35ee7fe5828bb7c62b24c741614a90813",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3fa37c57fcb7beeb1a7d9caa4a77d30c8c587d36eef783bfee9e5ceb4e794117"
+    }
+  },
+  "validation": {
+    "temporary_runtime_bundle_passed": 122,
+    "temporary_runtime_bundle_total": 122,
+    "temporary_runtime_bundle_stdout_sha256": "c39c75a1517c9bc2577383d9c8de4cb7548a87730eb339ae362646c1847b8a4f",
+    "temporary_runtime_bundle_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "post_cleanup_runtime_bundle_passed": 121,
+    "post_cleanup_runtime_bundle_total": 121,
+    "post_cleanup_runtime_bundle_stdout_sha256": "9f987b2f573532331f033712a27a7be4d492a4b8a13083c20e6f76e9846f40b3",
+    "post_cleanup_runtime_bundle_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "benchmark_authority_tests_passed": 34,
+    "benchmark_authority_tests_total": 34,
+    "benchmark_authority_stdout_sha256": "1e6b4fbe33d23cc880df779e2dd0330dd0359555faab7d7943e31674e2319fe8",
+    "benchmark_authority_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "source_evidence": {
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json",
+    "retained_leaf_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-candidate.json",
+    "broad_h4_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json",
+    "red_test_sha256": "9739514b3de0ad011ba6b274f7a4668ef855d907690bd848eb1f537664084c8d",
+    "runtime_patch_sha256": "9109d1a9e8647d656e6207f5666ff7827e68a082ff4456ef22a15bcbe0314a7b",
+    "natural_m512": {
+      "raw_sha256": "02e0ca9e591a4f96cc7bf86c7da368e000c4cad206b0fed3cc70eac38a31f22c",
+      "harness_sha256": "094f001dccf988f507d642a9a410f875138677867f821adab935a362bd97d32e",
+      "stdout_sha256": "0937e541a76383f7ae72c2c29ef8abba09202800ee40fa6774ab463fd7a2f69c",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    },
+    "complete_quality": {
+      "raw_sha256": "4f984a3ecdd6f45e2aa2d81bc02e25b424c2ebb78bc73ecea3497fe742c9bc91",
+      "harness_sha256": "7fbda2e1cbbb0581669e7758fbb450f3631fa81a0dac7d2b6ff09847f2678e6d",
+      "stdout_sha256": "f109e352daaead2aca3d44492edad8a109b6754e67d42c329977a6c5c8f2d3cf",
+      "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+    }
+  },
+  "decision": {
+    "pass": false,
+    "reason": "Maximum KL 0.411789 exceeds the mandatory 0.05 ceiling even though top-1 remains 98.09%.",
+    "runtime_default_changed": false,
+    "production_changed": false,
+    "production": "retain H6F/H6E/H6C/H6A/H5Y at 353.798 tok/s",
+    "next_action": "Commit the complete rejection cleanup, then rerank the unchanged post-H6F residual for a materially different exact target; do not time or promote H6H."
+  }
+}
