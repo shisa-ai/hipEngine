@@ -1064,10 +1064,17 @@ bytes match the route-major control and fair control-post-gather versus
 candidate-pre-gather event/wall moves **32.691/32.724 -> 15.458/15.438 ms
 (-52.716%/-52.825%, 2.115x/2.120x)**. Cached trace is
 local256/VGPR72/LDS512/scratch0 at physical grid 1024x256; code-object metadata
-is VGPR71/SGPR58/fixed-LDS256/private0/spill0. Keep the leaf gfx1100-only and
-runtime-unowned until complete state, topology, repeat/lifecycle, and one-queue
-512/1K/4K pass
-([H6C candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-candidate.json) ·
+is VGPR71/SGPR58/fixed-LDS256/private0/spill0. A bounded default-off role map now
+resolves only `(layer47, gguf_iq3_xxs)` at exact model shape and reuses existing
+`expert_down`/`expert_gate` scratch. Complete natural M512 is KL0/byte-exact
+across all state and repeat at unchanged **600,141,856-byte** total scratch.
+Four cached requests preserve **2,050** dispatches and exact 46-IQ2/one-H6C
+plus 45-H5Z/two-H5J topology; gather-inclusive special time falls **32.127 ->
+15.030 ms (-53.215%)**. Default-off 512/1K/4K improves
+**+1.148%/+0.796%/+0.560%**, 3/3 wins each. Keep source default empty until a
+separate selector-unset publication
+([H6C runtime candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-runtime-candidate.json) ·
+[H6C leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-candidate.json) ·
 [H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

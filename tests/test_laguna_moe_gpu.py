@@ -457,6 +457,7 @@ def test_laguna_grouped_pair16_gate_up_uses_source_gather_and_registered_route()
     plan = SimpleNamespace(
         grouped_exact_down_routes={"gguf_iq3_xxs": object()},
         grouped_pair16_gate_up_routes={"gguf_iq2_xs": route},
+        grouped_special_gate_up_routes={},
         grouped_compact_source_rows=record("compact"),
         grouped_compact_source_rows_parallel=record("compact_parallel"),
         grouped_gather=record("gather"),
@@ -523,6 +524,7 @@ def test_laguna_grouped_pair16_preserves_route_major_c1_gate_up(
     plan = SimpleNamespace(
         grouped_exact_down_routes={"gguf_iq3_xxs": object()},
         grouped_pair16_gate_up_routes={"gguf_iq2_xs": object()},
+        grouped_special_gate_up_routes={},
         grouped_compact_source_rows=record("compact"),
         grouped_compact_source_rows_parallel=record("compact_parallel"),
         grouped_gather=record("gather"),
