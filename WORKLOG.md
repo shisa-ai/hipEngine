@@ -196520,3 +196520,33 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
   `d6e8f843...5801da`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selector-selected-gate-fusion-rejected.json`.
+
+## 2026-07-31 22:20 JST — Reject K-major output→router→selector fusion
+
+- Re-ranked the post-halfdot census after closing selector→gate. The strongest
+  untested boundary construction was the representation escape hatch left by
+  the multi-expert-router and persistent-output rejections: transpose the
+  F32 router matrix byte-neutrally to K-major, preserve all 3,072 output
+  producers, append eight coalesced router tiles, and let the last tile select
+  exact top-10. This targets both the **0.263561-ms** output→router and
+  **0.211476-ms** router→gate uncovered boundaries with one launch.
+- RED failed on the absent composite wrapper. GREEN preserved every
+  projection/residual/RMSNorm BF16 bit, selected the identical top-10, reset
+  both counters, and bounded the changed router association to
+  **5.96e-7** logit / **5.96e-8** routing maximum absolute error.
+- The natural 21x100 leaf gate rejected the mechanism before runtime
+  integration. K6144 moves **0.185013 -> 0.245153 ms (+32.506%)** and K9216
+  moves **0.265196 -> 0.323833 ms (+22.111%)**. The 12-full/36-SWA weighted
+  family moves **11.767224 -> 14.599828 ms/token (+24.072%)** despite
+  contracting three launches to one.
+- Cached `rocprofv3 --kernel-trace` identifies the cause: the retained output
+  owner is local256/**VGPR24/LDS512**, while attaching router/selector code
+  makes every output producer local256/**VGPR64/LDS2048**. An explicit
+  `__launch_bounds__(256, 8)` rescreen is still
+  **+32.765%/+22.568%**. Static output occupancy is the blocker, not K-major
+  correctness.
+- Completely removed the candidate body/export, wrapper, harness, and
+  RED/GREEN additions. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw leaf SHA-256 is
+  `05e65521...1d6ccc`; trace SHA-256 is `0bd79b91...7d99e0`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-kmajor-fusion-rejected.json`.

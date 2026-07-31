@@ -8820,6 +8820,40 @@ The remaining attention sequence is:
      **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selector-selected-gate-fusion-rejected.json).
 
+188. Cross the output/RMSNorm boundary with a byte-neutral K-major router
+     layout and eight coalesced continuation tiles.
+     **Rejected at the complete target-chain leaf and removed.**
+
+     This is the representation escape hatch left open by items 183 and 184.
+     The candidate preserves all **3,072** ordinary non-temporal output
+     producers, appends eight local256 blocks that wait on the output
+     completion epoch, consumes a transposed F32 router matrix in 32-expert
+     coalesced tiles, and lets the last router tile run the exact
+     correction-only selector. Router storage is byte-neutral and the chain
+     contracts from three launches to one.
+
+     RED fails on the absent composite symbol/wrapper. GREEN keeps projection,
+     residual, RMSNorm, selected top-10, and counter reset exact. The changed
+     K-major router association stays within **5.96e-7** logit and
+     **5.96e-8** routing absolute error. The natural 21x100 gate is
+     nevertheless decisively negative:
+
+     | Chain shape | retained 3-launch chain | one-launch K-major composite | Delta |
+     | --- | ---: | ---: | ---: |
+     | K6144/N3072/E256/top10 | **0.185013 ms** | 0.245153 ms | **+32.506%** |
+     | K9216/N3072/E256/top10 | **0.265196 ms** | 0.323833 ms | **+22.111%** |
+     | 12 full + 36 SWA model | **11.767224 ms/token** | 14.599828 ms/token | **+24.072%** |
+
+     Profiling identifies the mechanism: attaching the router and selector
+     raises every streamed output producer from **VGPR24/LDS512** to
+     **VGPR64/LDS2048**. An explicit `__launch_bounds__(256, 8)` rescreen
+     remains **+32.765%/+22.568%**. The static occupancy loss overwhelms the
+     two deleted launches before runtime integration. Remove the kernel, ABI,
+     wrapper, harness, and tests. Reopen only if a device continuation can be
+     isolated from the output producer's static VGPR allocation without
+     adding another host launch. Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-kmajor-fusion-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8848,7 +8882,9 @@ remaining obvious shared-branch event split; delaying only shared down loses
 **0.256145 ms/token**. Item 186 closes the remaining simple selected gate/up
 half-dot geometry seam before runtime integration. Item 187 closes the
 barrier-free redundant selector→gate launch contraction at the complete
-target-chain leaf:
+target-chain leaf. Item 188 closes the byte-neutral K-major
+output→router→selector construction because its continuation code inflates
+every output block from VGPR24 to VGPR64:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
