@@ -37,6 +37,7 @@ from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
+    argmax_f32_publish_control,
     argmax_f32_rows_i32,
     build_lm_head,
     lm_head_argmax_stage1_blocks,
@@ -67,6 +68,7 @@ __all__ = [
     "plan_dense_gemv_build",
     "register_dense_gemv_kernels",
     "argmax_f32",
+    "argmax_f32_publish_control",
     "argmax_f32_rows_i32",
     "build_lm_head",
     "laguna_f16w_dual_gemv_bf16_f32_out",

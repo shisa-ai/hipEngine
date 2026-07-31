@@ -310,6 +310,7 @@ class LagunaEagerKernelPlan:
     attention_gate_fp16_via_bf16_key: KernelKey
     dense_silu_key: KernelKey
     argmax_key: KernelKey
+    argmax_publish_control_key: KernelKey
     f16_triple_key: KernelKey
     f16_f32_key: KernelKey
     f16_bf16_key: KernelKey
@@ -325,6 +326,7 @@ class LagunaEagerKernelPlan:
     attention_gate_fp16_via_bf16: Callable
     dense_silu: Callable
     argmax: Callable
+    argmax_publish_control: Callable | None
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
@@ -338,6 +340,11 @@ class LagunaEagerKernelPlan:
             if self.global_head_kv is not None and self.swa_head_kv is not None
             else ()
         )
+        optional_argmax_publish = (
+            (self.argmax_publish_control_key,)
+            if self.argmax_publish_control is not None
+            else ()
+        )
         return (
             self.rmsnorm_key,
             self.rmsnorm_fp16_via_bf16_key,
@@ -349,6 +356,7 @@ class LagunaEagerKernelPlan:
             self.attention_gate_fp16_via_bf16_key,
             self.dense_silu_key,
             self.argmax_key,
+            *optional_argmax_publish,
             self.f16_triple_key,
             self.f16_f32_key,
             self.f16_bf16_key,
@@ -1864,6 +1872,7 @@ def resolve_laguna_eager_kernel_plan(
     backend: str,
     use_moe_tail_next_rmsnorm: bool = True,
     use_head_kv_fusion: bool = False,
+    use_argmax_control_publish: bool = False,
 ) -> LagunaEagerKernelPlan:
     """Validate the S 2.1 eager contract and resolve only exact registry keys."""
 
@@ -1930,6 +1939,12 @@ def resolve_laguna_eager_kernel_plan(
         ),
         "dense_silu": KernelKey(backend, "silu_mul_separate", "bf16", "out"),
         "argmax": KernelKey(backend, "argmax", "f32", "top1_i64"),
+        "argmax_publish_control": KernelKey(
+            backend,
+            "argmax",
+            "f32",
+            "top1_i64_publish_control",
+        ),
         "f16_triple": KernelKey(backend, "linear_triple", "fp16_weight", "bf16_f32_out"),
         "f16_f32": KernelKey(backend, "linear", "fp16_weight", "bf16_f32_out"),
         "f16_bf16": KernelKey(backend, "linear", "fp16_weight", "bf16_bf16_out"),
@@ -1940,7 +1955,12 @@ def resolve_laguna_eager_kernel_plan(
             "positions_f32",
         ),
     }
-    optional_names = {"moe_tail_next_rmsnorm", "global_head_kv", "swa_head_kv"}
+    optional_names = {
+        "moe_tail_next_rmsnorm",
+        "global_head_kv",
+        "swa_head_kv",
+        "argmax_publish_control",
+    }
     required = {name: key for name, key in keys.items() if name not in optional_names}
     functions = {name: _resolve_exact(key) for name, key in required.items()}
     tail_key = keys["moe_tail_next_rmsnorm"]
@@ -1954,6 +1974,13 @@ def resolve_laguna_eager_kernel_plan(
         tuple(_resolve_exact(key) for key in head_kv_keys)
         if bool(use_head_kv_fusion) and all(is_registered(key) for key in head_kv_keys)
         else (None, None)
+    )
+    argmax_publish_control_key = keys["argmax_publish_control"]
+    argmax_publish_control = (
+        _resolve_exact(argmax_publish_control_key)
+        if bool(use_argmax_control_publish)
+        and is_registered(argmax_publish_control_key)
+        else None
     )
     return LagunaEagerKernelPlan(
         backend=backend,
@@ -1970,6 +1997,7 @@ def resolve_laguna_eager_kernel_plan(
         ],
         dense_silu_key=keys["dense_silu"],
         argmax_key=keys["argmax"],
+        argmax_publish_control_key=argmax_publish_control_key,
         f16_triple_key=keys["f16_triple"],
         f16_f32_key=keys["f16_f32"],
         f16_bf16_key=keys["f16_bf16"],
@@ -1987,6 +2015,7 @@ def resolve_laguna_eager_kernel_plan(
         ],
         dense_silu=functions["dense_silu"],
         argmax=functions["argmax"],
+        argmax_publish_control=argmax_publish_control,
     )
 
 
@@ -2373,6 +2402,7 @@ class LagunaGGUFResidentSession:
         use_q4_shared_down_t16_decode: bool | None = None,
         use_q4_expert_t16_dual_interleaved: bool | None = None,
         use_shared_down_moe_tail_host_batch: bool | None = None,
+        use_argmax_control_publish: bool | None = None,
         use_router_projection_wave0_tree: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -2451,6 +2481,15 @@ class LagunaGGUFResidentSession:
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
             use_head_kv_fusion,
+        )
+        requested_argmax_control_publish = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_ARGMAX_CONTROL_PUBLISH",
+                False,
+            )
+            if use_argmax_control_publish is None
+            else use_argmax_control_publish
         )
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
@@ -3011,6 +3050,8 @@ class LagunaGGUFResidentSession:
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
+        self._prepublished_control_position: int | None = None
+        self._prepublished_control_token: int | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
         self.kv_cache: LagunaKVCache | None = None
         self.scratch: LagunaEagerScratch | None = None
@@ -3067,10 +3108,14 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
                 use_head_kv_fusion=requested_head_kv_fusion,
+                use_argmax_control_publish=requested_argmax_control_publish,
             )
             self.use_head_kv_fusion = (
                 self.kernel_plan.global_head_kv is not None
                 and self.kernel_plan.swa_head_kv is not None
+            )
+            self.use_argmax_control_publish = (
+                self.kernel_plan.argmax_publish_control is not None
             )
             self.libraries = load_laguna_eager_libraries(
                 backend=self.backend,
@@ -3668,9 +3713,23 @@ class LagunaGGUFResidentSession:
         assert self.kernel_plan is not None
         assert self.libraries is not None
         try:
-            _copy_i64(self.scratch.token_id, token, self.runtime)
-            _copy_i64(self.scratch.position, next_position, self.runtime)
-            self.kv_cache.prepare_position(next_position)
+            control_position_ready = (
+                self.use_argmax_control_publish
+                and next_position == self._prepublished_control_position
+            )
+            control_token_ready = (
+                control_position_ready
+                and token == self._prepublished_control_token
+            )
+            if not control_token_ready:
+                _copy_i64(self.scratch.token_id, token, self.runtime)
+            if control_position_ready:
+                self.kv_cache.adopt_prepublished_position(next_position)
+            else:
+                _copy_i64(self.scratch.position, next_position, self.runtime)
+                self.kv_cache.prepare_position(next_position)
+            self._prepublished_control_position = None
+            self._prepublished_control_token = None
             launch_gguf_embedding(
                 self.weights.root("token_embedding"),
                 self.scratch.token_id.ptr,
@@ -4050,6 +4109,8 @@ class LagunaGGUFResidentSession:
         _copy_i64(self.scratch.position, -1, self.runtime)
         self.position = -1
         self.last_result = None
+        self._prepublished_control_position = None
+        self._prepublished_control_token = None
 
     def verifier_address_signature(self) -> dict[str, int]:
         """Return stable semantic pointers used by verifier graph buckets."""
@@ -5677,23 +5738,57 @@ class LagunaGGUFResidentSession:
             use_gemv_decode=True,
             registered_variant=self._q4_lm_head_variant,
         )
-        self.kernel_plan.argmax(
-            scratch.logits.ptr,
-            scratch.argmax_block_values.ptr,
-            scratch.argmax_block_indices.ptr,
-            scratch.argmax_id.ptr,
-            scratch.argmax_value.ptr,
-            config.vocab_size,
-            stream=stream,
-            library=self.libraries.argmax,
-            runtime=self.runtime,
+        publish_control = (
+            getattr(
+                self.kernel_plan,
+                "argmax_publish_control",
+                None,
+            )
+            if getattr(
+                self,
+                "use_argmax_control_publish",
+                False,
+            )
+            else None
         )
+        if publish_control is None:
+            self.kernel_plan.argmax(
+                scratch.logits.ptr,
+                scratch.argmax_block_values.ptr,
+                scratch.argmax_block_indices.ptr,
+                scratch.argmax_id.ptr,
+                scratch.argmax_value.ptr,
+                config.vocab_size,
+                stream=stream,
+                library=self.libraries.argmax,
+                runtime=self.runtime,
+            )
+        else:
+            assert self.kv_cache is not None
+            publish_control(
+                scratch.logits.ptr,
+                scratch.argmax_block_values.ptr,
+                scratch.argmax_block_indices.ptr,
+                scratch.argmax_id.ptr,
+                scratch.argmax_value.ptr,
+                scratch.token_id.ptr,
+                scratch.position.ptr,
+                self.kv_cache.row_position_ptr,
+                config.vocab_size,
+                position + 1,
+                stream=stream,
+                library=self.libraries.argmax,
+                runtime=self.runtime,
+            )
         if stream:
             self.runtime.stream_synchronize(stream)
         else:
             self.runtime.device_synchronize()
         next_id = _read_i64(scratch.argmax_id, self.runtime)
         next_value = _read_f32(scratch.argmax_value, self.runtime)
+        if publish_control is not None:
+            self._prepublished_control_position = position + 1
+            self._prepublished_control_token = next_id
         return LagunaEagerTokenResult(
             position=position,
             input_token_id=input_token_id,
