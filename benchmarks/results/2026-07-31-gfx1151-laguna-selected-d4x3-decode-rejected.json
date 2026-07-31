@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T18:26:42+09:00",
+  "kind": "hipengine_laguna_selected_d4x3_decode_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "repo": {
+    "baseline_revision": "6bffd18b011cbb728a4a8ff1675045e37656e7e4"
+  },
+  "scope": "actual layer-1 c=1/top-10 selected Q4T16 gate/up plus fused SiLU",
+  "workload": {
+    "x_rows": 1,
+    "selected_rows": 10,
+    "experts": 256,
+    "in_features": 3072,
+    "out_features": 1024,
+    "control": "retained exact dual-interleaved tile8 gate/up plus fused SiLU",
+    "candidate": "DS4 primary plus two recursively quantized residual planes, decoded by a selected-vector Q4T16 dp4a consumer"
+  },
+  "protocol": {
+    "timing": "counterbalanced HIP events",
+    "warmups": 5,
+    "samples": 21,
+    "burst": 100,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-candidate d4x3-dp4a-silu --gate-only --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-d4x3-decode-leaf.json",
+    "raw_artifact": {
+      "path": "/tmp/laguna-selected-d4x3-decode-leaf.json",
+      "sha256": "6414471d7674fb83d3ddc0de8bfe3da3640a2195dd1780966a626e945188bc6d"
+    }
+  },
+  "correctness": {
+    "focused_fixture": "D4x3 is finite and strictly reduces both BF16 mismatch count and maximum absolute error versus one-plane Q8_1",
+    "actual_weight_bf16_mismatches": 51,
+    "actual_weight_max_abs": 0.0078125
+  },
+  "timing": {
+    "exact_control_ms": 0.11510042190551757,
+    "d4x3_inclusive_ms": 0.12102602005004882,
+    "latency_change_percent": 5.1481984569921035
+  },
+  "direct_prefill_primitive_decode_screen": {
+    "raw_artifact": {
+      "path": "/tmp/laguna-q4-d4x3-decode-leaf.json",
+      "sha256": "2ce7eda5d9f602c07c712e69d048fb045ab7f04a063b07606a2aab7b6c28138b"
+    },
+    "exact_control_ms": 0.14051170349121095,
+    "one_plane_mmq32_ms": 0.21259698867797852,
+    "one_plane_latency_change_percent": 51.30197940506538,
+    "d4x3_mmq32_ms": 0.40758047103881834,
+    "d4x3_latency_change_percent": 190.0686995544913,
+    "reason": "Ten one-row experts are padded to 320 MMQ rows at c=1."
+  },
+  "decision": {
+    "result": "reject before recurrent quality and remove",
+    "reason": "The decode-vector implementation removes MMQ row padding and improves approximation quality, but its two extra integer-dot planes plus pack launch make the inclusive actual-weight leaf 5.15% slower than the exact production owner.",
+    "production_change": false
+  },
+  "production": {
+    "tok_per_s": 23.0172713318,
+    "ms_per_token": 43.4456363478
+  }
+}
