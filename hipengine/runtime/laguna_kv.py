@@ -89,12 +89,18 @@ _PREFILL_PREAPPEND_ROLE_CANDIDATES = {
 _DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT = (
     "global_context_rows_dense_initial_cached_exact_spans"
 )
+_DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_dense_initial_fixed512_cached_exact_spans"
+)
 _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT = (
     "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
 )
 _PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
     _PREFILL_DENSE_INITIAL_GLOBAL_ROLE: frozenset(
-        {_DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT}
+        {
+            _DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT,
+            _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT,
+        }
     ),
     _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
         {_DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT}

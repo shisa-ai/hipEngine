@@ -2139,17 +2139,20 @@ CPU rows, preserves all span bytes, rejects invalid shapes before HIP loading,
 and recovers allocations at starts **0/128/256/384**.
 
 H6N reduces exact dynamic launch storage **`(4096 + 8 + 128) * 4 = 16,928` ->
-`(512 + 8 + 128) * 4 = 2,592` bytes (-84.688%)**. Metadata/runtime stay
-private0/spill0/scratch0 at VGPR **33/40**, local256/grid48x128, and selected
-operation-site counts equal H6A. Every start wins both clocks. The append-
-inclusive weighted 48-call schedule moves event **48.928 -> 28.425 ms
-(-41.905%, 1.721x)** and synchronized wall **48.227 -> 28.126 ms (-41.679%,
-1.715x)**. This admits only the leaf; H6A remains source production at
-**381.977 tok/s**. Next freeze bounded default-off ownership, then require
-complete natural-M512 state/repeat/teardown, exact 48-call H6A-to-H6N
-substitution at unchanged **2,192** dispatches, fixed C4096/M512 both-clock
-wins, and selector-unset 512/1K/4K non-regression before source promotion
-([H6N candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+`(512 + 8 + 128) * 4 = 2,592` bytes (-84.688%)** and now has bounded default-
+off runtime ownership through one additional generic role-candidate key. No
+backend/quant branch, ABI, allocation, workspace, sidecar, or public selector
+is added. Complete natural M512 is KL0/byte-exact across logits, all **48/48**
+hidden boundaries, K/V/spans, repeat, and teardown. Four cached requests keep
+**2,192 dispatches** and substitute exact **48 H6A global -> 48 H6N**, moving
+global/attention/kernel-sum/span **57.126/169.556/1,320.178/1,346.667 ->
+31.969/148.140/1,305.325/1,327.300 ms (-44.038%/-12.631%/-1.125%/-1.438%)**.
+Fixed C4096/M512 improves **379.040 -> 384.692 tok/s (+1.491%, 5/5 wins)**;
+clean 512/1K are **+0.058%/+0.093%**, while 4K is exact within **-0.037%** wall
+noise. H6A remains source production at **381.977 tok/s**. Next freeze a
+separate source-default contract and require selector-unset 512/1K/4K plus
+fixed C4096/M512 non-regression before changing the one global map value
+([H6N candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
 [H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
