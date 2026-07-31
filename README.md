@@ -339,15 +339,18 @@ numbers below.
 
 The clean promoted H6L refresh reaches **381.977 tok/s**, **+125.334%** over campaign start and **1.82299x** behind matched llama.cpp HIP **696.342**. Its exact **1,326.062-ms / 2,192-dispatch** request leaves Q5/IQ-down/attention/Q6 gaps **194.004/189.827/151.442/72.392 ms**, while gate/up is already **7.498 ms faster** than llama.cpp. **WPF-H6M exact explicit wait-split Q5 pipelining is rejected**: both roles are byte-exact and physically realize **13/4 loads -> 32 current FMAs -> one wait**, but the 70-call direct event/wall aggregate regresses **194.618/195.249 -> 205.367/205.331 ms (+5.523%/+5.164%)** and inclusive regresses **215.590/216.860 -> 227.873/227.347 (+5.697%/+4.836%)**. Remove every H6M surface and retain H5Y/H6L production ([H6M rejection](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) · [post-H6L residual / H6M target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
-**WPF-H6N exact global dense-initial fixed-512 score storage is now an admitted
-standalone leaf.** All four M128 starts are complete-byte/CPU/span exact. The
-candidate cuts dynamic launch storage **16,928 -> 2,592 bytes (-84.688%)** while
-metadata/runtime stay private0/spill0/scratch0 at VGPR **33/40**, local256, and
-grid48x128. Every start wins both clocks; the append-inclusive weighted 48-call
-schedule moves event **48.928 -> 28.425 ms (-41.905%, 1.721x)** and wall
-**48.227 -> 28.126 ms (-41.679%, 1.715x)**. Production remains H6A at
-**381.977 tok/s** pending bounded full-state/topology/end-to-end runtime gates
-([H6N candidate](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+**WPF-H6N exact global dense-initial fixed-512 score storage now has bounded
+default-off runtime ownership.** Complete natural M512 is KL0/byte-exact across
+logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown
+at unchanged **161,120,256-byte** workspace. Four cached requests preserve
+**2,192 dispatches** and substitute exactly **48 H6A global -> 48 H6N** while
+keeping 144 H6A SWA; global/attention/kernel-sum/span move **57.126/169.556/
+1,320.178/1,346.667 -> 31.969/148.140/1,305.325/1,327.300 ms**. Fixed
+C4096/M512 wins **5/5** and improves **379.040 -> 384.692 tok/s (+1.491%)**.
+Clean 512/1K are neutral-positive and 4K is within **0.037%** wall noise.
+Production remains H6A at **381.977 tok/s** pending separate source-default RED
+and selector-unset publication
+([H6N candidate/runtime](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
 [H6N target](benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 Both short
