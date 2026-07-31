@@ -8290,6 +8290,27 @@ The remaining attention sequence is:
      43.445636 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-q8-activation-rejected.json).
 
+169. Pair two exact Q6 LM-head producer tiles in one local256 workgroup.
+     **Rejected at the actual-weight leaf and removed.**
+
+     The candidate halves the producer grid from **6,272 to 3,136
+     workgroups** by assigning one retained 128-thread producer to each half
+     of a local256 workgroup. Both halves keep the existing K ownership,
+     per-lane FMA order, four-wave reduction order, FP32 logits, 16-logit tile
+     maximum, tie semantics, layout, residency, and unchanged stage-2 reducer.
+     RED fails on the absent wrapper; GREEN matches every FP32 logit bit plus
+     the top-1 ID/value in the tie-sensitive GPU fixture.
+
+     The actual root M1/K3072/N100352 Q6_K leaf regresses
+     **1.125175 -> 1.131562 ms (+0.568%)** across a counterbalanced 21x8
+     screen. Halving scheduling units buys no useful traffic reduction and
+     slightly loses occupancy; the retained local128 grid already exposes
+     sufficient parallelism for this streaming projection. Stop before
+     resident integration and remove the candidate kernel, wrapper, harness
+     mode, and temporary test. Production remains **23.017271 tok/s /
+     43.445636 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-paired-tile-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
