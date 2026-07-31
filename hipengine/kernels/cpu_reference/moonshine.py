@@ -408,6 +408,22 @@ def moonshine_triple_projection(
     )
 
 
+def moonshine_gated_silu(fc1_output: ArrayLike) -> np.ndarray:
+    """Split ``[value, gate]`` and round ``value * SiLU(gate)`` to FP16."""
+
+    fc1 = _fp16("fc1_output", fc1_output)
+    if fc1.ndim < 1 or fc1.shape[-1] <= 0 or fc1.shape[-1] % 2:
+        raise ValueError("fc1 output width must be twice the decoder intermediate size")
+    value, gate = np.split(fc1, 2, axis=-1)
+    gate32 = gate.astype(np.float32)
+    silu = (gate32 / (np.float32(1.0) + np.exp(-gate32).astype(np.float32))).astype(
+        np.float32
+    )
+    output = (value.astype(np.float32) * silu).astype(np.float16)
+    _finite("gated SiLU output", output)
+    return output
+
+
 def moonshine_decoder_mlp(
     x: ArrayLike,
     fc1_weight: ArrayLike,
@@ -419,14 +435,7 @@ def moonshine_decoder_mlp(
 
     x_arr = _fp16("x", x)
     fc1 = _linear_fp16(x_arr, fc1_weight, fc1_bias)
-    if fc1.shape[-1] <= 0 or fc1.shape[-1] % 2:
-        raise ValueError("fc1 output width must be twice the decoder intermediate size")
-    value, gate = np.split(fc1, 2, axis=-1)
-    gate32 = gate.astype(np.float32)
-    silu = (gate32 / (np.float32(1.0) + np.exp(-gate32).astype(np.float32))).astype(
-        np.float32
-    )
-    activated = (value.astype(np.float32) * silu).astype(np.float16)
+    activated = moonshine_gated_silu(fc1)
     output = _linear_fp16(activated, fc2_weight, fc2_bias)
     if output.shape != x_arr.shape:
         raise ValueError("fc2 output shape must match the decoder hidden input")
@@ -482,6 +491,7 @@ def register_moonshine_cpu_reference_kernels(*, replace: bool = True) -> None:
         ("moonshine_attention", "logical_head_dim"): moonshine_attention,
         ("moonshine_projection", "fp32_accum"): moonshine_projection,
         ("moonshine_qkv_proj", "triple"): moonshine_triple_projection,
+        ("moonshine_gated_silu", "value_gate_split"): moonshine_gated_silu,
         ("moonshine_decoder_mlp", "gated_silu"): moonshine_decoder_mlp,
         ("moonshine_residual", "rounded"): moonshine_residual,
         ("moonshine_lm_head", "tied"): moonshine_tied_lm_logits,
