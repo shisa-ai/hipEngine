@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T17:48:33+09:00",
+  "kind": "hipengine_laguna_persistent_selected_ffn_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "repo": {
+    "baseline_revision": "454b5b540b24b05cd2d1b369c4c39885b98c4d4b"
+  },
+  "scope": "actual-weight layer-10 Q4T16 selected gate/up to weighted-down leaf",
+  "workload": {
+    "experts": 256,
+    "selected_rows": 10,
+    "gate_up": "M1/top-10 K3072/N1024 dual-interleaved Q4T16",
+    "down": "M10 K1024/N3072 Q4T16",
+    "control": "retained gate/up launch followed by retained paircoeff weighted-down launch",
+    "candidate": "one local128 persistent launch with a device-wide sense-reversing barrier"
+  },
+  "protocol": {
+    "timing": "counterbalanced HIP events",
+    "warmups": 2,
+    "samples": 3,
+    "burst": 5,
+    "commands": [
+      "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-layer 10 --q4-down-layer 10 --gate-candidate persistent-q4-ffn --gate-only --warmups 2 --samples 3 --burst 5 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-persistent-q4-ffn-directional.json",
+      "same command with --persistent-blocks 80 and output /tmp/laguna-persistent-q4-ffn-80.json",
+      "same command with --persistent-blocks 160 and output /tmp/laguna-persistent-q4-ffn-160.json"
+    ],
+    "raw_artifacts": [
+      {
+        "path": "/tmp/laguna-persistent-q4-ffn-directional.json",
+        "sha256": "7cea11add2ccdfb5be7b28bec49d2968a11704461f8b5e26dc1ea8bed16c3b99"
+      },
+      {
+        "path": "/tmp/laguna-persistent-q4-ffn-80.json",
+        "sha256": "316c275778d1b16b8ec95aff57cfe6ad4ab2e62e67f25614aa4848f6decc0d5a"
+      },
+      {
+        "path": "/tmp/laguna-persistent-q4-ffn-160.json",
+        "sha256": "cba396ff7e8cee98fee28e59fc3eaa5d658bb20e7b0c5f3f72cf918e3e87a9ad"
+      }
+    ]
+  },
+  "correctness": {
+    "red": "focused test collection failed because the new ABI was absent",
+    "green": "focused gfx1151 GPU fixture passed",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py -k laguna_t16_natural_selected_decode_matches_production_bits",
+    "result": "1 passed",
+    "bf16_mismatches": 0,
+    "completion_counter_nonzero": 0,
+    "barrier_counter": 0,
+    "barrier_epoch": 0
+  },
+  "results": [
+    {
+      "persistent_blocks": 40,
+      "control_ms": 0.2621135950088501,
+      "candidate_ms": 0.6875959873199463,
+      "delta_percent": 162.32747954059002
+    },
+    {
+      "persistent_blocks": 80,
+      "control_ms": 0.2613212108612061,
+      "candidate_ms": 0.419769811630249,
+      "delta_percent": 60.63365474500222
+    },
+    {
+      "persistent_blocks": 160,
+      "control_ms": 0.26221840381622313,
+      "candidate_ms": 0.2943506002426147,
+      "delta_percent": 12.253982160959076
+    }
+  ],
+  "decision": {
+    "gate_passed": false,
+    "reason": "Performance improves monotonically with resident blocks, but the safe 160-block barrier ceiling still loses 0.032132 ms per layer. More blocks cannot be assumed resident and can deadlock at the grid barrier.",
+    "action": "Remove the kernel, ABI, wrapper, harness route, and focused test; do not advance to production or the Q6 variant.",
+    "production_unchanged": {
+      "decode_tok_s": 23.0172713318,
+      "wall_ms_per_token": 43.4456363478
+    }
+  },
+  "lineage_audit": "scripts/check_lineage.py could not inspect the missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout; this screen was designed in-tree and copied no external kernel."
+}
