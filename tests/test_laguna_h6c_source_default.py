@@ -22,9 +22,9 @@ _H6C_VARIANT = (
     "k3072_n1024_e256_rowbatch4_bf16_bf16_out"
 )
 _H6C_ABI = "grouped_raw_iq_dual_silu"
-_H5Z_VARIANT = (
+_H6D_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
-    "activation_resident_out_p256_rowbatch8_bf16_bf16_out"
+    "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out"
 )
 _H5J_VARIANT = "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
 _IQ2_VARIANT = (
@@ -52,7 +52,7 @@ def test_h6c_source_default_promotes_only_layer47_iq3_role(
     assert route.abi == _H6C_ABI
     assert route.allocation_name == "raw"
     assert route.library_key == "grouped_iq_prefill"
-    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H5Z_VARIANT
+    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6D_VARIANT
     assert package_default.grouped_exact_down_keys["gguf_iq4_xs"].variant == (
         _H5J_VARIANT
     )
@@ -65,7 +65,7 @@ def test_h6c_source_default_promotes_only_layer47_iq3_role(
     rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert rollback.grouped_special_gate_up_keys == {}
     assert rollback.grouped_special_gate_up_routes == {}
-    assert rollback.grouped_exact_down_keys[_QUANT].variant == _H5Z_VARIANT
+    assert rollback.grouped_exact_down_keys[_QUANT].variant == _H6D_VARIANT
     assert rollback.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == _IQ2_VARIANT
     assert laguna_moe_scratch_nbytes(rollback, max_rows=512) == production_scratch
 

@@ -205,15 +205,16 @@ should be removed or collapsed.
   **+1.819%/+1.452%/+0.872%**, 3/3 wins each. Keep both ABI entries and H5Q as
   registered rollback beneath H5Z production. Do not add another adapter,
   allocation, workspace, sidecar, or public selector.
-- WPF-H6D's third active-expert ABI capability is retained default-off pending
-  source adjudication. Complete M512 state is KL0/byte-exact; four paired traces
-  substitute exact **45 H5Z -> 45 H6D** calls at unchanged **2,050** dispatches
-  and cut IQ3/request/span **2.564%/0.251%/0.861%**. Default-off 512/1K/4K is
-  **+0.940%/+0.806%/+0.495%**, 3/3 wins each, with unchanged workspace/scratch
-  and lifecycle. If selector-unset publication passes, retain H5Z as registered
-  rollback beneath H6D production; if it fails, remove only H6D's ABI-table
-  capability while keeping the standalone leaf. Do not add another adapter,
-  allocation, workspace, sidecar, or public selector.
+- WPF-H6D's third active-expert ABI capability cleanup trigger is closed.
+  Complete M512 is KL0/byte-exact; four paired traces substitute exact **45 H5Z
+  -> 45 H6D** calls at unchanged **2,050** dispatches and cut IQ3/request/span
+  **2.564%/0.251%/0.861%**. Selector-unset 512/1K/4K confirms
+  **+1.207%/+0.657%/+0.492%**, 3/3 wins each, while fixed C4096/M512 wins **5/5**
+  at **329.327 -> 332.308 tok/s (+0.905%)**. Keep H5Z and H5Q as registered
+  rollback beneath H6D production and keep all three ABI entries through one
+  release checkpoint. Do not add another adapter, allocation, workspace,
+  sidecar, or public selector. See the
+  [H6D production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json).
 - WPF-H6C's grouped gate/up role-map cleanup trigger is closed. Complete M512
   state is KL0/byte-exact, paired tracing records exact **46 IQ2 + one H6C** at
   unchanged **2,050** dispatches, default-off 512/1K/4K is
