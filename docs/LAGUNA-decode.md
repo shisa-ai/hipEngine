@@ -7937,11 +7937,17 @@ The remaining attention sequence is:
      **79,066,169,172-byte** residency, determinism, and allocation recovery
      remain exact.
 
-     The locally faster, finer-grained ownership increases interference with
-     the concurrent shared branch. Remove the candidate kernel, registry key,
-     runtime selector, benchmark comparison, and tests. This is direct evidence
-     that isolated selected-gate speed is no longer a valid proxy for complete
-     decode under the retained two-queue schedule:
+     A second seven-pair gate moves the shared branch to normal priority to
+     test whether the retained low-priority queue was starving the candidate.
+     It also loses every pair:
+     **22.884812 -> 22.685402 tok/s (-0.871%)**, adding
+     **0.384107 ms/token** by endpoint medians and **0.381171 ms/token** by
+     paired median. The locally faster, finer-grained ownership therefore
+     loses under complete-model concurrent scheduling/cache pressure
+     independently of the shared queue's priority. Remove the candidate
+     kernel, registry key, runtime selector, benchmark comparison, and tests.
+     This is direct evidence that isolated selected-gate speed is no longer a
+     valid proxy for complete decode:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-up-tile8-local64-rejected.json).
 
 Current exact decode checkpoint:
