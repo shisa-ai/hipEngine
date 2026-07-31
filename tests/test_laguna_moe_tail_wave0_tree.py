@@ -216,8 +216,11 @@ def test_wave0_tree_wrapper_validates_before_build(monkeypatch: pytest.MonkeyPat
         launch(*valid, 0)
 
 
-def test_wave0_tree_package_registry_backend_scope_fallbacks_and_no_runtime_owner() -> None:
-    from hipengine.kernels.backends import load_backend_kernel_package
+def test_wave0_tree_package_registry_backend_scope_and_gfx1151_owner() -> None:
+    from hipengine.kernels.backends import (
+        backend_package_capability,
+        load_backend_kernel_package,
+    )
     from hipengine.kernels.hip_gfx1100 import fused
     from hipengine.kernels.hip_gfx1100.fused.gguf_ops import register_gguf_ops
     from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
@@ -268,12 +271,27 @@ def test_wave0_tree_package_registry_backend_scope_fallbacks_and_no_runtime_owne
     )
 
     load_backend_kernel_package("hip_gfx1151")
-    for backend in ("hip_gfx1151", "cuda_sm86", "cpu_reference"):
+    gfx1151_key = KernelKey("hip_gfx1151", _LAYER, _QUANT, _VARIANT)
+    assert is_registered(gfx1151_key)
+    assert (
+        resolve(
+            backend=gfx1151_key.backend,
+            layer=gfx1151_key.layer,
+            quant=gfx1151_key.quant,
+            variant=gfx1151_key.variant,
+        )
+        is laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "LAGUNA_MOE_TAIL_WAVE0_TREE",
+        False,
+    )
+    for backend in ("cuda_sm86", "cpu_reference"):
         assert not is_registered(KernelKey(backend, _LAYER, _QUANT, _VARIANT))
 
     runtime_source = _RUNTIME.read_text(encoding="utf-8")
-    assert _VARIANT not in runtime_source
-    assert _SYMBOL not in runtime_source
+    assert _VARIANT in runtime_source
     import hipengine.kernels.hip_gfx1100 as backend
 
     assert not hasattr(backend, "LAGUNA_MOE_TAIL_WAVE0_TREE")

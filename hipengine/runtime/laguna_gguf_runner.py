@@ -1885,6 +1885,7 @@ def resolve_laguna_eager_kernel_plan(
     *,
     backend: str,
     use_moe_tail_next_rmsnorm: bool = True,
+    use_moe_tail_wave0_tree: bool = False,
     use_head_kv_fusion: bool = False,
     use_argmax_control_publish: bool = False,
     use_q6_lm_head_top1_stage1: bool = False,
@@ -1929,7 +1930,11 @@ def resolve_laguna_eager_kernel_plan(
             backend,
             "moe_tail+next_rmsnorm",
             "bf16",
-            "laguna_aggregate_gguf_f32_weight_out",
+            (
+                "laguna_aggregate_wave0_tree_gguf_f32_weight_out"
+                if bool(use_moe_tail_wave0_tree)
+                else "laguna_aggregate_gguf_f32_weight_out"
+            ),
         ),
         "global_head_kv": KernelKey(
             backend,
@@ -2417,6 +2422,7 @@ class LagunaGGUFResidentSession:
         use_split_gate_fusion: bool | None = None,
         use_swa_split_wave_local: bool | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
+        use_moe_tail_wave0_tree: bool | None = None,
         use_head_kv_fusion: bool | None = None,
         use_q5_wave32x2_output: bool | None = None,
         use_q5_wave32x2_query_gate: bool | None = None,
@@ -2527,6 +2533,15 @@ class LagunaGGUFResidentSession:
         requested_head_kv_fusion = resolve_laguna_head_kv_fusion(
             self.backend,
             use_head_kv_fusion,
+        )
+        requested_moe_tail_wave0_tree = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_MOE_TAIL_WAVE0_TREE",
+                False,
+            )
+            if use_moe_tail_wave0_tree is None
+            else use_moe_tail_wave0_tree
         )
         requested_argmax_control_publish = bool(
             backend_package_capability(
@@ -3162,6 +3177,9 @@ class LagunaGGUFResidentSession:
                 config,
                 backend=self.backend,
                 use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
+                use_moe_tail_wave0_tree=(
+                    requested_moe_tail_wave0_tree
+                ),
                 use_head_kv_fusion=requested_head_kv_fusion,
                 use_argmax_control_publish=requested_argmax_control_publish,
                 use_q6_lm_head_top1_stage1=(
@@ -3180,6 +3198,10 @@ class LagunaGGUFResidentSession:
                 and self.kernel_plan.argmax_tile_stage2_publish_control
                 is not None
                 and self.use_argmax_control_publish
+            )
+            self.use_moe_tail_wave0_tree = (
+                self.kernel_plan.moe_tail_next_rmsnorm_key.variant
+                == "laguna_aggregate_wave0_tree_gguf_f32_weight_out"
             )
             self.libraries = load_laguna_eager_libraries(
                 backend=self.backend,

@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_gfx1151_moe_tail_wave0_tree_retention",
+  "status": "retained_default_pending_clean_publication",
+  "created_at": "2026-07-31T12:38:53+09:00",
+  "platform": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_bytes": 79066169172
+  },
+  "change": {
+    "control": "local256 D9 scalar shared-memory RMS reduction",
+    "candidate": "local256 D9 wave-0 RMS reduction",
+    "arithmetic": "unchanged BF16 routed+shared and post-attention boundaries, per-thread square order, exact stride-128/64/32/16/8/4/2/1 FP32 addition tree, rsqrtf, normalization multiply, and both BF16 outputs",
+    "barriers": "9 -> 2",
+    "resident_byte_delta": 0,
+    "dispatch_delta": 0,
+    "gfx1100_default_changed": false,
+    "rollback": "LagunaGGUFResidentSession(use_moe_tail_wave0_tree=False)"
+  },
+  "leaf": {
+    "shape": "hidden=3072, BF16 routed/shared/post-attention, F32 norm weight",
+    "warmup_pairs": 10,
+    "paired_samples": 21,
+    "launches_per_sample": 100,
+    "control_median_ms": 0.005486279726028442,
+    "candidate_median_ms": 0.005285499691963196,
+    "delta_percent": -3.659675483054392,
+    "paired_median_delta_ms": -0.00019638001918792676,
+    "candidate_wins": 21,
+    "candidate_samples": 21
+  },
+  "resident_gate": {
+    "workload": "p512/d128 eager c=1, 127 synchronized decode transitions",
+    "repetitions": 7,
+    "order": "counterbalanced within one resident session",
+    "control_median_tok_s": 22.869082286485522,
+    "candidate_median_tok_s": 22.873287477405167,
+    "throughput_delta_percent": 0.018388105246058828,
+    "control_median_ms_per_token": 43.72715911695983,
+    "candidate_median_ms_per_token": 43.71911999916174,
+    "endpoint_saving_ms_per_token": 0.008039117798091858,
+    "paired_median_delta_ms_per_token": -0.0050728828976238805,
+    "candidate_wins": 5,
+    "candidate_samples": 7,
+    "next_token_id": 2930,
+    "final_token_id": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "repeat_deterministic": true,
+    "allocation_recovery": true,
+    "raw_sha256": "0e58527db5d77b184d521daf41941a155473b1f83d2a386040a333fd7adf50c6"
+  },
+  "correctness": {
+    "red": "gfx1151 registry/capability assertion failed before the architecture-local alias and owner existed",
+    "green_tests": 44,
+    "gpu_candidate_hidden_matches_scalar": true,
+    "gpu_candidate_norm_matches_scalar": true,
+    "registered_unfused_fallback_matches": true,
+    "cpu_reference_kl_max": 0.0,
+    "cpu_reference_top1_agreement": 1.0
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -- .venv/bin/python3 -m pytest -q tests/test_laguna_moe_tail_wave0_tree.py::test_wave0_tree_matches_retained_unfused_and_cpu_for_edge_fixtures",
+    "kernel": "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel",
+    "hidden3072_duration_ns": 19156,
+    "grid": 256,
+    "local": 256,
+    "vgpr": 16,
+    "sgpr": 128,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "csv_sha256": "cc193b23b8bf304227a0d9d2bc4f92eaa7480a6f9749139ef3eaced25254299f",
+    "compiler_ran_under_profiler": false
+  },
+  "commands": {
+    "resident_gate": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-moe-tail-wave0-tree --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-moe-tail-wave0-tree-ab7.json",
+    "focused_validation": "PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_laguna_moe_tail_wave0_tree.py tests/test_laguna_moe_tail_wave0_tree_runtime.py tests/test_laguna_long_context_profile.py"
+  },
+  "decision": {
+    "retained": true,
+    "reason": "The existing exact primitive is architecture-locally faster on gfx1151, transfers to a positive exact resident gate, changes no resident bytes or dispatches, and retains the scalar tree as explicit rollback.",
+    "temporary_comparison_cli_removed": true,
+    "clean_publication_pending": true
+  }
+}

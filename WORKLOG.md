@@ -195542,3 +195542,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `fe02f6e08aec5f4dda63fb1ec1fb221e974f0c8eec3f28c1b057830a67565cfb`.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-global-prenorm-first-v-overlap-rejected.json`.
+
+## 2026-07-31 12:39 JST — Retain gfx1151 exact D9 wave-0 RMS tree
+
+- Re-screened the pre-existing exact gfx1100 diagnostic primitive on gfx1151
+  after fresh attention/Vulkan attribution showed only **0.210155 ms/token**
+  of remaining comparator attention advantage. The candidate keeps all 256
+  local partials and the exact stride-128..1 FP32 addition tree while replacing
+  seven workgroup barriers with wave-0 LDS loads and wave32 shuffles.
+- RED failed on the absent gfx1151 alias/capability. GREEN makes the owner
+  gfx1151-only, keeps `use_moe_tail_wave0_tree=False` as scalar rollback, and
+  passes **44** focused registry/runtime/profile tests. The existing GPU
+  scalar/unfused/CPU fixture remains byte-exact at hidden17/3072 with KL **0**
+  and top-1 **100%**.
+- The hidden3072 21x100 gfx1151 leaf improves
+  **0.005486 -> 0.005285 ms (-3.660%, 21/21 wins)**. Seven counterbalanced
+  same-resident p512/d128 pairs improve
+  **22.869082 -> 22.873287 tok/s (+0.01839%)**, save
+  **0.008039 ms/token** by endpoint median and **0.005073 ms/token** by paired
+  median, and win **5/7**. Every arm preserves token **2930 -> 74107**,
+  position **638**, trajectory SHA `94f803f7...bda32`,
+  **79,066,169,172-byte** residency, determinism, and allocation recovery.
+- Cache-only `rocprofv3` names
+  `laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_out_kernel` at
+  grid/local **256/256**, VGPR16/SGPR128/LDS1024/scratch0; the hidden3072
+  dispatch is **19.156 us** under instrumentation and no compiler runs.
+  Trace/raw SHA-256 values are `cc193b23...299f` /
+  `0e58527d...0c6`.
+- Remove the temporary same-resident comparison CLI/setter. Retain the
+  architecture-local capability, exact registered scalar fallback, and
+  constructor rollback. Tracked-clean selector-unset production is next.
+  Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json`.
