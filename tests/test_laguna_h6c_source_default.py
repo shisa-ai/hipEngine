@@ -30,7 +30,7 @@ _H6I_VARIANT = (
 _H5J_VARIANT = "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
 _IQ2_VARIANT = (
     "selected_dual_silu_grouped_prefill_compact_"
-    "pair16_rowbatch8_bf16_bf16_out"
+    "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
 )
 _PRODUCTION_ROLES = {_ROLE: _H6C_VARIANT}
 

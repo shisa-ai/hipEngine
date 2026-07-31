@@ -144,9 +144,9 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 LAGUNA_PREFILL_MATRIX_ROWS = 512
 LAGUNA_SELECTED_GATE_UP_MODE = "grouped_pair16"
 LAGUNA_SELECTED_DOWN_MODE = "grouped_exact"
-# WPF-H6L retains one exact K3072/N1024/E256 rowbatch16 capability through the
-# existing grouped raw-IQ dual-SiLU ABI after complete default-off qualification.
-# Rowbatch8 remains source production until separate source-default gates pass.
+# WPF-H6L promotes exact K3072/N1024/E256 rowbatch16 ownership after complete
+# default-off state/topology and positive 512/1K/4K gates. Rowbatch8 remains the
+# registered same-ABI rollback; shape/registration/backend misses fail closed.
 _WPF2B_IQ2_PAIR16_VARIANT = (
     "selected_dual_silu_grouped_prefill_compact_"
     "pair16_rowbatch8_bf16_bf16_out"
@@ -156,7 +156,7 @@ _H6L_IQ2_PAIR16_ROWBATCH16_VARIANT = (
     "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
 )
 LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS = {
-    "gguf_iq2_xs": _WPF2B_IQ2_PAIR16_VARIANT
+    "gguf_iq2_xs": _H6L_IQ2_PAIR16_ROWBATCH16_VARIANT
 }
 LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANT_ABIS = {
     _WPF2B_IQ2_PAIR16_VARIANT: "grouped_raw_iq_dual_silu",

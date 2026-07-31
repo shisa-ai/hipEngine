@@ -32,7 +32,7 @@ _H6I_VARIANT = (
 )
 _IQ2_VARIANT = (
     "selected_dual_silu_grouped_prefill_compact_"
-    "pair16_rowbatch8_bf16_bf16_out"
+    "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
 )
 
 

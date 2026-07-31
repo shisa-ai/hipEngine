@@ -1880,7 +1880,8 @@ def test_laguna_iq2_grid64_route_is_c1_only_and_default_off() -> None:
         "selected_gate_up_iq"
     )
     assert retained.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
-        "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out"
+        "selected_dual_silu_grouped_prefill_compact_"
+        "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
     )
     assert retained.grouped_pair16_gate_up_routes["gguf_iq2_xs"].library_key == (
         "grouped_iq_prefill"
