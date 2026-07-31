@@ -1326,6 +1326,23 @@ explicit wait-split premises before returning to a distinct residual family
 ([H6M rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) ·
 [post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
+**WPF-H6N exact global dense-initial fixed-512 score arena is target-only; no
+executable or speed claim exists yet.** The current H6A global role is
+**57.195 ms / 48 calls**, **33.048%** of the **173.066-ms** attention family,
+at local256/VGPR40/scratch0. Its strict M128 starts **0/128/256/384** prove the
+largest causal first-fill context is 512, but the wrapper still partitions
+dynamic LDS as C4096 scores + eight warp partials + 128 query values:
+**16,928 bytes**. A separate sibling will use **512 + 8 + 128 = 648 floats /
+2,592 bytes (-84.688%)** while retaining every H6A query/K/V load, QK tree,
+score/max/exp/denominator/PV operation, grid, ABI, allocation, workspace, and
+policy. The 64-KiB-LDS/32-wave mechanical model changes the LDS-only ceiling
+from **3 local256 blocks / 24 waves to 4 blocks / 32 waves**; it is not measured
+occupancy. Freeze H6A kernel/wrapper body hashes and an absent-candidate RED,
+then require full H6A/CPU/span identity, exact launch storage, private0/spill0/
+scratch0, VGPR <=48, cached rocprof naming, and both-clock wins at all four
+starts plus the weighted 48-call schedule
+([H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
