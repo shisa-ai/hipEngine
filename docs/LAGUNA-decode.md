@@ -7854,6 +7854,33 @@ The remaining attention sequence is:
      performed per staged K/V tile under its lower-precision contract:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-global-prenorm-first-v-overlap-rejected.json).
 
+154. Re-screen D9's exact wave-0 RMS tree on gfx1151.
+     **Retained/default pending tracked-clean publication.**
+
+     This is an architecture-local transfer of the existing gfx1100
+     diagnostic primitive, not a new arithmetic tree. All 256 local partials
+     are unchanged; wave 0 exactly replays strides 128/64/32 from LDS and
+     16/8/4/2/1 through wave32 shuffles. Both BF16 additions, the hidden
+     round-trip, `rsqrtf`, norm multiplication, and output bytes remain fixed,
+     while workgroup barriers contract **9 -> 2**.
+
+     The gfx1151 hidden3072 21x100 leaf improves
+     **0.005486 -> 0.005285 ms (-3.660%, 21/21 wins)**. Seven
+     counterbalanced same-resident p512/d128 pairs preserve token
+     **2930 -> 74107**, final position **638**, generated-ID SHA
+     `94f803f7...bda32`, **79,066,169,172-byte** residency, repeat
+     determinism, and allocation recovery. Endpoint medians improve
+     **22.869082 -> 22.873287 tok/s (+0.01839%)**, saving
+     **0.008039 ms/token**; paired median saves **0.005073 ms/token** with
+     **5/7** wins.
+
+     Cache-only gfx1151 tracing names the candidate at
+     local256/VGPR16/SGPR128/LDS1024/scratch0. Promote only gfx1151; gfx1100
+     retains its independently rejected scalar default. Remove the temporary
+     comparison CLI/setter and keep constructor `false` as explicit scalar
+     rollback:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-tail-wave0-tree-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
@@ -7881,6 +7908,7 @@ Current exact decode checkpoint:
 | hipEngine prior source-F16 non-temporal production | **22.856155 tok/s** | **43.752 ms** | **+99.327%** |
 | hipEngine prior argmax-control production | **22.865539 tok/s** | **43.734 ms** | **+99.408%** |
 | hipEngine current Q6 LM-head tilemax production | **22.873989 tok/s** | **43.718 ms** | **+99.482%** |
+| hipEngine retained D9 wave-0 same-resident gate | **22.873287 tok/s** | **43.719 ms** | **+99.476%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
 | Remaining tracked-clean wall gap | — | **0.888 ms/token** | hipEngine is **2.074%** below Vulkan throughput |
 

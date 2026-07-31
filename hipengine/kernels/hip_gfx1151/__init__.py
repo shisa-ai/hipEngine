@@ -92,6 +92,10 @@ LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1 = True
 # p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
 # registered rollback.
 LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = True
+# Exact D9 wave-0 RMS reduction preserves the local256 partials and complete
+# FP32 addition tree while removing seven workgroup barriers. The gfx1151
+# production-shape leaf improves 3.66%; the scalar tree remains rollback.
+LAGUNA_MOE_TAIL_WAVE0_TREE = True
 # Exact K3072/N1024 gate/up and K1024/N3072 down siblings preserve the
 # production local128 grid and reduction order while compile-time-specializing
 # only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
@@ -630,14 +634,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "laguna_f32_weight",
             "global_wave0_tree_f32_bf16_spans",
         ),
-        # D9's scalar RMS tree is shared after the independent gfx1151
-        # correctness/performance gate. Its rejected wave-0 RMS tree and exact
-        # top-10 split sibling remain W7900-only.
-        (
-            "moe_tail+next_rmsnorm",
-            "bf16",
-            "laguna_aggregate_wave0_tree_gguf_f32_weight_out",
-        ),
+        # D9's wave-0 RMS tree has an independent gfx1151 gate. The exact
+        # top-10 split sibling remains W7900-only.
         (
             "weighted_sum+moe_tail",
             "bf16",
@@ -936,6 +934,7 @@ __all__ = [
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
+    "LAGUNA_MOE_TAIL_WAVE0_TREE",
     "LAGUNA_MOE_GROUP_COMPACT_MODE",
     "LAGUNA_MOE_SHARED_AFTER_ROUTER",
     "LAGUNA_MOE_SHARED_LOW_PRIORITY",

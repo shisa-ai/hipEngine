@@ -1,4 +1,4 @@
-"""Runtime-rejection contract for Laguna's exact wave-0 RMS-tree tail."""
+"""Runtime contract for Laguna's gfx1151 exact wave-0 RMS-tree tail."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _CANDIDATE_KEY = KernelKey(
 _RETAINED_VARIANT = "laguna_aggregate_gguf_f32_weight_out"
 
 
-def test_wave0_tree_runtime_owner_is_removed_but_primitive_remains() -> None:
+def test_wave0_tree_runtime_owner_is_gfx1151_only() -> None:
     import hipengine.kernels.hip_gfx1100 as gfx1100
     import hipengine.kernels.hip_gfx1151 as gfx1151
     from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
@@ -29,17 +29,18 @@ def test_wave0_tree_runtime_owner_is_removed_but_primitive_remains() -> None:
     )
 
     register_paro_combine_kernels()
+    gfx1151.register_backend_kernels()
     assert not hasattr(gfx1100, "LAGUNA_MOE_TAIL_WAVE0_TREE")
-    assert not hasattr(gfx1151, "LAGUNA_MOE_TAIL_WAVE0_TREE")
+    assert gfx1151.LAGUNA_MOE_TAIL_WAVE0_TREE
     assert not hasattr(runner, "resolve_laguna_moe_tail_wave0_tree")
-    assert "use_moe_tail_wave0_tree" not in inspect.signature(
+    assert "use_moe_tail_wave0_tree" in inspect.signature(
         LagunaGGUFResidentSession
     ).parameters
-    assert "use_moe_tail_wave0_tree" not in inspect.signature(
+    assert "use_moe_tail_wave0_tree" in inspect.signature(
         runner.resolve_laguna_eager_kernel_plan
     ).parameters
     assert is_registered(_CANDIDATE_KEY)
-    assert not is_registered(
+    assert is_registered(
         KernelKey(
             "hip_gfx1151",
             _CANDIDATE_KEY.layer,
@@ -63,6 +64,25 @@ def test_laguna_plan_retains_d9_and_registered_unfused_rollback() -> None:
     )
     assert unfused.moe_tail_next_rmsnorm is None
     assert unfused.moe_tail_next_rmsnorm_key not in unfused.kernel_keys
+
+
+def test_gfx1151_plan_selects_wave0_tree_with_scalar_rollback() -> None:
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    candidate = runner.resolve_laguna_eager_kernel_plan(
+        config,
+        backend="hip_gfx1151",
+        use_moe_tail_wave0_tree=True,
+    )
+    assert candidate.moe_tail_next_rmsnorm is not None
+    assert candidate.moe_tail_next_rmsnorm_key.variant == _CANDIDATE_KEY.variant
+
+    rollback = runner.resolve_laguna_eager_kernel_plan(
+        config,
+        backend="hip_gfx1151",
+        use_moe_tail_wave0_tree=False,
+    )
+    assert rollback.moe_tail_next_rmsnorm is not None
+    assert rollback.moe_tail_next_rmsnorm_key.variant == _RETAINED_VARIANT
 
 
 def test_wave0_tree_benchmark_opt_in_is_removed(
