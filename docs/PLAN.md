@@ -2025,7 +2025,38 @@ reprofile clean promoted production before choosing the next matched residual
 target
 ([H6I production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json) ·
 [H6I candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
-[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json) ·
+[post-H6I residual / H6J target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
+
+The clean committed-source H6I refresh is **359.963 tok/s** from
+**360.307/360.619/359.963/359.573/359.501**, all exact token 2930 and lifecycle-
+clean: **+112.347%** over campaign start and **1.93448x** behind exact llama.cpp
+HIP **696.342 tok/s**. Five cached requests preserve **2,192 dispatches**; the
+representative request reconciles **1,409.540 ms** in a **1,433.072-ms** median
+span. Current/llama components are IQ down **342.209/154.434 ms**, Q5
+**253.606/58.737**, attention **172.347/21.624**, gate/up **479.738/401.393**,
+Q6 **86.361/14.455**, and remaining **75.280/67.598**. Gaps rank Q5/IQ-down/
+attention/gate-up/Q6 at **194.868/187.775/150.723/78.345/71.906 ms** and explain
+**98.889%** of the **691.299-ms** kernel gap.
+
+Do not reopen Q5's compiler-prefetch route after H6G's physical failure or
+immediately iterate H6I's just-promoted IQ-down operation. Select target-only
+**WPF-H6J exact dense-initial SWA qrow4 unscaled-dot replay** on the largest
+remaining distinct exact family. H6A SWA owns **115.555 ms / 144 calls** and
+computes each ordered 128-dimension K dot plus wave32 tree in both the max and
+denominator/PV passes. A separate gfx1100 sibling must preserve H6A's one-wave
+qrow4 identity/no-wrap route, first-pass dot order/tree, `dot*scale-max`,
+denominator, token-ordered PV, division, stores, bytes, grid, cache layout,
+`KVLiveSpans`, maps, workspace, and fallbacks while storing the unchanged
+first-pass unscaled dots in one **4x512 F32 / 8,192-byte LDS** plane and
+reloading them during the second pass. This removes modeled duplicate dot work
+without changing arithmetic and is not yet a performance/default claim. Freeze
+starts 0/128/256/384 RED first; require complete H6A/CPU bytes, immutable spans,
+local32/LDS8192/scratch0/private0, one physical dot pass with LDS replay and no
+second-pass K loads/tree, unchanged grid, and every start plus the weighted
+144-call aggregate positive on HIP events and synchronized wall. Remove every
+H6J surface on any failure and retain H6A
+([artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
