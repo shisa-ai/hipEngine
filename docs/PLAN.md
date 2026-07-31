@@ -2168,24 +2168,24 @@ IQ-down, attention, Q6, gate/up, and remaining are **254.689/58.737**,
 126.480/72.532 ms**; kernel sum is **1,309.339 vs 718.241 ms**.
 
 Do not reopen Q5: H6M physically realized the final explicit wait-split premise
-and still lost both clocks. H6N provides the distinct attention interval, so
-select target-only **WPF-H6P exact staged-wave-publication triple-output IQ3**.
-Current H6I keeps three eight-row accumulator arrays live together through one
-batched reducer and runs at local128/VGPR168/LDS512/scratch0/grid32768x64.
-H6P must preserve P256/P64/rowbatch8, three outputs, all **216** useful FMAs,
-per-output wave32 and serial wave0..3 order, stride `0x300`, four epochs, and
-eight dynamic barriers. It may only compute/reduce/publish A, then B, then C to
-separate LDS planes without intervening barriers, use one publication barrier,
-serially sum/store each output, and retain the reuse barrier. This is a register-
-liveness target with no speed/default claim.
+and still lost both clocks. H6N provides the distinct attention interval.
+**WPF-H6P exact staged-wave-publication triple-output IQ3 now passes standalone
+leaf admission.** It preserves H6I P256/P64/rowbatch8, three outputs, all
+**216** useful FMAs, per-output wave32 and serial wave0..3 order, stride
+`0x300`, four epochs/eight dynamic barriers, local128/grid32768x64, and bytes.
+Computing and publishing A/B/C to separate LDS planes sequentially reduces
+metadata/runtime VGPR **164/168 -> 107/112** at private0/spill0/scratch0; the
+mechanical 1536-VGPR/SIMD wave ceiling moves **9 -> 13** for the runtime count.
 
-Freeze H6I source/body hashes and exact rows **1/7/8/9/M512** plus P64/P65
-before executable changes. Physical admission requires the same ISA operation/
-barrier/grid/LDS contract, private0/spill0/scratch0, no compiler under profiling,
-and metadata/runtime VGPR **<=128/128**; higher VGPR rejects before timing. Then
-require complete H6I/CPU bytes and **45/45** actual-layer HIP-event plus
-synchronized-wall wins before bounded runtime ownership
-([post-H6N residual / H6P target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+The frozen rows **1/7/8/9/M512** plus P64/P65 matrix passes **9/9** against H6I
+and sampled CPU bytes. Under natural-M512 routing, all **45/45** actual IQ3
+layers are complete-byte exact and win both HIP-event and synchronized-wall
+medians: aggregate H6I -> H6P moves **333.218 -> 323.882 ms (-2.802%, 1.029x)**
+and **331.534 -> 326.105 ms (-1.637%, 1.017x)**; minimum layer speedup is
+**1.017x/1.003x**. Keep H6I as source production and freeze a separate bounded
+default-off same-ABI runtime owner before any package-map change
+([H6P leaf](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
+[post-H6N residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
