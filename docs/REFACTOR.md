@@ -28,6 +28,9 @@ should be removed or collapsed.
   not production dispatch. After the census freezes the family attribution,
   collapse any wrappers no longer used by a retained benchmark or exact
   regression test while preserving the production composite variants.
+- **Clean publication passed 2026-07-31:** selector-unset production advances
+  **22.780604 -> 22.856155 tok/s (+0.33165%)**. Keep the comparison seam only
+  through the pending source-F16/kernel-span census, then close it.
 
 ## Laguna gfx1151 exact global local1024 selector
 

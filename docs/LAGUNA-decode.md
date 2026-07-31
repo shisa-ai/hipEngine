@@ -7561,7 +7561,7 @@ The remaining attention sequence is:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-q4-gate-lb2-codegen-equivalent.json).
 145. Transfer llama.cpp Vulkan's streaming-weight cache premise to the exact
      source-F16 decode composites.
-     **Retained and default on gfx1151; tracked-clean publication pending.**
+     **Retained, published, and default on gfx1151.**
      Source-F16 Q/K/V/gate and output weights are consumed once per layer,
      while activations and attention working sets are small enough to reuse.
      The exact candidate changes only those FP16 weight reads to
@@ -7591,8 +7591,17 @@ The remaining attention sequence is:
      generated-ID SHA-256 `94f803f7...bda32`,
      **79,066,169,172-byte** residency, determinism, and complete allocation
      recovery. Promote the gfx1151 capability with constructor `false`
-     rollback; peer backends remain unchanged:
-     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json).
+     rollback; peer backends remain unchanged.
+
+     Tracked-clean selector-unset production at `c3b4aeb39` measures
+     **22.838639/22.858662/22.856155 tok/s**, median
+     **22.856155 tok/s / 43.751890 ms/token**. This advances the preceding
+     **22.780604 tok/s** checkpoint **0.33165%**, saves
+     **0.145102 ms/token**, and reaches **+99.327%** from the sprint start.
+     The remaining same-GGUF Vulkan gap is **0.922368 ms/token** or
+     **2.15358%** throughput:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-production.json).
 
 Current exact decode checkpoint:
 
@@ -7617,10 +7626,10 @@ Current exact decode checkpoint:
 | hipEngine current tracked-clean router-projection wave-0 production | **22.581875 tok/s** | **44.283 ms** | **+96.935%** |
 | hipEngine retained c=1 routed/shared overlap gate | **22.749657 tok/s** | **43.957 ms** | **+98.400%** |
 | hipEngine prior tracked-clean c=1 routed/shared overlap production | **22.752894 tok/s** | **43.950 ms** | **+98.426%** |
-| hipEngine current tracked-clean paired-Q4 selected-down production | **22.780604 tok/s** | **43.897 ms** | **+98.668%** |
-| hipEngine retained source-F16 non-temporal same-resident gate | **22.855773 tok/s** | **43.753 ms** | **+99.323%** |
+| hipEngine prior tracked-clean paired-Q4 selected-down production | **22.780604 tok/s** | **43.897 ms** | **+98.668%** |
+| hipEngine current source-F16 non-temporal production | **22.856155 tok/s** | **43.752 ms** | **+99.327%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **1.067 ms/token** | hipEngine is **2.432%** below Vulkan throughput |
+| Remaining tracked-clean wall gap | — | **0.922 ms/token** | hipEngine is **2.154%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently
