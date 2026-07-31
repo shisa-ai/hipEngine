@@ -196325,3 +196325,26 @@ Vulkan local sizes verbatim will close the measured gap.
   attack; the next candidate must contract a measured queue boundary or feed
   gap. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q4-selected-down-halfdot-rejected.json`.
+
+## 2026-07-31 20:22 JST — Reject source-F16 output halfdot
+
+- The required pre-port lineage command again stopped before a diff because
+  the optional `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent;
+  ROCm and gfx1151 are healthy.
+- RED failed on the absent source-F16 halfdot wrapper. GREEN assigned adjacent
+  K pairs to local256 threads, converted BF16 activations to FP16 in registers,
+  loaded paired FP16 weights, and issued native `v_dot2_f32_f16` with FP32
+  accumulation. K6144/K9216 stayed inside the 0.05 FP32-reference leaf
+  envelope; maximum BF16-boundary absolute error was **0.001953**.
+- The natural-shape performance gate rejects the candidate. Full-output
+  K6144/N3072 regresses **0.160182 -> 0.168973 ms (+5.488%)**, while SWA
+  K9216/N3072 is only **0.240710 -> 0.240323 ms (-0.161%)**. Weighted across
+  12 full plus 36 SWA calls, the family regresses
+  **10.587745 -> 10.679300 ms/token (+0.865%, +0.091555 ms/token)**.
+  The exact non-temporal leaves already sustain about **235 GB/s**, so dot2
+  cannot improve their bandwidth ceiling.
+- Removed the candidate kernel, exports, wrappers, test, and diagnostic
+  selector before fused-output or runtime integration. Production remains
+  **23.089693 tok/s / 43.309368 ms/token**. Raw leaf SHA-256 is
+  `e1e9fe3d...a327a`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-output-halfdot-rejected.json`.
