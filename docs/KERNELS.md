@@ -1176,21 +1176,21 @@ rank IQ-down/Q5/attention/gate-up/Q6 at **221.737/191.928/149.544/75.429/
 71.249 ms**. Exact topology retains **45 H6F + two H5J**, **46 IQ2 + one H6C**,
 **48 global + 144 SWA H6A**, and unchanged H5Y/H6E routes with no H6D escape.
 
-**WPF-H6G exact Q5 one-step K-record prefetch** is the next target-only screen.
-The reconciled Q5 stack is H5Y consumers/producers/packs/H5G fallback
-**218.228/25.849/4.698/1.890 ms**. BF16 K9216/N3072 row-major 12x8 and F32
-K3072/N9216 tile-K-col 8x10 dominate at **156.790 ms / 70 calls**. Their H5Y
-loop currently consumes each aligned weight and activation record immediately;
-separate H6G siblings will carry one next record across the current-K unrolled
-FMA region while preserving bytes, global traffic, local128/four-wave K order,
-FMA/reduction/store order, geometry, grids, maps, workspace, and fallbacks. This
-is not yet a speed/default claim. Require RED first, realized lookahead in
-code-object ISA, no scratch/private spill or disallowed resource growth, and
-both actual roles positive on HIP events and synchronized wall before ownership
-([post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
-[H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
-[H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
-[post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
+**WPF-H6G exact Q5 one-step K-record prefetch is rejected with every candidate
+surface removed.** The frozen rows17/33/M512 cross-product preserves complete
+H5Y outputs, activation/weight planes, sampled CPU values, policy, workspace,
+and gfx1151 exclusion. Candidate/control metadata remains private0 at identical
+VGPR **194/162**, but code-object ISA places `s_waitcnt vmcnt(0)` after each
+**13/4-instruction** next-record load group with **zero current FMAs in between**.
+On actual BF16 K9216/N3072 row-major 12x8 and F32 K3072/N9216 tile-K-col 8x10
+weights, direct weighted event/wall regresses **194.591/194.547 ->
+203.237/204.091 ms (+4.443%/+4.906%)** and producer/pack-inclusive regresses
+**217.265/217.342 -> 225.464/226.243 (+3.774%/+4.095%)**. Both roles lose both
+clocks. Keep H5Y and do not retry compiler-scheduled K-record prefetch without a
+new physical mechanism
+([H6G rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-prefetch-rejected.json) ·
+[post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
+[H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
