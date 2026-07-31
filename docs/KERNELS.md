@@ -1253,22 +1253,20 @@ mechanism
 ([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6i-matched-residual.json)).
 
-Select target-only **WPF-H6K exact IQ3 quadruple-output reduction
-amortization** after H6J supplies the distinct-family hiatus. Re-auditing H5Y
-finds no new Q5 static mechanism beyond its weight-major ownership, admitted
-tile-K-col `float4` records, packed activation-row loads, and private0/scratch0;
-H6G already proves compiler lookahead does not overlap useful FMAs. H6K keeps
-H6I's P256/P64/local128/rowbatch8 per-output IQ3 decode, row-interleaved VOPD
-FMA, wave32 tree, wave0..3 sum, BF16 store, grid, and active traversal while
-sharing each publication/reuse epoch across four outputs. Fixed N3072 changes
-**4 -> 3 epochs** and **8 -> 6 dynamic barriers (-25%)** as accumulators and
-source wave sums rise **24 -> 32 floats/thread** and **384 -> 512 bytes**. The
-measured H6F/H6I fit suggests **332.468 -> 318.904 ms** wall and **359.963 ->
-363.429 tok/s**, but is not H6K evidence. Require RED, compiled stride 0x400,
-288 useful FMAs, private0/spill0/scratch0, bounded VGPR/LDS, unchanged grid,
-exact complete H6I bytes, and every **45/45** actual layer positive on both
-clocks before runtime ownership
-([H6K target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)).
+**WPF-H6K exact IQ3 quadruple-output reduction amortization is rejected.** The
+frozen **9/9** matrix and all **45/45** actual-layer outputs are byte-exact to
+H6I. ISA realizes stride **0x400**, **288** useful FMAs, and fixed-N3072 **4 ->
+3 epochs / 8 -> 6 dynamic barriers (-25%)**. Metadata/runtime is private0/
+spill0/scratch0 at VGPR **193/200**, LDS **512/512**, local128, and unchanged
+grid32768x64; the isolated M512 rocprof smoke improves **650.724 -> 629.001
+us**. That physical saving does not survive the binding all-layer distribution:
+**0/45** wins both clocks, aggregate event regresses **329.061 -> 339.509 ms
+(+3.175%, 0.969x)**, and synchronized wall regresses **332.027 -> 337.538 ms
+(+1.660%, 0.984x)**. Remove every candidate and RED surface, skip runtime
+ownership, retain H6I, and do not retry wider output grouping without a
+materially occupancy-preserving mechanism
+([rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-rejected.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
