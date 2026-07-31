@@ -389,6 +389,22 @@ self/cross kernels at 96.982/558.650 us for lengths 194/1248, local32,
 VGPR32/SGPR128/LDS0/scratch0. These are correctness fallback diagnostics, not
 tuned-attention performance claims.
 
+`runtime/moonshine.py` composes these primitives into the complete unfused
+resident decoder. Code objects are explicitly prepared before timed work;
+validated FP16 encoder hidden state and int32 masks upload once; eight
+head-major cross-K/V pairs precompute once; then each sequential token runs
+embedding, eight self/cross/MLP layers, final LayerNorm, tied FP16 LM projection,
+and lowest-ID argmax without a tracked allocation. A diagnostic callback can
+snapshot the 25 per-position layer/final boundaries without changing the
+default chain. The retained synthetic 40-frame fixture checks 310 cross,
+boundary, logit, and self-cache tensors at positions 0/1/8/32/64/128/193,
+plus every one of 194 greedy selections. All tokens are exact; maximum boundary
+absolute error is `0.75`, maximum relative L2 is `0.003506`, selected-logit
+KL max/mean is `1.538e-5/8.824e-6`, top-1 is 100%, timed tracked allocations
+are zero, and teardown returns 129,686,968 resident bytes to zero. This is the
+correctness fallback; synchronized timing and baseline publication are a
+separate Phase-2 gate.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |

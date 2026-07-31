@@ -884,7 +884,7 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
 | **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target |
-| **Moonshine ASR 0.92B** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | Resident FP16 contract/oracles plus projection, norm, embedding, residual, RoPE/cache, gated-MLP, and logical-dim self/cross-attention HIP primitives; full decoder next |
+| **Moonshine ASR 0.92B** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | Complete resident unfused FP16 decoder and all primitive/oracle gates landed; Phase-2 baseline validation/publication next |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
