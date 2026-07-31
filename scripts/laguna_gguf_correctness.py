@@ -70,11 +70,16 @@ def _quality_gate_passes(
     first = result["first_token"]
     repeat = result["repeat"]
     teacher_forced = result["teacher_forced"]
+    candidate_vs_exact = teacher_forced.get("candidate_vs_exact")
     return (
         bool(first["finite_logits"])
         and float(first["kl_divergence"]) <= 0.05
         and float(first["top1_agreement"]) >= 0.9
         and float(teacher_forced["top1_agreement"]) >= 0.9
+        and (
+            candidate_vs_exact is None
+            or float(candidate_vs_exact["max_kl"]) <= 0.05
+        )
         and bool(repeat["exact"])
         and float(repeat["first_logits_max_abs"]) <= 1e-6
         and captures_pass
@@ -115,6 +120,7 @@ def run_correctness(
     safety_reserve_nbytes: int,
     repacked_cache: Path | None = None,
     model_sha256: str | None = None,
+    selected_halfdot: bool = False,
 ) -> dict[str, object]:
     template = json.loads(template_path.read_text(encoding="utf-8"))
     oracle = json.loads(oracle_path.read_text(encoding="utf-8"))
@@ -146,6 +152,7 @@ def run_correctness(
             progress=_progress,
             repacked_cache=repacked_cache,
             model_sha256=model_sha256,
+            use_selected_halfdot_decode=selected_halfdot,
         )
         load_seconds = time.perf_counter() - load_started
         row_nbytes = session.config.hidden_size * 2
@@ -203,6 +210,7 @@ def run_correctness(
             runtime=runtime,
             compiler_version=compiler_version,
             require_cached_build=require_cached,
+            use_selected_halfdot_decode=selected_halfdot,
         )
         try:
             repeat_first = repeat_session.prefill(prompt_ids)
@@ -221,6 +229,34 @@ def run_correctness(
             repeat_session.close()
         repeat_seconds = time.perf_counter() - repeat_started
 
+        exact_teacher_logits: list[np.ndarray] | None = None
+        if selected_halfdot:
+            exact_teacher_logits = []
+            exact_teacher_session = LagunaGGUFResidentSession(
+                resident_weights=session.weights,
+                context_length=int(oracle["server"]["context_length"]),
+                backend=backend,
+                runtime=runtime,
+                compiler_version=compiler_version,
+                require_cached_build=require_cached,
+                use_selected_halfdot_decode=False,
+            )
+            try:
+                exact_result = exact_teacher_session.prefill(prompt_ids)
+                for index, expected_id in enumerate(expected_greedy):
+                    copy_device_to_host(
+                        host_array_ptr(candidate_logits),
+                        exact_result.logits,
+                        runtime=runtime,
+                    )
+                    exact_teacher_logits.append(candidate_logits.copy())
+                    if index + 1 < greedy_tokens:
+                        exact_result = exact_teacher_session.forward_token(
+                            expected_id
+                        )
+            finally:
+                exact_teacher_session.close()
+
         teacher_forced_started = time.perf_counter()
         teacher_forced_session = LagunaGGUFResidentSession(
             resident_weights=session.weights,
@@ -229,8 +265,10 @@ def run_correctness(
             runtime=runtime,
             compiler_version=compiler_version,
             require_cached_build=require_cached,
+            use_selected_halfdot_decode=selected_halfdot,
         )
         teacher_forced_steps: list[dict[str, object]] = []
+        teacher_forced_exact_kls: list[float] = []
         try:
             teacher_result = teacher_forced_session.prefill(prompt_ids)
             for index, expected_id in enumerate(expected_greedy):
@@ -242,6 +280,13 @@ def run_correctness(
                 teacher_forced_steps.append(
                     _greedy_step_metrics(candidate_logits, expected_id=expected_id)
                 )
+                if exact_teacher_logits is not None:
+                    teacher_forced_exact_kls.append(
+                        _kl_from_reference_log_probs(
+                            exact_teacher_logits[index],
+                            candidate_logits,
+                        )
+                    )
                 if index + 1 < greedy_tokens:
                     teacher_result = teacher_forced_session.forward_token(expected_id)
         finally:
@@ -307,6 +352,20 @@ def run_correctness(
                 "top1_matches": teacher_forced_matches,
                 "steps": teacher_forced_steps,
                 "seconds": teacher_forced_seconds,
+                **(
+                    {
+                        "candidate_vs_exact": {
+                            "max_kl": max(teacher_forced_exact_kls),
+                            "mean_kl": (
+                                sum(teacher_forced_exact_kls)
+                                / len(teacher_forced_exact_kls)
+                            ),
+                            "step_kls": teacher_forced_exact_kls,
+                        }
+                    }
+                    if teacher_forced_exact_kls
+                    else {}
+                ),
             },
             "hidden_captures": capture_metrics,
             "hip_total_bytes": total_before,
@@ -332,6 +391,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--repacked-cache", type=Path)
     parser.add_argument("--model-sha256")
+    parser.add_argument(
+        "--selected-halfdot",
+        action="store_true",
+        help="Diagnostic: replace only gfx1151 c=1 Q4T16 selected gate/up.",
+    )
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -342,6 +406,9 @@ def main() -> int:
         raise ValueError("--greedy-tokens must be within [1, 32]")
     if args.safety_reserve_gib <= 0.0:
         raise ValueError("--safety-reserve-gib must be positive")
+    if args.selected_halfdot:
+        if args.backend != "hip_gfx1151":
+            raise ValueError("--selected-halfdot is scoped to hip_gfx1151")
     result = run_correctness(
         args.model,
         template_path=args.template,
@@ -353,6 +420,7 @@ def main() -> int:
         safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
         repacked_cache=args.repacked_cache,
         model_sha256=args.model_sha256,
+        selected_halfdot=args.selected_halfdot,
     )
     runtime = get_hip_runtime()
     runtime.device_synchronize()
@@ -369,6 +437,7 @@ def main() -> int:
     result["strict_cross_runtime_greedy_exact"] = strict_greedy_exact
     result["quality_gate"] = {
         "max_kl": 0.05,
+        "max_teacher_forced_candidate_vs_exact_kl": 0.05,
         "min_first_top1_agreement": 0.9,
         "min_teacher_forced_top1_agreement": 0.9,
         "requires_cross_runtime_greedy_exact": False,

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T19:30:00+09:00",
+  "kind": "hipengine_laguna_selected_gate_up_halfdot_decode",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "resident_layout": "gguf_q4_k_t16_dual_interleaved_v1",
+    "resident_bytes_changed": 0,
+    "activation": "BF16 converted to FP16 in registers",
+    "weight": "Q4_K dequantized to adjacent FP16 pairs in registers",
+    "dot": "v_dot2_f32_f16 with FP32 accumulation",
+    "output_boundary": "independent BF16 gate/up rounding before BF16 SiLU product",
+    "fallback": "exact interleaved pair-coefficient F32 GEMV"
+  },
+  "leaf": {
+    "shape": "layer-1 selected gate/up, c=1, top-10, K3072, N1024",
+    "control_ms": 0.1104062557220459,
+    "candidate_ms": 0.09054542541503906,
+    "change_percent": -17.988863200838566,
+    "bf16_mismatches": 1788,
+    "bf16_elements": 10240,
+    "raw_sha256": "76725fa55e18844d7f8bb700ffeab54da66e5ed8c334124d57ae11e6bef8f117"
+  },
+  "quality": {
+    "gate_pass": true,
+    "first_token_poolside_kl": 1.7512451201671218e-05,
+    "teacher_forced_top1_agreement": 0.9375,
+    "teacher_forced_top1_matches": 30,
+    "teacher_forced_steps": 32,
+    "candidate_vs_exact_max_kl": 0.008201549822251986,
+    "candidate_vs_exact_mean_kl": 0.0010357081776263142,
+    "greedy_matching_prefix_tokens": 24,
+    "greedy_steps": 32,
+    "deterministic_repeat": true,
+    "tracked_allocations_returned_to_zero": true,
+    "raw_sha256": "21e88f5043ac8f88f18ccd1c298870c9be6d662ed53d886c59e2731d8aca6db9"
+  },
+  "performance": {
+    "workload": "p512/d128 eager c=1, 127 decode transitions",
+    "repetitions": 7,
+    "same_resident_counterbalanced": true,
+    "control_median_tok_s": 22.999793235063876,
+    "candidate_median_tok_s": 23.084043656914215,
+    "throughput_change_percent": 0.3663094749995155,
+    "control_wall_ms_per_token": 43.478651733071665,
+    "candidate_wall_ms_per_token": 43.319966590882636,
+    "paired_median_saving_ms_per_token": 0.1616697395440383,
+    "pair_wins": 7,
+    "pair_count": 7,
+    "raw_sha256": "f2a0812dae30d2888d005ea9757a52b4cc8a96abe874ef12e7e824ab7450f863"
+  },
+  "trace": {
+    "kernel": "q4_k_t16_selected_dual_interleaved_natural_tile8_halfdot_silu_gemv_kernel",
+    "duration_ns": 69050,
+    "local_size": 128,
+    "grid_size": 163840,
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0
+  },
+  "protocol": {
+    "leaf_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_selected_natural_decode_leaf.py --gate-only --gate-candidate tile8-parallel-silu-interleaved-halfdot --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-selected-interleaved-halfdot-leaf.json",
+    "quality_command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_gguf_correctness.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --greedy-tokens 32 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --selected-halfdot --output /tmp/laguna-selected-halfdot-quality32-kl.json",
+    "performance_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 7 --warmup-rows 128 --compare-selected-halfdot-decode --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-halfdot-decode-ab.json"
+  }
+}

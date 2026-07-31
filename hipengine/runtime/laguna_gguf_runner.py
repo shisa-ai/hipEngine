@@ -2445,6 +2445,7 @@ class LagunaGGUFResidentSession:
         use_selected_natural_tile8_decode: bool | None = None,
         use_selected_natural_tile8_parallel_decode: bool | None = None,
         use_selected_natural_tile8_parallel_silu_decode: bool | None = None,
+        use_selected_halfdot_decode: bool | None = None,
         use_selected_down_natural_parallel_decode: bool | None = None,
         use_selected_down_natural_parallel_weighted_decode: bool | None = None,
         use_selected_down_q4_paircoeff_weighted_decode: bool | None = None,
@@ -2663,6 +2664,15 @@ class LagunaGGUFResidentSession:
             )
             if use_selected_natural_tile8_parallel_silu_decode is None
             else use_selected_natural_tile8_parallel_silu_decode
+        )
+        self.use_selected_halfdot_decode = bool(
+            backend_package_capability(
+                self.backend,
+                "LAGUNA_SELECTED_HALFDOT_DECODE",
+                False,
+            )
+            if use_selected_halfdot_decode is None
+            else use_selected_halfdot_decode
         )
         self.use_selected_down_natural_parallel_decode = bool(
             backend_package_capability(
@@ -5776,6 +5786,7 @@ class LagunaGGUFResidentSession:
             use_selected_natural_tile8_parallel_silu_decode=(
                 self.use_selected_natural_tile8_parallel_silu_decode
             ),
+            use_selected_halfdot_decode=self.use_selected_halfdot_decode,
             use_selected_down_natural_parallel_decode=(
                 self.use_selected_down_natural_parallel_decode
             ),

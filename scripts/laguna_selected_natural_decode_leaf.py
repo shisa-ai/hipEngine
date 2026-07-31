@@ -31,10 +31,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
@@ -86,7 +89,9 @@ def _parse_args() -> argparse.Namespace:
             "tile8",
             "tile8-parallel",
             "tile8-parallel-silu",
+            "tile8-parallel-silu-halfdot",
             "tile8-parallel-silu-interleaved",
+            "tile8-parallel-silu-interleaved-halfdot",
         ),
         default="natural",
     )
@@ -433,6 +438,117 @@ def _screen_pair_silu(
     }
 
 
+def _screen_pair_silu_halfdot(
+    *,
+    runtime,
+    library,
+    x: np.ndarray,
+    selected: np.ndarray,
+    tiles_a: np.ndarray,
+    tiles_b: np.ndarray,
+    in_features: int,
+    out_features: int,
+    warmups: int,
+    samples: int,
+    burst: int,
+) -> dict:
+    buffers = []
+    try:
+        x_dev = _upload(runtime, x)
+        selected_dev = _upload(runtime, selected)
+        tiles_a_dev = _upload(runtime, tiles_a)
+        tiles_b_dev = _upload(runtime, tiles_b)
+        control_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        candidate_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
+        buffers.extend(
+            (
+                x_dev,
+                selected_dev,
+                tiles_a_dev,
+                tiles_b_dev,
+                control_out_dev,
+                candidate_out_dev,
+            )
+        )
+
+        def launch(wrapper: Callable[..., None], out_ptr: int) -> None:
+            wrapper(
+                x_dev.ptr,
+                selected_dev.ptr,
+                tiles_a_dev.ptr,
+                tiles_b_dev.ptr,
+                out_ptr,
+                int(x.shape[0]),
+                TOP_K,
+                EXPERTS,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+
+        launchers = {
+            "control": lambda: launch(
+                gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out,
+                control_out_dev.ptr,
+            ),
+            "candidate": lambda: launch(
+                gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
+                candidate_out_dev.ptr,
+            ),
+        }
+        for _ in range(warmups):
+            launchers["control"]()
+            launchers["candidate"]()
+        runtime.device_synchronize()
+        timings = {"control": [], "candidate": []}
+        for sample in range(samples):
+            order = (
+                ("control", "candidate")
+                if sample % 2 == 0
+                else ("candidate", "control")
+            )
+            for name in order:
+                timings[name].append(
+                    _event_ms(runtime, launchers[name], burst=burst)
+                )
+        launchers["control"]()
+        launchers["candidate"]()
+        runtime.device_synchronize()
+        control_out = _read_bf16(
+            runtime, control_out_dev, (TOP_K, out_features)
+        )
+        candidate_out = _read_bf16(
+            runtime, candidate_out_dev, (TOP_K, out_features)
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    medians = {
+        name: statistics.median(values) for name, values in timings.items()
+    }
+    control_f32 = (
+        control_out.astype(np.uint32) << np.uint32(16)
+    ).view(np.float32)
+    candidate_f32 = (
+        candidate_out.astype(np.uint32) << np.uint32(16)
+    ).view(np.float32)
+    error = np.abs(candidate_f32 - control_f32)
+    ratio = medians["candidate"] / medians["control"]
+    return {
+        "samples_ms": timings,
+        "median_ms": medians,
+        "candidate_over_control": ratio,
+        "candidate_delta_percent": (ratio - 1.0) * 100.0,
+        "bf16_mismatch": int(np.count_nonzero(candidate_out != control_out)),
+        "max_abs_error": float(error.max()),
+        "mean_abs_error": float(error.mean()),
+        "control_launches": 1,
+        "candidate_launches": 1,
+    }
+
+
 def _screen_pair_silu_interleaved(
     *,
     runtime,
@@ -447,6 +563,7 @@ def _screen_pair_silu_interleaved(
     warmups: int,
     samples: int,
     burst: int,
+    halfdot: bool = False,
 ) -> dict:
     buffers = []
     try:
@@ -470,11 +587,16 @@ def _screen_pair_silu_interleaved(
         )
 
         def control() -> None:
-            gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out(
+            wrapper = (
+                gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out
+                if halfdot
+                else gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out
+            )
+            wrapper(
                 x_dev.ptr,
                 selected_dev.ptr,
-                tiles_a_dev.ptr,
-                tiles_b_dev.ptr,
+                tiles_dual_dev.ptr if halfdot else tiles_a_dev.ptr,
+                tiles_dual_dev.ptr if halfdot else tiles_b_dev.ptr,
                 control_out_dev.ptr,
                 int(x.shape[0]),
                 TOP_K,
@@ -486,7 +608,12 @@ def _screen_pair_silu_interleaved(
             )
 
         def candidate() -> None:
-            gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out(
+            wrapper = (
+                gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out
+                if halfdot
+                else gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out
+            )
+            wrapper(
                 x_dev.ptr,
                 selected_dev.ptr,
                 tiles_dual_dev.ptr,
@@ -945,7 +1072,24 @@ def main() -> int:
             samples=args.samples,
             burst=args.burst,
         )
-    elif args.gate_candidate == "tile8-parallel-silu-interleaved":
+    elif args.gate_candidate == "tile8-parallel-silu-halfdot":
+        gate_result = _screen_pair_silu_halfdot(
+            runtime=runtime,
+            library=library,
+            x=x_gate,
+            selected=selected,
+            tiles_a=gate,
+            tiles_b=up,
+            in_features=3072,
+            out_features=1024,
+            warmups=args.warmups,
+            samples=args.samples,
+            burst=args.burst,
+        )
+    elif args.gate_candidate in (
+        "tile8-parallel-silu-interleaved",
+        "tile8-parallel-silu-interleaved-halfdot",
+    ):
         gate_dual = interleave_gguf_q4_k_tile16_dual(gate, up)
         gate_result = _screen_pair_silu_interleaved(
             runtime=runtime,
@@ -960,6 +1104,7 @@ def main() -> int:
             warmups=args.warmups,
             samples=args.samples,
             burst=args.burst,
+            halfdot=args.gate_candidate.endswith("-halfdot"),
         )
     else:
         gate_control, gate_candidate = gate_modes[args.gate_candidate]

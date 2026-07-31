@@ -40,9 +40,17 @@ _Q4_DUAL_NATURAL_TILE8_PARALLEL_SILU_PAIRCOEFF_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_"
     "paircoeff_gemv_bf16_bf16_out"
 )
+_Q4_DUAL_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_"
+    "halfdot_gemv_bf16_bf16_out"
+)
 _Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_"
     "parallel_silu_gemv_bf16_bf16_out"
+)
+_Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_"
+    "parallel_silu_halfdot_gemv_bf16_bf16_out"
 )
 _Q4_DENSE_DUAL_LOCAL32_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_local32_silu_gemv_bf16_bf16_out"
@@ -525,6 +533,51 @@ def gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_
     )
 
 
+def gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the quality-gated adjacent-K FP16 dot2 c=1 screen."""
+
+    _check_laguna_natural_selected_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_features,
+        expected_x_rows=1,
+        expected_in=3072,
+        expected_out=1024,
+    )
+    _launch_dual_silu_direct(
+        _Q4_DUAL_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -556,6 +609,53 @@ def gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf1
         )
     _launch_dual_silu_direct(
         _Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_dual_ptr,
+        tiles_unused_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_dual_ptr: int,
+    tiles_unused_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the interleaved-resident adjacent-K FP16 dot2 screen."""
+
+    if (
+        x_rows <= 0
+        or rows != x_rows * 10
+        or in_features != 3072
+        or out_features != 1024
+    ):
+        raise ValueError(
+            "dual-interleaved Laguna selected halfdot GEMV requires positive "
+            "x_rows, rows=x_rows*10, in_features=3072, and "
+            "out_features=1024"
+        )
+    _launch_dual_silu_direct(
+        _Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_BF16,
         x_ptr,
         selected_ptr,
         tiles_dual_ptr,
@@ -2669,6 +2769,19 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_t16_dual_interleaved_v1",
+            (
+                "selected_dual_t16_natural_tile8_parallel_silu_halfdot_"
+                "gemv_decode_bf16_bf16_out"
+            ),
+        ),
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
+        replace=replace,
+    )
 
     for quant_key, fn_bf16, fn_fp16, direct_bf16, direct_fp16 in (
         (
@@ -2874,7 +2987,9 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out",

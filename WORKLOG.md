@@ -196211,3 +196211,54 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.017271 tok/s / 43.445636 ms/token**. Raw JSON SHA-256 is
   `498dfb39...8ff479`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-hierarchical-top1-rejected.json`.
+
+## 2026-07-31 19:36 JST — Retain quality-gated selected gate/up halfdot
+
+- Re-reviewed llama.cpp Vulkan `c0bc8591e`. The backend explicitly detects
+  mixed FP16 dot2 with FP32 accumulation, but its Q4_K routed path still
+  derives its broader advantage from shader work ownership and command-buffer
+  feed. The transferable gfx1151 seam is native dot2, not Vulkan geometry.
+- First screened the existing T16 F16-WMMA prefill consumer at c=1. Padding
+  ten natural route rows to 160 regresses actual layer-1 gate/up
+  **0.146969 -> 0.301800 ms (+105.35%)** with 2,145/20,480 BF16 mismatches.
+  Rejected without runtime integration; raw SHA-256
+  `4a363e2e...2065d71`.
+- Added a direct adjacent-K candidate over the existing local128/tile8
+  selected gate/up owner. The initial separate-T16 leaf improved **16.46%**.
+  Audit then caught that the first quality override did not touch production's
+  byte-neutral dual-interleaved allocation; that result was discarded rather
+  than claimed.
+- Added the production-layout interleaved sibling. RED failed on the absent
+  wrapper; GREEN proves its output is identical to the separate-layout
+  halfdot candidate. The actual layer-1 leaf improves
+  **0.110406 -> 0.090545 ms (-17.989%)**, with unchanged resident bytes.
+- Extended the recurrent quality harness to compare full candidate and exact
+  logit distributions on every teacher-forced decode step. The 32-step gate
+  passes: candidate-vs-exact max/mean KL **0.008202/0.001036**, Poolside
+  first-token KL **0.0000175**, top-1 **30/32 = 93.75%**, deterministic
+  repeat, and allocation recovery. Greedy prefix equality is **24/32**, so
+  this is explicitly quality-gated rather than exact.
+- Seven same-resident p512/d128 pairs all improve
+  **22.999793 -> 23.084044 tok/s (+0.36631%)**, saving
+  **0.161670 ms/token** by paired median. Default-on production measures
+  **23.089693 tok/s / 43.309368 ms/token**, up **0.31464%** from
+  **23.017271**, with deterministic candidate state and unchanged
+  **79,066,169,172-byte** residency. The same-GGUF Vulkan gap contracts to
+  **0.479846 ms/token / 1.108%**.
+- Cache-only rocprof names
+  `q4_k_t16_selected_dual_interleaved_natural_tile8_halfdot_silu_gemv_kernel`
+  at local128/VGPR96/SGPR128/LDS512/scratch0 with plausible **69.050 us**
+  duration in the focused fixture. Focused registry, production-shape GPU,
+  plan, syntax, and gfx1151 capability tests pass. Removed the temporary
+  session setter/comparison CLI after publication; retained the constructor
+  exact rollback and diagnostic quality/leaf selectors.
+- Updated the kernel catalog with the retained consumer, exact rollback,
+  quality contract, trace occupancy, and production evidence. The required
+  source-lineage check could not complete because the optional external
+  `/home/lhl/amd-gpu-tuning/reference/atlas` repository is absent; the failure
+  occurred before any lineage diff and did not modify the worktree.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-f16-wmma-c1-rejected.json`,
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json`,
+  and
+  `benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json`.
