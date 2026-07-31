@@ -1142,19 +1142,23 @@ promotion adds no body, allocation, workspace, sidecar, or selector
 [post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
 The clean H6E source refresh reaches **334.512 tok/s**, **+97.333%** over
-campaign start and **2.08166x** behind llama.cpp HIP. Its representative request
-is **1,519.289 ms / 2,192 dispatches**; IQ-down/Q5/attention/gate-up/Q6 gaps
-rank **320.074/186.357/146.489/71.686/70.012 ms**. Select target-only
-**WPF-H6F exact IQ3 paired-output reduction amortization** on H6D's
-**465.480 ms / 45 calls**. Keep P256/P64/local128, rowbatch8, all segment
-decode/FMA/wave0..3/store operations, loads, addresses, and active traversal;
-carry two independent outputs through one reduction epoch so the 12 output-loop
-iterations become six and modeled barriers fall **24 -> 12 per rowbatch**. RED
-must freeze P64/P65, odd/even pair tails, rows1/7/8/9/M512 and H6D/CPU bytes.
-Admission requires physical half-barrier evidence, scratch0/no spills, bounded
-VGPR, LDS <=1024, unchanged grids, and all 45 actual layers positive on event
-and wall before runtime ownership
-([post-H6E residual / H6F target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
+campaign start and **2.08166x** behind llama.cpp HIP; IQ down remains the
+largest **320.074-ms** family gap. **WPF-H6F exact IQ3 paired-output reduction
+amortization** is now an admitted standalone gfx1100 leaf on H6D's
+**465.480 ms / 45 calls**. It keeps P256/P64/local128, rowbatch8, all per-output
+segment decode/FMA/wave0..3/store operations, loads, addresses, and active
+traversal while carrying two strided outputs through one reduction epoch.
+Compiled output stride is **0x200** versus H6D **0x100** with two barrier
+instructions in each loop body, physically proving **24 -> 12 dynamic barriers
+per rowbatch (-50%)**. Candidate metadata/runtime is private0/spill0/scratch0 at
+**VGPR146/152, LDS256/512**, and local/grid remains **128 / 32768x64**. Frozen
+rows1/7/8/9/M512, P64/P65, pair boundaries, and CPU bytes pass **9/9**. All
+**45/45** actual-layer outputs are exact and win both clocks: event/wall moves
+**445.316/436.801 -> 352.255/360.918 ms (-20.898%/-17.372%,
+1.264x/1.210x)**; **98/98** retained guards pass. Keep H6D source production
+until bounded runtime qualification
+([H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
+[post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
