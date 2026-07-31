@@ -8094,6 +8094,37 @@ The remaining attention sequence is:
      remains **22.891692 tok/s / 43.683971 ms/token**:
      [`rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-selector-compact-wave128-rejected.json).
 
+161. Reuse source-F16 activations across two adjacent Q/K/V/gate columns.
+     **Retained and default on gfx1151.**
+
+     A direct audit of llama.cpp Vulkan at `c0bc8591e` identifies a useful
+     distinction from its rejected wave64/local64 geometry: AMD F16 DMMV
+     specializes `NUM_ROWS=2`, so a workgroup reuses each activation load
+     across two adjacent output rows. The hipEngine adaptation keeps the
+     retained local256 mapping and both exact wave32 reduction trees. One
+     fused projection→head/KV block now owns two adjacent columns, shares the
+     BF16 activation load/conversion and one barrier, and leaves every weight,
+     FMA sequence, F32 head output, BF16 KV boundary, span update, and
+     completion-counter lifecycle unchanged.
+
+     Applying the same ownership to ordinary/output projection is not viable:
+     the joint-reduction output leaves regress **8.598-10.489%**, so that
+     code is removed. Only the natural even-width Q/K/V/gate composite
+     advances. Global and SWA fixtures match every projection/head F32 bit,
+     KV BF16 bit, `KVLiveSpans` field, and counter byte against the registered
+     one-column chain.
+
+     Seven same-resident counterbalanced p512/d128 pairs all improve:
+     **22.886574 -> 22.994503 tok/s (+0.47158%)**, saving
+     **0.205085 ms/token**. Token **2930 -> 74107**, position **638**,
+     trajectory SHA, deterministic repeats, and allocation recovery remain
+     exact. Cache-only tracing names the expected `<true,true,2>` global and
+     `<false,true,2>` SWA specializations at local256/VGPR32/SGPR128/
+     LDS512/scratch0. gfx1151 overrides the existing production registry
+     keys directly; gfx1100 and the one-column fallback remain unchanged.
+     A tracked-clean production refresh is the next publication step:
+     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

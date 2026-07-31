@@ -195841,3 +195841,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - Raw leaf/runtime SHA-256 values are `090c9c04...8cd` /
   `2de3911e...2a8`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-router-selector-compact-wave128-rejected.json`.
+
+## 2026-07-31 15:35 JST — Retain source-F16 tile2 projection/head/KV
+
+- Audited llama.cpp Vulkan at `c0bc8591e`; its AMD F16 DMMV specializes
+  `NUM_ROWS=2`, reusing an activation load across two adjacent output rows.
+  Preserve hipEngine's retained local256 geometry and exact wave32 reduction
+  trees, but let each fused Q/K/V/gate projection→head/KV block own two
+  adjacent columns and share the BF16 activation load/conversion plus barrier.
+- The generic proxy separated the mechanism from geometry. A naive
+  two-reduction body regressed the modeled family **28.718%**. One joint
+  barrier made QKV leaves slightly positive but output projection regressed
+  **8.598-10.489%**. Remove all generic/output tile2 code; retain only the
+  naturally even Q/K/V/gate composite.
+- Global/SWA fixtures match every projection/head F32 bit, KV BF16 bit,
+  `KVLiveSpans` field, and self-resetting counter against the registered
+  one-column chain. The gfx1151 registry resolves the existing production
+  keys to tile2; gfx1100 remains unchanged. Focused gfx1151/fusion/profile
+  validation passes **72/72**.
+- Seven same-resident counterbalanced p512/d128 pairs all improve:
+  **22.886574 -> 22.994503 tok/s (+0.471582%)**, saving
+  **0.205085 ms/token**. Token **2930 -> 74107**, position **638**, trajectory
+  SHA `94f803f7...ebda32`, deterministic repeats, and allocation recovery are
+  exact. Raw JSON SHA-256 is `cb43884...1df3`.
+- Require-cached `rocprofv3 --kernel-trace` names global `<true,true,2>` and
+  SWA `<false,true,2>` at local256/VGPR32/SGPR128/LDS512/scratch0, with
+  **265.018/195.607 us** fixture durations. Trace SHA-256 is
+  `9afab279...e988`; no compiler runs under profiling. The temporary A/B
+  registry switch is removed after the gate. Clean production publication
+  remains next. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json`.

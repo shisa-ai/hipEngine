@@ -464,13 +464,43 @@ __device__ __forceinline__ float laguna_f16_projection_block_sum_thread0(
   return total;
 }
 
+__device__ __forceinline__ void laguna_f16_projection_block_sum2_thread0(
+    float value0,
+    float value1,
+    float* total0,
+    float* total1) {
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value0 += __shfl_down(value0, offset);
+    value1 += __shfl_down(value1, offset);
+  }
+  __shared__ float partial[2][8];
+  if (lane == 0) {
+    partial[0][wave] = value0;
+    partial[1][wave] = value1;
+  }
+  __syncthreads();
+  *total0 = 0.0f;
+  *total1 = 0.0f;
+  if (threadIdx.x != 0) {
+    return;
+  }
+#pragma unroll
+  for (int item = 0; item < 8; ++item) {
+    *total0 += partial[0][item];
+    *total1 += partial[1][item];
+  }
+}
+
 // Exact c=1 Laguna source-F16 projection plus head normalization/KV append.
 // Each output column keeps the retained fixed-K one-block reduction. The last
 // producer for each Q or KV head performs the unchanged 256-thread head
 // RMSNorm/RoPE body after all 128/256 source columns are globally visible.
 // Counters are reset by their last producer and may therefore be reused by the
 // next stream-ordered layer launch.
-template <bool GlobalSpans, bool NONTEMPORAL>
+template <bool GlobalSpans, bool NONTEMPORAL, int COLUMNS_PER_BLOCK = 1>
 __global__ __launch_bounds__(256)
 void laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -517,7 +547,8 @@ void laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel(
   const int64_t k_end = q_end + kv_width;
   const int64_t v_end = k_end + kv_width;
   const int64_t gate_end = v_end + num_q_heads;
-  const int64_t column = static_cast<int64_t>(blockIdx.x);
+  const int64_t column =
+      static_cast<int64_t>(blockIdx.x) * COLUMNS_PER_BLOCK;
   if (column >= gate_end) {
     return;
   }
@@ -534,21 +565,24 @@ void laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel(
     projection_out = query;
     local_column = column;
     counter_index = local_column / head_dim;
-    expected_producers = static_cast<int>(head_dim);
+    expected_producers =
+        static_cast<int>(head_dim / COLUMNS_PER_BLOCK);
     is_query = true;
   } else if (column < k_end) {
     weight = key_weight;
     projection_out = key;
     local_column = column - q_end;
     counter_index = num_q_heads + local_column / head_dim;
-    expected_producers = static_cast<int>(2 * head_dim);
+    expected_producers =
+        static_cast<int>(2 * head_dim / COLUMNS_PER_BLOCK);
     is_kv = true;
   } else if (column < v_end) {
     weight = value_weight;
     projection_out = value;
     local_column = column - k_end;
     counter_index = num_q_heads + local_column / head_dim;
-    expected_producers = static_cast<int>(2 * head_dim);
+    expected_producers =
+        static_cast<int>(2 * head_dim / COLUMNS_PER_BLOCK);
     is_kv = true;
   } else {
     weight = gate_weight;
@@ -556,21 +590,51 @@ void laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel(
     local_column = column - v_end;
   }
 
-  float acc = 0.0f;
+  if constexpr (COLUMNS_PER_BLOCK == 2) {
+    float acc0 = 0.0f;
+    float acc1 = 0.0f;
 #pragma unroll
-  for (int k = threadIdx.x; k < input_width; k += 256) {
-    laguna_half_t w;
-    if constexpr (NONTEMPORAL) {
-      w = __builtin_nontemporal_load(
-          weight + local_column * input_width + k);
-    } else {
-      w = weight[local_column * input_width + k];
+    for (int k = threadIdx.x; k < input_width; k += 256) {
+      const float activation = laguna_bf16_bits_to_float(x[k]);
+      laguna_half_t w0;
+      laguna_half_t w1;
+      if constexpr (NONTEMPORAL) {
+        w0 = __builtin_nontemporal_load(
+            weight + local_column * input_width + k);
+        w1 = __builtin_nontemporal_load(
+            weight + (local_column + 1) * input_width + k);
+      } else {
+        w0 = weight[local_column * input_width + k];
+        w1 = weight[(local_column + 1) * input_width + k];
+      }
+      acc0 += activation * static_cast<float>(w0);
+      acc1 += activation * static_cast<float>(w1);
     }
-    acc += laguna_bf16_bits_to_float(x[k]) * static_cast<float>(w);
-  }
-  const float total = laguna_f16_projection_block_sum_thread0(acc);
-  if (threadIdx.x == 0) {
-    projection_out[local_column] = total;
+    float total0;
+    float total1;
+    laguna_f16_projection_block_sum2_thread0(
+        acc0, acc1, &total0, &total1);
+    if (threadIdx.x == 0) {
+      projection_out[local_column] = total0;
+      projection_out[local_column + 1] = total1;
+    }
+  } else {
+    float acc = 0.0f;
+#pragma unroll
+    for (int k = threadIdx.x; k < input_width; k += 256) {
+      laguna_half_t w;
+      if constexpr (NONTEMPORAL) {
+        w = __builtin_nontemporal_load(
+            weight + local_column * input_width + k);
+      } else {
+        w = weight[local_column * input_width + k];
+      }
+      acc += laguna_bf16_bits_to_float(x[k]) * static_cast<float>(w);
+    }
+    const float total = laguna_f16_projection_block_sum_thread0(acc);
+    if (threadIdx.x == 0) {
+      projection_out[local_column] = total;
+    }
   }
   __syncthreads();
   if (!is_query && !is_kv) {
@@ -6924,7 +6988,10 @@ extern "C" int hipengine_laguna_swa_head_rmsnorm_rope_write_kv_f32_bf16_spans(
   return hipGetLastError();
 }
 
-template <bool GlobalSpans, bool NONTEMPORAL = false>
+template <
+    bool GlobalSpans,
+    bool NONTEMPORAL = false,
+    int COLUMNS_PER_BLOCK = 1>
 int launch_laguna_f16_projection_head_kv_bf16_spans(
     const uint16_t* x,
     const laguna_half_t* query_weight,
@@ -6985,11 +7052,19 @@ int launch_laguna_f16_projection_head_kv_bf16_spans(
   constexpr int threads = 256;
   const int64_t total_columns =
       num_q_heads * head_dim + 2 * num_kv_heads * head_dim + num_q_heads;
+  if (total_columns % COLUMNS_PER_BLOCK != 0 ||
+      head_dim % COLUMNS_PER_BLOCK != 0 ||
+      num_q_heads % COLUMNS_PER_BLOCK != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
   laguna_f16_projection_head_rmsnorm_partial_rotary_write_kv_bf16_kernel<
-      GlobalSpans, NONTEMPORAL><<<static_cast<unsigned int>(total_columns),
-                     threads,
-                     static_cast<size_t>(threads) * sizeof(float),
-                     stream>>>(
+      GlobalSpans,
+      NONTEMPORAL,
+      COLUMNS_PER_BLOCK><<<
+      static_cast<unsigned int>(total_columns / COLUMNS_PER_BLOCK),
+      threads,
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
       x,
       query_weight,
       key_weight,
@@ -7140,6 +7215,50 @@ hipengine_laguna_global_f16_projection_head_kv_nontemporal_bf16_f32_spans(
 }
 
 extern "C" int
+hipengine_laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_f32_spans(
+    const uint16_t* x,
+    const laguna_half_t* query_weight,
+    const laguna_half_t* key_weight,
+    const laguna_half_t* value_weight,
+    const laguna_half_t* gate_weight,
+    float* query,
+    float* key,
+    float* value,
+    float* gate,
+    const float* q_norm_weight,
+    const float* k_norm_weight,
+    const float* cos_table,
+    const float* sin_table,
+    float* query_out,
+    float* key_out,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    int32_t* completion_counters,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  return launch_laguna_f16_projection_head_kv_bf16_spans<true, true, 2>(
+      x, query_weight, key_weight, value_weight, gate_weight, query, key,
+      value, gate, q_norm_weight, k_norm_weight, cos_table, sin_table,
+      query_out, key_out, key_cache, value_cache, completion_counters,
+      base_offsets, live_counts, token_positions, evict_mask, row_positions,
+      eps, capacity, block_size, block_table_len, num_q_heads, num_kv_heads,
+      head_dim, rotary_dim, max_positions, stream);
+}
+
+extern "C" int
 hipengine_laguna_swa_f16_projection_head_kv_bf16_f32_spans(
     const uint16_t* x,
     const laguna_half_t* query_weight,
@@ -7242,6 +7361,48 @@ hipengine_laguna_swa_f16_projection_head_kv_nontemporal_bf16_f32_spans(
     int64_t max_positions,
     hipStream_t stream) {
   return launch_laguna_f16_projection_head_kv_bf16_spans<false, true>(
+      x, query_weight, key_weight, value_weight, gate_weight, query, key,
+      value, gate, q_norm_weight, k_norm_weight, cos_table, sin_table,
+      query_out, key_out, key_cache, value_cache, completion_counters,
+      base_offsets, live_counts, token_positions, evict_mask, row_positions,
+      eps, capacity, 0, 0, num_q_heads, num_kv_heads, head_dim, rotary_dim,
+      max_positions, stream);
+}
+
+extern "C" int
+hipengine_laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_f32_spans(
+    const uint16_t* x,
+    const laguna_half_t* query_weight,
+    const laguna_half_t* key_weight,
+    const laguna_half_t* value_weight,
+    const laguna_half_t* gate_weight,
+    float* query,
+    float* key,
+    float* value,
+    float* gate,
+    const float* q_norm_weight,
+    const float* k_norm_weight,
+    const float* cos_table,
+    const float* sin_table,
+    float* query_out,
+    float* key_out,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    int32_t* completion_counters,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    float eps,
+    int64_t capacity,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  return launch_laguna_f16_projection_head_kv_bf16_spans<false, true, 2>(
       x, query_weight, key_weight, value_weight, gate_weight, query, key,
       value, gate, q_norm_weight, k_norm_weight, cos_table, sin_table,
       query_out, key_out, key_cache, value_cache, completion_counters,

@@ -30,6 +30,14 @@ _SYMBOL_GLOBAL_F16_PROJECTION_HEAD_KV_NONTEMPORAL = (
 _SYMBOL_SWA_F16_PROJECTION_HEAD_KV_NONTEMPORAL = (
     "hipengine_laguna_swa_f16_projection_head_kv_nontemporal_bf16_f32_spans"
 )
+_SYMBOL_GLOBAL_F16_PROJECTION_HEAD_KV_NONTEMPORAL_TILE2 = (
+    "hipengine_laguna_global_f16_projection_head_kv_nontemporal_tile2_"
+    "bf16_f32_spans"
+)
+_SYMBOL_SWA_F16_PROJECTION_HEAD_KV_NONTEMPORAL_TILE2 = (
+    "hipengine_laguna_swa_f16_projection_head_kv_nontemporal_tile2_"
+    "bf16_f32_spans"
+)
 _SYMBOL_GLOBAL_WRITE = "hipengine_laguna_global_write_kv_f32_bf16_spans"
 _SYMBOL_GLOBAL_WRITE_ROWS = "hipengine_laguna_global_write_kv_rows_f32_bf16_spans"
 _SYMBOL_GLOBAL_ATTENTION = "hipengine_laguna_global_attention_decode_bf16_spans"
@@ -1045,6 +1053,140 @@ def laguna_swa_f16_projection_head_kv_nontemporal_bf16_spans(
 
     _laguna_f16_projection_head_kv_bf16_spans(
         _SYMBOL_SWA_F16_PROJECTION_HEAD_KV_NONTEMPORAL,
+        x_ptr,
+        query_weight_ptr,
+        key_weight_ptr,
+        value_weight_ptr,
+        gate_weight_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        gate_ptr,
+        q_norm_weight_ptr,
+        k_norm_weight_ptr,
+        cos_ptr,
+        sin_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        completion_counters_ptr,
+        spans,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        global_spans=False,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans(
+    x_ptr: int,
+    query_weight_ptr: int,
+    key_weight_ptr: int,
+    value_weight_ptr: int,
+    gate_weight_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    gate_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    completion_counters_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact two-column ownership in the global F16 composite."""
+
+    _laguna_f16_projection_head_kv_bf16_spans(
+        _SYMBOL_GLOBAL_F16_PROJECTION_HEAD_KV_NONTEMPORAL_TILE2,
+        x_ptr,
+        query_weight_ptr,
+        key_weight_ptr,
+        value_weight_ptr,
+        gate_weight_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        gate_ptr,
+        q_norm_weight_ptr,
+        k_norm_weight_ptr,
+        cos_ptr,
+        sin_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        completion_counters_ptr,
+        spans,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        global_spans=True,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans(
+    x_ptr: int,
+    query_weight_ptr: int,
+    key_weight_ptr: int,
+    value_weight_ptr: int,
+    gate_weight_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    gate_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    completion_counters_ptr: int,
+    spans: KVLiveSpans,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact two-column ownership in the SWA F16 composite."""
+
+    _laguna_f16_projection_head_kv_bf16_spans(
+        _SYMBOL_SWA_F16_PROJECTION_HEAD_KV_NONTEMPORAL_TILE2,
         x_ptr,
         query_weight_ptr,
         key_weight_ptr,
@@ -8336,6 +8478,7 @@ __all__ = [
     "laguna_global_attention_prefill_qrow6_dense_initial_online_bf16_spans",
     "laguna_global_f16_projection_head_kv_bf16_spans",
     "laguna_global_f16_projection_head_kv_nontemporal_bf16_spans",
+    "laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans",
     "laguna_global_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_global_head_rmsnorm_rope_write_kv_wave0_tree_f32_spans",
     "laguna_global_write_kv_f32_spans",
@@ -8401,6 +8544,7 @@ __all__ = [
     "laguna_swa_union_softmax_wave_rows_f32",
     "laguna_swa_f16_projection_head_kv_bf16_spans",
     "laguna_swa_f16_projection_head_kv_nontemporal_bf16_spans",
+    "laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans",
     "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_swa_write_kv_f32_spans",
     "laguna_swa_write_kv_rows_f32_spans",
