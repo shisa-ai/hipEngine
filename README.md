@@ -366,15 +366,17 @@ attention **488.304/148.104/21.624**, Q6 **157.073/86.987/14.455**, gate/up
 kernel sum is **1,309.339 vs 718.241 ms** and the clean wall gap is **1.79952x**.
 Q5 remains numerically first but its exact mechanisms are closed by H5/H6G/H6M.
 After H6N supplies the distinct attention interval, **WPF-H6P exact staged-wave-
-publication triple-output IQ3** targets H6I's measured **VGPR168** liveness.
-The separate target keeps all three outputs, 216 FMAs, stride `0x300`, eight
-dynamic barriers, local128/grid32768x64, and exact per-output arithmetic, but
-publishes A/B/C wave sums sequentially before one barrier so only one eight-row
-accumulator set remains live. Admission requires metadata/runtime VGPR
-**<=128/128**, private/spill/scratch0, complete H6I/CPU bytes, and **45/45**
-actual-layer wins on both clocks; this is target rationale, not a speed/default
-claim
-([post-H6N residual / H6P target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+publication triple-output IQ3 is retained as a standalone gfx1100 leaf**.
+Sequential A/B/C wave publication preserves H6I's three outputs, **216** FMAs,
+stride `0x300`, four epochs/eight dynamic barriers, local128/grid32768x64, and
+complete bytes while reducing metadata/runtime VGPR **164/168 -> 107/112** at
+private0/spill0/scratch0. Frozen rows1/7/8/9/M512/P64/P65 pass **9/9**; all
+**45/45** actual IQ3 layers are byte-exact and win both clocks. Aggregate H6I ->
+H6P event is **333.218 -> 323.882 ms (-2.802%, 1.029x)** and synchronized wall
+is **331.534 -> 326.105 ms (-1.637%, 1.017x)**. Production remains H6I at the
+clean **386.959 tok/s** row pending separate bounded runtime qualification
+([H6P leaf](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
+[post-H6N residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

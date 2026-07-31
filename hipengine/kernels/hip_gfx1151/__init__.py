@@ -638,6 +638,15 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "activation_resident_out_p256_row_interleaved_vopd_triple_output_"
             "rowbatch8_bf16_bf16_out",
         ),
+        # H6P changes H6I accumulator liveness with gfx1100 wave publication
+        # and remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_"
+            "staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out",
+        ),
         # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
         # consumers. Both remain gfx1100-only pending a gfx1151 gate.
         *(

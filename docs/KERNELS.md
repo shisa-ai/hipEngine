@@ -1350,27 +1350,32 @@ dispatches** versus matched llama.cpp HIP **696.342 tok/s / 718.241 ms**.
 Q5/IQ-down/attention/Q6 gaps are **195.952/191.674/126.480/72.532 ms**;
 gate/up is **3.851 ms faster** than llama.cpp. Q5's exact geometry, plane,
 ownership, and prefetch/wait-split routes are closed. H6N supplies the distinct
-attention interval, so **WPF-H6P exact staged-wave-publication triple-output
-IQ3** targets only H6I's register liveness.
+attention interval. **WPF-H6P exact staged-wave-publication triple-output IQ3
+is now a retained standalone gfx1100 leaf** targeting only H6I's register
+liveness; H6I remains source production pending runtime qualification.
 
 The frozen H6I body carries `acc_a[8]`, `acc_b[8]`, and `acc_c[8]` together into
-`reduce_local128_triples_batched`, then publishes all three wave planes through
-one barrier. It compiles **216** useful FMAs, **44** FMA/FMA VOPD pairs, stride
-`0x300`, two barrier instructions/eight dynamic barriers per rowbatch, and
-runs local128/VGPR168/LDS512/scratch0/grid32768x64. The H6P target computes and
-wave-reduces A, writes lane-0 partials without a barrier, ends the accumulator
-scope, repeats B/C, then uses one publication barrier, original per-output
-wave0..3 sums/stores, and the reuse barrier. It must not change useful math,
-bytes, grouping width, rowbatch, traversal, grid, allocation, workspace, or
-source policy.
+`reduce_local128_triples_batched`. H6P instead computes and wave-reduces A,
+writes lane-0 partials without a barrier, ends that accumulator scope, repeats
+B/C, then uses one publication barrier, original per-output wave0..3 sums/
+stores, and the reuse barrier. Cached ISA preserves **216** FMAs, stride
+`0x300`, two barrier instructions/eight dynamic barriers, 23 global loads,
+local128/LDS512/grid32768x64, and scratch0. Metadata/runtime VGPR falls
+**164/168 -> 107/112** with private0/spill0; SGPR metadata rises **56 -> 78**,
+DS instructions rise **60 -> 156**, and code grows **6,264 -> 8,360 bytes**.
+The runtime register-file wave ceiling therefore moves **9 -> 13**, but the
+added publication traffic makes full timing mandatory rather than inferring a
+win from occupancy.
 
-Before timing, cached source/ISA/rocprof must prove three no-barrier
-publications, unchanged 216-FMA/stride/barrier/grid/LDS facts, private0/spill0/
-scratch0, no compiler activity, and metadata/runtime VGPR **<=128/128**; this
-moves only the mechanical 1536-VGPR/SIMD wave ceiling **9 -> 12**. Then exact
-rows1/7/8/9/M512/P64/P65 and all **45/45** actual-layer both-clock gates must
-pass. Any higher VGPR or losing layer removes every H6P surface and retains H6I
-([post-H6N residual / H6P target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
+The frozen rows1/7/8/9/M512/P64/P65 matrix passes **9/9** against H6I and sampled
+CPU bytes. Natural-M512 routing plus all **45/45** actual IQ3 weights is complete-
+byte exact and every layer wins both clocks: aggregate event **333.218 ->
+323.882 ms (-2.802%, 1.029x)** and wall **331.534 -> 326.105 ms (-1.637%,
+1.017x)**, with minimum layer **1.017x/1.003x**. Retain the leaf, keep package
+policy/workspace/allocation and gfx1151 unchanged, and next freeze a bounded
+same-ABI default-off owner
+([H6P leaf](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json) ·
+[post-H6N residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6n-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
