@@ -196061,3 +196061,22 @@ Vulkan local sizes verbatim will close the measured gap.
   values for the combined/primary gates are `35c4c393...34f62` and
   `6c5d2378...f651`. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-shared-cu-mask-rejected.json`.
+
+## 2026-07-31 17:32 JST — Reject high-priority primary stream
+
+- Tested the remaining cheap priority-arbitration seam: move the complete
+  primary chain from stream 0 to a nonblocking HIP greatest-priority
+  **-1** stream while leaving production's shared-MoE decode branch at normal
+  priority. Kernels, math, weights, secondary scheduling, and trajectory are
+  unchanged.
+- The first same-resident p512/d128 pair is already negative:
+  **22.992619 -> 22.987339 tok/s (-0.02296%, +0.009989 ms/token)**.
+  Token **2930 -> 74107**, trajectory SHA, positions, determinism, and
+  allocation recovery are exact. Raw JSON SHA-256 is
+  `e95b62a0...74bd`.
+- Stop before the seven-pair gate and remove the temporary harness selector.
+  Alongside the ordinary nonblocking-primary and CU-mask rejections, this
+  closes HIP stream priority/arbitration as the current Vulkan wall-gap
+  mechanism. Production remains **23.017271 tok/s /
+  43.445636 ms/token**. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-primary-high-priority-rejected.json`.

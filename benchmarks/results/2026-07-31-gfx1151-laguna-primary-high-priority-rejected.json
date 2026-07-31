@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T17:32:02+09:00",
+  "kind": "hipengine_laguna_primary_high_priority_rejection",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "gpu_max_hw_queues": 2,
+    "hip_priority_range": [
+      1,
+      -1
+    ]
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "resident_nbytes": 79066169172
+  },
+  "protocol": {
+    "shape": "p512/d128, 127 timed c=1 transitions after the prefill-produced token",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compare-primary-greatest-priority-stream --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-primary-greatest-priority-rough.json",
+    "raw_json": "/tmp/laguna-primary-greatest-priority-rough.json",
+    "raw_sha256": "e95b62a083fed82974bc0fc0ccd780a091e569b622b5bdedc49e6900d1eb74bd",
+    "timing": "same-resident control then candidate; one device synchronization after each 127-transition window",
+    "repetitions": 1
+  },
+  "candidate": {
+    "description": "Move the complete primary prefill/decode chain from legacy stream 0 to a nonblocking stream at HIP's greatest priority (-1), leaving the retained shared-MoE branch on its normal-priority decode stream.",
+    "hypothesis": "Priority arbitration could protect selected gate/up and the primary dependency chain from the concurrently streaming shared branch.",
+    "correctness": {
+      "generated_ids_exact": true,
+      "next_tokens_exact": true,
+      "positions_exact": true,
+      "deterministic": true,
+      "allocation_lifecycle_exact": true
+    }
+  },
+  "result": {
+    "control_seconds": 5.523511687992141,
+    "candidate_seconds": 5.524780349107459,
+    "control_tok_s": 22.992619039096475,
+    "candidate_tok_s": 22.9873392198329,
+    "candidate_delta_percent": -0.022963105049478294,
+    "candidate_delta_ms_per_token": 0.00998945760093336
+  },
+  "decision": {
+    "advance_to_seven_pairs": false,
+    "retain": false,
+    "reason": "The first complete exact pair is already negative. Together with the independently rejected ordinary nonblocking primary and secondary CU-mask gates, this closes stream priority/arbitration as the current Vulkan wall-gap mechanism. The temporary harness selector was removed.",
+    "production_decode_tok_s": 23.0172713318,
+    "production_ms_per_token": 43.4456363478
+  }
+}

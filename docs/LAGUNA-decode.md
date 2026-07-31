@@ -8339,6 +8339,24 @@ The remaining attention sequence is:
      remains **23.017271 tok/s / 43.445636 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-cu-mask-rejected.json).
 
+171. Give the complete primary decode chain HIP's greatest stream priority.
+     **Rejected at the first exact resident pair and removed.**
+
+     This keeps the production shared-MoE branch on its retained
+     normal-priority decode stream but moves the primary chain from legacy
+     stream 0 to a nonblocking **priority -1** stream. It is the final cheap
+     priority-arbitration screen after item 170 closed an ordinary
+     nonblocking primary and secondary CU masks.
+
+     The exact p512/d128 pair is negative:
+     **22.992619 -> 22.987339 tok/s (-0.02296%)**, adding **0.009989
+     ms/token**. Token trajectory, positions, determinism, and allocation
+     lifecycle all match. Stop before seven repetitions and remove the
+     temporary harness selector. Queue priority does not recover the missing
+     dispatch/feed time; production remains **23.017271 tok/s /
+     43.445636 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-primary-high-priority-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
