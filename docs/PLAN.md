@@ -2209,11 +2209,26 @@ request-sum/span **4.725%/0.487%/1.076%**. Fresh selector-unset 512/1K/4K gains
 **+0.730%/+0.571%/+0.359%**, 3/3 wins each; fixed C4096/M512 gains **+0.467%
 (5/5 wins)** at **390.887 tok/s**, **1.76724x** behind fresh matched llama.cpp
 HIP **690.791**. Workspace/scratch remain unchanged, gfx1151 remains excluded,
-and **156/156** guards pass. Next reprofile exact clean promoted H6Q production
-and rerank the matched residual
-([H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
+and **156/156** guards pass.
+
+The clean committed H6Q reprofile reaches **390.947 tok/s / 1,301.236 ms / 2,192
+dispatches**, **+130.625%** over campaign start and **1.76697x** behind matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. Gaps rank Q5/IQ-down/attention/Q6
+at **200.158/169.006/129.896/73.493 ms**; Q5 remains mechanism-closed. Select
+one-shot **WPF-H6R exact DPP peer-exchange staged-wave IQ3** on H6Q's **314.216
+ms / 45 calls**. It may replace only H6Q's 120 dynamic DS bpermutes with the
+in-tree exact permlanex16 then DPP 8/4/2/1 sequence while preserving all 216
+FMAs, staged scopes, publication/store order, eight barriers, P256/P64/
+local128/rowbatch8 topology, bytes, ABI, allocation, and source policy.
+Physical admission requires zero bpermutes, exact **24 permlanex16 + 96 DPP**,
+unchanged LDS loads/stores, VGPR <=128, private/spill/scratch0, and no compiler
+under profiling. The prior four-accumulator local64 DPP reducer regressed pooled
+IQ2 and span, so H6R gets exactly one all-45 both-clock screen; remove every
+surface and do not tune further on any miss
+([post-H6Q residual / H6R target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
+[H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
-[post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
+[post-H6P residual / H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
 [H6P rollback provenance](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
