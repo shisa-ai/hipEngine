@@ -196390,3 +196390,33 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.089693 tok/s / 43.309368 ms/token**. Raw SHA-256 is
   `8dfca7d0...038c96`; evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-lasttile256-moe-tail-rejected.json`.
+
+## 2026-07-31 21:04 JST — Reject multi-expert c=1 router projection tiles
+
+- Tracked state began clean apart from the existing untracked benchmark
+  artifacts. The required kernel-lineage check again stopped before reporting
+  diffs because optional
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- A literal lane-per-expert design was rejected on inspection because the
+  resident `[expert, K]` F32 matrix would make each wave issue 12-KiB-strided
+  loads. RED then selected a coalesced alternative: local256 blocks cache the
+  K3072 BF16 activation in 6 KiB LDS and assign 8/16/32 experts per block with
+  32/16/8 adjacent K lanes per expert. Eight independent accumulators hide FMA
+  latency; a subgroup reduction publishes one logit/expert. The retained exact
+  wave-0 tree remains unchanged.
+- RED failed 4/4 on the absent body/symbol/wrapper/registry route. GREEN passed
+  source/ABI/four-axis scope and executable CPU quality nodes. All geometries
+  are finite, preserve top-1/top-10, and stay at KL about `1e-13`, with maximum
+  F32 logit delta `1.43e-6`.
+- The cache-only counterbalanced 21x1000 production-shape gate rejects every
+  tile. Retained event/wall is **5.624/5.631 us**; expert-tile8 is
+  **6.118/6.123 us (+8.77%/+8.73%)**, tile16
+  **6.289/6.294 us (+11.81%/+11.77%)**, and tile32
+  **7.254/7.259 us (+28.97%/+28.91%)**. More aggressive activation reuse loses
+  monotonically as expert-parallel workgroups disappear.
+- Removed all candidate HIP bodies, C exports, Python wrappers, four-axis keys,
+  package exports, tests, and the benchmark harness before runtime integration.
+  The retained cached wave-0-tree test passes **4/4** after removal. Production
+  remains **23.089693 tok/s / 43.309368 ms/token**. Raw output SHA-256 is
+  `0f44daa2...47b001c`; evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-router-expert-tiles-rejected.json`.

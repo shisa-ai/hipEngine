@@ -8662,6 +8662,41 @@ The remaining attention sequence is:
      execution design. Production remains **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-lasttile256-moe-tail-rejected.json).
 
+183. Collapse c=1 router projection from 256 expert workgroups to coalesced
+     multi-expert tiles. **Rejected at the production-shape leaf and removed.**
+
+     A literal one-lane-per-expert owner would read the expert-major F32
+     matrix at 12-KiB wave strides, so the bounded candidate instead maps
+     **8/16/32 experts** to each local256 workgroup and assigns
+     **32/16/8 adjacent K lanes** to each expert. The block cooperatively
+     caches the 3,072-element BF16 activation in 6 KiB LDS, uses eight
+     independent F32 accumulators per lane, and finishes each expert with a
+     wave-local subgroup reduction. This reduces the projection grid from
+     **256 workgroups** to **32/16/8** without an uncoalesced weight walk.
+     The retained exact wave-0-tree projection remains the control.
+
+     RED/GREEN covered source/ABI/four-axis registration and the repository
+     CPU quality gate. All three candidates are finite, preserve the same
+     top-1 and top-10 set on the deterministic K3072/E256 fixture, and remain
+     at KL about `1e-13`; the maximum F32 logit delta is `1.43e-6`.
+     Counterbalanced 21x1000 timing rejects every geometry:
+
+     | Geometry | Workgroups | HIP event | Synchronized wall | Delta |
+     | --- | ---: | ---: | ---: | ---: |
+     | retained one expert/block | 256 | **0.005624 ms** | **0.005631 ms** | baseline |
+     | 8 experts/block | 32 | 0.006118 ms | 0.006123 ms | **+8.77% / +8.73%** |
+     | 16 experts/block | 16 | 0.006289 ms | 0.006294 ms | **+11.81% / +11.77%** |
+     | 32 experts/block | 8 | 0.007254 ms | 0.007259 ms | **+28.97% / +28.91%** |
+
+     The monotonic loss confirms the gfx1151 router projection needs the
+     retained expert-parallel grid more than it needs activation reuse or
+     fewer blocks. Remove every candidate body, symbol, wrapper, registry
+     key, test, and harness before runtime integration. Reopen only with a
+     different weight layout or persistent graph-wide owner that preserves
+     both coalescing and expert parallelism. Production remains
+     **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-expert-tiles-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8681,7 +8716,9 @@ bounded attack must therefore contract an uncovered dependency boundary or
 the 1.501782-ms/token feed gap, rather than improving another independently
 overlapped or bandwidth-ceiling leaf. Item 181 additionally proves that the
 gap is not the redundant resident-layer Python validation walk, while item
-182 closes the remaining selected-down/D9 physical-owner construction:
+182 closes the remaining selected-down/D9 physical-owner construction and
+item 183 closes multi-expert router projection tiles under the resident
+expert-major F32 weight layout:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:

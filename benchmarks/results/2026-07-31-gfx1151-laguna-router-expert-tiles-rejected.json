@@ -1,0 +1,84 @@
+{
+  "date": "2026-07-31",
+  "kind": "gfx1151_laguna_router_expert_tiles_rejected",
+  "status": "rejected_removed",
+  "hardware": {
+    "device": "AMD Radeon 8060S",
+    "architecture": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "decode_checkpoint_tok_s": 23.089692642,
+    "decode_checkpoint_ms_per_token": 43.309368189
+  },
+  "shape": {
+    "tokens": 1,
+    "hidden_size": 3072,
+    "experts": 256,
+    "hidden": "bf16",
+    "weights": "f32",
+    "logits": "f32"
+  },
+  "candidate": {
+    "description": "Cooperatively cache the BF16 activation once per local256 workgroup, assign 8/16/32 experts per workgroup and 32/16/8 adjacent K lanes per expert, use eight independent F32 accumulators and a wave-local subgroup reduction.",
+    "workgroups": {
+      "expert_tile8": 32,
+      "expert_tile16": 16,
+      "expert_tile32": 8
+    },
+    "retained_workgroups": 256,
+    "production_integration_attempted": false,
+    "code_retained": false
+  },
+  "protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_router_expert_tile32_bench.py --require-cached-build --output /tmp/laguna-router-expert-tiles-leaf.json",
+    "warmups_per_mode": 100,
+    "counterbalanced_samples": 21,
+    "launches_per_sample": 1000,
+    "timers": [
+      "HIP event",
+      "host wall through synchronized stop event"
+    ],
+    "raw_output": "/tmp/laguna-router-expert-tiles-leaf.json",
+    "raw_sha256": "0f44daa292e3a8b6b91b89871a3d5a9ec43c9e47c26d40dbaafd9e75447b001c"
+  },
+  "correctness": {
+    "finite_all": true,
+    "top1_agreement_all": true,
+    "top10_set_agreement_all": true,
+    "max_kl_control_to_candidate": 1.1679442183889262e-13,
+    "max_abs_logit_delta": 1.430511474609375e-06,
+    "repository_cpu_gate": {
+      "kl_max": 0.05,
+      "top1_min": 0.9,
+      "passed": true
+    }
+  },
+  "timing_ms": {
+    "retained_wave0_tree": {
+      "event_median": 0.005624464988708496,
+      "wall_median": 0.005631138104945421
+    },
+    "expert_tile8": {
+      "event_median": 0.006117699146270752,
+      "wall_median": 0.006122960010543466,
+      "event_delta_percent": 8.769441334463956,
+      "wall_delta_percent": 8.733969873090363
+    },
+    "expert_tile16": {
+      "event_median": 0.00628895378112793,
+      "wall_median": 0.006293862126767635,
+      "event_delta_percent": 11.814257778356541,
+      "wall_delta_percent": 11.768917925138279
+    },
+    "expert_tile32": {
+      "event_median": 0.007254004955291748,
+      "wall_median": 0.007259182864800096,
+      "event_delta_percent": 28.972355056963938,
+      "wall_delta_percent": 28.911469218360676
+    }
+  },
+  "decision": "Reject all three geometries before runtime integration. The retained one-workgroup-per-expert wave0-tree schedule benefits from the full expert-parallel grid more than activation reuse and reduced workgroup count can repay. Reopen router projection ownership only with a weight layout or persistent graph-wide consumer that preserves coalescing and parallelism."
+}
