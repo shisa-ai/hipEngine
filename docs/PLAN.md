@@ -2200,12 +2200,17 @@ LDS512, and complete bytes. Static bpermutes fall **120 -> 24**, code
 unchanged 24 LDS loads/12 stores and private0/spill0/scratch0. Frozen **9/9**
 and all **45/45** actual layers are exact and both-clock positive: event
 **329.124 -> 313.405 ms (-4.776%, 1.050x)** and wall **326.037 -> 317.946 ms
-(-2.481%, 1.025x)**; minimum layer wins are **1.038x/1.016x**. Retain only the
-leaf. Next freeze bounded default-off H6Q ownership, then require complete
-natural-M512 state, exact 45-call H6P-to-H6Q topology, unchanged workspace/
-scratch, fixed C4096/M512, and selector-unset 512/1K/4K before source
-adjudication
-([H6Q candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
+(-2.481%, 1.025x)**; minimum layer wins are **1.038x/1.016x**. H6Q now also
+qualifies as a bounded default-off same-ABI owner while H6P remains source.
+Complete natural M512 is KL0/byte-exact across all 48 boundaries, K/V/spans,
+repeat, and teardown. Four cached requests preserve **2,192 dispatches** and
+substitute exact **45 H6P -> 45 H6Q**, cutting IQ3/request-sum/span
+**4.725%/0.487%/1.076%**. Default-off 512/1K/4K gains
+**+0.586%/+0.486%/+0.366%**, 3/3 wins each; fixed C4096/M512 gains **+0.373%
+(5/5 wins)**. Workspace/scratch remain unchanged and **155/155** guards pass.
+Next freeze source-default RED and require fresh selector-unset publication
+before changing H6P
+([H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json) ·
 [post-H6P residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json) ·
 [H6P production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-production.json)).
 

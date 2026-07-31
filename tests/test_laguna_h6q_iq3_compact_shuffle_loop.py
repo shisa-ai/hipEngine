@@ -190,6 +190,7 @@ def test_h6q_registry_structure_and_h6p_production_immutability() -> None:
         _H6F_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6I_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6P_VARIANT: _ACTIVE_EXPERT_ABI,
+        _VARIANT: _ACTIVE_EXPERT_ABI,
     }
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == expected_variants
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == expected_abis
