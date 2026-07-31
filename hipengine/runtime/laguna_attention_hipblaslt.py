@@ -37,6 +37,7 @@ _MATRIX_LAYOUT_BATCH_COUNT = 0
 _MATRIX_LAYOUT_STRIDED_BATCH_OFFSET = 1
 _ROWS = 128
 _PRODUCTION_MAX_CONTEXT = 512
+_MAX_PROFILE_CONTEXT = 131_200
 _MAX_Q_HEADS = 72
 _KV_HEADS = 8
 _HEAD_DIM = 128
@@ -363,12 +364,12 @@ class LagunaAttentionHipblasLt:
             )
         if (
             self.max_context < _PRODUCTION_MAX_CONTEXT
-            or self.max_context > 131072
+            or self.max_context > _MAX_PROFILE_CONTEXT
             or self.max_context % _ROWS != 0
         ):
             raise ValueError(
                 "Laguna attention max_context must be an M128 multiple "
-                "within [512, 131072]"
+                f"within [512, {_MAX_PROFILE_CONTEXT}]"
             )
         if self.max_q_heads not in {48, 72}:
             raise ValueError("Laguna attention max_q_heads must be 48 or 72")

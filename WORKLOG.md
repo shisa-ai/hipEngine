@@ -196847,3 +196847,18 @@ Vulkan local sizes verbatim will close the measured gap.
   fixed-shape median **23.220755 tok/s**. That is a measured specialization
   seam, not a correctness failure. Smoke raw SHA-256 is
   `00d8ed3787883c57282d0863987d2d665faa92e0db423a334731f6486e1a8a71`.
+
+## 2026-08-01 04:00 JST — Admit the 128K-plus-horizon profile capacity
+
+- The first tracked long-capacity sweep produced a valid d1K row at
+  **20.6078 tok/s** and then stopped before d4K because the blocked prefill
+  hipBLASLt helper capped admitted capacity at exactly 131,072. A true
+  d128K/128-output run needs 131,199 positions.
+- Raised only that helper validation ceiling by one M128 block,
+  **131,072 -> 131,200**. Blocked matrix-attention scratch remains capped at
+  4,096 context positions, the largest matrix launch still ends at 131,072,
+  and only subsequent c=1 generic split attention uses the added positions.
+- A direct gfx1151 constructor/teardown gate admits max-context 131,200 with
+  block-context 4,096 and query-rows 2,048, owns **1,796,734,976 bytes**, and
+  returns tracked bytes/allocations **0/0 -> 0/0**. The focused harness suite
+  remains **39 passed**.
