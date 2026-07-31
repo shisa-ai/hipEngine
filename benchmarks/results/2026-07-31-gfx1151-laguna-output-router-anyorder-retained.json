@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-07-31",
-  "status": "retained_default_pending_clean_publication",
+  "status": "retained_default",
   "decision": {
     "retain": true,
     "default_backend": "hip_gfx1151",
@@ -164,6 +164,6 @@
     "red": "The wrappers/registry/runtime contract were absent before implementation.",
     "green": "7 focused kernel/registry/runtime tests passed, including a predecessor-copy sentinel and four continuation reuses.",
     "lineage": "The mandatory lineage command remains environment-blocked because /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external kernel source was copied.",
-    "production_publication": "pending one tracked-clean default-on p512/d128 packet"
+    "production_publication": "benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json"
   }
 }

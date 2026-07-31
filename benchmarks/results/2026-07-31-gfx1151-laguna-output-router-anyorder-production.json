@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "date": "2026-07-31",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "decision": {
+    "retain": true,
+    "default_backend": "hip_gfx1151",
+    "default_enabled": true,
+    "scope": "Laguna c=1 source-F16 output/add/RMSNorm to F32 router projection",
+    "fallback": "constructor-false fully ordered output-to-router chain"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "resident_nbytes": 79066169172
+  },
+  "platform": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "queues": 2
+  },
+  "repo": {
+    "revision": "4540a8674d1aec6524ba190c97f2da29c1c7b53b",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "decode_forward_calls_per_sample": 127,
+    "warmup_rows": 128,
+    "repetitions": 3,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-output-router-anyorder-production.json",
+    "raw_path": "/tmp/laguna-output-router-anyorder-production.json",
+    "raw_sha256": "f532e7e6181e1e6725f0653a0e12b3668f469c79e7224ffced15623bbc0900fc"
+  },
+  "performance": {
+    "decode_tok_s": 23.231783028367612,
+    "decode_ms_per_token": 43.04447914217049,
+    "samples_tok_s": [
+      23.21395189048533,
+      23.24451876865536,
+      23.231783028367612
+    ],
+    "samples_seconds_127_tokens": [
+      5.470847902121022,
+      5.463653658051044,
+      5.466648851055652
+    ],
+    "previous_production_tok_s": 23.089692642,
+    "previous_production_ms_per_token": 43.309368188860454,
+    "delta_pct": 0.6153844859292379,
+    "delta_ms_per_token": -0.2648890466899658,
+    "sprint_start_tok_s": 11.466687,
+    "sprint_delta_pct": 102.602399702439,
+    "same_gguf_vulkan_tok_s": 23.348381,
+    "remaining_vulkan_gap_pct": 0.5018898957949602,
+    "remaining_vulkan_gap_ms_per_token": 0.2149570438288535
+  },
+  "correctness": {
+    "next_token_ids": [
+      2930,
+      2930,
+      2930
+    ],
+    "final_token_ids": [
+      74825,
+      74825,
+      74825
+    ],
+    "generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "repeat_deterministic": true,
+    "final_positions_exact": true,
+    "tracked_returned_to_baseline": true,
+    "full_state_gate": "16/16 greedy exact, repeat logits bit-identical, candidate-vs-ordered max KL 0.0",
+    "retention_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json"
+  },
+  "implementation": {
+    "producer": "ordered fixedk_nontemporal_signal_bf16_out",
+    "consumer": "bf16_hidden_wave0_tree_anyorder",
+    "resident_bytes_delta": 0,
+    "launches_per_token_delta": 0,
+    "producer_resources": "local256/VGPR24/SGPR128/LDS512/scratch0",
+    "consumer_resources": "local256/VGPR24/SGPR128/dynamic-LDS1024/scratch0"
+  }
+}

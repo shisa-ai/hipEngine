@@ -8881,7 +8881,7 @@ The remaining attention sequence is:
 
 190. Replace the uncovered ordered output→router queue boundary with a
      dependency-safe gfx11 any-order continuation.
-     **Retained/default-on pending tracked-clean publication.**
+     **Retained/default-on and published.**
 
      ROCm 7.15 exposes graph device-launch/programmatic-edge declarations, but
      its HIP tests and `clr/hip_graph.cpp` still classify/reject device graph
@@ -8916,9 +8916,12 @@ The remaining attention sequence is:
      scratch0. The router begins **0.320-7.262 us** before the producer packet
      retires, without the VGPR24→64 contamination that rejected item 188.
      Promote this exact continuation as the gfx1151 default; retain the
-     constructor-false fully ordered fallback. Publish the clean headline
-     next:
-     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json).
+     constructor-false fully ordered fallback. Tracked-clean default-on
+     production measures **23.231783 tok/s / 43.044479 ms/token**, advancing
+     the preceding **23.089693 tok/s** headline by **0.61538%** and removing
+     **0.264889 ms/token**:
+     [`retained`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json).
 
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
@@ -8990,8 +8993,9 @@ Current decode checkpoint:
 | hipEngine current source-F16 tile2 production | **23.017271 tok/s** | **43.446 ms** | **+100.732%** |
 | hipEngine current quality-gated selected-halfdot production | **23.089693 tok/s** | **43.309 ms** | **+101.364%** |
 | hipEngine retained output→router any-order same-resident gate | **23.233248 tok/s** | **43.042 ms** | **+102.615%** |
+| hipEngine current output→router any-order production | **23.231783 tok/s** | **43.044 ms** | **+102.602%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining retained-gate wall gap | — | **0.212 ms/token** | hipEngine is **0.496%** below Vulkan throughput |
+| Remaining production wall gap | — | **0.215 ms/token** | hipEngine is **0.502%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently

@@ -196629,3 +196629,18 @@ Vulkan local sizes verbatim will close the measured gap.
   lineage command remains environment-blocked only because optional
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json`.
+
+## 2026-07-31 23:31 JST — Publish output→router any-order production
+
+- On tracked-clean `4540a8674`, the default-on three-run p512/d128 packet
+  measures **23.213952/23.244519/23.231783 tok/s**, median
+  **23.231783 tok/s / 43.044479 ms/token**.
+- This advances the preceding **23.089693 tok/s / 43.309368 ms/token**
+  production headline by **0.61538%** and removes **0.264889 ms/token**.
+  It is **102.602%** above the 11.466687-tok/s sprint start. The remaining
+  same-GGUF Vulkan gap is **0.214957 ms/token / 0.5019%**.
+- All three runs generate next token 2930, final token 74825, and the same
+  127-token trajectory hash. Positions, lifecycle, and allocation recovery
+  pass; residency remains **79,066,169,172 bytes**. Raw SHA-256 is
+  `f532e7e6...0900fc`. Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json`.

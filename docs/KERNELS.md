@@ -2637,6 +2637,10 @@ K6144/K9216 leaves **3.161%/2.182%**. Both kernels remain VGPR24/scratch0;
 same-resident p512/d128 moves
 **23.087307 -> 23.233248 tok/s (+0.63213%, -0.272079 ms/token)**:
 `benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-retained.json`.
+Tracked-clean default-on production reaches
+**23.231783 tok/s / 43.044479 ms/token**, **+0.61538%** over the prior
+headline, at unchanged residency:
+`benchmarks/results/2026-07-31-gfx1151-laguna-output-router-anyorder-production.json`.
 
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
