@@ -13,11 +13,11 @@ _H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _H6A_SWA = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
 _SOURCE_POLICY = {
-    _GLOBAL_ROLE: _H6A_GLOBAL,
+    _GLOBAL_ROLE: _H6N_GLOBAL,
     _SWA_ROLE: _H6A_SWA,
 }
-_CANDIDATE_POLICY = {
-    _GLOBAL_ROLE: _H6N_GLOBAL,
+_ROLLBACK_POLICY = {
+    _GLOBAL_ROLE: _H6A_GLOBAL,
     _SWA_ROLE: _H6A_SWA,
 }
 _GLOBAL_RETAINED = "global_context_rows_spans"
@@ -116,11 +116,17 @@ def _dispatch(cache, layer_id: int, start: int, rows: int) -> bool:
     return qualified
 
 
-def test_h6n_bounded_default_off_runtime_owner_and_fallbacks(monkeypatch) -> None:
+def test_h6n_source_default_runtime_owner_is_bounded_and_fail_closed(
+    monkeypatch,
+) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
     from hipengine.runtime import laguna_kv as module
     from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
+    register_laguna_kv_attention_kernels()
     assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _SOURCE_POLICY
     assert not hasattr(hip_gfx1151, _DENSE_CAPABILITY)
     assert is_registered(
@@ -145,11 +151,6 @@ def test_h6n_bounded_default_off_runtime_owner_and_fallbacks(monkeypatch) -> Non
     ) == 161_120_256
     keys_before = registered_keys()
 
-    monkeypatch.setattr(
-        hip_gfx1100,
-        _DENSE_CAPABILITY,
-        _CANDIDATE_POLICY,
-    )
     runtime = _FakeRuntime()
     cache = module.allocate_laguna_kv_cache(
         _production_config(),
@@ -161,7 +162,7 @@ def test_h6n_bounded_default_off_runtime_owner_and_fallbacks(monkeypatch) -> Non
     _install_fake_dispatch(cache, calls)
     try:
         assert cache.prefill_preappend_role_scoped is True
-        assert cache.prefill_preappend_role_variants == _CANDIDATE_POLICY
+        assert cache.prefill_preappend_role_variants == _SOURCE_POLICY
         for layer_id, candidate in ((0, _H6N_GLOBAL), (1, _H6A_SWA)):
             for start in (0, 128, 256, 384):
                 before = len(calls)
@@ -205,6 +206,26 @@ def test_h6n_bounded_default_off_runtime_owner_and_fallbacks(monkeypatch) -> Non
     assert runtime.allocations == {}
     assert registered_keys() == keys_before
 
+    monkeypatch.setattr(hip_gfx1100, _DENSE_CAPABILITY, _ROLLBACK_POLICY)
+    rollback_runtime = _FakeRuntime()
+    rollback = module.allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1100",
+        runtime=rollback_runtime,
+    )
+    try:
+        assert rollback.prefill_preappend_role_variants == _ROLLBACK_POLICY
+        rollback.position = -1
+        rollback.prepare_rows(tuple(range(128)))
+        assert rollback.can_preappend_attention_prefill(0, 128)
+        assert rollback.can_preappend_attention_prefill(1, 128)
+        rollback.discard_rows()
+    finally:
+        rollback.free()
+    assert rollback_runtime.allocations == {}
+
+    monkeypatch.setattr(hip_gfx1100, _DENSE_CAPABILITY, _SOURCE_POLICY)
     explicit_runtime = _FakeRuntime()
     explicit = module.allocate_laguna_kv_cache(
         _production_config(),

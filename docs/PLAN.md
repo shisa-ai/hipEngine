@@ -2139,21 +2139,25 @@ CPU rows, preserves all span bytes, rejects invalid shapes before HIP loading,
 and recovers allocations at starts **0/128/256/384**.
 
 H6N reduces exact dynamic launch storage **`(4096 + 8 + 128) * 4 = 16,928` ->
-`(512 + 8 + 128) * 4 = 2,592` bytes (-84.688%)** and now has bounded default-
-off runtime ownership through one additional generic role-candidate key. No
-backend/quant branch, ABI, allocation, workspace, sidecar, or public selector
-is added. Complete natural M512 is KL0/byte-exact across logits, all **48/48**
-hidden boundaries, K/V/spans, repeat, and teardown. Four cached requests keep
-**2,192 dispatches** and substitute exact **48 H6A global -> 48 H6N**, moving
-global/attention/kernel-sum/span **57.126/169.556/1,320.178/1,346.667 ->
-31.969/148.140/1,305.325/1,327.300 ms (-44.038%/-12.631%/-1.125%/-1.438%)**.
-Fixed C4096/M512 improves **379.040 -> 384.692 tok/s (+1.491%, 5/5 wins)**;
-clean 512/1K are **+0.058%/+0.093%**, while 4K is exact within **-0.037%** wall
-noise. H6A remains source production at **381.977 tok/s**. Next freeze a
-separate source-default contract and require selector-unset 512/1K/4K plus
-fixed C4096/M512 non-regression before changing the one global map value
-([H6N candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
-[H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+`(512 + 8 + 128) * 4 = 2,592` bytes (-84.688%)** and is now the retained
+gfx1100 global dense-initial source default. The generic role parser keeps H6A
+and H6N as bounded candidates; no backend/quant branch, ABI, allocation,
+workspace, sidecar, or public selector is added. Complete natural M512 is KL0/
+byte-exact across logits, all **48/48** hidden boundaries, K/V/spans, repeat,
+and teardown. Four cached requests keep **2,192 dispatches** and substitute
+exact **48 H6A global -> 48 H6N**, moving global/attention/kernel-sum/span
+**57.126/169.556/1,320.178/1,346.667 -> 31.969/148.140/1,305.325/1,327.300 ms
+(-44.038%/-12.631%/-1.125%/-1.438%)**. Fresh selector-unset fixed C4096/M512
+improves **381.772 -> 387.571 tok/s (+1.519%, 5/5 wins)**, **+128.633%** over
+campaign start and **1.79668x** behind llama.cpp HIP **696.342**. Selector-
+unset 512/1K/4K moves **363.520/295.622/188.755 -> 363.324/296.211/188.858
+tok/s (-0.054%/+0.199%/+0.054%)** with exact outputs and clean teardown; 4K
+wins **3/3**. H6A global remains registered rollback, H6A SWA is unchanged,
+gfx1151 stays excluded, and **81/81** guards pass. Next reprofile exact promoted
+C4096/direct-M512 production and rerank the matched component residual
+([H6N production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

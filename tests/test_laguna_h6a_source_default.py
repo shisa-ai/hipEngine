@@ -10,11 +10,16 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 _DENSE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _GLOBAL_CANDIDATE = "global_context_rows_dense_initial_cached_exact_spans"
+_H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _SWA_CANDIDATE = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
 _H5R = "swa_context_rows_qrow4_cached_exact_spans"
 _H5U = "global_context_rows_cached_exact_spans"
-_PRODUCTION_POLICY = {
+_SOURCE_POLICY = {
+    _GLOBAL_ROLE: _H6N_GLOBAL,
+    _SWA_ROLE: _SWA_CANDIDATE,
+}
+_H6A_POLICY = {
     _GLOBAL_ROLE: _GLOBAL_CANDIDATE,
     _SWA_ROLE: _SWA_CANDIDATE,
 }
@@ -70,13 +75,11 @@ def _production_config() -> SimpleNamespace:
     )
 
 
-def test_h6a_source_default_promotes_only_dense_initial_global_and_swa_roles(
-    monkeypatch,
-) -> None:
+def test_h6a_dense_initial_leaves_remain_registered_rollbacks(monkeypatch) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
-    assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _PRODUCTION_POLICY
+    assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _SOURCE_POLICY
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == _H5R_POLICY
     assert not hasattr(hip_gfx1151, _DENSE_CAPABILITY)
 
@@ -89,13 +92,19 @@ def test_h6a_source_default_promotes_only_dense_initial_global_and_swa_roles(
     )
     try:
         assert cache.prefill_preappend_role_scoped is True
-        assert cache.prefill_preappend_role_variants == _PRODUCTION_POLICY
+        assert cache.prefill_preappend_role_variants == _SOURCE_POLICY
         for layer_id in (0, 1):
             cache.position = -1
             cache.prepare_rows(tuple(range(128)))
             assert cache.can_preappend_attention_prefill(layer_id, 128)
             cache.discard_rows()
-        for variant in (_GLOBAL_CANDIDATE, _SWA_CANDIDATE, _H5R, _H5U):
+        for variant in (
+            _GLOBAL_CANDIDATE,
+            _H6N_GLOBAL,
+            _SWA_CANDIDATE,
+            _H5R,
+            _H5U,
+        ):
             assert is_registered(
                 KernelKey(
                     "hip_gfx1100",
@@ -108,7 +117,7 @@ def test_h6a_source_default_promotes_only_dense_initial_global_and_swa_roles(
         cache.free()
     assert runtime.allocations == {}
 
-    monkeypatch.setattr(hip_gfx1100, _DENSE_CAPABILITY, {})
+    monkeypatch.setattr(hip_gfx1100, _DENSE_CAPABILITY, _H6A_POLICY)
     rollback_runtime = _FakeRuntime()
     rollback = allocate_laguna_kv_cache(
         _production_config(),
@@ -117,9 +126,9 @@ def test_h6a_source_default_promotes_only_dense_initial_global_and_swa_roles(
         runtime=rollback_runtime,
     )
     try:
-        assert rollback.prefill_preappend_role_variants == _H5R_POLICY
+        assert rollback.prefill_preappend_role_variants == _H6A_POLICY
         rollback.prepare_rows(tuple(range(128)))
-        assert not rollback.can_preappend_attention_prefill(0, 128)
+        assert rollback.can_preappend_attention_prefill(0, 128)
         assert rollback.can_preappend_attention_prefill(1, 128)
         rollback.discard_rows()
     finally:

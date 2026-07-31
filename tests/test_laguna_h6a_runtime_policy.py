@@ -12,10 +12,11 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 _DENSE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _GLOBAL_CANDIDATE = "global_context_rows_dense_initial_cached_exact_spans"
+_SOURCE_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _SWA_CANDIDATE = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
 _PRODUCTION_POLICY = {
-    _GLOBAL_ROLE: _GLOBAL_CANDIDATE,
+    _GLOBAL_ROLE: _SOURCE_GLOBAL,
     _SWA_ROLE: _SWA_CANDIDATE,
 }
 _H5R = "swa_context_rows_qrow4_cached_exact_spans"
@@ -129,7 +130,7 @@ def _dispatch(cache, layer_id: int, start: int, rows: int) -> bool:
     return qualified
 
 
-def test_h6a_runtime_metadata_is_source_default_and_runner_gated() -> None:
+def test_h6a_runtime_metadata_preserves_promoted_source_and_runner_gate() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner
 

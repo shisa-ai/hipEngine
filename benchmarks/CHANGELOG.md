@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-01
+
+- [promoted exact gfx1100 Laguna Q2 XL WPF-H6N global fixed-512 production] Radeon Pro W7900 / selector-unset fixed C4096/M512 improves H6A rollback -> H6N source **381.772 -> 387.571 tok/s (+1.519%, 5/5 wins)**, **+128.633%** over campaign start and **1.79668x** behind matched llama.cpp HIP **696.342**. Selector-unset 512/1K/4K moves **363.520/295.622/188.755 -> 363.324/296.211/188.858 tok/s (-0.054%/+0.199%/+0.054%)** with exact/finite outputs and clean lifecycle; 4K wins **3/3**. Promote only the one global package-map value, retain H6A global rollback and H6A SWA, keep gfx1151 excluded, and pass **81/81** guards; `benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json`.
+
 ## 2026-07-31
 
 - [qualified exact gfx1100 Laguna Q2 XL WPF-H6N global fixed-512 default-off runtime] Radeon Pro W7900 / complete natural M512 is KL0/byte-exact across all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown at unchanged workspace/scratch. Four cached requests preserve **2,192 dispatches** and substitute exact **48 H6A global -> 48 H6N**, moving global/attention/request-sum/span **57.126/169.556/1,320.178/1,346.667 -> 31.969/148.140/1,305.325/1,327.300 ms (-44.038%/-12.631%/-1.125%/-1.438%)**. Fixed C4096/M512 improves **379.040 -> 384.692 tok/s (+1.491%, 5/5 wins)**; source remains H6A at **381.977 tok/s** pending selector-unset publication; `benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json`.
