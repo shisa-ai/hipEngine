@@ -29,6 +29,16 @@ from hipengine.kernels.hip_gfx1100.fused.laguna_attention import (
     plan_laguna_attention_build,
     register_laguna_attention_kernels,
 )
+from hipengine.kernels.hip_gfx1100.fused.moonshine_glue import (
+    build_moonshine_glue,
+    moonshine_embedding_lookup_fp16,
+    moonshine_partial_rope_cache_append_fp16,
+    moonshine_partial_rope_fp16,
+    moonshine_residual_fp16,
+    moonshine_self_cache_append_fp16,
+    plan_moonshine_glue_build,
+    register_moonshine_glue_kernels,
+)
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
     laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out,
@@ -81,6 +91,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 __all__ = [
     "build_gguf_ops",
     "build_laguna_attention",
+    "build_moonshine_glue",
     "build_paro_combine",
     "build_paro_silu",
     "gguf_add_rmsnorm_bf16_f32_weight",
@@ -105,6 +116,13 @@ __all__ = [
     "laguna_softplus_head_gate_f32_fp16_via_bf16_out",
     "laguna_weighted_top10_routed_hidden_bf16_out",
     "laguna_softplus_head_gate_f32_out",
+    "moonshine_embedding_lookup_fp16",
+    "moonshine_partial_rope_cache_append_fp16",
+    "moonshine_partial_rope_fp16",
+    "moonshine_residual_fp16",
+    "moonshine_self_cache_append_fp16",
+    "plan_moonshine_glue_build",
+    "register_moonshine_glue_kernels",
     "plan_gguf_ops_build",
     "plan_laguna_attention_build",
     "plan_paro_combine_build",
