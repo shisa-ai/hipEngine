@@ -1962,9 +1962,29 @@ H6D -> 45 H6F**, moving IQ3/request-sum/span **464.484/1,540.306/1,567.420 ->
 (+5.234%/+4.365%/+2.856%)**, with 3/3 exact wins at each length and **156/156**
 retained guards passing. Fixed C4096/direct-M512 improves **333.248 -> 352.761
 tok/s (+5.856%, 5/5 wins)**, reaches **+108.099%** over campaign start, and
-narrows exact llama.cpp HIP **696.342 tok/s** to **1.97397x**. Reprofile clean
-promoted production and select the next distinct exact residual target
-([H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
+narrows exact llama.cpp HIP **696.342 tok/s** to **1.97397x**. The clean promoted
+H6F refresh reaches **353.798 tok/s** from five exact token-2930/lifecycle-clean
+samples, **+108.710%** over campaign start and **1.96819x** behind llama.cpp HIP.
+Its representative request reconciles **1,435.431 ms / 2,192 dispatches** in a
+**1,460.237-ms** median span; IQ-down/Q5/attention/gate-up/Q6 gaps rank
+**221.737/191.928/149.544/75.429/71.249 ms** and explain **98.982%** of the
+**717.190-ms** kernel gap. H6F is local128/VGPR152/LDS512/scratch0 and the exact
+production topology has no H6D/H5Q escape.
+
+Select target-only **WPF-H6G exact Q5 one-step K-record prefetch** rather than
+immediately iterating H6F's just-promoted IQ operation. Q5 reconciles as
+**218.228-ms H5Y consumers**, **25.849-ms producers**, **4.698-ms activation
+packs**, and **1.890-ms H5G fallback**. The BF16 K9216/N3072 row-major 12x8 and
+F32 K3072/N9216 tile-K-col 8x10 consumers own **156.790 ms / 70 calls
+(71.85% of H5Y consumer time)**. Separate H6G siblings must keep the H5Y planes,
+local128/four-wave K ownership, every FMA/tree/serial sum/store, rows/output
+tiles, grids, maps, workspace, and fallbacks while carrying one next weight and
+activation record across current-K FMAs. This is latency-hiding rationale, not a
+speed claim: RED precedes code, ISA must prove realized prefetch without scratch
+or spill, and both actual roles must be complete-byte exact and win HIP events
+plus synchronized wall before any runtime owner
+([post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
+[H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
 [H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
 [post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json) ·
 [H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
