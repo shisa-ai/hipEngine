@@ -58,7 +58,14 @@ def _is_embedding(name: str) -> bool:
 
 
 def _is_argmax_end(name: str) -> bool:
-    return "argmax_stage2_kernel" in name
+    return (
+        "argmax_stage2_kernel" in name
+        or "argmax_tile_stage2_publish_control" in name
+    )
+
+
+def _is_argmax_stage1(name: str) -> bool:
+    return "argmax_stage1" in name or "gemv_top1_stage1" in name
 
 
 def _kernel_family(name: str) -> str:
@@ -67,7 +74,7 @@ def _kernel_family(name: str) -> str:
     lowered = str(name).lower()
     if _is_embedding(lowered):
         return "embedding"
-    if "argmax_stage" in lowered:
+    if _is_argmax_stage1(lowered) or _is_argmax_end(lowered):
         return "lm_head_argmax"
     if (
         "laguna_f16w_" in lowered
@@ -288,7 +295,7 @@ def _trace_row_family(
     if index + 2 < len(rows):
         next_name = str(rows[index + 1]["Kernel_Name"])
         final_name = str(rows[index + 2]["Kernel_Name"])
-        if "argmax_stage1" in next_name and "argmax_stage2" in final_name:
+        if _is_argmax_stage1(next_name) and _is_argmax_end(final_name):
             return "lm_head_argmax"
     return _kernel_family(str(rows[index]["Kernel_Name"]))
 
