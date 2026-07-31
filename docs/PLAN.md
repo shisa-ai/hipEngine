@@ -2004,20 +2004,25 @@ plus the three exact raw fallbacks in H6F/H6E production at **353.798 tok/s**
 ([H6H rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-rejected.json) ·
 [target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-f16-raw-fallback-target.json)).
 
-After the distinct H6G/H6H Q5/Q6 screens, select target-only **WPF-H6I exact
-IQ3 triple-output reduction amortization** on the largest **221.737-ms** family
-gap. H6I keeps H6F's P256/P64/local128/rowbatch8 loads, row-interleaved VOPD
-FMA order, per-output wave32 tree, serial wave0..3 sum, BF16 store, grid, and
-active traversal, but carries three strided outputs through one publication and
-one reuse barrier. N3072/P256 has four complete triplets, changing H6F reduction
-epochs **6 -> 4** and dynamic barriers **12 -> 8 per rowbatch (-33.333%)**
-while accumulators rise **16 -> 24 floats/thread** and source wave-sum storage
-rises **256 -> 384 bytes**. A two-point H6D/H6F epoch model suggests only
-**360.918 -> 335.623 ms** all-layer wall and **353.798 -> 360.092 tok/s**; this
-is selection rationale, not a performance claim. Freeze RED and require cached
-stride-0x300/eight-barrier/private0/spill0/scratch0 evidence plus complete H6F
-bytes and **45/45** both-clock wins before any runtime owner
-([H6I target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)). Production remains H6F at **353.798 tok/s**.
+Admit **WPF-H6I exact IQ3 triple-output reduction amortization** as a standalone
+gfx1100 leaf after the distinct H6G/H6H Q5/Q6 screens. It keeps H6F's
+P256/P64/local128/rowbatch8 loads, row-interleaved VOPD FMA order, per-output
+wave32 tree, serial wave0..3 sum, BF16 store, grid, and active traversal while
+carrying three strided outputs through one publication/reuse epoch. Frozen
+rows1/7/8/9/M512, P64/P65, triplet-boundary, complete-H6F, and sampled-CPU
+coverage passes **9/9**; the retained bundle passes **112/112**. Cached ISA
+proves stride **0x300**, 216 useful FMAs, and **6 -> 4 epochs / 12 -> 8 dynamic
+barriers**. Metadata/runtime are private0/spill0/scratch0 at **VGPR164/168,
+LDS384/512**, local128/grid32768x64. All **45/45** actual IQ3 layers are
+complete-byte exact and improve both clocks: H6F -> H6I event/wall sums move
+**362.558/359.595 -> 328.206/332.468 ms (-9.475%/-7.544%,
+1.105x/1.082x)**, with minimum per-layer **1.094x/1.073x**. Add no package
+capability, runtime ABI, allocation, workspace, sidecar, or source selection in
+this unit. Production remains H6F at **353.798 tok/s** versus exact llama.cpp
+HIP **696.342**; next freeze bounded default-off ownership and require complete
+M512 state, exact topology, and clean 512/1K/4K
+([H6I candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-candidate.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-target.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
