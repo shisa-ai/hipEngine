@@ -2,6 +2,11 @@
 
 from hipengine.models.base import ModelPlugin
 from hipengine.models.laguna import LAGUNA_GGUF, LagunaGGUFModel
+from hipengine.models.moonshine import (
+    MOONSHINE,
+    MoonshineForConditionalGenerationModel,
+    MoonshineModelSpec,
+)
 from hipengine.models.qwen35 import (
     QWEN35_GGUF,
     QWEN35_MOE_GGUF,
@@ -23,6 +28,9 @@ __all__ = [
     "DuplicateModelError",
     "MissingModelError",
     "ModelPlugin",
+    "MOONSHINE",
+    "MoonshineForConditionalGenerationModel",
+    "MoonshineModelSpec",
     "LAGUNA_GGUF",
     "LagunaGGUFModel",
     "QWEN35_GGUF",
