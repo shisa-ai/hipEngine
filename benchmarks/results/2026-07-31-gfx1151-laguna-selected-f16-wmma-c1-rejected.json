@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T19:01:16+09:00",
+  "kind": "hipengine_laguna_selected_gate_up_f16_wmma_c1",
+  "status": "rejected_leaf",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "workload": {
+    "shape": "layer-1 selected gate/up, c=1, top-10, K3072, N1024",
+    "samples": 21,
+    "burst": 100
+  },
+  "performance": {
+    "retained_direct_ms": 0.14696944236755372,
+    "t16_wmma_ms": 0.3018002510070801,
+    "change_percent": 105.35032205724805,
+    "t16_padded_rows": 160,
+    "natural_rows": 10
+  },
+  "correctness": {
+    "finite": true,
+    "bf16_mismatches": 2145,
+    "bf16_elements": 20480
+  },
+  "decision": "Reject. A tensorized F16 consumer pads ten c=1 route rows to 160 and is more than twice as slow as the retained natural GEMV.",
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q4_k_mmq_leaf_bench.py --routing-json /tmp/laguna-c1-routing-selected10.json --rows 1 --layer 1 --modes retained-direct,t16-wmma,t16-grouped-exact --warmups 5 --samples 21 --burst 100 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-c1-q4-t16-f16-wmma-leaf.json",
+    "raw_sha256": "4a363e2ec120948296c7c73d0f8e1b8f5a577d8f73f94680ba344f8de2065d71"
+  }
+}

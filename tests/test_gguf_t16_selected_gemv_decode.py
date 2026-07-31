@@ -29,7 +29,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
@@ -1041,6 +1043,17 @@ def test_p9_h3d_registry_keys_resolve() -> None:
     ) is (
         gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_gemv_bf16_bf16_out
     )
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_q4_k_t16_dual_interleaved_v1",
+        variant=(
+            "selected_dual_t16_natural_tile8_parallel_silu_halfdot_"
+            "gemv_decode_bf16_bf16_out"
+        ),
+    ) is (
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out
+    )
 
 
 def test_p9_h3d_build_plan_is_dry_run_safe() -> None:
@@ -1247,6 +1260,24 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
         gate_tile8_parallel_silu_paircoeff,
         gate_tile8_parallel_silu,
     )
+    gate_tile8_parallel_silu_halfdot = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_a,
+        gate_tiles_b,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    halfdot_f32 = _bf16_u16_to_f32(gate_tile8_parallel_silu_halfdot)
+    exact_f32 = _bf16_u16_to_f32(gate_tile8_parallel_silu_paircoeff)
+    assert np.isfinite(halfdot_f32).all()
+    relative_error = np.abs(halfdot_f32 - exact_f32) / np.maximum(
+        np.abs(exact_f32),
+        np.float32(0.25),
+    )
+    assert np.quantile(relative_error, 0.99) <= 0.05
     gate_tile8_parallel_silu_pairq = _run_direct_dual_silu(
         gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16_out,
         gate_x,
@@ -1278,6 +1309,20 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
     np.testing.assert_array_equal(
         gate_tile8_parallel_silu_interleaved,
         gate_tile8_parallel_silu_paircoeff,
+    )
+    gate_tile8_parallel_silu_interleaved_halfdot = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out,
+        gate_x,
+        selected,
+        gate_tiles_interleaved,
+        gate_tiles_interleaved,
+        gate_out,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(
+        gate_tile8_parallel_silu_interleaved_halfdot,
+        gate_tile8_parallel_silu_halfdot,
     )
     small_gate_x = np.concatenate(
         (

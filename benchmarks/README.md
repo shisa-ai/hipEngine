@@ -51,9 +51,11 @@ trace cut the 23-call Q6 window **100.367 -> 99.459 ms (-0.905%)** at
 local128/VGPR112/SGPR128/LDS5120B/scratch0.
 [`row-schedule candidate`](results/2026-07-27-gfx1151-laguna-f16-quality-row-schedule-candidate.json).
 
-The current exact gfx1151 Laguna p512/d128 decode checkpoint is
-**23.017271 tok/s / 43.446 ms/token**, up **100.732%** from the
-**11.466687 tok/s** sprint start. The exact selected-Q4 down owner now shares
+The current gfx1151 Laguna p512/d128 decode checkpoint is
+**23.089693 tok/s / 43.309 ms/token**, up **101.363%** from the
+**11.466687 tok/s** sprint start. The preceding exact checkpoint remains
+**23.017271 tok/s**; the current selected gate/up owner is explicitly
+quality-gated as described below. The exact selected-Q4 down owner now shares
 adjacent-column nibble and coefficient transport while preserving each F32
 FMA/reduction/BF16/weighted boundary. Seven same-resident pairs improve
 **22.762554 -> 22.793632 tok/s (+0.13653%, 5/7 wins)**; tracked-clean
@@ -111,6 +113,18 @@ production advances **22.891692 -> 23.017271 tok/s (+0.54858%,
 -0.238335 ms/token)**, with exact trajectories, unchanged residency, and a
 remaining same-GGUF Vulkan gap of **0.616114 ms/token / 1.4385%**.
 [`F16 tile2 production`](results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json).
+The current gfx1151 selected gate/up default retains the byte-neutral
+interleaved Q4T16 layout but converts each adjacent BF16-activation/
+dequantized-weight pair to FP16 in registers and uses native dot2 with FP32
+accumulation. The actual layer-1 leaf improves **17.989%**, all seven
+same-resident p512/d128 pairs improve
+**22.999793 -> 23.084044 tok/s (+0.36631%)**, and default-on production
+measures **23.089693 tok/s / 43.309 ms/token**. This path is quality-gated,
+not bit-exact: recurrent candidate-vs-exact maximum KL is **0.008202** and
+teacher-forced top-1 is **30/32 = 93.75%**; the exact interleaved owner remains
+the constructor rollback. The same-GGUF Vulkan gap is now
+**0.479846 ms/token / 1.108%**.
+[`selected-halfdot production`](results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json).
 The refreshed 127-transition census shows the tile2 family saving transfers
 to the critical path: source-F16 falls **24.349 -> 24.128 ms/token**,
 union-busy falls **42.157 -> 41.942**, and span falls

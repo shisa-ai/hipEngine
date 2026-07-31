@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T19:32:40+09:00",
+  "kind": "hipengine_laguna_selected_gate_up_halfdot_decode_production",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16",
+    "resident_bytes": 79066169172
+  },
+  "workload": {
+    "shape": "p512/d128 eager c=1",
+    "decode_transitions": 127,
+    "repetitions": 3,
+    "matrix_rows": 2048,
+    "attention_rows": 128
+  },
+  "performance": {
+    "prior_production_tok_s": 23.0172713318,
+    "production_median_tok_s": 23.08969264166813,
+    "throughput_change_percent": 0.3146389892362045,
+    "prior_wall_ms_per_token": 43.4456363478,
+    "production_wall_ms_per_token": 43.309368189482946,
+    "saving_ms_per_token": 0.1362681583170524,
+    "samples_tok_s": [
+      23.066668630793878,
+      23.08969264166813,
+      23.09385011768209
+    ]
+  },
+  "correctness": {
+    "quality_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json",
+    "generated_ids_deterministic": true,
+    "next_token_id": 2930,
+    "final_token_id": 74825,
+    "final_position": 638,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "comparator": {
+    "same_gguf_llama_cpp_vulkan_tok_s": 23.348381,
+    "same_gguf_llama_cpp_vulkan_wall_ms_per_token": 42.829522,
+    "remaining_wall_gap_ms_per_token": 0.479846189482946,
+    "hipengine_throughput_below_percent": 1.1079498759758555
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-selected-halfdot-production.json",
+    "raw_sha256": "333f739611ac3ba85ac5cfc74684bb30976aa690ae3a58e7b196684cdba51ecf"
+  }
+}

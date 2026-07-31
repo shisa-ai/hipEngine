@@ -175,6 +175,14 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         == "tiles_dual"
     )
     assert (
+        plan.interleaved_natural_selected_gate_up_halfdot_route.key.variant
+        == "selected_dual_t16_natural_tile8_parallel_silu_halfdot_gemv_decode_bf16_bf16_out"
+    )
+    assert (
+        plan.interleaved_natural_selected_gate_up_halfdot_route.allocation_name
+        == "tiles_dual"
+    )
+    assert (
         plan.selected_gate_up_prefill_f32_interleaved_key.quant
         == "gguf_q4_k_t16_dual_interleaved_v1"
     )

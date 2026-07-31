@@ -2530,6 +2530,24 @@ Tracked-clean production at `a4c2c5d26` advances
 residency:
 `benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json`.
 
+gfx1151 selected Q4T16 gate/up decode also has a quality-gated adjacent-K
+FP16-dot2 consumer. The local128/tile8 owner reads the existing byte-neutral
+dual-interleaved resident layout, converts each adjacent BF16 activation and
+dequantized Q4 pair to FP16 in registers, executes `v_dot2_f32_f16`, and keeps
+FP32 accumulation plus independent BF16 gate/up boundaries before fused SiLU.
+The exact pair-coefficient consumer remains the constructor-false fallback.
+The production-layout layer-1 leaf improves **0.110406 -> 0.090545 ms
+(-17.989%)**; cached tracing names
+`q4_k_t16_selected_dual_interleaved_natural_tile8_halfdot_silu_gemv_kernel`
+at local128/VGPR96/SGPR128/LDS512/scratch0. The 32-step recurrent gate measures
+max/mean KL **0.008202/0.001036** and **93.75%** teacher-forced top-1.
+Seven complete-model pairs improve **22.999793 -> 23.084044 tok/s
+(+0.36631%, 7/7)**, and selector-unset production reaches
+**23.089693 tok/s / 43.309368 ms/token** at unchanged residency:
+`benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json`
+and
+`benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json`.
+
 gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
 16-logit producer tile and finalizes only those 6,272 pairs. This removes the
 full-logit argmax stage-1 scan and one model launch while preserving all logits,

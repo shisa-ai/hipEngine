@@ -8510,7 +8510,51 @@ The remaining attention sequence is:
      argmax on gfx1151. Retain exact tile maxima plus the independent reducer:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-hierarchical-top1-rejected.json).
 
-Current exact decode checkpoint:
+178. Transfer gfx1151's native FP16 dot2 path into the production
+     byte-neutral interleaved selected gate/up consumer.
+     **Quality-gated, retained, and default on gfx1151.**
+
+     The llama.cpp Vulkan source review at `c0bc8591e` confirms two distinct
+     points: its backend explicitly detects mixed FP16 dot2 with FP32
+     accumulation, but its Q4_K routed decode still relies on its own shader
+     ownership/command-buffer machinery. The transferable seam is therefore
+     the device instruction, not a claim that hipEngine now copies Vulkan's
+     selected kernel.
+
+     A direct reuse of the prefill F16-WMMA consumer is wrong at c=1:
+     padding ten natural route rows to 160 makes it
+     **0.146969 -> 0.301800 ms (+105.35%)**, with 2,145/20,480 BF16
+     mismatches. Reject that route before runtime integration:
+     [`F16-WMMA rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-f16-wmma-c1-rejected.json).
+
+     The retained design instead keeps the existing top-10/local128/tile8
+     ownership and byte-neutral `gguf_q4_k_t16_dual_interleaved_v1` bytes.
+     Each thread owns one adjacent K pair, converts the BF16 activation and
+     dequantized Q4 pair to FP16 in registers, issues native
+     `v_dot2_f32_f16`, and retains FP32 accumulation plus the independent
+     BF16 gate/up boundaries before SiLU. The actual layer-1 leaf improves
+     **0.110406 -> 0.090545 ms (-17.989%)** with no resident growth.
+
+     This path is intentionally quality-gated rather than bit-exact. The
+     recurrent 32-step gate measures candidate versus exact at every
+     teacher-forced decode step: maximum KL **0.008202**, mean KL
+     **0.001036**, and top-1 **30/32 = 93.75%**. Poolside first-token KL is
+     **0.0000175**, the candidate repeat is deterministic, and tracked
+     allocations return to zero. Greedy output matches 24/32 prefix tokens,
+     so the exact interleaved pair-coefficient route remains the constructor
+     rollback and we do not describe this as exact.
+
+     All seven same-resident p512/d128 pairs improve
+     **22.999793 -> 23.084044 tok/s (+0.36631%)**, saving
+     **0.161670 ms/token** by paired median. Default-on production then
+     measures **23.089693 tok/s / 43.309368 ms/token**, up **0.31464%**
+     from 23.017271. rocprof names the intended local128 candidate at
+     VGPR96/SGPR128/LDS512/scratch0. The same-GGUF Vulkan gap contracts to
+     **0.479846 ms/token / 1.108%**:
+     [`retention`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-retained.json),
+     [`production`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-halfdot-decode-production.json).
+
+Current decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
 | --- | ---: | ---: | ---: |
@@ -8541,8 +8585,9 @@ Current exact decode checkpoint:
 | hipEngine D9 wave-0 tracked-clean sample | **22.861339 tok/s** | **43.742 ms** | **+99.372%** |
 | hipEngine prior split-priority production | **22.891692 tok/s** | **43.684 ms** | **+99.636%** |
 | hipEngine current source-F16 tile2 production | **23.017271 tok/s** | **43.446 ms** | **+100.732%** |
+| hipEngine current quality-gated selected-halfdot production | **23.089693 tok/s** | **43.309 ms** | **+101.364%** |
 | same-GGUF llama.cpp Vulkan | **23.348381 tok/s** | **42.830 ms** | directional comparator |
-| Remaining tracked-clean wall gap | — | **0.616 ms/token** | hipEngine is **1.439%** below Vulkan throughput |
+| Remaining production wall gap | — | **0.480 ms/token** | hipEngine is **1.108%** below Vulkan throughput |
 
 The retained two-stream schedule supersedes the single-stream wall while
 preserving its device kernels. The paired-Q4 down default subsequently

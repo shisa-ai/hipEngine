@@ -20,6 +20,7 @@
 namespace {
 
 using half_t = _Float16;
+typedef half_t half2_t __attribute__((ext_vector_type(2)));
 
 constexpr int QK_K = 256;
 constexpr int Q8_1_BLOCK = 32;
@@ -1440,6 +1441,393 @@ void q4_k_t16_selected_dual_natural_tile8_gemv_kernel(
       out_row_a[local_col] = float_to_scalar<scalar_t>(total_a);
       out_row_b[local_col] = float_to_scalar<scalar_t>(total_b);
     }
+  }
+}
+
+// Quality-gated c=1 screen: keep the retained tile8/route ownership, but let
+// each thread own one adjacent K pair and accumulate it with v_dot2_f32_f16.
+// BF16 activations and dequantized Q4 values are converted to FP16 in
+// registers; the output remains the production BF16-boundary SiLU result.
+__global__ __launch_bounds__(128, 4)
+void q4_k_t16_selected_dual_natural_tile8_halfdot_silu_gemv_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out,
+    int64_t num_experts) {
+  constexpr int kRows = 10;
+  constexpr int kInFeatures = 3072;
+  constexpr int kOutFeatures = 1024;
+  constexpr int kBlocksPerRow = kInFeatures / QK_K;
+  constexpr int kOutTiles = kOutFeatures / T16_COLS;
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= kRows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+
+  float acc_a[kTileCols];
+  float acc_b[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc_a[local_col] = 0.0f;
+    acc_b[local_col] = 0.0f;
+  }
+
+  const int k0 = tid * 2;
+  const int k1 = k0 + 1;
+  const int sb = k0 >> 5;
+  const int lane0 = k0 & 31;
+  const int lane1 = lane0 + 1;
+  for (int64_t blk = 0; blk < kBlocksPerRow; ++blk) {
+    const uint8_t* __restrict__ tile_a =
+        expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+            tiles_a, expert_id, out_tile, blk, kOutTiles, kBlocksPerRow);
+    const uint8_t* __restrict__ tile_b =
+        expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+            tiles_b, expert_id, out_tile, blk, kOutTiles, kBlocksPerRow);
+    const int64_t k_base = blk * QK_K;
+    const half2_t xv = {
+        static_cast<half_t>(bf16_bits_to_float(x[k_base + k0])),
+        static_cast<half_t>(bf16_bits_to_float(x[k_base + k1])),
+    };
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const int col1 = col0 + 1;
+      const int q_index0 =
+          Q4_T16_Q_OFFSET +
+          (sb * Q4_SUBBLOCK + lane0) * (T16_COLS / 2) +
+          (col0 >> 1);
+      const int q_index1 =
+          Q4_T16_Q_OFFSET +
+          (sb * Q4_SUBBLOCK + lane1) * (T16_COLS / 2) +
+          (col0 >> 1);
+      const uint8_t qa0 = tile_a[q_index0];
+      const uint8_t qa1 = tile_a[q_index1];
+      const uint8_t qb0 = tile_b[q_index0];
+      const uint8_t qb1 = tile_b[q_index1];
+      const uint32_t d_a = *reinterpret_cast<const uint32_t*>(
+          tile_a + Q4_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin_a = *reinterpret_cast<const uint32_t*>(
+          tile_a + Q4_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t scale_a = *reinterpret_cast<const uint16_t*>(
+          tile_a + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t min_a = *reinterpret_cast<const uint16_t*>(
+          tile_a + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      const uint32_t d_b = *reinterpret_cast<const uint32_t*>(
+          tile_b + Q4_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin_b = *reinterpret_cast<const uint32_t*>(
+          tile_b + Q4_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t scale_b = *reinterpret_cast<const uint16_t*>(
+          tile_b + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t min_b = *reinterpret_cast<const uint16_t*>(
+          tile_b + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+
+      const float scale_a0 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_a)) *
+          static_cast<float>(scale_a & 0xFFu);
+      const float scale_a1 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_a >> 16)) *
+          static_cast<float>(scale_a >> 8);
+      const float min_a0 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_a)) *
+          static_cast<float>(min_a & 0xFFu);
+      const float min_a1 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_a >> 16)) *
+          static_cast<float>(min_a >> 8);
+      const float scale_b0 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_b)) *
+          static_cast<float>(scale_b & 0xFFu);
+      const float scale_b1 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_b >> 16)) *
+          static_cast<float>(scale_b >> 8);
+      const float min_b0 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_b)) *
+          static_cast<float>(min_b & 0xFFu);
+      const float min_b1 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_b >> 16)) *
+          static_cast<float>(min_b >> 8);
+
+      const half2_t wa0 = {
+          static_cast<half_t>(
+              static_cast<float>(qa0 & 0x0Fu) * scale_a0 - min_a0),
+          static_cast<half_t>(
+              static_cast<float>(qa1 & 0x0Fu) * scale_a0 - min_a0),
+      };
+      const half2_t wa1 = {
+          static_cast<half_t>(
+              static_cast<float>(qa0 >> 4) * scale_a1 - min_a1),
+          static_cast<half_t>(
+              static_cast<float>(qa1 >> 4) * scale_a1 - min_a1),
+      };
+      const half2_t wb0 = {
+          static_cast<half_t>(
+              static_cast<float>(qb0 & 0x0Fu) * scale_b0 - min_b0),
+          static_cast<half_t>(
+              static_cast<float>(qb1 & 0x0Fu) * scale_b0 - min_b0),
+      };
+      const half2_t wb1 = {
+          static_cast<half_t>(
+              static_cast<float>(qb0 >> 4) * scale_b1 - min_b1),
+          static_cast<half_t>(
+              static_cast<float>(qb1 >> 4) * scale_b1 - min_b1),
+      };
+      acc_a[local_col0] =
+          __builtin_amdgcn_fdot2(xv, wa0, acc_a[local_col0], false);
+      acc_a[local_col1] =
+          __builtin_amdgcn_fdot2(xv, wa1, acc_a[local_col1], false);
+      acc_b[local_col0] =
+          __builtin_amdgcn_fdot2(xv, wb0, acc_b[local_col0], false);
+      acc_b[local_col1] =
+          __builtin_amdgcn_fdot2(xv, wb1, acc_b[local_col1], false);
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc_a[local_col]);
+  }
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc_b[local_col]);
+  }
+
+  __shared__ float xchg_a[4 * kTileCols];
+  __shared__ float xchg_b[4 * kTileCols];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      xchg_a[sub_id * kTileCols + local_col] = acc_a[local_col];
+      xchg_b[sub_id * kTileCols + local_col] = acc_b[local_col];
+    }
+  }
+  __syncthreads();
+
+  if (tid < kTileCols) {
+    const int local_col = tid;
+    float total_a = 0.0f;
+    float total_b = 0.0f;
+#pragma unroll
+    for (int g = 0; g < 4; ++g) {
+      total_a += xchg_a[g * kTileCols + local_col];
+      total_b += xchg_b[g * kTileCols + local_col];
+    }
+    const float gate = bf16_bits_to_float(float_to_bf16_bits(total_a));
+    const float up = bf16_bits_to_float(float_to_bf16_bits(total_b));
+    const float sig = 1.0f / (1.0f + expf(-gate));
+    out[row * kOutFeatures + out_group * kTileCols + local_col] =
+        float_to_bf16_bits(gate * sig * up);
+  }
+}
+
+// Interleaved-resident sibling of the quality-gated FP16 dot2 screen above.
+// The byte-neutral dual layout keeps corresponding gate/up metadata and
+// nibbles adjacent; arithmetic and adjacent-K ownership are otherwise
+// identical, so this is the candidate that can replace the production c=1
+// interleaved consumer without changing resident bytes.
+__global__ __launch_bounds__(128, 4)
+void q4_k_t16_selected_dual_interleaved_natural_tile8_halfdot_silu_gemv_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_dual,
+    uint16_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts) {
+  constexpr int kTopK = 10;
+  constexpr int kInFeatures = 3072;
+  constexpr int kOutFeatures = 1024;
+  constexpr int kBlocksPerRow = kInFeatures / QK_K;
+  constexpr int kOutTiles = kOutFeatures / T16_COLS;
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t source_row = row / kTopK;
+  if (source_row >= x_rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t out_tile = out_group >> 1;
+  const int half = static_cast<int>(out_group & 1);
+  const int col_base = half * kTileCols;
+
+  float acc_a[kTileCols];
+  float acc_b[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc_a[local_col] = 0.0f;
+    acc_b[local_col] = 0.0f;
+  }
+
+  const int k0 = tid * 2;
+  const int k1 = k0 + 1;
+  const int sb = k0 >> 5;
+  const int lane0 = k0 & 31;
+  const int lane1 = lane0 + 1;
+  for (int64_t blk = 0; blk < kBlocksPerRow; ++blk) {
+    const uint8_t* __restrict__ tile =
+        expert_tile_ptr<Q4_T16_DUAL_BLOCK_BYTES>(
+            tiles_dual, expert_id, out_tile, blk, kOutTiles, kBlocksPerRow);
+    const int64_t x_base =
+        source_row * kInFeatures + blk * QK_K;
+    const half2_t xv = {
+        static_cast<half_t>(bf16_bits_to_float(x[x_base + k0])),
+        static_cast<half_t>(bf16_bits_to_float(x[x_base + k1])),
+    };
+    const uint64_t q_dual0 = *reinterpret_cast<const uint64_t*>(
+        tile + Q4_T16_DUAL_Q_OFFSET +
+        ((sb * Q4_SUBBLOCK + lane0) * 2 + half) * 8);
+    const uint64_t q_dual1 = *reinterpret_cast<const uint64_t*>(
+        tile + Q4_T16_DUAL_Q_OFFSET +
+        ((sb * Q4_SUBBLOCK + lane1) * 2 + half) * 8);
+    const uint32_t q_a0 = static_cast<uint32_t>(q_dual0);
+    const uint32_t q_b0 = static_cast<uint32_t>(q_dual0 >> 32);
+    const uint32_t q_a1 = static_cast<uint32_t>(q_dual1);
+    const uint32_t q_b1 = static_cast<uint32_t>(q_dual1 >> 32);
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const int col_pair = col0 >> 1;
+      const uint8_t qa0 =
+          static_cast<uint8_t>(q_a0 >> (local_pair * 8));
+      const uint8_t qa1 =
+          static_cast<uint8_t>(q_a1 >> (local_pair * 8));
+      const uint8_t qb0 =
+          static_cast<uint8_t>(q_b0 >> (local_pair * 8));
+      const uint8_t qb1 =
+          static_cast<uint8_t>(q_b1 >> (local_pair * 8));
+      const uint64_t d_dual = *reinterpret_cast<const uint64_t*>(
+          tile + Q4_T16_DUAL_D_OFFSET + col_pair * 8);
+      const uint64_t dmin_dual = *reinterpret_cast<const uint64_t*>(
+          tile + Q4_T16_DUAL_DMIN_OFFSET + col_pair * 8);
+      const uint32_t scale_dual = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_DUAL_SCALE_OFFSET +
+          (sb * (T16_COLS / 2) + col_pair) * 4);
+      const uint32_t min_dual = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_DUAL_MIN_OFFSET +
+          (sb * (T16_COLS / 2) + col_pair) * 4);
+      const uint32_t d_a = static_cast<uint32_t>(d_dual);
+      const uint32_t d_b = static_cast<uint32_t>(d_dual >> 32);
+      const uint32_t dmin_a = static_cast<uint32_t>(dmin_dual);
+      const uint32_t dmin_b = static_cast<uint32_t>(dmin_dual >> 32);
+      const uint16_t scale_a = static_cast<uint16_t>(scale_dual);
+      const uint16_t scale_b = static_cast<uint16_t>(scale_dual >> 16);
+      const uint16_t min_a = static_cast<uint16_t>(min_dual);
+      const uint16_t min_b = static_cast<uint16_t>(min_dual >> 16);
+
+      const float scale_a0 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_a)) *
+          static_cast<float>(scale_a & 0xFFu);
+      const float scale_a1 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_a >> 16)) *
+          static_cast<float>(scale_a >> 8);
+      const float min_a0 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_a)) *
+          static_cast<float>(min_a & 0xFFu);
+      const float min_a1 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_a >> 16)) *
+          static_cast<float>(min_a >> 8);
+      const float scale_b0 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_b)) *
+          static_cast<float>(scale_b & 0xFFu);
+      const float scale_b1 =
+          fp16_bits_to_float(static_cast<uint16_t>(d_b >> 16)) *
+          static_cast<float>(scale_b >> 8);
+      const float min_b0 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_b)) *
+          static_cast<float>(min_b & 0xFFu);
+      const float min_b1 =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin_b >> 16)) *
+          static_cast<float>(min_b >> 8);
+
+      const half2_t wa0 = {
+          static_cast<half_t>(
+              static_cast<float>(qa0 & 0x0Fu) * scale_a0 - min_a0),
+          static_cast<half_t>(
+              static_cast<float>(qa1 & 0x0Fu) * scale_a0 - min_a0),
+      };
+      const half2_t wa1 = {
+          static_cast<half_t>(
+              static_cast<float>(qa0 >> 4) * scale_a1 - min_a1),
+          static_cast<half_t>(
+              static_cast<float>(qa1 >> 4) * scale_a1 - min_a1),
+      };
+      const half2_t wb0 = {
+          static_cast<half_t>(
+              static_cast<float>(qb0 & 0x0Fu) * scale_b0 - min_b0),
+          static_cast<half_t>(
+              static_cast<float>(qb1 & 0x0Fu) * scale_b0 - min_b0),
+      };
+      const half2_t wb1 = {
+          static_cast<half_t>(
+              static_cast<float>(qb0 >> 4) * scale_b1 - min_b1),
+          static_cast<half_t>(
+              static_cast<float>(qb1 >> 4) * scale_b1 - min_b1),
+      };
+      acc_a[local_col0] =
+          __builtin_amdgcn_fdot2(xv, wa0, acc_a[local_col0], false);
+      acc_a[local_col1] =
+          __builtin_amdgcn_fdot2(xv, wa1, acc_a[local_col1], false);
+      acc_b[local_col0] =
+          __builtin_amdgcn_fdot2(xv, wb0, acc_b[local_col0], false);
+      acc_b[local_col1] =
+          __builtin_amdgcn_fdot2(xv, wb1, acc_b[local_col1], false);
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc_a[local_col]);
+  }
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc_b[local_col]);
+  }
+
+  __shared__ float xchg_a[4 * kTileCols];
+  __shared__ float xchg_b[4 * kTileCols];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      xchg_a[sub_id * kTileCols + local_col] = acc_a[local_col];
+      xchg_b[sub_id * kTileCols + local_col] = acc_b[local_col];
+    }
+  }
+  __syncthreads();
+
+  if (tid < kTileCols) {
+    const int local_col = tid;
+    float total_a = 0.0f;
+    float total_b = 0.0f;
+#pragma unroll
+    for (int g = 0; g < 4; ++g) {
+      total_a += xchg_a[g * kTileCols + local_col];
+      total_b += xchg_b[g * kTileCols + local_col];
+    }
+    const float gate = bf16_bits_to_float(float_to_bf16_bits(total_a));
+    const float up = bf16_bits_to_float(float_to_bf16_bits(total_b));
+    const float sig = 1.0f / (1.0f + expf(-gate));
+    out[row * kOutFeatures + out_group * kTileCols + local_col] =
+        float_to_bf16_bits(gate * sig * up);
   }
 }
 
@@ -3650,6 +4038,75 @@ int launch_q4_dual_natural_tile8_parallel_silu_paircoeff(
   return hipGetLastError();
 }
 
+int launch_q4_dual_natural_tile8_parallel_silu_halfdot(
+    const void* x,
+    const void* selected,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out ||
+      x_rows != 1 || rows != 10 || in_features != 3072 ||
+      out_features != 1024 || num_experts <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(1024 / 8, 10);
+  hipLaunchKernelGGL(
+      q4_k_t16_selected_dual_natural_tile8_halfdot_silu_gemv_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<uint16_t*>(out),
+      num_experts);
+  return hipGetLastError();
+}
+
+int launch_q4_dual_interleaved_natural_tile8_parallel_silu_halfdot(
+    const void* x,
+    const void* selected,
+    const void* tiles_dual,
+    const void*,
+    void* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!x || !selected || !tiles_dual || !out ||
+      x_rows <= 0 || rows != x_rows * 10 || in_features != 3072 ||
+      out_features != 1024 || num_experts <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(1024 / 8, static_cast<uint32_t>(rows));
+  hipLaunchKernelGGL(
+      q4_k_t16_selected_dual_interleaved_natural_tile8_halfdot_silu_gemv_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const int64_t*>(selected),
+      reinterpret_cast<const uint8_t*>(tiles_dual),
+      reinterpret_cast<uint16_t*>(out),
+      x_rows,
+      rows,
+      num_experts);
+  return hipGetLastError();
+}
+
 template <typename scalar_t>
 int launch_q4_dual_interleaved_natural_tile8_parallel_silu(
     const void* x,
@@ -4151,6 +4608,28 @@ hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv
   return launch_q4_dual_natural_tile8_parallel_silu_paircoeff<uint16_t>(
       x, selected, tiles_a, tiles_b, out, x_rows, rows, in_features,
       out_features, num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a,
+    const void* tiles_b, void* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dual_natural_tile8_parallel_silu_halfdot(
+      x, selected, tiles_a, tiles_b, out, x_rows, rows, in_features,
+      out_features, num_experts, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_interleaved_natural_tile8_parallel_silu_halfdot_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_dual,
+    const void* tiles_unused, void* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dual_interleaved_natural_tile8_parallel_silu_halfdot(
+      x, selected, tiles_dual, tiles_unused, out, x_rows, rows,
+      in_features, out_features, num_experts, stream);
 }
 
 extern "C" int

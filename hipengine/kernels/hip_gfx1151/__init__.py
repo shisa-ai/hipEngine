@@ -132,6 +132,13 @@ LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE = True
 # Promoted exact fusion: the qualified parallel tile8 owner materializes the
 # BF16 SiLU intermediate directly; all seven resident pairs are positive.
 LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = True
+# Convert BF16 activations and dequantized Q4 gate/up pairs to FP16 in
+# registers, then use gfx1151's native adjacent-K dot2 with FP32 accumulation.
+# The byte-neutral interleaved resident layout is unchanged. The actual-weight
+# leaf improves 17.99%, all seven p512/d128 pairs improve, and recurrent
+# candidate-vs-exact quality stays at max KL 0.00820 / top-1 93.75%.
+# Constructor false retains the exact pair-coefficient owner.
+LAGUNA_SELECTED_HALFDOT_DECODE = True
 # Exact dense/shared Q4 pair fusion preserves the two BF16 projection
 # boundaries in registers before applying the existing SiLU-product
 # expression. Seven resident p512/d128 pairs are exact and all positive.
@@ -947,6 +954,7 @@ __all__ = [
     "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE",
     "LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE",
+    "LAGUNA_SELECTED_HALFDOT_DECODE",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_MODE",
     "LAGUNA_F16_PREFILL_STRATEGY",

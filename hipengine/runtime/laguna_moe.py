@@ -77,6 +77,10 @@ _SELECTED_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_VARIANT = (
     "selected_dual_t16_natural_tile8_parallel_silu_"
     "gemv_decode_bf16_bf16_out"
 )
+_SELECTED_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_VARIANT = (
+    "selected_dual_t16_natural_tile8_parallel_silu_halfdot_"
+    "gemv_decode_bf16_bf16_out"
+)
 _SELECTED_DUAL_MMQ32_D4X3_VARIANT = (
     "selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -438,6 +442,7 @@ class LagunaMoEKernelPlan:
         str, LagunaMoESelectedRoute
     ]
     interleaved_natural_selected_gate_up_route: LagunaMoESelectedRoute
+    interleaved_natural_selected_gate_up_halfdot_route: LagunaMoESelectedRoute
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -541,6 +546,7 @@ class LagunaMoEKernelPlan:
                 self.natural_tile8_parallel_silu_selected_gate_up_keys.values()
             ),
             self.interleaved_natural_selected_gate_up_route.key,
+            self.interleaved_natural_selected_gate_up_halfdot_route.key,
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -1155,6 +1161,25 @@ def resolve_laguna_moe_plan(
         allocation_name="tiles_dual",
         library_key="selected_gate_up",
     )
+    interleaved_natural_selected_gate_up_halfdot_key = KernelKey(
+        backend,
+        "moe_linear",
+        "gguf_q4_k_t16_dual_interleaved_v1",
+        (
+            _SELECTED_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_VARIANT
+        ),
+    )
+    interleaved_natural_selected_gate_up_halfdot_route = (
+        LagunaMoESelectedRoute(
+            key=interleaved_natural_selected_gate_up_halfdot_key,
+            function=_resolve_exact(
+                interleaved_natural_selected_gate_up_halfdot_key
+            ),
+            abi="t16_dual_silu",
+            allocation_name="tiles_dual",
+            library_key="selected_gate_up",
+        )
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1392,6 +1417,9 @@ def resolve_laguna_moe_plan(
         ),
         interleaved_natural_selected_gate_up_route=(
             interleaved_natural_selected_gate_up_route
+        ),
+        interleaved_natural_selected_gate_up_halfdot_route=(
+            interleaved_natural_selected_gate_up_halfdot_route
         ),
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
@@ -1889,6 +1917,7 @@ def _launch_selected_gate_up(
     use_natural_tile8: bool = False,
     use_natural_tile8_parallel: bool = False,
     use_natural_tile8_parallel_silu: bool = False,
+    use_interleaved_halfdot: bool = False,
 ) -> None:
     plan = scratch.plan
     gate = layer.weight("ffn_gate_exps")
@@ -1896,7 +1925,11 @@ def _launch_selected_gate_up(
     try:
         retained_route = plan.selected_gate_up_routes[gate.spec.quant_key]
         route = (
-            plan.interleaved_natural_selected_gate_up_route
+            (
+                plan.interleaved_natural_selected_gate_up_halfdot_route
+                if use_interleaved_halfdot and x_rows == 1
+                else plan.interleaved_natural_selected_gate_up_route
+            )
             if "tiles_dual" in gate.allocations
             else
             plan.natural_tile8_parallel_silu_selected_gate_up_routes.get(
@@ -2961,6 +2994,7 @@ def run_laguna_moe_c1_components(
     use_selected_natural_tile8_decode: bool = False,
     use_selected_natural_tile8_parallel_decode: bool = False,
     use_selected_natural_tile8_parallel_silu_decode: bool = False,
+    use_selected_halfdot_decode: bool = False,
     use_selected_down_natural_parallel_decode: bool = False,
     use_selected_down_natural_parallel_weighted_decode: bool = False,
     use_selected_down_q4_paircoeff_weighted_decode: bool = False,
@@ -3091,6 +3125,7 @@ def run_laguna_moe_c1_components(
         use_natural_tile8_parallel_silu=(
             use_selected_natural_tile8_parallel_silu_decode
         ),
+        use_interleaved_halfdot=use_selected_halfdot_decode,
     )
     routed_down_weighted = _launch_weighted_selected_down(
         layer,
@@ -3168,6 +3203,7 @@ def run_laguna_moe_c1(
     libraries: Mapping[str, object] | None = None,
     shared_pair_decode_variant: str | None = None,
     use_selected_natural_decode: bool = False,
+    use_selected_halfdot_decode: bool = False,
     use_q4_pack8_dual_silu_decode: bool = False,
     use_q4_decode_t16_sidecar: bool = True,
     use_q4_decode_t16_dual_interleaved: bool = True,
@@ -3188,6 +3224,7 @@ def run_laguna_moe_c1(
         libraries=libraries,
         shared_pair_decode_variant=shared_pair_decode_variant,
         use_selected_natural_decode=use_selected_natural_decode,
+        use_selected_halfdot_decode=use_selected_halfdot_decode,
         use_q4_pack8_dual_silu_decode=use_q4_pack8_dual_silu_decode,
         use_q4_decode_t16_sidecar=use_q4_decode_t16_sidecar,
         use_q4_decode_t16_dual_interleaved=(

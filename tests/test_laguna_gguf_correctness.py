@@ -35,6 +35,26 @@ def test_laguna_quality_gate_reports_but_does_not_require_strict_greedy_ids() ->
     assert not _quality_gate_passes(result, captures_pass=True)
 
 
+def test_laguna_quality_gate_bounds_teacher_forced_candidate_exact_kl() -> None:
+    result = {
+        "first_token": {
+            "finite_logits": True,
+            "kl_divergence": 0.001,
+            "top1_agreement": 1.0,
+        },
+        "teacher_forced": {
+            "top1_agreement": 30 / 32,
+            "candidate_vs_exact": {"max_kl": 0.0082},
+        },
+        "repeat": {"exact": True, "first_logits_max_abs": 0.0},
+        "tracked_returned_to_baseline": True,
+    }
+
+    assert _quality_gate_passes(result, captures_pass=True)
+    result["teacher_forced"]["candidate_vs_exact"]["max_kl"] = 0.0501
+    assert not _quality_gate_passes(result, captures_pass=True)
+
+
 def test_laguna_greedy_step_metrics_exposes_low_margin_mismatch() -> None:
     logits = np.asarray([-2.0, 4.75, 5.0, 1.0, 3.0, 2.0], dtype=np.float32)
 

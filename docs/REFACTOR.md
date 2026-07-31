@@ -2500,3 +2500,19 @@ should be boring.
   **22.891692 tok/s / 43.683971 ms/token**. The setter, direct CLI/protocol
   field, and one-off harness are removed. Retain only the constructor rollback,
   gfx1151 capability, separate c=1 stream, and all-low-priority fallback.
+
+## Laguna gfx1151 selected gate/up halfdot rollback
+
+- Added 2026-07-31 as constructor override
+  `use_selected_halfdot_decode`. The gfx1151 capability defaults on; `false`
+  restores the exact interleaved pair-coefficient F32 owner without changing
+  resident bytes or the surrounding fused SiLU boundary.
+- The quality-gated candidate improves the actual layer-1 leaf
+  **0.110406 -> 0.090545 ms (-17.989%)** and all seven same-resident p512/d128
+  pairs **22.999793 -> 23.084044 tok/s (+0.36631%)**. Recurrent
+  candidate-vs-exact quality is max KL **0.008202** and top-1 **93.75%**.
+- The temporary session setter and comparison CLI are removed after
+  default-on production measures **23.089693 tok/s**. Retain the constructor
+  rollback, gfx1151 capability, both four-axis registrations, exact fallback,
+  and diagnostic leaf/quality selectors until a later exact path matches or
+  exceeds the candidate.
