@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T16:44:02.790055+00:00",
+  "kind": "hipengine_laguna_q6_t16_shared_down_runtime_rejected",
+  "status": "rejected",
+  "performance_claim": false,
+  "repo_revision": "d3fa2476a7d41679f32954845332ea15f21c4cec",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workload": "p512/d128 eager c=1",
+    "chunk_size": 2048,
+    "matrix_rows": 2048,
+    "attention_rows": 128,
+    "decode_forward_calls": 127,
+    "candidate_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-q6t16-merged --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --allow-dirty --output /tmp/laguna-q6-t16-shared-down-full-directional.json",
+    "candidate_cache": "validated 285-entry cache: 262 unchanged hardlinked payloads plus 23 byte-neutral Q6T16 shared-down payloads",
+    "load_seconds_excluded": 149.47606031200849
+  },
+  "isolated_leaf": {
+    "control_raw_family_ms": 0.3638636887073517,
+    "candidate_t16_family_ms": 0.29135603666305543,
+    "candidate_delta_percent": -19.92714697690341,
+    "paired_wins": "253/253",
+    "bf16_mismatches": 0,
+    "resident_bytes_per_weight": {
+      "raw": 2580480,
+      "t16": 2580480
+    },
+    "artifact": "benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-leaf.json"
+  },
+  "full_model": {
+    "quiet_production_reference_decode_tok_s": 23.2207547513,
+    "candidate_decode_tok_s": 23.214557700886704,
+    "candidate_delta_percent": -0.026687549477466543,
+    "candidate_wall_delta_ms_per_token": 0.011496040467939395,
+    "production_generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+    "candidate_generated_ids_sha256": "091feb0f9ef6c2e0d99785c3bb4322e57fc7232e67a9c20ab54c80cc8e8f3738",
+    "production_final_token_id": 74825,
+    "candidate_final_token_id": 9253,
+    "next_token_id": 2930,
+    "resident_nbytes": 79066169172,
+    "lifecycle_pass": true
+  },
+  "correctness_pass": false,
+  "raw_artifacts": {
+    "candidate": {
+      "path": "/tmp/laguna-q6-t16-shared-down-full-directional.json",
+      "sha256": "a347f3c31789a88861ea3beffe07e05744321c949a8d51e14c5574376f9263f7"
+    },
+    "quiet_production_reference": {
+      "path": "/tmp/laguna-production-clean-rerun-registry.json",
+      "sha256": "b82e954e118dea4275eb6189d035982679c12818e520e989855fd3200ddbb505"
+    }
+  },
+  "decision": "Reject and completely remove rank-2 Q6 shared-down T16 residency and dispatch. The faster secondary leaf does not shorten the two-queue critical path and changes the exact recurrent trajectory."
+}

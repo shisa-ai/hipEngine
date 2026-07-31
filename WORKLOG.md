@@ -196750,3 +196750,23 @@ Vulkan local sizes verbatim will close the measured gap.
   Advance this byte-neutral replacement to complete-model A/B; do not promote
   from the leaf alone. Raw SHA-256 is `f8f89bee...6cebc41`. Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-leaf.json`.
+
+## 2026-08-01 01:46 JST — Reject Q6T16 shared-down production route
+
+- Wired rank-2 Q6 shared-down weights to the existing byte-neutral T16
+  materializer/consumer and preserved the retained shared-down+D9 native host
+  batch. Focused materialization, registry, and dispatch RED/GREEN passed.
+- The old cache correctly rejected the new plan fingerprint. Built a
+  23-entry/59.35-MB candidate overlay and a validated 285-entry merged cache
+  using hardlinks for all 262 unchanged payloads, avoiding a duplicate 66-GB
+  cache.
+- Complete p512/d128 decode rejects the leaf extrapolation:
+  **23.220755 -> 23.214558 tok/s (-0.02669%,
+  +0.011496 ms/token)**. The recurrent trajectory also changes from final
+  token **74825** / hash `1840dd35...56fa` to token **9253** / hash
+  `091feb0f...f3738`; lifecycle and resident bytes remain clean.
+- Completely removed the materialization route, BF16 dispatch entry,
+  native-batch alias, validation route, and tests. Raw Q6_K remains resident
+  for shared down. Candidate raw SHA-256 is `a347f3c3...9263f7`.
+  Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-runtime-rejected.json`.
