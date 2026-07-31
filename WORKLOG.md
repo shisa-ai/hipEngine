@@ -196979,3 +196979,19 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-01-gfx1151-laguna-capacity-independent-short-global-decode-production.json`.
   LC-D2 is next: trace and attribute the exact generic score-plane/reducer/PV
   path above 6,000 live slots before implementing bounded split-K partials.
+
+## 2026-08-01 08:38 JST — Admit matched LC-D2 decode tracing at 16K
+
+- Added the single-depth `(16384,)` LC-D2 tuple to the retained Laguna
+  profile harness so a kernel trace does not need to pay for an unrelated 64K
+  request. This changes only benchmark admission, not runtime or model code.
+- Extended the fail-closed Laguna trace summarizer to recognize fixed-horizon
+  decode: after each timed prefill segment it requires exactly
+  `output_tokens - 1` one-row embedding-to-argmax segments, aggregates kernel
+  sum/interval union/span and all families per transition, and emits exact
+  per-symbol calls, durations, grids, and resources. Unexpected order,
+  missing transitions, or trailing segments remain hard failures.
+- RED first failed because the LC-D2 tuple and decode summary did not exist.
+  GREEN passes the new fixed-horizon case plus the complete long-profile and
+  Vulkan perf-summary suites: **62 passed**. This tooling is required before
+  the matched hipEngine `rocprofv3` and Vulkan device-timestamp captures.
