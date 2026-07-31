@@ -25,10 +25,10 @@ _H6C_VARIANT = (
     "k3072_n1024_e256_rowbatch4_bf16_bf16_out"
 )
 _H6C_ABI = "grouped_raw_iq_dual_silu"
-_H6Q_VARIANT = (
+_H6R_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "activation_resident_out_p256_row_interleaved_vopd_"
-    "staged_wave_publication_compact_shuffle_loop_triple_output_"
+    "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
 _IQ2_VARIANT = (
@@ -147,7 +147,7 @@ def test_h6c_runtime_capability_is_source_default_bounded_and_fail_closed(
     assert route.abi == _H6C_ABI
     assert route.allocation_name == "raw"
     assert route.library_key == "grouped_iq_prefill"
-    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6Q_VARIANT
+    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6R_VARIANT
     assert package_default.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
         _IQ2_VARIANT
     )
@@ -156,7 +156,7 @@ def test_h6c_runtime_capability_is_source_default_bounded_and_fail_closed(
     rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert rollback.grouped_special_gate_up_keys == {}
     assert rollback.grouped_special_gate_up_routes == {}
-    assert rollback.grouped_exact_down_keys[_QUANT].variant == _H6Q_VARIANT
+    assert rollback.grouped_exact_down_keys[_QUANT].variant == _H6R_VARIANT
     assert rollback.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
         _IQ2_VARIANT
     )

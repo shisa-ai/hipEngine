@@ -227,7 +227,7 @@ _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT = (
     "rowbatch8_bf16_bf16_out"
 )
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
-    "gguf_iq3_xxs": _H6Q_IQ3_COMPACT_SHUFFLE_LOOP_VARIANT,
+    "gguf_iq3_xxs": _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT,
     "gguf_iq4_xs": (
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),

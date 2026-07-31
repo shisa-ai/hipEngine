@@ -87,7 +87,7 @@ def _prefill_scratch(config, plan) -> LagunaPrefillScratchPlan:
     )
 
 
-def test_h6p_source_default_is_retained_as_h6q_rollback(
+def test_h6p_source_default_is_retained_under_h6r_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
@@ -97,7 +97,7 @@ def test_h6p_source_default_is_retained_as_h6q_rollback(
     }
     production_variants = {
         **rollback_variants,
-        _QUANT: _H6Q_RUNTIME_VARIANT,
+        _QUANT: _H6R_RUNTIME_VARIANT,
     }
     qualified_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
@@ -117,7 +117,7 @@ def test_h6p_source_default_is_retained_as_h6q_rollback(
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys[_QUANT].variant == (
-        _H6Q_RUNTIME_VARIANT
+        _H6R_RUNTIME_VARIANT
     )
     package_route = package_default.grouped_exact_down_routes[_QUANT]
     assert package_route.abi == _ACTIVE_EXPERT_ABI
@@ -192,7 +192,7 @@ def test_h6p_source_default_is_retained_as_h6q_rollback(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6Q_RUNTIME_VARIANT and original_is_registered(key),
+        lambda key: key.variant != _H6R_RUNTIME_VARIANT and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys[_QUANT].variant == _BASELINE_IQ3

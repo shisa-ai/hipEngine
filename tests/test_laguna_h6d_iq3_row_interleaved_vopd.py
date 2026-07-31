@@ -130,7 +130,7 @@ def _function_body(source: str, declaration: str) -> str:
     raise AssertionError(f"unterminated function: {declaration}")
 
 
-def test_h6d_registry_schedule_and_h6q_production_immutability() -> None:
+def test_h6d_registry_schedule_and_h6r_production_immutability() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
 
     candidate = _candidate()
@@ -143,7 +143,7 @@ def test_h6d_registry_schedule_and_h6q_production_immutability() -> None:
     ) is candidate
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {
-        "gguf_iq3_xxs": _H6Q_RUNTIME_VARIANT,
+        "gguf_iq3_xxs": _H6R_RUNTIME_VARIANT,
         "gguf_iq4_xs": _H5J_IQ4_VARIANT,
     }
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {

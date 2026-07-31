@@ -1,0 +1,437 @@
+{
+  "authority_files": {
+    "README.md": "049004e8852b5c2e6f0890d01e9846998ba3bf267abbc021dc7bdd76ddbccda3",
+    "WORKLOG.md": "7596fe6f1654f5508c9456932d83d631ef7ba4e51a906e37d126d19f5067ec3a",
+    "benchmarks/CHANGELOG.md": "982c469f9a62bf4e706c8cd187dd68c69a594483efdb4ba5e08a6befeff67f72",
+    "benchmarks/README.md": "e37af9e775ed8ba2086623a0a212ceb1915596103fd6e3e164b6e4465722e35e",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/PLAN.md": "47be59854b00bf39d9a024a4c9006a54e0158888c8bb5014e13e21a26a59321d",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "canonical_dashboard": {
+    "fresh_matched_llamacpp_hip_tok_s": 690.791,
+    "fresh_matched_llamacpp_over_current": 1.694027410264912,
+    "matched_c4096_m512_tok_s": 407.78029671431005,
+    "selector_unset_source_tok_s": {
+      "1024": 308.80719864899595,
+      "4096": 193.93083026025693,
+      "512": 381.72575312207823
+    },
+    "shape_note": "Canonical source rows use selector-unset publication sessions; fixed natural C4096/direct-M512 and the patched llama.cpp HIP comparator are separately paired/provenance-bound."
+  },
+  "commands": {
+    "complete_state_reused": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -u /tmp/laguna_wpfh6r_runtime_m512_full_state.py",
+    "guards": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -m pytest -q <219-test retained H6R source guard split>",
+    "integrated_trace_reused": "cached-only rocprofv3 --kernel-trace over /tmp/laguna_wpfh6r_runtime_trace_integrated_dpp_peer.py",
+    "matched": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -u /tmp/laguna_wpfh6r_source_matched_c4096_m512.py",
+    "source_default_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -u /tmp/laguna_wpfh6r_source_clean_512_4k.py"
+  },
+  "correctness": {
+    "all_lifecycles_recovered": true,
+    "complete_kv_and_live_spans_exact": true,
+    "complete_state_and_repeat_byte_exact": true,
+    "exact_hidden_boundaries": 48,
+    "leaf_all_45_actual_layers_byte_exact": true,
+    "matched_all_repetitions_exact": true,
+    "natural_m512_kl_max": 0.0,
+    "natural_m512_kl_mean": 0.0,
+    "natural_m512_top1_agreement": 1.0,
+    "selector_unset_all_finite": true,
+    "selector_unset_all_repetitions_exact": true
+  },
+  "correctness_claim": true,
+  "date": "2026-08-01",
+  "decision": {
+    "gfx1151_policy_changed": false,
+    "new_kernel_body_or_allocation": false,
+    "next_action": "Commit the qualified source promotion, then reprofile exact clean promoted C4096/direct-M512 production and rerank the matched residual.",
+    "promoted_package_default": true,
+    "retained_h6q_rollback": true,
+    "runtime_default_changed": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_dpp_peer_exchange_production",
+  "lineage": {
+    "candidate_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json",
+    "candidate_artifact_sha256": "52f1ded5b6fb60b2578e021ad7319bd6ab2f5b32dc184cb30437481fbfa0acc6",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "21ef07ab6757d0698c14ebbb78a2d51b9048ccfbb0c188d16eee4395e6d0aa39",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "6913c04d34bad89b0cd7980f4138ce5fea0f9178e829eae35b8466b7e7f74721",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "b3855948434b78339d75ee4dc34c3f7c354dd22ee1eb4cd817672f8156c898cb",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3f8c220f1e045b5cdaf9d4487ffa8fd94fc45512b50cbd1a0141c306c00e8b2b",
+      "hipengine/runtime/laguna_moe.py": "295890f46bf198cbc7e8c99de80dd1d17b6c62a18f8fe244e3e172d5c9c59eb6",
+      "tests/test_laguna_h5q_runtime_policy.py": "86b1b5ce30419890e3ad26b92edfece3cbc442c0fd5e10e715e31bddf03a8469",
+      "tests/test_laguna_h5z_runtime_policy.py": "b96ed94dde02d5c402679d1c603a1a551b6d893da19f7113de371ca47c7ba9c0",
+      "tests/test_laguna_h5z_source_default.py": "cb181306fbf4e59f0d53dcd369caa1567ded31e9b279f632a16a76ffc6e7f6a9",
+      "tests/test_laguna_h6c_iq3_gate_up_expert_major.py": "ee52ad2e5002972580b8235b92f50bcb5e4d6f12f1b95cbf4733ccfdbac15843",
+      "tests/test_laguna_h6c_runtime_policy.py": "f0bd763af5e0769287b4b5dc6893e7a475bd697328d865575bbddcecdcbf6808",
+      "tests/test_laguna_h6c_source_default.py": "68e8f26bb23e7b483c11057ddc03cb2b3900b6abc56e78c3809d03050e628cc1",
+      "tests/test_laguna_h6d_iq3_row_interleaved_vopd.py": "dc417e69d377068068f72cbc7addc8f1505d0001ddefef5a2db0fcb1c39abd2d",
+      "tests/test_laguna_h6d_runtime_policy.py": "dd7427c872fd5bf8e5b5a8d9967d7880229d980e7575a0e5cd6f870bfff754d3",
+      "tests/test_laguna_h6d_source_default.py": "38a43ca5d450cdc997202c537489506c2cf6249f7522b5fe346b17be67c1458f",
+      "tests/test_laguna_h6f_iq3_paired_output_reduction.py": "c28569b59217f1ab9c91d1e996939542549ca513e0dece0646387cd8529268c7",
+      "tests/test_laguna_h6f_runtime_policy.py": "981382a070aca52015e313823372b85775202d95a628963520ba807c40cb97e0",
+      "tests/test_laguna_h6f_source_default.py": "efcc3c101f8e24698b33789b50a0cd8971fc12ba9cca5fcf6897b905964bc188",
+      "tests/test_laguna_h6i_iq3_triple_output_reduction.py": "10b7ec640a00b19fb289d0468ecdcadebc78fa758c735622253a227ce1453b1f",
+      "tests/test_laguna_h6i_runtime_policy.py": "e7ea06e4dece86b0ec67da72106715398d6a1988723bef63d9cc51cab8fdac4a",
+      "tests/test_laguna_h6i_source_default.py": "305e294ead5df07f6c58cd4feaf186ad228d6ef4ac8c27a908be916e1037b721",
+      "tests/test_laguna_h6l_runtime_policy.py": "02e95c8e47a2a167f19d230332be8021790439af1cac544b142c8b61216707b3",
+      "tests/test_laguna_h6l_source_default.py": "e5f658a3a629c4cc24d1960197c6f2c3b6e391f3ddaae5ecbeaadde4e75d213b",
+      "tests/test_laguna_h6p_iq3_staged_wave_publication.py": "8e16d36bc03438980640e9cf3f947d87408df5a1c6ff2c6aca0d0de9fcec13ea",
+      "tests/test_laguna_h6p_runtime_policy.py": "c53926e8ee989e6381753e622fd83e6d38f4e1230ba38916206156aa99e3a5a5",
+      "tests/test_laguna_h6p_source_default.py": "89a9c0641d4b198c014e477918eefc96507b71f47f27f4c56600a67d0b50730e",
+      "tests/test_laguna_h6q_iq3_compact_shuffle_loop.py": "70fdcab9872f3b359a963fd10080e14bbfeb8d1e3e8e953191b3c817faada5af",
+      "tests/test_laguna_h6q_runtime_policy.py": "71568448d6335e58a81df2fad704f94ce655e9021d5db9e6d78b97af0190af0b",
+      "tests/test_laguna_h6q_source_default.py": "f12a0a1b20f108647eedf2eab9726d0939b98aa98a842bc4cb9fb6af126c3430",
+      "tests/test_laguna_h6r_iq3_dpp_peer_exchange.py": "150d00bccc2606f47fc55bf006a03b5d8c077404d9a715eae9feaf50b1ab44d5",
+      "tests/test_laguna_h6r_runtime_policy.py": "8f09078a4e50fdb9b45dcabcba156c8a97810a6e3702d23a0e30a51da5dfd6a6",
+      "tests/test_laguna_h6r_source_default.py": "d396ca122de1a8a7d7f50f95ad11df6a79581d3fc9e73d2617e45f4fb658270a"
+    },
+    "kernel_lineage_audit": "all 14 Laguna/llama.cpp parents clean; four unrelated Qwen/PARO drifts unchanged",
+    "leaf_red_revision": "2495ec336",
+    "leaf_revision": "c278f5f0b",
+    "preceding_production_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json",
+    "preceding_production_artifact_sha256": "0e6bc45503ec1602a016eee41ae828fa8ca2942d3b641bf1bc53b0a1b708be57",
+    "runtime_qualification_revision": "154f33b6d",
+    "runtime_red_revision": "122e7246e",
+    "selection_revision": "b3c12d0ab",
+    "source": "Net-new in-tree H6Q sibling using the retained in-tree IQ2 DPP peer-exchange primitive; no external device body copied.",
+    "source_default_red_revision": "ba7821798"
+  },
+  "llamacpp_hip_comparator": {
+    "implementation_sha256": "68d1c3ac57bc15200c2e6986723d27fbb4ee4777f654dddb0d2b3f0db8102167",
+    "launcher_sha256": "882d3dd758d4c3076c68e61d9417205d7b5b1ede1506597b862ac0f8c1134e87",
+    "mean_tok_s": 691.6166000000001,
+    "measurement_patch": "benchmarks/llama.cpp/0004-laguna-matched-prefill-token-fixture.patch",
+    "measurement_patch_changes_backend_or_kernel_code": false,
+    "median_tok_s": 690.791,
+    "protocol": "fixed natural 512-token fixture, C4096, BF16 K/V, FA1, five internal repetitions, one W7900 queue",
+    "reuse_rationale": "Same freshly rerun fixed natural M512/C4096 comparator protocol and binary bound by the preceding H6Q production packet.",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "samples_tok_s": [
+      694.342,
+      692.318,
+      690.152,
+      690.791,
+      690.48
+    ],
+    "synthetic_default_pp512_disposition": "The user-reported 714.07 tok/s uses llama-bench synthetic/random pp512 and is not the natural-token/C4096 matched row.",
+    "top1_markers": [
+      2930,
+      2930,
+      2930,
+      2930,
+      2930
+    ],
+    "top1_markers_verified": 5
+  },
+  "matched_c4096_m512": {
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "campaign_start_tok_s": 169.516472,
+    "complete_state_exact": true,
+    "fresh_llamacpp_hip_median_tok_s": 690.791,
+    "fresh_llamacpp_hip_samples_tok_s": [
+      694.342,
+      692.318,
+      690.152,
+      690.791,
+      690.48
+    ],
+    "gain_over_campaign_start_percent": 140.5549690264378,
+    "gain_percent": 4.209787192172443,
+    "h6q_median_tok_s": 391.3071005147776,
+    "h6q_samples_tok_s": [
+      393.29712735954496,
+      392.0739392380412,
+      391.3071005147776,
+      388.9813883367054,
+      390.2292114167131
+    ],
+    "h6r_median_tok_s": 407.78029671431005,
+    "h6r_samples_tok_s": [
+      409.6793297076023,
+      408.960907628993,
+      407.6170600685292,
+      407.78029671431005,
+      406.0180496902947
+    ],
+    "llamacpp_over_h6r": 1.694027410264912,
+    "paired_h6r_wins": 5,
+    "paired_total": 5,
+    "protocol": {
+      "acceptance": "exact state/lifecycle, five paired wins, and positive candidate median on fixed natural M512 admitted at C4096",
+      "attention_rows": 128,
+      "candidate_package_default": true,
+      "candidate_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "candidate_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "context_length": 4096,
+      "control_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "control_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "counter_rotated_repetitions": 5,
+      "fresh_request_session_per_sample": true,
+      "lengths": [
+        512
+      ],
+      "matched_llamacpp_hip_tok_s": 690.791,
+      "matrix_rows": 512,
+      "model_load_excluded": true,
+      "pinned_token_ids": "/tmp/laguna-matched-m512-token-ids.json",
+      "pinned_token_ids_file_sha256": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+      "same_resident_weights": true,
+      "selector": "selector-unset H6R DPP peer-exchange staged-wave P256 source versus explicit H6Q compact-shuffle staged-wave P256 rollback control",
+      "shared_total_scratch_bytes": 600141856,
+      "shared_workspace_bytes": 161120256,
+      "warmups_per_mode_length": 1
+    },
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "total_scratch_bytes": 600141856,
+    "user_reported_synthetic_pp512_tok_s": 714.07,
+    "workspace_bytes": 161120256
+  },
+  "model": {
+    "attention_rows": 128,
+    "compact_rows": 5120,
+    "context_length": 4096,
+    "expert_count": 256,
+    "final_position": 511,
+    "in_features": 1024,
+    "kv_dtype": "bf16",
+    "logical_parameters": 117561977600,
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "ownership": {
+    "existing_active_expert_abi_reused": true,
+    "new_allocations": 0,
+    "new_kernel_bodies_at_promotion": 0,
+    "new_launches_per_request": 0,
+    "new_workspace_bytes": 0,
+    "persistent_sidecar_bytes": 0,
+    "q5_ordered_workspace_bytes": 161120256,
+    "total_scratch_bytes": 600141856
+  },
+  "performance_claim": true,
+  "production_identical_cached_trace": {
+    "candidate_down_topology": {
+      "h5j_iq4": 2,
+      "h6r_iq3": 45
+    },
+    "candidate_iq3_median_ms": 267.241437,
+    "candidate_kernel_span_median_ms": 1307.416056,
+    "candidate_kernel_sum_median_ms": 1285.1987695000003,
+    "candidate_resources": "local128/VGPR104/SGPR128/LDS512/scratch0/grid32768x64",
+    "control_down_topology": {
+      "h5j_iq4": 2,
+      "h6q_iq3": 45
+    },
+    "control_iq3_median_ms": 310.15924100000007,
+    "control_kernel_span_median_ms": 1362.094116,
+    "control_kernel_sum_median_ms": 1332.8934464999998,
+    "control_resources": "local128/VGPR96/SGPR128/LDS512/scratch0/grid32768x64",
+    "dispatches_per_request": 2192,
+    "family_dispatches_each_request": {
+      "attention": 192,
+      "gate_up": 47,
+      "iq_down": 47,
+      "q5": 658,
+      "q6": 431,
+      "remaining": 817
+    },
+    "iq3_delta_ms": -42.91780400000005,
+    "iq3_reduction_percent": 13.837344926956419,
+    "kernel_span_delta_ms": -54.67805999999996,
+    "kernel_span_reduction_percent": 4.014264459240935,
+    "kernel_sum_delta_ms": -47.6946769999995,
+    "kernel_sum_reduction_percent": 3.5782813041236983,
+    "mode_order": [
+      "control",
+      "candidate",
+      "candidate",
+      "control"
+    ],
+    "no_compiler_under_profile": true,
+    "q6_topology_unchanged_and_exact": true,
+    "requests": 4,
+    "reuse_rationale": "Source publication selects the same H6R key measured in the bounded candidate trace."
+  },
+  "production_policy": {
+    "gfx1151_fail_closed": true,
+    "h5j_iq4_unchanged": true,
+    "h6c_special_gate_up_unchanged": true,
+    "h6l_pair16_gate_up_unchanged": true,
+    "public_or_session_selector": false,
+    "retained_h6p_h6i_h6f_h6d_h5z_h5q_rollbacks": true,
+    "retained_h6q_rollback": true,
+    "selected_variants": {
+      "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out",
+      "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+    },
+    "strict_shape": "K1024/N3072/E256",
+    "variant_abis": {
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+    },
+    "wrong_shape_registration_backend_fallback": "generic exact grouped-IQ rowbatch8 ABI"
+  },
+  "raw_evidence_sha256": {
+    "candidate_artifact": "52f1ded5b6fb60b2578e021ad7319bd6ab2f5b32dc184cb30437481fbfa0acc6",
+    "compiler_version_file": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "focused_green_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "focused_green_stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "matched_harness": "f1dd3cd44a707b242b15d386656b9d60e127efe0e082d804faa8084839a3af1b",
+    "matched_json": "973b0d377fb1cf8934c7a8e91f3101899c4f113be2940e0ae632d8a05c9b2d2c",
+    "matched_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "matched_stdout": "f41b6ff073201024ad909aacba2079b61bd6b6ed4576595f103f4199cdec69e3",
+    "pinned_token_ids": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+    "preceding_production_artifact": "0e6bc45503ec1602a016eee41ae828fa8ca2942d3b641bf1bc53b0a1b708be57",
+    "production_builder": "e397d1b37f429e8b22255f6111cb57a407a117003020ed175111f2f9aeb4a2e2",
+    "retained_guards_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retained_guards_stdout": "09b0c1aae9ffa78d5139b045bcf792827c52fdf88ba38f2e0b991ffb34cfbb1d",
+    "runner_guards_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runner_guards_stdout": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+    "source_harness": "175b2401d636d5ca2f5e05b15eefd3e905332080202fb2fff2e9574df39f63b4",
+    "source_json": "1fa0482407d15afc18cc341c9ac896dcb3d3def3ebd5627dea2e09bc9acab27c",
+    "source_red_status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "source_red_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_red_stdout": "8d3aedc487af409b4ad902a931de50ad334a8a1dc76447d13bde0b09425ceb9d",
+    "source_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "source_stdout": "9decdb0edb2f3c5d6cde270ee59268fde43122ae189789f24e431c1460ec69cb"
+  },
+  "retained_guards": {
+    "failed": 0,
+    "passed": 219,
+    "scope": "H6R/H6Q/H6P/H6I/H6F/H6D/H5Z/H5Q IQ3, selected-IQ, H6C/H6L gate-up, Laguna MoE/runner, gfx1151, and registry",
+    "split": {
+      "one_queue_kernel_policy_backend_registry": 181,
+      "runner_without_queue_cap": 38
+    }
+  },
+  "schema": 1,
+  "selector_unset_publication": {
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "exact_all_repetitions": true,
+    "next_token_ids": {
+      "1024": 95,
+      "4096": 7772,
+      "512": 2930
+    },
+    "protocol": {
+      "attention_rows": 128,
+      "candidate_package_default": true,
+      "candidate_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "candidate_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "control_variant_abis": {
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_triple_output_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+        "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+      },
+      "control_variants": {
+        "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out",
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+      },
+      "counter_rotated_repetitions": 3,
+      "fresh_request_session_per_sample": true,
+      "lengths": [
+        512,
+        1024,
+        4096
+      ],
+      "matrix_rows": 512,
+      "model_load_excluded": true,
+      "same_resident_weights": true,
+      "selector": "selector-unset H6R DPP peer-exchange staged-wave IQ3 source versus explicit H6Q compact-shuffle staged-wave rollback control",
+      "shared_total_scratch_bytes": 600141856,
+      "shared_workspace_bytes": 161120256,
+      "warmups_per_mode_length": 1
+    },
+    "rows": {
+      "1024": {
+        "gain_percent": 3.27354276640186,
+        "h6q_rollback_median_tok_s": 299.0186938270318,
+        "h6r_source_median_tok_s": 308.80719864899595,
+        "paired_h6r_wins": 3,
+        "paired_total": 3
+      },
+      "4096": {
+        "gain_percent": 1.991803626619082,
+        "h6q_rollback_median_tok_s": 190.14354425010134,
+        "h6r_source_median_tok_s": 193.93083026025693,
+        "paired_h6r_wins": 3,
+        "paired_total": 3
+      },
+      "512": {
+        "gain_percent": 3.7926371305243345,
+        "h6q_rollback_median_tok_s": 367.77729487886444,
+        "h6r_source_median_tok_s": 381.72575312207823,
+        "paired_h6r_wins": 3,
+        "paired_total": 3
+      }
+    },
+    "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1",
+    "total_scratch_bytes": 600141856,
+    "workspace_bytes": 161120256
+  },
+  "status": "retained_exact_package_default"
+}

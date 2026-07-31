@@ -1410,27 +1410,27 @@ span **4.725%/0.487%/1.076%**. Selector-unset 512/1K/4K gains
 (5/5 wins)** at **390.887 tok/s**. Workspace/scratch remain unchanged and
 **156/156** guards pass.
 
-The clean committed H6Q source reprofile remains **390.947 tok/s / 1,301.236
-ms / 2,192 dispatches** versus matched llama.cpp HIP **690.791 tok/s / 714.008
-ms**. **WPF-H6R exact DPP peer-exchange staged-wave IQ3 is now a qualified
-bounded default-off runtime owner.** Candidate-local permlanex16/DPP helpers
-change only H6Q's peer operation; the physical leaf remains byte-exact and
-both-clock positive on all **45/45** actual layers, with zero bpermutes, exact
-**24 permlanex16 + 96 DPP**, unchanged 216 FMAs/LDS/barriers/stride/grid, and
-metadata/runtime VGPR **101/104** at private0/spill0/scratch0. Complete natural
-M512 is KL0/byte-exact through all **48/48** hidden boundaries, complete K/V and
-`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192
+The previous clean H6Q source reprofile remains **390.947 tok/s / 1,301.236 ms
+/ 2,192 dispatches**. **WPF-H6R exact DPP peer-exchange staged-wave IQ3 is now
+the retained source default; H6Q is explicit same-ABI rollback.** Candidate-local
+permlanex16/DPP helpers change only H6Q's peer operation; the physical leaf
+remains byte-exact and both-clock positive on all **45/45** actual layers, with
+zero bpermutes, exact **24 permlanex16 + 96 DPP**, unchanged 216
+FMAs/LDS/barriers/stride/grid, and metadata/runtime VGPR **101/104** at
+private0/spill0/scratch0. Complete natural M512 is KL0/byte-exact through all
+**48/48** hidden boundaries, complete K/V and `KVLiveSpans`, repeat, and
+teardown. Four production-identical cached requests preserve **2,192
 dispatches** and change only **45 H6Q -> 45 H6R** calls; IQ3/request-sum/span
-falls **13.837%/3.578%/4.014%**. Default-off 512/1K/4K gains
-**4.055%/3.151%/1.873%**, all 3/3 exact wins, while fixed C4096/M512 improves
-**390.684 -> 408.222 tok/s (+4.489%, 5/5)**. H6R reuses raw allocation and
-`grouped_iq_prefill`; ABI, workspace/scratch, sidecar, dispatch count, and H6Q
-source policy remain unchanged. gfx1151 fails closed and **218/218** guards pass.
-Freeze source-default RED before changing the selected map
-([H6R candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
+falls **13.837%/3.578%/4.014%**. Fresh selector-unset 512/1K/4K gains
+**3.793%/3.274%/1.992%**, all 3/3 exact wins, while fixed C4096/M512 improves
+**391.307 -> 407.780 tok/s (+4.210%, 5/5)**. H6R reuses raw allocation and
+`grouped_iq_prefill`; ABI, workspace/scratch, sidecar, and dispatch count remain
+unchanged. gfx1151 fails closed and **219/219** guards pass. Reprofile clean
+committed production next
+([H6R production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-production.json) ·
+[H6R candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
 [post-H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
-[H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
-[H6Q candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json)).
+[H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
