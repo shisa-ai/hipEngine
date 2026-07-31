@@ -2513,6 +2513,16 @@ the path with constructor-false rollback; peer backends retain cached loads.
 Evidence:
 `benchmarks/results/2026-07-31-gfx1151-laguna-f16-nontemporal-decode-retained.json`.
 
+gfx1151 Q6T16 LM-head decode now emits one exact top-1 pair from each existing
+16-logit producer tile and finalizes only those 6,272 pairs. This removes the
+full-logit argmax stage-1 scan and one model launch while preserving all logits,
+minimum-index ties, and device-owned control publication. The producer is
+local128/VGPR104/LDS512/scratch0; the final reducer is
+local256/VGPR16/LDS0/scratch0. The completion-counter/last-producer sibling is
+performance-rejected and removed. Constructor false retains the ordinary
+logits + two-stage argmax chain. Evidence:
+`benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json`.
+
 gfx1151 c=1 now reuses the exact routed/shared branch-concurrency resources
 previously admitted for row-batched prefill. After router correction selection,
 the specialized shared Q4T16 gate/up+SiLU and shared-down kernels run on the

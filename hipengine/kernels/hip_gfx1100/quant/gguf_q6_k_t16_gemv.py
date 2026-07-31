@@ -18,6 +18,9 @@ _SOURCE = Path(__file__).with_name("gguf_q6_k_t16_gemv.hip")
 _OUTPUT_NAME = "gguf_q6_k_t16_gemv.so"
 _Q6_T16_BF16_F32 = "hipengine_gguf_q6_k_t16_gemv_decode_bf16_f32_out"
 _Q6_T16_BF16_BF16 = "hipengine_gguf_q6_k_t16_gemv_decode_bf16_bf16_out"
+_Q6_T16_BF16_F32_TOP1_STAGE1 = (
+    "hipengine_gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1"
+)
 _Q6_T16_ROWTILE_BF16_F32 = "hipengine_gguf_q6_k_t16_gemv_rowtile_bf16_f32_out"
 _Q6_T16_ROWTILE_BF16_BF16 = "hipengine_gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out"
 _QK_K = 256
@@ -118,6 +121,49 @@ def gguf_q6_k_t16_gemv_decode_bf16_bf16_out(
         library=library,
         runtime=runtime,
     )
+
+
+def gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    tile_values_ptr: int,
+    tile_indices_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact Q6T16 logits plus one top-1 pair per 16-logit tile."""
+
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _Q6_T16_BF16_F32_TOP1_STAGE1)
+    fn.argtypes = [
+        *([ctypes.c_void_p] * 5),
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(tile_values_ptr),
+        ctypes.c_void_p(tile_indices_ptr),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
@@ -238,6 +284,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q6_k_t16_gemv_decode_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+argmax",
+            "gguf_q6_k_t16_v1",
+            "t16_gemv_decode_bf16_f32_top1_stage1",
+        ),
+        gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1,
+        replace=replace,
+    )
 
 
 register_gguf_q6_k_t16_gemv_kernels()
@@ -247,6 +303,7 @@ __all__ = [
     "build_gguf_q6_k_t16_gemv",
     "gguf_q6_k_t16_gemv_decode_bf16_bf16_out",
     "gguf_q6_k_t16_gemv_decode_bf16_f32_out",
+    "gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q6_k_t16_gemv_rowtile_bf16_f32_out",
     "plan_gguf_q6_k_t16_gemv_build",

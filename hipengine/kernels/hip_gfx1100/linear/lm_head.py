@@ -15,6 +15,9 @@ _SYMBOL = "hipengine_lm_head_fp16_argmax_bf16"
 _SYMBOL_ROWS_I32 = "hipengine_lm_head_fp16_argmax_bf16_rows_i32"
 _SYMBOL_ARGMAX = "hipengine_argmax_f32"
 _SYMBOL_ARGMAX_PUBLISH_CONTROL = "hipengine_argmax_f32_publish_control"
+_SYMBOL_ARGMAX_TILE_STAGE2_I32_PUBLISH_CONTROL = (
+    "hipengine_argmax_tile_stage2_i32_publish_control"
+)
 _SYMBOL_ARGMAX_ROWS_I32 = "hipengine_argmax_f32_rows_i32"
 _SYMBOL_TOPK_ROWS_I32 = "hipengine_topk_f32_rows_i32"
 _SYMBOL_W8A16_LM_HEAD_ARGMAX_ROWS = "hipengine_w8a16_lm_head_argmax_rows_bf16"
@@ -274,6 +277,55 @@ def argmax_f32_publish_control(
         runtime.check(int(err))
 
 
+def argmax_tile_stage2_i32_publish_control(
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    next_token_i64_ptr: int,
+    scratch_position_i64_ptr: int,
+    kv_position_i64_ptr: int,
+    num_blocks: int,
+    next_position: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Finalize producer-emitted top-1 tile pairs and publish control."""
+
+    _check_shape(1, num_blocks, threads)
+    if next_position < 0:
+        raise ValueError("next_position must be non-negative")
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ARGMAX_TILE_STAGE2_I32_PUBLISH_CONTROL)
+    fn.argtypes = [
+        *([ctypes.c_void_p] * 7),
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_void_p(next_token_i64_ptr),
+        ctypes.c_void_p(scratch_position_i64_ptr),
+        ctypes.c_void_p(kv_position_i64_ptr),
+        ctypes.c_int64(num_blocks),
+        ctypes.c_int64(next_position),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def argmax_f32_rows_i32(
     logits_f32_ptr: int,
     block_values_f32_ptr: int,
@@ -523,6 +575,16 @@ def register_lm_head_kernels(*, replace: bool = True) -> None:
             "top1_i64_publish_control",
         ),
         argmax_f32_publish_control,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "argmax",
+            "f32_tile_i32",
+            "stage2_top1_i64_publish_control",
+        ),
+        argmax_tile_stage2_i32_publish_control,
         replace=replace,
     )
     register(

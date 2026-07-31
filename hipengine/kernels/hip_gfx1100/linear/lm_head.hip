@@ -492,6 +492,55 @@ __global__ void argmax_stage2_publish_control_kernel(
   }
 }
 
+__global__ void argmax_tile_stage2_publish_control_i32_kernel(
+    const float* __restrict__ block_values,
+    const int32_t* __restrict__ block_indices,
+    int64_t num_blocks,
+    int64_t* __restrict__ out_index,
+    float* __restrict__ out_value,
+    int64_t* __restrict__ next_token,
+    int64_t* __restrict__ scratch_position,
+    int64_t* __restrict__ kv_position,
+    int64_t next_position) {
+  extern __shared__ unsigned char shared_raw[];
+  float* values = reinterpret_cast<float*>(shared_raw);
+  int32_t* indices = reinterpret_cast<int32_t*>(values + blockDim.x);
+  const int tid = threadIdx.x;
+  float best_value = -3.4028234663852886e+38F;
+  int32_t best_index = INT32_MAX;
+  for (int64_t i = tid; i < num_blocks; i += blockDim.x) {
+    const float value = block_values[i];
+    const int32_t index = block_indices[i];
+    if (better_pair_i32(value, index, best_value, best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  values[tid] = best_value;
+  indices[tid] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride &&
+        better_pair_i32(
+            values[tid + stride],
+            indices[tid + stride],
+            values[tid],
+            indices[tid])) {
+      values[tid] = values[tid + stride];
+      indices[tid] = indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    const int64_t winner = static_cast<int64_t>(indices[0]);
+    *out_index = winner;
+    *out_value = values[0];
+    *next_token = winner;
+    *scratch_position = next_position;
+    *kv_position = next_position;
+  }
+}
+
 bool valid_threads(int64_t threads) {
   return threads == 128 || threads == 256 || threads == 512;
 }
@@ -586,6 +635,42 @@ extern "C" int hipengine_argmax_f32_publish_control(
       block_values,
       block_indices,
       stage1_blocks,
+      out_index,
+      out_value,
+      next_token,
+      scratch_position,
+      kv_position,
+      next_position);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_argmax_tile_stage2_i32_publish_control(
+    const float* block_values,
+    const int32_t* block_indices,
+    int64_t* out_index,
+    float* out_value,
+    int64_t* next_token,
+    int64_t* scratch_position,
+    int64_t* kv_position,
+    int64_t num_blocks,
+    int64_t next_position,
+    int64_t threads,
+    hipStream_t stream) {
+  if (num_blocks <= 0 || next_position < 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const size_t argmax_smem =
+      static_cast<size_t>(threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      argmax_tile_stage2_publish_control_i32_kernel,
+      dim3(1),
+      dim3(t),
+      argmax_smem,
+      stream,
+      block_values,
+      block_indices,
+      num_blocks,
       out_index,
       out_value,
       next_token,

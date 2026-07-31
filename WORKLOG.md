@@ -195420,3 +195420,47 @@ Vulkan local sizes verbatim will close the measured gap.
   tests. Production remains **22.865539 tok/s / 43.733936 ms/token**.
 - Evidence:
   `benchmarks/results/2026-07-31-gfx1151-laguna-selected-down-event-tail-batch-rejected.json`.
+
+## 2026-07-31 11:51 JST — Retain exact Q6 LM-head tile maxima
+
+- Re-audited the remaining decode tail against llama.cpp Vulkan. The resident
+  Q6T16 LM head already assigns one local128 workgroup to each 16-logit tile,
+  but the ordinary path stores all **100,352** logits and launches a separate
+  99-block argmax stage 1 before the final reducer.
+- Added a registered producer variant that preserves the established Q6
+  decode, ordered four-wave merge, and every FP32 logit store, then emits one
+  exact `(value, int32 index)` maximum for each of its **6,272** tiles. One
+  local256 reducer consumes those tile pairs and publishes the ordinary
+  ID/value plus device-owned next token and positions. Terminal
+  query/query-rotated scratch is reused, so resident bytes remain
+  **79,066,169,172**.
+- The first all-producer completion-counter design is rejected and fully
+  removed. Its last-producer finalization regresses the actual-weight leaf
+  **1.139369 -> 1.149582 ms (+0.89637%, +0.012824 ms paired)**.
+- The retained counter-free producer has an intentionally reserved kernarg
+  shape because that stable gfx1151 codegen wins while the mechanically
+  smaller signature does not. Twenty-one counterbalanced actual-weight pairs
+  improve **1.129503 -> 1.124825 ms (-0.41424%)**, save
+  **0.004739 ms** by paired median, and win **20/21**. Every FP32 logit,
+  top-1 ID/value bit pattern, and minimum-index tie matches.
+- Seven same-resident p512/d128 pairs are aggregate-flat at
+  **22.863175 -> 22.863567 tok/s (+0.00171%)**, but save
+  **0.008087 ms/token** by paired median with **4/7** wins. Every run preserves
+  token **2930 -> 74107**, position **638**, generated-ID SHA
+  `94f803f7...bda32`, resident bytes, determinism, and allocation recovery.
+- Cache-only tracing proves the structural and terminal-chain improvement:
+  steady dispatches fall **484 -> 483 = 481 model kernels + two D2H copies**.
+  The old Q6 -> full-logit stage1 -> stage2 chain is **1.131163 ms median**;
+  tilemax producer -> stage2 is **1.124310 ms**, saving **6.853 us**. A
+  final-source trace records local128/VGPR104/LDS512/scratch0 producer and
+  local256/VGPR16/LDS0/scratch0 reducer. No compiler ran under profiling.
+- Focused gfx1151 validation passes **13 tests**. The earlier completed broad
+  runner file had one unrelated existing scratch-size expectation mismatch
+  (**104,370,208** expected versus **104,370,976** current); the focused
+  default/rollback and plan-boundary nodes pass, so the unrelated assertion
+  is left untouched under the focused-repair rule.
+- Commands:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_q6_lm_head_top1_leaf.py --samples 21 --warmups 5 --burst 8 --compiler-version-file /tmp/laguna_hipcc_version.txt --output /tmp/laguna-q6-lmhead-tilemax-padded-final-leaf.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_laguna_argmax_control_publish.py tests/test_laguna_gguf_runner.py::test_laguna_q6_t16_lm_head_tilemax_is_gfx1151_default_and_rollbackable tests/test_laguna_gguf_runner.py::test_laguna_eager_plan_rejects_non_s21_shapes tests/test_laguna_gguf_runner.py::test_laguna_p4_head_kv_is_gfx11_default_and_rollbackable`.
+- Evidence:
+  `benchmarks/results/2026-07-31-gfx1151-laguna-q6-lm-head-tilemax-retained.json`.

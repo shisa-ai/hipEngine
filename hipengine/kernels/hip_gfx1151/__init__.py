@@ -84,6 +84,10 @@ LAGUNA_F16_NONTEMPORAL_DECODE = True
 # and consumes those device-published scalars without three synchronous H2D
 # copies; forced-token and peer-backend paths retain ordinary publication.
 LAGUNA_ARGMAX_CONTROL_PUBLISH = True
+# Exact Q6T16 LM-head producer tile maxima remove the full-logit argmax scan
+# and one model launch. The actual-weight leaf, seven-pair p512/d128 gate, and
+# cache-only trace admit it on gfx1151; constructor false keeps exact rollback.
+LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1 = True
 # Exact c=1 router projection wave-level reduction. Seven same-resident
 # p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
 # registered rollback.
