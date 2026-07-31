@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-31T09:51:18+09:00",
+  "kind": "hipengine_laguna_decode_schedule_screen",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "source_revision": "89f80d8c16bdab641c482a160d9da2298b9d59c8",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ 395 / Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "Reuse the existing input-ready and output-ready events, but enqueue the low-priority shared gate/up/down branch after selected gate/up instead of after router selection.",
+    "kernel_changes": 0,
+    "dispatch_change_per_token": 0,
+    "event_change_per_layer": 0,
+    "resident_byte_change": 0,
+    "arithmetic_change": "none",
+    "removed_after_gate": true
+  },
+  "directional_one_pair": {
+    "shape": "p512/d128 eager c=1",
+    "control_decode_tok_s": 22.847146587063147,
+    "candidate_decode_tok_s": 22.812599754002935,
+    "throughput_delta_percent": -0.1512085236927252,
+    "control_ms_per_token": 43.7691418571383,
+    "candidate_ms_per_token": 43.835424755765935,
+    "wall_delta_ms_per_token": 0.06628289862763381,
+    "wall_delta_percent": 0.15143751011610362,
+    "seven_pair_gate_run": false,
+    "reason": "The rough structural gate was negative, so the candidate stopped before the seven-pair retention gate."
+  },
+  "correctness": {
+    "next_token": 2930,
+    "final_token": 74107,
+    "final_position": 638,
+    "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32",
+    "control_candidate_generated_ids_match": true,
+    "resident_nbytes": 79066169172,
+    "tracked_allocations_returned_to_zero": true
+  },
+  "validation": {
+    "red": "The new host-order test failed because run_laguna_moe_c1_components did not accept shared_after_selected_gate.",
+    "green": "The host-order contract, 36 profile tests, one session-default test, and the focused Q4_K production-shape GPU oracle passed while the candidate existed.",
+    "broad_gpu_qualification": "The two-parameter production-shape GPU node passed Q4_K. Its Q6_K parameter stopped at an existing rows>1 MMQ equality assertion before reaching the new c=1 schedule; the focused Q4_K node was then used per the repository focused-repair rule."
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_LAGUNA_F16_DECODE=fixedk PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compare-moe-shared-after-selected-gate --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-shared-after-selected-gate-onepair.json",
+    "load_excluded": true,
+    "cached_build_required": true,
+    "raw_result_sha256": "b41704c20fbf740bd4895ea3008980b275bd56f917b0cb595eae32a01850bafd"
+  },
+  "interpretation": {
+    "result": "Moving the shared branch after selected gate/up loses more useful overlap than it recovers from selected-gate memory contention.",
+    "production": "Unchanged at 22.856155 tok/s / 43.751890 ms/token.",
+    "next": "Keep the retained after-router overlap and attack queue feed without shifting the complete shared branch behind selected gate/up."
+  }
+}
