@@ -24,6 +24,9 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv
 from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
     build_moonshine_projection,
 )
+from hipengine.kernels.hip_gfx1100.linear.moonshine_w8a16 import (
+    build_moonshine_w8a16,
+)
 from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
     build_moonshine_layernorm,
 )
@@ -47,6 +50,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--prebuild-only", action="store_true")
     parser.add_argument(
+        "--w8a16-families",
+        default="",
+        help="comma-separated selective families: lm_head,mlp,attention",
+    )
+    parser.add_argument(
         "--token-route",
         choices=("eager", "graph"),
         default="eager",
@@ -56,23 +64,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _build_all(compiler_version: str, *, load: bool, require_cached: bool):
+def _build_all(
+    compiler_version: str,
+    *,
+    load: bool,
+    require_cached: bool,
+    include_w8a16: bool = False,
+):
     arguments = {
         "compiler_version": compiler_version,
         "load": load,
         "require_cached": require_cached,
     }
-    return tuple(
-        builder(**arguments)
-        for builder in (
-            build_moonshine_projection,
-            build_dense_gemv,
-            build_moonshine_layernorm,
-            build_moonshine_glue,
-            build_moonshine_mlp,
-            build_moonshine_attention,
-        )
-    )
+    builders = [
+        build_moonshine_projection,
+        build_dense_gemv,
+        build_moonshine_layernorm,
+        build_moonshine_glue,
+        build_moonshine_mlp,
+        build_moonshine_attention,
+    ]
+    if include_w8a16:
+        builders.append(build_moonshine_w8a16)
+    return tuple(builder(**arguments) for builder in builders)
 
 
 def _fixture_first_eos_position(manifest: dict[str, object]) -> int:
@@ -176,7 +190,10 @@ def _compare(
     )
     report["max_abs"] = max(float(report["max_abs"]), max_abs)
     report["max_relative_l2"] = max(float(report["max_relative_l2"]), relative_l2)
-    if max_abs > BOUNDARY_MAX_ABS or relative_l2 > BOUNDARY_MAX_RELATIVE_L2:
+    if (
+        bool(report.get("boundary_limit_enforced", True))
+        and (max_abs > BOUNDARY_MAX_ABS or relative_l2 > BOUNDARY_MAX_RELATIVE_L2)
+    ):
         report["failures"].append(
             f"{name}: max_abs={max_abs:.6g}, relative_l2={relative_l2:.6g}"
         )
@@ -186,7 +203,12 @@ def main() -> int:
     args = parse_args()
     compiler_version = args.compiler_version_file.read_text()
     if args.prebuild_only:
-        for artifact in _build_all(compiler_version, load=False, require_cached=False):
+        for artifact in _build_all(
+            compiler_version,
+            load=False,
+            require_cached=False,
+            include_w8a16=bool(args.w8a16_families),
+        ):
             print(artifact.output_path)
         return 0
     if args.model_path is None or args.fixture is None:
@@ -206,6 +228,13 @@ def main() -> int:
         "all_passed": False,
         "boundary_max_abs_limit": BOUNDARY_MAX_ABS,
         "boundary_max_relative_l2_limit": BOUNDARY_MAX_RELATIVE_L2,
+        "boundary_limit_enforced": not bool(args.w8a16_families),
+        "boundary_policy": (
+            "FP16 boundary limits are recorded but the explicit KL/top-1 and token gates "
+            "control W8A16 qualification"
+            if args.w8a16_families
+            else "strict FP16 boundary limits"
+        ),
         "encoder_frames": encoder_frames,
         "source_frames": source_frames,
         "failures": [],
@@ -218,6 +247,9 @@ def main() -> int:
         "post_eos_unselected_token_mismatches": [],
         "timed_step_allocations": 0,
         "token_route": args.token_route,
+        "w8a16_families": [
+            value.strip() for value in args.w8a16_families.split(",") if value.strip()
+        ],
         "boundary_capture": "all_layer_boundaries" if args.token_route == "eager" else "final_hidden_only",
         "token_graph": None,
     }
@@ -227,6 +259,7 @@ def main() -> int:
         with MoonshineResidentRuntime(
             model_path=args.model_path,
             encoder_frames=encoder_frames,
+            w8a16_families=args.w8a16_families,
         ) as resident:
             resident.prepare_decoder_kernels(
                 compiler_version=compiler_version,
@@ -343,6 +376,7 @@ def main() -> int:
             report["logit_gate_passed"] = logits_gate.passed
             if args.token_route == "graph":
                 report["token_graph"] = resident.token_graph_contract()
+            report["quantization"] = resident.quantization_contract()
             before_close = resident.allocation_contract()
         after_close = memory_stats()
     report["resident_nbytes"] = before_close["resident_nbytes"]
