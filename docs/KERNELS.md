@@ -1326,22 +1326,24 @@ explicit wait-split premises before returning to a distinct residual family
 ([H6M rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json) ·
 [post-H6L residual / H6M target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json)).
 
-**WPF-H6N exact global dense-initial fixed-512 score arena is a retained leaf
-with bounded default-off runtime ownership; source remains H6A.** The generic
-role parser now admits one additional H6N key without backend/quant branches,
-ABI, allocation, workspace, or public-selector changes. Complete natural M512
-is KL0/byte-exact across logits, all **48/48** hidden boundaries, K/V/spans,
-repeat, and teardown. Four cached requests preserve **2,192 dispatches** and
-replace exactly **48 H6A global with 48 H6N**, retaining 144 H6A SWA and all
-other normalized kernels. Global/attention/kernel-sum/span move **57.126/
-169.556/1,320.178/1,346.667 -> 31.969/148.140/1,305.325/1,327.300 ms
-(-44.038%/-12.631%/-1.125%/-1.438%)** at local256/VGPR40/scratch0. Fixed
-C4096/M512 improves **379.040 -> 384.692 tok/s (+1.491%, 5/5 wins)**. Clean
-512/1K are neutral-positive; 4K is exact within **0.037%** wall noise. Keep H6A
-source production **381.977 tok/s** until a separately frozen source-default
-contract and selector-unset publication pass
-([H6N candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
-[H6N target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
+**WPF-H6N exact global dense-initial fixed-512 score arena is the retained
+gfx1100 source default.** The generic role parser admits both H6A/H6N keys
+without backend/quant branches, ABI, allocation, workspace, or public-selector
+changes. Complete natural M512 is KL0/byte-exact across logits, all **48/48**
+hidden boundaries, K/V/spans, repeat, and teardown. Four cached requests
+preserve **2,192 dispatches** and replace exactly **48 H6A global with 48 H6N**,
+retaining 144 H6A SWA and all other normalized kernels. Global/attention/
+kernel-sum/span move **57.126/169.556/1,320.178/1,346.667 -> 31.969/148.140/
+1,305.325/1,327.300 ms (-44.038%/-12.631%/-1.125%/-1.438%)** at local256/
+VGPR40/scratch0. Fresh selector-unset fixed C4096/M512 improves **381.772 ->
+387.571 tok/s (+1.519%, 5/5 wins)** and is **1.79668x** behind llama.cpp HIP.
+Selector-unset 512/1K/4K is **-0.054%/+0.199%/+0.054%**, exact/finite and
+lifecycle-clean, with 4K winning **3/3**. H6A global remains registered
+rollback, H6A SWA remains source, gfx1151 stays excluded, and **81/81** guards
+pass
+([H6N production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-candidate.json) ·
+[target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

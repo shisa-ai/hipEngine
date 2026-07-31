@@ -17,13 +17,13 @@ LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_sourcequal_exact_spans"
     ),
 }
-# WPF-H6A promotes both exact dense-initial cached-only roles after KL0 complete
-# state, exact 144-SWA/48-global integrated topology, and positive default-off
-# 512/1K/4K gates. H5R/H5U remain registered rollback leaves; explicit global
-# and SWA selectors plus shape/metadata/registration/backend misses fail closed.
+# WPF-H6N promotes the exact fixed-512 global dense-initial leaf after complete
+# state/topology qualification and positive fixed C4096/M512 evidence. H6A
+# remains the registered global rollback and keeps source ownership of SWA;
+# explicit selectors plus shape/metadata/registration/backend misses fail closed.
 LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
     "global_m128_c4096_first_fill_exact": (
-        "global_context_rows_dense_initial_cached_exact_spans"
+        "global_context_rows_dense_initial_fixed512_cached_exact_spans"
     ),
     "swa_qrow4_m128_c512_no_wrap_exact": (
         "swa_context_rows_qrow4_dense_initial_cached_exact_spans"

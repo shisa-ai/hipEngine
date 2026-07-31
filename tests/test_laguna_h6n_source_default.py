@@ -85,9 +85,13 @@ def _qualifies(cache, layer_id: int, start: int, rows: int) -> bool:
 
 def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
     from hipengine.runtime import laguna_kv as module
     from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
+    register_laguna_kv_attention_kernels()
     assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _PRODUCTION_POLICY
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == _H5R_POLICY
     assert not hasattr(hip_gfx1151, _DENSE_CAPABILITY)
