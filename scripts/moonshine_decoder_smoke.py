@@ -69,6 +69,24 @@ def _build_all(compiler_version: str, *, load: bool, require_cached: bool):
     )
 
 
+def _fixture_first_eos_position(manifest: dict[str, object]) -> int:
+    producer = manifest.get("producer")
+    if not isinstance(producer, dict) or producer.get("first_eos_position") is None:
+        raise ValueError("fixture producer must record first_eos_position")
+    position = int(producer["first_eos_position"])
+    if position < 0:
+        raise ValueError("fixture first_eos_position must be nonnegative")
+    return position
+
+
+def _token_mismatch_required(
+    position: int,
+    first_eos_position: int,
+    selected_positions: set[int],
+) -> bool:
+    return position <= first_eos_position or position in selected_positions
+
+
 def _certified_encoder_bucket(source_frames: int) -> int:
     for bucket in CERTIFIED_ENCODER_BUCKETS:
         if source_frames <= bucket:
@@ -171,6 +189,7 @@ def main() -> int:
     manifest = json.loads(manifest_path.read_text())
     token_ids = tuple(int(value) for value in manifest["decoder"]["token_ids"])
     positions = tuple(int(value) for value in manifest["decoder"]["positions"])
+    first_eos_position = _fixture_first_eos_position(manifest)
     source_frames = int(manifest["input"]["encoder_frames"])
     encoder_frames = (
         _certified_encoder_bucket(source_frames)
@@ -187,7 +206,10 @@ def main() -> int:
         "max_abs": 0.0,
         "max_relative_l2": 0.0,
         "positions": list(positions),
+        "first_eos_position": first_eos_position,
+        "generation_tokens_exact": True,
         "selected_tokens_exact": True,
+        "post_eos_unselected_token_mismatches": [],
         "timed_step_allocations": 0,
     }
     reference_logits: list[np.ndarray] = []
@@ -248,10 +270,24 @@ def main() -> int:
                 selected = resident.read_token()
                 expected_selected = token_ids[position + 1]
                 if selected != expected_selected:
-                    report["selected_tokens_exact"] = False
-                    report["failures"].append(
-                        f"position {position}: selected {selected} != {expected_selected}"
-                    )
+                    mismatch = {
+                        "position": position,
+                        "selected": selected,
+                        "expected": expected_selected,
+                    }
+                    if _token_mismatch_required(
+                        position,
+                        first_eos_position,
+                        selected_positions,
+                    ):
+                        report["selected_tokens_exact"] = False
+                        if position <= first_eos_position:
+                            report["generation_tokens_exact"] = False
+                        report["failures"].append(
+                            f"position {position}: selected {selected} != {expected_selected}"
+                        )
+                    else:
+                        report["post_eos_unselected_token_mismatches"].append(mismatch)
                 if position not in selected_positions:
                     continue
                 prefix = f"decoder.position_{position}"
