@@ -409,8 +409,20 @@ lengths 40/207/1248 pass the NumPy oracle. The maximum-length smoke is finite;
 self output is byte-equal and masked cross output has max absolute error
 `4.768e-7` and relative L2 `7.961e-6`. Cache-only gfx1151 tracing names the
 self/cross kernels at 96.982/558.650 us for lengths 194/1248, local32,
-VGPR32/SGPR128/LDS0/scratch0. These are correctness fallback diagnostics, not
-tuned-attention performance claims.
+VGPR32/SGPR128/LDS0/scratch0. These remain the explicit correctness fallbacks.
+
+The Phase-3 gfx1151 cross-attention default is the separately registered
+`resident_masked_parallel_tokens` route. One local256 block owns each head;
+eight waves process interleaved masked tokens and merge FP32 online-softmax
+partials in 2,048 bytes of LDS. It keeps logical dimension 52, resident
+head-major FP16 K/V, scratch0, and no score plane. Clean 15x20-launch timing
+improves fallback to selected at 40/24, 40/40, 207/105, 207/207, and
+1,248/1,248 frames by 3.27x/3.64x/6.22x/5.93x/6.71x. Full synthetic and six
+padded real Tier-B gates retain exact generated IDs through EOS, 100% logit
+top-1, zero timed allocation, and clean teardown. The clean decoder profile
+reduces eight past-1 cross calls from roughly 0.23 ms to 0.060 ms and moves the
+long-cache bottleneck to self attention. Detailed evidence is in the Moonshine
+experiment ledger's `results/2026-07-31-hip-phase3-cross-attention.md`.
 
 `runtime/moonshine.py` composes these primitives into the complete unfused
 resident decoder. Code objects are explicitly prepared before timed work;
