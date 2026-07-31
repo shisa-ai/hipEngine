@@ -113,7 +113,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Validate padded 40/207-bucket position-0/193 boundaries for all six real Japanese fixtures.
   - [x] Publish the Phase-2 correctness, dispatch, latency, and Amdahl baseline in the experiment ledger.
 - [ ] Tune and promote the Phase-3 resident decoder route.
-  - [ ] Tune source-F16 singleton, triple-QKV, and bias-aware MLP projections.
+  - [x] Tune source-F16 singleton, triple-QKV, and bias-aware MLP projections.
   - [ ] Tune tied LM-head/argmax and self/cross attention from refreshed profiles.
   - [ ] Test bounded fusions and fixed-address graph replay only after structural wins.
 
