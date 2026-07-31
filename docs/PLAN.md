@@ -1864,6 +1864,29 @@ publication confirms **+1.326%/+0.897%/+0.490%**, 3/3 wins each, promoting
 [H6C runtime candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-runtime-candidate.json) ·
 [H6C leaf](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-candidate.json) ·
 [H6C target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-target.json)).
+
+The clean post-H6C source-default refresh measures **329.563 tok/s** from five
+exact token-2930/lifecycle-clean samples, **+94.413%** over campaign start and
+**2.11293x** behind exact llama.cpp HIP **696.342 tok/s**. Its representative
+cached request reconciles **1,546.351 ms / 2,050 dispatches** in a
+**1,567.000-ms** span. Current/llama component sums are IQ down
+**488.916/154.434 ms**, Q5 **245.503/58.737**, attention **168.520/21.624**,
+Q6 **93.490/14.455**, gate/up **475.796/401.393**, and remaining
+**74.124/67.598**. Gaps rank **334.482/186.766/146.896/79.035/74.403 ms**.
+
+Select **WPF-H6D exact row-interleaved IQ3 VOPD** on H5Z's **480.299-ms / 45-call**
+body. Current generated code preserves 72 useful row-dot/scale FMAs but assigns
+all 72 separate issue slots and forms no FMA/FMA VOPD pair. A target-selection
+compiler probe interleaving only the eight mathematically independent rows
+keeps all 72 FMAs, 13 global loads, 52 DS operations, and two barriers while
+forming **17** math-math VOPD pairs, reducing FMA issue slots **72 -> 55**,
+function slots **859 -> 775**, and code-object VGPR **107 -> 99**. This is
+static feasibility, not a candidate speed/correctness claim. Freeze a separate
+gfx1100 RED and require exact H5Z/CPU bytes, unchanged per-row FMA/reduction/
+BF16 order and P64/P256 metadata, physical math-math VOPD, scratch0/no resource
+growth, and all-45-layer event+wall wins before runtime ownership
+([post-H6C residual / H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json)).
+
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
