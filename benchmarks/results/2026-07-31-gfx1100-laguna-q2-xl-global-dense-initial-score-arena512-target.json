@@ -1,0 +1,138 @@
+{
+  "admission": {
+    "performance": "Five warmups, 15 counter-rotated samples, five launches/sample at all four starts. Every start and the 48-call weighted global schedule must improve both HIP-event and synchronized-wall clocks with complete F32 byte identity.",
+    "red_first": "Freeze a separate gfx1100-only sibling over starts0/128/256/384 and complete outputs against H6A plus sampled independent CPU rows; require all five KVLiveSpans fields immutable, strict shape rejection before loader access, unchanged source production/workspace, and gfx1151 absence.",
+    "rejection": "Remove every H6N executable/test/key/exclusion surface if any byte/span/shape/resource/start/clock gate fails; retain H6A.",
+    "runtime": "Only after leaf admission, freeze bounded default-off ownership, require complete natural-M512 state/repeat/teardown, exact 48-call substitution at unchanged 2,192 dispatches, fixed C4096/M512 and selector-unset 512/1K/4K both-clock non-regression before source promotion.",
+    "source_and_physical": "Keep the H6A kernel/wrapper bodies byte-frozen. Candidate source must use a 512-score extent and exact 2,592-byte dynamic launch arena, retain local256/grid48x128, private0/spill0/scratch0, metadata/runtime VGPR <=48, and run from a cached build with no compiler under rocprof."
+  },
+  "closed_immediate_premises": {
+    "attention_qrow_grouping": "H5R's exact global qrow4 reconstruction raises runtime VGPR248/LDS8192 and loses every start.",
+    "attention_score_replay": "H6J's exact SWA replay also reaches runtime VGPR248 and regresses the weighted schedule by 28-30%+.",
+    "iq3_wider_grouping": "H6K's exact fourth output raises runtime VGPR 168->200 and regresses all 45 layers; H6I triple-output remains the measured sweet spot.",
+    "q5_pipeline": "H6M physically realizes explicit overlap but regresses every role/clock; all candidate surfaces are removed."
+  },
+  "correctness_claim": false,
+  "date": "2026-07-31",
+  "decision": {
+    "next_action": "Commit this target-only packet, freeze H6N RED, then implement and screen the separately registered fixed-512 global H6A sibling.",
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "lds_bytes_per_cu": 65536,
+    "max_waves_per_cu": 32,
+    "queues": 1,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6n_global_dense_initial_score_arena512_target",
+  "lineage": {
+    "frozen_control_kernel_body_sha256": "9c6ec1d45e375f22c9e97854f2d8c7a70dbcfaa2df9dcd710a8dba4fbd56721b",
+    "frozen_control_wrapper_body_sha256": "535f454badd8ccd2692d865c8aa0f8cdf80e8737644cf101ce49181f154d9abd",
+    "h6a_candidate_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-candidate.json",
+    "h6a_candidate_artifact_sha256": "ae2e637cff99227b3989548d41badc18b1f4d359774842f8df41e1b8edd35e95",
+    "h6a_production_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-dense-initial-cached-exact-attention-production.json",
+    "h6a_production_artifact_sha256": "f95d5827a8f7bcf8d50b639f3920bb7e27917b8db29aa2b96908e5e0515d3fe6",
+    "h6i_production_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json",
+    "h6i_production_artifact_sha256": "3d15f36474baae1a01588fc8426039afec8ad1d9477f63daf00b53b5f72a204a",
+    "h6j_rejection_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json",
+    "h6j_rejection_artifact_sha256": "c24ec84e40be2b5727e1960ebc127872d262bf4042d2a1318b382f0a7bc20dd4",
+    "h6k_rejection_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-rejected.json",
+    "h6k_rejection_artifact_sha256": "4c7c15ce12f28fa3efae739183c88066c911cf47b0cf6f5de9e964eebc606146",
+    "h6m_rejection_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json",
+    "h6m_rejection_artifact_sha256": "46ac2da6c540f624088f935a825ccd8af6996235ecb23fdcbe4362895ab5e808",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "parent_residual_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6l-matched-residual.json",
+    "parent_residual_artifact_sha256": "fbbd83835a97d52e6f5025967de1db8706990ce932b2ca6d25709f5db2af9202",
+    "source": "Net-new in-tree specialization of the retained H6A global dense-initial body; no external kernel copied.",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "daa2054e5482bbd6716f43693de2debdd2ccd83c61db7a6526cfaf9bdc146fca",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "7384229c6253df106a13974e55b51de49483d68ef1f53ecad522d6152cac94d7",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "351d7b1465ef92f946095d94b183ff2ee2941424198cc1394d982f14f115d47d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "b6476859491ab762e72d6b1cdf7c8f72f1d3e8fe5fd30597bc7527f52f43ba9d",
+      "hipengine/runtime/laguna_kv.py": "dd689394bac9e188e139e1850336fd7723e1f4bf3a9433693f9e3a7f2d4c1728"
+    }
+  },
+  "model": {
+    "global_shape": "rows128/capacity4096/block256/QH48/KVH8/D128 starts0/128/256/384",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural C4096/direct-M512/package matrix512/attention128 with four complete preappended M128 first-fill tiles"
+  },
+  "performance_claim": false,
+  "production": {
+    "attention_gap_ms": 151.44159699999994,
+    "attention_ms": 173.06558199999995,
+    "h6a_global_calls": 48,
+    "h6a_global_ms": 57.195443,
+    "h6a_global_resources": {
+      "grid_x": 12288,
+      "grid_y": 128,
+      "kernel": "void (anonymous namespace)::laguna_global_attention_prefill_cached_exact_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+      "lds_bytes": 0,
+      "local_size": 256,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 40
+    },
+    "h6a_global_share_of_attention_percent": 33.048421493766455,
+    "kernel_sum_ms": 1326.062241,
+    "llamacpp_hip_tok_s": 696.342,
+    "llamacpp_over_current": 1.8229924696370243,
+    "matched_tok_s": 381.97744181502213,
+    "owners": "H6L/H6I/H6E/H6C/H6A/H5Y",
+    "revision": "548273a0f",
+    "unchanged": true
+  },
+  "raw_evidence_sha256": {
+    "/tmp/build_laguna_h6n_global_score_arena_target.py": "db02d30120888413d6a6c0e240bdd09a0b3658a9a3b5a13bd936d1108b259513",
+    "/tmp/laguna-h6n-gfx1100-resource-facts.txt": "103f337fa6cb0ce0dd9f6822a4a2e7fe7767eb1c529eb924918bee9656928115",
+    "/tmp/laguna-post-h6l-matched-c4096-m512-trace-summary.json": "0edb96291750f37fb45a65775148bb1a26225d5f928f46f27a6cba608cbc2d30"
+  },
+  "schema": 1,
+  "scope": "Target-only selection of an exact fixed-512 score arena sibling for the H6A global dense-initial cached attention role on one Radeon Pro W7900 queue",
+  "selection": {
+    "allocation_or_workspace_bytes_added": 0,
+    "candidate_absent": true,
+    "candidate_function": "laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_spans",
+    "candidate_kernel": "laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernel",
+    "candidate_symbol": "hipengine_laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_spans",
+    "candidate_variant": "global_context_rows_dense_initial_fixed512_cached_exact_spans",
+    "dispatches_removed": 0,
+    "family": "attention",
+    "id": "WPF-H6N",
+    "name": "exact global dense-initial fixed-512 score arena",
+    "new_exact_premise": "H5R already rejected query-row grouping because it raised VGPR/LDS and changed work ownership; H6J rejected score replay at runtime VGPR248. H6N does not group rows or replay scores. It removes only unreachable dynamic LDS capacity while retaining H6A's local256 arithmetic and VGPR40 shape.",
+    "operation": "Add one separately registered gfx1100 sibling of H6A global dense-initial cached exact attention. Keep local256/grid, every query/K/V load, eight token-strided QK owners, wave trees, materialized scores, max/exp/denominator order, normalized-weight-before-token-ordered PV, division/store, complete KVLiveSpans ABI, allocation, workspace, and policy. Replace only the unused C4096 score-arena extent and dependent warp/query offsets with the proven first-fill maximum 512.",
+    "persistent_sidecar_bytes_added": 0,
+    "production_changed": false,
+    "useful_arithmetic_or_operand_bytes_removed": 0
+  },
+  "static_resource_model": {
+    "candidate_blocks_per_64k_cu_by_lds_floor": 25,
+    "candidate_dynamic_lds_bytes": 2592,
+    "candidate_dynamic_lds_floats": 648,
+    "candidate_lds_only_resident_wave_ceiling": 32,
+    "candidate_score_capacity_floats": 512,
+    "control_blocks_per_64k_cu_by_lds_floor": 3,
+    "control_dynamic_lds_bytes": 16928,
+    "control_dynamic_lds_floats": 4232,
+    "control_lds_only_resident_wave_ceiling": 24,
+    "control_score_capacity_floats": 4096,
+    "dynamic_lds_bytes_removed": 14336,
+    "dynamic_lds_reduction_percent": 84.68809073724007,
+    "interpretation": "This is a mechanical LDS-only ceiling, not an achieved occupancy or speed claim. VGPR/SGPR/workgroup scheduling and cache behavior remain binding measurements.",
+    "lds_only_wave_ceiling_gain_percent": 33.33333333333333,
+    "proof_of_bound": "The strict H6A route admits only starts 0/128/256/384 with rows128; query_position+1 is therefore at most 512, while capacity remains 4096 solely for the global KV ABI.",
+    "query_floats": 128,
+    "warps": 8,
+    "waves_per_local256_block": 8
+  },
+  "status": "target_only_no_executable_or_performance_claim"
+}
