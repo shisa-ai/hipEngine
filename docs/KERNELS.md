@@ -336,6 +336,14 @@ Measured four-row diagnostic durations are 20.759/56.788/69.772 us for
 single/pair/triple; these are bring-up diagnostics, not promoted performance
 claims.
 
+`norm/moonshine_layernorm.{hip,py}` registers
+`moonshine_layernorm/fp16/fp32_stats`. One local256 block computes the FP32
+mean and centered variance in two passes, then writes the weighted FP16
+boundary. The hidden-416 seven-row fixture is byte-equal to the NumPy oracle.
+Cache-only gfx1151 tracing names `moonshine_layernorm_fp16_kernel` at 14.948 us,
+local256/VGPR24/LDS512/scratch0. Moonshine uses LayerNorm; this does not reuse
+or alter the Qwen/PARO RMSNorm math.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
