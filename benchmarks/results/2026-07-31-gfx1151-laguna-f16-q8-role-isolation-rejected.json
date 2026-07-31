@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T22:31:43+09:00",
+  "kind": "hipengine_gfx1151_laguna_f16_q8_role_isolation_rejected",
+  "status": "rejected_correctness",
+  "performance_claim": false,
+  "source_revision": "94e132daf68064bbba5dcd0b4353a1b3b3697586",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "runtime": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "weight_representation": "block32 Q8_0 weights",
+    "activation_representation": "exact BF16",
+    "accumulation": "FP32",
+    "source_f16_bytes_all_roles": 5606277120,
+    "q8_0_bytes_all_roles": 2978334720,
+    "all_role_byte_change_percent": -46.875,
+    "roles": [
+      "attention query",
+      "attention key",
+      "attention value",
+      "attention gate"
+    ],
+    "scopes": [
+      "all 48 layers",
+      "12 global-attention layers",
+      "36 SWA layers"
+    ]
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "teacher_forced": true,
+    "quality_gate": {
+      "maximum_kl": 0.05,
+      "top1_agreement": 0.9
+    },
+    "all_layers_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --activation-path exact --modes q,k,v,gate --scopes all --decode-tokens 16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-q8-exact-role-gate.json",
+    "scope_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_f16_decode_q8_full_gate.py --activation-path exact --modes q,k,v,gate --scopes full,swa --decode-tokens 16 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --output /tmp/laguna-f16-q8-exact-role-scope-gate.json",
+    "all_layers_raw_sha256": "98a84afd87f3978d1462c6a08816dbffb06d504a748f5791b99c0a486f79a7fd",
+    "scope_raw_sha256": "16320912a21f2f1d9adbd1ab719a540c1315352ebd6b865106c31d4e78293cb6"
+  },
+  "results": [
+    {
+      "role": "q",
+      "scope": "all",
+      "maximum_kl": 0.48140087508850465,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "role": "k",
+      "scope": "all",
+      "maximum_kl": 0.6858563746283792,
+      "top1_agreement": 0.8125,
+      "passed": false
+    },
+    {
+      "role": "v",
+      "scope": "all",
+      "maximum_kl": 0.5622108313441342,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "role": "gate",
+      "scope": "all",
+      "maximum_kl": 0.6787139647625581,
+      "top1_agreement": 0.9375,
+      "passed": false
+    },
+    {
+      "role": "q",
+      "scope": "global",
+      "maximum_kl": 0.6098302479160198,
+      "top1_agreement": 1.0,
+      "passed": false
+    },
+    {
+      "role": "k",
+      "scope": "global",
+      "maximum_kl": 0.5351486777255656,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "role": "v",
+      "scope": "global",
+      "maximum_kl": 0.8524133996460806,
+      "top1_agreement": 0.8125,
+      "passed": false
+    },
+    {
+      "role": "gate",
+      "scope": "global",
+      "maximum_kl": 1.0338831498484766,
+      "top1_agreement": 0.9375,
+      "passed": false
+    },
+    {
+      "role": "q",
+      "scope": "swa",
+      "maximum_kl": 0.5981622844018076,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "role": "k",
+      "scope": "swa",
+      "maximum_kl": 0.5869694282991055,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "role": "v",
+      "scope": "swa",
+      "maximum_kl": 0.8126765026818068,
+      "top1_agreement": 0.875,
+      "passed": false
+    },
+    {
+      "role": "gate",
+      "scope": "swa",
+      "maximum_kl": 0.566366867572289,
+      "top1_agreement": 0.9375,
+      "passed": false
+    }
+  ],
+  "dispatch_validation": {
+    "all_layer_q_k_v_calls_each": 768,
+    "global_q_k_v_calls_each": 192,
+    "swa_q_k_v_calls_each": 576,
+    "all_layer_gate_calls": 768,
+    "global_gate_calls": 192,
+    "swa_gate_calls": 576,
+    "untouched_siblings": "exact source-F16 single or triple projection"
+  },
+  "decision": {
+    "action": "reject every one-plane Q8 role and structural attention scope",
+    "reason": "Every role/scope exceeds the 0.05 maximum-KL ceiling by at least 9.63x. The best top-1 result, global-query at 100%, still reaches maximum KL 0.609830.",
+    "production": "unchanged at 23.089693 tok/s / 43.309368 ms/token",
+    "retain_diagnostic": true,
+    "reopen_only_if": "a materially higher-precision or calibrated representation first passes the recurrent quality gate"
+  }
+}
