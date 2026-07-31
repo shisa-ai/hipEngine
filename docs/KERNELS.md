@@ -374,6 +374,19 @@ all-family tracing measures **504.631 tok/s** and cuts router
 **30.658 -> 23.315 ms**. Evidence:
 `benchmarks/results/2026-07-26-gfx1151-laguna-router-token-tile8-production.json`.
 
+The c=1 multi-expert projection screen is rejected and fully removed. To
+avoid the 12-KiB wave strides of a literal lane-per-expert schedule, local256
+candidate blocks cached the K3072 BF16 activation in 6 KiB LDS and assigned
+8/16/32 experts per block with 32/16/8 adjacent K lanes per expert. All three
+passed the CPU quality gate, stayed finite, preserved top-1/top-10, and had
+maximum KL about `1.2e-13`. They nevertheless regressed the retained exact
+one-workgroup-per-expert wave-0-tree projection by **8.77%/11.81%/28.97%**
+in HIP-event time and **8.73%/11.77%/28.91%** in synchronized wall. The
+monotonic loss closes activation-reuse/multi-expert tiling for the resident
+expert-major F32 matrix; another attempt needs a different weight layout or a
+persistent owner that preserves the 256-expert parallel grid:
+[`rejected expert tiles`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-expert-tiles-rejected.json).
+
 The diagnostic-only prefill routing replay also captures the normalized F32
 weight beside every selected expert ID. Normal generation allocates neither
 capture plane. `scripts/laguna_routing_replay.py` reports the final-one and
