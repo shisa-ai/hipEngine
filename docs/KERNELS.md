@@ -387,6 +387,17 @@ expert-major F32 matrix; another attempt needs a different weight layout or a
 persistent owner that preserves the 256-expert parallel grid:
 [`rejected expert tiles`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-expert-tiles-rejected.json).
 
+The corresponding bounded persistent output-projection owner is also rejected
+and fully removed. Exact local256 owners walked whole K6144/K9216 output
+columns at grid stride, reducing 3,072 completion atomics to 40/80 while
+preserving every BF16 boundary and reduction. The maximum occupancy-safe
+grid80 still regresses full/SWA leaves **1.170%/1.542%** and adds
+**0.158479 ms/token** across 12 full plus 36 SWA calls. The compiled resource
+footprint permits only two blocks/CU, so 120/160 are rejected by the occupancy
+guard. Do not retry this persistent composition without a higher-occupancy
+reduction or lower-byte projection representation:
+[`rejected persistent output owner`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-persistent-output-rejected.json).
+
 The diagnostic-only prefill routing replay also captures the normalized F32
 weight beside every selected expert ID. Normal generation allocates neither
 capture plane. `scripts/laguna_routing_replay.py` reports the final-one and

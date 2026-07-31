@@ -8697,6 +8697,39 @@ The remaining attention sequence is:
      **23.089693 tok/s**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-router-expert-tiles-rejected.json).
 
+184. Replace the output projection's 3,072 one-column producers with a
+     bounded persistent grid, then use that ownership to cross RMSNorm into
+     the router. **Rejected at the prerequisite leaf and removed.**
+
+     This is distinct from ordinary host batching and from item 183's
+     narrowed expert tiles. Each persistent local256 owner walks whole output
+     columns at grid stride while preserving the retained K order, F32 FMA
+     sequence, eight-wave reduction, BF16 store, residual boundary, and
+     RMSNorm tree. Reusing blocks reduces the completion protocol from one
+     atomic per column to one per persistent block. An occupancy query guards
+     the launch before execution.
+
+     K6144/K9216 projection, residual, and normalized BF16 arrays are bit
+     exact at grids 40 and 80, and the counter self-resets. The natural-shape
+     21x100 screen nevertheless rejects both safe grids:
+
+     | Shape | Retained | persistent40 | persistent80 |
+     | --- | ---: | ---: | ---: |
+     | full K6144/N3072 | **0.163074 ms** | 0.175252 ms (**+7.468%**) | 0.164981 ms (**+1.170%**) |
+     | SWA K9216/N3072 | **0.244182 ms** | 0.301245 ms (**+23.369%**) | 0.247949 ms (**+1.542%**) |
+     | weighted 12 full + 36 SWA | **10.747449 ms/token** | 12.947845 ms/token | 10.905927 ms/token (**+0.158479 ms**) |
+
+     The compiled candidate admits only **two local256 blocks/CU**; the
+     occupancy guard rejects grids 120/160 as invalid rather than risking a
+     global-barrier deadlock. Grid80 is therefore the maximum safe schedule,
+     and its **0.158479-ms/token** loss consumes **60.13%** of the complete
+     measured **0.263561-ms/token** output→router boundary before router work
+     is added. Remove the body, ABI, wrapper, test, and diagnostic harness
+     before fusion or runtime integration. Reopen only with a reduction that
+     raises occupancy or a representation that reduces projection traffic.
+     Production remains **23.089693 tok/s**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-persistent-output-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
@@ -8718,7 +8751,9 @@ overlapped or bandwidth-ceiling leaf. Item 181 additionally proves that the
 gap is not the redundant resident-layer Python validation walk, while item
 182 closes the remaining selected-down/D9 physical-owner construction and
 item 183 closes multi-expert router projection tiles under the resident
-expert-major F32 weight layout:
+expert-major F32 weight layout. Item 184 additionally closes the obvious
+bounded persistent output→RMSNorm→router owner: its maximum occupancy-safe
+grid already regresses before router work is attached:
 [`post-halfdot census`](../benchmarks/results/2026-07-31-gfx1151-laguna-post-halfdot-wall-reprofile.json).
 
 Current decode checkpoint:
