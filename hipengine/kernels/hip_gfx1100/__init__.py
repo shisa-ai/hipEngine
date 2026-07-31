@@ -220,6 +220,12 @@ _H6Q_IQ3_COMPACT_SHUFFLE_LOOP_VARIANT = (
     "staged_wave_publication_compact_shuffle_loop_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_"
+    "staged_wave_publication_dpp_peer_exchange_triple_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
     "gguf_iq3_xxs": _H6Q_IQ3_COMPACT_SHUFFLE_LOOP_VARIANT,
     "gguf_iq4_xs": (
@@ -236,6 +242,9 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
         "grouped_raw_iq_active_experts"
     ),
     _H6Q_IQ3_COMPACT_SHUFFLE_LOOP_VARIANT: (
+        "grouped_raw_iq_active_experts"
+    ),
+    _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT: (
         "grouped_raw_iq_active_experts"
     ),
 }

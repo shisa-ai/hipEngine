@@ -396,19 +396,24 @@ ms (-4.725%/-0.487%/-1.076%)**. Fresh selector-unset 512/1K/4K improves
 matched llama.cpp HIP. Workspace/scratch remain unchanged and **156/156** guards
 pass.
 
-**WPF-H6R exact DPP peer-exchange staged-wave IQ3 is now a retained standalone
-gfx1100 leaf; H6Q remains the production/runtime owner.** The one-shot screen
-passes exactly: all **45/45** actual IQ3 layers are byte-identical and win both
-clocks. H6Q -> H6R aggregate event time moves **311.597 -> 269.365 ms
-(-13.554%, 1.1568x)** and synchronized wall **317.309 -> 265.667 ms (-16.275%,
-1.1944x)**; minimum per-layer wins are **1.1425x/1.1785x**. The arch-tagged code
-object emits zero bpermutes, exact **24 permlanex16 + 96 DPP** peer instructions,
-unchanged **216** FMAs/24 LDS loads/12 stores/two barriers/stride/grid, and
-private0/spill0/scratch0 at metadata/runtime VGPR **101/104**. Frozen rows
-1/7/8/9/M512, reversed P64/P65, sampled CPU values, gfx1151 exclusion, and
-**151/151** retained guards pass. Production remains the clean H6Q
-**390.947 tok/s** baseline pending separate bounded H6R runtime qualification
-([H6R candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
+**WPF-H6R exact DPP peer-exchange staged-wave IQ3 is now a qualified bounded
+default-off gfx1100 runtime owner; H6Q remains the production source.** Its
+physical leaf stays exact on all **45/45** actual layers and emits zero
+bpermutes, exact **24 permlanex16 + 96 DPP**, unchanged arithmetic/topology, and
+private0/spill0/scratch0 at metadata/runtime VGPR **101/104**. Complete natural
+M512 is KL0/byte-exact across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, and teardown. Four cached requests preserve exactly
+**2,192 dispatches** and replace only **45 H6Q -> 45 H6R** calls, moving IQ3/
+request-sum/span **310.159/1,332.893/1,362.094 ->
+267.241/1,285.199/1,307.416 ms (-13.837%/-3.578%/-4.014%)**. Default-off
+512/1K/4K improves **366.862/298.461/189.951 ->
+381.739/307.867/193.509 tok/s (+4.055%/+3.151%/+1.873%)**, with **3/3** exact
+wins each. Fixed natural C4096/M512 improves **390.684 -> 408.222 tok/s
+(+4.489%, 5/5 wins)** and remains **1.69220x** behind matched llama.cpp HIP
+**690.791 tok/s**. Workspace/scratch remain **161,120,256/600,141,856 bytes**,
+gfx1151 fails closed, and **218/218** retained/runtime guards pass. Freeze a
+separate source-default RED before changing H6Q
+([H6R candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
 [post-H6Q residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json) ·
 [H6Q candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json)).

@@ -47,6 +47,12 @@ _H6Q_RUNTIME_VARIANT = (
     "staged_wave_publication_compact_shuffle_loop_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_H6R_RUNTIME_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_"
+    "staged_wave_publication_dpp_peer_exchange_triple_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 _H6C_ROLE = "layer47_iq3_k3072_n1024_e256"
 _H6C_VARIANT = (
@@ -76,6 +82,7 @@ def test_h6f_source_default_is_retained_under_h6q_source_and_fail_closed(
         _H6I_IQ3: _ACTIVE_EXPERT_ABI,
         _H6P_IQ3: _ACTIVE_EXPERT_ABI,
         _H6Q_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
+        _H6R_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants
