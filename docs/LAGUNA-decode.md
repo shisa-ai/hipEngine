@@ -8266,6 +8266,30 @@ The remaining attention sequence is:
      43.445636 ms/token**:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-selected-gate-lane0-metadata-rejected.json).
 
+168. Move Q8_1 activation dots from selected experts to the concurrently
+     running shared/dense Q4 branch. **Rejected at the inclusive actual-weight
+     leaf and removed.**
+
+     This tests a different quality/performance surface from item 64: one
+     BF16-to-Q8_1 pack plus the existing Q4T16 dp4a fused-SiLU consumer runs
+     over actual layer-1 shared and layer-0 dense gate/up weights. The control
+     is the retained exact dual-interleaved local32 owner. The intent was to
+     shorten the secondary queue and reduce the memory contention currently
+     inflating selected gate/up.
+
+     It loses before a new interleaved Q8 kernel or recurrent quality gate is
+     warranted. Shared K3072/N1024 regresses
+     **0.010381 -> 0.015332 ms (+47.686%, 0/21 wins)** with **844 BF16
+     mismatches**; dense K3072/N12288 regresses
+     **0.186246 -> 0.196749 ms (+5.639%, 0/21 wins)** with **9,743
+     mismatches**. Maximum absolute errors are **0.03125/0.0625**.
+
+     Remove the temporary leaf route. Do not build a resident-layout-specific
+     shared Q8 consumer from this starting point: the inclusive mechanism is
+     both slower and approximate. Production remains **23.017271 tok/s /
+     43.445636 ms/token**:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-shared-q8-activation-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
