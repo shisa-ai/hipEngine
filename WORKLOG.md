@@ -196770,3 +196770,28 @@ Vulkan local sizes verbatim will close the measured gap.
   for shared down. Candidate raw SHA-256 is `a347f3c3...9263f7`.
   Evidence:
   `benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-runtime-rejected.json`.
+
+## 2026-08-01 02:16 JST — Close quiet Vulkan gap and reject selector continuation
+
+- After the competing agentic workload stopped, tracked-clean hipEngine
+  p512/d128 measures **23.205870/23.220755/23.225800 tok/s**, median
+  **23.220755 tok/s / 43.064922 ms/token**. Same-GGUF llama.cpp Vulkan
+  `c0bc8591e` measures **23.3624/23.3861/23.4061 tok/s**, median
+  **23.3861 tok/s / 42.760443 ms/token**. The remaining quiet gap is
+  **0.304479 ms/token / 0.7070% throughput**.
+- `GPU_MAX_HW_QUEUES=4` preserves the exact trajectory but reaches only
+  **23.193979 tok/s (-0.11531%, +0.049716 ms/token)**. Retain two queues.
+- Extended the exact item-190 output→router continuation through one
+  any-order correction/top-10 selector. The central last-block completion
+  design is exact but reaches **23.036479 tok/s (-0.79358%)**.
+- Replaced the central 256-way atomic with distributed per-expert readiness.
+  Structural tests and a four-cycle live-HIP oracle pass bit-for-bit across
+  projection, norm, logits, scores, IDs, weights, and reset state. Complete
+  decode remains exact but reaches only
+  **23.050326 tok/s (-0.73395%, +0.318413 ms/token)**.
+- Completely removed both selector-continuation designs, including kernels,
+  exports, wrappers, registry keys, scratch, runtime/capability/CLI routes,
+  and tests. The waiting consumer/resource reservation—not central atomic
+  contention—is the blocker. Production remains the retained two-queue
+  output→router continuation. Evidence:
+  `benchmarks/results/2026-08-01-gfx1151-laguna-quiet-decode-gap-scheduling-rejected.json`.

@@ -9044,6 +9044,40 @@ The remaining attention sequence is:
      [`leaf`](../benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-leaf.json) ·
      [`runtime rejection`](../benchmarks/results/2026-08-01-gfx1151-laguna-q6-t16-shared-down-runtime-rejected.json).
 
+196. Re-establish the quiet same-GGUF gap and extend the retained
+     output→router continuation through selector completion.
+     **Both scheduling screens rejected and completely removed.**
+
+     With the competing agentic workload stopped, three tracked-clean
+     p512/d128 runs measure **23.205870/23.220755/23.225800 tok/s**, median
+     **23.220755 tok/s / 43.064922 ms/token**. The same GGUF on pinned
+     llama.cpp Vulkan `c0bc8591e`, F16 K/V, flash attention, batch 2048,
+     ubatch 512 measures **23.3624/23.3861/23.4061 tok/s**, median
+     **23.3861 tok/s / 42.760443 ms/token**. The reproducible gap is therefore
+     only **0.304479 ms/token / 0.7070% throughput**, not the earlier noisy
+     multi-millisecond estimate.
+
+     Raising `GPU_MAX_HW_QUEUES` from the retained **2** to **4** is exact but
+     moves decode to **23.193979 tok/s (-0.11531%, +0.049716 ms/token)**.
+     Retain two hardware queues.
+
+     The remaining bounded continuation screen keeps the retained ordered
+     output/add/RMSNorm producer and any-order 256-block router, then submits
+     one exact correction/top-10 selector with `hipExtAnyOrderLaunch`.
+     A centralized last-router completion election passes exact state but
+     reaches only **23.036479 tok/s (-0.79358%, +0.344490 ms/token)**.
+     Replacing that 256-way atomic with one readiness word per expert also
+     passes a bit-exact four-cycle GPU oracle and the exact recurrent
+     trajectory, but still reaches only
+     **23.050326 tok/s (-0.73395%, +0.318413 ms/token)**.
+
+     Distributed readiness rules out central atomic contention as the cause.
+     The waiting selector workgroup/resource reservation costs more than the
+     ordered queue boundary. Remove the candidate kernels, ABIs, registry
+     keys, scratch, runtime/capability/CLI routes, and tests. Do not extend
+     the retained item-190 continuation through another waiting consumer:
+     [`quiet comparison and rejections`](../benchmarks/results/2026-08-01-gfx1151-laguna-quiet-decode-gap-scheduling-rejected.json).
+
 The committed post-halfdot two-queue census confirms the retained mechanism
 on the critical path. Across the final 127 transitions, union-busy GPU time is
 **41.926136 ms/token** inside a **43.420396-ms** dispatch span, leaving
