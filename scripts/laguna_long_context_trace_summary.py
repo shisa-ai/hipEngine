@@ -349,6 +349,24 @@ def _segment_requests(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
     return segments
 
 
+def _interval_union_ns(rows: Sequence[Mapping[str, Any]]) -> int:
+    intervals = sorted(
+        (int(row["Start_Timestamp"]), int(row["End_Timestamp"]))
+        for row in rows
+    )
+    if not intervals:
+        return 0
+    total = 0
+    start, end = intervals[0]
+    for next_start, next_end in intervals[1:]:
+        if next_start > end:
+            total += end - start
+            start, end = next_start, next_end
+            continue
+        end = max(end, next_end)
+    return total + end - start
+
+
 def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
     rows = list(segment["rows"])
     attention_families = _dense_initial_blas_attention_families(rows)
@@ -381,6 +399,7 @@ def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
         "chunks": int(segment["chunks"]),
         "dispatches": len(rows),
         "kernel_sum_ns": kernel_sum,
+        "kernel_union_ns": _interval_union_ns(rows),
         "kernel_span_ns": end - start,
         "attention_duration_ns": attention_ns,
         "attention_share_of_kernel_sum": attention_ns / kernel_sum,
@@ -435,6 +454,103 @@ def _aggregate_segments(segments: Sequence[Mapping[str, Any]]) -> dict[str, Any]
             },
         }
     return result
+
+
+def _aggregate_decode_segments(
+    segments: Sequence[Mapping[str, Any]],
+    raw_segments: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if not segments:
+        raise ValueError("decode trace aggregation requires at least one transition")
+    if len(segments) != len(raw_segments):
+        raise ValueError("decoded and raw trace segment counts must match")
+    transitions = len(segments)
+    family_rows: dict[str, dict[str, Any]] = {}
+    for family in _FAMILY_ORDER:
+        calls = [int(item["families"][family]["calls"]) for item in segments]
+        durations = [
+            int(item["families"][family]["duration_ns"])
+            for item in segments
+        ]
+        family_rows[family] = {
+            "calls_per_transition": sum(calls) / transitions,
+            "total_calls": sum(calls),
+            "median_duration_ns": statistics.median(durations),
+            "mean_duration_ns": sum(durations) / transitions,
+            "total_duration_ns": sum(durations),
+        }
+
+    symbol_rows: dict[str, dict[str, Any]] = {}
+    for segment in raw_segments:
+        rows = list(segment["rows"])
+        attention_families = _dense_initial_blas_attention_families(rows)
+        for index, row in enumerate(rows):
+            name = str(row["Kernel_Name"])
+            item = symbol_rows.setdefault(
+                name,
+                {
+                    "Kernel_Name": name,
+                    "family": _trace_row_family(
+                        rows,
+                        index,
+                        attention_families=attention_families,
+                    ),
+                    **{
+                        field: str(row[field])
+                        for field in _RESOURCE_FIELDS
+                        if field != "Kernel_Name"
+                    },
+                    "calls": 0,
+                    "duration_ns": 0,
+                },
+            )
+            item["calls"] += 1
+            item["duration_ns"] += _duration_ns(row)
+    symbols = []
+    for item in symbol_rows.values():
+        item["calls_per_transition"] = item["calls"] / transitions
+        item["mean_duration_ns_per_transition"] = (
+            item["duration_ns"] / transitions
+        )
+        symbols.append(item)
+    symbols.sort(key=lambda item: -int(item["duration_ns"]))
+
+    return {
+        "transitions": transitions,
+        "dispatches_per_transition": [
+            int(item["dispatches"]) for item in segments
+        ],
+        "median_kernel_sum_ns": statistics.median(
+            int(item["kernel_sum_ns"]) for item in segments
+        ),
+        "mean_kernel_sum_ns": sum(
+            int(item["kernel_sum_ns"]) for item in segments
+        )
+        / transitions,
+        "median_kernel_union_ns": statistics.median(
+            int(item["kernel_union_ns"]) for item in segments
+        ),
+        "mean_kernel_union_ns": sum(
+            int(item["kernel_union_ns"]) for item in segments
+        )
+        / transitions,
+        "median_kernel_span_ns": statistics.median(
+            int(item["kernel_span_ns"]) for item in segments
+        ),
+        "mean_kernel_span_ns": sum(
+            int(item["kernel_span_ns"]) for item in segments
+        )
+        / transitions,
+        "median_attention_duration_ns": statistics.median(
+            int(item["attention_duration_ns"]) for item in segments
+        ),
+        "mean_attention_duration_ns": sum(
+            int(item["attention_duration_ns"]) for item in segments
+        )
+        / transitions,
+        "families": family_rows,
+        "symbols": symbols,
+    }
 
 
 def _trace_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
@@ -497,14 +613,63 @@ def attach_summary(
 ) -> dict[str, Any]:
     raw_segments = _segment_requests(rows)
     summarized = [_summarize_segment(segment) for segment in raw_segments]
-    expected = [int(child["protocol"]["warmup_rows"])] + [
-        int(row["length"]) for row in child["rows"]
-    ]
-    actual = [int(segment["length"]) for segment in summarized]
-    if actual != expected:
-        raise ValueError(f"profile segment lengths {actual} do not match child order {expected}")
+    if not summarized:
+        raise ValueError("profile trace contains no Laguna request segments")
+    warmup_rows = int(child["protocol"]["warmup_rows"])
+    if int(summarized[0]["length"]) != warmup_rows:
+        raise ValueError(
+            "profile segment lengths do not match child order: expected "
+            f"warmup {warmup_rows}, got {int(summarized[0]['length'])}"
+        )
     warmup = summarized[0]
-    timed = summarized[1:]
+    output_horizon = int(
+        child["protocol"].get("output_tokens_including_first", 1)
+    )
+    decode_calls = output_horizon - 1
+    cursor = 1
+    timed = []
+    decode_by_length: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    decode_raw_by_length: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for child_row in child["rows"]:
+        expected_length = int(child_row["length"])
+        if cursor >= len(summarized):
+            raise ValueError(
+                "profile segment lengths do not match child order: "
+                f"missing prefill length {expected_length}"
+            )
+        prefill_segment = summarized[cursor]
+        if int(prefill_segment["length"]) != expected_length:
+            raise ValueError(
+                "profile segment lengths do not match child order: expected "
+                f"prefill {expected_length}, got "
+                f"{int(prefill_segment['length'])}"
+            )
+        timed.append(prefill_segment)
+        cursor += 1
+        for _ in range(decode_calls):
+            if cursor >= len(summarized):
+                raise ValueError(
+                    "profile segment lengths do not match child order: "
+                    f"missing decode transition after {expected_length}"
+                )
+            decode_segment = summarized[cursor]
+            if int(decode_segment["length"]) != 1:
+                raise ValueError(
+                    "profile segment lengths do not match child order: expected "
+                    f"one-row decode after {expected_length}, got "
+                    f"{int(decode_segment['length'])}"
+                )
+            decode_by_length[expected_length].append(decode_segment)
+            decode_raw_by_length[expected_length].append(raw_segments[cursor])
+            cursor += 1
+    if cursor != len(summarized):
+        actual_tail = [
+            int(segment["length"]) for segment in summarized[cursor:]
+        ]
+        raise ValueError(
+            "profile segment lengths do not match child order: unexpected "
+            f"trailing segments {actual_tail}"
+        )
     required = {int(value) for value in child["protocol"]["lengths"]}
     if {int(segment["length"]) for segment in timed} != required:
         raise ValueError("profile trace does not cover every required LPF-5 length")
@@ -521,6 +686,13 @@ def attach_summary(
         ),
         "warmup": warmup,
         "lengths": _aggregate_segments(timed),
+        "decode": {
+            str(length): _aggregate_decode_segments(
+                selected,
+                decode_raw_by_length[length],
+            )
+            for length, selected in sorted(decode_by_length.items())
+        },
         "attention_resources": _trace_resources(rows),
         "family_resources": _family_resources(rows),
     }

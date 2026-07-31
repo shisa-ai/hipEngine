@@ -11,6 +11,7 @@ from scripts.laguna_long_context_profile import (
     DECODE_OUTPUT_TOKENS,
     FINAL_SWEEP_LENGTHS,
     LAP0_LENGTHS,
+    LC_D2_DECODE_TRACE_LENGTHS,
     LC0_TRACE_LENGTHS,
     MATCHED_LONG_SWEEP_LENGTHS,
     PROFILE_LENGTH_SETS,
@@ -38,6 +39,8 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert ATTACK_LENGTHS in PROFILE_LENGTH_SETS
     assert LC0_TRACE_LENGTHS == (16384, 65536)
     assert LC0_TRACE_LENGTHS in PROFILE_LENGTH_SETS
+    assert LC_D2_DECODE_TRACE_LENGTHS == (16384,)
+    assert LC_D2_DECODE_TRACE_LENGTHS in PROFILE_LENGTH_SETS
     assert FINAL_SWEEP_LENGTHS == (512, 1024, 4096, 32768, 65536, 131072)
     assert FINAL_SWEEP_LENGTHS in PROFILE_LENGTH_SETS
     assert MATCHED_LONG_SWEEP_LENGTHS == (
@@ -566,3 +569,78 @@ def test_lpf5_trace_attachment_fails_closed_on_segment_order(tmp_path: Path) -> 
             trace_path=tmp_path / "trace.csv",
             trace_sha256="abc",
         )
+
+
+def test_lpf5_trace_attachment_summarizes_fixed_horizon_decode(
+    tmp_path: Path,
+) -> None:
+    child = {
+        "pass": True,
+        "performance_claim": False,
+        "protocol": {
+            "warmup_rows": 128,
+            "lengths": [16384],
+            "output_tokens_including_first": 3,
+        },
+        "rows": [{"length": 16384}],
+    }
+    decode0 = [
+        _row(10000, "gguf_q4_k_embedding_bf16_out_kernel", 10000, 2),
+        _row(
+            10001,
+            "laguna_global_attention_split_exact_scores_kernel",
+            10002,
+            10,
+        ),
+        _row(
+            10002,
+            "laguna_global_attention_split_exact_gated_reduce_kernel",
+            10012,
+            20,
+        ),
+        _row(10003, "laguna_swa_attention_decode_kernel", 10032, 5),
+        _row(10004, "argmax_stage2_kernel", 10037, 1),
+    ]
+    decode1 = [
+        _row(11000, "gguf_q4_k_embedding_bf16_out_kernel", 11000, 2),
+        _row(
+            11001,
+            "laguna_global_attention_split_exact_scores_kernel",
+            11002,
+            14,
+        ),
+        _row(
+            11002,
+            "laguna_global_attention_split_exact_gated_reduce_kernel",
+            11016,
+            22,
+        ),
+        _row(11003, "laguna_swa_attention_decode_kernel", 11038, 6),
+        _row(11004, "argmax_stage2_kernel", 11044, 1),
+    ]
+    rows = [
+        *_request_rows(100, 1),
+        *_request_rows(1000, 128),
+        *decode0,
+        *decode1,
+    ]
+
+    attached = attach_summary(
+        child,
+        rows,
+        trace_path=tmp_path / "trace.csv",
+        trace_sha256="abc",
+    )
+
+    decode = attached["profiler"]["decode"]["16384"]
+    assert decode["transitions"] == 2
+    assert decode["median_kernel_sum_ns"] == pytest.approx(41.5)
+    assert decode["families"]["global_attention"]["calls_per_transition"] == 2
+    assert decode["families"]["global_attention"]["mean_duration_ns"] == 33
+    symbols = {row["Kernel_Name"]: row for row in decode["symbols"]}
+    assert symbols["laguna_global_attention_split_exact_scores_kernel"][
+        "calls_per_transition"
+    ] == 1
+    assert symbols[
+        "laguna_global_attention_split_exact_gated_reduce_kernel"
+    ]["mean_duration_ns_per_transition"] == 21
