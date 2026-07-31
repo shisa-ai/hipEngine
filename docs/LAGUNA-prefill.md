@@ -534,6 +534,33 @@ to **1.97397x**. H6D/H5Z/H5Q remain registered rollbacks
 [H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
 [post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
 
+The clean post-H6F source refresh is **353.798 tok/s** from
+**354.182/354.022/353.553/353.798/353.034**, all exact token 2930 and lifecycle-
+clean. That is **+108.710%** over campaign start and **1.96819x** behind exact
+llama.cpp HIP **696.342 tok/s**. Five cached requests preserve **2,192**
+dispatches; the representative request reconciles **1,435.431 ms** in a
+**1,460.237-ms** median span. Current/llama components are IQ down
+**376.170/154.434 ms**, Q5 **250.665/58.737**, attention **171.168/21.624**,
+gate/up **476.822/401.393**, Q6 **85.704/14.455**, and remaining
+**74.902/67.598**. Gaps rank **221.737/191.928/149.544/75.429/71.249 ms** and
+explain **98.982%** of the **717.190-ms** kernel gap.
+
+Do not immediately iterate H6F's just-promoted IQ operation. The largest
+distinct exact family is Q5, whose same-request decomposition is H5Y consumers
+**218.228 ms**, producers **25.849**, activation packs **4.698**, and H5G
+fallback **1.890**. The BF16 K9216/N3072 row-major 12x8 and F32 K3072/N9216
+tile-K-col 8x10 bodies own **156.790 ms / 70 calls (71.85% of H5Y consumer
+time)**. Select target-only **WPF-H6G exact Q5 one-step K-record prefetch**.
+Separate siblings must preserve every H5Y plane bit, local128/four-wave logical
+K assignment, scalar FMA order, wave32 tree, serial wave0..3 sum, store, row and
+output geometry, grid, role map, workspace, and fallback while carrying one next
+weight/activation record across current-K FMAs. This is a new latency-hiding
+operation, not a geometry/layout/ownership retry or speed claim. RED must freeze
+rows17/33/M512 bytes and maps; admission requires physical prefetch before the
+current FMA tail, no scratch/private spill, unchanged LDS/grid, and both actual
+roles exact and positive on HIP events plus synchronized wall
+([post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
@@ -1288,6 +1315,7 @@ heldouts before any clean publication.
 | **WPF-H6D exact row-interleaved IQ3 VOPD** | **Complete; retained gfx1100 IQ3 production through 4K** | The all-45-layer leaf is exact and both-clock positive with physical **17** FMA/FMA VOPD pairs, VGPR104, LDS512, and scratch0. Complete M512 is KL0/byte-exact across all 48 boundaries, logits, K/V/`KVLiveSpans`, repeat, and teardown with unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch. Four cached requests retain **2,050** dispatches and exact **45 H5Z or 45 H6D + two H5J** topology; IQ3/request/span falls **2.564%/0.251%/0.861%**. Selector-unset 512/1K/4K is **+1.207%/+0.657%/+0.492%**, 3/3 wins each, promoting **319.072/265.872/176.138 tok/s**. Fixed paired C4096/M512 reaches **332.308 tok/s (+0.905%, 5/5 wins)**; the clean promoted-source refresh reaches **332.992 tok/s / 1,530.211 ms**, **+96.436%** over campaign start and **2.09117x** behind llama.cpp HIP. H5Z/H5Q remain rollback; **92/92** guards pass. [`production`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json) · [`post-H6D residual`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json) · [`candidate/runtime`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json) · [`target`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json). |
 | **WPF-H6E exact Q6 activation-tile-K-row transfer** | **Complete; retained gfx1100 Q6 production through 4K** | All three changed roles preserve complete H5W output/plane bytes and sampled CPU quality; producer-inclusive event/wall moves **65.969/66.187 -> 58.085/58.217 ms (-11.952%/-12.042%)**. Complete natural-M512 is KL0/byte-exact across all 48 boundaries, logits, K/V/`KVLiveSpans`, repeat, and teardown at unchanged **161,120,256-byte** workspace / **600,141,856-byte** scratch. Four cached requests substitute exact **142 H5W -> 142 H6E** plus 142 packs, moving Q6/request-sum/span **92.867/1,545.837/1,572.498 -> 84.000/1,541.912/1,563.696 ms (-9.549%/-0.254%/-0.560%)**. Selector-unset 512/1K/4K is **+0.515%/+0.425%/+0.259%**, 3/3 exact wins each, promoting **319.854/267.357/176.470 tok/s**. Fixed C4096/M512 reaches **333.329 tok/s (+0.266%, 5/5 wins)**; the clean source refresh reaches **334.512 tok/s / 1,519.289 ms** and is **2.08166x** behind llama.cpp HIP. H5W/H5I remain rollback; no allocation/workspace/sidecar/public selector. [`production`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) · [`candidate/runtime`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) · [`target`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json). |
 | **WPF-H6F exact IQ3 paired-output reduction amortization** | **Complete; retained gfx1100 IQ3 production through 4K** | The separate gfx1100 H6D sibling passes rows1/7/8/9/M512, P64/P65, output-pair, complete H6D-byte, and sampled CPU gates. ISA changes physical output stride **0x100 -> 0x200** with two barriers/body, proving **24 -> 12 dynamic barriers per rowbatch**. Candidate metadata/runtime is private0/spill0/scratch0 at **VGPR146/152, LDS256/512**, local128/grid32768x64. All **45/45** actual IQ3 layers are exact and win both clocks; event/wall moves **445.316/436.801 -> 352.255/360.918 ms (-20.898%/-17.372%, 1.264x/1.210x)**. Complete M512 is KL0/byte-exact across all 48 boundaries, logits, K/V/`KVLiveSpans`, repeat, and teardown at unchanged workspace/scratch. Four cached requests substitute exact **45 H6D -> 45 H6F** and cut IQ3/request-sum/span **21.072%/5.339%/5.598%**. Selector-unset 512/1K/4K gains **5.234%/4.365%/2.856%**, 3/3 exact wins each. Fixed C4096/M512 reaches **352.761 tok/s (+5.856%, 5/5 wins)** and is **1.97397x** behind llama.cpp HIP; **156/156** guards pass. H6D/H5Z/H5Q remain rollback. [`production`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) · [`candidate/runtime`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) · [`target`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json). |
+| **WPF-H6G exact Q5 one-step K-record prefetch** | **Target selected; production unchanged** | Clean H6F reaches **353.798 tok/s / 1,435.431-ms** kernel sum and is **1.96819x** behind llama.cpp HIP. Q5 is **250.665 ms**, with **218.228-ms H5Y consumers**; the BF16 K9216/N3072 12x8 and F32 K3072/N9216 8x10 roles own **156.790 ms / 70 calls**. Screen separate exact one-step weight/activation-record lookahead siblings without changing bytes, traffic, geometry, ownership, FMA/reduction/store order, maps, workspace, or fallbacks. Require realized ISA prefetch, no scratch/spill, and both actual roles exact and both-clock positive. [`target`](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh H5W M512 span-minus-sum is only **26.726 ms / 1.461%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
 | WPF-5 long context | 4K complete; 16K+ hard deferred | Clean H6F/H6E/H6C/H6A/H5Y 4K is **181.563 tok/s (+2.886% over H6E canonical)**; fixed C4096/M512 is **352.761 tok/s**. First reach matched direct-M512 HIP parity **696.342 tok/s**, then collect a matched llama.cpp HIP M4K row before reopening 16K+. Keep 800/700 at M512/M4K as stretch, not the sole hardware-ceiling evidence. |

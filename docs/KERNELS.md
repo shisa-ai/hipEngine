@@ -1168,9 +1168,27 @@ scratch. Four cached requests retain **2,192 dispatches** and substitute exact
 **320.079/267.093/176.521 -> 336.830/278.753/181.563 tok/s
 (+5.234%/+4.365%/+2.856%)**, 3/3 exact wins each; **156/156** retained guards
 pass. Fixed C4096/direct-M512 improves **333.248 -> 352.761 tok/s (+5.856%,
-5/5 wins)** and is **1.97397x** behind llama.cpp HIP. Reprofile the clean
-promoted source before selecting the next exact residual target
-([H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
+5/5 wins)** and is **1.97397x** behind llama.cpp HIP. The clean promoted-source
+refresh reaches **353.798 tok/s**, **+108.710%** over campaign start and
+**1.96819x** behind llama.cpp HIP. Its representative cached request is
+**1,435.431 ms / 2,192 dispatches** in a **1,460.237-ms** median span. Fresh gaps
+rank IQ-down/Q5/attention/gate-up/Q6 at **221.737/191.928/149.544/75.429/
+71.249 ms**. Exact topology retains **45 H6F + two H5J**, **46 IQ2 + one H6C**,
+**48 global + 144 SWA H6A**, and unchanged H5Y/H6E routes with no H6D escape.
+
+**WPF-H6G exact Q5 one-step K-record prefetch** is the next target-only screen.
+The reconciled Q5 stack is H5Y consumers/producers/packs/H5G fallback
+**218.228/25.849/4.698/1.890 ms**. BF16 K9216/N3072 row-major 12x8 and F32
+K3072/N9216 tile-K-col 8x10 dominate at **156.790 ms / 70 calls**. Their H5Y
+loop currently consumes each aligned weight and activation record immediately;
+separate H6G siblings will carry one next record across the current-K unrolled
+FMA region while preserving bytes, global traffic, local128/four-wave K order,
+FMA/reduction/store order, geometry, grids, maps, workspace, and fallbacks. This
+is not yet a speed/default claim. Require RED first, realized lookahead in
+code-object ISA, no scratch/private spill or disallowed resource growth, and
+both actual roles positive on HIP events and synchronized wall before ownership
+([post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
+[H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
 [H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
 [post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json)).
 
