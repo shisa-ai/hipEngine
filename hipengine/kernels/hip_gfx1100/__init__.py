@@ -244,18 +244,25 @@ GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ),
 }
 # WPF-H5I introduced the shared serial F32 plane and ordered Q6 consumers.
-# WPF-H5W promotes weight-major traversal on 142/143 selected calls after KL0
-# complete state and exact 142-H5W/one-H5I/three-raw tracing at unchanged
-# topology. Clean one-queue 512/1K/4K improves 1.785%/1.532%/1.100%; F32 N72
-# and long-K/wide-N misses retain the H5I/raw exact fallbacks. H6E is separately
-# qualified as a default-off three-role capability that reuses H5Y's live
-# activation plane; H5W remains source policy until source-default adjudication.
+# WPF-H5W retains exact weight-major rollback. WPF-H6E promotes activation-row
+# traversal on 142/143 selected calls after KL0 complete-state, exact integrated
+# topology, and positive one-queue 512/1K/4K gates at unchanged workspace. F32
+# N72 and long-K/wide-N misses retain the H5I/raw exact fallbacks.
 GGUF_Q6_F32_ORDERED_PREFILL = True
 GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {
-    ("bf16", 3072, 1024): "weight_major_coltile16_rowbatch5",
-    ("bf16", 1024, 3072): "weight_major_coltile16_rowbatch4",
+    ("bf16", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "coltile16_rowbatch5"
+    ),
+    ("bf16", 1024, 3072): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "coltile16_rowbatch4"
+    ),
     ("f32", 3072, 72): "coltile8_rowbatch4",
-    ("f32", 3072, 1024): "weight_major_coltile16_rowbatch5",
+    ("f32", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "coltile16_rowbatch5"
+    ),
 }
 GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY = {
     ("bf16", 3072, 1024): (

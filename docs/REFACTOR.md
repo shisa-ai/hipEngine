@@ -91,16 +91,14 @@ should be removed or collapsed.
   ordered scratch allocation containing the F32 weight and BF16 activation
   planes. Keep H5X/H5L/H5G registered fallbacks and all Q6 routes unchanged;
   do not add a public/session selector, persistent sidecar, or duplicate owner.
-- WPF-H6E adds `GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY` only as a temporary
-  default-off source-adjudication seam. Complete M512 is KL0/byte-exact; four
-  cached requests substitute exact **142 H5W -> 142 H6E** plus 142 existing
-  H5Y pack launches, cutting Q6/request-span **9.549%/0.560%**. Default-off
-  512/1K/4K is **+0.584%/+0.313%/+0.202%**, 3/3 exact wins each, at unchanged
-  **161,120,256-byte** workspace / **600,141,856-byte** scratch. If fixed
-  C4096/M512 or selector-unset 512/1K/4K fails, remove only this candidate map
-  and retain the standalone leaves; if source promotion passes, copy its three
-  changed values into production and remove the duplicate candidate map after
-  one release checkpoint. Keep H5W and H5I registered exact rollbacks. Do not
+- WPF-H6E's source-adjudication trigger is closed: selector-unset 512/1K/4K is
+  **+0.515%/+0.425%/+0.259%**, 3/3 exact wins each, and fixed C4096/M512 is
+  **+0.266% with 5/5 wins**. `GGUF_Q6_F32_ORDERED_PREFILL_POLICY` now copies
+  the three qualified H6E values; `GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY` is
+  only a temporary duplicate release-checkpoint seam. Remove that duplicate
+  capability and collapse tests to the source map after one release checkpoint.
+  Keep H5W and H5I registered exact rollbacks and preserve the one combined
+  **161,120,256-byte** workspace / **600,141,856-byte** scratch owner. Do not
   add a public/session selector, allocation, workspace, sidecar, or second ABI.
 
 ## Laguna default-off Q6 F16/rocBLAS selector

@@ -1915,21 +1915,24 @@ producer+consumer-inclusive weighted event/wall moves **65.969/66.187 ->
 58.085/58.217 ms (-11.952%/-12.042%, 1.136x/1.137x)**; every role wins both
 clocks. Cached ISA emits b64 for rowbatch4 and b64+u16 for rowbatch5 while
 candidate resources exactly match H5W at **VGPR136/168, LDS1024/1536,
-scratch0**, matching grids, and no compiler under profile. Its bounded
-default-off owner reuses the live H5Y plane with zero workspace growth and
-passes complete natural-M512 at KL0/byte identity across all **48/48** hidden
-boundaries, logits, K/V/`KVLiveSpans`, repeat, and lifecycle. Four cached
-control/candidate/candidate/control requests record exact **142 H5W** versus
-**142 packs + 142 H6E** while all other topology is unchanged; Q6/request-sum/
-span moves **92.867/1,545.837/1,572.498 -> 84.000/1,541.912/1,563.696 ms
-(-9.549%/-0.254%/-0.560%)**. Clean one-queue 512/1K/4K improves **318.224/
-265.944/176.173 -> 320.081/266.778/176.529 tok/s (+0.584%/+0.313%/+0.202%)**,
-3/3 exact wins at each length, with unchanged **161,120,256-byte** workspace
-and **600,141,856-byte** scratch. This qualifies default-off ownership, not
-source production: H5W and matched throughput **332.992 tok/s** remain current.
-Next freeze a separate source-default contract and require fixed C4096/direct-
-M512 five-pair plus selector-unset 512/1K/4K exact wins before promotion
-([H6E candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
+scratch0**, matching grids, and no compiler under profile. It reuses the live
+H5Y plane with zero workspace growth and passes complete natural-M512 at
+KL0/byte identity across all **48/48** hidden boundaries,
+logits, K/V/`KVLiveSpans`, repeat, and lifecycle. Four cached requests record
+exact **142 H5W** versus **142 packs + 142 H6E** while all other topology is
+unchanged; Q6/request-sum/span moves **92.867/1,545.837/1,572.498 -> 84.000/
+1,541.912/1,563.696 ms (-9.549%/-0.254%/-0.560%)**. Selector-unset H5W
+rollback -> H6E source 512/1K/4K improves **318.215/266.225/176.015 ->
+319.854/267.357/176.470 tok/s (+0.515%/+0.425%/+0.259%)**, 3/3 exact wins at
+each length, with unchanged **161,120,256-byte** workspace and
+**600,141,856-byte** scratch. Fixed C4096/direct-M512 improves **332.443 ->
+333.329 tok/s (+0.266%, 5/5 wins)**, reaches **+96.635%** over campaign start,
+and is **2.08905x** behind exact llama.cpp HIP **696.342**. Promote H6E as Q6
+source production; retain H5W/H5I exact rollback and add no kernel, allocation,
+workspace, sidecar, or public selector. Next reprofile exact promoted production
+and rerank family residuals against the matched comparator
+([H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
+[H6E candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
 [post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
