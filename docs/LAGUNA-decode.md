@@ -8179,6 +8179,30 @@ The remaining attention sequence is:
      rearrange one already-ahead submission:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-moe-selected-first-enqueue-rejected.json).
 
+164. Replace eager submission with one exact 127-transition HIP graph.
+     **Rejected and removed.**
+
+     This is the closest direct analogue to Vulkan's command-buffer batching
+     that preserves Laguna's growing global-attention live count: unroll all
+     **127** transitions into one multi-stream graph (about **61,087**
+     model-kernel nodes), feed token/position control device-to-device, and
+     launch the graph once. The complete generated trajectory is exact.
+
+     The mechanism is slower before capture cost:
+
+     | Submission | Seconds / 127 | tok/s | vs eager |
+     | --- | ---: | ---: | ---: |
+     | eager two-queue | 5.523607 | 22.992224 | — |
+     | graph replay only | 5.599662 | 22.679942 | -1.3582% |
+     | graph capture + replay | 6.714894 | 18.913180 | -17.7410% |
+
+     Capture itself costs **0.982895 s**. A giant ROCm graph therefore does not
+     reproduce Vulkan's command-buffer advantage on this stack; its scheduler
+     loses even after capture is excluded. The graph module, session API,
+     benchmark selector, and projection refactor were all removed. Continue
+     with small exact composites that eliminate launches and device work:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-whole-window-graph-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |
