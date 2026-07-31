@@ -8203,6 +8203,27 @@ The remaining attention sequence is:
      with small exact composites that eliminate launches and device work:
      [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-whole-window-graph-rejected.json).
 
+165. Extend llama.cpp-style adjacent F16 output-row reuse from the retained
+     tile2 owner to tile4. **Rejected at the first resident gate and removed.**
+
+     One local256 workgroup owns four adjacent Q/K/V/gate columns, shares each
+     BF16 activation load and conversion, and preserves four independent F32
+     FMA sequences, eight-wave reductions, stores, completion-counter
+     ownership, head RMSNorm/RoPE, and KV append. Global and SWA fixtures match
+     every projection/head F32 bit, KV BF16 bit, `KVLiveSpans` field, and
+     counter reset against the registered chain.
+
+     The first same-resident p512/d128 directional pair is decisively negative:
+     **22.984343 -> 22.675497 tok/s (-1.34372%)**, adding **0.592587
+     ms/token** with the exact token **2930 -> 74107**, position **638**,
+     trajectory SHA, **79,066,169,172-byte** residency, and complete
+     allocation recovery. Stop before the seven-pair gate. Remove the HIP
+     specialization, wrappers, comparison selector, and temporary tests.
+     Wider ownership raises live accumulator/reduction pressure faster than it
+     amortizes this already-cache-resident activation; tile2 remains the
+     source-F16 endpoint:
+     [`rejected`](../benchmarks/results/2026-07-31-gfx1151-laguna-f16-projection-tile4-rejected.json).
+
 Current exact decode checkpoint:
 
 | Backend / checkpoint | Decode | Wall/token | Relative to sprint start |

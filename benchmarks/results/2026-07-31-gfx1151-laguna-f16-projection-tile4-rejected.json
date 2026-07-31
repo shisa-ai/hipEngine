@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-31T16:20:37+09:00",
+  "kind": "hipengine_laguna_f16_projection_head_kv_tile4_rejected",
+  "status": "rejected",
+  "performance_claim": false,
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "7.15.0"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "resident_nbytes": 79066169172
+  },
+  "candidate": {
+    "description": "One local256 projection/head/KV workgroup owns four adjacent Q/K/V/gate columns, reuses each BF16 activation across four FP16 weight rows, and preserves four independent F32 accumulation and reduction trees.",
+    "control": "retained exact two-column nontemporal owner",
+    "arithmetic_change": false,
+    "launch_count_change": 0,
+    "resident_byte_change": 0
+  },
+  "correctness": {
+    "red": "The focused tile4 global fixture failed because the Python/C ABI did not exist.",
+    "green_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. pytest -q tests/test_laguna_head_kv_fusion.py -k 'f16_projection_head_kv_is_bit_exact and tile4' --maxfail=1",
+    "green_result": "2 passed",
+    "coverage": "Global and SWA fixtures matched every projection F32 bit, normalized Q/K F32 bit, active KV BF16 bit, KVLiveSpans field, and self-resetting completion counter.",
+    "trajectory": {
+      "next_token_id": 2930,
+      "final_token_id": 74107,
+      "final_position": 638,
+      "generated_ids_sha256": "94f803f7d5b5f3b1db8a631cb00e06b1c31e2bf5cc947d42df6f809a8aebda32"
+    },
+    "pass": true
+  },
+  "screen": {
+    "protocol": "one same-resident counterbalanced p512/d128 directional pair; load excluded",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u scripts/laguna_long_context_profile.py --context-length 4096 --lengths 512 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compare-f16-projection-tile4 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-f16-projection-tile4-screen.json",
+    "control": {
+      "decode_tok_s": 22.98434296245087,
+      "ms_per_token": 43.50787845594207
+    },
+    "candidate": {
+      "decode_tok_s": 22.675497440931643,
+      "ms_per_token": 44.100465826822195
+    },
+    "candidate_vs_control_percent": -1.3437213411920612,
+    "candidate_ms_per_token_delta": 0.5925873708801248,
+    "raw_json": "/tmp/laguna-f16-projection-tile4-screen.json",
+    "raw_json_sha256": "f46850acfaa2a4e19d68154b913253a45a0106512cdeb390ae00e831552bef83"
+  },
+  "decision": {
+    "outcome": "reject_and_remove",
+    "reason": "The complete resident screen is decisively negative. The extra live accumulators and reduction state cost more than the additional activation reuse saves.",
+    "removed": [
+      "tile4 HIP specialization and C exports",
+      "Python wrappers and symbols",
+      "same-resident comparison selector",
+      "temporary tile4 correctness cases"
+    ],
+    "production_unchanged": {
+      "decode_tok_s": 23.0172713318,
+      "ms_per_token": 43.4456363478
+    }
+  }
+}
