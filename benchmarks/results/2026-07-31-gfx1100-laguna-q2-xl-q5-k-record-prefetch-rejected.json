@@ -1,0 +1,659 @@
+{
+  "authority_files": [
+    "README.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/PLAN.md",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "WORKLOG.md"
+  ],
+  "baseline": {
+    "artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json",
+    "artifact_sha256": "0cd35b66c5426cb72c21afe8746c2c4444b6cb90c53e781de7a0b91a7b5e902a",
+    "exact_llamacpp_hip_tok_s": 696.342,
+    "h5y_consumer_ms": 218.228208,
+    "matched_c4096_direct_m512_tok_s": 353.79806733444565,
+    "matched_gap": 1.9681905140022917,
+    "post_h6f_publication_revision": "c7606dcb4",
+    "production_revision": "837c1c742655ead7be78e2ec002d6dfced1d43a2",
+    "q5_ms": 250.66492299999993,
+    "q5_route": "H5Y exact BF16 activation tile-K-row with retained row-major/tile-K-col F32 weight planes",
+    "target_role_calls": 70,
+    "target_roles_ms": 156.79027099999996
+  },
+  "candidate": {
+    "candidate_patch_sha256": "d667620fb8fa9a776153104c987bb823d4d5fc78c2da05145d86cd667b2bbd58",
+    "id": "WPF-H6G",
+    "operation": "Separate exact H5Y siblings carry one next aligned F32-weight and BF16-activation record across the current-K scalar FMA region while preserving planes, bytes, traffic, local128/four-wave K ownership, geometry, reduction, store, grids, maps, and workspace.",
+    "red_commit": "def7bd8e3",
+    "red_failures": "8/8 solely absent H6G surfaces",
+    "red_test_sha256": "d8b8547e2192383a102ac9be1a0725ae503d30257ad0483d3db504bd57e50e30",
+    "temporary_build_cache_key": "gguf_q5_k_f32_rocblas_prefill-9d254e236cf87dab",
+    "temporary_source_sha256": {
+      "gfx1151_exclusion": "c81802c408055b7001efd502669f6355492954ec40646430c279b6c7c0fcd6f6",
+      "green_test": "c46b3928b25e16dfc6b1d9ffd9ef53b8d6ba217932fbfff3663f8be912425551",
+      "hip": "574c34b41704aba33548faa5c03c2671e16308ba0c779c87138ae893c72b5ee9",
+      "python": "bcfd1c6ada11ae3cca6be72b4cab052f953c469f169d9f9cc60416031fb15d70"
+    }
+  },
+  "commands": {
+    "actual_role_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6g_q5_k_record_prefetch_actual_role_screen.py",
+    "isa": "llvm-objcopy .hip_fatbin; clang-offload-bundler -unbundle hipv4-amdgcn-amd-amdhsa--gfx1100; llvm-readobj --notes; llvm-objdump -t/-d --mcpu=gfx1100",
+    "red_and_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6g_q5_k_record_prefetch.py"
+  },
+  "correctness": {
+    "actual_weight_outputs": "2/2 complete M512 outputs byte-exact",
+    "focused_green": "8/8 before rejection cleanup",
+    "focused_green_stdout_sha256": "06955fb47f16312e5d13266c774a2aa4648c46e423cbe6564a92e25b68e39131",
+    "gfx1151_excluded_during_screen": true,
+    "output_contract": "Complete candidate outputs match H5Y at every frozen row/role case; sampled boundaries pass the independent CPU Q5 gate.",
+    "plane_contract": "Complete activation planes match independent assembly and complete candidate F32 weight planes match H5Y hashes after poisoned-storage overwrite.",
+    "production_policy_unchanged": true,
+    "role_cross_product": "2/2 exact production roles",
+    "rows": [
+      17,
+      33,
+      512
+    ],
+    "strict_role_preflight": true,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-07-31",
+  "decision": {
+    "admitted": false,
+    "candidate_surfaces_removed": true,
+    "next_action": "Rerank the unchanged post-H6F residual, mark immediate Q5 prefetch/layout/geometry/ownership premises closed, and select a materially different exact operation before another RED.",
+    "production_after": "H6F/H6E/H6C/H6A/H5Y",
+    "production_changed": false,
+    "reason": "Both exact actual-weight roles regress direct and producer/pack-inclusive HIP events plus synchronized wall, and code-object ISA fails the realized-overlap gate with an immediate vmcnt(0) after lookahead loads.",
+    "runtime_gate_disposition": "not run because standalone physical and both-clock admission failed",
+    "runtime_gate_run": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6g_exact_q5_k_record_prefetch_rejected",
+  "lineage": {
+    "candidate_source_disposition": "removed",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "post_cleanup_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "edc73b008c0c63f01fce641e33e93e2a0d24288caadc60c0d9b41a6579966d98",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "c51c3754b855288786a5e2855cabe5defa5ef8480cfe068109f25bc53f4b5d25",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3fa37c57fcb7beeb1a7d9caa4a77d30c8c587d36eef783bfee9e5ceb4e794117"
+    },
+    "red_test_disposition": "removed after rejection; retained in def7bd8e3 history"
+  },
+  "model": {
+    "logical_parameters": 117561977600,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "tensor_bytes": 39680849600
+  },
+  "performance": {
+    "aggregate": {
+      "direct": {
+        "event": {
+          "candidate_percent_change": 4.4432564524990115,
+          "h5y_weighted_ms": 194.59119606018066,
+          "h6g_weighted_ms": 203.23738193511963,
+          "speedup": 0.9574576990088411
+        },
+        "wall": {
+          "candidate_percent_change": 4.9062051080870805,
+          "h5y_weighted_ms": 194.5465048775077,
+          "h6g_weighted_ms": 204.09135543741286,
+          "speedup": 0.9532324603389083
+        }
+      },
+      "producer_pack_inclusive": {
+        "event": {
+          "candidate_percent_change": 3.7738464259381876,
+          "h5y_weighted_ms": 217.26497268676758,
+          "h6g_weighted_ms": 225.46421909332275,
+          "speedup": 0.9636339351781518
+        },
+        "wall": {
+          "candidate_percent_change": 4.095378504421676,
+          "h5y_weighted_ms": 217.34192338772118,
+          "h6g_weighted_ms": 226.24289779923856,
+          "speedup": 0.9606574416341862
+        }
+      }
+    },
+    "all_roles_passed": false,
+    "both_clock_positive_roles_direct": 0,
+    "both_clock_positive_roles_inclusive": 0,
+    "roles": [
+      {
+        "both_clock_positive": {
+          "direct": false,
+          "inclusive": false
+        },
+        "complete_bytes_exact": true,
+        "direct": {
+          "event": {
+            "candidate_percent_change": 4.477429027962976,
+            "h5y_ms": 3.0816085815429686,
+            "h5y_samples_ms": [
+              2.5581668853759765,
+              2.487310791015625,
+              2.4829721450805664,
+              2.4516340255737306,
+              2.510624885559082,
+              3.175985908508301,
+              3.2380386352539063,
+              3.166282081604004,
+              3.0841047286987306,
+              3.0849773406982424,
+              3.0816085815429686,
+              3.083097457885742,
+              3.0812566757202147,
+              3.088608741760254,
+              3.054744338989258
+            ],
+            "h6g_ms": 3.219585418701172,
+            "h6g_samples_ms": [
+              2.6589178085327148,
+              2.629869842529297,
+              2.612893486022949,
+              2.5763811111450194,
+              2.6418519973754884,
+              3.1245134353637694,
+              3.410187911987305,
+              3.387739562988281,
+              3.2568267822265624,
+              3.2138343811035157,
+              3.234482192993164,
+              3.2288982391357424,
+              3.2536582946777344,
+              3.219585418701172,
+              3.239146041870117
+            ],
+            "speedup": 0.9571445328467585
+          },
+          "wall": {
+            "candidate_percent_change": 5.193463656040609,
+            "h5y_ms": 3.0720571987330914,
+            "h5y_samples_ms": [
+              2.5522535666823387,
+              2.477342402562499,
+              2.5210810359567404,
+              2.5291211903095245,
+              2.5438373908400536,
+              3.213265212252736,
+              3.25850797817111,
+              3.1125218141824007,
+              3.0731469858437777,
+              3.082269197329879,
+              3.0720571987330914,
+              3.104313602671027,
+              3.061916958540678,
+              3.0906513798981905,
+              3.063983004540205
+            ],
+            "h6g_ms": 3.2316033728420734,
+            "h6g_samples_ms": [
+              2.5760000105947256,
+              2.6201965752989054,
+              2.603400172665715,
+              2.610986400395632,
+              2.886386401951313,
+              3.28995818272233,
+              3.3995977602899075,
+              3.3841035794466734,
+              3.2200051937252283,
+              3.2316033728420734,
+              3.239491628482938,
+              3.2583600375801325,
+              3.232321608811617,
+              3.258659830316901,
+              3.2226432114839554
+            ],
+            "speedup": 0.9506294072317831
+          }
+        },
+        "geometry": "coltile12_rowbatch8",
+        "id": "bf16_k9216_n3072",
+        "output_dtype": "bf16",
+        "physical": {
+          "both_private_zero": true,
+          "candidate": {
+            "code_bytes": 10128,
+            "num_vgpr": 194,
+            "private_seg_size": 0
+          },
+          "candidate_vs_control_code_bytes": 332,
+          "control": {
+            "code_bytes": 9796,
+            "num_vgpr": 194,
+            "private_seg_size": 0
+          },
+          "physical_prefetch": {
+            "first_current_fma_address": 394768,
+            "first_tail_fma_address": 395376,
+            "fmas_between_lookahead_issue_and_wait": 0,
+            "lookahead_first_load_address": 395056,
+            "lookahead_last_load_address": 395336,
+            "lookahead_load_instructions": 13,
+            "next_record_outstanding_across_current_fma": false,
+            "wait_address": 395360,
+            "wait_instruction": "s_waitcnt vmcnt(0)"
+          },
+          "same_vgpr": true
+        },
+        "producer_pack_inclusive": {
+          "event": {
+            "candidate_percent_change": 4.187177721997548,
+            "h5y_ms": 3.3546592712402346,
+            "h5y_samples_ms": [
+              3.3158668518066405,
+              3.3546592712402346,
+              3.3381576538085938,
+              3.3141548156738283,
+              3.3571712493896486,
+              3.3209075927734375,
+              3.361123275756836,
+              3.354771041870117,
+              3.323059844970703,
+              3.3648441314697264,
+              3.384298324584961,
+              3.2984989166259764,
+              3.3648990631103515,
+              3.361240768432617,
+              3.3514190673828126
+            ],
+            "h6g_ms": 3.4951248168945312,
+            "h6g_samples_ms": [
+              3.4538841247558594,
+              3.487652587890625,
+              3.5059009552001954,
+              3.4951248168945312,
+              3.4920280456542967,
+              3.4887248992919924,
+              3.5138526916503907,
+              3.5016929626464846,
+              3.4870532989501952,
+              3.5111312866210938,
+              3.5172374725341795,
+              3.483332061767578,
+              3.454595947265625,
+              3.530596923828125,
+              3.5276103973388673
+            ],
+            "speedup": 0.9598110073278864
+          },
+          "wall": {
+            "candidate_percent_change": 4.290179085761947,
+            "h5y_ms": 3.3579474315047264,
+            "h5y_samples_ms": [
+              3.3549931831657887,
+              3.3446810208261013,
+              3.3213308081030846,
+              3.3752996008843184,
+              3.3796215895563364,
+              3.352651186287403,
+              3.3646913710981607,
+              3.338740998879075,
+              3.3579474315047264,
+              3.3697196282446384,
+              3.3719955943524837,
+              3.3486012369394302,
+              3.3743053674697876,
+              3.3417189959436655,
+              3.3777995966374874
+            ],
+            "h6g_ms": 3.502009389922023,
+            "h6g_samples_ms": [
+              3.4756749868392944,
+              3.502009389922023,
+              3.538416000083089,
+              3.48313320428133,
+              3.495027218014002,
+              3.4518385771661997,
+              3.5084493923932314,
+              3.4838031977415085,
+              3.4792331978678703,
+              3.5139295738190413,
+              3.4900174010545015,
+              3.5361457616090775,
+              3.518639598041773,
+              3.5167015623301268,
+              3.549310192465782
+            ],
+            "speedup": 0.9588630576400299
+          }
+        },
+        "production_invocations": 35,
+        "shape": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.1.attn_output.weight",
+        "weight_layout": "row_major"
+      },
+      {
+        "both_clock_positive": {
+          "direct": false,
+          "inclusive": false
+        },
+        "complete_bytes_exact": true,
+        "direct": {
+          "event": {
+            "candidate_percent_change": 4.400762280653825,
+            "h5y_ms": 2.478139877319336,
+            "h5y_samples_ms": [
+              2.294252395629883,
+              2.325122833251953,
+              2.291690635681152,
+              2.502332305908203,
+              2.5003644943237306,
+              2.4836761474609377,
+              2.478139877319336,
+              2.490635871887207,
+              2.4832677841186523,
+              2.4775722503662108,
+              2.481788444519043,
+              2.472241973876953,
+              2.4909162521362305,
+              2.477716064453125,
+              2.4678361892700194
+            ],
+            "h6g_ms": 2.587196922302246,
+            "h6g_samples_ms": [
+              2.429387855529785,
+              2.429107666015625,
+              2.5839410781860352,
+              2.638693428039551,
+              2.6168691635131838,
+              2.5874610900878907,
+              2.587940979003906,
+              2.5831888198852537,
+              2.585340690612793,
+              2.587196922302246,
+              2.586693000793457,
+              2.605249214172363,
+              2.5747970581054687,
+              2.587885284423828,
+              2.5873811721801756
+            ],
+            "speedup": 0.9578474123701939
+          },
+          "wall": {
+            "candidate_percent_change": 4.551286514842445,
+            "h5y_ms": 2.4864143691956997,
+            "h5y_samples_ms": [
+              2.325219986960292,
+              2.3111398331820965,
+              2.3951551876962185,
+              2.5129809975624084,
+              2.5061766151338816,
+              2.48473659157753,
+              2.4929386097937822,
+              2.472282387316227,
+              2.4864143691956997,
+              2.481124410405755,
+              2.488152403384447,
+              2.4889105930924416,
+              2.483820589259267,
+              2.4990167934447527,
+              2.49306857585907
+            ],
+            "h6g_ms": 2.599578211084008,
+            "h6g_samples_ms": [
+              2.447366015985608,
+              2.423641597852111,
+              2.639124821871519,
+              2.627132600173354,
+              2.599674230441451,
+              2.599578211084008,
+              2.6035121642053127,
+              2.599046193063259,
+              2.5858480017632246,
+              2.6094742119312286,
+              2.600716194137931,
+              2.5965380016714334,
+              2.5879720225930214,
+              2.603126224130392,
+              2.591174002736807
+            ],
+            "speedup": 0.9564683834455129
+          }
+        },
+        "geometry": "coltile8_rowbatch10",
+        "id": "f32_k3072_n9216",
+        "output_dtype": "f32",
+        "physical": {
+          "both_private_zero": true,
+          "candidate": {
+            "code_bytes": 7896,
+            "num_vgpr": 162,
+            "private_seg_size": 0
+          },
+          "candidate_vs_control_code_bytes": -64,
+          "control": {
+            "code_bytes": 7960,
+            "num_vgpr": 162,
+            "private_seg_size": 0
+          },
+          "physical_prefetch": {
+            "first_current_fma_address": 404316,
+            "first_tail_fma_address": 404668,
+            "fmas_between_lookahead_issue_and_wait": 0,
+            "lookahead_first_load_address": 404600,
+            "lookahead_last_load_address": 404628,
+            "lookahead_load_instructions": 4,
+            "next_record_outstanding_across_current_fma": false,
+            "wait_address": 404652,
+            "wait_instruction": "s_waitcnt vmcnt(0)"
+          },
+          "same_vgpr": true
+        },
+        "producer_pack_inclusive": {
+          "event": {
+            "candidate_percent_change": 3.2878216318907416,
+            "h5y_ms": 2.852911376953125,
+            "h5y_samples_ms": [
+              2.8622554779052733,
+              2.8419551849365234,
+              2.8469032287597655,
+              2.8541751861572267,
+              2.863895797729492,
+              2.8662954330444337,
+              2.8456552505493162,
+              2.852911376953125,
+              2.8432071685791014,
+              2.8596433639526366,
+              2.8503034591674803,
+              2.8690956115722654,
+              2.8397192001342773,
+              2.854639434814453,
+              2.8327592849731444
+            ],
+            "h6g_ms": 2.9467100143432616,
+            "h6g_samples_ms": [
+              2.9378957748413086,
+              2.942617988586426,
+              2.9440639495849608,
+              2.9494380950927734,
+              2.935912322998047,
+              2.9521522521972656,
+              2.9467100143432616,
+              2.954184150695801,
+              2.9425039291381836,
+              2.9555522918701174,
+              2.9373119354248045,
+              2.9564321517944334,
+              2.944384002685547,
+              2.980472373962402,
+              2.9514482498168944
+            ],
+            "speedup": 0.9681683515060637
+          },
+          "wall": {
+            "candidate_percent_change": 3.8660057890931743,
+            "h5y_ms": 2.85182180814445,
+            "h5y_samples_ms": [
+              2.8578000143170357,
+              2.837091777473688,
+              2.8585179708898067,
+              2.85182180814445,
+              2.8540917672216892,
+              2.844027802348137,
+              2.8521758038550615,
+              2.845501806586981,
+              2.8565079905092716,
+              2.8558917809277773,
+              2.848725765943527,
+              2.8535758145153522,
+              2.8496197890490294,
+              2.8425916098058224,
+              2.8487637639045715
+            ],
+            "h6g_ms": 2.962073404341936,
+            "h6g_samples_ms": [
+              2.9671935830265284,
+              2.975867595523596,
+              2.9502791818231344,
+              2.954207407310605,
+              2.937197033315897,
+              2.977791801095009,
+              2.961799595504999,
+              2.9856777749955654,
+              2.9531854204833508,
+              2.9843677766621113,
+              2.952309185639024,
+              2.9895299579948187,
+              2.962073404341936,
+              2.9570935759693384,
+              2.9663235880434513
+            ],
+            "speedup": 0.9627789115435579
+          }
+        },
+        "production_invocations": 35,
+        "shape": [
+          9216,
+          3072
+        ],
+        "tensor": "blk.1.attn_q.weight",
+        "weight_layout": "tile_k_col"
+      }
+    ]
+  },
+  "performance_claim": true,
+  "physical": {
+    "admission_passed": false,
+    "analysis": {
+      "kind": "laguna_wpfh6g_q5_k_record_prefetch_isa_analysis",
+      "physical_admission_passed": false,
+      "rows": {
+        "bf16_k9216_n3072": {
+          "both_private_zero": true,
+          "candidate": {
+            "code_bytes": 10128,
+            "num_vgpr": 194,
+            "private_seg_size": 0
+          },
+          "candidate_vs_control_code_bytes": 332,
+          "control": {
+            "code_bytes": 9796,
+            "num_vgpr": 194,
+            "private_seg_size": 0
+          },
+          "physical_prefetch": {
+            "first_current_fma_address": 394768,
+            "first_tail_fma_address": 395376,
+            "fmas_between_lookahead_issue_and_wait": 0,
+            "lookahead_first_load_address": 395056,
+            "lookahead_last_load_address": 395336,
+            "lookahead_load_instructions": 13,
+            "next_record_outstanding_across_current_fma": false,
+            "wait_address": 395360,
+            "wait_instruction": "s_waitcnt vmcnt(0)"
+          },
+          "same_vgpr": true
+        },
+        "f32_k3072_n9216": {
+          "both_private_zero": true,
+          "candidate": {
+            "code_bytes": 7896,
+            "num_vgpr": 162,
+            "private_seg_size": 0
+          },
+          "candidate_vs_control_code_bytes": -64,
+          "control": {
+            "code_bytes": 7960,
+            "num_vgpr": 162,
+            "private_seg_size": 0
+          },
+          "physical_prefetch": {
+            "first_current_fma_address": 404316,
+            "first_tail_fma_address": 404668,
+            "fmas_between_lookahead_issue_and_wait": 0,
+            "lookahead_first_load_address": 404600,
+            "lookahead_last_load_address": 404628,
+            "lookahead_load_instructions": 4,
+            "next_record_outstanding_across_current_fma": false,
+            "wait_address": 404652,
+            "wait_instruction": "s_waitcnt vmcnt(0)"
+          },
+          "same_vgpr": true
+        }
+      },
+      "schema": 1,
+      "sha256": {
+        "/tmp/laguna-h6g-device-isa-v2.txt": "369242790392298282e965d555019ae6a4e3375f53462d9d3af57f59f40ffc3a",
+        "/tmp/laguna-h6g-symbols-v2.txt": "3fc386cc2f44249a69a0d8412698f1fb9796acd21c5edc95faefd5392537dfe7"
+      }
+    },
+    "candidate_code_object_sha256": "63a5228575b9700e51ce5999a573080d5a762b3b0213892aefa78b24a688b69e",
+    "candidate_isa_sha256": "369242790392298282e965d555019ae6a4e3375f53462d9d3af57f59f40ffc3a",
+    "candidate_library_sha256": "e056ff0d806e85f020c5f9cb6ac524f97816605ffdad2a55ba0785c437d04d9b",
+    "candidate_notes_sha256": "dfe15ad88cf404ec99528c58b5d0bf7c95227430c2bdf0ccab2db86c048fe4ae",
+    "candidate_symbols_sha256": "3fc386cc2f44249a69a0d8412698f1fb9796acd21c5edc95faefd5392537dfe7",
+    "summary": "Both candidates preserve control metadata VGPR/private0, but every next-record VMEM group is followed by s_waitcnt vmcnt(0) with zero current FMAs in between; no record remains outstanding across useful current-K math."
+  },
+  "protocol": {
+    "actual_weights": true,
+    "admission": "both roles must be byte-exact and positive on both clocks",
+    "candidate": "H6G one-step K-record-prefetch primitive/composite",
+    "control": "retained H5Y exact primitive/composite",
+    "counter_rotated_repetitions": 15,
+    "deterministic_bf16_input": true,
+    "event_and_synchronized_wall": true,
+    "gpu_max_hw_queues": 1,
+    "launches_per_sample": 5,
+    "mode_starts_per_role": {
+      "h5y": 8,
+      "h6g": 7
+    },
+    "production_invocations": 70,
+    "rows": 512,
+    "unique_configurations": 2,
+    "warmups": 5
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_wpfh6g_q5_k_record_prefetch_isa.py": "c5aca2cc85d8c7fa150099ea543e5f96ebf59da574e56d964795c0b1882e27e4",
+    "/tmp/laguna-h6g-candidate.patch": "d667620fb8fa9a776153104c987bb823d4d5fc78c2da05145d86cd667b2bbd58",
+    "/tmp/laguna-h6g-code-object-notes-v2.txt": "dfe15ad88cf404ec99528c58b5d0bf7c95227430c2bdf0ccab2db86c048fe4ae",
+    "/tmp/laguna-h6g-device-isa-v2.txt": "369242790392298282e965d555019ae6a4e3375f53462d9d3af57f59f40ffc3a",
+    "/tmp/laguna-h6g-gfx1100-v2.hsaco": "63a5228575b9700e51ce5999a573080d5a762b3b0213892aefa78b24a688b69e",
+    "/tmp/laguna-h6g-green-v2-pytest.stdout": "06955fb47f16312e5d13266c774a2aa4648c46e423cbe6564a92e25b68e39131",
+    "/tmp/laguna-h6g-isa-analysis.json": "a814f5bbd89009baa929b65ad79767161fc2caec232f9ceda3ead416563e667e",
+    "/tmp/laguna-h6g-symbols-v2.txt": "3fc386cc2f44249a69a0d8412698f1fb9796acd21c5edc95faefd5392537dfe7",
+    "/tmp/laguna-wpfh6g-q5-k-record-prefetch-actual-role-screen-final.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-wpfh6g-q5-k-record-prefetch-actual-role-screen-final.stdout": "a88f53fbb249f7aa9082960527e712863f47edb8e65259a7d9b3edeee521cca6",
+    "/tmp/laguna-wpfh6g-q5-k-record-prefetch-actual-role-screen.json": "d9b9e1ea2fc1bb011b81173011540400a9983dace73cd10e96eba328a67300b5",
+    "/tmp/laguna_wpfh6g_q5_k_record_prefetch_actual_role_screen.py": "6df2fa9e272b15971729ea81bd8774e59d5186f061bc096d3fb160155c446977"
+  },
+  "schema": 1,
+  "scope": "Exact H5Y-derived one-step Q5 weight/activation K-record prefetch on the two dominant natural-M512 production roles of Laguna S 2.1 UD-Q2_K_XL on one Radeon Pro W7900 queue",
+  "status": "rejected_leaf_all_candidate_surfaces_removed"
+}

@@ -1971,25 +1971,23 @@ Its representative request reconciles **1,435.431 ms / 2,192 dispatches** in a
 **717.190-ms** kernel gap. H6F is local128/VGPR152/LDS512/scratch0 and the exact
 production topology has no H6D/H5Q escape.
 
-Select target-only **WPF-H6G exact Q5 one-step K-record prefetch** rather than
-immediately iterating H6F's just-promoted IQ operation. Q5 reconciles as
-**218.228-ms H5Y consumers**, **25.849-ms producers**, **4.698-ms activation
-packs**, and **1.890-ms H5G fallback**. The BF16 K9216/N3072 row-major 12x8 and
-F32 K3072/N9216 tile-K-col 8x10 consumers own **156.790 ms / 70 calls
-(71.85% of H5Y consumer time)**. Separate H6G siblings must keep the H5Y planes,
-local128/four-wave K ownership, every FMA/tree/serial sum/store, rows/output
-tiles, grids, maps, workspace, and fallbacks while carrying one next weight and
-activation record across current-K FMAs. This is latency-hiding rationale, not a
-speed claim: RED precedes code, ISA must prove realized prefetch without scratch
-or spill, and both actual roles must be complete-byte exact and win HIP events
-plus synchronized wall before any runtime owner
-([post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
+**WPF-H6G exact Q5 one-step K-record prefetch is rejected and every candidate
+surface is removed.** It screened BF16 K9216/N3072 row-major 12x8 and F32
+K3072/N9216 tile-K-col 8x10, the **156.790-ms / 70-call** dominant H5Y subset.
+Rows17/33/M512 preserve complete outputs, activation/weight planes, and sampled
+CPU values; candidate/control metadata remains private0 at VGPR **194/162**.
+The physical premise fails: AMD clang places `s_waitcnt vmcnt(0)` immediately
+after each **13/4-instruction** next-record load group with **zero current FMAs
+overlapped**. Actual-weight direct weighted event/wall regresses
+**194.591/194.547 -> 203.237/204.091 ms (+4.443%/+4.906%)**, and producer/pack-
+inclusive regresses **217.265/217.342 -> 225.464/226.243
+(+3.774%/+4.095%)**; both roles lose both clocks. Skip runtime ownership, retain
+H5Y/H6F production, close compiler-scheduled Q5 K-record prefetch, and rerank
+the unchanged post-H6F residual for a materially different exact operation
+([H6G rejection](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-prefetch-rejected.json) ·
+[post-H6F residual / H6G target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6f-matched-residual.json) ·
 [H6F production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json) ·
-[H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json) ·
-[post-H6E target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json) ·
-[H6E production](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-production.json) ·
-[H6E candidate/runtime](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q6-k-activation-tile-k-row-candidate.json) ·
-[post-H6D target](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json)).
+[H6F candidate](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, rowbatch16, output-tile/source-MMQ,
 changed-association attention, H5O representation, H5P geometry, H5S persistent
