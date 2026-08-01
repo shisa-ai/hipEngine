@@ -9657,7 +9657,9 @@ The remaining attention sequence is:
 
      Every established trajectory remains exact, including mandatory 128K
      **874 / c8307c... / position 131,198** and full lifecycle recovery. The
-     trace keeps local512, VGPR32, LDS11,264, and scratch0. A plain four-item
+     tracked-clean 16K confirmation is **18.919997 tok/s**, within **-0.057%**
+     of the dirty gate and **+4.253%** over parallel-max. The trace keeps
+     local512, VGPR32, LDS11,264, and scratch0. A plain four-item
      source unroll was fast but the compiler formed four partial accumulators;
      it failed the recurrent 128K gate at token 4,094. A volatile accumulator
      restored ordering but made the leaf 3-4x slower. Both are removed. The

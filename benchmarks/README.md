@@ -210,7 +210,9 @@ noise. Vulkan parity rises to **87.125%/66.911%/56.025%** at
 **87.408 GB / 1,452-allocation** lifecycle remain exact, including mandatory
 128K **874 / c8307c... / 131,198**. A plain source unroll was correctly
 rejected because compiler reassociation changed the 128K trajectory; only the
-explicitly ordered implementation is retained.
+explicitly ordered implementation is retained. Tracked-clean d16K confirms
+**18.920 tok/s**, within **-0.057%** of the directional row and **+4.253%**
+over the prior parallel-max default, with the same trajectory and teardown.
 [`ordered-prefetch exact PV production`](results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights
