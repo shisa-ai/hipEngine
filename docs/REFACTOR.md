@@ -2587,6 +2587,9 @@ should be boring.
   Ordered prefetch8 is removed after improving the exact leaf at all depths and
   complete 16K/64K **0.188%/0.177%**, but regressing mandatory 128K
   **0.140%**. Four tokens is the measured prefetch-distance knee.
+  Direct output-wave probability loads are removed after becoming
+  **2.88-3.02x slower** at every leaf depth; loader-wave LDS probability
+  broadcast remains required latency hiding.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered

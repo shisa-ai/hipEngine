@@ -197638,3 +197638,17 @@ Vulkan local sizes verbatim will close the measured gap.
   and `69e3f40c403e1714d0cde0ec53b2033f9f73e61d32c6faf60d411cfe831d3622`.
 - Restored committed prefetch4 exactly; no candidate code or dispatch remains.
   Simple ordered-prefetch widening is closed at four tokens.
+
+## 2026-08-02 07:14 JST — Reject direct output-wave probability loads
+
+- Removed deferred probability work from loader waves/LDS and let lane 0 of
+  each active output wave load/broadcast its own four score/inverse products.
+  The focused exact fixture passes and F32/BF16 leaves remain byte-identical.
+- Against retained staged prefetch4, live4K/16K/64K/128K latency changes
+  **0.185476/0.830466/3.468582/6.982887 ->
+  0.559350/2.388819/10.249080/20.827293 ms**: a
+  **3.016x/2.876x/2.955x/2.983x** regression. Raw SHA-256 is
+  `3c64a7262accf3f3809e9e8b01a08aa642aed5aa7c399939a1f652f2896c0815`.
+- Restored committed loader/LDS probability staging exactly. The candidate
+  fails every leaf gate, so complete-model timing is not justified. Future PV
+  work must preserve asynchronous probability staging and broadcast locality.

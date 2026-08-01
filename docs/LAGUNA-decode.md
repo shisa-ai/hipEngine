@@ -9680,6 +9680,19 @@ The remaining attention sequence is:
      simple prefetch-distance widening:
      [`ordered-prefetch8 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch8-rejected.json).
 
+218. Remove deferred probability staging and load weights in output waves.
+     **Rejected by every leaf depth and removed.**
+
+     Lane 0 of each active output wave directly loads and broadcasts four
+     score/inverse products while the idle waves stage only V. This preserves
+     every arithmetic boundary and is byte-exact, but exposes a serialized
+     global-load/shuffle dependency. Relative to staged prefetch4, live
+     4K/16K/64K/128K becomes **3.016x/2.876x/2.955x/2.983x slower**. The
+     loader-wave plus LDS probability broadcast is essential latency hiding,
+     not removable transport. Restore it exactly; no production run is
+     justified:
+     [`direct probability rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-direct-probability-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

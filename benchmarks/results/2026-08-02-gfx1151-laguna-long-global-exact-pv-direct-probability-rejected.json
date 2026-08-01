@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T07:14:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_pv_direct_probability_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "candidate": {
+    "kernel": "laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel",
+    "change": "on the deferred path, remove probability staging from loader waves and LDS; lane 0 of each active output wave directly loads four score/inverse products and broadcasts them before the ordered FMA chain",
+    "correctness_contract": "score, exp32 denominator, inverse multiply, six output waves, chronological v_fma_f32, BF16 gate, and KVLiveSpans remain unchanged"
+  },
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "staged_probability_ms": 0.1854761000, "direct_wave_probability_ms": 0.5593496799, "delta_percent": 201.575071},
+      {"live_count": 16448, "staged_probability_ms": 0.8304656030, "direct_wave_probability_ms": 2.3888187408, "delta_percent": 187.648126},
+      {"live_count": 65664, "staged_probability_ms": 3.4685817720, "direct_wave_probability_ms": 10.2490798950, "delta_percent": 195.483300},
+      {"live_count": 131200, "staged_probability_ms": 6.9828865050, "direct_wave_probability_ms": 20.8272933960, "delta_percent": 198.261949}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "3c64a7262accf3f3809e9e8b01a08aa642aed5aa7c399939a1f652f2896c0815"
+  },
+  "decision": {
+    "reason": "direct wave-owned global score loads and shuffles expose a serialized dependency on every four-token group; staged LDS probability broadcast is 2.88-3.02x faster and provides essential latency hiding",
+    "production_timing": "not run because the candidate fails every leaf gate by 187.65-201.58%",
+    "disposition": "restore committed staged-probability prefetch4 exactly; no candidate code or dispatch remains"
+  }
+}
