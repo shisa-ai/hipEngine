@@ -9346,8 +9346,12 @@ The remaining attention sequence is:
 
      All four generated hashes/final tokens and positions match the retained
      exact route, **87,407,934,744 bytes / 1,452 allocations** return to zero,
-     and **66 focused tests** pass. This is a real exact win, but it also makes
-     the remaining boundary explicit: at 128K hipEngine is still only
+     and **66 focused tests** pass. At committed revision `5f81ee947`, the
+     required tracked-clean 16K confirmation is **16.936429 tok/s**, within
+     **-0.201%** of the dirty row and **+1.075%** over the prior clean GQA6
+     checkpoint, with the same token/hash/position and complete teardown. This
+     is a real exact win, but it also makes the remaining boundary explicit:
+     at 128K hipEngine is still only
      **40.214%** of Vulkan. The next large gain still requires bounded
      context-parallel output state or a tiled exact replay; reassociated online
      softmax is not permitted by the failed quality gate:

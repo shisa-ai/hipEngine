@@ -197191,3 +197191,21 @@ Vulkan local sizes verbatim will close the measured gap.
   kernel catalog, decode/architecture plans, rollup/changelog, and refactor
   removal trigger. Commit next, then run the required tracked-clean 16K
   production confirmation.
+
+## 2026-08-02 00:58 JST — Confirm deferred normalization from a clean commit
+
+- Committed the exact attention unit as `5f81ee947`, then ran the same
+  capacity131,200/chunk2,048/cached-only BF16-KV protocol at 16K without
+  `--allow-dirty`. Decode is **16.936429 tok/s / 59.044309 ms/token**,
+  reproducing the dirty **16.970569** gate within **-0.201%** and improving
+  the prior clean GQA6 **16.756283 tok/s** checkpoint by **1.075%**. Relative
+  to pre-LC-D3 **7.731808 tok/s**, the clean total gain is **119.049%**.
+- Correctness and lifecycle pass: final token **13815**, generated SHA-256
+  `b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6`,
+  position **16,510**, finite output, and complete recovery of
+  **87,407,934,744 bytes / 1,452 allocations**. Provenance reports revision
+  `5f81ee947c53b024d4566394eca92e9eb559bde5`, tracked clean, cached build
+  required, and no staged or unstaged change. Raw JSON SHA-256 is
+  `f9148ce8f038633239c4c1cf9029bd4d9d8db4206fa0232af6901caa58fbf3d6`.
+- Updated the retained artifact, decode/project plans, rollup, and changelog
+  with the clean confirmation. Commit this evidence-only publication next.

@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-08-02
 
-- [accepted production/default gfx1151 Laguna exact deferred-normalization long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: keep exact exp32 reduction but apply its inverse denominator once in D32/V64 PV instead of writing normalized scores, improving the first GQA6 owner **21.662/16.790/9.079/5.603 -> 21.670/16.971/9.214/5.725 tok/s (+0.036%/+1.078%/+1.490%/+2.190%)** with exact leaves/trajectories and no residency delta; reject faster context-split merge at max KL **0.687034**; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json`.
+- [accepted production/default gfx1151 Laguna exact deferred-normalization long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: keep exact exp32 reduction but apply its inverse denominator once in D32/V64 PV instead of writing normalized scores, improving the first GQA6 owner **21.662/16.790/9.079/5.603 -> 21.670/16.971/9.214/5.725 tok/s (+0.036%/+1.078%/+1.490%/+2.190%)** with exact leaves/trajectories and no residency delta; tracked-clean d16K confirms **16.936 tok/s (+1.075%)**, while faster context split is rejected at max KL **0.687034**; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json`.
 
 ## 2026-08-01
 

@@ -125,7 +125,9 @@ generated hashes/positions, unchanged residency, and full allocation recovery.
 Total improvement from the pre-LC-D3 curve is now
 **40.008%/119.490%/267.623%/336.078%**. A faster 4,096-token context-parallel
 merge is rejected at maximum KL **0.687034** despite 100% teacher-forced
-top-1, so it is not counted as production progress.
+top-1, so it is not counted as production progress. The committed tracked-clean
+16K confirmation is **16.936 tok/s**, within **-0.201%** of the dirty row and
+**+1.075%** over the preceding clean GQA6 checkpoint, with exact teardown.
 [`deferred-normalization production`](results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights
