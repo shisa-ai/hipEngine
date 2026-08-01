@@ -1521,6 +1521,28 @@ this exact universal transfer
 ([H6V rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
+**WPF-H6W exact late-start dense-initial SWA qrow4 aligned global-score-record
+replay is selected as a target-only leaf.** H6V cleanup leaves production and
+the measured H6U sources byte-identical. Attention is the first distinct
+**127.370-ms** gap; H6A SWA owns **117.085 ms / 144 calls**. H6W is bounded
+before code to starts256/384 (**72 calls**, over 70% of the frozen standalone
+stack); starts0/128 retain H6A. The current local32/VGPR64/LDS0 body is exact
+and unchanged from H6J/H6S at body SHA-256 `c73d333...80a6`. H6J proved that
+removing four second-QK u16 load and 20 bpermute sites is byte-exact, but its
+8-KiB LDS plane produced runtime VGPR248. H6W changes that storage mechanism:
+lane 0 writes one aligned `float4` unscaled-dot record per logical slot into an
+**18,874,368-byte** caller plane and reloads it in pass two. Across the bounded
+late starts, this models **1,280,655,360** removed bpermute wave instructions,
+**256,131,072** removed K-load wave instructions, and **14.343 GB** net logical
+traffic; no speed is claimed. Admission requires RED first, exact H6A/CPU/span
+bytes and fallback preflight, one b128 score store/load, no second QK load/tree,
+local32/grid2304x32/LDS0/private0/spill0/scratch0 and metadata/runtime VGPR <=80,
+then each start and the weighted 72-call schedule positive on HIP-event and
+wall. Remove all surfaces without tuning on any miss. A retained leaf still
+needs separate workspace-lifetime, complete-state/topology, fixed, and
+512/1K/4K gates before ownership
+([target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

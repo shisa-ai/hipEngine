@@ -515,6 +515,22 @@ tok/s**
 ([H6V rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
 [post-H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
+After complete H6V cleanup, **WPF-H6W exact late-start dense-initial SWA qrow4
+aligned global-score-record replay is the next target-only leaf; no executable
+or speed claim exists yet.** Attention is the first materially distinct
+remaining family at a **127.370-ms** gap. H6A SWA owns **117.085 ms / 144
+calls**; starts 256/384 alone own 72 calls and over 70% of the frozen standalone
+stack. H6W will write each lane-0 four-row unscaled-dot set as one aligned
+`float4` record into an **18,874,368-byte** caller plane, then replay that record
+instead of the second BF16-K load/reduction pass. The predeclared late-start
+model removes **1.280 billion** bpermute wave instructions and **14.343 GB** of
+net logical traffic per request, but is not measured performance. Starts 0/128
+remain H6A. Admission requires complete H6A/CPU/`KVLiveSpans` bytes, local32/
+LDS0/scratch0 and runtime VGPR <=80, one cached-only named trace, and both
+starts plus the 72-call aggregate to win HIP-event and synchronized-wall clocks;
+any miss removes H6W without tuning
+([post-H6V rejection / H6W target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
