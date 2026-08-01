@@ -9,7 +9,8 @@ The current W7900 Laguna UD-Q2_K_XL source publication is
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json), H6X's superseding physical rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json), the post-H6X H6Y target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json), H6Y's superseding physical rejection in
-[`2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json), retained H6U Q6 source evidence in
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json), the post-H6Y H6Z target in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json), retained H6U Q6 source evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json), and H6V's superseding rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
@@ -523,6 +524,25 @@ requires three `ds_bpermute_b32` scale broadcasts and raises metadata VGPR
 skip trace and all-45 timing, remove every H6Y source/test/key/export/exclusion
 surface without tuning/rerun, and retain H6T/H6W production **416.891 tok/s**
 ([H6Y rejection](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
+
+Select target-only **WPF-H6Z exact late-start global qrow4 aligned score/weight
+replay** without reopening H6X/H6Y. Representative H6N global is **32.145 ms /
+48 calls**; starts0/128/256/384 own **2.334/6.089/9.912/13.809 ms**, so the
+selected late starts own **23.722 ms (73.796%)**. The removed exact H5R global
+qrow4 path reached runtime-VGPR248/LDS8192 and lost every start, while retained
+H6W proves aligned caller-global qrow4 records at runtime-VGPR56/LDS0/scratch0.
+H6Z must load K/V once for four rows while preserving every H6N ordered dot,
+wave tree, scaled score/max, token-mod-8 exp partial, serial partial0..7
+denominator, normalized weight, token-ordered PV, division, store, and
+`KVLiveSpans` byte. Its **12,582,912-byte** score/weight plane fits the existing
+**18,874,368-byte** H6W plane. The target model moves **147,456→36,864**
+workgroups and K/V-plus-record logical bytes **29.029→8.196 GB (-71.765%)**;
+this is not speed evidence. Require complete H6N/CPU bytes, poison coverage,
+local32/grid1536x32, exact aligned b128 score-store/denominator-load-store/PV-
+load sites, LDS0/private0/spill0/scratch0, VGPR **≤96**, cached named execution,
+and both starts plus weighted 24-call event+wall wins under 5/15/5. Remove H6Z
+on any miss without tuning/rerun; runtime/source remain H6N/H6A/H6W
+([post-H6Y residual / H6Z target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

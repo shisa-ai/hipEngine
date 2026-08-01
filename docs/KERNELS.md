@@ -1616,6 +1616,35 @@ all-45 timing by contract; remove every implementation/test/key/export/gfx1151-
 exclusion surface without tuning or rerun, and retain H6T source
 ([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
 
+Select target-only **WPF-H6Z exact late-start global qrow4 aligned score/weight
+replay** without reopening H6X/H6Y. The representative H6N global body owns
+**32.145 ms / 48 calls** at local256/VGPR40/LDS0/scratch0. Starts
+0/128/256/384 split **2.334/6.089/9.912/13.809 ms**; starts256/384 therefore
+own **23.722 ms (73.796%)**. The old exact H5R global qrow4 reconstruction used
+runtime VGPR248/LDS8192 and lost every start, while retained H6W demonstrates an
+occupancy-preserving aligned caller-global record path at VGPR56/LDS0/scratch0.
+
+H6Z may group only global dense-initial starts256/384 as local32 qrow4. Load one
+BF16 K vector for four rows, reproduce H6N's ordered dot/wave tree/scaled score/
+max, and write one aligned `float4` score record. Lanes0..7 must then reproduce
+the exact token-mod-8 exp partials and serial partial0..7 denominator sum while
+overwriting records with weights; PV loads one BF16 V vector for four rows while
+preserving every row/dimension's normalized-weight and token-ordered F32
+accumulation/division/store. The exact **12,582,912-byte** plane fits H6W's
+existing **18,874,368-byte** caller plane. Target arithmetic moves workgroups
+**147,456→36,864** and modeled K/V-plus-record logical bytes **29.029→8.196 GB
+(-71.765%)**; it is not a physical-traffic or speed claim.
+
+Freeze RED first. Require complete H6N/CPU bytes at both starts, immutable
+`KVLiveSpans`, poisoned record/output coverage, lifecycle, local32/grid1536x32,
+exact aligned b128 score store + denominator load/store + PV load, LDS0/private0/
+spill0/runtime-scratch0, metadata/runtime VGPR **≤96**, cache-only named
+execution without compiler, and both starts plus weighted **24-call** event+wall
+wins under 5/15/5. Any miss removes all H6Z surfaces without tuning/rerun; H6N/
+H6A/H6W package/runtime/source and workspace remain unchanged until separate
+promotion
+([post-H6Y residual / H6Z target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
