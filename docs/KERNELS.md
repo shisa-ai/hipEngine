@@ -1576,6 +1576,17 @@ exclusion surfaces without tuning; H6T stays source and runtime qualification is
 separate
 ([post-H6W residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json)).
 
+H6X is **rejected at the frozen physical gate before profiler/timing**. Its
+**10/10** cached exact matrix preserves all table/output/CPU/lifecycle facts,
+and ISA realizes global loads **23→19**, six LDS reads, one coalesced preload
+store, barriers **2→3**, metadata LDS **384→1,408 bytes**, 216 FMAs, 24
+permlanex16, 96 DPP adds, and private0/spill0/scratch0. Code/slots move
+**7,920/1,384→7,944/1,381**, but metadata VGPR rises **101→103**, exceeding the
+frozen **≤101** ceiling. By contract, skip cached trace and all-45 timing, remove
+every H6X implementation/test/key/export/gfx1151-exclusion surface without
+tuning or rerun, and retain H6T source
+([H6X rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

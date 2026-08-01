@@ -1,0 +1,250 @@
+{
+  "authority_files": {
+    "README.md": "bf6ec940f7af42e54d624b79ca75dfb55803ca2e2dc30d91813b2d920ed18401",
+    "WORKLOG.md": "4d4384e221705f6686956b2aaa107cce9c947fc6045fc7ebd259dfcfb7cd4837",
+    "benchmarks/CHANGELOG.md": "469c345df03e0af5dae3f4656c01d56712260f3874b743d20fa15b1633c3259b",
+    "benchmarks/README.md": "a0640cfeedac2588d36152ecb07d3d76d116a0e0233c826b75897acc058e6dbf",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "22b6d975edd04e698ff76a17e288ee56c0de110cf988df17abc209cceb5db553",
+    "docs/LAGUNA-prefill.md": "6eddd9ada7f2e5ec5072eefd3a4286de6e428f2246bdc06bc7d887894215092b",
+    "docs/PLAN.md": "73a478a692ee7f73085fcf4c5750b8742ae3be4d5be320b64c74b2193e8e09be",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "cleanup": {
+    "hip_health": "pass",
+    "lineage_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "live_h6x_source_matches": 0,
+    "live_iq3_grid_lds_source_matches": 0,
+    "red_test_removed": true,
+    "retained_guard_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retained_guard_stdout_sha256": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869",
+    "retained_h6t_guards": "11/11",
+    "source_files": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": {
+        "byte_identical": true,
+        "current_sha256": "96bc6c701542747c1dfdb95b4eaa580f1cb8e0d87abdb636a7f82bd47665d716",
+        "red_commit_sha256": "96bc6c701542747c1dfdb95b4eaa580f1cb8e0d87abdb636a7f82bd47665d716"
+      },
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": {
+        "byte_identical": true,
+        "current_sha256": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+        "red_commit_sha256": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f"
+      },
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": {
+        "byte_identical": true,
+        "current_sha256": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+        "red_commit_sha256": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2"
+      },
+      "hipengine/kernels/hip_gfx1151/__init__.py": {
+        "byte_identical": true,
+        "current_sha256": "6c9dec990540e35d6bf9f65b7b489c0d1b1545ded1800f6cd5c4d2593751d0df",
+        "red_commit_sha256": "6c9dec990540e35d6bf9f65b7b489c0d1b1545ded1800f6cd5c4d2593751d0df"
+      }
+    }
+  },
+  "commands": {
+    "code_object": "copy cache .so; llvm-objdump --offloading; llvm-readobj --notes; llvm-objdump -d --demangle",
+    "green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6x_iq3_grid_lds.py --tb=short",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "physical": "python3 /tmp/analyze_laguna_h6x_static_rejection.py",
+    "retained": "cached one-queue H6T leaf/runtime/source pytest bundle"
+  },
+  "correctness": {
+    "all_256_grid_entries_exact": true,
+    "allocation_lifecycle_clean": true,
+    "cases": [
+      "rows1",
+      "rows7",
+      "rows8",
+      "rows9",
+      "rows512",
+      "reversed-p64",
+      "reversed-p65"
+    ],
+    "complete_bytes_match_h6t": true,
+    "finite": true,
+    "green": true,
+    "grid_bytes_sha256": "46e35f5a997efdee6c99ce57854c8a0d4f0ff8ca57e5e8a60c0793ea580acf5d",
+    "nodes": 10,
+    "poison_overwritten": true,
+    "sampled_cpu_match": true,
+    "stdout": "..........                                                               [100%]"
+  },
+  "created_at": "2026-08-01",
+  "decision": {
+    "candidate_admitted": false,
+    "candidate_surfaces_removed": true,
+    "next_action": "Commit synchronized rejection evidence, then rerank a materially distinct operation.",
+    "pass": true,
+    "production_unchanged": true,
+    "profiler_run": false,
+    "reason": "metadata VGPR 103 exceeds frozen maximum 101",
+    "timing_run": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6x_iq3_grid_lds_physical_rejection",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": "none; profiler and one-shot timing skipped by frozen contract",
+  "physical": {
+    "candidate_isa": {
+      "barriers_static": 3,
+      "code_bytes": 7944,
+      "dpp_total": 96,
+      "ds_opcodes": {
+        "ds_load_b128": 24,
+        "ds_load_b32": 6,
+        "ds_store_2addr_b32": 12,
+        "ds_store_2addr_stride64_b32": 1
+      },
+      "fma_issue_slots": 180,
+      "fma_operations": 216,
+      "function_instruction_slots": 1381,
+      "global_load_instructions": 19,
+      "out_stride_0x300": 1,
+      "permlanex16": 24,
+      "preamble_ds_store_2addr_stride64_b32": 1,
+      "preamble_global_load_b32": 2,
+      "scratch_instructions": 0,
+      "v_add_f32_dpp": 96,
+      "v_mov_b32_dpp": 0,
+      "vopd_slots_all_classes": 109
+    },
+    "candidate_metadata": {
+      "group_segment_fixed_size": 1408,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 78,
+      "sgpr_spill_count": 0,
+      "uses_dynamic_stack": false,
+      "vgpr_count": 103,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate_physical_pass": false,
+    "frozen_limits": {
+      "metadata_lds_bytes": 1408,
+      "metadata_vgpr_max": 101,
+      "private_bytes": 0,
+      "runtime_lds_bytes_max": 1536,
+      "runtime_vgpr_max": 104,
+      "scratch_bytes": 0,
+      "spills": 0
+    },
+    "no_tuning_or_rerun": true,
+    "one_shot_timing_skipped_by_contract": true,
+    "rejection_reasons": [
+      "metadata VGPR 103 exceeds frozen maximum 101"
+    ],
+    "source_isa": {
+      "barriers_static": 2,
+      "code_bytes": 7920,
+      "dpp_total": 96,
+      "ds_opcodes": {
+        "ds_load_b128": 24,
+        "ds_store_2addr_b32": 12
+      },
+      "fma_issue_slots": 183,
+      "fma_operations": 216,
+      "function_instruction_slots": 1384,
+      "global_load_instructions": 23,
+      "out_stride_0x300": 1,
+      "permlanex16": 24,
+      "preamble_ds_store_2addr_stride64_b32": 0,
+      "preamble_global_load_b32": 0,
+      "scratch_instructions": 0,
+      "v_add_f32_dpp": 96,
+      "v_mov_b32_dpp": 0,
+      "vopd_slots_all_classes": 106
+    },
+    "source_metadata": {
+      "group_segment_fixed_size": 384,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 78,
+      "sgpr_spill_count": 0,
+      "uses_dynamic_stack": false,
+      "vgpr_count": 101,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "trace_skipped_by_contract": true
+  },
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json": "315e6d6e744f8c727a98b1e48681b9e79424c78aebd19be47344d388c07f1837",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json": "8bd49a3457d98b76711ef320ca183256e3544d5f42a59282f909b9dd22041263"
+  },
+  "production": {
+    "attention_source": "H6W late SWA + H6A early SWA + H6N global",
+    "clean_fixed_natural_c4096_m512_tok_s": 416.8913398845912,
+    "iq3_source": "H6T",
+    "llamacpp_over_hipengine_ratio": 1.6570049168956904,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "unchanged": true
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-f2948d5fcbad3a9f/gguf_iq_selected_prefill.so": "09b7d537fd853727ee9137ca7fe7bbded97b052af680f9b27c5632101d88d810",
+    "/tmp/analyze_laguna_h6x_static_rejection.py": "bc8eb75193972b7e4c6ce5b243471eb5af9eb7b68335669cfe85bc36d0bd7f14",
+    "/tmp/h6x-arch-code-object.co": "ca82ebdd447e36574887a2eb94956ac9f0be93250fcb63112ba2b40a98aa844d",
+    "/tmp/h6x-arch-full.isa": "48a7849782bc566ab6ea329d5a4181792442e28f5fa21555454ca049b5782430",
+    "/tmp/h6x-arch-h6t.isa": "ceef8d9a6b0285d528fdfdb8ab27de42cd3ae5ddaf77d18a59624a9a1bb754af",
+    "/tmp/h6x-arch-h6x.isa": "6b28c513c0b8807a870a5501f3d880e3a93081b47e80091360642a65ccfbf641",
+    "/tmp/h6x-arch-offloading.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6x-arch-offloading.stdout": "f66efa5858d236af442de0521d256450d4458a9a00cdff88421f86bd6220d0b6",
+    "/tmp/h6x-arch-readobj-notes.txt": "b5beccd06097bbb39155b3886ea5e01d3b90de1a7371d1dc59d2103a4f468d0c",
+    "/tmp/laguna-h6x-build.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6x-build.stdout": "d919b84b4be155d51dbfde1b4cfb62ae7e4ffd878d1b90c99e916bd26c85e9ca",
+    "/tmp/laguna-h6x-green-test.py": "bc1b23fbd8abdf57735d9af889d4618c02db0312820b6c4c1b8113ca9ee61857",
+    "/tmp/laguna-h6x-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6x-green.stdout": "7040371af15613c02e821ec0eecc1d1330f691ace4cef93a41bfa358822c4103",
+    "/tmp/laguna-h6x-implementation.patch": "800d7550c7e92dc8a69e87db7bf9accf374b94ec76a2012e90df01769b628c49",
+    "/tmp/laguna-h6x-post-cleanup-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6x-post-cleanup-retained.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6x-post-cleanup-retained.stdout": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869",
+    "/tmp/laguna-h6x-red-committed-test.py": "bb5192bd5520d84a84441f05bcbb6ddea87271d2bbfd6fad6be5190481a0c6fc",
+    "/tmp/laguna-h6x-red-final-audit.json": "2840d34363764c61317888ee0f7e9c4fce69ded51724b6a892729eb06a7ba08c",
+    "/tmp/laguna-h6x-red-final.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h6x-red-final.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6x-red-final.stdout": "47756a3610774ee3837d7682aa3ae0bd1241badcebeb042e1dc3f2b2c06887da",
+    "/tmp/laguna-h6x-static-physical-rejection.json": "715a96a099fb6843f2b632a05628ef9955c44d95adc6b2deee76f6c6f9557bc5",
+    "/tmp/laguna-h6x-static-physical-rejection.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6x-static-physical-rejection.stdout": "d429c1bd873c70f68c388f5327aa087c0b98096b0ecd2c1c9f568de93ef2bb4b"
+  },
+  "red_provenance": {
+    "assertion_error_lines": 0,
+    "attribute_error_lines": 9,
+    "error_summary_lines": 0,
+    "failed_summary_lines": 9,
+    "missing_wrapper_mentions": 9,
+    "progress_exact": ".FFFFFFFFF",
+    "status": 1,
+    "status_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "stderr_empty": true,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "47756a3610774ee3837d7682aa3ae0bd1241badcebeb042e1dc3f2b2c06887da"
+  },
+  "repo": {
+    "production_revision": "84ceec31a5b8a63977bb2fa04efefa2729972741",
+    "red_revision": "f733b911897ff569be90633a98a28317194df814",
+    "working_cleanup_source_identical_to_red_revision": true
+  },
+  "schema": 1,
+  "status": "rejected_physical_resource_before_trace_or_timing",
+  "target": {
+    "green_test_sha256": "bc1b23fbd8abdf57735d9af889d4618c02db0312820b6c4c1b8113ca9ee61857",
+    "name": "WPF-H6X exact workgroup-resident IQ3_XXS grid table",
+    "red_test_commit_sha256": "bb5192bd5520d84a84441f05bcbb6ddea87271d2bbfd6fad6be5190481a0c6fc",
+    "scope": "standalone gfx1100 registry-only leaf; H6T package/source unchanged",
+    "source": "H6T exact fused-DPP-add staged-wave triple-output rowbatch8",
+    "test_correction": "Replace one contradictory post-getattr package-ABI assertion with unchanged H6T package policy; no gate or threshold changed."
+  }
+}
