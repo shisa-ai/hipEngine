@@ -197337,3 +197337,20 @@ Vulkan local sizes verbatim will close the measured gap.
   inspection still cannot open the absent configured atlas tree; this is an
   original in-tree variant rather than a port. Commit the production unit
   next, then run a tracked-clean 16K confirmation.
+
+## 2026-08-02 03:00 JST — Confirm compensated layer 28 from clean commit
+
+- Committed the production unit as `4970248a5`, then repeated the cached-only
+  capacity131,200/chunk2,048 d16K/127 protocol with no tracked changes. Decode
+  is **17.397939 tok/s / 57.478073 ms/token**, within **-0.204%** of the dirty
+  **17.433488** directional row and **+0.188%** over the prior clean late-four
+  **17.365235 tok/s** checkpoint. Same-GGUF Vulkan parity is **80.070%**.
+- Final token **13815**, generated SHA-256
+  `b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6`,
+  and position **16,510** match. All **87,407,934,744 bytes / 1,452
+  allocations** recover. Provenance records revision
+  `4970248a5a410f6091f05acbebb8988a52364118`, no staged/unstaged changes, and
+  required cached build. Raw JSON SHA-256 is
+  `41406d8c066dbf96c1edaedae131aa35bd36b32c64f0d16ff3895c2384dcac97`.
+- Update the compact artifact, decode plan, rollup, changelog, and worklog in
+  one evidence-only commit.

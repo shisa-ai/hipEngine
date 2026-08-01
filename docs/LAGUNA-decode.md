@@ -9433,9 +9433,12 @@ The remaining attention sequence is:
      **87,407,934,744-byte / 1,452-allocation** recovery. Cached tracing names
      both compensated kernels at local **512/128**, VGPR **32/16**, LDS
      **11,264/0**, and scratch0. The focused bundle passes **89 tests**. The
-     remaining exact burden is seven global layers (0/4/8/12/16/20/24), so
-     LC-D3 continues with a tiled exact replay or a newly isolated precision
-     seam rather than broad arithmetic changes:
+     tracked-clean d16K confirmation at revision `4970248a5` is
+     **17.397939 tok/s**, within **-0.204%** of the dirty row and **+0.188%**
+     over the prior clean late-four checkpoint, with the same trajectory and
+     teardown. The remaining exact burden is seven global layers
+     (0/4/8/12/16/20/24), so LC-D3 continues with a tiled exact replay or a
+     newly isolated precision seam rather than broad arithmetic changes:
      [`layer-28 compensated production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json).
 
 ### Long-context decode attack

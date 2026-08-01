@@ -161,6 +161,9 @@ the retained uncompensated arithmetic. The d16K/127 gate passes at maximum KL
 (+0.393%/+0.479%/+1.667%)**; the mandatory 128K final token/hash remains
 **874 / c8307c...**, and lifecycle is exact. Vulkan parity is now
 **80.234%/55.631%/44.401%** at 16K/64K/128K.
+The tracked-clean d16K confirmation is **17.398 tok/s**, within **-0.204%** of
+the dirty row and **+0.188%** over the prior clean late-four checkpoint, with
+the same hash/position and full teardown.
 [`layer-28 compensated production`](results/2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights
