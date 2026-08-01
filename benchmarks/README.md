@@ -4,7 +4,8 @@ Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
 score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the clean post-H7B residual/H7C target in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the admitted standalone H7C raw-Q6 leaf in
+[`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json), its clean post-H7B target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json), H7B's superseding physical-resource rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json), the clean post-H7A residual/H7B target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json), H7A's superseding exactness rejection in
@@ -664,31 +665,27 @@ hipEngine/llama.cpp Q5, IQ-down, attention, and Q6 are **256.097/58.314**,
 **272.164/153.860**, **115.403/21.512**, and **81.416/14.668 ms**; gaps
 **197.783/118.305/93.890/66.748 ms** explain **98.179%** of the residual.
 
-Select target-only **WPF-H7C exact raw-Q6 DPP-add wave reduction**. The two BF16
-long-K and one F32 wide-N raw source-GGUF fallbacks own median **28.474 ms / 3
-calls (34.904% of Q6)**. Representative K12288/N3072 BF16,
-K3072/N9216 F32, and K9216/N3072 BF16 calls take **10.347/9.925/7.988 ms**.
-Both generic local128/VGPR72/LDS512/scratch0 bodies contain **160
-`ds_bpermute_b32`** reduction sites. H7C preserves every raw-Q6 load/decode,
-ordered FMA, LDS publication, serial wave0→1→2→3 sum, store, layout, and ABI,
-while transferring H6U's exact permlanex16 then DPP 8/4/2/1 reduction form.
-Across **245,760 workgroups / 983,040 wave instances**, static **160
-bpermutes→32 permlanex16 + 128 DPP adds** replaces **157,286,400** dynamic
-bpermute wave instructions with no logical-byte or reduction-step change; this
-is target rationale, not speed evidence.
+Standalone **WPF-H7C exact raw-Q6 DPP-add wave reduction is admitted** for the
+two BF16 long-K and one F32 wide-N source-GGUF fallbacks, which own median
+**28.474 ms / 3 calls (34.904% of Q6)**. Its frozen complete-byte/CPU/poison/
+lifecycle matrix passes **22/22** across all three shapes and rows1/7/8/9/M512.
+The first BF16/F32 object realizes exact **zero bpermutes + 32 permlanex16 + 128
+DPP adds**, unchanged 24 global loads/one store/eight b128 LDS stores/two LDS
+loads/one barrier/32 ordered FMAs, and cuts code/slots
+**4,840/843→4,228/681** and **5,040/909→4,452/749**. Metadata/runtime VGPR is
+**60/64** and **55/56**, with LDS512 and private/spill/scratch0. A named
+cache-only trace covers exact grids **98,304x64 / 589,824x32** with zero
+compiler.
 
-Freeze RED before code. Require complete rows1/7/8/9/M512 generic/CPU bytes on
-all three shapes, poison overwrite, finiteness, lifecycle, strict registry/
-backend/shape preflight, and gfx1151 exclusion. First-object admission requires
-zero bpermutes, exact **32 permlanex16 + 128 DPP adds**, unchanged 24 global
-loads/one store/eight b128 LDS stores/two LDS loads/one barrier/32 ordered FMAs,
-code/slots no larger than **4,840/843 BF16** and **5,040/909 F32**, metadata/
-runtime VGPR **≤72/72**, LDS512, and private/spill/scratch0. Then require named
-cache-only execution with zero compiler and each role plus the weighted
-three-call aggregate winning event and wall under one immutable 5/15/5 screen.
-Any miss removes every H7C surface without tuning/rerun; runtime/source remain
-separate
-([post-H7B residual / H7C target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
+The consumed actual-weight 5/15/5 screen is byte-exact/finite and improves every
+role on both clocks: layer-0 down **14.866/14.868→14.741/14.750 ms**, layer-47 Q
+**10.752/10.795→10.705/10.700 ms**, and layer-47 output
+**11.630/11.639→11.537/11.547 ms** event/wall. The weighted three-call aggregate
+improves **37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)**. Admit only the
+registry leaf; runtime/source remain on the generic rollback and clean
+production remains **422.947 tok/s / 1,199.578 ms** pending a separate gate
+([H7C candidate](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+[target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

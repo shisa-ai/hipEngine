@@ -2510,31 +2510,29 @@ exact operation
 
 The clean post-H7B checkpoint is **422.947 tok/s** and compiler-free
 **1,199.578 ms / 2,192 dispatches**. Q5/IQ-down/attention/Q6 gaps are
-**197.783/118.305/93.890/66.748 ms**. The three exact raw-Q6 fallbacks still own
-median **28.474 ms (34.904% of Q6)**: K12288/N3072 BF16 **10.347 ms**,
-K3072/N9216 F32 **9.925 ms**, and K9216/N3072 BF16 **7.988 ms**. Select
-target-only **WPF-H7C exact raw-Q6 DPP-add wave reduction**, not the H6H
-source-F16 route that remains quality-closed at max KL 0.411789.
+**197.783/118.305/93.890/66.748 ms**. The three exact raw-Q6 fallbacks own median
+**28.474 ms (34.904% of Q6)**. Standalone **WPF-H7C exact raw-Q6 DPP-add wave
+reduction is admitted** for K12288/N3072 BF16, K3072/N9216 F32, and
+K9216/N3072 BF16; H6H's source-F16 route remains quality-closed at max KL
+0.411789.
 
-Both generic raw bodies are local128/VGPR72/LDS512/scratch0 and emit **160
-`ds_bpermute_b32`** reduction sites. Preserve all raw-Q6 loads/decode, ordered
-FMAs, LDS publication, serial wave0→1→2→3 sum, output/store, layout, ABI, and
-source policy; replace only shuffle-down 16/8/4/2/1 with H6U's proven-equivalent
-**32 permlanex16 + 128 DPP adds**. Natural M512 has **245,760 workgroups /
-983,040 wave instances**, so this replaces **157,286,400** dynamic bpermute wave
-instructions without changing reduction steps or logical bytes. This is
-instruction-form rationale only.
+The frozen matrix passes **22/22** across all roles and rows1/7/8/9/M512. The
+first BF16/F32 object has exact zero bpermutes, **32 permlanex16 + 128 DPP
+adds**, unchanged 24 global loads/one store/eight b128 LDS stores/two LDS loads/
+one barrier/32 ordered FMAs, and cuts code/slots **4,840/843→4,228/681** and
+**5,040/909→4,452/749**. Metadata/runtime VGPR is **60/64** and **55/56**,
+LDS512, private/spill/scratch0. Cached named execution covers exact grids
+**98,304x64 / 589,824x32** with zero compiler.
 
-Freeze RED first. Bind complete rows1/7/8/9/M512 generic/CPU bytes for all three
-roles, poison/finiteness/lifecycle, strict preflight, registry, and gfx1151
-exclusion. The first object must have zero bpermutes, exact 32 permlanex16/128
-DPP, unchanged 24 global loads/one store/eight b128 LDS stores/two LDS loads/one
-barrier/32 ordered FMAs, code/slots **≤4,840/843 BF16** and **≤5,040/909 F32**,
-VGPR **≤72/72**, LDS512, and private/spill/scratch0. Only then require named
-cached execution with zero compiler and all three roles plus aggregate to win
-event and wall under one immutable 5/15/5 screen. Remove H7C on any miss without
-tuning/rerun; leaf, runtime, and source decisions remain separate
-([post-H7B residual / H7C target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
+The immutable actual-weight 5/15/5 screen improves every role on both clocks.
+Layer-0 down is **14.866/14.868→14.741/14.750 ms**, layer-47 Q is
+**10.752/10.795→10.705/10.700 ms**, and layer-47 output is
+**11.630/11.639→11.537/11.547 ms** event/wall. Aggregate improves
+**37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)** with exact bytes and
+lifecycle. Admit the leaf without rerun/tuning; runtime and source decisions
+remain separate, and production stays generic until those gates pass
+([H7C candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

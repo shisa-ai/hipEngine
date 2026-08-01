@@ -495,6 +495,18 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             for col_tile, row_batch in ((2, 16), (4, 8))
             for output_dtype in ("bf16", "f32")
         ),
+        # WPF-H7C transfers the exact H6U reduction instruction form to two
+        # W7900 raw-Q6 leaves and remains absent without a gfx1151 screen.
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
+        ),
         # WPF-H5U and H6A local256 cached-only global leaves are W7900-only
         # pending independent gfx1151 resource/performance gates.
         (

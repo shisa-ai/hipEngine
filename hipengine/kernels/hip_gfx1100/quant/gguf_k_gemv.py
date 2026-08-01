@@ -99,6 +99,69 @@ def _make_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _validate_h7c_raw_q6_role(
+    output_dtype: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    threads: int,
+) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if output_dtype == "bf16":
+        if in_features not in {9_216, 12_288}:
+            raise ValueError("in_features must be exactly 9216 or 12288")
+        if out_features != 3_072:
+            raise ValueError("out_features must be exactly 3072")
+    elif output_dtype == "f32":
+        if in_features != 3_072:
+            raise ValueError("in_features must be exactly 3072")
+        if out_features != 9_216:
+            raise ValueError("out_features must be exactly 9216")
+    else:
+        raise ValueError("H7C output dtype must be 'bf16' or 'f32'")
+    if threads != 128:
+        raise ValueError("threads must be exactly 128")
+
+
+def _launch_h7c_raw_q6(
+    output_dtype: str,
+    symbol: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_h7c_raw_q6_role(
+        output_dtype,
+        rows,
+        in_features,
+        out_features,
+        threads,
+    )
+    _launch(
+        "gguf_q6_k",
+        symbol,
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _make_selected_wrapper(quant: str, symbol: str):
     def wrapper(*args, **kwargs) -> None:
         _launch_selected(quant, symbol, *args, **kwargs)
@@ -494,6 +557,70 @@ gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out = _make_wrapper(
     "gguf_q6_k",
     _symbol("gguf_q6_k", "gemv_coltile4_rowbatch8_bf16_f32_out"),
 )
+
+
+def gguf_q6_k_gemv_dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_h7c_raw_q6(
+        "bf16",
+        _symbol(
+            "gguf_q6_k",
+            "gemv_dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
+        ),
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_gemv_dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_h7c_raw_q6(
+        "f32",
+        _symbol(
+            "gguf_q6_k",
+            "gemv_dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
+        ),
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
@@ -1169,6 +1296,8 @@ _WRAPPERS = {
         "coltile2_rowbatch16_bf16_f32_out": gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out,
         "coltile4_rowbatch8_bf16_bf16_out": gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out,
         "coltile4_rowbatch8_bf16_f32_out": gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out,
+        "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out": gguf_q6_k_gemv_dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out,
+        "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out": gguf_q6_k_gemv_dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out,
     },
 }
 
@@ -1247,6 +1376,8 @@ __all__ = [
     "gguf_q6_k_gemv_coltile2_rowbatch16_bf16_f32_out",
     "gguf_q6_k_gemv_coltile4_rowbatch8_bf16_bf16_out",
     "gguf_q6_k_gemv_coltile4_rowbatch8_bf16_f32_out",
+    "gguf_q6_k_gemv_dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
+    "gguf_q6_k_gemv_dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
     "gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out",
     "gguf_q6_k_wave32x2_fixed_meta_gemv_decode_bf16_bf16_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",
