@@ -80,6 +80,23 @@
     "raw_4k_16k_64k_sha256": "30560a09a567957a1a2b3b19ab48b4aacbd1e15dea52e1844cbe0946dbdf1a0e",
     "raw_128k_sha256": "79152039af60287c775e7fda41397d3a525c6a6e8c16b74408048e068e70f874"
   },
+  "clean_confirmation": {
+    "revision": "ff6979c0afe0a54dbc43c2413bfef882b88c7321",
+    "tracked_clean": true,
+    "depth": 16384,
+    "decode_forward_calls": 127,
+    "decode_tok_s": 17.707729598315264,
+    "decode_seconds": 7.172009223140776,
+    "delta_vs_dirty_percent": -0.12951258019912038,
+    "delta_vs_prior_clean_d32_percent": 1.7806182857577735,
+    "llamacpp_vulkan_parity_percent": 81.49598125580039,
+    "final_token_id": 13815,
+    "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+    "final_position": 16510,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_sha256": "405af8a15865cc7ba35d7d6b87b0e4a8bc36067a3986dc49cccf1c2397fcaa62"
+  },
   "trace": {
     "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
     "live_count": 4097,

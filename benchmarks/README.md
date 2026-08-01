@@ -178,6 +178,9 @@ decode improves **17.433/9.868/6.321 -> 17.731/10.120/6.470 tok/s
 **874 / c8307c... / 131,198**, all shorter trajectories match, and all
 **87.408 GB / 1,452 allocations** recover. D32 remains the registered
 peer-backend rollback; the exact first seven global layers remain unchanged.
+The tracked-clean 16K confirmation is **17.708 tok/s**, within **-0.130%** of
+the dirty row and **+1.781%** over the prior clean D32 checkpoint, with the
+same trajectory and teardown.
 [`D64 context-PV production`](results/2026-08-02-gfx1151-laguna-long-global-dim64-retained.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights

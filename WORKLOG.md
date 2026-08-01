@@ -197401,3 +197401,19 @@ Vulkan local sizes verbatim will close the measured gap.
   warmth. Published
   `2026-08-02-gfx1151-laguna-long-global-dim64-retained.json` and updated the
   kernel catalog, decode/architecture/refactor plans, rollup, and changelog.
+
+## 2026-08-02 03:52 JST — Confirm D64 long-global PV from clean commit
+
+- Committed the D64 production unit as `ff6979c0a`, then repeated the
+  cached-only capacity131,200/chunk2,048 d16K/127 protocol with no tracked
+  changes. Decode is **17.707730 tok/s / 56.472514 ms/token**, within
+  **-0.130%** of the dirty **17.730693** row and **+1.781%** over the prior
+  clean D32 **17.397939 tok/s** checkpoint. Same-GGUF Vulkan parity is
+  **81.496%**.
+- Final token **13815**, generated SHA-256
+  `b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6`,
+  and position **16,510** match. All **87,407,934,744 bytes / 1,452
+  allocations** recover. Provenance records revision
+  `ff6979c0afe0a54dbc43c2413bfef882b88c7321`, no staged/unstaged changes,
+  and the D64 capability in the emitted protocol. Raw JSON SHA-256 is
+  `405af8a15865cc7ba35d7d6b87b0e4a8bc36067a3986dc49cccf1c2397fcaa62`.
