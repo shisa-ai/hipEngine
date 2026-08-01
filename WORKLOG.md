@@ -197460,3 +197460,17 @@ Vulkan local sizes verbatim will close the measured gap.
   correctness-failed candidate that is already flat at d16K. Removed the
   entire D128 implementation/runtime/harness/test diff and restored D64; the
   focused backend/routing checks pass with no tracked production-code diff.
+
+## 2026-08-02 04:37 JST — Reject exact D64/local1024 PV
+
+- Retried the exact non-context D64/V64 owner with local1024 so its 16 blocks
+  retain 1,024 resident threads each and expose 832 loader threads behind 192
+  output threads. The output remains F32/BF16 byte-exact to exact
+  D32/local512, and the CPU-reference fixture passes.
+- The seven-sample/burst10 live4,097/16,448/65,664/131,200 leaf regresses
+  **13.119%/12.654%/12.280%/12.774%**. Extra loader waves do not recover the
+  lost D32 workgroup parallelism. Raw SHA-256 is
+  `408d2018a84426779228c0de975f043f61fd0254f78e79688be950bbd3d96c56`.
+  Removed the schedule before production timing and restored the retained
+  kernel source exactly. Continue with a D32-parallel exact traffic reduction,
+  not another dimension-width/local-size permutation.

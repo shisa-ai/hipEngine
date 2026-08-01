@@ -9510,6 +9510,20 @@ The remaining attention sequence is:
      are removed; production remains D64:
      [`D128 mandatory-gate rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dim128-rejected.json).
 
+208. Restore loader capacity to exact D64 with local1024.
+     **Rejected at the leaf and removed.**
+
+     Exact D64/local512 previously lost to D32 after halving the grid. A
+     local1024 sibling restores total resident waves and raises loader threads
+     from 320 to 832 per block without changing any output arithmetic. It is
+     F32/BF16 byte-exact, but regresses D32/local512 by
+     **13.119%/12.654%/12.280%/12.774%** at live
+     4,097/16,448/65,664/131,200. The problem is the lost workgroup-level
+     parallelism, not merely loader starvation. The schedule is removed before
+     production timing; the exact next owner must keep D32 parallelism while
+     reducing score/PV traffic:
+     [`exact D64/local1024 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-dim64-local1024-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
