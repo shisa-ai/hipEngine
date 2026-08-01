@@ -1676,6 +1676,20 @@ screen are binding. Any miss removes every H7A surface without tuning/rerun;
 runtime/source qualification stays separate
 ([post-H6Z residual / H7A target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
 
+H7A is **rejected at its first binding complete-byte gate**. Structural,
+registry, gfx1151-exclusion, and strict-preflight checks pass, and the frozen
+body compiles once. Complete outputs are finite but differ from H6W at
+**80,469/1,179,648** elements for start256 and **100,075/1,179,648** for
+start384, with maximum absolute **4.656613e-9 / 3.7252903e-9**. The target
+premise missed an ISA numerical boundary: H6W compiles each replay
+`dot * scale - max` as `v_fma_f32`, while a stored scaled score rounds the
+multiply before subtraction. That changes exp and PV bits, so exactness fails
+regardless of the small magnitude. Stop before code-object candidate
+adjudication, rocprof, or timing; do not waive, tune, or rerun. Remove the RED,
+HIP/Python/key/export/gfx1151-exclusion surfaces and retain byte-identical H6W/
+H6Z production **423.233 tok/s / 1,195.702 ms**
+([H7A rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

@@ -26,9 +26,9 @@ should be removed or collapsed.
   tok/s / 1,195.702 ms / 2,192 dispatches** with exact selected topology and
   H6W rollback evidence. Collapse any candidate-only resolver/test path that
   independently restates selected H6Z ownership in a separate atomic cleanup
-  before the next source promotion; do not mix that cleanup with the H7A
-  registry-leaf screen. Keep the named H6W rollback and required unfused
-  H6N/H6A kernels; never retain two independently evolving H6Z dispatch routes.
+  before the next source promotion. H7A's registry-leaf screen is now rejected
+  and fully removed, so it no longer blocks this cleanup. Keep the named H6W
+  rollback and required unfused H6N/H6A kernels; never retain two independently evolving H6Z dispatch routes.
 
 ## Laguna default-off F32 hipBLASLt attention selector
 

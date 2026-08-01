@@ -2460,6 +2460,21 @@ wall. Any miss removes all H7A surfaces without tuning/rerun. Leaf, bounded
 runtime, and source promotion remain separate
 ([post-H6Z residual / H7A target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
 
+Reject H7A at the first binding complete-byte gate. The separately named
+implementation passes structure, registry/backend exclusion, strict preflight,
+and one cached build, and both outputs are finite. It nevertheless differs from
+H6W at **80,469/1,179,648** elements for start256 and **100,075/1,179,648** for
+start384; maxima are **4.656613e-9 / 3.7252903e-9**. The target analysis missed
+that H6W's replay `dot * scale - max` is compiled as a fused `v_fma_f32`.
+Storing the first-pass scaled score introduces an intermediate F32 rounding
+before subtracting max and therefore changes exp/PV output bits. The exact
+premise is false even though the numerical delta is tiny. Per the frozen
+contract, do not inspect candidate code-object resources, profile, time, tune,
+rerun, or apply a quality waiver. Remove every H7A implementation/test/key/
+export/gfx1151-exclusion surface, retain byte-identical H6W/H6Z production
+**423.233 tok/s / 1,195.702 ms**, and rerank a materially distinct operation
+([H7A rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
