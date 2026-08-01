@@ -2314,8 +2314,8 @@ event/wall improves **269.681/271.908 -> 267.729/267.342 ms
 regresses **+12.795%/+13.346%**, BF16 K6144/N3072 misses event by **0.560%**,
 and F32 K3072/N6144 regresses **+4.137%/+1.757%**. The predeclared universal
 all-role gate fails. Skip runtime/source work, remove all implementation/test/
-key/export/gfx1151-exclusion surfaces without tuning, retain H5Y/H6U, and only
-reopen Q5 wave reduction for a materially different role-specific mechanism
+key/export/gfx1151-exclusion surfaces without tuning, retain H5Y/H6U, and do
+not subset or reopen H6V
 ([H6V rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
@@ -2333,10 +2333,35 @@ C4096/M512 improves **411.192→417.421 tok/s (+1.515%, 5/5)** and fresh
 512/1K/4K improves **385.356/309.745/194.411→390.382/312.026/194.709 tok/s
 (+1.304%/+0.736%/+0.153%)**, all **3/3**, at unchanged
 **161,120,256/600,141,856-byte** workspace/scratch. Keep H6A rollback, gfx1151
-fail-closed behavior, and the **115/115** source guard boundary. Next cleanly
-reprofile committed H6W production and rerank the matched residual
+fail-closed behavior, and the **115/115** source guard boundary
 ([production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
+
+Clean committed H6W reaches **416.891 tok/s / 1,214.475 ms / 2,192
+dispatches**, **+145.930%** over campaign start and **1.65700x** behind matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. Current Q5/IQ-down/attention/Q6
+gaps are **198.017/119.429/105.690/66.788 ms**. The representative Q5 request
+reconciles exactly to **223.393 ms H5Y consumers, 26.241 ms producers, 4.781
+ms packs, and 1.916 ms fallback**. Static-shape-only source-MMQ screening
+rejects all six material shapes at max KL **0.585291–4.622387**; the three dominant exact-value F32/
+SGEMM shapes also fail at **0.402533–0.846753** over the full 18-prompt/
+576-step category-heldout gate. Do not reopen changed-association Q5 or H6V.
+
+Select target-only **WPF-H6X exact workgroup-resident IQ3_XXS grid table** on
+H6T's **264.602 ms / 45 calls**. Its current staged local128 body still performs
+two divergent constant/global `IQ3_XXS_GRID[256]` loads per segment. Natural
+routing records **33,547 rowbatch8 epochs / 103,056,384 segment decodes** and
+models **824,451,072** table-load wave instructions / **105.530 GB** logical
+bytes. A separate H6T sibling must cooperatively publish the exact **1,024-byte**
+uint32 table to LDS once/workgroup, barrier, and change only those two lookup
+sources. Preserve 216 FMAs, 24 permlanex16, 96 direct DPP adds, staged scopes,
+wave sum/store, P256/P64 traversal, rowbatch8, grid, ABI, allocation, and
+workspace. Require exact **19 global loads, two table preloads, six LDS reads,
+three barriers, 1,408-byte metadata LDS / <=1,536 runtime LDS, VGPR <=101/104,
+private/spill/scratch0**, rows1/7/8/9/M512 plus P64/P65/tails/CPU bytes, and
+**45/45** actual-layer event+wall wins. Remove all H6X surfaces on any miss;
+runtime and source promotion are separate
+([post-H6W residual / H6X target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
