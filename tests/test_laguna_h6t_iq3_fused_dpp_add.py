@@ -221,10 +221,10 @@ def test_h6t_registry_source_policy_and_h6r_immutability() -> None:
         _H6P_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6Q_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6R_VARIANT: _ACTIVE_EXPERT_ABI,
+        _H6T_VARIANT: _ACTIVE_EXPERT_ABI,
     }
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == expected_variants
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == expected_abis
-    assert _H6T_VARIANT not in hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS
 
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     production = resolve_laguna_moe_plan(config, backend="hip_gfx1100")

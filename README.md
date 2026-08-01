@@ -442,20 +442,23 @@ keeps H6A SWA and H6N global production unchanged and closes DPP attention peer
 exchange without runtime qualification or follow-up tuning
 ([H6S rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
-**WPF-H6T exact fused-DPP-add staged-wave IQ3 is admitted as a standalone
-leaf; H6R remains production.** The frozen **9/9** matrix is exact, including
-rows1/7/8/9/M512, reversed P64/P65, CPU samples, strict shapes, lifecycle, H6R
-source/policy, and gfx1151 absence. Codegen converts H6R's **72 DPP adds + 24
-row-shift-1 DPP moves** into exact **96 DPP adds + zero DPP moves**, while
-preserving 24 permlanex16, 216 FMAs, loads/stores/barriers/stride and metadata/
-runtime VGPR **101/104** at scratch0; instruction slots and code fall **1,399 ->
-1,384** and **8,016 -> 7,920 bytes**. The binding actual-weight screen is
-byte-exact and wins **45/45 layers on both clocks**: event **266.323 -> 260.011
-ms (-2.370%, 1.0243x)** and wall **266.170 -> 260.773 ms (-2.027%, 1.0207x)**,
-with minimum layer wins **1.0192x/1.0158x**. Retain only the leaf; the runtime
-ABI remains eight entries and H6R stays source at clean **407.091 tok/s** until
-a separate bounded-runtime RED and complete-state gates
-([H6T candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
+**WPF-H6T exact fused-DPP-add staged-wave IQ3 is now a qualified bounded
+default-off runtime owner; H6R remains source production.** The exact leaf still
+passes **9/9** and **45/45** actual layers on both clocks while converting **72
+DPP adds + 24 row-shift-1 moves -> 96 DPP adds + zero moves**, cutting slots/code
+**1,399 -> 1,384 / 8,016 -> 7,920 bytes** at unchanged metadata/runtime VGPR
+**101/104** and scratch0. Complete natural M512 is KL0 and byte-exact across all
+**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached
+requests preserve **2,192** dispatches and substitute exact **45 H6R -> 45 H6T**;
+IQ3/request-sum/span move **267.433/1,284.605/1,313.165 ->
+261.844/1,283.120/1,304.737 ms (-2.090%/-0.116%/-0.642%)**. Fixed C4096/M512
+improves **406.849 -> 407.922 tok/s (+0.264%, 5/5 wins)**. Default-off
+512/1K/4K improves **380.968/307.393/193.481 -> 382.181/308.683/193.772 tok/s
+(+0.318%/+0.420%/+0.150%)**, all **3/3** exact wins. H6T is the ninth same-ABI
+capability with no allocation/workspace/dispatch change; **228/228** guards pass
+and H6R remains source at clean **407.091 tok/s** pending a separate
+source-default RED
+([H6T candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 Both short

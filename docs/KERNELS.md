@@ -1460,22 +1460,25 @@ H6A SWA/H6N global and clean H6R **407.091 tok/s**, and do not retry DPP
 attention peer exchange without a materially new premise
 ([H6S rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
-Standalone **WPF-H6T exact fused-DPP-add staged-wave IQ3** is admitted; H6R
-remains source production. Frozen rows1/7/8/9/M512, reversed P64/P65, CPU,
-strict-shape, lifecycle, H6R-source/policy, and gfx1151 checks pass **9/9**.
-Arch-tagged codegen converts H6R's **72 `v_add_f32_dpp` + 24 row-shift-1
-`v_mov_b32_dpp`** into exact **96 DPP adds + zero DPP moves**, while retaining
-24 permlanex16, 216 FMAs, 23 global loads, **24 LDS b128 loads + 12 two-address
-stores**, two/eight barriers, stride `0x300`, local128/grid32768x64/LDS512, and
-metadata/runtime VGPR **101/104** at private0/spill0/scratch0. Static slots/code
-fall **1,399 -> 1,384 / 8,016 -> 7,920 bytes**. Cached rocprof names H6T with no
-compiler activity. The binding all-actual-layer screen is byte-exact and wins
-**45/45 layers on event and synchronized wall**: **266.323 -> 260.011 ms
-(-2.370%, 1.0243x)** / **266.170 -> 260.773 (-2.027%, 1.0207x)**, minimum
-**1.0192x/1.0158x**. Retain the separate leaf only; the eight-entry ABI and H6R
-source map remain unchanged pending separately frozen bounded-runtime and source
-gates
-([H6T candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
+**WPF-H6T exact fused-DPP-add staged-wave IQ3** is now a qualified bounded
+default-off runtime owner; H6R remains source production. The leaf still passes
+**9/9** and **45/45** actual layers both clocks while converting H6R's **72
+`v_add_f32_dpp` + 24 row-shift-1 `v_mov_b32_dpp` -> 96 DPP adds + zero moves**.
+It retains 24 permlanex16, 216 FMAs, 23 global loads, **24 LDS b128 loads + 12
+two-address stores**, two/eight barriers, stride `0x300`, and local128/
+grid32768x64/LDS512 at metadata/runtime VGPR **101/104**, private0/spill0/
+scratch0; slots/code fall **1,399 -> 1,384 / 8,016 -> 7,920 bytes**. Complete
+natural M512 is KL0 and byte-exact across **48/48** hidden boundaries, complete
+K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192**
+dispatches and replace exact **45 H6R -> 45 H6T**; IQ3/request-sum/span move
+**267.433/1,284.605/1,313.165 -> 261.844/1,283.120/1,304.737 ms
+(-2.090%/-0.116%/-0.642%)**. Fixed C4096/M512 improves **406.849 -> 407.922
+tok/s (+0.264%, 5/5)**; default-off 512/1K/4K gains
+**+0.318%/+0.420%/+0.150%** at **382.181/308.683/193.772 tok/s**, all **3/3**
+exact wins. Add only a ninth same-ABI capability: allocation, workspace, total
+scratch, dispatch count, H6R source map, and gfx1151 exclusion stay unchanged;
+**228/228** guards pass. Freeze a separate source-default RED next
+([H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

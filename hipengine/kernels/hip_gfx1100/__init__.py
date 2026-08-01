@@ -187,6 +187,8 @@ LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS = {
 # H6F remains the immediate registered rollback and H5J remains unchanged.
 # H6P is a qualified default-off same-ABI capability; source stays H6I until
 # complete-state, integrated-topology, and clean request gates adjudicate it.
+# H6T is a qualified default-off sibling of H6R through the same raw allocation
+# and active-expert ABI; H6R remains source until separate source-default gates.
 _H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "resident_rowbatch8_bf16_bf16_out"
@@ -226,6 +228,12 @@ _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT = (
     "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_H6T_IQ3_FUSED_DPP_ADD_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_staged_wave_"
+    "publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_"
+    "bf16_bf16_out"
+)
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
     "gguf_iq3_xxs": _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT,
     "gguf_iq4_xs": (
@@ -247,6 +255,7 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
     _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT: (
         "grouped_raw_iq_active_experts"
     ),
+    _H6T_IQ3_FUSED_DPP_ADD_VARIANT: "grouped_raw_iq_active_experts",
 }
 # WPF-1 established exact Q5/Q6 rowbatch8 after bit-exact full-state and short
 # admission. WPF-1W promotes rowbatch32 after clean paired gains at both short

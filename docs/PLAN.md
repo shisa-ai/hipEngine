@@ -2260,24 +2260,23 @@ H6A SWA, H6N global, and clean H6R **407.091 tok/s** remain unchanged. Close DPP
 attention peer exchange unless a materially new premise appears
 ([H6S rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
-Admit standalone **WPF-H6T exact fused-DPP-add staged-wave IQ3** while keeping
-H6R production unchanged. The frozen **9/9** contract passes rows1/7/8/9/M512,
-reversed P64/P65, sampled CPU bytes, strict K1024/N3072/E256 preflight,
-lifecycle, H6R body/policy immutability, and gfx1151 absence. Arch-tagged
-codegen replaces H6R's **72 DPP adds + 24 row-shift-1 DPP moves** with exact **96
-DPP adds + zero DPP moves**, retaining 24 permlanex16, 216 FMAs, three staged
-scopes, 23 global loads, 24 LDS b128 loads, 12 two-address stores, two/eight
-barriers, stride `0x300`, local128/grid32768x64/LDS512, and metadata/runtime VGPR
-**101/104** at private0/spill0/scratch0. Static instruction slots/code fall
-**1,399 -> 1,384 / 8,016 -> 7,920 bytes**. The binding five-warmup,
-15-counter-rotated, five-launch/sample actual-weight screen is byte-exact and
-wins **45/45 layers on both clocks**: event **266.323 -> 260.011 ms (-2.370%,
-1.0243x)** and wall **266.170 -> 260.773 ms (-2.027%, 1.0207x)**, minimum layer
-**1.0192x/1.0158x**. Retain only the separately registered leaf; do not add it
-to the eight-entry runtime ABI or source map yet. Next freeze bounded-runtime
-RED, then require complete state/topology/fixed/512-1K-4K exact non-regression
-before source promotion
-([H6T candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
+Qualify **WPF-H6T exact fused-DPP-add staged-wave IQ3** as a bounded default-off
+runtime owner while keeping H6R source production unchanged. The leaf remains
+exact through **9/9** and **45/45** both-clock wins, realizing **24 permlanex16 +
+96 DPP adds + zero moves**, **1,384 slots / 7,920 bytes**, and unchanged runtime
+VGPR104/LDS512/scratch0. Complete natural M512 is KL0 and byte-exact across all
+**48/48** hidden boundaries, complete K/V/`KVLiveSpans`, repeat, and teardown.
+Four cached requests preserve **2,192** dispatches and substitute exact **45 H6R
+-> 45 H6T**; IQ3/request-sum/span move **267.433/1,284.605/1,313.165 ->
+261.844/1,283.120/1,304.737 ms (-2.090%/-0.116%/-0.642%)**. Fixed C4096/M512
+improves **406.849 -> 407.922 tok/s (+0.264%, 5/5)**. Default-off 512/1K/4K
+improves **380.968/307.393/193.481 -> 382.181/308.683/193.772 tok/s
+(+0.318%/+0.420%/+0.150%)**, every **3/3** pair exact/finite/lifecycle-clean.
+Add only a ninth active-expert ABI capability: raw allocation, grouped-IQ
+library, workspace, total scratch, dispatch count, H6R source map, and gfx1151
+fail-closed behavior remain unchanged; **228/228** guards pass. Commit this owner,
+then freeze a separate source-default RED before changing the H6R selected map
+([H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
