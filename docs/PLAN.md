@@ -2275,12 +2275,27 @@ improves **381.821/307.478/193.289 -> 383.162/308.780/193.629 tok/s
 (+0.351%/+0.423%/+0.176%)**, every **3/3** pair exact/finite/lifecycle-clean.
 Change only the selected-map value: the nine-entry active-expert ABI, raw
 allocation, grouped-IQ library, workspace, total scratch, dispatch count, and
-gfx1151 fail-closed behavior remain unchanged; **144/144** source guards pass.
-Commit this source owner, then cleanly reprofile C4096/direct-M512 and rerank the
-matched residual
+gfx1151 fail-closed behavior remain unchanged; **144/144** source guards pass
 ([H6T production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
 [H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
+The clean committed H6T reprofile is **408.919 tok/s / 1,237.150 ms / 2,192
+dispatches**, **+141.227%** over campaign start and **1.68931x** behind matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. Current Q5/attention/IQ-down/Q6
+gaps are **196.768/127.175/117.982/72.393 ms**. Q5 remains exact-mechanism
+closed, H6S closes the latest exact attention peer premise, and IQ-down was just
+changed. Select target-only **WPF-H6U exact DPP-add wave reduction for H6E Q6
+activation-row consumers**. The 142 consumers own **54.515 ms / 62.617% of
+Q6** and still emit **320/400/400** generic bpermutes with no permlanex16/DPP.
+Add separate three-role siblings changing only the five-step peer source/add to
+permlanex16 plus direct DPP-add 8/4/2/1; preserve all 64/80 FMAs, four-wave LDS
+publication, serial wave sum/store, producer/packs, shapes, maps, allocation,
+and workspace. Freeze RED first; require exact **64+256 / 80+320 / 80+320**
+permlane+DPP and zero bpermutes/moves, no code/resource regression, complete
+rows17/33/M512/CPU/lifecycle gates, and every actual role plus weighted 142-call
+schedule to win event and wall. Remove H6U on any miss
+([post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

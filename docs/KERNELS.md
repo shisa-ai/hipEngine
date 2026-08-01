@@ -1477,11 +1477,28 @@ dispatches and replace exact **45 H6R -> 45 H6T**; IQ3/request-sum/span move
 llama.cpp HIP **690.791**; fresh 512/1K/4K gains **+0.351%/+0.423%/+0.176%** at
 **383.162/308.780/193.629 tok/s**, all **3/3** exact wins. Change only the source-
 map value: the nine-entry ABI, allocation, workspace, total scratch, dispatch
-count, and gfx1151 exclusion stay unchanged; **144/144** source guards pass.
-Clean committed H6T reprofiling and residual reranking are next
+count, and gfx1151 exclusion stay unchanged; **144/144** source guards pass
 ([H6T production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
 [H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
+The clean H6T request reaches **408.919 tok/s / 1,237.150 ms / 2,192
+dispatches** versus matched llama.cpp HIP **690.791 tok/s / 714.008 ms**. Gaps
+rank Q5/attention/IQ-down/Q6 at **196.768/127.175/117.982/72.393 ms**. Q5 is
+mechanism-closed, H6S closes the latest attention peer transfer, and IQ-down was
+just changed. **WPF-H6U exact DPP-add wave reduction for H6E Q6 activation-row
+consumers** is the next target. The 142 H6E bodies total **54.515 ms** and their
+rowbatch4/5 ISA contains **320/400/400 `ds_bpermute_b32`**, no permlanex16/DPP,
+physical code **7,244/8,516/8,488 bytes**, and runtime VGPR **136/168/168** at
+LDS **1024/1536/1536**, scratch0. Separate candidates may replace only each
+exact offset16/8/4/2/1 peer+add tree with permlanex16 and direct DPP-add
+8/4/2/1, targeting **64+256 / 80+320 / 80+320** permlane+DPP instructions and
+zero bpermutes/moves. Preserve logical FMAs, loads, LDS publication/barrier,
+serial wave sum/store, producer/packs, role bounds, registry/policy/allocation,
+and gfx1151 exclusion. Require complete rows17/33/M512 and CPU bytes, named
+cached rocprof with no resource regression/compiler, and every actual role plus
+weighted aggregate to win both clocks; remove H6U on any miss
+([post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

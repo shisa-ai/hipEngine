@@ -28,9 +28,9 @@ rollback, H6J rejects exact dense-initial SWA qrow4 dot replay, H6K rejects exac
 quadruple-output IQ3 reduction, H6L promotes exact IQ2 pair16 rowbatch16 source
 ownership with WPF-2b rowbatch8 same-ABI rollback, H6M rejects exact explicit
 wait-split Q5 record pipelining, H6N promotes exact global dense-initial
-fixed-512 source ownership with H6A global rollback, and H6R promotes exact DPP
-peer-exchange staged-wave IQ3 source ownership with H6Q same-ABI rollback; 16K+
-remains deferred**.
+fixed-512 source ownership with H6A global rollback, and H6T promotes exact
+fused-DPP-add staged-wave IQ3 source ownership with H6R/H6Q same-ABI rollback;
+16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -851,11 +851,39 @@ selector-unset fixed C4096/M512 improves **407.600 -> 408.900 tok/s (+0.319%,
 512/1K/4K improves **381.821/307.478/193.289 -> 383.162/308.780/193.629 tok/s
 (+0.351%/+0.423%/+0.176%)**, all **3/3** exact wins. Change only the source map:
 the nine-entry ABI, allocation/workspace/total scratch/dispatch count stay
-unchanged, gfx1151 fails closed, and **144/144** source guards pass. Clean
-committed H6T reprofiling and residual reranking are next
+unchanged, gfx1151 fails closed, and **144/144** source guards pass
 ([H6T production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
 [H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
+The clean committed H6T refresh is **408.919 tok/s** from
+**408.783/409.158/409.111/408.919/408.084**, all token 2930, deterministic,
+and allocation-clean. It is **+141.227%** over campaign start and **1.68931x**
+behind matched llama.cpp HIP **690.791 tok/s**. The exact cached request is
+**1,237.150 ms / 2,192 dispatches** in a **1,258.641-ms** span. Campaign-start /
+H6R / current-H6T / llama.cpp component milliseconds are Q5
+**1,270.458/255.672/255.082/58.314**, attention
+**488.304/149.392/148.687/21.512**, IQ down
+**557.091/279.045/271.842/153.860**, Q6
+**157.073/87.437/87.061/14.668**, gate/up
+**460.143/399.483/398.657/397.805**, remaining
+**68.623/76.224/75.821/67.849**, and kernel sum
+**3,001.692/1,247.252/1,237.150/714.008**.
+
+Q5 remains exact-mechanism closed, H6S closes the new attention peer-transfer,
+and IQ-down was just changed. Select target-only **WPF-H6U exact DPP-add wave
+reduction for H6E Q6 activation-row consumers**. The **142** H6E consumers own
+**54.515 ms (62.617% of Q6)**. Their rowbatch4/5 functions still emit exact
+**320/400/400 `ds_bpermute_b32`**, zero permlanex16/DPP, and use runtime VGPR
+**136/168/168**, LDS **1024/1536/1536**, scratch0. Add separate siblings that
+replace only each five-step peer tree with permlanex16 plus direct DPP-add
+8/4/2/1, targeting exact **64+256 / 80+320 / 80+320** permlane+DPP counts and
+zero bpermutes/moves. Preserve all 64/80 FMAs, four-wave/LDS/store order,
+producer, packs, maps, allocation, and workspace. Require rows17/33/M512 and
+all three actual roles byte-exact, no physical resource regression, then every
+role plus the 142-call weighted schedule to win both event and wall; remove all
+H6U surfaces on any miss
+([post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
