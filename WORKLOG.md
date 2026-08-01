@@ -197518,3 +197518,31 @@ Vulkan local sizes verbatim will close the measured gap.
   `720e26593a3d328753c32c6b2ee0ddf31442185157e910b45888b4eabe0ab0e8`.
   Restore local512 and close PV local-size tuning; the next exact owner must
   remove or fuse a full score/denominator/probability pass.
+
+## 2026-08-02 05:19 JST — Retain 256-thread exact denominator max
+
+- The exact deferred-normalization denominator previously assigned its maximum
+  scan only to lane 0 of eight waves. All 256 threads now scan disjoint score
+  partitions before the unchanged wave32/eight-wave `fmax` merge. Exp32,
+  chronological denominator summation, reciprocal, PV FMA, BF16 gate, and
+  `KVLiveSpans` behavior are unchanged. RED-first is not meaningful for this
+  scheduling-only change; the existing byte oracle is the regression gate.
+- Capacity131201 leaf medians at live4,097/16,448/65,664/131,200 move
+  **0.320786/1.332830/5.447389/10.844319 ->
+  0.281136/1.153269/4.558652/9.084503 ms**
+  (**-12.360%/-13.472%/-16.315%/-16.228%**). F32 context and BF16 gated
+  outputs are byte-identical at every depth. Raw leaf SHA-256 is
+  `af76f985d9a2df17349a45d22018937fafbc59882a5b858996682f39eb7c961b`.
+- Cached-only one-pass d4K/d16K/d64K/d128K production measures
+  **21.673401/18.148072/10.848461/7.067963 tok/s**, respectively
+  (**+0.076%/+2.487%/+7.198%/+9.245%** versus retained D64). All established
+  hashes/tokens/positions match, including mandatory d128K
+  **874 / c8307c... / 131,198**; all **87,407,934,744 bytes / 1,452
+  allocations** recover. Raw production SHA-256 values are
+  `c0f8e04ab7f6761a6393736d13494d655b5973fd7f11e17c06810729141d2fb5`
+  and `35f0c5cc4b1023e8cbe3afc84fd8689089f2793b2650050a034862b5b2ee0807`.
+- Two focused tests pass. A cache-only native trace names the intended
+  denominator at local256/VGPR56/LDS512/scratch0; CSV SHA-256 is
+  `c694f047f84cd0154880d5edc6fc8d5a12419a89caad6021d6038f5224039157`.
+  `scripts/check_lineage.py --kind kernel --diff stat` remains blocked by the
+  absent configured `/home/lhl/amd-gpu-tuning/reference/atlas` tree.

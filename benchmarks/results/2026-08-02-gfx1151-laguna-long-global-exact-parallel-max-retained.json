@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T05:19:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_parallel_max_retained",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "kernel": "laguna_global_attention_split_exact_exp32_denominator_kernel",
+    "scope": "the exact deferred-normalization global layers 0/4/8/12/16/20/24",
+    "before": "lane 0 of each of eight waves serially scanned every eighth score while the other 248 threads were idle",
+    "after": "all 256 threads scan a contiguous strided partition and retain the existing wave32 and eight-wave fmax merge",
+    "correctness_contract": "fmax selects the same finite maximum; exp32, chronological denominator sum, reciprocal, PV FMA, BF16 gate, KVLiveSpans, and recurrent state remain unchanged",
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0
+  },
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "serial_max_ms": 0.3207860947, "parallel_max_ms": 0.2811356068, "delta_percent": -12.360414},
+      {"live_count": 16448, "serial_max_ms": 1.3328296661, "parallel_max_ms": 1.1532685280, "delta_percent": -13.472174},
+      {"live_count": 65664, "serial_max_ms": 5.4473892212, "parallel_max_ms": 4.5586521149, "delta_percent": -16.314918},
+      {"live_count": 131200, "serial_max_ms": 10.8443191528, "parallel_max_ms": 9.0845031738, "delta_percent": -16.227999}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "af76f985d9a2df17349a45d22018937fafbc59882a5b858996682f39eb7c961b"
+  },
+  "production_sweep": {
+    "protocol": "capacity131200, chunk2048, eager c1, one warmup row, one 127-transition sample per depth",
+    "rows": [
+      {"depth": 4096, "before_tok_s": 21.656928981, "after_tok_s": 21.673401371, "delta_percent": 0.076061, "vulkan_tok_s": 23.037017, "vulkan_parity_percent": 94.080763, "final_token_id": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+      {"depth": 16384, "before_tok_s": 17.707729598, "after_tok_s": 18.148072058, "delta_percent": 2.486725, "vulkan_tok_s": 21.728347, "vulkan_parity_percent": 83.522562, "final_token_id": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+      {"depth": 65536, "before_tok_s": 10.120043274, "after_tok_s": 10.848461113, "delta_percent": 7.197774, "vulkan_tok_s": 17.737473, "vulkan_parity_percent": 61.161255, "final_token_id": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+      {"depth": 131072, "before_tok_s": 6.469839526, "after_tok_s": 7.067963325, "delta_percent": 9.244801, "vulkan_tok_s": 14.237076, "vulkan_parity_percent": 49.644768, "final_token_id": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+    ],
+    "all_established_generated_hashes_match": true,
+    "final_positions_exact": true,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_4k_16k_64k_sha256": "c0f8e04ab7f6761a6393736d13494d655b5973fd7f11e17c06810729141d2fb5",
+    "raw_128k_sha256": "35f0c5cc4b1023e8cbe3afc84fd8689089f2793b2650050a034862b5b2ee0807"
+  },
+  "trace": {
+    "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "live_count": 4097,
+    "denominator_duration_ns": 19116,
+    "workgroup_size": 256,
+    "grid_size": 12288,
+    "vgpr": 56,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "csv_sha256": "c694f047f84cd0154880d5edc6fc8d5a12419a89caad6021d6038f5224039157"
+  },
+  "validation": {
+    "focused_tests": "2 passed",
+    "cpu_reference_fixture": "F32 context and BF16 gated outputs byte-exact at all four leaf depths",
+    "mandatory_128k_gate": "passed at token 874 / c8307c... / position 131198 with exact lifecycle",
+    "kernel_trace": "passed with the expected denominator symbol at local256/VGPR56/LDS512/scratch0",
+    "lineage": "Original in-tree scheduling change; scripts/check_lineage.py is blocked by the absent configured /home/lhl/amd-gpu-tuning/reference/atlas tree."
+  }
+}

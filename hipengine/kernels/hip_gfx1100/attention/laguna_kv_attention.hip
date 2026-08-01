@@ -2058,11 +2058,13 @@ void laguna_global_attention_split_exact_exp32_denominator_kernel(
   const int wave = tid >> 5;
   const int64_t scratch_base = static_cast<int64_t>(q_head) * scratch_stride;
 
+  // Max is a value-selection reduction, so all 256 threads can participate
+  // without changing the selected finite score. The prior schedule assigned
+  // one serial scan to lane 0 of each wave and left 248 threads idle here.
   float local_max = -3.4028234663852886e38f;
-  for (int64_t token = wave; token < context_len; token += kNumWarps) {
-    if (lane == 0) {
-      local_max = fmaxf(local_max, score_scratch[scratch_base + token]);
-    }
+  for (int64_t token = tid; token < context_len;
+       token += static_cast<int64_t>(blockDim.x)) {
+    local_max = fmaxf(local_max, score_scratch[scratch_base + token]);
   }
   for (int offset = 16; offset > 0; offset >>= 1) {
     local_max = fmaxf(local_max, __shfl_down(local_max, offset));

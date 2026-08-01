@@ -183,6 +183,21 @@ the dirty row and **+1.781%** over the prior clean D32 checkpoint, with the
 same trajectory and teardown.
 [`D64 context-PV production`](results/2026-08-02-gfx1151-laguna-long-global-dim64-retained.json).
 
+The sixth LC-D3 checkpoint removes a serialized maximum scan from the seven
+remaining exact global layers. The exact denominator previously assigned
+every eighth score to lane 0 of eight waves, leaving 248 of 256 threads idle;
+all 256 threads now scan disjoint score partitions before the unchanged
+wave/eight-wave `fmax` merge. Exp32, the chronological denominator sum and PV
+FMA chain are unchanged. F32 context and BF16 gated leaves are byte-identical
+at 4K/16K/64K/128K while exact-leaf latency falls **12.36-16.31%**. Complete
+decode improves **17.708/10.120/6.470 -> 18.148/10.848/7.068 tok/s
+(+2.487%/+7.198%/+9.245%)** at 16K/64K/128K; 4K is flat-positive
+**+0.076%**. Vulkan parity rises to **83.523%/61.161%/49.645%**. Every
+established token/hash/position matches, including mandatory 128K
+**874 / c8307c... / 131,198**, and all **87.408 GB / 1,452 allocations**
+recover exactly.
+[`parallel exact-max production`](results/2026-08-02-gfx1151-laguna-long-global-exact-parallel-max-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve
