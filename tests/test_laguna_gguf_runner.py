@@ -1298,16 +1298,16 @@ def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
     assert q6_policy == {
         ("bf16", 3072, 1024): (
             "weight_major_row_major_activation_tile_k_row_"
-            "coltile16_rowbatch5"
+            "dpp_wave_reduction_coltile16_rowbatch5"
         ),
         ("bf16", 1024, 3072): (
             "weight_major_row_major_activation_tile_k_row_"
-            "coltile16_rowbatch4"
+            "dpp_wave_reduction_coltile16_rowbatch4"
         ),
         ("f32", 3072, 72): "coltile8_rowbatch4",
         ("f32", 3072, 1024): (
             "weight_major_row_major_activation_tile_k_row_"
-            "coltile16_rowbatch5"
+            "dpp_wave_reduction_coltile16_rowbatch5"
         ),
     }
     assert backend_package_capability(

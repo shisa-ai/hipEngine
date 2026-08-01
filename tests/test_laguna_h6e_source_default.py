@@ -38,6 +38,21 @@ _H6E_POLICY = {
         "coltile16_rowbatch5"
     ),
 }
+_H6U_POLICY = {
+    ("bf16", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch5"
+    ),
+    ("bf16", 1024, 3072): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch4"
+    ),
+    ("f32", 3072, 72): "coltile8_rowbatch4",
+    ("f32", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch5"
+    ),
+}
 _H6E_ROLES = (
     ("bf16", 3072, 1024),
     ("bf16", 1024, 3072),
@@ -105,19 +120,20 @@ def _install_policy(
     )
 
 
-def test_h6e_source_default_changes_only_qualified_q6_roles(
+def test_h6e_source_remains_explicit_rollback_for_qualified_q6_roles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
 
-    assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _H6E_POLICY
+    assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _H6U_POLICY
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY == _H6E_POLICY
     assert hip_gfx1100.GGUF_F32_ORDERED_PREFILL_POLICIES == {
         "gguf_q5_k": hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
-        "gguf_q6_k": _H6E_POLICY,
+        "gguf_q6_k": _H6U_POLICY,
     }
     assert hip_gfx1151.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == {}
     assert not hasattr(hip_gfx1151, "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY")
+    assert not hasattr(hip_gfx1151, "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY")
     assert {
         role for role in _H6E_POLICY if _H6E_POLICY[role] != _H5W_POLICY[role]
     } == set(_H6E_ROLES)
@@ -126,6 +142,7 @@ def test_h6e_source_default_changes_only_qualified_q6_roles(
         use_activation_tile_k_row=True,
     ) == 161_120_256
 
+    _install_policy(monkeypatch, _H6E_POLICY)
     with q5_f32_ordered_prefill_session(_session()):
         for output_dtype, in_features, out_features in _H6E_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(

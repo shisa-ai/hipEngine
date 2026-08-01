@@ -313,24 +313,25 @@ GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
     ),
 }
 # WPF-H5I introduced the shared serial F32 plane and ordered Q6 consumers.
-# WPF-H5W retains exact weight-major rollback. WPF-H6E promotes activation-row
-# traversal on 142/143 selected calls after KL0 complete-state, exact integrated
-# topology, and positive one-queue 512/1K/4K gates at unchanged workspace. F32
-# N72 and long-K/wide-N misses retain the H5I/raw exact fallbacks.
+# WPF-H5W retains exact weight-major rollback. WPF-H6E retains exact generic-
+# shuffle activation-row rollback. WPF-H6U promotes DPP wave reduction on
+# 142/143 selected calls after KL0 complete state, exact integrated topology,
+# and positive one-queue fixed/512/1K/4K gates at unchanged workspace. F32 N72
+# and long-K/wide-N misses retain the H5I/raw exact fallbacks.
 GGUF_Q6_F32_ORDERED_PREFILL = True
 GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {
     ("bf16", 3072, 1024): (
         "weight_major_row_major_activation_tile_k_row_"
-        "coltile16_rowbatch5"
+        "dpp_wave_reduction_coltile16_rowbatch5"
     ),
     ("bf16", 1024, 3072): (
         "weight_major_row_major_activation_tile_k_row_"
-        "coltile16_rowbatch4"
+        "dpp_wave_reduction_coltile16_rowbatch4"
     ),
     ("f32", 3072, 72): "coltile8_rowbatch4",
     ("f32", 3072, 1024): (
         "weight_major_row_major_activation_tile_k_row_"
-        "coltile16_rowbatch5"
+        "dpp_wave_reduction_coltile16_rowbatch5"
     ),
 }
 GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY = {
@@ -348,8 +349,8 @@ GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY = {
         "coltile16_rowbatch5"
     ),
 }
-# WPF-H6U is a bounded default-off capability until complete state, integrated
-# topology, and selector-unset fixed/512/1K/4K gates qualify source promotion.
+# WPF-H6U is the retained Q6 source after complete-state, integrated-topology,
+# and selector-unset fixed/512/1K/4K publication; H6E remains exact rollback.
 GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY = {
     ("bf16", 3072, 1024): (
         "weight_major_row_major_activation_tile_k_row_"
