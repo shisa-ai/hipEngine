@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna direct-wave exact PV probability loads] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: removing probability loader/LDS staging and broadcasting four direct score/inverse loads from each output wave is byte-exact but **2.88-3.02x slower** than retained staged prefetch4 at every depth, so restore LDS probability broadcast without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-direct-probability-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna ordered-prefetch8 exact PV decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: doubling ordered operand prefetch from four to eight improves exact leaves **0.53-6.40%** and d16K/d64K **0.188%/0.177%**, but mandatory d128K regresses **7.9763 -> 7.9651 tok/s (-0.140%)** despite the exact trajectory, so restore prefetch4; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch8-rejected.json`.
 
 - [accepted byte-exact gfx1151 Laguna ordered-prefetch exact PV decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: preload four probability/BF16-V operands before four explicitly ordered `v_fma_f32` operations; exact leaves improve **23.13-34.03%**, and complete d16K/d64K/d128K improves **18.148/10.848/7.068 -> 18.931/11.868/7.976 tok/s (+4.313%/+9.400%/+12.851%)** with exact mandatory trajectory and lifecycle; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json`.
