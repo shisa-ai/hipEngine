@@ -2260,23 +2260,25 @@ H6A SWA, H6N global, and clean H6R **407.091 tok/s** remain unchanged. Close DPP
 attention peer exchange unless a materially new premise appears
 ([H6S rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
-Select one-shot target-only **WPF-H6T exact fused-DPP-add staged-wave IQ3** on
-the unchanged H6R owner. H6R's cached ISA has **24 permlanex16 + 96 DPP** but
-realizes the DPP tree as **72 direct `v_add_f32_dpp` at row shifts 8/4/2 plus 24
-`v_mov_b32_dpp` at row shift 1**, followed by ordered adds. A standalone gfx1100
-probe proves direct row-shift-1 `v_add_f32_dpp` codegen, and a full
-permlanex16+DPP 8/4/2/1 reduction is bit-identical on all **32/32 lanes**. In a
-separate sibling, replace only those 24 row-shift-1 move+add pairs. Preserve all
-216 FMAs, three staged scopes, LDS traffic/publication, serial wave sum, two/
-eight barriers, stride `0x300`, local128/grid32768x64, bytes, tails, allocation,
-ABI, source policy, and gfx1151 exclusion. Freeze RED first. Physical admission
-requires exact **24 permlanex16 + 96 DPP adds + zero DPP moves**, code <=8,016
-bytes, instruction slots <1,399, metadata/runtime VGPR <=101/104, and private/
-spill/scratch0. The binding all-45 actual-layer screen must win every layer on
-both HIP-event and synchronized-wall clocks; remove every H6T surface without
-follow-up tuning on any miss. Bounded runtime and source qualification remain
-separate later gates
-([H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+Admit standalone **WPF-H6T exact fused-DPP-add staged-wave IQ3** while keeping
+H6R production unchanged. The frozen **9/9** contract passes rows1/7/8/9/M512,
+reversed P64/P65, sampled CPU bytes, strict K1024/N3072/E256 preflight,
+lifecycle, H6R body/policy immutability, and gfx1151 absence. Arch-tagged
+codegen replaces H6R's **72 DPP adds + 24 row-shift-1 DPP moves** with exact **96
+DPP adds + zero DPP moves**, retaining 24 permlanex16, 216 FMAs, three staged
+scopes, 23 global loads, 24 LDS b128 loads, 12 two-address stores, two/eight
+barriers, stride `0x300`, local128/grid32768x64/LDS512, and metadata/runtime VGPR
+**101/104** at private0/spill0/scratch0. Static instruction slots/code fall
+**1,399 -> 1,384 / 8,016 -> 7,920 bytes**. The binding five-warmup,
+15-counter-rotated, five-launch/sample actual-weight screen is byte-exact and
+wins **45/45 layers on both clocks**: event **266.323 -> 260.011 ms (-2.370%,
+1.0243x)** and wall **266.170 -> 260.773 ms (-2.027%, 1.0207x)**, minimum layer
+**1.0192x/1.0158x**. Retain only the separately registered leaf; do not add it
+to the eight-entry runtime ABI or source map yet. Next freeze bounded-runtime
+RED, then require complete state/topology/fixed/512-1K-4K exact non-regression
+before source promotion
+([H6T candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
+[H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
