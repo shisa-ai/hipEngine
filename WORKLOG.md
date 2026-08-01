@@ -197546,3 +197546,20 @@ Vulkan local sizes verbatim will close the measured gap.
   `c694f047f84cd0154880d5edc6fc8d5a12419a89caad6021d6038f5224039157`.
   `scripts/check_lineage.py --kind kernel --diff stat` remains blocked by the
   absent configured `/home/lhl/amd-gpu-tuning/reference/atlas` tree.
+
+## 2026-08-02 05:24 JST — Reject exact score-wave packing
+
+- Packed eight independent GQA6 score-token waves into local256, then four
+  into local128. Each candidate reduces score workgroups by its wave factor
+  while preserving every ordered product, wave32 reduction, score location,
+  F32 context byte, and BF16 gate byte.
+- Relative to the just-retained one-wave/local32 parallel-max leaf, wave8
+  regresses live4,097/16,448/65,664/131,200
+  **4.145%/0.989%/0.816%/0.860%**. Wave4 regresses
+  **3.457%/1.408%/1.295%/1.252%**. Raw SHA-256 values are
+  `5d3899c3b7bac257329223696387c4ff8843d6c3d8712a16a6cc762072f7464b`
+  and `b578fae18bff0d619296384c2e87ac7cb922cf2b98c7e9ceb1ef5a04639db448`.
+- Removed the complete template/launch changes and restored committed
+  production exactly before any complete-model timing. Score-wave workgroup
+  packing is closed; the next exact attack must eliminate scratch traffic or a
+  pass while retaining local32 scheduling.

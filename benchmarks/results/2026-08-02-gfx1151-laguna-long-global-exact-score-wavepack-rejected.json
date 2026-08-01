@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T05:24:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_score_wavepack_rejected",
+  "status": "rejected_leaf_regression",
+  "performance_claim": false,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "candidate": {
+    "control": "one local32 workgroup per KV-head/token GQA6 score wave",
+    "wave8": "eight independent token waves per local256 workgroup",
+    "wave4": "four independent token waves per local128 workgroup",
+    "mechanism": "reduce score-producer workgroups by 8x or 4x without changing per-token dot products or wave32 reduction order",
+    "candidate_code_retained": false
+  },
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "local32_ms": 0.2811356068, "wave8_ms": 0.2927893877, "wave8_delta_percent": 4.145253, "wave4_ms": 0.2908539057, "wave4_delta_percent": 3.456801},
+      {"live_count": 16448, "local32_ms": 1.1532685280, "wave8_ms": 1.1646697044, "wave8_delta_percent": 0.988597, "wave4_ms": 1.1695108414, "wave4_delta_percent": 1.408372},
+      {"live_count": 65664, "local32_ms": 4.5586521149, "wave8_ms": 4.5958690643, "wave8_delta_percent": 0.816402, "wave4_ms": 4.6177059174, "wave4_delta_percent": 1.295422},
+      {"live_count": 131200, "local32_ms": 9.0845031738, "wave8_ms": 9.1626464844, "wave8_delta_percent": 0.860183, "wave4_ms": 9.1982185364, "wave4_delta_percent": 1.251751}
+    ],
+    "wave8_context_f32_byte_exact": true,
+    "wave8_gated_bf16_byte_exact": true,
+    "wave4_context_f32_byte_exact": true,
+    "wave4_gated_bf16_byte_exact": true,
+    "wave8_raw_sha256": "5d3899c3b7bac257329223696387c4ff8843d6c3d8712a16a6cc762072f7464b",
+    "wave4_raw_sha256": "b578fae18bff0d619296384c2e87ac7cb922cf2b98c7e9ceb1ef5a04639db448"
+  },
+  "decision": {
+    "reason": "both packed schedules regress every required depth; the GPU benefits from one independently scheduled wave per score token",
+    "production_gate_run": false,
+    "mandatory_128k_gate_run": false,
+    "production_restored": "451544b4a parallel-max default with the original local32 score owner",
+    "next_attack": "reduce score/physical scratch traffic or fuse an exact pass while retaining local32 score-wave scheduling"
+  },
+  "validation": {
+    "cpu_reference_fixture": "passed for both candidates",
+    "restored_production_tracked_diff": "none"
+  }
+}
