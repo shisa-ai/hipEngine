@@ -1438,12 +1438,16 @@ reducer route above 6,000 live slots. The matched 16K HIP/Vulkan capture
 completes that attribution: hipEngine spends **86.240 ms/token** in global
 attention versus a **3.693-ms** Vulkan global-FA-plus-output scheduled group,
 and the **82.547-ms** group gap explains **99.991%** of the complete profiled
-device gap. The hipEngine reducer/PV alone costs **76.527 ms/token**. LC-D3 is
-therefore active on an exact GQA6 context-parallel owner that removes the
-full score/physical plane, loads each KV tile once per six-query group, and
-reduces bounded output/max/denominator split partials. Its first 16K global
-gate is **<=20 ms/token**, with positive 4K/16K/64K direction and a mandatory
-128K gate before promotion.
+device gap. The hipEngine reducer/PV alone costs **76.527 ms/token**. LC-D3's
+first exact GQA6 milestone is retained pending clean confirmation: a shared-K
+score producer, exact exp32 normalizer, and D32/V64 shared-V PV owner cut
+live16,448 global attention to **16.209 ms/token** and improve directional
+4K/16K/64K/128K production decode by
+**39.96%/117.15%/262.23%/326.73%** with exact recurrent state. This clears the
+first **<=20-ms** gate. LC-D3 remains active because the implementation still
+materializes the full F32 score/physical plane; the next owner must replace it
+with bounded output/max/denominator partials while moving the same depth gates
+and targeting **<=5 ms/token** at 16K.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

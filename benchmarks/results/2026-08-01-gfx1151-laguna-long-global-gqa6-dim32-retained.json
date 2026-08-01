@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_gqa6_dim32_attention_retained",
+  "created_at": "2026-08-01T21:52:00+09:00",
+  "status": "retained_candidate_pending_clean_confirmation",
+  "performance_claim": true,
+  "source_revision_before_change": "52d8e2b70e6a0e1151ed3004f402f65c384fa42a",
+  "baseline_and_comparator_artifact": "benchmarks/results/2026-08-01-gfx1151-laguna-matched-prefill-decode-depth-sweep.json",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "format": "GGUF",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "change": {
+    "summary": "Replace the long-context per-query score producer and serial sixfold-V reducer with an exact GQA6 score producer, exact exp32 normalization, and four-way dimension-sharded PV owner that stages each V tile once for all six queries.",
+    "selection": "gfx1151, gated global decode, 48 query heads, live work above the existing <=6000-slot LDS-fused routes",
+    "score_owner": "one wave32 per KV-head/token; one K load serves all six queries while preserving each four-product F32 dot and wave reduction",
+    "normalization_owner": "one local256 workgroup per query head; preserves the generic eight-wave max/sum association and materializes exact normalized F32 probabilities",
+    "pv_owner": "four D32 blocks per KV head, local512, ping-pong V64/probability LDS; one V stream serves all six GQA queries and each output preserves chronological scalar-F32 FMA order",
+    "resident_bytes_delta": 0,
+    "allocation_count_delta": 0,
+    "full_score_plane_remaining": true
+  },
+  "primitive_leaf": {
+    "candidate": "split-gqa6-dim32-vstage64",
+    "rows": [
+      {"live_slots": 4097, "generic_ms": 1.2901787, "candidate_ms": 0.3422993, "delta_percent": -73.4688, "byte_exact": true},
+      {"live_slots": 16448, "generic_ms": 7.2032420, "candidate_ms": 1.3730310, "delta_percent": -80.9387, "byte_exact": true},
+      {"live_slots": 65664, "generic_ms": 29.7517220, "candidate_ms": 5.7203782, "delta_percent": -80.7730, "byte_exact": true},
+      {"live_slots": 131200, "generic_ms": 60.0348460, "candidate_ms": 11.3829142, "delta_percent": -81.0395, "byte_exact": true}
+    ],
+    "unprofiled_live16448_candidate_ms": 1.38417,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lcd3-final-leaf-trace --output-file trace -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim32-vstage64 --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lcd3-final-leaf-trace/bench.json",
+    "bench_sha256": "979c50c0b2783e706dc39ed222818644fe6a9a95fd6588f26d487446a439354e",
+    "trace_sha256": "79d7364fa31fc61f0ec5b187eb52f62559a9f069f6e9f80ad013cbf02e720492"
+  },
+  "trace": {
+    "live16448_components_ms_per_layer": {
+      "gqa6_scores": 0.305333,
+      "exp32_normalize": 0.279525,
+      "dim32_vstage64_pv": 0.765918,
+      "sum": 1.350776
+    },
+    "live16448_global_ms_per_token_for_12_layers": 16.209312,
+    "first_gate_ms_per_token": 20.0,
+    "first_gate_pass": true,
+    "resources": {
+      "gqa6_scores": "local32 / VGPR16 / SGPR128 / LDS0 / scratch0",
+      "exp32_normalize": "local256 / VGPR56 / SGPR128 / LDS512 / scratch0",
+      "dim32_vstage64_pv": "local512 / VGPR32 / SGPR128 / LDS11264 / scratch0"
+    }
+  },
+  "directional_production_sweep": [
+    {"depth": 4096, "baseline_tokens_per_second": 15.4778365947, "candidate_tokens_per_second": 21.6623754508, "delta_percent": 39.9574, "candidate_ms_per_token": 46.162989, "same_gguf_vulkan_tokens_per_second": 23.037017, "candidate_over_vulkan_percent": 94.0330, "final_token_id": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+    {"depth": 16384, "baseline_tokens_per_second": 7.7318078440, "candidate_tokens_per_second": 16.7895741940, "delta_percent": 117.1494, "candidate_ms_per_token": 59.560772, "same_gguf_vulkan_tokens_per_second": 21.728347, "candidate_over_vulkan_percent": 77.2700, "final_token_id": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+    {"depth": 65536, "baseline_tokens_per_second": 2.5063305207, "candidate_tokens_per_second": 9.0785771987, "delta_percent": 262.2259, "candidate_ms_per_token": 110.149419, "same_gguf_vulkan_tokens_per_second": 17.737473, "candidate_over_vulkan_percent": 51.1830, "final_token_id": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+    {"depth": 131072, "baseline_tokens_per_second": 1.3129211969, "candidate_tokens_per_second": 5.6026873606, "delta_percent": 326.7345, "candidate_ms_per_token": 178.485776, "same_gguf_vulkan_tokens_per_second": 14.237076, "candidate_over_vulkan_percent": 39.3530, "final_token_id": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+  ],
+  "correctness": {
+    "status": "pass",
+    "primitive_f32_context": "byte identical to generic exact split attention",
+    "primitive_bf16_gated_output": "byte identical to generic exact split attention",
+    "kv_live_spans": "capacity 8192 / live 4224 / scan 4097 with explicit evictions and a future-position slot is byte identical to generic exact split attention",
+    "recurrent_generated_ids_match_baseline": true,
+    "final_positions_exact": true,
+    "tracked_lifecycle": "all allocations and bytes returned to zero",
+    "focused_validation": "66 passed"
+  },
+  "rejected_screens": [
+    {"candidate": "GQA6 score tile8/local256", "live16448_ms": 1.4032, "reason": "about 1.4% slower than retained score geometry"},
+    {"candidate": "D16 / 64-block PV", "live16448_ms": 1.4065, "reason": "about 1.6% slower than D32"},
+    {"candidate": "local1024 PV", "live16448_ms": 1.39005, "reason": "small regression versus local512"},
+    {"candidate": "V-stage128", "reason": "flat to slightly slower at 16K versus V-stage64"}
+  ],
+  "protocol": {
+    "production_command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd3-gqa6-dim32-production-sweep.json",
+    "production_raw_sha256": "80a28ef9edad893cb1d37db66e2f7eb987ea4c00a4a3340664747e93e895d197",
+    "tracked_clean": false,
+    "timing_scope": "127 synchronized forward_token calls after the first prefill-produced token; load excluded"
+  },
+  "decision": "Retain the exact GQA6/D32/V64 long-global route and commit it as LC-D3's first structural milestone. It clears the <=20-ms 16K global gate and improves all mandatory depth rows, but a clean 16K production confirmation is required before the benchmark rollup is promoted. The full F32 score plane remains and the route is still slower than Vulkan at 16K-128K, so LC-D3 continues after checkpointing."
+}

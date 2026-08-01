@@ -538,6 +538,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_swa_split_fixed512_reduce = False
     active_swa_fused_fixed512 = False
     active_global_split_fixedshape_reduce = False
+    active_global_split_gqa6_dim32_vstage64 = False
     active_global_fused_fixedshape = False
     active_global_gqa2_vstage64_fixedshape = False
     active_global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape = (
@@ -759,6 +760,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         active_swa_local1024 = owner.kv_cache.swa_local1024
         active_global_split_fixedshape_reduce = (
             owner.kv_cache.global_split_fixedshape_reduce
+        )
+        active_global_split_gqa6_dim32_vstage64 = (
+            owner.kv_cache.global_split_gqa6_dim32_vstage64
         )
         active_global_fused_fixedshape = owner.kv_cache.global_fused_fixedshape
         active_global_gqa2_vstage64_fixedshape = (
@@ -1280,6 +1284,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_fixedshape_reduce": (
                 active_global_split_fixedshape_reduce
             ),
+            "global_split_gqa6_dim32_vstage64": (
+                active_global_split_gqa6_dim32_vstage64
+            ),
             "global_fused_fixedshape": active_global_fused_fixedshape,
             "global_gqa2_vstage64_fixedshape": (
                 active_global_gqa2_vstage64_fixedshape
@@ -1395,8 +1402,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "Dense-prefix global decode selects the capacity-independent "
                 "exact fused specialization through the resource-qualified "
                 "live-context bands (local1024 through 4000 slots, local512 "
-                "through 6000); larger live contexts use exact generic split "
-                "attention.",
+                "through 6000); larger live contexts use exact GQA6 score "
+                "ownership, ordered normalization, and dimension-sharded "
+                "staged-V PV.",
             ]
         ),
     }

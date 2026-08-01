@@ -4626,7 +4626,7 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None:
-    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.core.memory import (
         copy_device_to_host,
         copy_host_to_device,
@@ -4639,6 +4639,7 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_bf16_spans,
+        laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
     )
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
@@ -4751,6 +4752,34 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                 library=library,
                 runtime=runtime,
             )
+            laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            control = np.empty_like(query)
+            candidate = np.empty_like(query)
+            control_gate_bits = np.empty(query.shape, dtype=np.uint16)
+            candidate_gate_bits = np.empty_like(control_gate_bits)
+            for host, device in (
+                (control, control_out),
+                (candidate, candidate_out),
+                (control_gate_bits, control_gated),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
             candidate_fn(
                 *common,
                 candidate_out.ptr,
@@ -4779,6 +4808,73 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                 )
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
+
+        # The production selector also owns non-dense long spans. Exercise the
+        # complete visibility ABI rather than admitting only the common dense
+        # prefix: one evicted slot and one future-position slot must be ignored
+        # without changing the generic exact result.
+        evict_mask = np.zeros(capacity, dtype=np.bool_)
+        evict_mask[[17, 1025, 3073]] = True
+        token_positions = np.arange(capacity, dtype=np.int64)
+        token_positions[2049] = rows + 1
+        for tensor, host in (
+            (state.spans.evict_mask, evict_mask),
+            (state.spans.token_positions, token_positions),
+        ):
+            runtime.memcpy(
+                tensor.ptr,
+                host_array_ptr(host),
+                host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+            )
+        tail = (
+            cache._split_score_scratch.ptr,
+            cache._split_physical_scratch.ptr,
+            state.spans,
+            4097,
+            capacity,
+            48,
+            8,
+            128,
+            128**-0.5,
+        )
+        laguna_global_attention_decode_split_exact_gated_bf16_spans(
+            *common,
+            control_out.ptr,
+            gate_device.ptr,
+            control_gated.ptr,
+            *tail,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans(
+            *common,
+            candidate_out.ptr,
+            gate_device.ptr,
+            candidate_gated.ptr,
+            *tail,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        control = np.empty_like(query)
+        candidate = np.empty_like(query)
+        control_gate_bits = np.empty(query.shape, dtype=np.uint16)
+        candidate_gate_bits = np.empty_like(control_gate_bits)
+        for host, device in (
+            (control, control_out),
+            (candidate, candidate_out),
+            (control_gate_bits, control_gated),
+            (candidate_gate_bits, candidate_gated),
+        ):
+            copy_device_to_host(
+                host_array_ptr(host),
+                device,
+                host.nbytes,
+                runtime=runtime,
+            )
+        assert np.array_equal(candidate, control)
+        assert np.array_equal(candidate_gate_bits, control_gate_bits)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -4834,7 +4930,7 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
             "producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_"
             "vstage64_vec16_direct_assume_exp_fixedshape_spans"
         ),
-        "global_context_split_exact_gated_spans",
+        "global_context_split_exact_gated_gqa6_dim32_vstage64_spans",
         (
             "global_context_fused_exact_gated_mixed40_local512_exp32_"
             "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_"

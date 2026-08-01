@@ -365,6 +365,11 @@ LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
 # dynamic-live score ABI and local256 arithmetic. Three production live points
 # and seven exact p512/d128 pairs admit it on gfx1151 only.
 LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = True
+# Above the fused kernel's LDS-resident score limit, replace the per-query score
+# producer and scalar sixfold-V reducer with an exact GQA6 producer, exp32
+# normalizer, and dimension-sharded shared-V owner. The live16,448 leaf is
+# byte-exact and 80.94% faster than the generic split path.
+LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64 = True
 # The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
 # removes the score plane/launch while preserving reduction association.
 LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
@@ -965,6 +970,7 @@ __all__ = [
     "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",

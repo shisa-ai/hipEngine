@@ -1315,6 +1315,82 @@ __global__ __launch_bounds__(32) void laguna_global_attention_split_exact_scores
   }
 }
 
+// Exact long-context GQA6 score owner for Laguna's natural global shape. One
+// wave owns all six queries sharing a KV head and logical token, so each BF16
+// K lane is loaded once while every query retains the original four ordered
+// products, wave32 reduction tree, scale, and scratch location.
+__global__ __launch_bounds__(32)
+void laguna_global_attention_split_exact_gqa6_scores_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    float scale) {
+  constexpr int kNumKvHeads = 8;
+  constexpr int kQueryGroup = 6;
+  constexpr int kHeadDim = 128;
+  const int kv_head = static_cast<int>(blockIdx.x);
+  const int64_t logical_slot = static_cast<int64_t>(blockIdx.y);
+  if (kv_head >= kNumKvHeads || logical_slot >= scan_slots) return;
+
+  const int64_t context_len = live_counts[0] < capacity ? live_counts[0] : capacity;
+  const int64_t query_position = row_positions[0];
+  const int64_t key_position =
+      logical_slot < context_len ? token_positions[logical_slot] : -1;
+  const bool visible = logical_slot < context_len && query_position >= 0 &&
+                       evict_mask[logical_slot] == 0 && key_position >= 0 &&
+                       key_position <= query_position;
+  int64_t physical_slot = -1;
+  if (visible) {
+    physical_slot =
+        laguna_global_physical_slot(base_offsets, logical_slot, block_size);
+  }
+
+  const int lane = static_cast<int>(threadIdx.x);
+  float key_values[4] = {};
+  if (physical_slot >= 0) {
+    const int64_t key_offset =
+        (physical_slot * kNumKvHeads + kv_head) * kHeadDim + lane * 4;
+#pragma unroll
+    for (int item = 0; item < 4; ++item) {
+      key_values[item] =
+          laguna_bf16_bits_to_float(key_cache[key_offset + item]);
+    }
+  }
+#pragma unroll
+  for (int q_local = 0; q_local < kQueryGroup; ++q_local) {
+    const int q_head = kv_head * kQueryGroup + q_local;
+    const int64_t q_offset =
+        static_cast<int64_t>(q_head) * kHeadDim + lane * 4;
+    float acc = 0.0f;
+    if (physical_slot >= 0) {
+      acc += query[q_offset + 0] * key_values[0];
+      acc += query[q_offset + 1] * key_values[1];
+      acc += query[q_offset + 2] * key_values[2];
+      acc += query[q_offset + 3] * key_values[3];
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (lane == 0) {
+      const int64_t scratch_idx =
+          static_cast<int64_t>(q_head) * scratch_stride + logical_slot;
+      score_scratch[scratch_idx] =
+          physical_slot >= 0 ? acc * scale : -3.4028234663852886e38f;
+      physical_scratch[scratch_idx] = static_cast<int32_t>(physical_slot);
+    }
+  }
+}
+
 __global__ __launch_bounds__(256) void laguna_global_attention_split_exact_reduce_kernel(
     const uint16_t* value_cache,
     float* score_scratch,
@@ -1492,6 +1568,534 @@ __global__ __launch_bounds__(256) void laguna_global_attention_split_exact_gated
       acc += weight * laguna_bf16_bits_to_float(value_cache[value_offset]);
     }
     const int64_t output_idx = q_offset + dim;
+    out[output_idx] = acc;
+    gated_out[output_idx] = laguna_float_to_bf16_bits(
+        acc * laguna_softplus_f32(gate[q_head]));
+  }
+}
+
+// Long-context exact reducer for Laguna's natural 48Q/8KV/D128 GQA6 shape.
+// Four owners per KV head divide the six queries as 2+2+1+1 (32 blocks).
+// The eight-wave maximum and denominator trees and each dimension's token-order
+// PV FMA chain match the generic reducer exactly. A K64 BF16 V tile is loaded
+// once per owner, so paired queries reuse the streamed values without requiring
+// a live-length-sized LDS score plane.
+__global__ __launch_bounds__(512)
+void laguna_global_attention_split_exact_gated_mixed32_vstage64_reduce_kernel(
+    const uint16_t* value_cache,
+    float* score_scratch,
+    const int32_t* physical_scratch,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    const int64_t* live_counts,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t scratch_stride,
+    int64_t scan_slots) {
+  constexpr int kNumKvHeads = 8;
+  constexpr int kQueryGroup = 6;
+  constexpr int kHeadDim = 128;
+  constexpr int kOwnersPerKv = 4;
+  constexpr int kNumWarps = 8;
+  constexpr int kOwnedQueries = 2;
+  constexpr int kValueStage = 64;
+  constexpr int kValuesPerVector =
+      static_cast<int>(sizeof(uint4) / sizeof(uint16_t));
+  constexpr int kVectorsPerSlot = kHeadDim / kValuesPerVector;
+
+  __shared__ float warp_buf[kOwnedQueries][kNumWarps];
+  __shared__ float shared_probability[2][kOwnedQueries][kValueStage];
+  __shared__ uint16_t shared_value[2 * kValueStage * kHeadDim];
+
+  const int owner = static_cast<int>(blockIdx.x);
+  const int kv_head = owner / kOwnersPerKv;
+  const int query_owner = owner % kOwnersPerKv;
+  if (kv_head >= kNumKvHeads) return;
+  const int q_head_base = kv_head * kQueryGroup +
+      (query_owner < 2 ? query_owner * 2 : 4 + query_owner - 2);
+  const int owned_queries = query_owner < 2 ? 2 : 1;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  int64_t context_len = live_counts[0] < capacity ? live_counts[0] : capacity;
+  context_len = context_len < scan_slots ? context_len : scan_slots;
+  if (context_len <= 0 || row_positions[0] < 0) return;
+
+  float local_max[kOwnedQueries];
+#pragma unroll
+  for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+    local_max[q_local] = -3.4028234663852886e38f;
+  }
+  if (wave < kNumWarps) {
+    for (int64_t token = wave; token < context_len; token += kNumWarps) {
+      if (lane == 0) {
+#pragma unroll
+        for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+          if (q_local >= owned_queries) continue;
+          const int64_t scratch_base =
+              static_cast<int64_t>(q_head_base + q_local) * scratch_stride;
+          local_max[q_local] = fmaxf(
+              local_max[q_local], score_scratch[scratch_base + token]);
+        }
+      }
+    }
+#pragma unroll
+    for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+      if (q_local >= owned_queries) continue;
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        local_max[q_local] = fmaxf(
+            local_max[q_local], __shfl_down(local_max[q_local], offset));
+      }
+      if (lane == 0) warp_buf[q_local][wave] = local_max[q_local];
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+#pragma unroll
+    for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+      if (q_local >= owned_queries) continue;
+      float max_score = warp_buf[q_local][0];
+#pragma unroll
+      for (int item = 1; item < kNumWarps; ++item) {
+        max_score = fmaxf(max_score, warp_buf[q_local][item]);
+      }
+      warp_buf[q_local][0] = max_score;
+    }
+  }
+  __syncthreads();
+
+  // Issue one expf per lane, then replay weights onto lane zero in the same
+  // token order as the generic reducer's serial stride-eight loop.
+  float local_sum[kOwnedQueries] = {};
+  constexpr int kSoftmaxBatch = 32;
+  if (wave < kNumWarps) {
+    for (int64_t token_base = wave; token_base < context_len;
+         token_base += kNumWarps * kSoftmaxBatch) {
+      const int64_t token = token_base + lane * kNumWarps;
+      const bool in_range = token < context_len;
+      const int64_t physical_base =
+          static_cast<int64_t>(q_head_base) * scratch_stride;
+      const bool visible =
+          in_range && physical_scratch[physical_base + token] >= 0;
+#pragma unroll
+      for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+        if (q_local >= owned_queries) continue;
+        const int64_t scratch_base =
+            static_cast<int64_t>(q_head_base + q_local) * scratch_stride;
+        float lane_weight = 0.0f;
+        if (in_range) {
+          lane_weight = visible
+              ? expf(score_scratch[scratch_base + token] -
+                     warp_buf[q_local][0])
+              : 0.0f;
+          score_scratch[scratch_base + token] = lane_weight;
+        }
+#pragma unroll
+        for (int item = 0; item < kSoftmaxBatch; ++item) {
+          const float weight = __shfl(lane_weight, item, 32);
+          const int64_t ordered_token =
+              token_base + static_cast<int64_t>(item) * kNumWarps;
+          if (lane == 0 && ordered_token < context_len) {
+            local_sum[q_local] += weight;
+          }
+        }
+      }
+    }
+#pragma unroll
+    for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+      if (q_local >= owned_queries) continue;
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        local_sum[q_local] += __shfl_down(local_sum[q_local], offset);
+      }
+      if (lane == 0) warp_buf[q_local][wave] = local_sum[q_local];
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+#pragma unroll
+    for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+      if (q_local >= owned_queries) continue;
+      float total_sum = warp_buf[q_local][0];
+#pragma unroll
+      for (int item = 1; item < kNumWarps; ++item) {
+        total_sum += warp_buf[q_local][item];
+      }
+      warp_buf[q_local][0] = 1.0f / fmaxf(total_sum, 1.0e-20f);
+    }
+  }
+  __syncthreads();
+
+  // Materialize the exact generic weight product once so all four output
+  // waves for a query can replay it without repeating the multiply.
+#pragma unroll
+  for (int q_local = 0; q_local < kOwnedQueries; ++q_local) {
+    if (q_local >= owned_queries) continue;
+    const int64_t scratch_base =
+        static_cast<int64_t>(q_head_base + q_local) * scratch_stride;
+    const float inverse_sum = warp_buf[q_local][0];
+    for (int64_t token = tid; token < context_len;
+         token += static_cast<int64_t>(blockDim.x)) {
+      score_scratch[scratch_base + token] *= inverse_sum;
+    }
+  }
+  __syncthreads();
+
+  const int q_local = wave >> 2;
+  const bool active_output = wave < kNumWarps && q_local < owned_queries;
+  const int dim = (wave & 3) * 32 + lane;
+  float acc = 0.0f;
+  const int first_stage_count = static_cast<int>(
+      context_len < kValueStage ? context_len : kValueStage);
+  auto* first_stage_vectors = reinterpret_cast<uint4*>(shared_value);
+  for (int probability_idx = tid;
+       probability_idx < owned_queries * first_stage_count;
+       probability_idx += static_cast<int>(blockDim.x)) {
+    const int probability_query = probability_idx / first_stage_count;
+    const int stage_token = probability_idx - probability_query * first_stage_count;
+    const int64_t scratch_base =
+        static_cast<int64_t>(q_head_base + probability_query) * scratch_stride;
+    shared_probability[0][probability_query][stage_token] =
+        score_scratch[scratch_base + stage_token];
+  }
+  for (int vector_idx = tid;
+       vector_idx < first_stage_count * kVectorsPerSlot;
+       vector_idx += static_cast<int>(blockDim.x)) {
+    const int stage_token = vector_idx / kVectorsPerSlot;
+    const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
+    const int64_t physical_base =
+        static_cast<int64_t>(q_head_base) * scratch_stride;
+    const int physical_slot = physical_scratch[physical_base + stage_token];
+    if (physical_slot >= 0) {
+      const int64_t value_offset =
+          (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+              kHeadDim +
+          vector_in_slot * kValuesPerVector;
+      first_stage_vectors[vector_idx] =
+          *reinterpret_cast<const uint4*>(value_cache + value_offset);
+    } else {
+      auto* shared_words =
+          reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
+#pragma unroll
+      for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+    }
+  }
+  __syncthreads();
+  for (int64_t stage_base = 0; stage_base < context_len;
+       stage_base += kValueStage) {
+    const int stage_count = static_cast<int>(
+        context_len - stage_base < kValueStage
+            ? context_len - stage_base
+            : kValueStage);
+    const int stage_parity = static_cast<int>(stage_base / kValueStage) & 1;
+    const int64_t next_stage_base = stage_base + kValueStage;
+    if (tid >= 256 && next_stage_base < context_len) {
+      const int loader_tid = tid - 256;
+      const int next_stage_count = static_cast<int>(
+          context_len - next_stage_base < kValueStage
+              ? context_len - next_stage_base
+              : kValueStage);
+      for (int probability_idx = loader_tid;
+           probability_idx < owned_queries * next_stage_count;
+           probability_idx += 256) {
+        const int probability_query = probability_idx / next_stage_count;
+        const int stage_token =
+            probability_idx - probability_query * next_stage_count;
+        const int64_t scratch_base =
+            static_cast<int64_t>(q_head_base + probability_query) *
+            scratch_stride;
+        shared_probability[stage_parity ^ 1][probability_query][stage_token] =
+            score_scratch[scratch_base + next_stage_base + stage_token];
+      }
+      auto* next_stage_vectors = reinterpret_cast<uint4*>(
+          shared_value + (stage_parity ^ 1) * kValueStage * kHeadDim);
+      for (int vector_idx = loader_tid;
+           vector_idx < next_stage_count * kVectorsPerSlot;
+           vector_idx += 256) {
+        const int stage_token = vector_idx / kVectorsPerSlot;
+        const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
+        const int64_t token = next_stage_base + stage_token;
+        const int64_t physical_base =
+            static_cast<int64_t>(q_head_base) * scratch_stride;
+        const int physical_slot = physical_scratch[physical_base + token];
+        if (physical_slot >= 0) {
+          const int64_t value_offset =
+              (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+                  kHeadDim +
+              vector_in_slot * kValuesPerVector;
+          next_stage_vectors[vector_idx] =
+              *reinterpret_cast<const uint4*>(value_cache + value_offset);
+        } else {
+          auto* shared_words =
+              reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
+#pragma unroll
+          for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+        }
+      }
+    }
+    if (active_output) {
+      const uint16_t* stage_value =
+          shared_value + stage_parity * kValueStage * kHeadDim;
+      for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
+        const float weight =
+            shared_probability[stage_parity][q_local][stage_token];
+        if (!(weight > 0.0f)) continue;
+        acc += weight * laguna_bf16_bits_to_float(
+            stage_value[stage_token * kHeadDim + dim]);
+      }
+    }
+    __syncthreads();
+  }
+  if (active_output) {
+    const int q_head = q_head_base + q_local;
+    const int output_idx = q_head * kHeadDim + dim;
+    out[output_idx] = acc;
+    gated_out[output_idx] = laguna_float_to_bf16_bits(
+        acc * laguna_softplus_f32(gate[q_head]));
+  }
+}
+
+// Exact score normalization phase for the long-context GQA6 value owner.
+// Each query head retains the generic reducer's eight strided token chains,
+// wave-order max/sum merge, reciprocal, and per-token normalization product.
+__global__ __launch_bounds__(256)
+void laguna_global_attention_split_exact_exp32_normalize_kernel(
+    float* score_scratch,
+    const int32_t* physical_scratch,
+    const int64_t* live_counts,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t scratch_stride,
+    int64_t scan_slots) {
+  constexpr int kNumQueryHeads = 48;
+  constexpr int kNumWarps = 8;
+  const int q_head = static_cast<int>(blockIdx.x);
+  if (q_head >= kNumQueryHeads) return;
+  int64_t context_len = live_counts[0] < capacity ? live_counts[0] : capacity;
+  context_len = context_len < scan_slots ? context_len : scan_slots;
+  if (context_len <= 0 || row_positions[0] < 0) return;
+
+  __shared__ float warp_buf[kNumWarps];
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  const int64_t scratch_base = static_cast<int64_t>(q_head) * scratch_stride;
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = wave; token < context_len; token += kNumWarps) {
+    if (lane == 0) {
+      local_max = fmaxf(local_max, score_scratch[scratch_base + token]);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    local_max = fmaxf(local_max, __shfl_down(local_max, offset));
+  }
+  if (lane == 0) warp_buf[wave] = local_max;
+  __syncthreads();
+  if (tid == 0) {
+    float max_score = warp_buf[0];
+#pragma unroll
+    for (int item = 1; item < kNumWarps; ++item) {
+      max_score = fmaxf(max_score, warp_buf[item]);
+    }
+    warp_buf[0] = max_score;
+  }
+  __syncthreads();
+  const float max_score = warp_buf[0];
+
+  float local_sum = 0.0f;
+  constexpr int kSoftmaxBatch = 32;
+  for (int64_t token_base = wave; token_base < context_len;
+       token_base += kNumWarps * kSoftmaxBatch) {
+    const int64_t token = token_base + lane * kNumWarps;
+    const bool in_range = token < context_len;
+    float lane_weight = 0.0f;
+    if (in_range) {
+      lane_weight = physical_scratch[scratch_base + token] >= 0
+          ? expf(score_scratch[scratch_base + token] - max_score)
+          : 0.0f;
+      score_scratch[scratch_base + token] = lane_weight;
+    }
+#pragma unroll
+    for (int item = 0; item < kSoftmaxBatch; ++item) {
+      const float weight = __shfl(lane_weight, item, 32);
+      const int64_t ordered_token =
+          token_base + static_cast<int64_t>(item) * kNumWarps;
+      if (lane == 0 && ordered_token < context_len) local_sum += weight;
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    local_sum += __shfl_down(local_sum, offset);
+  }
+  if (lane == 0) warp_buf[wave] = local_sum;
+  __syncthreads();
+  if (tid == 0) {
+    float total_sum = warp_buf[0];
+#pragma unroll
+    for (int item = 1; item < kNumWarps; ++item) total_sum += warp_buf[item];
+    warp_buf[0] = 1.0f / fmaxf(total_sum, 1.0e-20f);
+  }
+  __syncthreads();
+  const float inverse_sum = warp_buf[0];
+  for (int64_t token = tid; token < context_len;
+       token += static_cast<int64_t>(blockDim.x)) {
+    score_scratch[scratch_base + token] *= inverse_sum;
+  }
+}
+
+// Exact GQA6 PV phase with dimension-sharded ownership. Four workgroups per
+// KV head own disjoint D32 slices, yielding 32 blocks while each BF16 V value
+// is streamed by exactly one block and reused by all six query heads. The six
+// output waves preserve every dimension's chronological scalar-F32 FMA chain;
+// idle waves prefetch the next probability/V tile into ping-pong LDS.
+__global__ __launch_bounds__(512)
+void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
+    const uint16_t* value_cache,
+    const float* score_scratch,
+    const int32_t* physical_scratch,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    const int64_t* live_counts,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t scratch_stride,
+    int64_t scan_slots) {
+  constexpr int kNumKvHeads = 8;
+  constexpr int kQueryGroup = 6;
+  constexpr int kHeadDim = 128;
+  constexpr int kDimTile = 32;
+  constexpr int kDimTiles = kHeadDim / kDimTile;
+  constexpr int kValueStage = 64;
+  constexpr int kValuesPerVector =
+      static_cast<int>(sizeof(uint4) / sizeof(uint16_t));
+  constexpr int kVectorsPerSlot = kDimTile / kValuesPerVector;
+  constexpr int kOutputThreads = kQueryGroup * 32;
+  constexpr int kLoaderThreads = 512 - kOutputThreads;
+
+  __shared__ float shared_probability[2][kQueryGroup][kValueStage];
+  __shared__ uint16_t shared_value[2 * kValueStage * kDimTile];
+
+  const int owner = static_cast<int>(blockIdx.x);
+  const int kv_head = owner / kDimTiles;
+  const int dim_tile = owner % kDimTiles;
+  if (kv_head >= kNumKvHeads) return;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  const bool active_output = wave < kQueryGroup;
+  const int q_head = kv_head * kQueryGroup + wave;
+  const int dim = dim_tile * kDimTile + lane;
+  int64_t context_len = live_counts[0] < capacity ? live_counts[0] : capacity;
+  context_len = context_len < scan_slots ? context_len : scan_slots;
+  if (context_len <= 0 || row_positions[0] < 0) return;
+
+  const int first_stage_count = static_cast<int>(
+      context_len < kValueStage ? context_len : kValueStage);
+  for (int probability_idx = tid;
+       probability_idx < kQueryGroup * first_stage_count;
+       probability_idx += static_cast<int>(blockDim.x)) {
+    const int probability_query = probability_idx / first_stage_count;
+    const int stage_token = probability_idx - probability_query * first_stage_count;
+    const int64_t scratch_base =
+        static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
+        scratch_stride;
+    shared_probability[0][probability_query][stage_token] =
+        score_scratch[scratch_base + stage_token];
+  }
+  auto* first_stage_vectors = reinterpret_cast<uint4*>(shared_value);
+  for (int vector_idx = tid;
+       vector_idx < first_stage_count * kVectorsPerSlot;
+       vector_idx += static_cast<int>(blockDim.x)) {
+    const int stage_token = vector_idx / kVectorsPerSlot;
+    const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
+    const int64_t physical_base =
+        static_cast<int64_t>(kv_head * kQueryGroup) * scratch_stride;
+    const int physical_slot = physical_scratch[physical_base + stage_token];
+    if (physical_slot >= 0) {
+      const int64_t value_offset =
+          (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+              kHeadDim +
+          dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
+      first_stage_vectors[vector_idx] =
+          *reinterpret_cast<const uint4*>(value_cache + value_offset);
+    } else {
+      auto* shared_words =
+          reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
+#pragma unroll
+      for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+    }
+  }
+  __syncthreads();
+
+  float acc = 0.0f;
+  for (int64_t stage_base = 0; stage_base < context_len;
+       stage_base += kValueStage) {
+    const int stage_count = static_cast<int>(
+        context_len - stage_base < kValueStage
+            ? context_len - stage_base
+            : kValueStage);
+    const int stage_parity = static_cast<int>(stage_base / kValueStage) & 1;
+    const int64_t next_stage_base = stage_base + kValueStage;
+    if (tid >= kOutputThreads && next_stage_base < context_len) {
+      const int loader_tid = tid - kOutputThreads;
+      const int next_stage_count = static_cast<int>(
+          context_len - next_stage_base < kValueStage
+              ? context_len - next_stage_base
+              : kValueStage);
+      for (int probability_idx = loader_tid;
+           probability_idx < kQueryGroup * next_stage_count;
+           probability_idx += kLoaderThreads) {
+        const int probability_query = probability_idx / next_stage_count;
+        const int stage_token =
+            probability_idx - probability_query * next_stage_count;
+        const int64_t scratch_base =
+            static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
+            scratch_stride;
+        shared_probability[stage_parity ^ 1][probability_query][stage_token] =
+            score_scratch[scratch_base + next_stage_base + stage_token];
+      }
+      auto* next_stage_vectors = reinterpret_cast<uint4*>(
+          shared_value + (stage_parity ^ 1) * kValueStage * kDimTile);
+      for (int vector_idx = loader_tid;
+           vector_idx < next_stage_count * kVectorsPerSlot;
+           vector_idx += kLoaderThreads) {
+        const int stage_token = vector_idx / kVectorsPerSlot;
+        const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
+        const int64_t token = next_stage_base + stage_token;
+        const int64_t physical_base =
+            static_cast<int64_t>(kv_head * kQueryGroup) * scratch_stride;
+        const int physical_slot = physical_scratch[physical_base + token];
+        if (physical_slot >= 0) {
+          const int64_t value_offset =
+              (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+                  kHeadDim +
+              dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
+          next_stage_vectors[vector_idx] =
+              *reinterpret_cast<const uint4*>(value_cache + value_offset);
+        } else {
+          auto* shared_words =
+              reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
+#pragma unroll
+          for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+        }
+      }
+    }
+    if (active_output) {
+      const uint16_t* stage_value =
+          shared_value + stage_parity * kValueStage * kDimTile;
+      for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
+        const float weight =
+            shared_probability[stage_parity][wave][stage_token];
+        if (!(weight > 0.0f)) continue;
+        acc += weight * laguna_bf16_bits_to_float(
+            stage_value[stage_token * kDimTile + lane]);
+      }
+    }
+    __syncthreads();
+  }
+  if (active_output) {
+    const int output_idx = q_head * kHeadDim + dim;
     out[output_idx] = acc;
     gated_out[output_idx] = laguna_float_to_bf16_bits(
         acc * laguna_softplus_f32(gate[q_head]));
@@ -7850,6 +8454,97 @@ extern "C" int hipengine_laguna_global_attention_decode_split_exact_gated_bf16_s
       num_q_heads,
       num_kv_heads,
       head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      capacity <= 0 || block_size != 256 || block_table_len <= 0 ||
+      (capacity + block_size - 1) / block_size > block_table_len ||
+      scratch_stride < scan_slots || scan_slots <= 0 || scan_slots > capacity ||
+      num_q_heads != 48 || num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_gqa6_scores_kernel,
+      dim3(8, static_cast<unsigned int>(scan_slots)),
+      dim3(32),
+      0,
+      stream,
+      query,
+      key_cache,
+      score_scratch,
+      physical_scratch,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      capacity,
+      block_size,
+      scratch_stride,
+      scan_slots,
+      scale);
+  int error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_exp32_normalize_kernel,
+      dim3(48),
+      dim3(256),
+      0,
+      stream,
+      score_scratch,
+      physical_scratch,
+      live_counts,
+      row_positions,
+      capacity,
+      scratch_stride,
+      scan_slots);
+  error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel,
+      dim3(32),
+      dim3(512),
+      0,
+      stream,
+      value_cache,
+      score_scratch,
+      physical_scratch,
+      out,
+      gate,
+      gated_out,
+      live_counts,
+      row_positions,
+      capacity,
+      scratch_stride,
+      scan_slots);
   return static_cast<int>(hipGetLastError());
 }
 
