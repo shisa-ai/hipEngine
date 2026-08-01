@@ -1460,6 +1460,23 @@ H6A SWA/H6N global and clean H6R **407.091 tok/s**, and do not retry DPP
 attention peer exchange without a materially new premise
 ([H6S rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
+The next one-shot target is **WPF-H6T exact fused-DPP-add staged-wave IQ3** on
+unchanged H6R. H6R's function ISA contains exact **24 permlanex16 + 96 DPP**, but
+only shifts 8/4/2 are fused (**72 `v_add_f32_dpp`**); shift 1 remains **24
+`v_mov_b32_dpp`** instructions followed by ordered adds. A standalone gfx1100
+probe emits direct row-shift-1 `v_add_f32_dpp`, and its complete
+permlanex16+DPP 8/4/2/1 tree matches the move-then-add control on all **32/32
+lanes**. Add a separate H6T sibling and replace only those 24 move+add pairs,
+preserving H6R's 216 FMAs, three scopes, 24 LDS b128 loads, 12 two-address LDS
+stores, two/eight barriers, stride `0x300`, local128/grid32768x64/LDS512,
+complete bytes/tails, ABI, allocation, and source policy. Admission requires
+**24 permlanex16 + 96 DPP adds + zero DPP moves**, code <=8,016 bytes,
+instruction slots <1,399, metadata/runtime VGPR <=101/104, private/spill/
+scratch0, cached named execution, and **45/45** actual-layer wins on both clocks.
+Freeze RED first; any miss removes all H6T surfaces and closes the instruction
+form without tuning
+([H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
