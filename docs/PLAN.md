@@ -1471,9 +1471,10 @@ PV grid, cuts the ordinary active leaf **10.665-17.258%** and the compensated
 leaf **12.989-19.729%**, and improves complete d16K/d64K/d128K another
 **1.705%/2.558%/2.348%** to **17.731/10.120/6.470 tok/s** with the mandatory
 128K trajectory and lifecycle intact. LC-D3 now leaves exact global layers
-0..24. The next
-owner must reduce that seven-layer score/PV path, find another isolated
-quality-safe boundary, or use an ordered tiled replay while targeting
+0..24. An isolated compensated layer-24 screen reaches **0.235600 max KL**
+on teacher70 and is removed, so precision-boundary widening is no longer the
+next lever. The next owner must reduce that seven-layer score/PV path or use
+an ordered tiled replay while targeting
 **<=5 ms/token** at 16K. Reassociated online-softmax arithmetic is not a
 numerics waiver.
 

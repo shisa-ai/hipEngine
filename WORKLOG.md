@@ -197417,3 +197417,21 @@ Vulkan local sizes verbatim will close the measured gap.
   `ff6979c0afe0a54dbc43c2413bfef882b88c7321`, no staged/unstaged changes,
   and the D64 capability in the emitted protocol. Raw JSON SHA-256 is
   `405af8a15865cc7ba35d7d6b87b0e4a8bc36067a3986dc49cccf1c2397fcaa62`.
+
+## 2026-08-02 04:00 JST — Reject compensated layer 24
+
+- Temporarily extended the retained D64 context-parallel schedule with a
+  compensated global layer 24 while leaving compensated layer 28 and ordinary
+  layers 32/36/40/44 unchanged. The cached-only capacity131,200 d16K
+  teacher70 gate fails decisively at maximum/mean KL
+  **0.235599575/0.003410915** versus the **0.05** ceiling. Top-1 is **69/70
+  (98.57%)**, maximum absolute logit delta is **2.690049**, and the sole
+  divergent step is 68. Raw JSON SHA-256 is
+  `be78eb7f0a1ac793f86b9da394c6efcd42cdc7b5aed340cabc8e58b7ac23284d`.
+- Removed the complete candidate capability/runtime/harness/test diff before
+  further timing. The restored layer-28-only production route passes its two
+  focused backend/routing checks and has no tracked code diff. A full 127-step
+  quality pass, production depth sweep, and mandatory 128K gate are skipped
+  because none can make the quality-failed candidate promotable. LC-D3 now
+  proceeds only with arithmetic-order-preserving structural work on exact
+  layers 0..24.
