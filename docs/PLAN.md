@@ -2401,27 +2401,30 @@ implementation/test/key/export/gfx1151-exclusion surface and retain H6T/H6W
 production **416.891 tok/s**
 ([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
 
-Admit standalone **WPF-H6Z exact late-start global qrow4 aligned score/weight
-replay** as a separately registered gfx1100 leaf; do not yet change H6N/H6A/H6W
-package, runtime, source, workspace, or fallback policy. Cached correctness is
-**5/5**: starts256/384 are complete-byte identical to H6N, sampled CPU rows
-pass, all five `KVLiveSpans` fields remain immutable, every required output and
-finite nonnegative weight record overwrites poison, suffix records remain
-untouched, strict preflight passes, and allocations recover.
+Retain **WPF-H6Z exact late-start global qrow4 aligned score/weight replay** and
+qualify a bounded default-off gfx1100 runtime owner; do not yet change selected
+H6N/H6W source policy. The admitted leaf remains complete-byte exact at
+starts256/384, local32/grid1536x32, code/slots **4,024 B / 690**, metadata/
+runtime VGPR **47/48**, LDS0/private0/spill0/runtime-scratch0, and weighted
+24-call event/wall **21.007/21.257→10.797/10.942 ms (1.946x/1.943x)**.
 
-The first and only implementation realizes the selected operation without
-resource pressure: local32/grid1536x32, code/slots **4,024 B / 690**, metadata/
-runtime VGPR **47/48**, LDS0/private0/spill0/runtime-scratch0, and exactly two
-b128 record loads plus two b128 record stores after accounting for query/output
-vectors. Cached tracing names H6Z once at **550.404 us** with no compiler
-process. The immutable 5/15/5 screen improves starts256/384 event
-**0.746→0.388 ms (1.924x)** and **1.005→0.512 ms (1.962x)**; wall improves
-**0.761→0.396 ms (1.923x)** and **1.010→0.516 ms (1.958x)**. Weighted
-**24-call** event/wall falls **21.007/21.257→10.797/10.942 ms
-(-48.602%/-48.526%, 1.946x/1.943x)**. Retain this exact leaf and next freeze a
-separate bounded-runtime/source-qualification RED for reusing the existing H6W
-caller plane; production remains **416.891 tok/s**
-([H6Z candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json) ·
+The runtime capability reuses H6W's existing aligned **18,874,368-byte** prefix
+of the Q5 F32 plane, forwards H6Z's strict **12,582,912-byte** extent, and adds
+zero allocation, workspace, sidecar, or dispatch. Starts0/128 retain H6N;
+starts256/384 select H6Z only for exact M128/C4096/H48/KV8/D128 with a bound
+plane. Unbound and all shape/metadata/registration/backend misses fail closed.
+Natural M512 is KL0/top-1 100% and byte-exact across complete logits, final/post
+hidden, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown.
+
+Four cache-only requests preserve **2,192** dispatches and replace only late
+**24 H6N→24 H6Z**, retaining **72 H6A + 72 H6W**. Late-global/attention/kernel-
+sum/span moves **23.615/124.028/1,205.864/1,235.600→12.306/115.461/1,198.758/
+1,220.506 ms** with zero compiler process. Fixed natural C4096/M512 improves
+**418.198→421.168 tok/s (+0.710%, 5/5)**. H6Z is C4096-only, making C512/C1024
+rows unchanged-path noise controls; binding 4K improves **194.471→194.515
+(+0.022%, 3/3)**. Keep production at **416.891 tok/s**, commit the default-off
+owner, then freeze separate source-default RED before replacing late H6N
+([H6Z candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

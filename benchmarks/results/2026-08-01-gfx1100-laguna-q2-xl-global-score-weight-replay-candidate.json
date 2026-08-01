@@ -1,4 +1,14 @@
 {
+  "authority_files": {
+    "README.md": "bf6ec940f7af42e54d624b79ca75dfb55803ca2e2dc30d91813b2d920ed18401",
+    "WORKLOG.md": "60ef6737d4b9f4c72a8d078cde5ccd19e9f35a12e352e996e723fb55fd805def",
+    "benchmarks/CHANGELOG.md": "f8dd2325ff95b3816dbec0018ea4c32087307b28e90349d328c7127f5dbfb261",
+    "benchmarks/README.md": "0a121727f78a137ab861cab24f8ff9e3382618f8715018bc7b1780a80adbaf00",
+    "docs/KERNELS.md": "89cc3cfdb13a1cd2bd0d49530902b6f1a9fc024a31e94fc8e8e07005b5ba660b",
+    "docs/LAGUNA-prefill.md": "197a81a960253957fc000005534e6584b65e31ea81424dce0e3eb206e0f8a9db",
+    "docs/PLAN.md": "dc47848155fbc1adfd1805206c6166d57b0f64c19fb3d56c33cbc6a5c579ef68",
+    "docs/REFACTOR.md": "d8eb7521ad6f6bf02cb5943836cf143897175e23c1ca7327db59b07b16484dad"
+  },
   "candidate": {
     "cache_key": "5b1707cc625b332804604f38665aa228d6a1044187f5f9c092233e1174e94e43",
     "function": "laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_spans",
@@ -8,10 +18,12 @@
     "kernel": "laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernel",
     "library_sha256": "8832f8f15962fb2eb6b84cf520394b42470b1cf253d7acead3e186344ae08956",
     "name": "exact late-start global qrow4 aligned score/weight replay",
-    "package_policy_unchanged": true,
+    "package_capability_added": true,
+    "package_policy_unchanged": false,
     "red_revision": "887fc225d2aa0d74f4a74194317d1bc180bf2a02",
-    "registry_only": true,
-    "runtime_owner_added": false,
+    "registry_only": false,
+    "runtime_owner_added": true,
+    "selected_source_policy_unchanged": true,
     "source_default_changed": false,
     "source_sha256": {
       "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "3a64be6aaefba6a8b0c074da048cf66d1cd2cda0aea476f02bf6754926671244",
@@ -27,6 +39,11 @@
     "guards": "69/69 H6Z/H6W/H6N/H6A/KV/registry/gfx1151 bundle",
     "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
     "physical": "llvm-objcopy + clang-offload-bundler + llvm-readobj/llvm-objdump plus /tmp/analyze_laguna_h6z_physical.py",
+    "runtime_clean_512_1k_4k": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh6z_runtime_default_off_clean_512_4k.py",
+    "runtime_complete_state": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh6z_runtime_m512_full_state.py",
+    "runtime_fixed_c4096_m512": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh6z_runtime_matched_c4096_m512.py",
+    "runtime_guards": "125/125 split retained package/kernel and Laguna runner guards",
+    "runtime_integrated_trace": "GPU_MAX_HW_QUEUES=1 cache-only rocprofv3 --kernel-trace over four counter-rotated /tmp/laguna_wpfh6z_runtime_trace_integrated_paired.py requests",
     "screen": "cache-only /tmp/laguna_wpfh6z_global_score_weight_replay_screen.py (immutable 5/15/5)",
     "trace": "cache-only rocprofv3 --kernel-trace on start384 H6Z test under compiler-free child PATH and 5-ms process monitor"
   },
@@ -61,6 +78,9 @@
       "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stdout_sha256": "19d0dd3ee9782662f61cbc2b430a73ddb0da2ae8beb0e50b1ceb1ea941f8709b"
     },
+    "runtime_complete_state_hidden_boundaries_exact": 48,
+    "runtime_complete_state_kl_zero": true,
+    "runtime_guard_passes": 125,
     "sampled_cpu_rows": "rows0/63/127 pass independent BF16 K/V CPU attention at starts256/384",
     "score_weight_scratch": {
       "alignment": 16,
@@ -98,14 +118,17 @@
     "kernel_sum_ms": 1214.475158,
     "matched_llamacpp_hip_tok_s": 690.791,
     "production_changed": false,
-    "source": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6N global + H6A early SWA + H6W late SWA"
+    "runtime_qualification_pending": false,
+    "source": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6N global + H6A early SWA + H6W late SWA",
+    "source_default_adjudication_pending": true
   },
   "date": "2026-08-01",
   "decision": {
     "candidate_admitted": true,
-    "next_action": "Commit the standalone H6Z leaf, then freeze a separate bounded-runtime/source-qualification RED before reusing the existing H6W caller plane.",
-    "production_unchanged": true,
-    "runtime_qualification_pending": true
+    "next_action": "Commit the bounded H6Z owner, then freeze a separate source-default RED before replacing H6N at starts256/384.",
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true,
+    "source_default_changed": false
   },
   "guards": {
     "expanded_attention_registry_backend": 69,
@@ -113,7 +136,12 @@
     "expanded_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "expanded_stdout_sha256": "b156e9922f76d25723911762a7fc411b0a8aeb840a9069496bef64f6b3877445",
     "focused_green": 5,
-    "hip_health": true
+    "hip_health": true,
+    "runtime_broad_stdout_sha256": "cc34b63aed9ded66f0e7fe2019892e09f95bda31d78523503dd936241e3dc3f5",
+    "runtime_retained": 87,
+    "runtime_runner": 38,
+    "runtime_runner_stdout_sha256": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+    "runtime_total": 125
   },
   "hardware": {
     "architecture": "gfx1100",
@@ -123,8 +151,153 @@
     "queues": 1
   },
   "kind": "gfx1100_laguna_q2_xl_wpf_h6z_global_score_weight_replay_candidate",
+  "leaf_admission_snapshot": {
+    "artifact_sha256": "8b2bd54d854bdfee181b706b0e0e06f0d346aab318c224ff419950c02446ee3b",
+    "physical": {
+      "kernels": {
+        "h6n": {
+          "code_bytes": 4732,
+          "instruction_slots": 982,
+          "instructions": {
+            "ds_bpermute_b32": 15,
+            "ds_load_b32": 10,
+            "ds_store_b32": 7,
+            "global_load_b128": 0,
+            "global_load_b32": 1,
+            "global_load_b64": 1,
+            "global_load_u16": 3,
+            "global_store_b128": 0,
+            "global_store_b32": 1,
+            "s_barrier": 5,
+            "v_dual_fmac_f32": 0,
+            "v_exp_f32_e32": 1,
+            "v_fma_f32": 4,
+            "v_fmac_f32_e32": 10
+          },
+          "metadata": {
+            "lds_bytes": 0,
+            "max_workgroup_size": 1024,
+            "private_bytes": 0,
+            "sgpr": 36,
+            "sgpr_spills": 0,
+            "uses_dynamic_stack": false,
+            "vgpr": 33,
+            "vgpr_spills": 0,
+            "wavefront_size": 32
+          },
+          "name": "_ZN12_GLOBAL__N_179laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernelEPKfPKtS3_PfPKiPKlS8_PKhS8_lllllllf"
+        },
+        "h6z": {
+          "code_bytes": 4024,
+          "instruction_slots": 690,
+          "instructions": {
+            "ds_bpermute_b32": 56,
+            "ds_load_b32": 0,
+            "ds_store_b32": 0,
+            "global_load_b128": 6,
+            "global_load_b32": 0,
+            "global_load_b64": 2,
+            "global_load_u16": 0,
+            "global_store_b128": 6,
+            "global_store_b32": 0,
+            "s_barrier": 0,
+            "v_dual_fmac_f32": 5,
+            "v_exp_f32_e32": 4,
+            "v_fma_f32": 36,
+            "v_fmac_f32_e32": 16
+          },
+          "metadata": {
+            "lds_bytes": 0,
+            "max_workgroup_size": 32,
+            "private_bytes": 0,
+            "sgpr": 43,
+            "sgpr_spills": 0,
+            "uses_dynamic_stack": false,
+            "vgpr": 47,
+            "vgpr_spills": 0,
+            "wavefront_size": 32
+          },
+          "name": "_ZN12_GLOBAL__N_196laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernelEPKfPKtS3_PfP15HIP_vector_typeIfLj4EEPKiPKlSB_PKhSB_lllllllf"
+        }
+      },
+      "proof": {
+        "denominator_score_load_b128_sites": 1,
+        "denominator_weight_store_b128_sites": 1,
+        "metadata_vgpr_limit": 96,
+        "no_lds_or_barrier": true,
+        "output_store_b128_sites": 4,
+        "physical_gate_pass": true,
+        "private_spill_scratch_free": true,
+        "pv_weight_load_b128_sites": 1,
+        "query_load_b128_sites": 4,
+        "record_load_b128_sites": 2,
+        "record_store_b128_sites": 2,
+        "score_record_store_b128_sites": 1,
+        "shared_k_load_b64_sites": 1,
+        "shared_v_load_b64_sites": 1
+      }
+    },
+    "status": "admitted_standalone_leaf_default_off",
+    "trace": {
+      "candidate": {
+        "duration_ns": 550404,
+        "grid_x": 1536,
+        "grid_y": 32,
+        "grid_z": 1,
+        "kernel": "(anonymous namespace)::laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, HIP_vector_type<float, 4u>*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+        "lds_bytes": 0,
+        "local_x": 32,
+        "local_y": 1,
+        "local_z": 1,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 48
+      },
+      "candidate_dispatches": 1,
+      "compiler_free_child_path": "/usr/bin:/bin",
+      "compiler_monitor": {
+        "new_compiler_processes": 0,
+        "poll_interval_ms": 5,
+        "preexisting_compiler_processes": 29,
+        "samples": 1253
+      },
+      "control": {
+        "duration_ns": 952281,
+        "grid_x": 12288,
+        "grid_y": 128,
+        "grid_z": 1,
+        "kernel": "(anonymous namespace)::laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+        "lds_bytes": 0,
+        "local_x": 256,
+        "local_y": 1,
+        "local_z": 1,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 40
+      },
+      "control_dispatches": 1,
+      "hardware": {
+        "architecture": "gfx1100",
+        "product": "AMD Radeon Pro W7900",
+        "wavefront_size": 32
+      },
+      "require_cached": true,
+      "schema": "hipengine.laguna.h6z.cached_trace.v1",
+      "trace_gate_pass": true
+    },
+    "weighted_event_speedup": 1.9456054890609387,
+    "weighted_wall_speedup": 1.9427421798344056
+  },
   "lineage": {
     "kernel_lineage_report_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "runtime_implementation_patch_sha256": "ce6d750e09caefa2fdaa0f627ecb405582683ad8bfdf878e371080f46e48f9f7",
+    "runtime_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d4f70fc1df2028412eaa3bb73cab032b626323fd1585786ea6a5f2dca041d840",
+      "hipengine/runtime/laguna_gguf_runner.py": "61ff2f193a53eb0c48a55e3616e6c55b7cbc77705b58ac552559cf9b56814688",
+      "hipengine/runtime/laguna_kv.py": "a9d046bd793aca0a3085d4040a14992d80f2b7261ee16f2721ce3ad2ed8bc31f",
+      "tests/test_laguna_h6z_runtime_policy.py": "842fc8809846bf95f89ff5f5a619f31909187e80579bd65175f772798d955a9d"
+    },
+    "runtime_red_revision": "a93fea203",
     "source": "Net-new in-tree caller-global replay sibling; no external device body copied.",
     "target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json",
     "target_artifact_sha256": "7aca9055739ec2c56719db866e5d93981c04fe60d50ba9c84cd2e49c359fe051"
@@ -151,7 +324,7 @@
   "performance": {
     "all_starts_event_positive": true,
     "all_starts_wall_positive": true,
-    "claim_scope": "standalone exact leaf only; no full-model/source speed claim",
+    "claim_scope": "standalone exact leaf plus bounded default-off full-model runtime; production source remains unchanged",
     "one_shot": true,
     "protocol": {
       "append_cost_excluded_equally": true,
@@ -477,6 +650,8 @@
   "raw_evidence_sha256": {
     "/tmp/analyze_laguna_h6z_physical.py": "c19ba3aec25b40ab8994a131d8e1b37396f01c0662c4b82a926e954d298991bb",
     "/tmp/analyze_laguna_h6z_trace.py": "847d904f0b9da1c3490c4fc410d135150d19cb24cb21b00cd78397e10787950c",
+    "/tmp/analyze_laguna_wpfh6z_runtime_integrated_trace.py": "dfb63fe3ac4f8c644e233943ee4162d7cd5972c63e77bc11ea6d795bdbcbfcbf",
+    "/tmp/build_laguna_h6z_runtime_publication.py": "4cc545c8bd32e58f0ea077feb7769a7ef09c6985b235e1d126ccfa3535213652",
     "/tmp/hipengine-hipcc-version-laguna-iq2.txt": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
     "/tmp/laguna-h6n-global-score-weight-function.isa": "ffe5c9c2edff67574dc2e684c63cdd912243c4c56aa0ea8fe0016b13f8941bc9",
     "/tmp/laguna-h6z-codeobj/device.isa": "8f38fc7421f677712a41b715adad4ac40c4d83ca15799c3455bc931c7e652945",
@@ -505,15 +680,301 @@
     "/tmp/laguna-h6z-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
     "/tmp/laguna-h6z-rocprof/epyc/1987990_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
     "/tmp/laguna-h6z-rocprof/epyc/1987990_kernel_trace.csv": "e22b01af4f349d74f649ca927a10b7c4a2845f1be4fd0b7f85192dfac33ec024",
+    "/tmp/laguna-h6z-runtime-broad-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-runtime-broad-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-runtime-broad-guards.stdout": "cc34b63aed9ded66f0e7fe2019892e09f95bda31d78523503dd936241e3dc3f5",
+    "/tmp/laguna-h6z-runtime-compiler-monitor.json": "a3b321161b0889d308c9e8030872aca2234fe3997ecb91f7118c908f3c3664af",
+    "/tmp/laguna-h6z-runtime-compiler-monitor.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-runtime-compiler-monitor.stdout": "a3b321161b0889d308c9e8030872aca2234fe3997ecb91f7118c908f3c3664af",
+    "/tmp/laguna-h6z-runtime-hip-health.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-runtime-hip-health.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-runtime-hip-health.stdout": "dc678f658891c7b2088c472077629621a36553b68ea407c2deb6672bca19ed02",
+    "/tmp/laguna-h6z-runtime-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-runtime-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-runtime-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6z-runtime-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-runtime-rocprof.stderr": "3fbc24e434c7611946d2324abb6007b57a636e095e84b97d31b6c21a8417c9b6",
+    "/tmp/laguna-h6z-runtime-rocprof.stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "/tmp/laguna-h6z-runtime-rocprof/h6z_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6z-runtime-rocprof/h6z_kernel_trace.csv": "d757b3ef1277c0a81e85d8546014513d8804f016c19028a9c2148471087ee9a3",
+    "/tmp/laguna-h6z-runtime-runner-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-runtime-runner-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-runtime-runner-guards.stdout": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
     "/tmp/laguna-h6z-trace-summary.json": "b31fca2f9438f5a8d7ca328252dba1e958bb9fb5d0740f2e9e9241c289c4718d",
     "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.json": "e15e1b7ef6862e61185e1f440c8177492041cd2c214592f0ede21dd60ad1ef67",
     "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
     "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.stdout": "7d5f661403f8086823e9fc578c5cd9c49be612b08eea1f6cd9ff37627b279444",
-    "/tmp/laguna_wpfh6z_global_score_weight_replay_screen.py": "79f059acfbc44d6dc97106943faebfafd0f016922631e76093bae82b0f3a1e21"
+    "/tmp/laguna-wpfh6z-runtime-default-off-clean-512-4k.json": "2f7dab0993dd32769b88aba81d5c7f7afa08188a39bd56b04697f7b174b50c8b",
+    "/tmp/laguna-wpfh6z-runtime-default-off-clean-512-4k.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-runtime-default-off-clean-512-4k.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6z-runtime-default-off-clean-512-4k.stdout": "a481fbcc1bd4dcae5e02b0a2073cbbbacfe1ba1a55b59077bda059db3a61f33a",
+    "/tmp/laguna-wpfh6z-runtime-integrated-trace-summary.json": "3e5cd7f16040ed46dd2725cd405e650211606aa0968b64a19c7e80249af8859d",
+    "/tmp/laguna-wpfh6z-runtime-m512-full-state.json": "7155781c24b63f35d110ceedbe6ab7fda9b14678dc7a7cb9aa7d932ce93b4336",
+    "/tmp/laguna-wpfh6z-runtime-m512-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-runtime-m512-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6z-runtime-m512-full-state.stdout": "2a572ae43c84c8dc993947a7ac4c85ab4534f22fd3339ddca0b2ed5f88f65aa3",
+    "/tmp/laguna-wpfh6z-runtime-matched-c4096-m512.json": "5ce744296c5c54f518726bbfcf2b007bd371c094bc98505fa91594242d879946",
+    "/tmp/laguna-wpfh6z-runtime-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-runtime-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6z-runtime-matched-c4096-m512.stdout": "abfdae48b0b7aa138bc583bea147129f2e07f48499863dbd29908d2fc396bebe",
+    "/tmp/laguna-wpfh6z-runtime-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-runtime-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-wpfh6z-runtime-trace-analysis.stdout": "3e5cd7f16040ed46dd2725cd405e650211606aa0968b64a19c7e80249af8859d",
+    "/tmp/laguna_wpfh6z_global_score_weight_replay_screen.py": "79f059acfbc44d6dc97106943faebfafd0f016922631e76093bae82b0f3a1e21",
+    "/tmp/laguna_wpfh6z_runtime_default_off_clean_512_4k.py": "fdec81820fbbfe90525ac9161a87977f968a8bfb3a175470b22b0975fb0bd9a4",
+    "/tmp/laguna_wpfh6z_runtime_m512_full_state.py": "dfa32f860d899e2ce1b5587ffd5f5d292f8781c7b2f0144141626a1e2a2cb03b",
+    "/tmp/laguna_wpfh6z_runtime_matched_c4096_m512.py": "9a1bd100716854ef5a2ab01f37b060bc0475e17b75f9c43c5c2c75e7fec699d0",
+    "/tmp/laguna_wpfh6z_runtime_trace_integrated_paired.py": "433bc1c826a2827d88fca2a6daccbc3c4038787644332811b17368e20821056f",
+    "/tmp/monitor_laguna_h6z_runtime_compilers.py": "672270d46825a79971d3e39b4a10e7839eff4c64f8b6b209b0be4092f485e90b",
+    "/tmp/validate_laguna_h6z_runtime_publication.py": "816213ce90805b76394c3a465f4e5c67436f5692013030d2fb68c6f45af46dbc"
+  },
+  "runtime_qualification": {
+    "cached_integrated_trace": {
+      "all_lds_bytes": 0,
+      "all_scratch_bytes": 0,
+      "attention_reduction_percent": 6.907842249950635,
+      "candidate_attention_median_ms": 115.46077150000002,
+      "candidate_kernel_sum_median_ms": 1198.7579715000006,
+      "candidate_selected_late_global_median_ms": 12.306333,
+      "candidate_span_median_ms": 1220.5055595,
+      "candidate_topology": {
+        "h6a_swa": 72,
+        "h6n_global": 24,
+        "h6w_swa": 72,
+        "h6z_global": 24
+      },
+      "compiler_monitor_samples": 1372,
+      "control_attention_median_ms": 124.02846199999999,
+      "control_kernel_sum_median_ms": 1205.864372000001,
+      "control_selected_late_global_median_ms": 23.614507,
+      "control_span_median_ms": 1235.5999145,
+      "control_topology": {
+        "h6a_swa": 72,
+        "h6n_global": 48,
+        "h6w_swa": 72
+      },
+      "dispatches_per_request": 2192,
+      "family_dispatches_each_request": {
+        "attention": 192,
+        "gate_up": 47,
+        "iq_down": 47,
+        "q5": 658,
+        "q6": 431,
+        "remaining": 817
+      },
+      "h6z_runtime_vgpr": 48,
+      "kernel_sum_reduction_percent": 0.5893200483412464,
+      "mode_order": [
+        "control",
+        "candidate",
+        "candidate",
+        "control"
+      ],
+      "no_compiler_spawned_under_profile": true,
+      "preexisting_orphan_compiler_version_processes": 29,
+      "requests": 4,
+      "selected_late_global_reduction_percent": 47.88655549743215,
+      "span_reduction_percent": 1.2216215639759276
+    },
+    "capability": {
+      "binding_alignment_bytes": 16,
+      "borrowed_plane": "existing H6W/Q5 ordered F32 weight plane prefix",
+      "borrowed_plane_available_bytes": 150994944,
+      "bound_owner_bytes": 18874368,
+      "candidate_policy": {
+        "global_m128_c4096_first_fill_exact": "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans",
+        "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+      },
+      "candidate_starts": [
+        256,
+        384
+      ],
+      "control_policy": {
+        "global_m128_c4096_first_fill_exact": "global_context_rows_dense_initial_fixed512_cached_exact_spans",
+        "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+      },
+      "fallback_starts": [
+        0,
+        128
+      ],
+      "gfx1151_fail_closed": true,
+      "h6z_used_extent_bytes": 12582912,
+      "name": "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS",
+      "new_allocation_bytes": 0,
+      "new_dispatches_per_request": 0,
+      "new_sidecar_bytes": 0,
+      "new_workspace_bytes": 0,
+      "q5_ordered_workspace_bytes": 161120256,
+      "runtime_owner_default_off": true,
+      "source_default": false,
+      "source_selected_policy": "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+      "topology": {
+        "h6a_swa": 72,
+        "h6n_global": 24,
+        "h6w_swa": 72,
+        "h6z_global": 24
+      },
+      "total_scratch_bytes": 600141856,
+      "unbound_topology": {
+        "h6a_swa": 144,
+        "h6n_global": 48
+      }
+    },
+    "complete_natural_m512_state": {
+      "candidate_repeat_exact": true,
+      "complete_logits_hidden_kv_live_spans_exact": true,
+      "hidden_boundaries_exact": 48,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "next_token_id": 2930,
+      "owner_lifecycle_recovered": true,
+      "score_scratch_reuses_q5_plane": true,
+      "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+      "top1_agreement": 1.0,
+      "tracked_allocations_recovered": true,
+      "workspace_unchanged": true
+    },
+    "default_off_clean_512_1k_4k": {
+      "all_finite": true,
+      "all_outputs_exact": true,
+      "all_sessions_recovered": true,
+      "binding_4096_wins": 3,
+      "initial_lifecycle_recovered": true,
+      "protocol": "same resident weights; model load excluded; fresh session/sample; one warmup/mode/length; three counter-rotated repetitions; matrix512; attention128; one queue",
+      "route_exercised": {
+        "1024": false,
+        "4096": true,
+        "512": false
+      },
+      "rows": {
+        "1024": {
+          "all_finite": true,
+          "all_score_scratch_reuses_q5_plane": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 3.2883517830632627,
+          "candidate_median_tok_s": 311.40220619768763,
+          "candidate_score_scratch_nbytes": [
+            18874368
+          ],
+          "control_median_seconds": 3.2828460168093443,
+          "control_median_tok_s": 311.9244688166165,
+          "control_score_scratch_nbytes": [
+            18874368
+          ],
+          "exact_all_repetitions": true,
+          "gain_percent": -0.16743239826945144,
+          "paired_candidate_wins": 1,
+          "speedup": 0.9983256760173055
+        },
+        "4096": {
+          "all_finite": true,
+          "all_score_scratch_reuses_q5_plane": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 21.057524224044755,
+          "candidate_median_tok_s": 194.5147946368234,
+          "candidate_score_scratch_nbytes": [
+            18874368
+          ],
+          "control_median_seconds": 21.062226386042312,
+          "control_median_tok_s": 194.47136902461418,
+          "control_score_scratch_nbytes": [
+            18874368
+          ],
+          "exact_all_repetitions": true,
+          "gain_percent": 0.022330079963461813,
+          "paired_candidate_wins": 3,
+          "speedup": 1.0002233007996346
+        },
+        "512": {
+          "all_finite": true,
+          "all_score_scratch_reuses_q5_plane": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 1.3112022359855473,
+          "candidate_median_tok_s": 390.48133533357054,
+          "candidate_score_scratch_nbytes": [
+            18874368
+          ],
+          "control_median_seconds": 1.3117157770320773,
+          "control_median_tok_s": 390.32846060483064,
+          "control_score_scratch_nbytes": [
+            18874368
+          ],
+          "exact_all_repetitions": true,
+          "gain_percent": 0.03916566281203515,
+          "paired_candidate_wins": 1,
+          "speedup": 1.0003916566281204
+        }
+      },
+      "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1",
+      "unchanged_path_noise_controls": [
+        512,
+        1024
+      ]
+    },
+    "fixed_c4096_m512": {
+      "all_finite": true,
+      "all_outputs_exact": true,
+      "all_sessions_recovered": true,
+      "initial_lifecycle_recovered": true,
+      "protocol": "same resident weights; pinned natural M512 IDs; model load excluded; fresh session/sample; one warmup/mode; five counter-rotated repetitions; context4096; matrix512; attention128; one queue",
+      "row": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 1.2156665369402617,
+        "candidate_median_tok_s": 421.16812829994007,
+        "candidate_over_llamacpp": 0.609689657653241,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 1.224301643902436,
+        "control_median_tok_s": 418.19759252140733,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.7103187181501269,
+        "llamacpp_hip_tok_s": 690.791,
+        "llamacpp_over_candidate": 1.6401787162490242,
+        "paired_candidate_wins": 5,
+        "speedup": 1.0071031871815013
+      }
+    },
+    "retained_guards": {
+      "failed": 0,
+      "passed": 125,
+      "scope": "87 H6Z/H6W/H6N/H6A/KV/gfx1151/registry guards plus 38 Laguna runner guards"
+    },
+    "runtime_red_revision": "a93fea203",
+    "status": "qualified_default_off"
   },
   "schema": 1,
-  "status": "admitted_standalone_leaf_default_off",
+  "status": "qualified_bounded_default_off_runtime_owner_source_h6n_h6w_unchanged",
   "trace": {
     "candidate": {
       "duration_ns": 550404,

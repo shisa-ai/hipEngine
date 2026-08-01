@@ -98,13 +98,19 @@ _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT = (
 _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT = (
     "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
 )
+_DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+    "exact_spans"
+)
 _PREFILL_GLOBAL_SCORE_REPLAY_STARTS = frozenset({256, 384})
+_PREFILL_GLOBAL_SCORE_WEIGHT_REPLAY_SCRATCH_BYTES = 12_582_912
 _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES = 18_874_368
 _PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
     _PREFILL_DENSE_INITIAL_GLOBAL_ROLE: frozenset(
         {
             _DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT,
             _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT,
+            _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT,
         }
     ),
     _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
@@ -228,9 +234,16 @@ class LagunaKVCache:
 
     @property
     def prefill_score_scratch_required(self) -> bool:
-        return self.prefill_preappend_role_variants.get(
-            _PREFILL_PREAPPEND_SWA_QROW4_ROLE
-        ) == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        return (
+            self.prefill_preappend_role_variants.get(
+                _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+            )
+            == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+            or self.prefill_preappend_role_variants.get(
+                _PREFILL_DENSE_INITIAL_GLOBAL_ROLE
+            )
+            == _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+        )
 
     @property
     def prefill_score_scratch_bound(self) -> bool:
@@ -906,6 +919,18 @@ class LagunaKVCache:
                 )
                 else _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT
             )
+        elif (
+            role_variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+        ):
+            role_variant = (
+                _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+                if (
+                    start_position in _PREFILL_GLOBAL_SCORE_REPLAY_STARTS
+                    and self.prefill_score_scratch_bound
+                )
+                else _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT
+            )
         dense_initial = (
             self.prefill_dense_initial
             and self.can_dense_initial_prefill(
@@ -950,7 +975,35 @@ class LagunaKVCache:
             spans,
             int(rows),
         )
-        if state.attention_type == FULL_ATTENTION:
+        if (
+            state.attention_type == FULL_ATTENTION
+            and variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+        ):
+            fn(
+                query_ptr,
+                current_key_ptr,
+                current_value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                out_ptr,
+                self._prefill_score_scratch_ptr,
+                spans,
+                int(rows),
+                self.context_length,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                score_scratch_nbytes=(
+                    _PREFILL_GLOBAL_SCORE_WEIGHT_REPLAY_SCRATCH_BYTES
+                ),
+                start_position=start_position,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif state.attention_type == FULL_ATTENTION:
             extra = (
                 {"start_position": start_position}
                 if dense_initial or role_variant is not None
