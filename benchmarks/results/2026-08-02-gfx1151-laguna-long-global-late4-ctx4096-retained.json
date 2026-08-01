@@ -188,6 +188,66 @@
       "top1_agreement": 1.0,
       "raw_quality_sha256": "1057fa1f94abc83e45696678793d4004b1958b1fefe0108e741ca0e7979e96ec",
       "decision": "superseded by admitted final-four-layer scope"
+    },
+    {
+      "candidate": "direct chronological exact sparse BF16-boundary repair",
+      "live_count": 4097,
+      "candidate_dispatch_ms": 2.240366,
+      "exact_deferred_comparator_dispatch_ms": 0.30902,
+      "slowdown_ratio": 7.249906154941428,
+      "direct_repair_kernel_ms": 0.834847,
+      "trace_sha256": "102848b4951ef0916daa04999fda3727fd7c23ebebaf1d6420306af2dd08ad45",
+      "decision": "rejected before model sweep because exact repair is much slower than the retained exact owner"
+    },
+    {
+      "candidate": "Kahan-compensated ctx4096 on all twelve global layers",
+      "quality_steps": 70,
+      "max_kl_divergence": 0.4507837279815614,
+      "mean_kl_divergence": 0.006978978200700027,
+      "top1_matches": 70,
+      "top1_total": 70,
+      "raw_quality_sha256": "7755ddcd6f7d7c256d1779c4a2dd44e5d97565460a80cd2bacd19f5b9af13e3c",
+      "decision": "rejected because maximum KL remains nine times above the 0.05 limit"
+    },
+    {
+      "candidate": "Kahan-compensated ctx4096 on global layers 28, 32, 36, 40, and 44",
+      "teacher_forced_quality": {
+        "steps": 127,
+        "max_kl_divergence": 0.005792692918679729,
+        "mean_kl_divergence": 0.00019860670058,
+        "top1_matches": 127,
+        "top1_total": 127,
+        "raw_sha256": "930a5080caea0d3e5342bde238b9219bddc4b4f6f26dc2c5113a8e4a6c23e222"
+      },
+      "directional_performance": [
+        {
+          "depth": 16384,
+          "retained_tok_s": 17.3652352551727,
+          "candidate_tok_s": 17.367361,
+          "delta_percent": 0.012241456180439107
+        },
+        {
+          "depth": 65536,
+          "retained_tok_s": 9.820541836480508,
+          "candidate_tok_s": 9.840176,
+          "delta_percent": 0.1999295269269068
+        },
+        {
+          "depth": 131072,
+          "retained_tok_s": 6.2177259644031935,
+          "candidate_tok_s": 6.30207558,
+          "delta_percent": 1.356596041980738
+        }
+      ],
+      "retained_128k_final_token_id": 874,
+      "candidate_128k_final_token_id": 466,
+      "retained_128k_generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed",
+      "candidate_128k_generated_ids_sha256": "33aa7c494cb2d25c7db28ed961830560af03cdd8fc89caa1227c529db0c8afb3",
+      "quality_raw_sha256": "930a5080caea0d3e5342bde238b9219bddc4b4f6f26dc2c5113a8e4a6c23e222",
+      "production_16k_64k_raw_sha256": "0c22db79eae5265906a1302fe0b79d8d32f5f0cf33c6f5311fbbdf872515aef0",
+      "production_128k_raw_sha256": "dfdca82011b6356ee1436d95ace215176d67ad346439ba7868ccbd6455258caa",
+      "trace_sha256": "d6e37be00dcd3a6a6941a144dc3742f76e603128d458033c84194dc6da75cc71",
+      "decision": "rejected because the mandatory 128K recurrent trajectory changes despite passing teacher-forced quality and improving speed"
     }
   ],
   "validation": {

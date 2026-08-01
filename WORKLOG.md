@@ -197264,3 +197264,34 @@ Vulkan local sizes verbatim will close the measured gap.
   `d3bf0ba8182585c1711972243eeddfd218922c78847737d6b860c7e9f3b83764`.
 - Update the compact artifact, decode plan, rollup, changelog, and worklog in
   one evidence-only commit.
+
+## 2026-08-02 02:07 JST — Reject exact repair and compensated layer-28-plus
+
+- Replaced the dormant staged BF16-boundary repair prototype with a direct
+  chronological exact replay and restored its launch for a cached live4,097
+  trace. The complete candidate dispatch is **2.240366 ms** versus
+  **0.309020 ms** for retained exact deferred GQA6 (**7.25x slower**); the
+  direct repair kernel alone costs **0.834847 ms**. Rejected before a model
+  sweep and removed. Trace SHA-256 is
+  `102848b4951ef0916daa04999fda3727fd7c23ebebaf1d6420306af2dd08ad45`.
+- Added Kahan compensation experimentally to the context partial and merge.
+  All-layer d16K/70 improves maximum KL **0.687034 -> 0.450784**, but remains
+  nine times above the **0.05** ceiling. Raw quality SHA-256 is
+  `7755ddcd6f7d7c256d1779c4a2dd44e5d97565460a80cd2bacd19f5b9af13e3c`.
+- Starting the compensated route at global layer 28 passes the full d16K/127
+  teacher-forced gate at maximum/mean KL **0.00579269/0.000198607** and
+  **127/127 top-1**. Directional d16K/d64K/d128K is
+  **17.367361/9.840176/6.302076 tok/s**, or
+  **+0.012%/+0.200%/+1.357%** versus retained. The mandatory 128K recurrent
+  row fails trajectory identity: final token/hash changes from
+  **874 / c8307c...** to **466 / 33aa7c...**. Position and lifecycle pass,
+  but teacher forcing cannot waive the recurrent gate, so the route is
+  rejected and all candidate source/runtime/test changes are removed. Raw
+  full-quality, d16K+d64K, d128K, and trace SHA-256 values are
+  `930a5080caea0d3e5342bde238b9219bddc4b4f6f26dc2c5113a8e4a6c23e222`,
+  `0c22db79eae5265906a1302fe0b79d8d32f5f0cf33c6f5311fbbdf872515aef0`,
+  `dfdca82011b6356ee1436d95ace215176d67ad346439ba7868ccbd6455258caa`,
+  and `d6e37be00dcd3a6a6941a144dc3742f76e603128d458033c84194dc6da75cc71`.
+- Production remains the scalar-F32 late-four split at revision `59bd73684`.
+  The next bounded screen must compensate only newly added layer 28 while
+  leaving retained layers 32/36/40/44 bit-for-bit unchanged.

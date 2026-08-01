@@ -145,6 +145,14 @@ over the prior clean exact checkpoint; the remaining target is the exact first
 eight global layers.
 [`late-four context-parallel production`](results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json).
 
+Post-promotion repair/precision screens do not widen that production scope.
+Direct exact sparse repair is **7.25x slower** than the retained exact owner.
+Kahan compensation still fails all-layer quality at maximum KL **0.450784**;
+starting it at layer 28 passes d16K teacher forcing at maximum KL **0.005793**
+and is **1.357%** faster at 128K, but changes the required recurrent final
+token/hash. Both candidates are rejected and removed; the late-four default
+and its established trajectory remain unchanged.
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

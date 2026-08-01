@@ -1461,7 +1461,13 @@ hashes/positions and lifecycle checks pass. LC-D3 remains active because the
 exact first eight global layers still carry the full score/physical plane.
 The next owner must reduce that exact path, improve partial precision enough
 to widen its quality-scoped layer boundary, or use an ordered tiled replay
-while targeting **<=5 ms/token** at 16K. Reassociated online-softmax arithmetic
+while targeting **<=5 ms/token** at 16K. A compensated layer-28-plus screen is
+not promotable: it passes d16K/127 at maximum KL **0.005793** and improves
+d16K/d64K/d128K **0.012%/0.200%/1.357%**, but changes the mandatory 128K
+recurrent final token/hash. Because that screen also changed arithmetic in the
+already retained final four layers, the next bounded seam is compensated
+context split on layer 28 alone while layers 32/36/40/44 remain bit-for-bit on
+the retained scalar-F32 partial/merge. Reassociated online-softmax arithmetic
 is not a numerics waiver.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
