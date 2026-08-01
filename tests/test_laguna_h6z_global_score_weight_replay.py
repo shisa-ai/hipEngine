@@ -98,8 +98,12 @@ _H6W_PYTHON_SHA256 = (
 _DENSE_ROLE = "global_m128_c4096_first_fill_exact"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _H6A_SWA_VARIANT = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
-_PRODUCTION_POLICY = {
+_H6W_ROLLBACK_POLICY = {
     _DENSE_ROLE: _H6N_VARIANT,
+    _SWA_ROLE: _H6W_VARIANT,
+}
+_PRODUCTION_POLICY = {
+    _DENSE_ROLE: _VARIANT,
     _SWA_ROLE: _H6W_VARIANT,
 }
 _H6A_ROLLBACK_POLICY = {
@@ -400,13 +404,13 @@ def test_h6z_registry_abi_source_policy_and_backend_boundary() -> None:
     )
     assert (
         hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS
-        == _PRODUCTION_POLICY
+        == _H6W_ROLLBACK_POLICY
     )
     assert (
         hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS
         == _H6A_ROLLBACK_POLICY
     )
-    assert _VARIANT not in _PRODUCTION_POLICY.values()
+    assert _PRODUCTION_POLICY[_DENSE_ROLE] == _VARIANT
 
     source = Path(module.__file__).with_name("laguna_kv_attention.hip").read_text()
     reduction = _extract_braced(source, _REDUCTION_DECLARATION)
@@ -439,7 +443,7 @@ def test_h6z_registry_abi_source_policy_and_backend_boundary() -> None:
     load_backend_kernel_package("hip_gfx1151")
     assert not is_registered(gfx1151_key)
 
-    # Intentional RED only after H6N/H6W source and package policy are frozen.
+    # H6N/H6W rollback and selected H6Z package policy are both frozen.
     candidate = _candidate()
     module.register_laguna_kv_attention_kernels(replace=True)
     assert candidate.__name__ == _FUNCTION

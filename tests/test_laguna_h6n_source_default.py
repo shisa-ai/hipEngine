@@ -7,6 +7,7 @@ from hipengine.kernels.registry import KernelKey, is_registered, registered_keys
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
 _DENSE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
+_H6W_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _H6A_GLOBAL = "global_context_rows_dense_initial_cached_exact_spans"
 _H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
@@ -95,9 +96,11 @@ def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> N
     from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
     register_laguna_kv_attention_kernels()
-    assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _PRODUCTION_POLICY
+    assert getattr(hip_gfx1100, _H6W_CAPABILITY) == _PRODUCTION_POLICY
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == _H5R_POLICY
+    assert not hasattr(hip_gfx1151, _H6W_CAPABILITY)
     assert not hasattr(hip_gfx1151, _DENSE_CAPABILITY)
+    monkeypatch.setattr(hip_gfx1100, _DENSE_CAPABILITY, dict(_PRODUCTION_POLICY))
     for variant in (_H6A_GLOBAL, _H6N_GLOBAL, _H6A_SWA, _H6W_SWA, _H5R_SWA):
         assert is_registered(
             KernelKey(

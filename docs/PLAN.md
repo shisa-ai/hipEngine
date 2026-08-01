@@ -2401,31 +2401,32 @@ implementation/test/key/export/gfx1151-exclusion surface and retain H6T/H6W
 production **416.891 tok/s**
 ([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
 
-Retain **WPF-H6Z exact late-start global qrow4 aligned score/weight replay** and
-qualify a bounded default-off gfx1100 runtime owner; do not yet change selected
-H6N/H6W source policy. The admitted leaf remains complete-byte exact at
-starts256/384, local32/grid1536x32, code/slots **4,024 B / 690**, metadata/
-runtime VGPR **47/48**, LDS0/private0/spill0/runtime-scratch0, and weighted
-24-call event/wall **21.007/21.257→10.797/10.942 ms (1.946x/1.943x)**.
+Promote **WPF-H6Z exact late-start global qrow4 aligned score/weight replay** to
+the retained gfx1100 global source default; keep H6W as the explicit H6N-global
+rollback and H6A as complete rollback. Change only the selected global role;
+SWA remains H6A early/H6W late. H6Z remains local32/grid1536x32 at code/slots
+**4,024 B / 690**, metadata/runtime VGPR **47/48**, LDS0/private0/spill0/
+runtime-scratch0, and borrows H6W's existing **18,874,368-byte** Q5-plane prefix
+with a strict **12,582,912-byte** extent. No allocation, workspace, sidecar, or
+dispatch changes.
 
-The runtime capability reuses H6W's existing aligned **18,874,368-byte** prefix
-of the Q5 F32 plane, forwards H6Z's strict **12,582,912-byte** extent, and adds
-zero allocation, workspace, sidecar, or dispatch. Starts0/128 retain H6N;
-starts256/384 select H6Z only for exact M128/C4096/H48/KV8/D128 with a bound
-plane. Unbound and all shape/metadata/registration/backend misses fail closed.
-Natural M512 is KL0/top-1 100% and byte-exact across complete logits, final/post
-hidden, all **48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown.
+Fresh source-selected natural M512 is KL0/top-1 100% and byte-exact across
+complete logits, final/post hidden, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, and teardown. Four source-selected cache-only requests
+preserve **2,192** dispatches and exact production topology **24 H6N + 24 H6Z +
+72 H6A + 72 H6W**. Late-global/attention/kernel-sum/span moves **23.894/125.254/
+1,214.563/1,241.814→12.231/116.041/1,205.023/1,227.056 ms** with zero compiler
+process.
 
-Four cache-only requests preserve **2,192** dispatches and replace only late
-**24 H6N→24 H6Z**, retaining **72 H6A + 72 H6W**. Late-global/attention/kernel-
-sum/span moves **23.615/124.028/1,205.864/1,235.600→12.306/115.461/1,198.758/
-1,220.506 ms** with zero compiler process. Fixed natural C4096/M512 improves
-**418.198→421.168 tok/s (+0.710%, 5/5)**. H6Z is C4096-only, making C512/C1024
-rows unchanged-path noise controls; binding 4K improves **194.471→194.515
-(+0.022%, 3/3)**. Keep production at **416.891 tok/s**, commit the default-off
-owner, then freeze separate source-default RED before replacing late H6N
-([H6Z candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json) ·
-[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
+Fresh selector-unset fixed natural C4096/M512 improves **417.180→420.785 tok/s
+(+0.864%, 5/5)**. H6Z is C4096-only, so C512/C1024 are unchanged-path controls
+at **390.831/311.543 tok/s**; binding 4K improves **194.478→194.694 (+0.111%,
+2/3)**. The exact fixed/event/span wins satisfy the cycle-wall retention policy
+despite aggregate 4K noise. Keep gfx1151 excluded, pass **126/126** guards,
+commit source production, then cleanly reprofile and rerank toward llama.cpp
+**690.791 tok/s**
+([H6Z production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

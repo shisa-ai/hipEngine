@@ -16,18 +16,18 @@ should be removed or collapsed.
 
 ## Laguna H6Z bounded default-off global-attention capability
 
-- Added 2026-08-01 for WPF-H6Z source adjudication. The gfx1100-only
-  `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS` map selects H6Z only
-  for global starts256/384 at exact M128/C4096/H48/KV8/D128 and reuses H6W's
-  existing caller plane without allocation or workspace growth. Selected source
-  remains H6N global plus H6W late SWA; H6A and unbound routes remain complete
-  fallbacks.
-- Remove this candidate-only seam immediately if the source gate rejects H6Z.
-  If source promotion passes, change only the selected global role to H6Z,
-  retain the named H6W map as the H6N rollback, and remove any duplicate
-  candidate-only resolver/test path after the first clean committed reprofile
-  proves exact topology and rollback. Never retain two independently evolving
-  H6Z dispatch routes.
+- Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact
+  complete-state, fixed, trace, and binding-4K gates. Selected gfx1100 source now
+  uses H6Z only for global starts256/384 at exact M128/C4096/H48/KV8/D128 and
+  reuses H6W's existing caller plane without allocation or workspace growth.
+  The named H6W map is the H6N-global rollback; H6A and unbound routes remain
+  complete fallbacks.
+- The duplicate H6Z capability/source map is retained only through the first
+  clean committed production reprofile for rollback and artifact replay. After
+  that checkpoint proves selected topology and H6W rollback, collapse any
+  candidate-only resolver/test path that independently restates selected H6Z
+  ownership. Keep the named H6W rollback and required unfused H6N/H6A kernels;
+  never retain two independently evolving H6Z dispatch routes.
 
 ## Laguna default-off F32 hipBLASLt attention selector
 

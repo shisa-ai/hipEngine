@@ -181,7 +181,7 @@ def test_h6z_source_default_changes_only_late_global_role(
     from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
-    assert live_source == _H6W_POLICY
+    assert live_source == _H6Z_POLICY
     assert getattr(hip_gfx1100, _H6Z_CAPABILITY) == _H6Z_POLICY
     assert getattr(hip_gfx1100, _H6W_CAPABILITY) == _H6W_POLICY
     assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _H6A_POLICY

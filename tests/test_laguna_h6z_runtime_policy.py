@@ -221,12 +221,12 @@ def test_h6z_runtime_frozen_workspace_topology_and_promotion_contract() -> None:
     assert _H6Z_POLICY[_SWA_ROLE] == _H6W_SWA
 
 
-def test_h6z_runtime_capability_keeps_source_and_rollbacks_unchanged() -> None:
+def test_h6z_runtime_capability_and_rollbacks_survive_source_promotion() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.kernels.registry import KernelKey, is_registered
     from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _SOURCE_POLICY
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY
     assert getattr(hip_gfx1100, _H6W_CAPABILITY) == _SOURCE_POLICY
     assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _H6A_POLICY
     assert not hasattr(hip_gfx1151, _CAPABILITY)
@@ -270,7 +270,12 @@ def test_h6z_runtime_routes_only_late_global_starts_and_reuses_h6w_owner(
     from hipengine.kernels import hip_gfx1100
     from hipengine.runtime import laguna_kv as module
 
-    # Exercise the complete live H6N/H6A/H6W route before candidate lookup.
+    # Exercise the explicit H6N/H6A/H6W rollback before selected H6Z.
+    monkeypatch.setattr(
+        hip_gfx1100,
+        _SOURCE_CAPABILITY,
+        dict(_SOURCE_POLICY),
+    )
     source_runtime = _FakeRuntime()
     source_cache = module.allocate_laguna_kv_cache(
         _production_config(),
@@ -443,7 +448,7 @@ def test_h6z_runner_reuses_q5_plane_after_allocation_in_same_stream_order() -> N
         LagunaQ5F32OrderedScratch,
     )
 
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _SOURCE_POLICY
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY
     init_source = inspect.getsource(LagunaGGUFResidentSession.__init__)
     rows_source = inspect.getsource(LagunaGGUFResidentSession._run_layer_rows)
     cache_position = init_source.index("self.kv_cache = allocate_laguna_kv_cache(")

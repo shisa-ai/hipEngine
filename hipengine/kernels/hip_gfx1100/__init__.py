@@ -49,7 +49,7 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS = {
     ),
 }
 LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = dict(
-    LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS
+    LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS
 )
 # WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
 # all 144 physical append-before-attention calls, and positive default-off clean
