@@ -2529,3 +2529,23 @@ should be boring.
   the clean GQA6 production confirmation, when LC-D3's next score-plane
   rewrite reopens this source file. Do not retain it as a rollback; the
   registered generic exact split path is the rollback.
+
+## Laguna gfx1151 LC-D3 long-global geometry and context-split prototypes
+
+- Added 2026-08-02 while screening the second LC-D3 milestone. The HIP source
+  and leaf harness retain internal D64/V64, D64/V32, local256 D32/V64,
+  direct-qhead D32, GQA6 score-tile4, and 4,096-token context-split/merge
+  variants. They have no gfx1151 capability or production runtime selection;
+  only the exact deferred-normalization D32/V64 route is default.
+- Every exact geometry alternative is slower at a mandatory depth. The
+  context-split route is faster but fails the same-state 127-step quality gate
+  at maximum KL **0.687034** versus the **0.05** ceiling; its exact sparse
+  BF16-boundary repair is slower than the retained GQA6 owner. These are
+  diagnostic comparison bodies, not rollback paths or candidates for silent
+  promotion.
+- After the tracked-clean deferred-normalization checkpoint and its next
+  profile are published, remove these rejected HIP bodies, C wrappers, Python
+  leaf selectors, and any non-registered symbols. Preserve only the compact
+  JSON evidence and the same-state quality harness. The registered normalized
+  GQA6/D32 sibling and generic complete-`KVLiveSpans` split route are the
+  required rollback/fallback paths.

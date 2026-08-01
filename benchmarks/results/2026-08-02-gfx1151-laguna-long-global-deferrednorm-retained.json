@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_deferrednorm_retained",
+  "created_at": "2026-08-01T15:00:51.892068+00:00",
+  "decision": "retained_production_default",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 2
+  },
+  "implementation": {
+    "route": "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
+    "summary": "Keep the exact exp32 maximum and denominator reductions, leave unnormalized exponentials in the existing score plane, store 48 inverse denominators in its physical-scratch tail, and apply each inverse once in the D32/V64 PV probability loader.",
+    "correctness_contract": "Preserves the retained chronological scalar-F32 PV FMA chain, F32 context bytes, BF16 softplus-gated bytes, recurrent generated IDs, and all KVLiveSpans semantics.",
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0,
+    "fallback": "global_context_split_exact_gated_gqa6_dim32_vstage64_spans"
+  },
+  "leaf_gate": {
+    "protocol": "3 warmups, five medians of ten launches",
+    "rows": [
+      {"live_slots": 4097, "control_ms": 0.3216635942, "candidate_ms": 0.3200165033, "delta_percent": -0.512054, "f32_byte_exact": true, "bf16_byte_exact": true},
+      {"live_slots": 16448, "control_ms": 1.3315384865, "candidate_ms": 1.3200288773, "delta_percent": -0.864384, "f32_byte_exact": true, "bf16_byte_exact": true},
+      {"live_slots": 65664, "control_ms": 5.4720920563, "candidate_ms": 5.4307762146, "delta_percent": -0.755028, "f32_byte_exact": true, "bf16_byte_exact": true},
+      {"live_slots": 131200, "control_ms": 10.9735374451, "candidate_ms": 10.9035438538, "delta_percent": -0.637840, "f32_byte_exact": true, "bf16_byte_exact": true}
+    ],
+    "raw_sha256": "c5a414eec634f8f0a43115145da4bb04209bd6e590e707ed9fd5d242e23fd57b"
+  },
+  "cached_trace_16448": {
+    "score_ms": 0.286874,
+    "control_normalize_ms": 0.273906,
+    "candidate_denominator_ms": 0.249075,
+    "pv_ms": 0.765256,
+    "score_resources": {"workgroup": 32, "vgpr": 16, "lds_bytes": 0, "scratch_bytes": 0},
+    "denominator_resources": {"workgroup": 256, "vgpr": 56, "lds_bytes": 512, "scratch_bytes": 0},
+    "pv_resources": {"workgroup": 512, "vgpr": 32, "lds_bytes": 11264, "scratch_bytes": 0},
+    "bench_sha256": "2c8e05dc9dcff1a775bec3272e5424dcc71a127502f6685adf446217f939f9fc",
+    "trace_sha256": "e85758f9c961a17df8ee7365bcccf34b8ba0c87e0fbc5bd407691acba2f06442"
+  },
+  "production_gate": {
+    "protocol": "one resident capacity-131200 session, chunk2048, 127 synchronized c=1 transitions per depth, cached-only build, one directional run",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd4-deferred-production-sweep.json",
+    "rows": [
+      {"depth": 4096, "before_tok_s": 21.6623754508, "after_tok_s": 21.6702432832, "delta_percent": 0.036320, "pre_lcd3_tok_s": 15.4778365947, "total_delta_percent": 40.008219, "vulkan_tok_s": 23.037017, "vulkan_parity_percent": 94.067054, "final_token": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+      {"depth": 16384, "before_tok_s": 16.7895741940, "after_tok_s": 16.9705687659, "delta_percent": 1.078018, "pre_lcd3_tok_s": 7.7318078440, "total_delta_percent": 119.490307, "vulkan_tok_s": 21.728347, "vulkan_parity_percent": 78.103359, "final_token": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+      {"depth": 65536, "before_tok_s": 9.0785771987, "after_tok_s": 9.2138425553, "delta_percent": 1.489940, "pre_lcd3_tok_s": 2.5063305207, "total_delta_percent": 267.622805, "vulkan_tok_s": 17.737473, "vulkan_parity_percent": 51.945633, "final_token": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+      {"depth": 131072, "before_tok_s": 5.6026873606, "after_tok_s": 5.7253649947, "delta_percent": 2.189621, "pre_lcd3_tok_s": 1.3129211969, "total_delta_percent": 336.078343, "vulkan_tok_s": 14.237076, "vulkan_parity_percent": 40.214472, "final_token": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+    ],
+    "correctness": {
+      "generated_trajectories_exact": true,
+      "final_positions_exact": true,
+      "finite": true,
+      "tracked_bytes_recovered": 87407934744,
+      "tracked_allocations_recovered": 1452
+    },
+    "raw_sha256": "882f12395486f0d4e68cb0e3b22516c341c1bd26c970bc3f1e431f8664510896"
+  },
+  "rejected_screens": {
+    "context_parallel_4096": {
+      "directional_tok_s": {"4096": 21.674, "16384": 18.201, "65536": 11.138, "131072": 7.386},
+      "teacher_forced_16384": {"steps": 127, "top1_agreement": 1.0, "mean_kl": 0.00873004795, "max_kl": 0.6870344686, "max_abs_logit_delta": 8.32016754, "pass": false},
+      "reason": "Fails the repository maximum-KL ceiling despite 100% teacher-forced top-1; exact sparse BF16-boundary repair is slower than the retained GQA6 path.",
+      "raw_quality_sha256": "9644b27740e8736663445003fcf69101844585731dcbbfe2040fc81512ed6574"
+    },
+    "exact_geometry": [
+      {"candidate": "D64/V64", "delta_percent_range": [11.7381, 12.9250], "decision": "rejected"},
+      {"candidate": "D32/V64 local256", "delta_percent_at_16k_64k_128k": [1.9896, 13.8100, 16.0552], "decision": "rejected"},
+      {"candidate": "direct qhead/D32 PV", "delta_percent_at_16k_64k_128k": [317.1660, 311.8152, 312.6176], "decision": "rejected"},
+      {"candidate": "D64/V32", "delta_percent_range": [13.5630, 14.7699], "decision": "rejected"},
+      {"candidate": "GQA6 score tile4", "delta_percent_range": [0.7290, 3.0800], "decision": "rejected"}
+    ]
+  },
+  "validation": {
+    "focused_tests": "66 passed",
+    "lineage": "Original in-tree implementation; the configured external atlas lineage tree is absent, so scripts/check_lineage.py cannot complete."
+  }
+}

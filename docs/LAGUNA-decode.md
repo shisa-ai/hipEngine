@@ -9301,6 +9301,58 @@ The remaining attention sequence is:
      split partials first, then parallelize normalization. Source-F16
      projection and host dispatch remain subordinate until that work lands.
 
+202. Remove the normalized-score writeback without changing the exact PV
+     association. **Retained and production-default; LC-D3 exact checkpoint.**
+
+     A 4,096-token context-parallel partial/merge owner first demonstrated the
+     larger throughput opportunity: directional 4K/16K/64K/128K decode reached
+     **21.674/18.201/11.138/7.386 tok/s**. It is not admissible. A same-state,
+     127-step teacher-forced 16K gate held **100% top-1** but reached maximum KL
+     **0.687034** (mean **0.008730**) against the **0.05** ceiling. Sparse
+     BF16-boundary repair restored leaf equality but cost several milliseconds
+     per layer, so the context-split route remains outside production.
+
+     The retained exact change instead keeps the current exp32 maximum and
+     denominator trees, leaves each unnormalized exponential in the existing
+     score plane, stores only 48 inverse denominators in unused physical-scratch
+     tail space, and applies the same F32 inverse once when D32/V64 PV loads a
+     probability. This removes one full normalized-score writeback/read pass
+     without changing the chronological scalar-F32 PV FMA chain. It adds no
+     resident allocation and preserves the registered normalized-score sibling
+     as rollback.
+
+     | Live slots | Normalized plane | Deferred normalization | Delta | Exact |
+     | ---: | ---: | ---: | ---: | :---: |
+     | 4,097 | 0.321664 ms | **0.320017 ms** | **-0.512%** | Yes |
+     | 16,448 | 1.331538 ms | **1.320029 ms** | **-0.864%** | Yes |
+     | 65,664 | 5.472092 ms | **5.430776 ms** | **-0.755%** | Yes |
+     | 131,200 | 10.973537 ms | **10.903544 ms** | **-0.638%** | Yes |
+
+     Cached live16,448 tracing measures **0.286874-ms score + 0.249075-ms
+     denominator + 0.765256-ms PV**; the replaced normalizer is **0.273906
+     ms**. Score/denominator/PV remain scratch-free at local **32/256/512**,
+     VGPR **16/56/32**, and LDS **0/512/11,264 bytes**. Exact D64/V64,
+     D64/V32, local256 D32, direct-qhead D32, and score-tile4 alternatives all
+     regress at one or more mandatory depths and are closed.
+
+     The one-session directional production gate is positive at every depth:
+
+     | Decode depth | Prior GQA6 | Deferred exact | Delta | Pre-LC-D3 | Total delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 21.662375 | **21.670243 tok/s** | **+0.036%** | 15.477837 | **+40.008%** | 23.037017 | **94.067%** |
+     | 16K | 16.789574 | **16.970569 tok/s** | **+1.078%** | 7.731808 | **+119.490%** | 21.728347 | **78.103%** |
+     | 64K | 9.078577 | **9.213843 tok/s** | **+1.490%** | 2.506331 | **+267.623%** | 17.737473 | **51.946%** |
+     | 128K | 5.602687 | **5.725365 tok/s** | **+2.190%** | 1.312921 | **+336.078%** | 14.237076 | **40.214%** |
+
+     All four generated hashes/final tokens and positions match the retained
+     exact route, **87,407,934,744 bytes / 1,452 allocations** return to zero,
+     and **66 focused tests** pass. This is a real exact win, but it also makes
+     the remaining boundary explicit: at 128K hipEngine is still only
+     **40.214%** of Vulkan. The next large gain still requires bounded
+     context-parallel output state or a tiled exact replay; reassociated online
+     softmax is not permitted by the failed quality gate:
+     [`deferred-normalization production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9318,17 +9370,18 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. First milestone
+3. **LC-D3 — replace the full score-plane/reducer path. Two exact milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
-   live16,448 global attention to **16.209 ms/token**, clear the first gate,
-   and improve the mandatory 4K/16K/64K/128K production rows. The next step is
-   to remove the still-materialized query-head/token F32 score/physical plane:
-   emit bounded per-split `(maximum, denominator, output[6,D])` partials, then
-   merge without losing the current ordered-FP32 contract. If exact online
-   association cannot be replayed, use an exact multi-pass tiled form or a
-   separately proven repair certificate. The stretch gate remains **<=5
-   ms/token** at 16K, and every structural step must repeat the directional
-   depths plus mandatory 128K before promotion.
+   live16,448 global attention to **16.209 ms/token**. Deferred normalization
+   then removes one score-plane writeback/read pass and improves complete
+   4K/16K/64K/128K another **0.036%/1.078%/1.490%/2.190%**, all byte-exact.
+   The obvious 4,096-token context-parallel merge is quality-rejected at max KL
+   **0.687034** despite 100% top-1, and exact sparse repair is too slow. The
+   next step must emit bounded per-split `(maximum, denominator, output[6,D])`
+   state while reproducing the current ordered-FP32 contract, or use an exact
+   tiled replay that eliminates most score traffic without reassociating PV.
+   The stretch gate remains **<=5 ms/token** at 16K, and every structural step
+   must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
    numerics waiver. Source audit complete.** The running path is wave64
    KHR-coopmat, Br16/Bc64/local256, GQA-folded, online, and context-split.
