@@ -131,6 +131,19 @@ _Q6_ACTIVATION_TILE_K_ROW_PRIMITIVE_VARIANT = (
 _Q6_ACTIVATION_TILE_K_ROW_COMPOSITE_VARIANT = (
     "f32_ordered_weight_major_row_major_activation_tile_k_row_{suffix}"
 )
+_Q6_DPP_WAVE_REDUCTION_ROLES = _Q6_ACTIVATION_TILE_K_ROW_ROLES
+_Q6_DPP_WAVE_REDUCTION_SYMBOL = (
+    "hipengine_gguf_q6_k_f32_weight_ordered_weight_major_row_major_"
+    "activation_tile_k_row_dpp_wave_reduction_{suffix}"
+)
+_Q6_DPP_WAVE_REDUCTION_PRIMITIVE_VARIANT = (
+    "ordered_weight_major_row_major_activation_tile_k_row_"
+    "dpp_wave_reduction_{suffix}"
+)
+_Q6_DPP_WAVE_REDUCTION_COMPOSITE_VARIANT = (
+    "f32_ordered_weight_major_row_major_activation_tile_k_row_"
+    "dpp_wave_reduction_{suffix}"
+)
 _QK_K = 256
 _F32_NBYTES = 4
 _SESSION_MAX_IN_FEATURES = 9_216
@@ -1085,6 +1098,93 @@ def _make_q6_f32_weight_ordered_weight_major_activation_tile_k_row(
     return launch
 
 
+def _launch_q6_f32_weight_ordered_weight_major_activation_tile_k_row_dpp(
+    *,
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    activation_ptr: int,
+    weight_f32_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    parsed_rows, hidden, outputs = _check_q6_activation_tile_k_row_role(
+        col_tile=col_tile,
+        row_batch=row_batch,
+        output_dtype=output_dtype,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    library = library or build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    suffix = _Q5_ACTIVATION_TILE_K_ROW_SUFFIX.format(
+        col_tile=col_tile,
+        row_batch=row_batch,
+        output_dtype=output_dtype,
+    )
+    function = getattr(
+        library,
+        _Q6_DPP_WAVE_REDUCTION_SYMBOL.format(suffix=suffix),
+    )
+    function.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    function.restype = ctypes.c_int
+    error = function(
+        ctypes.c_void_p(activation_ptr),
+        ctypes.c_void_p(weight_f32_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(parsed_rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(outputs),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def _make_q6_f32_weight_ordered_weight_major_activation_tile_k_row_dpp(
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+):
+    def launch(
+        activation_ptr: int,
+        weight_f32_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        **kwargs,
+    ) -> None:
+        _launch_q6_f32_weight_ordered_weight_major_activation_tile_k_row_dpp(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+            activation_ptr=activation_ptr,
+            weight_f32_ptr=weight_f32_ptr,
+            out_ptr=out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            **kwargs,
+        )
+
+    return launch
+
+
 def _make_q6_activation_tile_k_row_composite(
     activation_pack,
     primitive,
@@ -1454,6 +1554,62 @@ del _col_tile, _row_batch, _output_dtype, _in_features, _out_features
 del _suffix, _primitive_name, _composite_name, _primitive, _composite
 del _pack_col_tile, _pack_geometry, _pack, _geometry
 
+_Q6_DPP_WAVE_REDUCTION_PRIMITIVES = {}
+_Q6_DPP_WAVE_REDUCTION_COMPOSITES = {}
+for (
+    _col_tile,
+    _row_batch,
+    _output_dtype,
+    _in_features,
+    _out_features,
+) in _Q6_DPP_WAVE_REDUCTION_ROLES:
+    _suffix = _Q5_ACTIVATION_TILE_K_ROW_SUFFIX.format(
+        col_tile=_col_tile,
+        row_batch=_row_batch,
+        output_dtype=_output_dtype,
+    )
+    _primitive_name = (
+        "gguf_q5_k_f32_weight_ordered_weight_major_row_major_"
+        f"activation_tile_k_row_dpp_wave_reduction_{_suffix}"
+    )
+    _composite_name = (
+        "gguf_q6_k_f32_ordered_weight_major_row_major_"
+        f"activation_tile_k_row_dpp_wave_reduction_{_suffix}"
+    )
+    _primitive = (
+        _make_q6_f32_weight_ordered_weight_major_activation_tile_k_row_dpp(
+            _col_tile,
+            _row_batch,
+            _output_dtype,
+        )
+    )
+    _pack_col_tile = 8 if _row_batch == 4 else 16
+    _pack_geometry = (
+        _pack_col_tile,
+        _row_batch,
+        _output_dtype,
+        "tile_k_col",
+    )
+    _pack = _Q5_ACTIVATION_TILE_K_ROW_PACKS[_pack_geometry]
+    _composite = _make_q6_activation_tile_k_row_composite(
+        _pack,
+        _primitive,
+        col_tile=_col_tile,
+        row_batch=_row_batch,
+        output_dtype=_output_dtype,
+    )
+    _primitive.__name__ = _primitive_name
+    _composite.__name__ = _composite_name
+    globals()[_primitive_name] = _primitive
+    globals()[_composite_name] = _composite
+    _geometry = (_col_tile, _row_batch, _output_dtype)
+    _Q6_DPP_WAVE_REDUCTION_PRIMITIVES[_geometry] = _primitive
+    _Q6_DPP_WAVE_REDUCTION_COMPOSITES[_geometry] = _composite
+    _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
+del _col_tile, _row_batch, _output_dtype, _in_features, _out_features
+del _suffix, _primitive_name, _composite_name, _primitive, _composite
+del _pack_col_tile, _pack_geometry, _pack, _geometry
+
 
 def _launch_q5_f32_rocblas(
     output_dtype: str,
@@ -1772,6 +1928,38 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
                 "linear",
                 "gguf_q6_k",
                 _Q6_ACTIVATION_TILE_K_ROW_COMPOSITE_VARIANT.format(
+                    suffix=suffix
+                ),
+            ),
+            composite,
+            replace=replace,
+        )
+    for geometry, primitive in _Q6_DPP_WAVE_REDUCTION_PRIMITIVES.items():
+        col_tile, row_batch, output_dtype = geometry
+        suffix = _Q5_ACTIVATION_TILE_K_ROW_SUFFIX.format(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+        )
+        composite = _Q6_DPP_WAVE_REDUCTION_COMPOSITES[geometry]
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "f32_weight",
+                _Q6_DPP_WAVE_REDUCTION_PRIMITIVE_VARIANT.format(
+                    suffix=suffix
+                ),
+            ),
+            primitive,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q6_k",
+                _Q6_DPP_WAVE_REDUCTION_COMPOSITE_VARIANT.format(
                     suffix=suffix
                 ),
             ),

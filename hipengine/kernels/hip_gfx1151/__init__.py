@@ -876,6 +876,26 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (16, 5, "f32"),
             )
         ),
+        # H6U exact DPP-reduction candidates remain gfx1100-only unless their
+        # standalone W7900 screen and a later gfx1151 transfer both pass.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}weight_major_row_major_activation_tile_k_row_"
+                f"dpp_wave_reduction_coltile{col_tile}_"
+                f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_"),
+                ("gguf_q6_k", "f32_ordered_"),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (16, 5, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+            )
+        ),
         # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
         # diagnostic evidence, with no runtime policy owner on either backend.
         ("activation_quant", "q8_1_d4s4_f32", "bf16"),

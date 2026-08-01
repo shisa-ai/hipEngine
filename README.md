@@ -462,17 +462,21 @@ wins. Allocation/workspace/dispatch remain unchanged, gfx1151 fails closed, and
 [H6T candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
-The clean committed H6T profile is **408.919 tok/s / 1,237.150 ms / 2,192
-dispatches**, versus campaign-start **169.516 tok/s / 3,001.692 ms** and matched
-llama.cpp HIP **690.791 tok/s / 714.008 ms**. Current Q5/attention/IQ-down/Q6
-gaps are **196.768/127.175/117.982/72.393 ms**. With Q5 and the newest attention
-premise closed and IQ-down just changed, the next target is **WPF-H6U exact
-DPP-add wave reduction** on Q6's **142 H6E consumers / 54.515 ms**. It will
-replace only their **320/400/400** generic bpermute trees with exact
-permlanex16+DPP-add while preserving arithmetic, LDS/store order, packs,
-producer, allocation, and policy; every role must remain byte-exact and win
-both clocks
-([post-H6T residual / H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
+**WPF-H6U exact DPP-add wave reduction is an admitted standalone gfx1100 Q6
+leaf; H6E remains the production source and package policy is unchanged.** The
+frozen rows17/33/M512 matrix passes **11/11**, and the retained H6U/H6E/H5W/H5Y/
+base/registry bundle passes **46/46**. ISA replaces H6E's **320/400/400
+bpermutes** with exact **64+256 / 80+320 / 80+320 permlanex16+DPP-add** and zero
+bpermutes/moves while preserving FMAs, loads, LDS, barrier, and stores. BF16
+16x4 / BF16 16x5 / F32 16x5 code falls **7,244/8,516/8,488 ->
+5,992/7,128/7,100 bytes**, slots **1,245/1,440/1,437 -> 923/1,082/1,079**, and
+runtime VGPR **136/168/168 -> 112/144/144** at unchanged LDS and scratch0.
+Every actual role wins both clocks; the 142-call weighted consumer schedule
+moves event/wall **55.432/56.237 -> 48.520/48.644 ms
+(-12.471%/-13.503%, 1.1425x/1.1561x)** with exact finite outputs and clean
+lifecycle. Bounded runtime qualification remains a separate gate
+([H6U candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
+[post-H6T residual / H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
