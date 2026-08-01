@@ -1587,6 +1587,22 @@ every H6X implementation/test/key/export/gfx1151-exclusion surface without
 tuning or rerun, and retain H6T source
 ([H6X rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json)).
 
+Select target-only **WPF-H6Y exact IQ3 packed-prefix b32 load** without tuning
+or reopening H6X. H6T's **264.602-ms / 45-call** body emits exact **8 b128 + 9
+b32 + 6 d16 = 23** static global loads. In each of three scopes, the two d16
+loads read adjacent block bytes0..1 FP16 scale and bytes2..3 selector pair.
+H6Y must load those four bytes once as little-endian b32, recover the exact bits
+in registers, and leave aux/table/sign/magnitude/scale/FMA/reduction/store order
+unchanged. Expected codegen is **8 b128 + 12 b32 + zero d16 = 20** global loads,
+unchanged DS/barriers/LDS384/runtime512/216 FMAs/24 permlanex16/96 DPP/stride,
+metadata/runtime VGPR **≤101/104**, and private/spill/scratch0. Natural routing
+models **412,225,536 fewer prefix global-load wave instructions** at unchanged
+**52.765 GB** logical bytes; this is selection arithmetic only. Freeze RED, then
+require complete FP16-bit/row/P64/P65/CPU/lifecycle bytes, cached named execution
+without compiler, and every layer **1..45** plus aggregate to win both clocks
+under 5/15/5. Any miss removes H6Y without tuning/rerun; H6T remains source
+([post-H6X residual / H6Y target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
