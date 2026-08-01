@@ -2280,9 +2280,9 @@ gfx1151 fail-closed behavior remain unchanged; **144/144** source guards pass
 [H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
-Qualify **WPF-H6U exact DPP-add wave reduction for H6E Q6 activation-row
-consumers** as a bounded default-off gfx1100 owner; H6E source policy remains
-unchanged. The **11/11** exact leaf replaces **320/400/400** generic bpermutes
+Promote **WPF-H6U exact DPP-add wave reduction for Q6 activation-row
+consumers** as the retained gfx1100 Q6 source default; H6E remains explicit
+rollback. The **11/11** exact leaf replaces **320/400/400** generic bpermutes
 with **64+256 / 80+320 / 80+320 permlanex16+DPP-add** and cuts runtime VGPR
 **136/168/168 -> 112/144/144** at unchanged LDS/private0/spill0/scratch0.
 Complete natural M512 is KL0/byte-exact across **48/48** hidden boundaries,
@@ -2290,12 +2290,16 @@ complete logits, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests
 preserve **2,192** dispatches and substitute exact **2/46/94 H6E -> H6U**
 consumers; consumer/Q6/request-sum/span move
 **54.144/86.958/1,276.589/1,305.317 -> 48.443/81.029/1,274.060/1,295.123 ms
-(-10.529%/-6.817%/-0.198%/-0.781%)**. Fixed C4096/M512 improves **408.686 ->
-410.339 tok/s (+0.405%, 5/5)**; default-off 512/1K/4K gains
-**+0.423%/+0.335%/+0.276%**, all **3/3** exact wins. Workspace/scratch remain
-unchanged, gfx1151 fails closed, and **118/118** guards pass. Commit the bounded
-owner, then freeze a separate source-default RED before changing H6E policy
-([H6U candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
+(-10.529%/-6.817%/-0.198%/-0.781%)**. Fresh selector-unset fixed C4096/M512
+improves **409.485 -> 411.704 tok/s (+0.542%, 5/5)** and is **1.67788x** behind
+matched llama.cpp HIP **690.791**; fresh 512/1K/4K improves
+**382.632/308.496/193.767 -> 384.637/309.813/194.321 tok/s
+(+0.524%/+0.427%/+0.286%)**, all **3/3** exact wins. Change only three selected-
+map values: F32 N72 fallback, allocation, workspace/scratch, dispatches, and
+gfx1151 fail-closed behavior remain unchanged; **153/153** source/kernel/
+backend/runner guards pass
+([H6U production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json) ·
+[H6U candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
 [post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

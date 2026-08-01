@@ -462,23 +462,25 @@ wins. Allocation/workspace/dispatch remain unchanged, gfx1151 fails closed, and
 [H6T candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
-**WPF-H6U exact DPP-add wave reduction is now a qualified bounded default-off
-gfx1100 Q6 owner; H6E remains the production source.** The frozen leaf remains
-**11/11** exact and replaces H6E's **320/400/400 bpermutes** with exact **64+256 /
-80+320 / 80+320 permlanex16+DPP-add**, cutting code, slots, and runtime VGPR
-**136/168/168 -> 112/144/144** at unchanged LDS/scratch0. Complete natural M512
-is KL0 and byte-exact across all **48/48** hidden boundaries, complete logits,
-K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192**
-dispatches and substitute exact **2/46/94 H6E -> H6U** consumers; consumer/Q6/
-request-sum/span move **54.144/86.958/1,276.589/1,305.317 ->
-48.443/81.029/1,274.060/1,295.123 ms (-10.529%/-6.817%/-0.198%/-0.781%)**.
-Fixed natural C4096/M512 improves **408.686 -> 410.339 tok/s (+0.405%, 5/5
-wins)** and is **1.68346x** behind matched llama.cpp HIP **690.791 tok/s**.
-Default-off 512/1K/4K improves **383.253/309.086/194.104 ->
-384.875/310.120/194.640 tok/s (+0.423%/+0.335%/+0.276%)**, all **3/3** exact
-wins. Workspace/scratch/dispatch/allocation remain unchanged, gfx1151 fails
-closed, and **118/118** guards pass. Source promotion remains a separate RED
-([H6U candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
+**WPF-H6U exact DPP-add wave reduction is now the retained gfx1100 Q6 source
+default; H6E remains explicit rollback.** The frozen **11/11** leaf replaces
+H6E's **320/400/400 bpermutes** with exact **64+256 / 80+320 / 80+320
+permlanex16+DPP-add**, cutting runtime VGPR **136/168/168 -> 112/144/144** at
+unchanged LDS/scratch0. Complete natural M512 is KL0 and byte-exact across all
+**48/48** hidden boundaries, complete logits, K/V/`KVLiveSpans`, repeat, and
+teardown. Production reuses the qualified exact **2/46/94 H6E -> H6U**
+substitution at **2,192** dispatches; consumer/Q6/request-sum/span move
+**54.144/86.958/1,276.589/1,305.317 -> 48.443/81.029/1,274.060/1,295.123 ms
+(-10.529%/-6.817%/-0.198%/-0.781%)**. Fresh selector-unset fixed C4096/M512
+improves H6E rollback -> H6U source **409.485 -> 411.704 tok/s (+0.542%, 5/5
+wins)** and is **1.67788x** behind matched llama.cpp HIP **690.791 tok/s**.
+Fresh 512/1K/4K improves **382.632/308.496/193.767 ->
+384.637/309.813/194.321 tok/s (+0.524%/+0.427%/+0.286%)**, all **3/3** exact
+wins. Promotion changes only three selected-map values; allocation, workspace,
+scratch, dispatches, F32 N72 fallback, and gfx1151 remain unchanged, and
+**153/153** source/kernel/backend/runner guards pass
+([H6U production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json) ·
+[H6U candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
 [post-H6T residual / H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 Both short

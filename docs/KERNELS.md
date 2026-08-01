@@ -1482,8 +1482,8 @@ count, and gfx1151 exclusion stay unchanged; **144/144** source guards pass
 [H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
-**WPF-H6U exact DPP-add wave reduction for H6E Q6 activation-row consumers** is
-a qualified bounded default-off gfx1100 owner; H6E remains source. The exact
+**WPF-H6U exact DPP-add wave reduction for Q6 activation-row consumers** is the
+retained gfx1100 Q6 source default; H6E remains explicit rollback. The exact
 **11/11** leaf replaces **320/400/400 `ds_bpermute_b32`** with **64+256 / 80+320 /
 80+320 permlanex16 + `v_add_f32_dpp`**, cutting physical code/slots and runtime
 VGPR **136/168/168 -> 112/144/144** at unchanged LDS/private0/spill0/scratch0.
@@ -1493,11 +1493,14 @@ requests preserve **2,192** dispatches and substitute exact **2/46/94 H6E ->
 H6U** consumers; consumer/Q6/request-sum/span move
 **54.144/86.958/1,276.589/1,305.317 -> 48.443/81.029/1,274.060/1,295.123 ms
 (-10.529%/-6.817%/-0.198%/-0.781%)** with H6U runtime VGPR **144/112/144** and
-scratch0. Fixed C4096/M512 improves **408.686 -> 410.339 tok/s (+0.405%, 5/5)**;
-default-off 512/1K/4K gains **+0.423%/+0.335%/+0.276%**, all **3/3** exact
-wins. Workspace/scratch are unchanged, gfx1151 fails closed, and **118/118**
-guards pass. Freeze a separate source-default RED before changing H6E policy
-([H6U candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
+scratch0. Fresh selector-unset fixed C4096/M512 improves **409.485 -> 411.704
+tok/s (+0.542%, 5/5)** and is **1.67788x** behind matched llama.cpp HIP
+**690.791**; fresh 512/1K/4K gains **+0.524%/+0.427%/+0.286%** at
+**384.637/309.813/194.321 tok/s**, all **3/3** exact wins. Only three selected-
+map values change; F32 N72 fallback, allocation/workspace/scratch/dispatches,
+and gfx1151 remain unchanged, and **153/153** guards pass
+([H6U production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json) ·
+[H6U candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
 [post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

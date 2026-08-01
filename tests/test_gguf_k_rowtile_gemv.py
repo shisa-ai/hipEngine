@@ -453,16 +453,16 @@ def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
     q6_qualified = {
         ("bf16", 3072, 1024): (
             "weight_major_row_major_activation_tile_k_row_"
-            "coltile16_rowbatch5"
+            "dpp_wave_reduction_coltile16_rowbatch5"
         ),
         ("bf16", 1024, 3072): (
             "weight_major_row_major_activation_tile_k_row_"
-            "coltile16_rowbatch4"
+            "dpp_wave_reduction_coltile16_rowbatch4"
         ),
         ("f32", 3072, 72): "coltile8_rowbatch4",
         ("f32", 3072, 1024): (
             "weight_major_row_major_activation_tile_k_row_"
-            "coltile16_rowbatch5"
+            "dpp_wave_reduction_coltile16_rowbatch5"
         ),
     }
     for output_dtype, in_features, out_features in q5_qualified:

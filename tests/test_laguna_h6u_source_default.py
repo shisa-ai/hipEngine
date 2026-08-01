@@ -121,12 +121,12 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
 
     live_source = hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY
-    assert live_source == _H6E_POLICY
+    assert live_source == _H6U_POLICY
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY == _H6E_POLICY
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY == _H6U_POLICY
     assert hip_gfx1100.GGUF_F32_ORDERED_PREFILL_POLICIES == {
         "gguf_q5_k": hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
-        "gguf_q6_k": _H6E_POLICY,
+        "gguf_q6_k": _H6U_POLICY,
     }
     assert hip_gfx1151.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == {}
     assert not hasattr(hip_gfx1151, "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY")
@@ -146,7 +146,6 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
         use_activation_tile_k_row=True,
     ) == 161_120_256
 
-    _install_policy(monkeypatch, _H6U_POLICY)
     with q5_f32_ordered_prefill_session(_session()):
         for output_dtype, in_features, out_features in _H6U_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
@@ -245,6 +244,5 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
             is gfx1151
         )
 
-    # Intentional RED after the complete in-memory candidate and rollback
-    # contracts: production must select H6U while preserving both capabilities.
+    # Exactly three source-map values change; H6E remains explicit rollback.
     assert live_source == _H6U_POLICY

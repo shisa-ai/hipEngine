@@ -44,6 +44,21 @@ _H6E_POLICY = {
         "coltile16_rowbatch5"
     ),
 }
+_H6U_POLICY = {
+    ("bf16", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch5"
+    ),
+    ("bf16", 1024, 3072): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch4"
+    ),
+    ("f32", 3072, 72): "coltile8_rowbatch4",
+    ("f32", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch5"
+    ),
+}
 _H6E_CALL_WEIGHTS = {
     ("bf16", 3072, 1024): 2,
     ("bf16", 1024, 3072): 46,
@@ -104,8 +119,8 @@ def _install_q6_policy(
     )
 
 
-def test_h6e_runtime_capability_is_source_qualified_and_workspace_neutral() -> None:
-    assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _H6E_POLICY
+def test_h6e_runtime_capability_is_retained_rollback_and_workspace_neutral() -> None:
+    assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _H6U_POLICY
     assert getattr(hip_gfx1100, _CAPABILITY) == _H6E_POLICY
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert set(_H6E_POLICY) == set(_H5W_POLICY)

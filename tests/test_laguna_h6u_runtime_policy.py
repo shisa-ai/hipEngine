@@ -101,19 +101,22 @@ def _session(*, with_activation: bool = True) -> Q5F32OrderedPrefillSession:
     )
 
 
-def _install_h6u_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_q6_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: dict[tuple[str, int, int], str],
+) -> None:
     monkeypatch.setattr(
         hip_gfx1100,
         "GGUF_F32_ORDERED_PREFILL_POLICIES",
         {
             "gguf_q5_k": hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
-            "gguf_q6_k": _H6U_POLICY,
+            "gguf_q6_k": policy,
         },
     )
 
 
-def test_h6u_runtime_capability_is_default_off_bounded_and_workspace_neutral() -> None:
-    assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _H6E_POLICY
+def test_h6u_runtime_capability_is_source_qualified_and_workspace_neutral() -> None:
+    assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _H6U_POLICY
     assert getattr(hip_gfx1100, _H6E_CAPABILITY) == _H6E_POLICY
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert set(_H6U_POLICY) == set(_H6E_POLICY)
@@ -155,6 +158,7 @@ def test_h6u_runtime_dispatch_is_exact_role_owner_and_fail_closed(
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
     session = _session()
 
+    _install_q6_policy(monkeypatch, _H6E_POLICY)
     with q5_f32_ordered_prefill_session(session):
         for output_dtype, in_features, out_features in _H6U_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
@@ -172,7 +176,7 @@ def test_h6u_runtime_dispatch_is_exact_role_owner_and_fail_closed(
                 "raw_k_f32_ordered_activation_tile_k_row",
             )
 
-    _install_h6u_policy(monkeypatch)
+    _install_q6_policy(monkeypatch, _H6U_POLICY)
     with q5_f32_ordered_prefill_session(session):
         for output_dtype, in_features, out_features in _H6U_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
@@ -271,7 +275,7 @@ def test_h6u_runtime_dispatch_is_exact_role_owner_and_fail_closed(
 def test_h6u_runtime_launch_reuses_owner_weight_activation_and_library(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _install_h6u_policy(monkeypatch)
+    _install_q6_policy(monkeypatch, _H6U_POLICY)
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
     session = _session()
     raw = SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))
