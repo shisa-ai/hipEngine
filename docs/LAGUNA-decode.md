@@ -9397,6 +9397,20 @@ The remaining attention sequence is:
      remaining long-depth gap:
      [`late-four context-parallel production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json).
 
+     Two post-promotion precision/repair screens are closed. Direct
+     chronological sparse repair is exact but costs **2.240 ms** at live4,097
+     versus **0.309 ms** for the retained exact deferred owner (**7.25x
+     slower**). Kahan-compensated partial/merge improves the all-layer maximum
+     KL from **0.687034** to **0.450784**, still nine times over budget. Moving
+     the compensated boundary to layer 28 passes d16K/127 teacher forcing at
+     maximum KL **0.005793** and improves d16K/d64K/d128K
+     **0.012%/0.200%/1.357%**, but the mandatory 128K recurrent trajectory
+     changes from final token/hash **874 / c8307c...** to **466 / 33aa7c...**.
+     That route is rejected and removed; production remains the simpler
+     late-four schedule. The next precision experiment must leave those four
+     retained layers unchanged and isolate any arithmetic change to the newly
+     proposed boundary layer.
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

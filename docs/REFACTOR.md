@@ -2542,9 +2542,12 @@ should be boring.
   all-layer context-split route is faster but fails the same-state 127-step
   quality gate at maximum KL **0.687034** versus the **0.05** ceiling; an
   8,192-token sibling fails at **0.776134**, and exact sparse BF16-boundary
-  repair is slower than the retained GQA6 owner. Only the measured late-four
-  scope is admitted, at maximum KL **0.042569/0.007344** and 254/254 top-1
-  across two independent prompts.
+  repair is **7.25x** slower than the retained GQA6 owner. Kahan compensation
+  still fails all-layer quality at **0.450784**. A compensated layer-28-plus
+  route passes teacher forcing and is faster through 128K, but changes the
+  mandatory recurrent 128K final token/hash and is removed. Only the measured
+  late-four scope is admitted, at maximum KL **0.042569/0.007344** and 254/254
+  top-1 across two independent prompts.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
