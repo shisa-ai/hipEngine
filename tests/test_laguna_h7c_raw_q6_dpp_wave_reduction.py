@@ -571,6 +571,7 @@ def test_h7c_frozen_selection_physical_trace_timing_and_rejection_contract() -> 
     ids=tuple(role[0] for role in _ROLES),
 )
 def test_h7c_registry_source_policy_and_generic_immutability(
+    monkeypatch: pytest.MonkeyPatch,
     role: str,
     col_tile: int,
     row_batch: int,
@@ -626,6 +627,36 @@ def test_h7c_registry_source_policy_and_generic_immutability(
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED is True
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_COLTILE2_SHAPES == expected_coltile2
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_VARIANT == "coltile"
+    expected_h7c_policy = {
+        (
+            "gguf_q6_k",
+            f"bf16_{role_output_dtype}_out",
+            512,
+            role_in_features,
+            role_out_features,
+        ): _suffix(
+            role_col_tile,
+            role_row_batch,
+            role_output_dtype,
+            candidate=True,
+        )
+        for (
+            _,
+            role_col_tile,
+            role_row_batch,
+            role_output_dtype,
+            role_in_features,
+            role_out_features,
+        ) in _ROLES
+    }
+    assert hip_gfx1100.GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS == {}
+    assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS == expected_h7c_policy
+    assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == expected_h7c_policy
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "GGUF_RAW_K_PREFILL_ROLE_VARIANTS",
+        {},
+    )
 
     control = _control(col_tile, row_batch, output_dtype)
     control_key = _key(

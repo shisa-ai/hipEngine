@@ -97,7 +97,7 @@ def test_h7c_runtime_contract_is_exact_m512_shape_policy() -> None:
     } == set(_GENERIC_VARIANTS.values())
 
 
-def test_h7c_runtime_package_capability_is_default_off_and_backend_local() -> None:
+def test_h7c_runtime_capability_and_rollback_survive_source_promotion() -> None:
     load_backend_kernel_package("hip_gfx1100")
     load_backend_kernel_package("hip_gfx1151")
 
@@ -124,11 +124,9 @@ def test_h7c_runtime_package_capability_is_default_off_and_backend_local() -> No
             )
         )
 
-    # Intentional RED after leaf/backend controls: runtime qualification adds
-    # only package-owned candidate/source/rollback policy metadata.
     assert getattr(hip_gfx1100, _CAPABILITY) == _H7C_POLICY
     assert getattr(hip_gfx1100, _GENERIC_CAPABILITY) == _GENERIC_POLICY
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _GENERIC_POLICY
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H7C_POLICY
 
 
 def test_h7c_runtime_dispatch_is_exact_role_owner_and_fails_closed(
@@ -136,8 +134,12 @@ def test_h7c_runtime_dispatch_is_exact_role_owner_and_fails_closed(
 ) -> None:
     load_backend_kernel_package("hip_gfx1100")
 
-    # Current source remains the exact generic coltile owner for all three
-    # admitted leaf roles before the default-off capability is selected.
+    # Exercise the named exact generic rollback before selected H7C source.
+    monkeypatch.setattr(
+        hip_gfx1100,
+        _SOURCE_CAPABILITY,
+        dict(_GENERIC_POLICY),
+    )
     for role in _ROLES:
         quant, output_variant, rows, in_features, out_features = role
         selected = _selected(
@@ -151,7 +153,6 @@ def test_h7c_runtime_dispatch_is_exact_role_owner_and_fails_closed(
             "raw",
         )
 
-    # Intentional RED only after retained source routing passes.
     capability = getattr(hip_gfx1100, _CAPABILITY)
     assert capability == _H7C_POLICY
     monkeypatch.setattr(hip_gfx1100, _SOURCE_CAPABILITY, dict(capability))
@@ -227,8 +228,7 @@ def test_h7c_runtime_launch_preserves_raw_pointer_abi(
 ) -> None:
     load_backend_kernel_package("hip_gfx1100")
 
-    # Intentional RED after the registered leaf exists: the package capability
-    # is the only new ownership surface needed by this launch path.
+    # Source selection keeps the qualified raw pointer launch ABI unchanged.
     capability = getattr(hip_gfx1100, _CAPABILITY)
     monkeypatch.setattr(hip_gfx1100, _SOURCE_CAPABILITY, dict(capability))
     raw = SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))

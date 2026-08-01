@@ -2531,20 +2531,33 @@ Layer-0 down is **14.866/14.868→14.741/14.750 ms**, layer-47 Q is
 **37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)** with exact bytes and
 lifecycle.
 
-Qualify H7C's bounded default-off runtime owner separately. A generic
-`gguf_linear` package map binds only the three exact M512 `(quant, output ABI,
-rows, K, N)` roles; the named generic rollback and live source map remain empty,
-and every wrong-shape/registration/backend case fails closed. Complete M512
-state is KL0/byte-exact across all **48/48** hidden boundaries and full KV/spans
-at unchanged scratch. Four cached requests preserve **2,192 dispatches** and
-replace exactly **2 BF16 + 1 F32** generic calls with H7C, moving selected
-raw-Q6/Q6/span **28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero
-compiler. Fixed C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**;
-512/1K/4K medians improve **+0.0552%/+0.0274%/+0.0179%**, all exact and
-lifecycle-clean. Retain the runtime capability under cycle-wall policy, but
-production stays generic **422.947 tok/s / 1,199.578 ms** until a separate
-source-default RED/promotion gate
-([H7C candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+H7C's bounded runtime owner and source publication are now separately
+qualified. Generic `gguf_linear` consumes only the three exact M512 `(quant,
+output ABI, rows, K, N)` roles; the named generic rollback remains empty, and
+every wrong-shape/registration/backend case fails closed. Default-off complete
+M512 state is KL0/byte-exact across all **48/48** hidden boundaries and full
+KV/spans at unchanged scratch. Four cached requests preserve **2,192
+dispatches** and replace exactly **2 BF16 + 1 F32** generic calls with H7C,
+moving selected raw-Q6/Q6/span
+**28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero compiler.
+Fixed C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**; 512/1K/4K
+medians improve **+0.0552%/+0.0274%/+0.0179%**, all exact and lifecycle-clean.
+
+Source promotion changes only the live package map. Fresh selector-unset M512
+state remains KL0 and byte-exact across complete state, all **48/48**
+boundaries, KV/spans, and repeat. A fresh four-request trace again substitutes
+exactly **2 BF16 + 1 F32** calls at unchanged offsets/resources and improves
+selected raw-Q6/Q6/span
+**28.583/81.639/1,283.417→28.376/81.470/1,280.788 ms** with zero compiler. Fresh
+aggregate timing is mixed: fixed C4096/M512 is
+**419.433→418.487 tok/s (-0.225%, 2/5)**, while 512/1K/4K is
+**+0.0925%/+0.0372%/-0.0488%**. Retain source under the cycle-wall policy based
+on two independent selected-subwindow/span wins and the immutable all-role leaf
+screen, while recording the fixed/4K rows as noise rather than wins. The last
+clean committed checkpoint remains **422.947 tok/s / 1,199.578 ms** until the
+required post-commit reprofile
+([H7C production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
