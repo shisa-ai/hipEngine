@@ -9693,6 +9693,14 @@ The remaining attention sequence is:
      justified:
      [`direct probability rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-direct-probability-rejected.json).
 
+219. Spell the ordered recurrence as tied-accumulator `v_fmac_f32_e32`.
+     **Rejected on mixed leaf direction and removed.**
+
+     The tied form is byte-exact, but live4K/16K/64K/128K changes
+     **+0.266%/-0.205%/-0.344%/-0.046%** versus the retained three-source
+     `v_fma_f32`. Restore the all-depth winner without production timing:
+     [`ordered FMAC rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-fmac-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

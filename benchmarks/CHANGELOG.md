@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna exact PV tied-accumulator FMAC] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: spelling the ordered recurrence as `v_fmac_f32_e32` instead of three-source `v_fma_f32` changes leaves **+0.266%/-0.205%/-0.344%/-0.046%**, so restore the all-depth winner without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-fmac-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna direct-wave exact PV probability loads] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: removing probability loader/LDS staging and broadcasting four direct score/inverse loads from each output wave is byte-exact but **2.88-3.02x slower** than retained staged prefetch4 at every depth, so restore LDS probability broadcast without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-direct-probability-rejected.json`.
 
 - [rejected byte-exact gfx1151 Laguna ordered-prefetch8 exact PV decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: doubling ordered operand prefetch from four to eight improves exact leaves **0.53-6.40%** and d16K/d64K **0.188%/0.177%**, but mandatory d128K regresses **7.9763 -> 7.9651 tok/s (-0.140%)** despite the exact trajectory, so restore prefetch4; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch8-rejected.json`.

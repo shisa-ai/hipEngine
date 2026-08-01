@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T07:17:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_pv_fmac_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "candidate": "replace ordered three-source v_fma_f32 with tied-accumulator v_fmac_f32_e32",
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "v_fma_ms": 0.1854761000, "v_fmac_ms": 0.1859686971, "delta_percent": 0.265585},
+      {"live_count": 16448, "v_fma_ms": 0.8304656030, "v_fmac_ms": 0.8287622452, "delta_percent": -0.205109},
+      {"live_count": 65664, "v_fma_ms": 3.4685817720, "v_fmac_ms": 3.4566345215, "delta_percent": -0.344442},
+      {"live_count": 131200, "v_fma_ms": 6.9828865050, "v_fmac_ms": 6.9796485901, "delta_percent": -0.046369}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "00dd5dcc549f94a687c579d112d1729fd3a69f9bf8427c1d48ad22e770cd05cf"
+  },
+  "decision": {
+    "reason": "mixed depth direction, including a 0.266% 4K regression and effectively neutral 128K",
+    "production_timing": "not run because the candidate fails the all-depth leaf gate",
+    "disposition": "restore committed three-source v_fma_f32 exactly"
+  }
+}
