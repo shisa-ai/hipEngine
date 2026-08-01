@@ -9558,6 +9558,18 @@ The remaining attention sequence is:
      while preserving all 32 D32 workgroups:
      [`exact D32 32-byte V rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vector32-v-rejected.json).
 
+212. Fill all exact D32 workgroups with local1024.
+     **Rejected at every leaf depth and removed.**
+
+     Unlike failed D64, this schedule preserves all 32 workgroups while
+     exposing 832 loader threads behind the six output waves. It remains
+     byte-exact but is **0.362%/0.694%/0.402%/0.282%** slower than local512 at
+     live4K/16K/64K/128K. Local512 is the measured occupancy/loader balance.
+     PV width, stage, cache policy, vector width, and local size are now
+     closed; LC-D3 moves to eliminating or fusing an exact score,
+     denominator, or probability-transport pass:
+     [`exact D32/local1024 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-local1024-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
