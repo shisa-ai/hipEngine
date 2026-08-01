@@ -197487,3 +197487,14 @@ Vulkan local sizes verbatim will close the measured gap.
   V64/V128 SHA-256 values are
   `ad62296f1ea2bdef86e761dbe4bfbdea5fd28af74768f6b7d934df866d20ce35`
   and `25d9ec268a2d169272eaecb3c30f4ae8630730de454edebd33cd784e931304b8`.
+
+## 2026-08-02 04:44 JST — Reject exact D32 non-temporal V loads
+
+- Changed only each exact D32/V64 BF16 value-cache uint4 read into four
+  non-temporal dword reads. The CPU-reference fixture and F32/BF16 byte-exact
+  leaves pass, but cached -> non-temporal at
+  live4,097/16,448/65,664/131,200 changes latency
+  **+1.950%/-1.489%/+0.479%/+1.285%**. Bypassing cache helps only 16K and
+  harms both longer required depths, so restore cached uint4 loads before any
+  production run. Raw SHA-256 is
+  `9adbb56ba558832d7f8c21415f1b8576a783773fe2e073c46203a622e287e153`.

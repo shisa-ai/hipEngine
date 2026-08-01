@@ -2565,6 +2565,8 @@ should be boring.
   **12.28-13.12%** across live4K-d128K.
   Exact D32 V-stage128 is also removed after improving 16K/64K but regressing
   the required 4K/128K depths; V64 remains the only exact registered owner.
+  Non-temporal exact-D32 V loads are removed after regressing three of four
+  depths; cached cross-workgroup V behavior remains beneficial.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
