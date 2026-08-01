@@ -197097,3 +197097,23 @@ Vulkan local sizes verbatim will close the measured gap.
   candidate artifact and updated `docs/KERNELS.md`, `docs/LAGUNA-decode.md`,
   benchmark rollup/changelog, and refactor ledger. Commit next, then run the
   required tracked-clean 16K confirmation before promoting production status.
+
+## 2026-08-01 22:05 JST — Promote exact GQA6/D32 long attention
+
+- Committed the first LC-D3 milestone as `5849759cf`, then ran the required
+  tracked-clean 16K confirmation without `--allow-dirty` using the same
+  capacity131,200, matrix2,048, attention128, cached-only BF16-KV protocol.
+  Decode is **16.756283 tok/s / 59.679107 ms/token**, improving the matched
+  **7.731808 tok/s** baseline by **116.719%** and reproducing the dirty
+  **16.789574 tok/s** gate within **-0.198%**. Prefill is **476.874 tok/s**.
+- Correctness is exact: final token **13815**, generated SHA-256
+  `b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6`,
+  final position **16,510**, deterministic control/candidate IDs, and complete
+  recovery of **87,407,934,744 bytes / 1,452 allocations**. The raw clean JSON
+  SHA-256 is
+  `48c00fc2daf8bdbd458b25a9acd09577488f1a9a3edb456aa5b54eee17950eff`.
+- Promoted the artifact, benchmark index/changelog, decode plan, and project
+  plan from pending confirmation to accepted production/default. LC-D3 remains
+  active: the route is exact and much faster, but still materializes the full
+  score/physical plane and reaches only **77.117%** of same-GGUF Vulkan at
+  16K. Profile the clean new wall before choosing the next attention rewrite.

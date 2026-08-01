@@ -9243,7 +9243,7 @@ The remaining attention sequence is:
      [`matched 16K profiles`](../benchmarks/results/2026-08-01-gfx1151-laguna-16k-hip-vulkan-decode-profile.json).
 
 201. Replace the serial sixfold-V long-global owner with exact GQA6/D32.
-     **First LC-D3 structural milestone retained; clean confirmation pending.**
+     **First LC-D3 structural milestone retained and production-default.**
 
      The new gfx1151 path above the retained 6,000-live-slot fused bound has
      three exact phases. One wave32 owns all six queries for a KV-head/token,
@@ -9283,10 +9283,11 @@ The remaining attention sequence is:
      GQA6 score tile8/local256, D16 PV, local1024 PV, and V-stage128 were all
      exact but slower and are reverted. The retained implementation has no
      resident-byte or allocation-count increase and passes **66 focused
-     tests**. The broad sweep intentionally ran against the dirty candidate;
-     commit it, repeat a clean 16K production confirmation, and only then
-     promote the benchmark rollup. The full F32 score/normalization plane still
-     exists, so LC-D3 is not complete:
+     tests**. The tracked-clean 16K confirmation measures **16.756283 tok/s
+     (+116.719%)**, within **-0.198%** of the dirty directional row, with the
+     identical final token/hash and all **87,407,934,744 bytes / 1,452
+     allocations** returned to zero. The full F32 score/normalization plane
+     still exists, so LC-D3 is not complete:
      [`retained milestone`](../benchmarks/results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json).
 
 ### Long-context decode attack
