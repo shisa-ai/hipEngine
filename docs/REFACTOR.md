@@ -14,6 +14,21 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna H6Z bounded default-off global-attention capability
+
+- Added 2026-08-01 for WPF-H6Z source adjudication. The gfx1100-only
+  `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS` map selects H6Z only
+  for global starts256/384 at exact M128/C4096/H48/KV8/D128 and reuses H6W's
+  existing caller plane without allocation or workspace growth. Selected source
+  remains H6N global plus H6W late SWA; H6A and unbound routes remain complete
+  fallbacks.
+- Remove this candidate-only seam immediately if the source gate rejects H6Z.
+  If source promotion passes, change only the selected global role to H6Z,
+  retain the named H6W map as the H6N rollback, and remove any duplicate
+  candidate-only resolver/test path after the first clean committed reprofile
+  proves exact topology and rollback. Never retain two independently evolving
+  H6Z dispatch routes.
+
 ## Laguna default-off F32 hipBLASLt attention selector
 
 - WPF-H5B's temporary gfx1100 policy/map/owner seam is removed. The complete
