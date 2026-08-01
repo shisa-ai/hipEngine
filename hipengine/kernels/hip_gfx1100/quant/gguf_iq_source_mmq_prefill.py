@@ -18,6 +18,13 @@ _SOURCE = Path(__file__).with_name("gguf_iq_source_mmq_prefill.hip")
 _PARENT_SOURCE = Path(__file__).with_name("gguf_iq_gemv.hip")
 _OUTPUT_NAME = "gguf_iq_source_mmq_prefill.so"
 _VARIANT = "selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out"
+_D4X2_VARIANT = (
+    "selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out"
+)
+_D4X2_SYMBOL = (
+    "hipengine_gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_"
+    "prefill_compact_bf16_bf16_out"
+)
 _SYMBOL_TEMPLATE = (
     "hipengine_{quant}_selected_mmq_i128_j128_k256_q8_1_ds4_"
     "prefill_compact_bf16_bf16_out"
@@ -186,6 +193,71 @@ def gguf_iq4_xs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_o
     _launch_iq_source_mmq("gguf_iq4_xs", *args, **kwargs)
 
 
+def gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out(
+    xq_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq_ptr: int,
+    tile_expert_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch IQ3 MMQ with primary and residual D4 activation planes."""
+
+    if compact_rows <= 0:
+        raise ValueError("compact_rows must be positive")
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be positive and divisible by 256")
+    if out_features <= 0 or out_features % _MMQ_ROWS != 0:
+        raise ValueError("out_features must be a positive multiple of 128")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    if mmq_total_rows <= 0 or mmq_total_rows % _MMQ_ROWS != 0:
+        raise ValueError("mmq_total_rows must be positive and a multiple of 128")
+    library = library or build_gguf_iq_source_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _D4X2_SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_mmq_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(mmq_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_gguf_iq_source_mmq_prefill_kernels(*, replace: bool = True) -> None:
     for quant, function in (
         (
@@ -202,6 +274,11 @@ def register_gguf_iq_source_mmq_prefill_kernels(*, replace: bool = True) -> None
             function,
             replace=replace,
         )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_iq3_xxs", _D4X2_VARIANT),
+        gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 register_gguf_iq_source_mmq_prefill_kernels()
@@ -212,6 +289,7 @@ __all__ = [
     "build_gguf_iq_source_mmq_prefill",
     "build_iq_source_mmq128_metadata",
     "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
+    "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
     "plan_gguf_iq_source_mmq_prefill_build",
     "register_gguf_iq_source_mmq_prefill_kernels",

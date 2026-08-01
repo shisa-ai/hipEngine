@@ -713,6 +713,14 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             )
             for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
         ),
+        # H7E's residual-D4x2 IQ3 consumer remains gfx1100-only until an
+        # independently qualified gfx1151 residual-plane gate exists.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_mmq_i128_j128_k256_q8_1_ds4x2_"
+            "prefill_compact_bf16_bf16_out",
+        ),
         # WPF-H4 copies llama.cpp's gfx1100 Q6-to-F16/rocBLAS ownership and
         # remains excluded until gfx1151 receives an independent gate.
         ("dequant", "gguf_q6_k", "raw_f16_source_local64"),

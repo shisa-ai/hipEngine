@@ -30,6 +30,13 @@ struct iq_source_q8_1_ds4_kmajor_block {
 static_assert(sizeof(iq_source_q8_1_ds4_kmajor_block) == 144,
               "unexpected source DS4 Q8_1 block size");
 
+struct iq_source_q8_1_d4x2_kmajor_block {
+  float d4[4];
+  int8_t qs[IQ_SOURCE_Q8_BLOCK];
+};
+static_assert(sizeof(iq_source_q8_1_d4x2_kmajor_block) == 144,
+              "unexpected residual D4x2 Q8_1 block size");
+
 __device__ inline uint32_t source_pack_i8x4(const int8_t* ptr) {
   return static_cast<uint32_t>(static_cast<uint8_t>(ptr[0])) |
          (static_cast<uint32_t>(static_cast<uint8_t>(ptr[1])) << 8) |
@@ -322,6 +329,205 @@ __global__ void gguf_iq_selected_mmq_i128_j128_k256_q8_1_ds4_kernel(
   }
 }
 
+// Physical symbol:
+// gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_kernel
+#define H7E_JOIN_IMPL(left, right) left##right
+#define H7E_JOIN(left, right) H7E_JOIN_IMPL(left, right)
+#define H7E_IQ3_D4X2_KERNEL \
+  H7E_JOIN( \
+      gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_, kernel)
+
+// H7E preserves the source-IQ3 weight tile and WMMA ownership while replaying
+// one primary and one residual D4 activation plane against each staged tile.
+__launch_bounds__(256, 2)
+__global__ void H7E_IQ3_D4X2_KERNEL(
+    const iq_source_q8_1_d4x2_kmajor_block* __restrict__ xq,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_mmq,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  extern __shared__ uint8_t shared_bytes[];
+  uint32_t* weight_tile = reinterpret_cast<uint32_t*>(shared_bytes);
+  iq_source_q8_1_d4x2_kmajor_block* activation =
+      reinterpret_cast<iq_source_q8_1_d4x2_kmajor_block*>(
+          weight_tile +
+          IQ_SOURCE_MMQ_I * IQ_SOURCE_WEIGHT_STRIDE_WORDS);
+
+  const int wave = static_cast<int>(threadIdx.y);
+  const int wave_tid = static_cast<int>(threadIdx.x);
+  const int tid = wave * 32 + wave_tid;
+  const int lane16 = wave_tid & 15;
+  const int half_id = wave_tid >> 4;
+  const int64_t tile = static_cast<int64_t>(blockIdx.y);
+  const int64_t expert = tile_expert[tile];
+  if (expert < 0 || expert >= num_experts) return;
+
+  const int64_t compact_base = expert_start_compact[expert];
+  const int64_t expert_rows =
+      expert_start_compact[expert + 1] - compact_base;
+  const int64_t local_row_base =
+      tile * IQ_SOURCE_MMQ_J - expert_start_mmq[expert];
+  const int64_t output_base =
+      static_cast<int64_t>(blockIdx.x) * IQ_SOURCE_MMQ_I;
+  const int weight_input_local = wave * 16 + lane16;
+  const int64_t blocks_per_weight_row = in_features / QK_K;
+  const int64_t weight_row_bytes =
+      blocks_per_weight_row * IQ3_XXS_BLOCK_BYTES;
+  const int64_t expert_bytes = out_features * weight_row_bytes;
+
+  float acc[8][8];
+#pragma unroll
+  for (int rt = 0; rt < 8; ++rt) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) acc[rt][j] = 0.0f;
+  }
+
+  for (int64_t weight_block = 0;
+       weight_block < blocks_per_weight_row;
+       ++weight_block) {
+    const int load_row_in_wave = wave_tid >> 3;
+    const int load_group32 = wave_tid & 7;
+#pragma unroll
+    for (int load_round = 0; load_round < 4; ++load_round) {
+      const int output_round =
+          load_round * 32 + wave * 4 + load_row_in_wave;
+      const int64_t global_output = output_base + output_round;
+      const uint8_t* __restrict__ block =
+          qweight + expert * expert_bytes +
+          global_output * weight_row_bytes +
+          weight_block * IQ3_XXS_BLOCK_BYTES;
+      uint32_t words[8];
+      float scale = 0.0f;
+      iq3_xxs_expand_group32(block, load_group32, words, scale);
+#pragma unroll
+      for (int word = 0; word < 8; ++word) {
+        weight_tile[
+            output_round * IQ_SOURCE_WEIGHT_STRIDE_WORDS +
+            load_group32 * 8 + word] = words[word];
+      }
+      reinterpret_cast<float*>(
+          weight_tile +
+          output_round * IQ_SOURCE_WEIGHT_STRIDE_WORDS + 64)[load_group32] =
+          scale;
+    }
+    __syncthreads();
+
+#pragma unroll
+    for (int khalf = 0; khalf < 2; ++khalf) {
+#pragma unroll 1
+      for (int activation_pass = 0; activation_pass < 2; ++activation_pass) {
+        const int64_t activation_block = weight_block * 2 + khalf;
+        const int64_t plane_blocks =
+            (in_features / IQ_SOURCE_Q8_BLOCK) * compact_rows;
+        uint32_t* activation_words =
+            reinterpret_cast<uint32_t*>(activation);
+        constexpr int words_per_record =
+            sizeof(iq_source_q8_1_d4x2_kmajor_block) / sizeof(uint32_t);
+        for (int index = tid;
+             index < IQ_SOURCE_MMQ_J * words_per_record;
+             index += IQ_SOURCE_MMQ_THREADS) {
+          const int local_row = index / words_per_record;
+          const int word = index - local_row * words_per_record;
+          const int64_t expert_local_row = local_row_base + local_row;
+          uint32_t value = 0;
+          if (expert_local_row < expert_rows) {
+            const int64_t compact_row = compact_base + expert_local_row;
+            const iq_source_q8_1_d4x2_kmajor_block* source =
+                xq + static_cast<int64_t>(activation_pass) * plane_blocks +
+                activation_block * compact_rows + compact_row;
+            value = reinterpret_cast<const uint32_t*>(source)[word];
+          }
+          activation_words[index] = value;
+        }
+        __syncthreads();
+
+#pragma unroll
+        for (int local_group = 0; local_group < 4; ++local_group) {
+          const int weight_group = khalf * 4 + local_group;
+          const int8_t* weight_values = reinterpret_cast<const int8_t*>(
+              weight_tile +
+              weight_input_local * IQ_SOURCE_WEIGHT_STRIDE_WORDS) +
+              weight_group * 32;
+          const source_i32x4_t weight0 = source_i32x4_t{
+              static_cast<int>(source_pack_i8x4(weight_values + 0)),
+              static_cast<int>(source_pack_i8x4(weight_values + 4)),
+              static_cast<int>(source_pack_i8x4(weight_values + 8)),
+              static_cast<int>(source_pack_i8x4(weight_values + 12)),
+          };
+          const source_i32x4_t weight1 = source_i32x4_t{
+              static_cast<int>(source_pack_i8x4(weight_values + 16)),
+              static_cast<int>(source_pack_i8x4(weight_values + 20)),
+              static_cast<int>(source_pack_i8x4(weight_values + 24)),
+              static_cast<int>(source_pack_i8x4(weight_values + 28)),
+          };
+
+#pragma unroll
+          for (int rt = 0; rt < 8; ++rt) {
+            const int activation_row = rt * 16 + lane16;
+            const int64_t expert_local_row =
+                local_row_base + activation_row;
+            if (expert_local_row >= expert_rows) continue;
+            const iq_source_q8_1_d4x2_kmajor_block& xb =
+                activation[activation_row];
+            const int8_t* activation_values =
+                xb.qs + local_group * 32;
+            const source_i32x4_t activation0 = source_i32x4_t{
+                static_cast<int>(source_pack_i8x4(activation_values + 0)),
+                static_cast<int>(source_pack_i8x4(activation_values + 4)),
+                static_cast<int>(source_pack_i8x4(activation_values + 8)),
+                static_cast<int>(source_pack_i8x4(activation_values + 12)),
+            };
+            const source_i32x4_t activation1 = source_i32x4_t{
+                static_cast<int>(source_pack_i8x4(activation_values + 16)),
+                static_cast<int>(source_pack_i8x4(activation_values + 20)),
+                static_cast<int>(source_pack_i8x4(activation_values + 24)),
+                static_cast<int>(source_pack_i8x4(activation_values + 28)),
+            };
+            source_i32x8_t dot =
+                source_i32x8_t{0, 0, 0, 0, 0, 0, 0, 0};
+            dot = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, weight0, true, activation0, dot, true);
+            dot = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, weight1, true, activation1, dot, true);
+            const float activation_scale = xb.d4[local_group];
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+              const int output_local = wave * 16 + half_id + j * 2;
+              const float weight_scale = reinterpret_cast<const float*>(
+                  weight_tile +
+                  output_local * IQ_SOURCE_WEIGHT_STRIDE_WORDS + 64)[
+                      weight_group];
+              acc[rt][j] += weight_scale * activation_scale *
+                  static_cast<float>(dot[j]);
+            }
+          }
+        }
+        __syncthreads();
+      }
+    }
+  }
+
+#pragma unroll
+  for (int rt = 0; rt < 8; ++rt) {
+    const int local_row = rt * 16 + lane16;
+    const int64_t expert_local_row = local_row_base + local_row;
+    if (expert_local_row >= expert_rows) continue;
+    const int64_t compact_row = compact_base + expert_local_row;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int output_local = wave * 16 + half_id + j * 2;
+      const int64_t output_col = output_base + output_local;
+      out[compact_row * out_features + output_col] =
+          float_to_bf16_bits(acc[rt][j]);
+    }
+  }
+}
+
 template <int QTYPE>
 int launch_iq_source_mmq(
     const void* xq,
@@ -368,6 +574,55 @@ int launch_iq_source_mmq(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_iq3_source_mmq_d4x2(
+    const void* xq,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  if (xq == nullptr || expert_start_compact == nullptr ||
+      expert_start_mmq == nullptr || tile_expert == nullptr ||
+      qweight == nullptr || out == nullptr || compact_rows <= 0 ||
+      in_features <= 0 || (in_features % IQ_SOURCE_MMQ_K) != 0 ||
+      out_features <= 0 || (out_features % IQ_SOURCE_MMQ_I) != 0 ||
+      num_experts <= 0 || mmq_total_rows <= 0 ||
+      (mmq_total_rows % IQ_SOURCE_MMQ_J) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32, 8);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / IQ_SOURCE_MMQ_I),
+      static_cast<unsigned int>(mmq_total_rows / IQ_SOURCE_MMQ_J));
+  hipLaunchKernelGGL(
+      H7E_IQ3_D4X2_KERNEL,
+      grid,
+      block,
+      IQ_SOURCE_MMQ_SHARED_BYTES,
+      stream,
+      reinterpret_cast<const iq_source_q8_1_d4x2_kmajor_block*>(xq),
+      expert_start_compact,
+      expert_start_mmq,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts);
+  return static_cast<int>(hipGetLastError());
+}
+
+#undef H7E_IQ3_D4X2_KERNEL
+#undef H7E_JOIN
+#undef H7E_JOIN_IMPL
+
 }  // namespace
 
 extern "C" int
@@ -385,6 +640,35 @@ hipengine_gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16
     int64_t mmq_total_rows,
     hipStream_t stream) {
   return launch_iq_source_mmq<3>(
+      xq,
+      expert_start_compact,
+      expert_start_mmq,
+      tile_expert,
+      qweight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out(
+    const void* xq,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq,
+    const int64_t* tile_expert,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_iq3_source_mmq_d4x2(
       xq,
       expert_start_compact,
       expert_start_mmq,
