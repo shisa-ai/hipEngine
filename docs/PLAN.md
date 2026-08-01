@@ -2374,6 +2374,22 @@ retain H6T/H6W production **416.891 tok/s**, and rerank a materially distinct
 operation
 ([H6X rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json)).
 
+Select target-only **WPF-H6Y exact IQ3 packed-prefix b32 load** as a materially
+distinct operation; do not tune or reopen H6X. H6T emits exact **8 b128 + 9
+b32 + 6 d16 = 23** global loads. The six d16 loads read adjacent FP16-scale and
+selector-pair bytes across three scopes. H6Y must load bytes0..3 once/scope as
+little-endian b32, recover identical bits, and preserve aux/table/sign/
+magnitude/FMA/reduction/store order. Require exact **8 b128 + 12 b32 + zero
+d16 = 20** loads, unchanged DS/barriers/LDS384/runtime512/216 FMAs/24
+permlanex16/96 DPP/stride, VGPR **≤101/104**, and private/spill/scratch0.
+Natural routing models **412,225,536 fewer global-load wave instructions** at
+unchanged **52.765 GB** prefix bytes; this is not speed evidence. Freeze RED,
+then require complete FP16-bit/row/P64/P65/CPU/lifecycle bytes, cached named
+trace with no compiler, and all **45/45** layers plus aggregate to win both
+clocks under 5/15/5. Remove H6Y on any miss without tuning/rerun; runtime/source
+work remains separate
+([post-H6X residual / H6Y target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

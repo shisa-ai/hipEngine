@@ -7,7 +7,8 @@ The current W7900 Laguna UD-Q2_K_XL source publication is
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json), its target packet in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json), the clean post-H6W residual and H6X target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json), H6X's superseding physical rejection in
-[`2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json), retained H6U Q6 source evidence in
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json), the post-H6X H6Y target in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json), retained H6U Q6 source evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json), and H6V's superseding rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
@@ -496,6 +497,19 @@ predeclared **≤101** ceiling. Therefore skip cached trace and the 45-layer
 one-shot, remove every H6X source/test/key/export/exclusion surface without
 tuning, and retain H6T/H6W production **416.891 tok/s**
 ([H6X rejection](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json)).
+
+Select target-only **WPF-H6Y exact IQ3 packed-prefix b32 load** without
+reopening H6X. H6T's **264.602-ms / 45-call** source emits exact **8 b128 + 9
+b32 + 6 d16 = 23** global loads. The six d16 instructions read adjacent
+FP16-scale and selector-pair bytes across three scopes. H6Y must coalesce each
+pair to one little-endian b32, producing exact **8 b128 + 12 b32 + zero d16 =
+20** with unchanged DS/barriers/LDS/arithmetic/topology. Natural routing models
+**412,225,536 fewer global-load wave instructions (50%)** at unchanged **52.765
+GB** logical prefix bytes; this is not speed evidence. Require metadata/runtime
+VGPR **≤101/104**, complete row/FP16/CPU/lifecycle bytes, cached named execution,
+and **45/45** event+wall wins. Remove H6Y on any miss without tuning/rerun; H6T
+remains source
+([post-H6X residual / H6Y target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
