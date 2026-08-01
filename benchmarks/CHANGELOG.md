@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna exact D32 V-stage128 long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: doubling the exact deferred D32 probability/value stage improves 16K/64K **2.619%/0.580%** but regresses 4K/128K **0.875%/0.160%**, so restore V64 before production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vstage128-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna exact D64/local1024 long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: doubling the exact D64 PV block to local1024 restores loader waves but remains **12.28-13.12% slower** than exact D32/local512 at every depth, so remove the schedule before production timing and preserve D32 workgroup parallelism; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-dim64-local1024-rejected.json`.
 
 - [rejected mandatory-gate gfx1151 Laguna D128 long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: D128/local1024 context PV is byte-exact in isolation and cuts active ordinary/compensated leaves **0.93-1.85%**, but complete d16K is flat-negative (**17.708 -> 17.704 tok/s**) and the mandatory 128K decode aborts on an out-of-vocabulary token instead of preserving **874/c8307c...**; remove all D128 plumbing and retain D64; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dim128-rejected.json`.

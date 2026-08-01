@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T04:40:57+09:00",
+  "kind": "hipengine_laguna_long_global_exact_d32_vstage128_rejected",
+  "status": "rejected_mixed_leaf_direction",
+  "performance_claim": false,
+  "model": {"name": "Poolside Laguna S 2.1", "quant": "Q4_K_M mixed GGUF v3", "kv_dtype": "bf16"},
+  "platform": {"device_name": "AMD Radeon 8060S Graphics", "backend": "hip_gfx1151", "target_arch": "gfx1151", "rocm": "TheRock HIP 7.15.0-0000000", "gpu_max_hw_queues": 2},
+  "candidate": {
+    "control": "exact deferred-normalization GQA6 D32/local512 V-stage64",
+    "route": "same owner with V-stage128",
+    "mechanism": "double ping-pong probability/value staging to halve block barriers without changing output arithmetic or the 32-workgroup grid",
+    "candidate_code_retained": false
+  },
+  "leaf": {
+    "protocol": "back-to-back capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "vstage64_ms": 0.3207860946655273, "vstage128_ms": 0.3235914945602417, "latency_change_percent": 0.8745391216659515},
+      {"live_count": 16448, "vstage64_ms": 1.3328296661376953, "vstage128_ms": 1.2979284286499024, "latency_change_percent": -2.6185819819670164},
+      {"live_count": 65664, "vstage64_ms": 5.447389221191406, "vstage128_ms": 5.415790557861328, "latency_change_percent": -0.5800698655266445},
+      {"live_count": 131200, "vstage64_ms": 10.844319152832032, "vstage128_ms": 10.861627960205078, "latency_change_percent": 0.1596117481338366}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "vstage64_raw_sha256": "ad62296f1ea2bdef86e761dbe4bfbdea5fd28af74768f6b7d934df866d20ce35",
+    "vstage128_raw_sha256": "25d9ec268a2d169272eaecb3c30f4ae8630730de454edebd33cd784e931304b8"
+  },
+  "decision": {
+    "reason": "V-stage128 improves 16K/64K but regresses 4K/128K, failing the required positive-at-every-depth gate",
+    "production_gate_run": false,
+    "mandatory_128k_gate_run": false,
+    "next_attack": "retain D32/V64 geometry and optimize streamed value-cache loads"
+  },
+  "validation": {"cpu_reference_fixture": "passed", "restored_production_tracked_diff": "none"}
+}

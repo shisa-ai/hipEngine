@@ -197474,3 +197474,16 @@ Vulkan local sizes verbatim will close the measured gap.
   Removed the schedule before production timing and restored the retained
   kernel source exactly. Continue with a D32-parallel exact traffic reduction,
   not another dimension-width/local-size permutation.
+
+## 2026-08-02 04:41 JST — Reject exact D32 V-stage128
+
+- Captured a fresh exact deferred-normalization D32/V64 baseline, then doubled
+  only the ping-pong probability/value stage to 128 tokens. Outputs remain
+  F32/BF16 byte-exact and the CPU-reference fixture passes.
+- V64 -> V128 at live4,097/16,448/65,664/131,200 changes latency
+  **+0.875%/-2.619%/-0.580%/+0.160%**. Barrier halving helps the middle
+  depths but the larger LDS footprint loses at both required endpoints, so it
+  fails the every-depth gate and is removed before production timing. Raw
+  V64/V128 SHA-256 values are
+  `ad62296f1ea2bdef86e761dbe4bfbdea5fd28af74768f6b7d934df866d20ce35`
+  and `25d9ec268a2d169272eaecb3c30f4ae8630730de454edebd33cd784e931304b8`.

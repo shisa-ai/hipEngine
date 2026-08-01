@@ -9524,6 +9524,17 @@ The remaining attention sequence is:
      reducing score/PV traffic:
      [`exact D64/local1024 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-dim64-local1024-rejected.json).
 
+209. Double exact D32 ping-pong staging from V64 to V128.
+     **Rejected on mixed depth direction and removed.**
+
+     Keeping the 32-workgroup grid and exact scalar-F32 output order while
+     halving barriers improves live16K/64K **2.619%/0.580%**, but the larger
+     LDS footprint regresses live4K/128K **0.875%/0.160%**. Because every
+     natural depth must be positive before production timing, V128 is removed
+     and exact D32/V64 remains the owner. The next screen keeps that geometry
+     and targets streamed V-cache behavior:
+     [`exact D32 V-stage128 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vstage128-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
