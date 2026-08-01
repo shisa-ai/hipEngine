@@ -348,6 +348,23 @@ GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY = {
         "coltile16_rowbatch5"
     ),
 }
+# WPF-H6U is a bounded default-off capability until complete state, integrated
+# topology, and selector-unset fixed/512/1K/4K gates qualify source promotion.
+GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY = {
+    ("bf16", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch5"
+    ),
+    ("bf16", 1024, 3072): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch4"
+    ),
+    ("f32", 3072, 72): "coltile8_rowbatch4",
+    ("f32", 3072, 1024): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "dpp_wave_reduction_coltile16_rowbatch5"
+    ),
+}
 GGUF_F32_ORDERED_PREFILL_QUANTS = frozenset(("gguf_q5_k", "gguf_q6_k"))
 GGUF_F32_ORDERED_PREFILL_POLICIES = {
     "gguf_q5_k": GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
@@ -430,6 +447,7 @@ __all__ = [
     "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL",
     "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY",
+    "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
