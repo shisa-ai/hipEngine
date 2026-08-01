@@ -197611,3 +197611,13 @@ Vulkan local sizes verbatim will close the measured gap.
   `cf83555f4a5a5c42ffd7b5d88e5153b47043d26e8c4597c4d183bf7a9854c4de`.
   `scripts/check_lineage.py --kind kernel --diff stat` remains blocked by the
   absent configured `/home/lhl/amd-gpu-tuning/reference/atlas` tree.
+
+## 2026-08-02 06:40 JST — Confirm ordered exact PV on tracked-clean production
+
+- Cached-only d16K at committed `870df4d8e` measures **18.919997 tok/s** over
+  127 transitions, within **-0.05698%** of the dirty directional sample and
+  **+4.25348%** over the prior parallel-max row. It reaches **87.075%** of the
+  same-GGUF Vulkan baseline.
+- Final token/hash/position remain **13815 / b10569... / 16,510** and all
+  **87,407,934,744 bytes / 1,452 allocations** recover. Raw SHA-256 is
+  `1b44770ce783fa1929bacbe062cb4e5beaa48dc2d2930a097b40ca9efb7fdc22`.
