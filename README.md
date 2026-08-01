@@ -534,6 +534,24 @@ pass
 ([H6W production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
 [candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
 
+**The current committed W7900 source adds H6Z exact late-global score/weight
+replay and reaches 423.233 tok/s** on the matched natural C4096/direct-M512
+protocol, versus **690.791 tok/s** for matched llama.cpp HIP (**1.63218x
+behind**). The cache-only H6Z trace is **1,195.702 ms / 2,192 dispatches** with
+exact **24 H6N + 24 H6Z + 72 H6A + 72 H6W** topology and zero compiler. The
+remaining Q5/IQ-down/attention/Q6 gaps are **198.740/116.810/93.654/66.495
+ms**; gate/up is already **1.929 ms faster** than llama.cpp.
+
+The next RED-first target is **WPF-H7A exact late-SWA scaled-score replay**.
+H6W owns **62.562 ms / 72 calls** and currently repeats `dot * scale` after
+loading each score record. H7A stores pass one's identical scaled-score bits and
+removes **255,135,744** duplicate multiplies with no byte/workgroup/result
+change. It must pass complete starts256/384 exactness, no-resource-regression,
+named cached trace, and both-start/weighted event+wall gates; any miss removes
+the leaf without tuning
+([post-H6Z residual / H7A target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json) ·
+[H6Z production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
