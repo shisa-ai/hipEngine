@@ -197652,3 +197652,14 @@ Vulkan local sizes verbatim will close the measured gap.
 - Restored committed loader/LDS probability staging exactly. The candidate
   fails every leaf gate, so complete-model timing is not justified. Future PV
   work must preserve asynchronous probability staging and broadcast locality.
+
+## 2026-08-02 07:17 JST — Reject tied-accumulator exact PV FMAC
+
+- Replaced only the ordered recurrence instruction with
+  `v_fmac_f32_e32`; the exact fixture and all F32/BF16 byte checks pass.
+  Live4K/16K/64K/128K changes
+  **+0.2656%/-0.2051%/-0.3444%/-0.0464%** versus three-source `v_fma_f32`.
+  Raw SHA-256 is
+  `00dd5dcc549f94a687c579d112d1729fd3a69f9bf8427c1d48ad22e770cd05cf`.
+- Restored committed `v_fma_f32` exactly. Mixed leaf direction fails the gate,
+  so no complete-model timing is justified.
