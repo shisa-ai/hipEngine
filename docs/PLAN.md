@@ -2620,12 +2620,19 @@ The immutable selection improves weighted event/wall
 **136.918/137.009 -> 128.598/129.496 ms (-6.077%/-5.483%)** with all four roles
 both-clock positive and byte-exact. A non-adjudicative integrated replay
 confirms every role and improves **136.701/136.993 -> 128.691/129.092 ms
-(-5.860%/-5.767%)**. Keep H5Y source, workspace, allocation, and gfx1151
-isolation unchanged. Next freeze bounded runtime ownership for exactly these
-four M512 roles, then require complete natural-M512 state, compiler-free
-integrated topology, matched C4096/M512, and 512/1K/4K transfer before any
-source promotion
-([H7G candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+(-5.860%/-5.767%)**.
+
+The separately frozen bounded owner is now qualified without changing H5Y
+source. Complete natural-M512 state is KL0/byte-exact across logits, all
+**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, scratch, and teardown.
+Cache-only integrated tracing records exact **2/12/12/35 = 61** H7G calls on
+one queue with zero compiler executable. Matched C4096/M512 improves
+**420.846 -> 423.410 tok/s (+0.609%, 5/5)**; clean 512/1K/4K improves
+**+0.631%/+0.471%/+0.292%**, all **3/3** exact wins. Keep workspace,
+allocation, and gfx1151 isolation unchanged. Next freeze source-default RED,
+retain a named H5Y rollback, and rerun source-state, matched/transfer, and
+production profiling before publication
+([H7G candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
