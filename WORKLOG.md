@@ -197117,3 +197117,30 @@ Vulkan local sizes verbatim will close the measured gap.
   active: the route is exact and much faster, but still materializes the full
   score/physical plane and reaches only **77.117%** of same-GGUF Vulkan at
   16K. Profile the clean new wall before choosing the next attention rewrite.
+
+## 2026-08-01 22:13 JST — Reprofile the post-GQA6 16K wall
+
+- Ran a tracked-clean, cached-only 127-transition `rocprofv3 --kernel-trace`
+  at `8e28afdd6`. The profiled child is **16.669609 tok/s / 59.989409
+  ms/token**, exact at final token **13815**, the established generated hash,
+  position 16,510, and complete allocation recovery. Kernel sum/union/span are
+  **66.641592/58.183443/59.852567 ms/token**.
+- Relative to the accepted pre-change trace, device union falls
+  **127.892 -> 58.183 ms/token (-54.506%)**, profile wall falls
+  **129.743 -> 59.989 (-53.763%)**, and global attention falls
+  **86.240 -> 16.293 (-81.107%)**. The new 36-call global family is
+  **3.660348-ms GQA6 score + 3.371481-ms exp32 normalization + 9.261088-ms
+  D32/V64 PV**. SWA remains only **0.718067 ms/token**.
+- Against the existing same-GGUF Vulkan trace, the remaining device-union gap
+  is **12.846443 ms/token** and the global scheduled-group gap is
+  **12.599918 ms/token**, explaining **98.081%** of what remains. Attention is
+  still the singular limiter. Context-parallel PV with a bounded partial merge
+  is next because it owns **56.84%** of global time; parallel normalization
+  follows. Do not divert to source-F16 projection or host dispatch.
+- Command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lcd3-postprofile.sV5fve --output-file hip16k -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 16384 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd3-postprofile.sV5fve/child.json`.
+  Child/trace/summary SHA-256 are
+  `5e661617b4d75a88d556c2caa6e073c3c7ba883c282cec54e5d47ff4c300ffa3`,
+  `aea0af7807f20aafa9e9369dd76ab9f6a614f6bc9b81d1d0bb42b78962398d3c`,
+  and
+  `c6e2b50a0b619b84dcb1b82a998bcb20e7ac520bbe622d25035f885e49234631`.

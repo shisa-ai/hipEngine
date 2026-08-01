@@ -95,6 +95,43 @@
     "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 16384 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd3-gqa6-dim32-clean-16k.json",
     "raw_sha256": "48c00fc2daf8bdbd458b25a9acd09577488f1a9a3edb456aa5b54eee17950eff"
   },
+  "post_production_profile": {
+    "source_revision": "8e28afdd6a641a13c67967061ad5284f95abbce1",
+    "depth": 16384,
+    "transitions": 127,
+    "profile_wall_ms_per_token": 59.9894087493977,
+    "kernel_sum_ms_per_token": 66.64159209448819,
+    "device_union_ms_per_token": 58.18344318110236,
+    "kernel_span_ms_per_token": 59.85256711023622,
+    "global_attention_ms_per_token": 16.292917968503936,
+    "global_components_ms_per_token": {
+      "gqa6_scores": 3.6603484645669293,
+      "exp32_normalize": 3.371481496062992,
+      "dim32_vstage64_pv": 9.261088007874015
+    },
+    "global_calls_per_transition": 36,
+    "swa_attention_ms_per_token": 0.7180667086614173,
+    "prior_profile": {
+      "device_union_ms_per_token": 127.892,
+      "global_attention_ms_per_token": 86.24,
+      "profile_wall_ms_per_token": 129.743
+    },
+    "delta_from_prior_percent": {
+      "device_union": -54.505799282908725,
+      "global_attention": -81.10746988809841,
+      "profile_wall": -53.76289375966511
+    },
+    "same_gguf_vulkan_logged_device_ms_per_token": 45.337,
+    "same_gguf_vulkan_global_group_ms_per_token": 3.693,
+    "remaining_device_gap_ms_per_token": 12.846443181102359,
+    "remaining_global_group_gap_ms_per_token": 12.599917968503936,
+    "global_group_share_of_remaining_device_gap_percent": 98.0809846809499,
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lcd3-postprofile.sV5fve --output-file hip16k -- .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 16384 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd3-postprofile.sV5fve/child.json",
+    "child_sha256": "5e661617b4d75a88d556c2caa6e073c3c7ba883c282cec54e5d47ff4c300ffa3",
+    "trace_sha256": "aea0af7807f20aafa9e9369dd76ab9f6a614f6bc9b81d1d0bb42b78962398d3c",
+    "summary_sha256": "c6e2b50a0b619b84dcb1b82a998bcb20e7ac520bbe622d25035f885e49234631",
+    "decision": "Attention remains the singular long-context limiter. Parallelize the 9.261-ms PV across context and merge partials first, then parallelize the 3.371-ms normalization; do not divert to source-F16 projection or host dispatch."
+  },
   "rejected_screens": [
     {"candidate": "GQA6 score tile8/local256", "live16448_ms": 1.4032, "reason": "about 1.4% slower than retained score geometry"},
     {"candidate": "D16 / 64-block PV", "live16448_ms": 1.4065, "reason": "about 1.6% slower than D32"},

@@ -9290,6 +9290,17 @@ The remaining attention sequence is:
      still exists, so LC-D3 is not complete:
      [`retained milestone`](../benchmarks/results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json).
 
+     The tracked-clean post-promotion trace confirms where to continue. Device
+     union falls **127.892 -> 58.183 ms/token (-54.51%)**, profile wall falls
+     **129.743 -> 59.989 ms/token (-53.76%)**, and global attention falls
+     **86.240 -> 16.293 ms/token (-81.11%)**. The new global interval is
+     **3.660-ms GQA6 score + 3.371-ms exp32 normalize + 9.261-ms D32/V64 PV**.
+     Its **12.600-ms** gap to Vulkan's 3.693-ms global scheduled group explains
+     **98.081%** of the remaining **12.846-ms** device-union gap. Attention is
+     therefore still the singular target: context-parallelize PV and merge
+     split partials first, then parallelize normalization. Source-F16
+     projection and host dispatch remain subordinate until that work lands.
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
