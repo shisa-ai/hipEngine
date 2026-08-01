@@ -2320,25 +2320,22 @@ reopen Q5 wave reduction for a materially different role-specific mechanism
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 Retain **WPF-H6W exact late-start dense-initial SWA qrow4 aligned
-global-score-record replay** as a standalone default-off gfx1100 leaf after its
-binding one-shot admission. Production remains H6A SWA at **410.220 tok/s**;
-starts0/128 and all runtime/source ownership are unchanged. The **5/5** exact
-leaf matrix proves complete H6A/CPU/span bytes, strict starts256/384 preflight,
-poisoned 16-byte score-record coverage in the fixed **18,874,368-byte** caller
-plane, gfx1151 exclusion, and lifecycle. Physical code emits one b128 global
-score store/load, removes all four second-QK loads and 20 bpermute sites, cuts
-u16 loads **12→8**, bpermutes **52→32**, code/slots
-**7,044→4,984 B / 1,345→871**, and metadata/runtime VGPR **64/64→54/56** at
-LDS0/private0/spill0/scratch0. Cached tracing names the intended kernel and a
-5-ms monitor sees zero compiler processes. The frozen starts256/384 event/wall
-medians improve **0.855/0.870→0.656/0.662 ms** and
-**1.138/1.145→0.869/0.870 ms**; weighted **71.741/72.544→54.906/55.128 ms
-(1.307×/1.316×)**, with every role and clock positive. Do not tune or rerun the
-leaf. Next freeze bounded-runtime RED and prove same-stream reuse of the
-existing workspace, exact **48 H6N + 72 H6A + 72 H6W** topology, complete
-natural-M512 state, fixed C4096/M512, and selector-unset 512/1K/4K before any
-source promotion
-([candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
+global-score-record replay** as a bounded default-off gfx1100 runtime owner;
+production/source remain H6A SWA at **410.220 tok/s**. The runner binds H6W's
+aligned **18,874,368-byte** records to the prefix of the existing Q5 F32 plane
+with no new allocation/workspace and same-stream projection → attention → FFN
+lifetime; starts0/128 retain H6A and starts256/384 use H6W. Complete natural
+M512 is KL0/byte-exact across all **48/48** hidden boundaries, logits, K/V/spans,
+repeat, and teardown. Four cached requests preserve **2,192** dispatches and
+prove exact **48 H6N + 72 H6A + 72 H6W** topology; selected late SWA/attention/
+kernel-sum/span improve **81.990/144.957/1,224.048/1,254.740→
+62.470/127.063/1,207.903/1,229.421 ms**. Fixed C4096/M512 gains **+1.495%
+(5/5)**, and default-off 512/1K/4K gains **+1.304%/+0.544%/+0.092%**, all
+**3/3**, with unchanged **161,120,256/600,141,856-byte** workspace/scratch,
+zero compiler under profiling, and **112/112** guards. Commit this bounded owner;
+next freeze a separate source-default RED, then promote only the two late starts
+if fresh selector-unset gates remain exact and positive
+([candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

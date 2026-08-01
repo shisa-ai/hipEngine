@@ -3166,6 +3166,11 @@ class LagunaGGUFResidentSession:
                     ),
                     library=self.libraries.q5_f32_ordered,
                 )
+                if self.kv_cache.prefill_score_scratch_required:
+                    self.kv_cache.bind_prefill_score_scratch(
+                        q5_scratch.weight_f32_ptr,
+                        q5_scratch.weight_f32_nbytes,
+                    )
             if self.moe_branch_concurrency:
                 if self.moe_shared_low_priority:
                     priority_range = self.runtime.stream_priority_range()

@@ -29,6 +29,18 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
     ),
 }
+# WPF-H6W is a separately qualified default-off runtime capability. It keeps
+# H6N global, routes only SWA starts256/384 through caller-global score records,
+# and falls back to H6A SWA at starts0/128. The selected source map above stays
+# unchanged pending a separate source-default RED and promotion.
+LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS = {
+    "global_m128_c4096_first_fill_exact": (
+        "global_context_rows_dense_initial_fixed512_cached_exact_spans"
+    ),
+    "swa_qrow4_m128_c512_no_wrap_exact": (
+        "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+    ),
+}
 # WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
 # all 144 physical append-before-attention calls, and positive default-off clean
 # 512/1K/4K timing. The package-only role map restricts schedule reordering to
@@ -411,6 +423,7 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
+    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
