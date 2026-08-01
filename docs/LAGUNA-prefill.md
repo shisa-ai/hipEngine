@@ -1223,14 +1223,20 @@ Aggregate event moves **247.297→186.732 ms (-24.491%, 1.324x)** and wall
 **260.672→180.752 ms (-30.659%, 1.442x)**; max leaf KL is **0.000487**, minimum
 top-1 **99.941%**, output finite, and lifecycle clean.
 
-This admits only the registry leaf. Production stays **422.786 tok/s** and no
-runtime owner or scratch growth exists. Next freeze a separate default-off owner
-that reuses the dead **20,971,520-byte** `expert_gate_up` plane for the
-**11,796,480-byte** D4x2 records with zero growth. Before source timing, require
-complete M512 state and the full counterbalanced **18-prompt/576-step** lane at
-finite max KL **<=0.05**, top-1 **>=90%**, Poolside, deterministic repeats,
-free-running diagnostics, and clean lifecycle; never add prompt/layer
-conditioning
+The bounded default-off owner is now qualified without changing source. It is
+IQ3-only at exact M512/K1024/N3072/E256, reuses the dead **20,971,520-byte**
+`expert_gate_up` plane for **11,796,480-byte** D4x2 records, and preserves
+**104,370,208-B** MoE / **600,141,856-B** total scratch. Natural-M512 complete
+logits pass at KL **0.000224**, top-1 **100%**, token **2930**, exact candidate
+repeat/span metadata, and clean lifecycle.
+
+A cached four-request trace proves **45 H6T → 45 tile128 + 45 D4x2 producer +
+45 H7E**, zero compiler, and diagnostic C512 IQ-down/kernel-sum/span
+**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. Production
+stays H6T/IQ4 at **422.786 tok/s**. Before source timing, require the full
+counterbalanced **18-prompt/576-step** lane at finite max KL **<=0.05**, top-1
+**>=90%**, Poolside, deterministic repeats, free-running diagnostics, and clean
+lifecycle; never add prompt/layer conditioning
 ([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 

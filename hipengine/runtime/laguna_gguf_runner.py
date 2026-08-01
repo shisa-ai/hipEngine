@@ -985,6 +985,8 @@ class LagunaEagerLibraries:
     iq_grouped_prefill: object
     moe_group: object
     routed_sum: object
+    iq_source_mmq: object | None = None
+    q8_mmq_prefill: object | None = None
 
     @property
     def embedding_libraries(self) -> Mapping[str, object]:
@@ -1132,6 +1134,15 @@ class LagunaEagerLibraries:
             "selected_down": self.selected_experts,
             "selected_down_iq": self.iq_selected_experts,
             "grouped_iq_prefill": self.iq_grouped_prefill,
+            **(
+                {
+                    "iq_source_mmq": self.iq_source_mmq,
+                    "q8_mmq_prefill": self.q8_mmq_prefill,
+                }
+                if self.iq_source_mmq is not None
+                and self.q8_mmq_prefill is not None
+                else {}
+            ),
             "grouped_metadata": self.moe_group,
             "grouped_gather": self.moe_group,
             "grouped_down": self.selected_experts,
@@ -2317,6 +2328,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
         build_gguf_iq_selected_prefill,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+        build_gguf_iq_source_mmq_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
@@ -2342,6 +2356,9 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
         build_gguf_q6_k_t16_gemv,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+        build_gguf_q8_0_mmq_prefill,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv import (
         build_gguf_q8_0_pack8_gemv,
     )
@@ -2353,6 +2370,14 @@ def load_laguna_eager_libraries(
         "require_cached": require_cached,
         "load": True,
     }
+    raw_h7e_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_IQ_DOWN_RESIDUAL_VARIANTS",
+        {},
+    )
+    h7e_enabled = isinstance(raw_h7e_variants, Mapping) and bool(
+        raw_h7e_variants
+    )
     target_arch = hip_target_arch_for_backend(backend)
     with hip_target_arch_environment(target_arch):
         return LagunaEagerLibraries(
@@ -2385,6 +2410,16 @@ def load_laguna_eager_libraries(
             iq_grouped_prefill=build_gguf_iq_selected_prefill(**kwargs),
             moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
+            iq_source_mmq=(
+                build_gguf_iq_source_mmq_prefill(**kwargs)
+                if h7e_enabled
+                else None
+            ),
+            q8_mmq_prefill=(
+                build_gguf_q8_0_mmq_prefill(**kwargs)
+                if h7e_enabled
+                else None
+            ),
         )
 
 

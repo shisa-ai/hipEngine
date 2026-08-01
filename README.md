@@ -614,24 +614,27 @@ kernel gap. **WPF-H7D closes the latest exact Q5 VOPD scheduling premise**:
 naive row interleaving leaves control/candidate at the same **52 paired FMAs**,
 and forced pairing fails compilation with gfx1100's `src0` VGPR-bank rule.
 
-Standalone **WPF-H7E IQ3 two-plane residual-D4 source-MMQ is admitted** while
-runtime/source remain unchanged. The frozen rows1/7/8/9/M512 plus expert-tail
-matrix passes **9/9**, with complete overwrite, sampled CPU quality, immutable
-metadata, finiteness, and lifecycle. Its first object is local `(32,8)`, dynamic
-LDS57,856, code **31,564 B**, metadata/runtime VGPR **148/152**, SGPR **44/128**,
-private/spill/scratch0, and exact **128 integer WMMAs / five barriers / 64 BF16
-stores**; cached rocprof names H7E and records zero compiler activity.
+Standalone **WPF-H7E IQ3 two-plane residual-D4 source-MMQ is admitted**, and
+its bounded default-off runtime owner is now qualified; production source
+remains H6T/IQ4. The frozen rows1/7/8/9/M512 plus expert-tail matrix passes
+**9/9**. Its first object is local `(32,8)`, dynamic LDS57,856, code **31,564
+B**, metadata/runtime VGPR **148/152**, private/spill/scratch0, and exact **128
+integer WMMAs / five barriers / 64 BF16 stores**. The immutable producer-
+inclusive 5/15/5 screen wins both clocks on every **45/45** actual IQ3 layer,
+with aggregate event/wall **247.297/260.672→186.732/180.752 ms** and max leaf KL
+**0.000487**.
 
-The immutable producer-inclusive 5/15/5 screen wins both clocks on every
-**45/45** actual IQ3 layer. Aggregate event moves **247.297→186.732 ms
-(-24.491%, 1.324x)** and synchronized wall **260.672→180.752 ms (-30.659%,
-1.442x)**, with max leaf KL **0.000487**, minimum top-1 **99.941%**, finite
-output, and recovered lifecycle. This is a standalone leaf result, not a
-production-throughput claim: production remains **422.786 tok/s**, H6T/IQ4
-remain exact source, and no runtime owner or scratch growth exists. A separate
-zero-growth owner plus the complete **18-prompt/576-step max-KL <=0.05 / top-1
->=90%** gate remain binding before source timing; prompt/layer conditioning is
-forbidden
+The natural-M512 runtime gate is finite, deterministic, same-token (**2930**),
+and passes complete-logit quality at KL **0.000224** / top-1 **100%**. Candidate
+repeat and `KVLiveSpans` metadata are exact; scratch remains
+**600,141,856 B** total / **104,370,208 B** MoE with the existing
+**20,971,520-B** `expert_gate_up` plane. A cached four-request trace replaces
+exactly **45 H6T** calls with **45 tile128 + 45 D4x2 producer + 45 H7E** calls,
+records zero compilers, and reduces diagnostic C512 IQ-down/kernel-sum/span
+**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. This is runtime
+qualification, not production throughput: production remains **422.786 tok/s**.
+The complete **18-prompt/576-step max-KL <=0.05 / top-1 >=90%** gate remains
+binding before source timing; prompt/layer conditioning is forbidden
 ([H7E candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 

@@ -2,7 +2,8 @@
 
 Last updated: **2026-08-02**
 
-The admitted standalone H7E IQ3 two-plane leaf is recorded in
+The admitted standalone H7E IQ3 two-plane leaf and its now-qualified bounded
+default-off runtime owner are summarized below; the immutable leaf packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json),
 with its clean post-H7C residual and target boundary in
 [`2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json).
@@ -720,18 +721,23 @@ compiler, remaining **1.63390x** behind matched llama.cpp HIP. Q5/IQ-down/
 attention/Q6 gaps are **196.915/117.620/93.693/66.653 ms**. H7D closes exact Q5
 row-interleaved VOPD because both orders emit **52 paired FMAs** and forced
 pairing violates gfx1100 VGPR banks. Standalone **WPF-H7E IQ3 two-plane
-residual-D4 source-MMQ is admitted**. Frozen
-correctness passes **9/9** across rows1/7/8/9/M512 and expert tails. The first
-object is local `(32,8)`, dynamic LDS57,856, code **31,564 B**, metadata/runtime
-VGPR **148/152**, private/spill/scratch0, and exact **128 integer WMMAs / five
-barriers / 64 BF16 stores**; cached rocprof names H7E with zero compiler. The
-one-shot producer-inclusive 5/15/5 screen wins event and synchronized wall on
-every **45/45** actual IQ3 layer and aggregate
-**247.297/260.672→186.732/180.752 ms (-24.491%/-30.659%)**, with max leaf KL
-**0.000487**, minimum top-1 **99.941%**, finite output, and clean lifecycle.
-Runtime/source remain H6T and production remains **422.786 tok/s**. A separate
-zero-growth owner and full **18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate
-remain binding before source timing
+residual-D4 source-MMQ is admitted**, and its bounded default-off runtime owner
+is qualified while source remains H6T/IQ4. Frozen leaf correctness passes
+**9/9**; the first object is local `(32,8)`, dynamic LDS57,856, code **31,564
+B**, metadata/runtime VGPR **148/152**, private/spill/scratch0, and exact **128
+integer WMMAs / five barriers / 64 BF16 stores**. The one-shot all-45 leaf
+screen moves aggregate event/wall **247.297/260.672→186.732/180.752 ms** at max
+leaf KL **0.000487**.
+
+Natural-M512 complete-logit state passes KL **0.000224**, top-1 **100%**, token
+**2930**, exact candidate repeat and span metadata, unchanged
+**600,141,856-B** scratch, and clean lifecycle. Cached paired tracing records
+**45 H6T → 45 tile128 + 45 D4x2 producer + 45 H7E**, zero compiler, and
+diagnostic C512 IQ-down/kernel-sum/span
+**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. Production
+remains **422.786 tok/s**; this is not a source-speed claim. The full
+**18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate remains binding before
+source timing
 ([H7E candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
