@@ -2401,31 +2401,28 @@ implementation/test/key/export/gfx1151-exclusion surface and retain H6T/H6W
 production **416.891 tok/s**
 ([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
 
-Select target-only **WPF-H6Z exact late-start global qrow4 aligned score/weight
-replay** without reopening H6X/H6Y. Representative H6N global attention is
-**32.145 ms / 48 calls** at local256/VGPR40/LDS0/scratch0; starts
-0/128/256/384 own **2.334/6.089/9.912/13.809 ms**, making starts256/384
-**23.722 ms (73.796%)**. The old H5R global qrow4 reconstruction was exact but
-runtime-VGPR248/LDS8192 and lost every start. Retained H6W now proves aligned
-caller-global qrow4 records at runtime-VGPR56/LDS0/scratch0, enabling a
-materially different occupancy-preserving global path.
+Admit standalone **WPF-H6Z exact late-start global qrow4 aligned score/weight
+replay** as a separately registered gfx1100 leaf; do not yet change H6N/H6A/H6W
+package, runtime, source, workspace, or fallback policy. Cached correctness is
+**5/5**: starts256/384 are complete-byte identical to H6N, sampled CPU rows
+pass, all five `KVLiveSpans` fields remain immutable, every required output and
+finite nonnegative weight record overwrites poison, suffix records remain
+untouched, strict preflight passes, and allocations recover.
 
-One separate gfx1100 leaf may group only global dense-initial starts256/384 as
-local32 qrow4. It must load K/V once per four rows while preserving each H6N
-ordered dot/wave tree, scaled-score/max, exact lanes0..7 token-mod-8 exp
-partials, serial partial0..7 denominator, normalized weights, token-ordered PV,
-division, and stores. Use aligned `float4` score then weight records in an exact
-**12,582,912-byte** caller plane inside H6W's existing **18,874,368-byte**
-plane. Selection arithmetic moves workgroups **147,456→36,864** and modeled
-K/V-plus-record logical bytes **29.029→8.196 GB (-71.765%)**; this is not a
-speed claim. Freeze RED first and require complete H6N/CPU output bytes,
-immutable spans, poisoned record coverage, lifecycle, local32/grid1536x32,
-exact b128 score-store/denominator-load-store/PV-load sites, LDS0/private0/
-spill0/scratch0, metadata/runtime VGPR **≤96**, cache-only named execution, and
-both starts plus weighted **24-call** event+wall wins under 5/15/5. Remove every
-H6Z surface on any miss without tuning/rerun; runtime/source promotion is
-separate
-([post-H6Y residual / H6Z target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
+The first and only implementation realizes the selected operation without
+resource pressure: local32/grid1536x32, code/slots **4,024 B / 690**, metadata/
+runtime VGPR **47/48**, LDS0/private0/spill0/runtime-scratch0, and exactly two
+b128 record loads plus two b128 record stores after accounting for query/output
+vectors. Cached tracing names H6Z once at **550.404 us** with no compiler
+process. The immutable 5/15/5 screen improves starts256/384 event
+**0.746→0.388 ms (1.924x)** and **1.005→0.512 ms (1.962x)**; wall improves
+**0.761→0.396 ms (1.923x)** and **1.010→0.516 ms (1.958x)**. Weighted
+**24-call** event/wall falls **21.007/21.257→10.797/10.942 ms
+(-48.602%/-48.526%, 1.946x/1.943x)**. Retain this exact leaf and next freeze a
+separate bounded-runtime/source-qualification RED for reusing the existing H6W
+caller plane; production remains **416.891 tok/s**
+([H6Z candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json) ·
+[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

@@ -1616,34 +1616,33 @@ all-45 timing by contract; remove every implementation/test/key/export/gfx1151-
 exclusion surface without tuning or rerun, and retain H6T source
 ([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
 
-Select target-only **WPF-H6Z exact late-start global qrow4 aligned score/weight
-replay** without reopening H6X/H6Y. The representative H6N global body owns
-**32.145 ms / 48 calls** at local256/VGPR40/LDS0/scratch0. Starts
-0/128/256/384 split **2.334/6.089/9.912/13.809 ms**; starts256/384 therefore
-own **23.722 ms (73.796%)**. The old exact H5R global qrow4 reconstruction used
-runtime VGPR248/LDS8192 and lost every start, while retained H6W demonstrates an
-occupancy-preserving aligned caller-global record path at VGPR56/LDS0/scratch0.
+Standalone **WPF-H6Z exact late-start global qrow4 aligned score/weight replay
+is admitted as a separately registered gfx1100 leaf**. It groups only global
+dense-initial starts256/384, shares each BF16 K/V vector across four rows, and
+retains H6N's contiguous-four products, wave tree, scaled scores/max, eight
+token-mod-8 exp partials, serial partial0..7 denominator, normalized weights,
+token-ordered PV, division, stores, and full `KVLiveSpans` ABI. Its exact
+**12,582,912-byte** caller plane fits the existing H6W **18,874,368-byte** plane;
+package/runtime/source ownership is intentionally unchanged.
 
-H6Z may group only global dense-initial starts256/384 as local32 qrow4. Load one
-BF16 K vector for four rows, reproduce H6N's ordered dot/wave tree/scaled score/
-max, and write one aligned `float4` score record. Lanes0..7 must then reproduce
-the exact token-mod-8 exp partials and serial partial0..7 denominator sum while
-overwriting records with weights; PV loads one BF16 V vector for four rows while
-preserving every row/dimension's normalized-weight and token-ordered F32
-accumulation/division/store. The exact **12,582,912-byte** plane fits H6W's
-existing **18,874,368-byte** caller plane. Target arithmetic moves workgroups
-**147,456→36,864** and modeled K/V-plus-record logical bytes **29.029→8.196 GB
-(-71.765%)**; it is not a physical-traffic or speed claim.
+Cached correctness passes **5/5** with complete H6N bytes at both starts,
+sampled CPU rows, immutable five-field spans, complete output/weight-record
+poison overwrite, finite nonnegative weights, untouched suffix records, strict
+preflight, and lifecycle. ISA is local32/grid1536x32 at **4,024 B / 690 slots**,
+metadata VGPR47/SGPR43, LDS0/private0/spill0, and emits exact two b128 record
+loads + two b128 record stores beyond four query loads/four output stores.
+Cached tracing reports runtime VGPR48/SGPR128/LDS0/scratch0 and **550.404 us**
+with zero compiler process.
 
-Freeze RED first. Require complete H6N/CPU bytes at both starts, immutable
-`KVLiveSpans`, poisoned record/output coverage, lifecycle, local32/grid1536x32,
-exact aligned b128 score store + denominator load/store + PV load, LDS0/private0/
-spill0/runtime-scratch0, metadata/runtime VGPR **≤96**, cache-only named
-execution without compiler, and both starts plus weighted **24-call** event+wall
-wins under 5/15/5. Any miss removes all H6Z surfaces without tuning/rerun; H6N/
-H6A/H6W package/runtime/source and workspace remain unchanged until separate
-promotion
-([post-H6Y residual / H6Z target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
+The consumed one-shot 5/15/5 screen improves starts256/384 event
+**0.746→0.388 ms (1.924x)** and **1.005→0.512 ms (1.962x)**; wall improves
+**0.761→0.396 ms (1.923x)** and **1.010→0.516 ms (1.958x)**. Weighted 24-call
+event/wall falls **21.007/21.257→10.797/10.942 ms
+(-48.602%/-48.526%, 1.946x/1.943x)**. Retain the registry-only leaf; freeze a
+separate bounded-runtime/source RED before borrowing H6W's plane or replacing
+H6N at late starts. Production remains H6N/H6A/H6W **416.891 tok/s**
+([H6Z candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json) ·
+[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
