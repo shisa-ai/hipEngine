@@ -1833,26 +1833,25 @@ evidence. H6T/IQ4 remain production at **422.786 tok/s**
 [candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
-Standalone **WPF-H7G exact padded-row Q5 compute is admitted** in
-`quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. The separately named kernel,
-four exact-role exports/wrappers, and eight registry keys cover only natural-
-M512 BF16 K3072/N12288 `c8r12`, BF16 K6144/N3072 `c16r5`, F32 K3072/N6144
-`c16r5`, and F32 K3072/N9216 `c8r10`; `r4/r8` are excluded because M512 has no
-padded tail. H5Y source policy, workspace, allocation, and fallback remain
-unchanged, and gfx1151 fails closed.
+**WPF-H7G exact padded-row Q5 compute is a qualified bounded default-off
+gfx1100 owner** in `quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. Its four
+exact-role exports/wrappers cover only natural-M512 BF16 K3072/N12288 `c8r12`,
+BF16 K6144/N3072 `c16r5`, F32 K3072/N6144 `c16r5`, and F32 K3072/N9216
+`c8r10`; `r4/r8` are excluded because M512 has no padded tail. The standalone
+rows1/7/8/9/M512 matrix passes **23/23**, first-object dual/scalar FMA sites
+become **91/5, 66/14, 66/14, 73/7**, and integrated leaf wall improves
+**136.993 -> 129.092 ms (-5.767%)** with exact H5Y bytes.
 
-The frozen rows1/7/8/9/M512 matrix passes **23/23** with complete H5Y bytes,
-sampled CPU gates, poison overwrite, finiteness, and lifecycle recovery. The
-first object converts dual/scalar FMA sites
-**1/95, 1/79, 1/79, 1/79 -> 91/5, 66/14, 66/14, 73/7**, uses
-**1,577/1,234/1,231/1,248 slots**, metadata VGPR **194/162/162/162**, and zero
-private/spill/scratch/dynamic stack. Cached rocprof names H7G at **434.801 us**,
-local128/runtime VGPR200/LDS1536/scratch0, with zero compiler. Immutable
-selection event/wall improves **136.918/137.009 -> 128.598/129.496 ms**; an
-integrated replay again wins all four roles and improves
-**136.701/136.993 -> 128.691/129.092 ms**, byte-exact. Admit only the leaf;
-H5Y remains source at **422.786 tok/s** pending bounded runtime qualification
-([H7G candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+The separately named package capability passes complete natural-M512 state at
+KL0/byte identity across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, scratch, and teardown. Cache-only integrated tracing
+records exact **2/12/12/35 = 61** H7G calls on one queue at local128, LDS1536,
+scratch0, runtime VGPR168/200, with zero compiler executable. Matched
+C4096/M512 improves **420.846 -> 423.410 tok/s (+0.609%, 5/5)**; clean
+512/1K/4K improves **+0.631%/+0.471%/+0.292%**, all **3/3** exact wins. H5Y
+remains source at **422.786 tok/s**; workspace/allocation and gfx1151 remain
+unchanged pending separate source publication
+([H7G candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

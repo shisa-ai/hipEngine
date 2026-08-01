@@ -39,9 +39,8 @@ late-SWA scaled-score replay at complete-byte exactness, H7B rejects exact
 lane-parallel IQ3 final-row publication at its metadata-VGPR gate, H7C promotes
 exact DPP-add reduction for the three raw-Q6 fallbacks, H7D closes exact Q5 row-
 interleaved VOPD scheduling, H7E rejects residual-D4 runtime ownership at the
-mandatory complete quality gate, and H7G admits a standalone exact padded-row
-Q5 leaf pending bounded runtime/source qualification; 16K+ remains
-deferred**.
+mandatory complete quality gate, and H7G qualifies exact padded-row Q5 as a
+bounded default-off owner pending source publication; 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -1252,13 +1251,20 @@ removing only the redundant compute predicate over producer-zeroed padding.
 The frozen H7G matrix passes **23/23** across rows1/7/8/9/M512 with complete
 H5Y bytes, sampled CPU gates, poison overwrite, finiteness, and lifecycle. First-
 object dual/scalar FMA sites become **91/5, 66/14, 66/14, 73/7** at metadata
-VGPR **194/162/162/162**, private/spill/scratch0. Cached rocprof names H7G at
-**434.801 us** with zero compiler. Immutable selection event/wall improves
-**136.918/137.009 -> 128.598/129.496 ms (-6.077%/-5.483%)**; integrated replay
-again wins all roles at **136.701/136.993 -> 128.691/129.092 ms
-(-5.860%/-5.767%)**, byte-exact. Admit only the standalone leaf and keep H5Y
-production **422.786 tok/s** until complete bounded-runtime qualification
-([H7G candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+VGPR **194/162/162/162**, private/spill/scratch0. Immutable selection and replay
+improve the 61-call wall aggregate through **136.993 -> 129.092 ms (-5.767%)**.
+
+The separately frozen bounded owner now passes complete natural-M512 state at
+KL0/byte identity across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, unchanged **161,120,256-byte** workspace /
+**600,141,856-byte** scratch, and teardown. Cache-only integrated tracing
+records exact **2/12/12/35 = 61** H7G calls on one queue at local128, LDS1536,
+scratch0, runtime VGPR168/200, with zero compiler executable. Matched
+C4096/M512 improves **420.846 -> 423.410 tok/s (+0.609%, 5/5)** and clean
+512/1K/4K improves **+0.631%/+0.471%/+0.292%**, all **3/3** exact wins. Keep
+H5Y production **422.786 tok/s**, allocation, and gfx1151 unchanged until a
+separate source-default RED/publication
+([H7G candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
@@ -2035,6 +2041,7 @@ heldouts before any clean publication.
 | **WPF-H7A exact late-start SWA scaled-score replay** | **Rejected at complete-byte gate; all candidate surfaces removed** | Structure/preflight and one cached build pass, but complete H6W equality fails at **80,469 / 100,075** elements for starts256/384 (max **4.656613e-9 / 3.7252903e-9**). H6W uses fused `dot*scale-max`; stored scaled scores round before subtraction. Skip code-object/profiler/timing, remove H7A without tuning/rerun, and keep H6W/H6Z **423.233 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json). |
 | **WPF-H7B exact lane-parallel IQ3 final-row publication** | **Rejected at frozen metadata-VGPR gate; all candidate surfaces removed** | Complete H6T/CPU/poison/lifecycle correctness passes **10/10**. The first code object realizes exact **23 global loads / 3 b128 LDS loads / 12 LDS stores / 3 d16 stores / 2 barriers / 216 FMAs / 24 permlanex16 / 96 DPP** and cuts code/slots **7,920/1,384→5,916/994**, but metadata VGPR rises **101→108**, failing the frozen **≤101** ceiling. Skip rocprof/all-layer timing, remove H7B without tuning/recompile/rerun, and retain H6T/H6Z **422.602 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json). |
 | **WPF-H7C exact raw-Q6 DPP-add wave reduction** | **Retained bounded gfx1100 raw-Q6 source; empty generic rollback** | Leaf exactness passes **22/22**; BF16/F32 code/slots fall **4,840/843→4,228/681** and **5,040/909→4,452/749** with exact **0 bpermutes + 32 permlanex16 + 128 DPP adds**, metadata/runtime VGPR **60/64** and **55/56**, LDS512/scratch0. Actual-role event/wall improves **37.248/37.303→36.983/36.998 ms**. Complete M512 source state is KL0/exact across **48/48** boundaries and KV/spans. Fresh source substitution preserves **2,192 dispatches** and improves selected raw-Q6/Q6/span **0.723%/0.207%/0.205%** with zero compiler. Fresh fixed C4096/M512 is noisy negative **-0.225% (2/5)** and 512/1K/4K is **+0.0925%/+0.0372%/-0.0488%**; retain under cycle-wall policy based on two integrated trace wins plus the immutable all-role leaf screen, without claiming the negative aggregate rows as wins. Scratch/lifecycle are unchanged and **80/80** guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json). |
+| **WPF-H7G exact padded-row Q5 compute** | **Qualified bounded default-off gfx1100 owner; H5Y source unchanged** | The four predeclared natural-M512 `r12/r5/r5/r10` roles total **61 calls**; divisible `r4/r8` roles were excluded before timing. Standalone exactness passes **23/23**, converts dual/scalar FMA sites to **91/5, 66/14, 66/14, 73/7**, and improves integrated leaf wall **136.993→129.092 ms (-5.767%)**. Complete M512 is KL0/exact across all **48/48** boundaries and KV/spans. Cache-only tracing records exact **2/12/12/35** H7G calls at local128/LDS1536/scratch0/runtime-VGPR168/200 with zero compiler. Fixed C4096/M512 improves **420.846→423.410 tok/s (+0.609%, 5/5)**; 512/1K/4K gains **+0.631%/+0.471%/+0.292%**, all 3/3 exact wins. Workspace/scratch/allocation and gfx1151 are unchanged; production stays H5Y **422.786 tok/s**. [`candidate/runtime`](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json). |
 | **WPF-H6T exact fused-DPP-add staged-wave IQ3** | **Retained gfx1100 IQ3 source default; H6R same-ABI rollback** | Leaf **9/9** and **45/45** layers are exact/both-clock positive; codegen realizes **24 permlanex16 + 96 DPP adds + zero moves**, cuts slots/code **1,399 -> 1,384 / 8,016 -> 7,920 B**, and keeps runtime VGPR104/scratch0. Complete M512 is KL0/exact across all 48 boundaries and K/V/spans. Exact **45 H6R -> 45 H6T** cuts IQ3/request/span **2.090%/0.116%/0.642%**. Fresh fixed M512 gains **+0.319% (5/5)** at **408.900 tok/s**, **1.68939x** behind matched llama.cpp HIP; fresh 512/1K/4K gains **+0.351%/+0.423%/+0.176%**, all 3/3 wins. The nine-entry ABI/resources/dispatches are unchanged, gfx1151 is excluded, and **144/144** source guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh H5W M512 span-minus-sum is only **26.726 ms / 1.461%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
