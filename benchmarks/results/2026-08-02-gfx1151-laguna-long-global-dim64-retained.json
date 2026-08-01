@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T03:40:21+09:00",
+  "kind": "hipengine_laguna_long_global_dim64_retained",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "ordinary_variant": "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_spans",
+    "compensated_variant": "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_spans",
+    "scope": "the existing gfx1151 context-parallel global layers above 6000 live slots: compensated layer 28 and uncompensated layers 32/36/40/44",
+    "mechanism": "widen each PV dimension tile from 32 to 64 so two output waves share each staged probability/value tile, halving PV workgroups while preserving each output's chronological scalar-F32 accumulation order",
+    "fallback": "D32 remains registered and is the default for peer backends; gfx1151 layers 0 through 24 retain exact deferred-normalization GQA6",
+    "gfx1151_capability": {
+      "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE": 64
+    },
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0
+  },
+  "leaf": {
+    "commands": [
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --capacity 131201 --live-counts 4097,16448,65664,131200 --candidate split-gqa6-dim64-vstage64-ctx4096 --samples 7 --warmups 3 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lcd5-ctx4096-dim64-leaf.json",
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --capacity 131201 --live-counts 4097,16448,65664,131200 --candidate split-gqa6-dim64-vstage64-ctx4096-compensated --samples 7 --warmups 3 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lcd5-ctx4096-dim64-comp-leaf.json"
+    ],
+    "correctness": "F32 context and BF16 gated outputs are byte-identical to the corresponding D32 owner at every depth; the CPU-reference fixture passes both D64 variants",
+    "ordinary_rows": [
+      {"live_count": 4097, "d32_ms": 0.34540410041809083, "d64_ms": 0.3482414960861206, "delta_percent": 0.8214713330256584, "route_active": false},
+      {"live_count": 16448, "d32_ms": 0.9941095352172852, "d64_ms": 0.8225476264953613, "delta_percent": -17.257847615798717, "route_active": true},
+      {"live_count": 65664, "d32_ms": 3.919310760498047, "d64_ms": 3.501322555541992, "delta_percent": -10.664839572530838, "route_active": true},
+      {"live_count": 131200, "d32_ms": 7.6992042541503904, "d64_ms": 6.856620025634766, "delta_percent": -10.943783288531606, "route_active": true}
+    ],
+    "compensated_rows": [
+      {"live_count": 4097, "d32_ms": 0.36868789196014407, "d64_ms": 0.371412992477417, "delta_percent": 0.7391348011958954, "route_active": false},
+      {"live_count": 16448, "d32_ms": 1.0406329154968261, "d64_ms": 0.8353276252746582, "delta_percent": -19.72888683077545, "route_active": true},
+      {"live_count": 65664, "d32_ms": 4.1480964660644535, "d64_ms": 3.6093063354492188, "delta_percent": -12.988852477831047, "route_active": true},
+      {"live_count": 131200, "d32_ms": 8.105675506591798, "d64_ms": 7.0174812316894535, "delta_percent": -13.425090530917371, "route_active": true}
+    ],
+    "ordinary_raw_sha256": "1b021b4f0e99e79b5c5ddbaad979b179678a2d8530f0c1c9cfa91db6ff4bba4d",
+    "compensated_raw_sha256": "650da60ba55ac1c3d378348607253a00371021edf2338c819da8d425b659d2d0"
+  },
+  "quality": {
+    "method": "exact transfer from the admitted D32 layer schedule",
+    "d64_vs_d32_context_f32_byte_exact": true,
+    "d64_vs_d32_gated_bf16_byte_exact": true,
+    "depths": [4097, 16448, 65664, 131200],
+    "retained_d16k_127_step_max_kl_divergence": 0.007760759932248973,
+    "retained_d16k_127_step_top1": "127/127",
+    "thresholds": {"max_kl_divergence": 0.05, "minimum_top1_agreement": 0.9},
+    "pass": true
+  },
+  "production_sweep": {
+    "protocol": "capacity131200, chunk2048, eager c1, one warmup row, one 127-transition sample per depth",
+    "commands": [
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd5-ctx4096-dim64-production-4k16k64k.json",
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd5-ctx4096-dim64-production-128k.json"
+    ],
+    "rows": [
+      {"depth": 4096, "d32_tok_s": 21.66495140641239, "d64_tok_s": 21.656928980790454, "delta_percent": -0.037029511266573056, "route_active": false, "llamacpp_vulkan_tok_s": 23.037017, "vulkan_parity_percent": 94.00925901469994, "final_token_id": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+      {"depth": 16384, "d32_tok_s": 17.433488161039417, "d64_tok_s": 17.730693076405704, "delta_percent": 1.7047931694500695, "route_active": true, "llamacpp_vulkan_tok_s": 21.728347, "vulkan_parity_percent": 81.60166567850608, "final_token_id": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+      {"depth": 65536, "d32_tok_s": 9.867588161612558, "d64_tok_s": 10.120043273516172, "delta_percent": 2.5584277309599335, "route_active": true, "llamacpp_vulkan_tok_s": 17.737473, "vulkan_parity_percent": 57.0545943805872, "final_token_id": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+      {"depth": 131072, "d32_tok_s": 6.321389771728166, "d64_tok_s": 6.469839525746534, "delta_percent": 2.348372104537777, "route_active": true, "llamacpp_vulkan_tok_s": 14.237076, "vulkan_parity_percent": 45.443597588061856, "final_token_id": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+    ],
+    "final_positions_exact": true,
+    "all_established_generated_hashes_match": true,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_4k_16k_64k_sha256": "30560a09a567957a1a2b3b19ab48b4aacbd1e15dea52e1844cbe0946dbdf1a0e",
+    "raw_128k_sha256": "79152039af60287c775e7fda41397d3a525c6a6e8c16b74408048e068e70f874"
+  },
+  "trace": {
+    "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "live_count": 4097,
+    "ordinary_d64_pv_duration_ns": 209473,
+    "compensated_d64_pv_duration_ns": 232757,
+    "local_size": 512,
+    "grid_size": 8192,
+    "vgpr": 32,
+    "lds_bytes": 19456,
+    "scratch_bytes": 0,
+    "timing_note": "execution proof only; fixture dispatch order creates unequal cache warmth",
+    "csv_sha256": "7f7c95c9810e448f4253dd2dc17836a3cc95eeea51674469596ba334801d528e"
+  },
+  "validation": {
+    "red": "backend capability import and D64 route expectation failed before implementation",
+    "focused_tests": "89 passed",
+    "python_compile": "passed",
+    "kernel_trace": "passed with ordinary and compensated <...,64> PV instantiations",
+    "lineage": "Original in-tree geometry; scripts/check_lineage.py is blocked by the absent configured /home/lhl/amd-gpu-tuning/reference/atlas tree."
+  }
+}

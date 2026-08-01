@@ -250,7 +250,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "token_source": token_source,
             "control_route": "exact_gqa6_deferrednorm_dim32_vstage64",
             "candidate_route": (
-                "ctx4096_compensated_layer28_plus_retained_uncompensated_"
+                "ctx4096_dim64_compensated_layer28_plus_retained_uncompensated_"
                 "layers32_36_40_44"
             ),
         },

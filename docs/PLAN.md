@@ -1465,7 +1465,13 @@ token/hash. Isolating compensation to newly admitted layer 28 while leaving
 layers 32/36/40/44 on their retained scalar-F32 partial/merge fixes that
 failure: d16K/127 passes at maximum KL **0.007761** and d16K/d64K/d128K improve
 another **0.393%/0.479%/1.667%** with every established trajectory and
-lifecycle check intact. LC-D3 now leaves exact global layers 0..24. The next
+lifecycle check intact. The fifth checkpoint widens only those five admitted
+PV owners from D32 to D64. It preserves every F32/BF16 output bit, halves the
+PV grid, cuts the ordinary active leaf **10.665-17.258%** and the compensated
+leaf **12.989-19.729%**, and improves complete d16K/d64K/d128K another
+**1.705%/2.558%/2.348%** to **17.731/10.120/6.470 tok/s** with the mandatory
+128K trajectory and lifecycle intact. LC-D3 now leaves exact global layers
+0..24. The next
 owner must reduce that seven-layer score/PV path, find another isolated
 quality-safe boundary, or use an ordered tiled replay while targeting
 **<=5 ms/token** at 16K. Reassociated online-softmax arithmetic is not a

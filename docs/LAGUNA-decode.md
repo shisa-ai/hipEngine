@@ -9441,6 +9441,39 @@ The remaining attention sequence is:
      newly isolated precision seam rather than broad arithmetic changes:
      [`layer-28 compensated production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json).
 
+205. Widen context-parallel PV ownership from D32 to D64.
+     **Retained and production-default; LC-D3 fifth checkpoint.**
+
+     Each D64 block assigns two wave32s to every GQA6 query, so the waves
+     share one staged probability/V64 tile and the grid falls from four to
+     two dimension blocks per KV head. Each output dimension still consumes
+     the same BF16 values and probabilities in the same chronological
+     scalar-F32 order. Both ordinary and Kahan-compensated D64 leaves are
+     therefore byte-identical to their D32 controls at live
+     4,097/16,448/65,664/131,200. The active ordinary leaf improves
+     **17.258%/10.665%/10.944%** and the compensated leaf improves
+     **19.729%/12.989%/13.425%** at 16K/64K/128K. The inactive 4K diagnostic
+     is about **0.8%** slower, but production does not enter this route until
+     live count exceeds 6,000.
+
+     | Decode depth | D32 production | D64 production | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 21.664951 | **21.656929 tok/s** | -0.037% (inactive/noise) | 23.037017 | **94.009%** |
+     | 16K | 17.433488 | **17.730693 tok/s** | **+1.705%** | 21.728347 | **81.602%** |
+     | 64K | 9.867588 | **10.120043 tok/s** | **+2.558%** | 17.737473 | **57.055%** |
+     | 128K | 6.321390 | **6.469840 tok/s** | **+2.348%** | 14.237076 | **45.444%** |
+
+     The mandatory 128K row preserves final token/hash
+     **874 / c8307c...**, position **131,198**, and complete
+     **87,407,934,744-byte / 1,452-allocation** recovery; every shorter
+     trajectory also matches. Cached tracing proves the ordinary and
+     compensated `<...,64>` PV instantiations at local512, VGPR32,
+     LDS19,456B, scratch0, and half the D32 grid. gfx1151 selects D64 only for
+     the five already quality-admitted context-parallel layers; D32 remains
+     the registered peer-backend rollback and layers 0..24 remain exact.
+     The focused bundle passes **89 tests**:
+     [`D64 context-PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dim64-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9458,7 +9491,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Four milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Five milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9470,7 +9503,9 @@ allocation teardown remain mandatory at every retained step.
    max KL **0.687034**, and exact sparse repair is too slow. Isolating Kahan
    compensation to layer 28 while leaving the final four unchanged passes at
    max KL **0.007761**, preserves the mandatory 128K trajectory, and improves
-   16K/64K/128K another **0.393%/0.479%/1.667%**. The next step must reduce
+   16K/64K/128K another **0.393%/0.479%/1.667%**. Widening those five
+   admitted PV owners from D32 to D64 is byte-identical and improves complete
+   16K/64K/128K another **1.705%/2.558%/2.348%**. The next step must reduce
    the exact first-seven-layer score/PV path, improve partial precision enough
    to widen the measured layer scope, or use an exact tiled replay.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step

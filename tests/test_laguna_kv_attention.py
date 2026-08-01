@@ -4645,6 +4645,8 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -4881,6 +4883,40 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                 )
                 assert np.isfinite(candidate).all()
                 assert np.isfinite(candidate_gate_bits).all()
+                for dim64_fn in (
+                    laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
+                    laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans,
+                ):
+                    dim64_fn(
+                        *common,
+                        candidate_out.ptr,
+                        gate_device.ptr,
+                        candidate_gated.ptr,
+                        *tail,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    runtime.device_synchronize()
+                    copy_device_to_host(
+                        host_array_ptr(candidate),
+                        candidate_out,
+                        candidate.nbytes,
+                        runtime=runtime,
+                    )
+                    copy_device_to_host(
+                        host_array_ptr(candidate_gate_bits),
+                        candidate_gated,
+                        candidate_gate_bits.nbytes,
+                        runtime=runtime,
+                    )
+                    np.testing.assert_allclose(
+                        candidate,
+                        expected,
+                        rtol=3e-4,
+                        atol=3e-4,
+                    )
+                    assert np.isfinite(candidate).all()
+                    assert np.isfinite(candidate_gate_bits).all()
             candidate_fn(
                 *common,
                 candidate_out.ptr,
@@ -5089,10 +5125,10 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         ),
         "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
         (
-            "global_context_split_gated_gqa6_dim32_vstage64_ctx4096_"
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
             "compensated_spans"
         ),
-        "global_context_split_gated_gqa6_dim32_vstage64_ctx4096_spans",
+        "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_spans",
         (
             "global_context_fused_exact_gated_mixed40_local512_exp32_"
             "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_"

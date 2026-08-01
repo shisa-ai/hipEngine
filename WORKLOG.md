@@ -197354,3 +197354,50 @@ Vulkan local sizes verbatim will close the measured gap.
   `41406d8c066dbf96c1edaedae131aa35bd36b32c64f0d16ff3895c2384dcac97`.
 - Update the compact artifact, decode plan, rollup, changelog, and worklog in
   one evidence-only commit.
+
+## 2026-08-02 03:44 JST — Retain D64 context-parallel global PV
+
+- Generalized the 4,096-token ordinary and compensated context-PV body from
+  fixed D32 ownership to a D32/D64 template. D64 assigns two wave32s to each
+  GQA6 query so they share staged probability/V64 tiles and halves dimension
+  workgroups while preserving every output's BF16 input conversions and
+  chronological scalar-F32 accumulation order. Added separate registered D64
+  wrappers/keys and the gfx1151 capability
+  `LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE=64`; D32 stays the registered
+  peer-backend/rollback owner and exact layers 0..24 are unchanged.
+- RED pinned the new capability and D64 runtime routes. GREEN passes the
+  CPU-reference fixture for both new variants, the routing/backend checks,
+  Python compile, diff/JSON validation, and the complete affected **89-test**
+  bundle (`test_laguna_kv_attention.py`,
+  `test_laguna_long_context_profile.py`, and `test_gfx1151_backend.py`). The
+  required lineage command remains blocked by the missing configured
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; this is an original
+  in-tree geometry rather than an external port.
+- Seven-sample/burst10 D64-vs-D32 leaves at live
+  4,097/16,448/65,664/131,200 are F32-context and BF16-gate byte-exact at
+  every row. Ordinary D64 changes latency
+  **+0.821%/-17.258%/-10.665%/-10.944%**; compensated D64 changes
+  **+0.739%/-19.729%/-12.989%/-13.425%**. The slightly negative 4K row is
+  route-inactive because production selects context parallelism only above
+  6,000 live slots. Raw SHA-256 values are
+  `1b021b4f0e99e79b5c5ddbaad979b179678a2d8530f0c1c9cfa91db6ff4bba4d`
+  and `650da60ba55ac1c3d378348607253a00371021edf2338c819da8d425b659d2d0`.
+- The required one-pass capacity131,200/chunk2,048 production gate moves D32
+  d4K/d16K/d64K/d128K
+  **21.664951/17.433488/9.867588/6.321390 ->
+  21.656929/17.730693/10.120043/6.469840 tok/s**. The inactive 4K row is
+  **-0.037%** noise; active depths improve
+  **+1.705%/+2.558%/+2.348%**. Every established generated hash/final token
+  and position matches, including mandatory 128K
+  **874 / c8307c... / 131,198**. All **87,407,934,744 bytes / 1,452
+  allocations** recover. Raw short-three/128K SHA-256 values are
+  `30560a09a567957a1a2b3b19ab48b4aacbd1e15dea52e1844cbe0946dbdf1a0e`
+  and `79152039af60287c775e7fda41397d3a525c6a6e8c16b74408048e068e70f874`.
+- Cached rocprof execution proof names ordinary and compensated `<...,64>`
+  instantiations at live4,097 with local512, grid8192, VGPR32, LDS19,456B,
+  and scratch0. CSV SHA-256 is
+  `7f7c95c9810e448f4253dd2dc17836a3cc95eeea51674469596ba334801d528e`;
+  dispatch durations are not comparative because fixture order changes cache
+  warmth. Published
+  `2026-08-02-gfx1151-laguna-long-global-dim64-retained.json` and updated the
+  kernel catalog, decode/architecture/refactor plans, rollup, and changelog.

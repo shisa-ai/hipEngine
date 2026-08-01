@@ -541,6 +541,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_dim32_vstage64 = False
     active_global_split_gqa6_deferrednorm_dim32_vstage64 = False
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
+    active_global_split_gqa6_ctx4096_dim_tile = 32
     active_global_split_gqa6_ctx4096_min_layer: int | None = None
     active_global_fused_fixedshape = False
     active_global_gqa2_vstage64_fixedshape = False
@@ -772,6 +773,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_ctx4096_compensated_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_compensated_layer
+        )
+        active_global_split_gqa6_ctx4096_dim_tile = (
+            owner.kv_cache.global_split_gqa6_ctx4096_dim_tile
         )
         active_global_split_gqa6_ctx4096_min_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_min_layer
@@ -1308,6 +1312,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_gqa6_ctx4096_compensated_layer": (
                 active_global_split_gqa6_ctx4096_compensated_layer
             ),
+            "global_split_gqa6_ctx4096_dim_tile": (
+                active_global_split_gqa6_ctx4096_dim_tile
+            ),
             "global_fused_fixedshape": active_global_fused_fixedshape,
             "global_gqa2_vstage64_fixedshape": (
                 active_global_gqa2_vstage64_fixedshape
@@ -1428,7 +1435,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "normalization, and dimension-sharded staged-V PV; gfx1151 "
                 "quality-gates a compensated 4,096-token split at global "
                 "layer 28 and the uncompensated split at layers "
-                "32/36/40/44.",
+                "32/36/40/44, with byte-identical D64 PV geometry for all "
+                "five admitted layers.",
             ]
         ),
     }
