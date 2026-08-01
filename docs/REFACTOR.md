@@ -2563,6 +2563,8 @@ should be boring.
   An exact D64/local1024 retry is removed as well: increasing loader capacity
   does not repair D64's lost workgroup parallelism and regresses D32 by
   **12.28-13.12%** across live4K-d128K.
+  Exact D32 V-stage128 is also removed after improving 16K/64K but regressing
+  the required 4K/128K depths; V64 remains the only exact registered owner.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
