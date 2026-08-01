@@ -4,7 +4,8 @@ Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
 score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the clean post-H7A residual/H7B target in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with H7B's superseding physical-resource rejection in
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json), the clean post-H7A residual/H7B target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json), H7A's superseding exactness rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json), the clean post-H6Z matched residual/H7A target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json), bounded candidate/runtime evidence in
@@ -640,6 +641,19 @@ compiler and every layer **1..45** plus aggregate winning both clocks under one
 5/15/5 screen are binding. Remove H7B on any miss without tuning/rerun; runtime
 and source work remain separate
 ([post-H7A residual / H7B target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
+
+**WPF-H7B is rejected at the first compiled physical-resource gate; every
+candidate surface is removed.** The frozen matrix turns GREEN **10/10** with
+complete H6T/CPU bytes, tails, poison overwrite, finiteness, and lifecycle.
+The first code object realizes the intended **23 global loads / 3
+`ds_load_b128` / 12 `ds_store_2addr_b32` / 3
+`global_store_d16_hi_b16` / 2 barriers / 216 FMAs / 24 permlanex16 / 96 DPP**
+and shrinks code/slots **7,920/1,384→5,916/994**, but metadata VGPR rises
+**101→108**, above the frozen **≤101** bound. Per the immutable one-shot rule,
+skip rocprof and all-layer timing, do not tune or recompile, delete the RED and
+all H7B implementation/key/export/gfx1151-exclusion surfaces, and keep H6T/H6Z
+production **422.602 tok/s / 1,200.759 ms**
+([H7B rejection](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

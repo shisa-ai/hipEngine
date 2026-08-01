@@ -2496,6 +2496,18 @@ private/spill/scratch0. Require named cached execution with no compiler and all
 runtime, and source decisions remain separate
 ([post-H7A residual / H7B target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
 
+Reject H7B at its first compiled physical-resource gate. Complete H6T/CPU/
+poison/lifecycle checks pass **10/10** and codegen realizes the requested **3
+b128 LDS loads + 3 d16 stores** with unchanged 23 global loads/12 LDS stores/
+two barriers/216 FMAs/24 permlanex16/96 DPP; code/slots fall **7,920/1,384→
+5,916/994**. Metadata VGPR nevertheless rises **101→108**, exceeding the frozen
+**≤101** ceiling. Apply the one-shot rule: skip rocprof, runtime-resource
+adjudication, and all-layer timing; do not tune/recompile/rerun; remove every
+H7B implementation/test/key/export/gfx1151-exclusion surface; retain H6T/H6Z
+production **422.602 tok/s / 1,200.759 ms**; and rerank a materially different
+exact operation
+([H7B rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
