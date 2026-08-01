@@ -669,21 +669,22 @@ families are profiling noise. Q5/IQ-down/attention/Q6 still account for
 ([H7G production](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
-**WPF-H7H exact full-group Q5 compute** is now admitted as a standalone
-gfx1100 leaf for both remaining divisible H5Y roles (**127 calls / 104.237 ms,
-41.881% of Q5**). RED-first rows1/7/8/9/M512 correctness passes **13/13** with
-complete H5Y/activation-plane bytes, sampled CPU checks, poison overwrite, and
-clean lifecycle. The production object emits `r4/r8` dual/scalar FMA sites
-**15/5 and 47/9**, code/slots **3,584/587 and 9,728/1,588**, metadata VGPR
-**72/194**, LDS **512/1,536**, and private/spill/scratch0. Cache-only named
-execution traces at **0.516/5.072 ms**.
+**WPF-H7H exact full-group Q5 compute** is now a qualified bounded default-off
+gfx1100 owner for both divisible H5Y roles (**127 calls / 104.237 ms, 41.881%
+of Q5**). RED-first leaf correctness passes **13/13**; the production object
+emits `r4/r8` dual/scalar FMA sites **15/5 and 47/9** at metadata/runtime VGPR
+**72/72 and 194/200**, LDS **512/1,536**, and private/spill/scratch0. Its
+one-time production-library 5/15/5 replay improves weighted event/wall
+**140.659/138.993 -> 119.035/121.655 ms (-15.373%/-12.474%)**.
 
-The one-time production-library actual-weight 5/15/5 replay remains byte-exact,
-finite, allocation-clean, and both-clock positive per role; weighted event/wall
-moves **140.659/138.993 -> 119.035/121.655 ms
-(-15.373%/-12.474%)**. H7G remains source production at **424.845 tok/s**;
-H7H has no runtime/source claim pending a separate bounded-owner RED
-([H7H candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
+Complete default-off M512 is KL0/byte-exact across all **48/48** hidden
+boundaries, full state, and repeat at unchanged **161,120,256-byte** workspace /
+**600,141,856-byte** scratch. Cache-only tracing records exact **61 H7G + 127
+H7H** Q5 calls among **2,925** dispatches on one queue/stream with zero compiler.
+Fixed C4096/M512 improves **423.542 -> 426.070 tok/s (+0.597%, 5/5)**; clean
+512/1K/4K improves **+1.013%/+0.685%/+0.394%**, all **3/3**. H7G remains source
+production **424.845 tok/s** pending a separate source-default RED
+([H7H candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
 Both short

@@ -385,6 +385,19 @@ GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY = {
         "padded_compute_coltile8_rowbatch10"
     ),
 }
+# WPF-H7H is a bounded default-off capability for the two divisible natural-
+# M512 roles. H7G remains source until complete runtime and publication gates.
+GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY = {
+    **GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY,
+    ("bf16", 3072, 1024): (
+        "weight_major_tile_k_col_activation_tile_k_row_"
+        "full_group_compute_coltile8_rowbatch4"
+    ),
+    ("bf16", 9216, 3072): (
+        "weight_major_row_major_activation_tile_k_row_"
+        "full_group_compute_coltile12_rowbatch8"
+    ),
+}
 GGUF_Q5_F32_ORDERED_PREFILL_POLICY = dict(
     GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY
 )
@@ -526,6 +539,7 @@ __all__ = [
     "GGUF_Q5_F32_ORDERED_PREFILL",
     "GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY",
     "GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY",
+    "GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY",
     "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL",
     "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY",
