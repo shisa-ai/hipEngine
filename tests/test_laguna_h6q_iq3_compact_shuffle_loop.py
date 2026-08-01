@@ -192,7 +192,7 @@ def test_h6q_registry_structure_rollback_and_h6p_body_immutability() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
 
     expected_variants = {
-        "gguf_iq3_xxs": _H6R_RUNTIME_VARIANT,
+        "gguf_iq3_xxs": _H6T_RUNTIME_VARIANT,
         "gguf_iq4_xs": _H5J_IQ4_VARIANT,
     }
     expected_abis = {
@@ -212,7 +212,7 @@ def test_h6q_registry_structure_rollback_and_h6p_body_immutability() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     production = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert production.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H6R_RUNTIME_VARIANT
+        _H6T_RUNTIME_VARIANT
     )
     assert production.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         _ACTIVE_EXPERT_ABI

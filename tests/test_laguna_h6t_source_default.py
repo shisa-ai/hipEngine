@@ -120,13 +120,13 @@ def test_h6t_source_default_promotes_only_iq3_selected_down(
 
     live_variants = getattr(hip_gfx1100, _CAPABILITY)
     live_abis = getattr(hip_gfx1100, _ABI_CAPABILITY)
-    assert live_variants == source_variants
+    assert live_variants == candidate_variants
     assert live_abis == qualified_abis
     assert getattr(hip_gfx1151, _CAPABILITY) == {}
     assert getattr(hip_gfx1151, _ABI_CAPABILITY) == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6R_IQ3
+    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6T_IQ3
     package_route = package_default.grouped_exact_down_routes[_QUANT]
     assert package_route.abi == _ACTIVE_EXPERT_ABI
     assert package_route.allocation_name == "raw"
@@ -150,29 +150,30 @@ def test_h6t_source_default_promotes_only_iq3_selected_down(
     assert package_scratch.total_nbytes == _PRODUCTION_TOTAL_SCRATCH_BYTES
 
     monkeypatch.setattr(hip_gfx1100, _ABI_CAPABILITY, qualified_abis)
-    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, candidate_variants)
-    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert candidate.grouped_exact_down_keys[_QUANT].variant == _H6T_IQ3
-    candidate_route = candidate.grouped_exact_down_routes[_QUANT]
-    assert candidate_route.abi == _ACTIVE_EXPERT_ABI
-    assert candidate_route.allocation_name == "raw"
-    assert candidate_route.library_key == "grouped_iq_prefill"
-    assert candidate.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
-    assert candidate.grouped_special_gate_up_keys[
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, source_variants)
+    rollback = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert rollback.grouped_exact_down_keys[_QUANT].variant == _H6R_IQ3
+    rollback_route = rollback.grouped_exact_down_routes[_QUANT]
+    assert rollback_route.abi == _ACTIVE_EXPERT_ABI
+    assert rollback_route.allocation_name == "raw"
+    assert rollback_route.library_key == "grouped_iq_prefill"
+    assert rollback.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
+    assert rollback.grouped_special_gate_up_keys[
         (47, "gguf_iq3_xxs")
     ].variant == _H6C_IQ3_GATE_UP
-    assert candidate.grouped_pair16_gate_up_keys[
+    assert rollback.grouped_pair16_gate_up_keys[
         "gguf_iq2_xs"
     ].variant == _H6L_IQ2_GATE_UP
-    assert laguna_moe_scratch_nbytes(candidate, max_rows=512) == package_moe_scratch
-    candidate_scratch = _prefill_scratch(config, candidate)
+    assert laguna_moe_scratch_nbytes(rollback, max_rows=512) == package_moe_scratch
+    rollback_scratch = _prefill_scratch(config, rollback)
     assert (
-        candidate_scratch.q5_f32_ordered_nbytes
+        rollback_scratch.q5_f32_ordered_nbytes
         == package_scratch.q5_f32_ordered_nbytes
     )
-    assert candidate_scratch.total_nbytes == package_scratch.total_nbytes
-    assert len(candidate.kernel_keys) == len(package_default.kernel_keys)
+    assert rollback_scratch.total_nbytes == package_scratch.total_nbytes
+    assert len(rollback.kernel_keys) == len(package_default.kernel_keys)
 
+    monkeypatch.setattr(hip_gfx1100, _CAPABILITY, candidate_variants)
     for wrong_config in (
         replace(config, hidden_size=1024),
         replace(config, expert_feed_forward_length=2048),
@@ -224,6 +225,5 @@ def test_h6t_source_default_promotes_only_iq3_selected_down(
     with pytest.raises(ValueError, match="unsupported variant ABI"):
         resolve_laguna_moe_plan(config, backend="hip_gfx1100")
 
-    # Intentional RED after the in-memory H6T source route, resources,
-    # fallbacks, registration, and unchanged nine-entry ABI have been proven.
+    # Exactly one source-map value changes; H6R remains explicit rollback.
     assert live_variants == candidate_variants

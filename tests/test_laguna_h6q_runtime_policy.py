@@ -102,7 +102,7 @@ def test_h6q_runtime_capability_is_retained_as_h6r_rollback_and_fail_closed(
 ) -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     source_variants = {
-        _QUANT: _H6R_IQ3,
+        _QUANT: _H6T_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
     candidate_variants = {**source_variants, _QUANT: _H6Q_IQ3}
@@ -124,7 +124,7 @@ def test_h6q_runtime_capability_is_retained_as_h6r_rollback_and_fail_closed(
     assert getattr(hip_gfx1151, _ABI_CAPABILITY) == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6R_IQ3
+    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6T_IQ3
     package_route = package_default.grouped_exact_down_routes[_QUANT]
     assert package_route.abi == _ACTIVE_EXPERT_ABI
     assert package_route.allocation_name == "raw"
