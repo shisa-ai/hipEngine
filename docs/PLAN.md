@@ -2320,23 +2320,23 @@ reopen Q5 wave reduction for a materially different role-specific mechanism
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 Retain **WPF-H6W exact late-start dense-initial SWA qrow4 aligned
-global-score-record replay** as a bounded default-off gfx1100 runtime owner;
-production/source remain H6A SWA at **410.220 tok/s**. The runner binds H6W's
-aligned **18,874,368-byte** records to the prefix of the existing Q5 F32 plane
-with no new allocation/workspace and same-stream projection → attention → FFN
-lifetime; starts0/128 retain H6A and starts256/384 use H6W. Complete natural
-M512 is KL0/byte-exact across all **48/48** hidden boundaries, logits, K/V/spans,
-repeat, and teardown. Four cached requests preserve **2,192** dispatches and
-prove exact **48 H6N + 72 H6A + 72 H6W** topology; selected late SWA/attention/
-kernel-sum/span improve **81.990/144.957/1,224.048/1,254.740→
-62.470/127.063/1,207.903/1,229.421 ms**. Fixed C4096/M512 gains **+1.495%
-(5/5)**, and default-off 512/1K/4K gains **+1.304%/+0.544%/+0.092%**, all
-**3/3**, with unchanged **161,120,256/600,141,856-byte** workspace/scratch,
-zero compiler under profiling, and **112/112** guards. Commit this bounded owner;
-next freeze a separate source-default RED, then promote only the two late starts
-if fresh selector-unset gates remain exact and positive
-([candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
-[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+global-score-record replay** as the gfx1100 SWA source default with explicit H6A
+rollback. Source promotion changes only one selected SWA map value and adds the
+rollback map; H6N global, starts0/128 H6A fallback, runner/KV ABI, borrowed
+**18,874,368-byte** Q5-plane prefix, workspace, and kernel bodies remain
+unchanged. Complete natural M512 is KL0/exact across all **48/48** boundaries,
+logits, K/V/spans, repeat, and teardown. Four production-identical cached
+requests preserve **2,192** dispatches and exact
+**48 H6N + 72 H6A + 72 H6W**, cutting selected late SWA/attention/kernel-sum/
+span **23.808%/12.344%/1.319%/2.018%**. Fresh selector-unset fixed natural
+C4096/M512 improves **411.192→417.421 tok/s (+1.515%, 5/5)** and fresh
+512/1K/4K improves **385.356/309.745/194.411→390.382/312.026/194.709 tok/s
+(+1.304%/+0.736%/+0.153%)**, all **3/3**, at unchanged
+**161,120,256/600,141,856-byte** workspace/scratch. Keep H6A rollback, gfx1151
+fail-closed behavior, and the **115/115** source guard boundary. Next cleanly
+reprofile committed H6W production and rerank the matched residual
+([production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

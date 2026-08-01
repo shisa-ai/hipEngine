@@ -516,23 +516,23 @@ tok/s**
 [post-H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 **WPF-H6W exact late-start dense-initial SWA qrow4 aligned global-score-record
-replay is qualified as a bounded default-off gfx1100 runtime owner; H6A remains
-the source default.** H6W borrows the first **18,874,368 bytes** of the existing
-aligned Q5 F32 plane with no allocation/workspace growth and same-stream
-projection → attention → FFN lifetime. Complete natural M512 is KL0 and
-byte-exact across logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`,
-repeat, and teardown. Four cached requests preserve **2,192** dispatches and
-route exact **48 H6N + 72 H6A + 72 H6W**; selected late SWA/attention/kernel-sum/
-span move **81.990/144.957/1,224.048/1,254.740 →
-62.470/127.063/1,207.903/1,229.421 ms**. Fixed natural C4096/M512 improves
-**411.764→417.920 tok/s (+1.495%, 5/5 wins)**, while default-off 512/1K/4K
-improves **384.904/309.699/194.214→389.922/311.383/194.392 tok/s
-(+1.304%/+0.544%/+0.092%)**, all **3/3** exact wins. Workspace/scratch remain
-**161,120,256/600,141,856 bytes**, no compiler appears under profiling, and
-**112/112** guards pass. Production remains H6A at **410.220 tok/s** versus
-matched llama.cpp HIP **690.791 tok/s** pending separate source-default RED
-([H6W candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
-[post-H6V rejection / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+replay is the retained gfx1100 SWA source default; H6A is explicit rollback.**
+H6W borrows the first aligned **18,874,368 bytes** of the existing Q5 F32 plane
+with no allocation/workspace growth and same-stream projection → attention →
+FFN lifetime. Complete natural M512 remains KL0/byte-exact across logits, all
+**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four
+production-identical cached requests preserve **2,192** dispatches and exact
+**48 H6N + 72 H6A + 72 H6W** topology; selected late SWA/attention/kernel-sum/
+span improve **81.990/144.957/1,224.048/1,254.740 →
+62.470/127.063/1,207.903/1,229.421 ms**. Fresh selector-unset fixed natural
+C4096/M512 improves H6A rollback **411.192→417.421 tok/s (+1.515%, 5/5)** and
+is **1.65490×** behind matched llama.cpp HIP **690.791**. Fresh 512/1K/4K
+improves **385.356/309.745/194.411→390.382/312.026/194.709 tok/s
+(+1.304%/+0.736%/+0.153%)**, all **3/3** exact wins. Workspace/scratch remain
+**161,120,256/600,141,856 bytes**, gfx1151 fails closed, and **115/115** guards
+pass
+([H6W production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
+[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

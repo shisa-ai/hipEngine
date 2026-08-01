@@ -34,10 +34,12 @@ _H6N_KERNEL = (
 )
 _DENSE_ROLE = "global_m128_c4096_first_fill_exact"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
-_SWA_H6A_VARIANT = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+_SWA_H6W_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+)
 _PRODUCTION_POLICY = {
     _DENSE_ROLE: _H6N_VARIANT,
-    _SWA_ROLE: _SWA_H6A_VARIANT,
+    _SWA_ROLE: _SWA_H6W_VARIANT,
 }
 _H6A_KERNEL_SHA256 = "9c6ec1d45e375f22c9e97854f2d8c7a70dbcfaa2df9dcd710a8dba4fbd56721b"
 _H6A_WRAPPER_SHA256 = "535f454badd8ccd2692d865c8aa0f8cdf80e8737644cf101ce49181f154d9abd"

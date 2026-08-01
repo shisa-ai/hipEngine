@@ -12,9 +12,12 @@ _H6A_GLOBAL = "global_context_rows_dense_initial_cached_exact_spans"
 _H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _H6A_SWA = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+_H6W_SWA = (
+    "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+)
 _SOURCE_POLICY = {
     _GLOBAL_ROLE: _H6N_GLOBAL,
-    _SWA_ROLE: _H6A_SWA,
+    _SWA_ROLE: _H6W_SWA,
 }
 _ROLLBACK_POLICY = {
     _GLOBAL_ROLE: _H6A_GLOBAL,
@@ -235,7 +238,7 @@ def test_h6n_source_default_runtime_owner_is_bounded_and_fail_closed(
         global_prefill_variant="global_context_rows_qrow2_online_spans",
     )
     try:
-        assert explicit.prefill_preappend_role_variants == {_SWA_ROLE: _H6A_SWA}
+        assert explicit.prefill_preappend_role_variants == {_SWA_ROLE: _H6W_SWA}
         explicit.position = -1
         explicit.prepare_rows(tuple(range(128)))
         assert not explicit.can_preappend_attention_prefill(0, 128)
@@ -259,7 +262,7 @@ def test_h6n_source_default_runtime_owner_is_bounded_and_fail_closed(
         runtime=missing_runtime,
     )
     try:
-        assert missing.prefill_preappend_role_variants == {_SWA_ROLE: _H6A_SWA}
+        assert missing.prefill_preappend_role_variants == {_SWA_ROLE: _H6W_SWA}
         missing.position = -1
         missing.prepare_rows(tuple(range(128)))
         assert not missing.can_preappend_attention_prefill(0, 128)

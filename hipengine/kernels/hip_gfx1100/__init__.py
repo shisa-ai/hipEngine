@@ -17,11 +17,11 @@ LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_sourcequal_exact_spans"
     ),
 }
-# WPF-H6N promotes the exact fixed-512 global dense-initial leaf after complete
-# state/topology qualification and positive fixed C4096/M512 evidence. H6A
-# remains the registered global rollback and keeps source ownership of SWA;
-# explicit selectors plus shape/metadata/registration/backend misses fail closed.
-LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
+# WPF-H6N keeps exact fixed-512 global dense-initial source ownership. WPF-H6W
+# promotes only late-start SWA global-score replay after complete state/topology
+# and positive fixed/512/1K/4K gates. H6A remains explicit complete rollback;
+# starts0/128 and shape/metadata/registration/backend misses fail closed to it.
+LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS = {
     "global_m128_c4096_first_fill_exact": (
         "global_context_rows_dense_initial_fixed512_cached_exact_spans"
     ),
@@ -29,10 +29,6 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
     ),
 }
-# WPF-H6W is a separately qualified default-off runtime capability. It keeps
-# H6N global, routes only SWA starts256/384 through caller-global score records,
-# and falls back to H6A SWA at starts0/128. The selected source map above stays
-# unchanged pending a separate source-default RED and promotion.
 LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS = {
     "global_m128_c4096_first_fill_exact": (
         "global_context_rows_dense_initial_fixed512_cached_exact_spans"
@@ -41,6 +37,9 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
     ),
 }
+LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = dict(
+    LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS
+)
 # WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
 # all 144 physical append-before-attention calls, and positive default-off clean
 # 512/1K/4K timing. The package-only role map restricts schedule reordering to
@@ -423,6 +422,7 @@ __all__ = [
     "LAGUNA_MIXED_ATTENTION_PROJECTIONS",
     "LAGUNA_MIXED_LOCAL32_FIXED_METADATA",
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
+    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
     "LAGUNA_PREFILL_KV_PREAPPEND",
