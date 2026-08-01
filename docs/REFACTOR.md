@@ -16,18 +16,15 @@ should be removed or collapsed.
 
 ## Laguna H7E bounded default-off IQ3 residual-D4 owner
 
-- Added 2026-08-02 to qualify WPF-H7E before its mandatory complete-quality
-  gate. The gfx1100-only live map remains empty; the candidate is bounded to
-  IQ3 at exact M512/K1024/N3072/E256, lazily loads its two existing libraries,
-  and reuses `expert_gate_up` with zero allocation/workspace growth. H6T/IQ4
-  remain source and required exact fallbacks.
-- If the counterbalanced 18-prompt/576-step gate fails, remove the temporary
-  residual-route resolver/plan fields, tile128 runtime route if it has no other
-  owner, optional eager-library fields, qualified/live maps, and runtime test;
-  retain the standalone registered leaf and rejection evidence. If the gate
-  passes and H7E is promoted, collapse the duplicate qualified/live map and
-  candidate-only tests after one clean production checkpoint. Never remove H6T
-  or the unfused D4x2 producer/consumer fallback chain.
+- Cleanup completed 2026-08-02. The temporary exact-M512 owner passed narrow
+  state/trace gates but failed the binding 18-prompt/576-step lane at max KL
+  **5.630805** and general-Japanese top-1 **89.844%**. Promotion timing was
+  skipped.
+- Removed the residual-route resolver/plan fields, tile128 export, optional
+  eager-library fields, qualified/live maps, and runtime test. H6T/IQ4 remain
+  source and required fallbacks. Retain only the separately registered H7E leaf
+  and rejection evidence; reopen only with a materially different repair or
+  representation and a fresh RED/complete-quality contract.
 
 ## Laguna H6Z bounded default-off global-attention capability
 

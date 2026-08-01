@@ -1223,21 +1223,22 @@ Aggregate event moves **247.297→186.732 ms (-24.491%, 1.324x)** and wall
 **260.672→180.752 ms (-30.659%, 1.442x)**; max leaf KL is **0.000487**, minimum
 top-1 **99.941%**, output finite, and lifecycle clean.
 
-The bounded default-off owner is now qualified without changing source. It is
-IQ3-only at exact M512/K1024/N3072/E256, reuses the dead **20,971,520-byte**
-`expert_gate_up` plane for **11,796,480-byte** D4x2 records, and preserves
-**104,370,208-B** MoE / **600,141,856-B** total scratch. Natural-M512 complete
-logits pass at KL **0.000224**, top-1 **100%**, token **2930**, exact candidate
-repeat/span metadata, and clean lifecycle.
+A temporary bounded default-off owner reused the **20,971,520-byte**
+`expert_gate_up` plane with zero growth. Natural-M512 logits passed at KL
+**0.000224** / top-1 **100%**, and cached tracing proved **45 H6T → 45 tile128 +
+45 producer + 45 H7E** while diagnostic IQ-down fell **269.921→208.298 ms**.
 
-A cached four-request trace proves **45 H6T → 45 tile128 + 45 D4x2 producer +
-45 H7E**, zero compiler, and diagnostic C512 IQ-down/kernel-sum/span
-**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. Production
-stays H6T/IQ4 at **422.786 tok/s**. Before source timing, require the full
-counterbalanced **18-prompt/576-step** lane at finite max KL **<=0.05**, top-1
-**>=90%**, Poolside, deterministic repeats, free-running diagnostics, and clean
-lifecycle; never add prompt/layer conditioning
-([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+The binding complete gate rejects and removes runtime ownership. Every one of
+18 committed prompts is independently extended to M512, and all **576/576**
+steps exercise changed arithmetic. Max KL is **5.630805 > 0.05**; general-
+Japanese top-1 is **115/128 = 89.844% < 90%**, while suite top-1 is
+**531/576 = 92.188%**. Same-mode repeats are deterministic, but free-running
+pair equality is only **21/54 h16** and **6/54 h32**. Poolside off-shape fallback
+and lifecycle pass. Skip promotion timing, keep the standalone leaf only as
+diagnostic evidence, and retain H6T/IQ4 production at **422.786 tok/s**. Never
+add prompt/layer conditioning
+([H7E rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json) ·
+[candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening

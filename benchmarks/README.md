@@ -2,10 +2,11 @@
 
 Last updated: **2026-08-02**
 
-The admitted standalone H7E IQ3 two-plane leaf and its now-qualified bounded
-default-off runtime owner are summarized below; the immutable leaf packet is
-[`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json),
-with its clean post-H7C residual and target boundary in
+The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
+rejection are summarized below; the rejection packet is
+[`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),
+with the immutable leaf packet and clean post-H7C target boundary in
+[`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) and
 [`2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json).
 The current W7900 Laguna UD-Q2_K_XL source publication retains H6Z global
 score/weight replay and promotes H7C raw-Q6 DPP wave reduction in
@@ -721,24 +722,21 @@ compiler, remaining **1.63390x** behind matched llama.cpp HIP. Q5/IQ-down/
 attention/Q6 gaps are **196.915/117.620/93.693/66.653 ms**. H7D closes exact Q5
 row-interleaved VOPD because both orders emit **52 paired FMAs** and forced
 pairing violates gfx1100 VGPR banks. Standalone **WPF-H7E IQ3 two-plane
-residual-D4 source-MMQ is admitted**, and its bounded default-off runtime owner
-is qualified while source remains H6T/IQ4. Frozen leaf correctness passes
-**9/9**; the first object is local `(32,8)`, dynamic LDS57,856, code **31,564
-B**, metadata/runtime VGPR **148/152**, private/spill/scratch0, and exact **128
-integer WMMAs / five barriers / 64 BF16 stores**. The one-shot all-45 leaf
-screen moves aggregate event/wall **247.297/260.672→186.732/180.752 ms** at max
-leaf KL **0.000487**.
+residual-D4 source-MMQ remains diagnostic; its runtime owner is rejected and
+removed**. The leaf passes **9/9** and the all-45 producer-inclusive screen moves
+event/wall **247.297/260.672→186.732/180.752 ms**. Natural-M512 state passes KL
+**0.000224** / top-1 **100%**, and cached diagnostic IQ-down falls
+**269.921→208.298 ms** with zero scratch growth.
 
-Natural-M512 complete-logit state passes KL **0.000224**, top-1 **100%**, token
-**2930**, exact candidate repeat and span metadata, unchanged
-**600,141,856-B** scratch, and clean lifecycle. Cached paired tracing records
-**45 H6T → 45 tile128 + 45 D4x2 producer + 45 H7E**, zero compiler, and
-diagnostic C512 IQ-down/kernel-sum/span
-**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. Production
-remains **422.786 tok/s**; this is not a source-speed claim. The full
-**18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate remains binding before
-source timing
-([H7E candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+The complete gate is decisive: all **18 prompts / 576 steps** exercise changed
+arithmetic at M512, but max KL is **5.630805 > 0.05** and general-Japanese top-1
+is **115/128 = 89.844% < 90%** (suite **531/576 = 92.188%**). Same-mode repeats
+are deterministic; free-running pair equality is only **21/54 h16** and **6/54
+h32**. Poolside fallback and lifecycle pass. Promotion timing is skipped,
+production remains H6T/IQ4 at **422.786 tok/s**, and the temporary owner/test
+surfaces are removed
+([H7E rejection](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json) ·
+[candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
