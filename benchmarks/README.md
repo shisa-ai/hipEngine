@@ -2,8 +2,10 @@
 
 Last updated: **2026-08-02**
 
-The qualified bounded default-off H7G exact padded-row Q5 runtime owner is
+The retained source-selected H7G exact padded-row Q5 production owner is
 summarized below in
+[`2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json),
+with the preceding bounded runtime packet in
 [`2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json).
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
 rejection are also summarized below; the rejection packet is
@@ -12,7 +14,8 @@ with the immutable leaf packet and clean post-H7C target boundary in
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) and
 [`2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json).
 The current W7900 Laguna UD-Q2_K_XL source publication retains H6Z global
-score/weight replay and promotes H7C raw-Q6 DPP wave reduction in
+score/weight replay and H7C raw-Q6 DPP wave reduction, and now promotes H7G
+padded-row Q5 compute. H7C is documented in
 [`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json), with the preceding qualified runtime packet in
 [`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json), H6Z's production packet in
 [`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), and H7C's clean post-H7B target in
@@ -742,24 +745,38 @@ surfaces are removed
 [candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
-**WPF-H7G exact padded-row Q5 compute is a qualified bounded default-off
-gfx1100 owner** for the four natural-M512 `r12/r5/r5/r10` roles with real
-padded tails (**61 calls**); Q5 `r4/r8` were excluded before timing. The
-standalone rows1/7/8/9/M512 matrix passes **23/23**, and the frozen leaf screens
-improve 61-call event/wall **136.701/136.993 -> 128.691/129.092 ms
-(-5.860%/-5.767%)** with exact H5Y bytes.
+**WPF-H7G exact padded-row Q5 compute is the retained gfx1100 Q5 source** for
+the four natural-M512 `r12/r5/r5/r10` padded-tail roles (**61 calls**). The
+complete H5Y map remains named rollback, divisible `r4/r8` stay H5Y, and
+workspace/allocation/gfx1151 behavior is unchanged. Complete source-selected
+M512 is KL0/byte-exact across all **48/48** hidden boundaries and full state;
+a cache-only trace records exact **2/12/12/35** H7G launches at
+local128/LDS1536/scratch0/runtime-VGPR168/200 with zero compiler executable.
 
-Complete runtime M512 is exact across logits, all **48/48** hidden boundaries,
-K/V/`KVLiveSpans`, repeat, scratch, and lifecycle. Cache-only integrated tracing
-records exact **2/12/12/35 = 61** H7G calls on one queue at local128, LDS1536,
-scratch0, runtime VGPR168/200, with zero compiler executable. Matched
-C4096/M512 improves **420.846 -> 423.410 tok/s (+0.609%, 5/5 wins)** and is
-**1.63150x** behind matched llama.cpp HIP **690.791 tok/s**. Clean 512/1K/4K
-improves **390.439/311.416/194.369 -> 392.902/312.883/194.937 tok/s
-(+0.631%/+0.471%/+0.292%)**, all **3/3** exact wins. The named package
-capability changes no workspace/allocation or gfx1151 behavior; H5Y production
-remains **422.786 tok/s** pending separate source-default RED/publication
-([H7G candidate/runtime](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+Fresh selector-unset H5Y -> H7G qualification improves fixed C4096/M512
+**420.569 -> 423.981 tok/s (+0.811%, 5/5 wins)** and 512/1K/4K
+**390.598/312.509/195.078 -> 394.355/313.789/195.471 tok/s
+(+0.962%/+0.410%/+0.201%)**, all **3/3** exact wins. Clean production is
+**424.845 tok/s** from **423.722/425.792/424.845/425.215/423.716**, **+0.487%**
+over pre-H7G and **1.62598x** behind matched llama.cpp HIP **690.791 tok/s**.
+The representative cache-only request is **1,192.424 ms / 2,192 dispatches**
+in a **1,213.450-ms** span, and all five profiled requests have exact H7G
+source topology.
+
+| Matched M512 component | Campaign start | Before H7G | Current H7G | llama.cpp HIP | Current gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 ms | 255.229 ms | **248.888 ms** | 58.314 ms | **190.574 ms** |
+| IQ3/IQ4 down | 557.091 | 271.480 | **272.226** | 153.860 | **118.366** |
+| Attention | 488.304 | 115.205 | **115.472** | 21.512 | **93.960** |
+| Q6 projections | 157.073 | 81.321 | **81.541** | 14.668 | **66.873** |
+| IQ2/special-IQ3 gate/up | 460.143 | 398.027 | **398.098** | 397.805 | **0.293** |
+| Remaining | 68.623 | 76.236 | **76.199** | 67.849 | **8.349** |
+| **Kernel sum** | **3,001.692** | **1,197.499** | **1,192.424** | **714.008** | **478.415** |
+
+Only Q5's reduction is attributable to H7G; unchanged-family deltas are profile
+noise. Q5/IQ-down/attention/Q6 still own **98.194%** of the matched kernel gap
+([H7G production](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
+[candidate/runtime](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
@@ -2571,6 +2588,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 direct-T16 MMQ32 natural-shape gate | 2026-07-25 | clean measured `272ee08d5`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit primitive; LAP-1 leaf gate passed; runtime default unchanged pending repair**: direct T16 reads the existing resident bytes with no layout transpose or sidecar. Producer-pack-inclusive T16 speedups over retained direct are **1.174/1.528/1.662/2.464/2.502/3.959/5.502x**; M128/M256/M512 are only **4.66%/4.05%/3.02%** behind X8. T16/X8 checksums are exact at every shape; focused tests report 31 passes; cached resources are local128/VGPR48/LDS2048B/scratch0 and device ISA contains `v_dot4_i32_iu8`. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-t16-mmq32-retained.json). | Yes for the one-layer natural-routing leaf scope only; no full-model/default claim | Calibrate residual/repair arithmetic, then integrate the sole-resident T16 route and run all-layer performance, category quality, decode, milestone-shape, and lifecycle gates. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 exact X8 decode gate | 2026-07-25 | clean measured `420bf8392`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; c1/c2/c4/c8 producer rows with top-10 | **Rejected sole-resident X8 premise; current T16 residency unchanged**: the optimized local128 X8 fallback is BF16-bit exact at every shape and catches T16 at c4/c8, but c1/c2 T16 -> X8 moves **0.157223 -> 0.174663 ms (+11.093%)** and **0.351996 -> 0.362511 ms (+2.987%)**, failing the <=2% decode gate. X8/T16 pair bytes are **905,969,664/931,135,488**; the temporary comparison peaks at **1,837,482,624 bytes** and returns to zero. [`artifact`](results/2026-07-25-gfx1151-laguna-q4-k-x8-exact-decode-rejected.json). | Negative layout decision; no runtime/default claim | Superseded by the retained direct-T16 LAP-1 leaf; do not retry dynamic X8-to-T16 reconstruction or add a complete T16 sidecar. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M LAP-1 X8 MMQ32 live-row screen | 2026-07-24 | clean measured `84c50b205`; TheRock HIP 7.15; exact model SHA-256 `7da520c5...5753f`; one HIP queue; actual layer-1 K3072/N1024 gate/up weights; natural M32/55/64/122/128/256/512 counts | **Retained explicit prefill control; natural-shape body gate passed; runtime default unchanged**: clamping live rows and bypassing padded-route dot work makes byte-neutral X8 positive at every frozen shape. Producer-pack-inclusive speedups over retained direct are **1.197/1.567/1.704/2.526/2.587/4.092/5.614x**; X8 time falls **18.65–36.45%** versus the prior layout screen. Raw/X8 checksums remain exact; focused tests report 29 passes; cached X8 resources are local128/VGPR48/LDS2048B/scratch0. An all-full synthetic control regresses **8.34%**. The 2026-07-25 exact-decode row supersedes X8 as a resident candidate but preserves it as the MMQ ceiling. [`artifact`](results/2026-07-24-gfx1151-laguna-q4-k-x8-mmq32-live-row-retained.json). | Yes for the exact one-layer natural-routing leaf scope only; no full-model or default claim | Direct T16 now passes the same leaf gate; retain X8 only as the arithmetic ceiling while repair and runtime integration proceed. |
+| Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL WPF-H7G exact padded-row Q5 production | 2026-08-02 | source RED `7f3364b87`; complete selector-unset M512 state; fresh H5Y/H7G fixed C4096/M512 and 512/1K/4K; cache-only source trace; five-sample clean production reprofile and five-request component trace; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Current retained W7900 Q5 source; complete named H5Y rollback**: source changes only four padded-tail policy values; divisible `r4/r8` stay H5Y. Complete M512 is KL0/top-1 100% and byte-exact across **48/48** boundaries, logits, K/V/`KVLiveSpans`, repeat, and teardown. Source tracing records exact **2/12/12/35 = 61** H7G calls at unchanged resources with zero compiler. H5Y -> H7G fixed M512 improves **420.569→423.981 tok/s (+0.811%, 5/5)** and 512/1K/4K improves **+0.962%/+0.410%/+0.201%**, all 3/3. Clean production is **424.845 tok/s / 1,192.424 ms / 2,192 dispatches**, **1.62598×** behind matched llama.cpp HIP; Q5 falls **255.229→248.888 ms**, narrowing its gap **196.915→190.574 ms**. Workspace/scratch/allocation and gfx1151 are unchanged; **104/104** final guards pass. [`production`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) · [`candidate/runtime`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json). | Yes for exact selector-unset one-queue fixed natural C4096/M512 and 512/1K/4K plus complete state/topology/lifecycle and clean production profile | Continue from Q5/IQ-down/attention/Q6 gaps **190.574/118.366/93.960/66.873 ms**; require a materially new exact mechanism and matched no-gaming gates. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL WPF-H7G exact padded-row Q5 candidate/runtime | 2026-08-02 | leaf RED `1eb158138`; runtime RED `548b461da`; exact rows1/7/8/9/M512 across four predeclared padded-tail roles; complete natural-M512 state; cache-only 61-call integrated topology; default-off fixed C4096/M512 and 512/1K/4K; executable compiler monitor; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Qualified bounded default-off owner; H5Y source unchanged**: standalone exactness passes **23/23** and integrated leaf wall improves **136.993→129.092 ms (-5.767%)**. Complete M512 is exact across all **48/48** hidden boundaries, logits, K/V/`KVLiveSpans`, repeat, scratch, and teardown. Cached tracing records exact **2/12/12/35 = 61** H7G calls at local128/LDS1536/scratch0/runtime-VGPR168/200 with zero compiler. Fixed C4096/M512 improves **420.846→423.410 tok/s (+0.609%, 5/5)** and is **1.63150×** behind matched llama.cpp HIP **690.791**; default-off 512/1K/4K improves **390.439/311.416/194.369→392.902/312.883/194.937 (+0.631%/+0.471%/+0.292%)**, all 3/3 exact wins. Workspace/scratch/allocation and gfx1151 are unchanged; production remains H5Y **422.786 tok/s**. [`artifact`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json). | Yes for exact leaf plus bounded default-off complete-state/topology/fixed/512/1K/4K/lifecycle scope; no source-default claim | Freeze a separate source-default RED, retain named H5Y rollback, and rerun production exactness/timing/profile before publication. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL WPF-H6Z exact late-start global qrow4 aligned score/weight replay production | 2026-08-01 | leaf `ab03f02c5`; bounded runtime `fa270dcf1`; source RED `86bf16281`; complete natural-M512 state; fresh four-request selected-source trace; fresh selector-unset fixed C4096/M512 and 512/1K/4K; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Current retained W7900 global source default; H6W/H6N rollback**: source changes only the global role and retains H6A/H6W SWA. Complete M512 is KL0/top-1 100% and byte-exact across all **48/48** boundaries, logits, K/V/`KVLiveSpans`, repeat, and teardown. Production topology preserves **2,192** dispatches and exact **24 H6N + 24 H6Z + 72 H6A + 72 H6W**, moving late global/attention/kernel-sum/span **23.894/125.254/1,214.563/1,241.814→12.231/116.041/1,205.023/1,227.056 ms (-48.812%/-7.355%/-0.785%/-1.188%)**. Fixed natural C4096/M512 improves **417.180→420.785 tok/s (+0.864%, 5/5)** and is **1.64167×** behind matched llama.cpp HIP **690.791**. H6Z is C4096-only, so 512/1K are unchanged-path controls at **390.831/311.543 tok/s**; binding 4K improves **194.478→194.694 (+0.111%, 2/3)**. Workspace/scratch are unchanged, zero compiler appears, gfx1151 is excluded, and **126/126** guards pass. [`production`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json) · [`candidate/runtime`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json). | Yes for exact selector-unset one-queue fixed natural C4096/M512, binding 4K, complete state/topology/lifecycle, and declared sub-window trace scope | Cleanly reprofile committed H6Z production and rerank matched components. |
 | Radeon Pro W7900, gfx1100 | Poolside Laguna S 2.1 UD-Q2_K_XL WPF-H6Z exact late-start global qrow4 aligned score/weight replay candidate/runtime | 2026-08-01 | leaf RED `887fc225d`; runtime RED `a93fea203`; exact starts256/384 leaf; complete natural-M512 state; four-request cached topology; default-off fixed C4096/M512 and 512/1K/4K controls; compiler monitor; AMD clang 22/HIP 7.2; exact model SHA-256 `8fe1170f...2679`; one queue | **Qualified bounded default-off runtime owner; H6N/H6W source unchanged**: the exact leaf improves weighted event/wall **21.007/21.257→10.797/10.942 ms (1.946×/1.943×)** at runtime VGPR48/LDS0/scratch0. Runtime borrows the existing aligned **18,874,368-byte** H6W/Q5 plane with no allocation/workspace growth and passes H6Z's strict **12,582,912-byte** extent. Complete M512 is KL0/top-1 100% and byte-exact across all **48/48** boundaries, logits, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests preserve **2,192** dispatches and exact **24 H6N + 24 H6Z + 72 H6A + 72 H6W**, moving late global/attention/kernel-sum/span **23.615/124.028/1,205.864/1,235.600→12.306/115.461/1,198.758/1,220.506 ms**. Fixed M512 improves **418.198→421.168 tok/s (+0.710%, 5/5)**; H6Z is C4096-only, so 512/1K are unchanged-path noise controls, while 4K improves **194.471→194.515 (+0.022%, 3/3)**. Workspace/scratch are unchanged, no compiler appears, and **125/125** guards pass. [`artifact`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json) · [`target`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json). | Yes for exact leaf plus bounded default-off complete-state/topology/fixed-C4096-M512/4K/lifecycle scope; no source-default claim | Freeze a separate source-default RED before replacing H6N at starts256/384. |

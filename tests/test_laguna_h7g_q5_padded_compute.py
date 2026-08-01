@@ -360,7 +360,19 @@ def test_h7g_registry_source_policy_and_h5y_immutability() -> None:
 
     q5_f32.register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
-    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _Q5_PRODUCTION_POLICY
+    assert (
+        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY
+        == _Q5_PRODUCTION_POLICY
+    )
+    assert (
+        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY
+        == hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY
+    )
+    assert {
+        role
+        for role, variant in hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY.items()
+        if variant != _Q5_PRODUCTION_POLICY[role]
+    } == {(role[2], role[4], role[5]) for role in _ROLES}
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _Q6_PRODUCTION_POLICY
     assert all("padded_compute" not in variant for variant in _Q5_PRODUCTION_POLICY.values())
     assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944

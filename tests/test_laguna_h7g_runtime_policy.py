@@ -24,6 +24,7 @@ from hipengine.runtime.gguf_linear import (
 from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
 _CAPABILITY = "GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY"
+_H5Y_CAPABILITY = "GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY"
 _H5Y_POLICY = {
     ("bf16", 3_072, 1_024): (
         "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch4"
@@ -145,8 +146,10 @@ def _install_q5_policy(
     )
 
 
-def test_h7g_runtime_capability_is_default_off_bounded_and_workspace_neutral() -> None:
-    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _H5Y_POLICY
+def test_h7g_runtime_capability_is_source_qualified_and_workspace_neutral() -> None:
+    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _H7G_POLICY
+    assert getattr(hip_gfx1100, _H5Y_CAPABILITY) == _H5Y_POLICY
+    assert not hasattr(hip_gfx1151, _H5Y_CAPABILITY)
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert set(_H7G_POLICY) == set(_H5Y_POLICY)
     assert {
@@ -185,8 +188,7 @@ def test_h7g_runtime_capability_is_default_off_bounded_and_workspace_neutral() -
         use_activation_tile_k_row=True,
     ) == 161_120_256
 
-    # Intentional RED only after the complete in-memory capability contract is
-    # proven: the package must expose H7G without changing live H5Y source.
+    # H7G is source-qualified while the complete H5Y map remains rollback.
     assert getattr(hip_gfx1100, _CAPABILITY) == _H7G_POLICY
 
 
