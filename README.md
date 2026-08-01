@@ -430,6 +430,18 @@ exact reduction, preserving attention ownership, arithmetic, K/V traffic, and
 [post-H6Q residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json)).
 
+**WPF-H6S exact DPP peer-exchange dense-initial SWA qrow4 is rejected and all
+candidate surfaces are removed.** The leaf is complete-byte exact, finite,
+span-immutable, and lifecycle-clean at starts 0/128/256/384. ISA realizes the
+intended **52 -> 12 bpermutes + 8 permlanex16 + 32 DPP**, code
+**7,044 -> 6,676 bytes**, and metadata/runtime VGPR **64/64 -> 59/64** with
+private0/spill0/scratch0. Nevertheless, every start loses both clocks; weighted
+144-call H6A -> H6S moves event **94.696 -> 108.850 ms (+14.946%, 0.870x)** and
+wall **96.707 -> 112.761 ms (+16.601%, 0.858x)**. The one-shot gate therefore
+keeps H6A SWA and H6N global production unchanged and closes DPP attention peer
+exchange without runtime qualification or follow-up tuning
+([H6S rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

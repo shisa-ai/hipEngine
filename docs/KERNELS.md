@@ -1446,6 +1446,20 @@ surfaces on any miss
 [post-H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json)).
 
+The binding one-shot screen now rejects H6S and removes every candidate
+implementation/test/key/exclusion surface. Complete starts0/128/256/384 outputs
+are byte-exact/finite with immutable spans and clean lifecycle. Codegen realizes
+exact **12 bpermutes + 8 permlanex16 + 32 DPP**, unchanged 12 global u16 loads,
+four exp, FMA/store counts, and zero barriers; code falls **7,044 -> 6,676
+bytes**, metadata VGPR **64 -> 59**, and rocprof reports local32/grid2304x32/
+VGPR64/LDS0/scratch0 with no compiler activity. Despite that physical success,
+every start regresses event and wall; weighted 144-call event moves
+**94.696 -> 108.850 ms (+14.946%, 0.870x)** and wall
+**96.707 -> 112.761 ms (+16.601%, 0.858x)**. Skip runtime qualification, retain
+H6A SWA/H6N global and clean H6R **407.091 tok/s**, and do not retry DPP
+attention peer exchange without a materially new premise
+([H6S rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
