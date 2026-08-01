@@ -48,9 +48,9 @@ def test_h7h_source_default_promotes_only_two_roles_and_keeps_h7g_rollback(
 
     live_source = hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY
     live_policies = hip_gfx1100.GGUF_F32_ORDERED_PREFILL_POLICIES
-    assert live_source == _H7G_POLICY
+    assert live_source == _H7H_POLICY
     assert live_policies == {
-        "gguf_q5_k": _H7G_POLICY,
+        "gguf_q5_k": _H7H_POLICY,
         "gguf_q6_k": hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY,
     }
     assert getattr(hip_gfx1100, _H5Y_CAPABILITY) == _H5Y_POLICY

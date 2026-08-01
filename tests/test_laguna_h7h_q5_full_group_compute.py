@@ -246,18 +246,29 @@ def test_h7h_source_registry_and_h5y_h7g_immutability() -> None:
         _Q5_PRODUCTION_POLICY
     )
     assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == (
-        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY
+        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY
     )
     assert {
         role
-        for role, variant in hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY.items()
+        for role, variant in (
+            hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY.items()
+        )
         if variant != _Q5_PRODUCTION_POLICY[role]
     } == {(role[2], role[4], role[5]) for role in _H7G_ROLES}
+    assert {
+        role
+        for role, variant in hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY.items()
+        if variant
+        != hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY[role]
+    } == {
+        (output_dtype, in_features, out_features)
+        for _, _, output_dtype, _, in_features, out_features, _ in _ROLES
+    }
     assert all(
-        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY[
+        "full_group_compute"
+        in hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY[
             (output_dtype, in_features, out_features)
         ]
-        == _Q5_PRODUCTION_POLICY[(output_dtype, in_features, out_features)]
         for _, _, output_dtype, _, in_features, out_features, _ in _ROLES
     )
     assert LagunaQ5F32OrderedScratch.planned_nbytes(

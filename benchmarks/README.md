@@ -745,56 +745,43 @@ surfaces are removed
 [candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
-**WPF-H7G exact padded-row Q5 compute is the retained gfx1100 Q5 source** for
-the four natural-M512 `r12/r5/r5/r10` padded-tail roles (**61 calls**). The
-complete H5Y map remains named rollback, divisible `r4/r8` stay H5Y, and
-workspace/allocation/gfx1151 behavior is unchanged. Complete source-selected
-M512 is KL0/byte-exact across all **48/48** hidden boundaries and full state;
-a cache-only trace records exact **2/12/12/35** H7G launches at
-local128/LDS1536/scratch0/runtime-VGPR168/200 with zero compiler executable.
+**WPF-H7H exact full-group Q5 compute is now the retained gfx1100 Q5 source**
+for both divisible natural-M512 roles (`c8r4` **92 calls**, `c12r8` **35**).
+The complete H7G map remains named rollback for all eight roles, including its
+four padded-tail roles; H5Y remains the exact primitive fallback. RED-first leaf
+correctness passes **13/13** and the production object remains private/spill/
+scratch0 at metadata/runtime VGPR **72/72 and 194/200**, LDS **512/1,536**.
 
-Fresh selector-unset H5Y -> H7G qualification improves fixed C4096/M512
-**420.569 -> 423.981 tok/s (+0.811%, 5/5 wins)** and 512/1K/4K
-**390.598/312.509/195.078 -> 394.355/313.789/195.471 tok/s
-(+0.962%/+0.410%/+0.201%)**, all **3/3** exact wins. Clean production is
-**424.845 tok/s** from **423.722/425.792/424.845/425.215/423.716**, **+0.487%**
-over pre-H7G and **1.62598x** behind matched llama.cpp HIP **690.791 tok/s**.
-The representative cache-only request is **1,192.424 ms / 2,192 dispatches**
-in a **1,213.450-ms** span, and all five profiled requests have exact H7G
-source topology.
+Fresh selector-unset H7G -> H7H source qualification is KL0/byte-exact across
+all **48/48** hidden boundaries, complete state, and repeat at unchanged
+**161,120,256-byte** workspace / **600,141,856-byte** scratch. Fixed C4096/M512
+improves **423.045 -> 426.745 tok/s (+0.874%, 5/5 wins)**; clean 512/1K/4K
+improves **392.829/312.307/194.847 -> 396.922/315.105/195.775 tok/s
+(+1.042%/+0.896%/+0.477%)**, all **3/3** exact wins. Clean H7H production is
+**427.407 tok/s** from **426.886/428.531/428.010/427.407/426.065**, **+0.603%**
+over H7G and **1.61624x** behind matched llama.cpp HIP **690.791 tok/s**.
 
-| Matched M512 component | Campaign start | Before H7G | Current H7G | llama.cpp HIP | Current gap |
+Source tracing records exact **61 H7G + 127 H7H** calls among **2,925**
+dispatches on one queue/stream; every one of five clean profiled requests has
+that same Q5 topology and exactly **2,192 dispatches**. The representative
+request is **1,185.096 ms** in a **1,206.456-ms** span, with zero compiler.
+
+| Matched M512 component | Campaign start | Before H7H | Current H7H | llama.cpp HIP | Current gap |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Q5 projections | 1,270.458 ms | 255.229 ms | **248.888 ms** | 58.314 ms | **190.574 ms** |
-| IQ3/IQ4 down | 557.091 | 271.480 | **272.226** | 153.860 | **118.366** |
-| Attention | 488.304 | 115.205 | **115.472** | 21.512 | **93.960** |
-| Q6 projections | 157.073 | 81.321 | **81.541** | 14.668 | **66.873** |
-| IQ2/special-IQ3 gate/up | 460.143 | 398.027 | **398.098** | 397.805 | **0.293** |
-| Remaining | 68.623 | 76.236 | **76.199** | 67.849 | **8.349** |
-| **Kernel sum** | **3,001.692** | **1,197.499** | **1,192.424** | **714.008** | **478.415** |
+| Q5 projections | 1,270.458 ms | 248.888 ms | **237.185 ms** | 58.314 ms | **178.871 ms** |
+| IQ3/IQ4 down | 557.091 | 272.226 | **273.577** | 153.860 | **119.717** |
+| Attention | 488.304 | 115.472 | **116.227** | 21.512 | **94.715** |
+| Q6 projections | 157.073 | 81.541 | **81.900** | 14.668 | **67.233** |
+| IQ2/special-IQ3 gate/up | 460.143 | 398.098 | **399.683** | 397.805 | **1.878** |
+| Remaining | 68.623 | 76.199 | **76.524** | 67.849 | **8.674** |
+| **Kernel sum** | **3,001.692** | **1,192.424** | **1,185.096** | **714.008** | **471.088** |
 
-Only Q5's reduction is attributable to H7G; unchanged-family deltas are profile
-noise. Q5/IQ-down/attention/Q6 still own **98.194%** of the matched kernel gap
-([H7G production](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
-[candidate/runtime](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
-
-**WPF-H7H exact full-group Q5 compute** is now a qualified bounded default-off
-gfx1100 owner for both divisible H5Y roles (**127 calls / 104.237 ms, 41.881%
-of Q5**). RED-first leaf correctness passes **13/13**; the production object
-emits `r4/r8` dual/scalar FMA sites **15/5 and 47/9** at metadata/runtime VGPR
-**72/72 and 194/200**, LDS **512/1,536**, and private/spill/scratch0. Its
-one-time production-library 5/15/5 replay improves weighted event/wall
-**140.659/138.993 -> 119.035/121.655 ms (-15.373%/-12.474%)**.
-
-Complete default-off M512 is KL0/byte-exact across all **48/48** hidden
-boundaries, full state, and repeat at unchanged **161,120,256-byte** workspace /
-**600,141,856-byte** scratch. Cache-only tracing records exact **61 H7G + 127
-H7H** Q5 calls among **2,925** dispatches on one queue/stream with zero compiler.
-Fixed C4096/M512 improves **423.542 -> 426.070 tok/s (+0.597%, 5/5)**; clean
-512/1K/4K improves **+1.013%/+0.685%/+0.394%**, all **3/3**. H7G remains source
-production **424.845 tok/s** pending a separate source-default RED
-([H7H candidate/runtime](results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
-[target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
+Only Q5's reduction is attributable to H7H; unchanged-family deltas are profile
+noise. Q5/IQ-down/attention/Q6 still own **97.760%** of the matched kernel gap
+([H7H production](results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json) ·
+[candidate/runtime](results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
+[target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json) ·
+[H7G rollback production](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

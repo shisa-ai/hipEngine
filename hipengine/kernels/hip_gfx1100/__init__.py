@@ -385,8 +385,9 @@ GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY = {
         "padded_compute_coltile8_rowbatch10"
     ),
 }
-# WPF-H7H is a bounded default-off capability for the two divisible natural-
-# M512 roles. H7G remains source until complete runtime and publication gates.
+# WPF-H7H is the retained Q5 source for the two divisible natural-M512 roles
+# after complete-state, topology, and fixed/512/1K/4K qualification. H7G remains
+# the exact complete-map rollback.
 GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY = {
     **GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY,
     ("bf16", 3072, 1024): (
@@ -399,7 +400,7 @@ GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY = {
     ),
 }
 GGUF_Q5_F32_ORDERED_PREFILL_POLICY = dict(
-    GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY
+    GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY
 )
 # WPF-H5I introduced the shared serial F32 plane and ordered Q6 consumers.
 # WPF-H5W retains exact weight-major rollback. WPF-H6E retains exact generic-

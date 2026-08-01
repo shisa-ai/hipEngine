@@ -1267,6 +1267,12 @@ def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
     h5y_policy = backend_package_capability(
         "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY", None
     )
+    h7g_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY", None
+    )
+    h7h_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY", None
+    )
     q6_policy = backend_package_capability(
         "hip_gfx1100", "GGUF_Q6_F32_ORDERED_PREFILL_POLICY", None
     )
@@ -1298,7 +1304,7 @@ def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
             "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch10"
         ),
     }
-    assert q5_policy == {
+    assert h7g_policy == {
         **h5y_policy,
         ("bf16", 3072, 12288): (
             "weight_major_row_major_activation_tile_k_row_"
@@ -1317,6 +1323,18 @@ def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
             "padded_compute_coltile8_rowbatch10"
         ),
     }
+    assert h7h_policy == {
+        **h7g_policy,
+        ("bf16", 3072, 1024): (
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "full_group_compute_coltile8_rowbatch4"
+        ),
+        ("bf16", 9216, 3072): (
+            "weight_major_row_major_activation_tile_k_row_"
+            "full_group_compute_coltile12_rowbatch8"
+        ),
+    }
+    assert q5_policy == h7h_policy
     assert q6_policy == {
         ("bf16", 3072, 1024): (
             "weight_major_row_major_activation_tile_k_row_"
