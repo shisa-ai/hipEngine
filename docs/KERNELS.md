@@ -1505,21 +1505,21 @@ and gfx1151 remain unchanged, and **153/153** guards pass
 
 Clean committed H6U reprofiling reaches **410.220 tok/s / 1,232.836 ms / 2,192
 dispatches**, **+141.994%** over campaign start and **1.68395x** behind matched
-llama.cpp HIP **690.791 tok/s / 714.008 ms**. Reconciled Q5/attention/IQ-down/Q6
-gaps are **196.823/127.370/118.271/67.076 ms**. **WPF-H6V exact DPP-add Q5 wave
-reduction** is selected target-only on all six H5Y consumers at **222.356 ms /
-188 calls**. A fresh unchanged-source code object proves exact static
-**160/480/400/480/400/400 `ds_bpermute_b32`**, zero DPP/permlanex16, one barrier,
-local128, VGPR **72/200/168/200/168/168**, LDS **512/1536/1536/1536/1536/1536**,
-and scratch0. This expands to **6,813,040,640** bpermute wave instructions per
-request. H6V may change only offset16 to permlanex16 and offsets8/4/2/1 to direct
-DPP adds; all source math, loads, LDS publication/barrier/serial wave sum,
-stores, planes, producer/packs, grid, ABI, allocation/workspace, package policy,
-fallthroughs, and gfx1151 exclusion remain fixed. The H6U-ratio model reaches
-**418.062 tok/s**, explicitly not a claim. Admit only if all six roles and the
-weighted schedule are byte-exact, resource-non-regressive, and positive on both
-clocks; remove every surface on any miss
-([post-H6U residual / H6V target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. **WPF-H6V exact DPP-add Q5 wave
+reduction is rejected and fully removed.** All six H5Y production roles are
+byte-exact. Codegen replaces exact **160/480/400/480/400/400 bpermutes** with
+**32/96/80/96/80/80 permlanex16 + 128/384/320/384/320/320 DPP adds**, zero
+moves, fewer code slots/VGPR, identical FMA/global-load/LDS-store/barrier/global-
+store counts, and scratch0. The 188-call weighted event/wall improves
+**269.681/271.908 -> 267.729/267.342 ms (-0.724%/-1.679%)**, but only **3/6**
+roles win both clocks. BF16 K3072/N1024 regresses **+12.795%/+13.346%**, BF16
+K6144/N3072 misses event by **0.560%**, and F32 K3072/N6144 regresses
+**+4.137%/+1.757%**. The frozen universal all-role gate therefore fails. Skip
+runtime qualification, remove HIP/Python/key/export/test/gfx1151-exclusion
+surfaces without tuning, retain H5Y/H6U policy/allocation/fallbacks, and close
+this exact universal transfer
+([H6V rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
+[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

@@ -500,18 +500,20 @@ a **1,255.013-ms** span:
 | Remaining | 68.623 | **76.200** | **67.849** | **8.351** |
 | **Kernel sum** | **3,001.692** | **1,232.836** | **714.008** | **518.827** |
 
-**WPF-H6V exact DPP-add Q5 wave reduction is selected as a target only;
-production remains H5Y/H6U/H6T.** Current source-bound ISA proves the six H5Y
-consumers contain exactly **160/480/400/480/400/400 bpermutes**, zero DPP adds,
-and zero permlanex16. They own **222.356 ms / 188 calls** and issue **6.813
-billion** dynamic bpermute wave instructions per request. H6V may replace only
-the same offset16/8/4/2/1 peer tree with exact permlanex16 plus DPP adds while
-preserving every FMA, load, LDS/barrier/store, plane, producer/pack, allocation,
-workspace, ABI, policy, and fallback. Applying H6U's measured consumer ratio
-models **418.062 tok/s**, explicitly not a claim. All six roles and the weighted
-schedule must be byte-exact, resource-non-regressive, and positive on both HIP-
-event and synchronized-wall clocks or every H6V surface is removed
-([post-H6U residual / H6V target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
+**WPF-H6V exact DPP-add Q5 wave reduction is rejected; all candidate surfaces
+are removed and production remains H5Y/H6U/H6T.** All six roles are byte-exact
+and physical codegen realizes exact **32/96/80/96/80/80 permlanex16 +
+128/384/320/384/320/320 DPP adds**, zero bpermutes/moves, fewer code slots and
+VGPR, unchanged FMA/load/LDS/barrier/store counts, and scratch0. The 188-call
+weighted consumer improves event/wall **269.681/271.908 -> 267.729/267.342 ms
+(-0.724%/-1.679%)**, but only **3/6** roles win both clocks. BF16 K3072/N1024
+regresses **+12.795%/+13.346%**, BF16 K6144/N3072 misses event by **0.560%**,
+and F32 K3072/N6144 regresses **+4.137%/+1.757%**. The frozen all-role gate
+therefore fails: skip runtime qualification, remove HIP/Python/key/export/test/
+gfx1151-exclusion surfaces without tuning, and retain clean H6U **410.220
+tok/s**
+([H6V rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
+[post-H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

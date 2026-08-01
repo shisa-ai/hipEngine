@@ -2304,20 +2304,20 @@ backend/runner guards pass
 
 Clean committed H6U production reaches **410.220 tok/s / 1,232.836 ms / 2,192
 dispatches**, **+141.994%** over campaign start and **1.68395x** behind matched
-llama.cpp HIP **690.791 tok/s / 714.008 ms**. Reconciled Q5/attention/IQ-down/Q6
-gaps are **196.823/127.370/118.271/67.076 ms**. Select target-only **WPF-H6V
-exact DPP-add Q5 wave reduction** on all six H5Y consumers, which own **222.356
-ms / 188 calls**. Fresh current-source ISA proves exact
-**160/480/400/480/400/400 bpermutes**, zero DPP/permlanex16, and **6.813 billion**
-dynamic bpermute wave instructions/request. H6V may replace only the same
-five-step peer tree with exact permlanex16 plus DPP adds while preserving every
-FMA/load/LDS/barrier/store, plane, producer/pack, allocation/workspace, ABI,
-policy, and fallback. The H6U-ratio model is **418.062 tok/s**, selection-only.
-Require complete rows17/33/M512 bytes, all six roles and the 188-call weighted
-schedule positive on HIP-event and synchronized-wall clocks, no resource
-regression, and no compiler under profiling; remove every H6V surface without
-follow-up tuning on any miss
-([post-H6U residual / H6V target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. **WPF-H6V exact DPP-add Q5 wave
+reduction is rejected and fully removed.** All six roles are byte-exact and ISA
+realizes exact **32/96/80/96/80/80 permlanex16 +
+128/384/320/384/320/320 DPP adds**, zero bpermutes/moves, fewer slots/VGPR,
+unchanged FMA/load/LDS/barrier/store counts, and scratch0. Weighted 188-call
+event/wall improves **269.681/271.908 -> 267.729/267.342 ms
+(-0.724%/-1.679%)**, but only **3/6** roles pass both clocks. BF16 K3072/N1024
+regresses **+12.795%/+13.346%**, BF16 K6144/N3072 misses event by **0.560%**,
+and F32 K3072/N6144 regresses **+4.137%/+1.757%**. The predeclared universal
+all-role gate fails. Skip runtime/source work, remove all implementation/test/
+key/export/gfx1151-exclusion surfaces without tuning, retain H5Y/H6U, and only
+reopen Q5 wave reduction for a materially different role-specific mechanism
+([H6V rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
+[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
