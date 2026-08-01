@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna exact D32 32-byte-V-vector long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: replacing four cached uint4 loads with two 32-byte vectors improves 16K **0.957%** but regresses 4K/64K/128K **1.669%/0.756%/1.253%**, so restore native uint4 transactions; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vector32-v-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna exact D32 non-temporal-V long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: bypassing cache on exact D32 V loads improves 16K **1.489%** but regresses 4K/64K/128K **1.950%/0.479%/1.285%**, so restore cached uint4 loads; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-nontemporal-v-rejected.json`.
 
 - [rejected byte-exact gfx1151 Laguna exact D32 V-stage128 long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: doubling the exact deferred D32 probability/value stage improves 16K/64K **2.619%/0.580%** but regresses 4K/128K **0.875%/0.160%**, so restore V64 before production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vstage128-rejected.json`.

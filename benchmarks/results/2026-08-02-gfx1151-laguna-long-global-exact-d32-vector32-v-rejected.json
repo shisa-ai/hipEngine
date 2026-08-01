@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T04:46:27+09:00",
+  "kind": "hipengine_laguna_long_global_exact_d32_vector32_v_rejected",
+  "status": "rejected_mixed_leaf_direction",
+  "performance_claim": false,
+  "model": {"name": "Poolside Laguna S 2.1", "quant": "Q4_K_M mixed GGUF v3", "kv_dtype": "bf16"},
+  "platform": {"device_name": "AMD Radeon 8060S Graphics", "backend": "hip_gfx1151", "target_arch": "gfx1151", "rocm": "TheRock HIP 7.15.0-0000000", "gpu_max_hw_queues": 2},
+  "candidate": {
+    "control": "exact deferred-normalization GQA6 D32/V64 cached uint4 loads",
+    "route": "same owner with two cached 32-byte ext-vector loads per V row",
+    "mechanism": "halve source/shared vector operations while preserving caching, ownership, arithmetic, and output rounding",
+    "candidate_code_retained": false
+  },
+  "leaf": {
+    "protocol": "back-to-back capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "uint4_ms": 0.3207860946655273, "vector32_ms": 0.32614009380340575, "latency_change_percent": 1.6690246949328857},
+      {"live_count": 16448, "uint4_ms": 1.3328296661376953, "vector32_ms": 1.3200778007507323, "latency_change_percent": -0.956751317211868},
+      {"live_count": 65664, "uint4_ms": 5.447389221191406, "vector32_ms": 5.488565826416016, "latency_change_percent": 0.7558961468078218},
+      {"live_count": 131200, "uint4_ms": 10.844319152832032, "vector32_ms": 10.980187225341798, "latency_change_percent": 1.252896291550809}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "uint4_raw_sha256": "ad62296f1ea2bdef86e761dbe4bfbdea5fd28af74768f6b7d934df866d20ce35",
+    "vector32_raw_sha256": "356f0c334fac83d970f04d2d1dffd0b9c5414425d1852fa31367823d8631be60"
+  },
+  "decision": {
+    "reason": "32-byte vector loads improve only 16K and regress 4K/64K/128K; the compiler/cache path favors native uint4 transactions",
+    "production_gate_run": false,
+    "mandatory_128k_gate_run": false,
+    "next_attack": "retain uint4 loads and increase D32 block occupancy without reducing workgroup count"
+  },
+  "validation": {"cpu_reference_fixture": "passed", "restored_production_tracked_diff": "none"}
+}

@@ -197498,3 +197498,12 @@ Vulkan local sizes verbatim will close the measured gap.
   harms both longer required depths, so restore cached uint4 loads before any
   production run. Raw SHA-256 is
   `9adbb56ba558832d7f8c21415f1b8576a783773fe2e073c46203a622e287e153`.
+
+## 2026-08-02 04:46 JST — Reject exact D32 32-byte V vectors
+
+- Replaced four cached uint4 transactions per exact D32 V row with two cached
+  32-byte ext-vector transactions. The fixture and byte-exact leaves pass, but
+  live4,097/16,448/65,664/131,200 changes latency
+  **+1.669%/-0.957%/+0.756%/+1.253%** versus the fresh uint4 baseline.
+  Restore native uint4 before production timing. Raw SHA-256 is
+  `356f0c334fac83d970f04d2d1dffd0b9c5414425d1852fa31367823d8631be60`.
