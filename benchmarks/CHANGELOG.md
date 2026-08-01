@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted byte-exact gfx1151 Laguna ordered-prefetch exact PV decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: preload four probability/BF16-V operands before four explicitly ordered `v_fma_f32` operations; exact leaves improve **23.13-34.03%**, and complete d16K/d64K/d128K improves **18.148/10.848/7.068 -> 18.931/11.868/7.976 tok/s (+4.313%/+9.400%/+12.851%)** with exact mandatory trajectory and lifecycle; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json`.
+
 - [rejected byte-exact gfx1151 Laguna exact PV query-pair ILP] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: carrying two independent query accumulators per wave shares each V register but halves output waves and regresses the retained exact D32 owner **21.21-22.11%** at every depth, so restore one query per wave; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-querypair-rejected.json`.
 
 - [rejected byte-exact gfx1151 Laguna exact score-wave packing] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: packing eight/four token waves into local256/local128 workgroups regresses the retained one-wave local32 score producer **0.82-4.15% / 1.25-3.46%** at every depth, so restore local32 before production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-score-wavepack-rejected.json`.

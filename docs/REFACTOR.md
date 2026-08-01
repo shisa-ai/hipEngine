@@ -2577,6 +2577,13 @@ should be boring.
   Exact PV query-pair ILP is removed after halving output waves regresses every
   depth by about **21-22%**; one query/output accumulator per wave remains the
   required D32 ownership.
+  A plain four-token PV source unroll and its volatile repair are also removed.
+  The plain unroll let the compiler form four partial accumulators and failed
+  the mandatory recurrent 128K hash; the volatile scalar restored ordering but
+  made the leaf 3-4x slower. Production retains only four-token operand
+  prefetch followed by explicit ordered `v_fma_f32`, which improves exact
+  leaves **23.13-34.03%** and complete 16K/64K/128K
+  **4.313%/9.400%/12.851%** with the established trajectory.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
