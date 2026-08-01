@@ -483,6 +483,36 @@ scratch, dispatches, F32 N72 fallback, and gfx1151 remain unchanged, and
 [H6U candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
 [post-H6T residual / H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
+The clean committed H6U matched refresh is **410.220 tok/s** from
+**409.861/411.224/410.765/410.220/410.191**, all token 2930, deterministic, and
+allocation-clean. It is **+141.994%** over campaign start, **+0.318%** over the
+clean H6T checkpoint, and **1.68395x** behind matched llama.cpp HIP **690.791
+tok/s**. Its reconciled cached request is **1,232.836 ms / 2,192 dispatches** in
+a **1,255.013-ms** span:
+
+| Matched M512 component | Campaign start | Current H6U | llama.cpp HIP exact | Remaining gap |
+| --- | ---: | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 ms | **255.137 ms** | **58.314 ms** | **196.823 ms** |
+| Attention | 488.304 | **148.882** | **21.512** | **127.370** |
+| IQ3/IQ4 down | 557.091 | **272.131** | **153.860** | **118.271** |
+| Q6 projections | 157.073 | **81.744** | **14.668** | **67.076** |
+| IQ2/special-IQ3 gate/up | 460.143 | **398.743** | **397.805** | **0.938** |
+| Remaining | 68.623 | **76.200** | **67.849** | **8.351** |
+| **Kernel sum** | **3,001.692** | **1,232.836** | **714.008** | **518.827** |
+
+**WPF-H6V exact DPP-add Q5 wave reduction is selected as a target only;
+production remains H5Y/H6U/H6T.** Current source-bound ISA proves the six H5Y
+consumers contain exactly **160/480/400/480/400/400 bpermutes**, zero DPP adds,
+and zero permlanex16. They own **222.356 ms / 188 calls** and issue **6.813
+billion** dynamic bpermute wave instructions per request. H6V may replace only
+the same offset16/8/4/2/1 peer tree with exact permlanex16 plus DPP adds while
+preserving every FMA, load, LDS/barrier/store, plane, producer/pack, allocation,
+workspace, ABI, policy, and fallback. Applying H6U's measured consumer ratio
+models **418.062 tok/s**, explicitly not a claim. All six roles and the weighted
+schedule must be byte-exact, resource-non-regressive, and positive on both HIP-
+event and synchronized-wall clocks or every H6V surface is removed
+([post-H6U residual / H6V target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
