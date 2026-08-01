@@ -1277,26 +1277,24 @@ unchanged
 ([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
-Post-H7G, select target-only **WPF-H7H exact full-group Q5 compute** on both and
+Post-H7G, standalone **WPF-H7H exact full-group Q5 compute** now covers both and
 only the remaining divisible H5Y roles. BF16 K3072/N1024 `c8r4` owns **92 calls
-/ 24.093 ms** and BF16 K9216/N3072 `c12r8` owns **35 / 80.144 ms**. Their
-natural-M512 row groups are exactly full, but H5Y retains a dynamic per-FMA row
-predicate. The new route must remove only that predicate, preserve the complete
-activation/weight/FMA/reduction/store boundary, and remain separately named;
-H7G source and H5Y fallback stay unchanged.
+/ 24.093 ms** and BF16 K9216/N3072 `c12r8` owns **35 / 80.144 ms**. The route
+removes only the dynamic per-FMA row predicate through separately named gfx1100
+exports/keys while preserving the complete activation/weight/FMA/reduction/store
+boundary; H7G source, H5Y fallback, workspace, and allocation remain unchanged.
 
-The frozen first-and-only actual-weight 5/15/5 screen requires both roles and
-aggregate positive on event and synchronized wall. `r4` improves
-**0.303408/0.305878 -> 0.271544/0.278936 ms**, `r8`
-**3.211801/3.196062 -> 2.680494/2.728876 ms**, and the weighted 127-call
-schedule **140.327/140.003 -> 118.799/121.173 ms (-15.341%/-13.450%)**. Outputs
-are byte-exact/finite and lifecycle recovers. Static candidate `r4/r8`
-dual/scalar FMA sites are **15/5 and 47/9** versus H5Y **1/31 and 1/95**; code,
-slots, VGPR, LDS, private/spill/scratch all clear the target bounds. Production
-remains H7G **424.845 tok/s**. Freeze RED before any H7H repository surface,
-then require complete rows1/7/8/9/M512 bytes, physical bounds, named cached
-trace, and immutable-screen replay with no role subset
-([post-H7G residual / H7H target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
+RED-first rows1/7/8/9/M512 correctness passes **13/13**. The production object
+emits `r4/r8` dual/scalar FMA sites **15/5 and 47/9** versus H5Y **1/31 and
+1/95**, code/slots **3,584/587 and 9,728/1,588**, metadata VGPR **72/194**, LDS
+**512/1,536**, and private/spill/scratch0. Cache-only named execution is
+**0.516/5.072 ms**. The one-time production-library actual-weight 5/15/5 replay
+is byte-exact/finite/lifecycle-clean and both-clock positive per role; weighted
+event/wall moves **140.659/138.993 -> 119.035/121.655 ms
+(-15.373%/-12.474%)** with zero compiler. Production remains H7G **424.845
+tok/s**. Freeze a separate bounded-runtime RED before any package/source owner
+([candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
@@ -2073,7 +2071,7 @@ heldouts before any clean publication.
 | **WPF-H7A exact late-start SWA scaled-score replay** | **Rejected at complete-byte gate; all candidate surfaces removed** | Structure/preflight and one cached build pass, but complete H6W equality fails at **80,469 / 100,075** elements for starts256/384 (max **4.656613e-9 / 3.7252903e-9**). H6W uses fused `dot*scale-max`; stored scaled scores round before subtraction. Skip code-object/profiler/timing, remove H7A without tuning/rerun, and keep H6W/H6Z **423.233 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json). |
 | **WPF-H7B exact lane-parallel IQ3 final-row publication** | **Rejected at frozen metadata-VGPR gate; all candidate surfaces removed** | Complete H6T/CPU/poison/lifecycle correctness passes **10/10**. The first code object realizes exact **23 global loads / 3 b128 LDS loads / 12 LDS stores / 3 d16 stores / 2 barriers / 216 FMAs / 24 permlanex16 / 96 DPP** and cuts code/slots **7,920/1,384→5,916/994**, but metadata VGPR rises **101→108**, failing the frozen **≤101** ceiling. Skip rocprof/all-layer timing, remove H7B without tuning/recompile/rerun, and retain H6T/H6Z **422.602 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json). |
 | **WPF-H7C exact raw-Q6 DPP-add wave reduction** | **Retained bounded gfx1100 raw-Q6 source; empty generic rollback** | Leaf exactness passes **22/22**; BF16/F32 code/slots fall **4,840/843→4,228/681** and **5,040/909→4,452/749** with exact **0 bpermutes + 32 permlanex16 + 128 DPP adds**, metadata/runtime VGPR **60/64** and **55/56**, LDS512/scratch0. Actual-role event/wall improves **37.248/37.303→36.983/36.998 ms**. Complete M512 source state is KL0/exact across **48/48** boundaries and KV/spans. Fresh source substitution preserves **2,192 dispatches** and improves selected raw-Q6/Q6/span **0.723%/0.207%/0.205%** with zero compiler. Fresh fixed C4096/M512 is noisy negative **-0.225% (2/5)** and 512/1K/4K is **+0.0925%/+0.0372%/-0.0488%**; retain under cycle-wall policy based on two integrated trace wins plus the immutable all-role leaf screen, without claiming the negative aggregate rows as wins. Scratch/lifecycle are unchanged and **80/80** guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json). |
-| **WPF-H7H exact full-group Q5 compute** | **Selected target only; production remains H7G** | Both remaining divisible H5Y roles are frozen together: `c8r4` **92 calls / 24.093 ms** and `c12r8` **35 / 80.144 ms**. The first-and-only actual-weight 5/15/5 screen is byte-exact, finite, lifecycle-clean, and both-clock positive per role; weighted event/wall improves **140.327/140.003→118.799/121.173 ms (-15.341%/-13.450%)**. Candidate `r4/r8` dual/scalar FMA sites become **15/5 and 47/9** from **1/31 and 1/95**, code/slots fall, and VGPR/LDS/private/spill/scratch stay within unchanged bounds. No H7H repository surface or production claim exists; freeze RED with no subset salvage. [`target`](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json). |
+| **WPF-H7H exact full-group Q5 compute** | **Admitted standalone gfx1100 leaf; H7G remains source** | Both divisible H5Y roles remain inseparable: `c8r4` **92 calls / 24.093 ms** and `c12r8` **35 / 80.144 ms**. RED-first rows1/7/8/9/M512 correctness passes **13/13**. Production `r4/r8` dual/scalar FMA sites are **15/5 and 47/9**, code/slots **3,584/587 and 9,728/1,588**, metadata/runtime VGPR **72/72 and 194/200**, LDS **512/1,536**, private/spill/scratch0; cached named execution is **0.516/5.072 ms**. The one-time production-library 5/15/5 replay is byte-exact and both-clock positive per role; weighted event/wall improves **140.659/138.993→119.035/121.655 ms (-15.373%/-12.474%)** with zero compiler and clean lifecycle. Runtime/source remain separate. [`candidate`](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) · [`target`](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json). |
 | **WPF-H7G exact padded-row Q5 compute** | **Retained gfx1100 Q5 source; complete named H5Y rollback** | The four predeclared natural-M512 `r12/r5/r5/r10` roles total **61 calls**; divisible `r4/r8` roles were excluded before timing. Standalone exactness passes **23/23**, converts dual/scalar FMA sites to **91/5, 66/14, 66/14, 73/7**, and improves integrated leaf wall **136.993→129.092 ms (-5.767%)**. Complete M512 is KL0/exact across all **48/48** boundaries and KV/spans. Cache-only tracing records exact **2/12/12/35** H7G calls at local128/LDS1536/scratch0/runtime-VGPR168/200 with zero compiler. Fresh source H5Y→H7G fixed C4096/M512 improves **420.569→423.981 tok/s (+0.811%, 5/5)**; 512/1K/4K gains **+0.962%/+0.410%/+0.201%**, all 3/3 exact wins. Clean production reaches **424.845 tok/s / 1,192.424 ms / 2,192 dispatches**, with Q5 **255.229→248.888 ms**. Workspace/scratch/allocation and gfx1151 are unchanged; **104/104** final guards pass. [`production`](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json). |
 | **WPF-H6T exact fused-DPP-add staged-wave IQ3** | **Retained gfx1100 IQ3 source default; H6R same-ABI rollback** | Leaf **9/9** and **45/45** layers are exact/both-clock positive; codegen realizes **24 permlanex16 + 96 DPP adds + zero moves**, cuts slots/code **1,399 -> 1,384 / 8,016 -> 7,920 B**, and keeps runtime VGPR104/scratch0. Complete M512 is KL0/exact across all 48 boundaries and K/V/spans. Exact **45 H6R -> 45 H6T** cuts IQ3/request/span **2.090%/0.116%/0.642%**. Fresh fixed M512 gains **+0.319% (5/5)** at **408.900 tok/s**, **1.68939x** behind matched llama.cpp HIP; fresh 512/1K/4K gains **+0.351%/+0.423%/+0.176%**, all 3/3 wins. The nine-entry ABI/resources/dispatches are unchanged, gfx1151 is excluded, and **144/144** source guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
