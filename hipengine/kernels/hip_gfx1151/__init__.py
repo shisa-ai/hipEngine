@@ -911,6 +911,24 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 10, "f32", "tile_k_col"),
             )
         ),
+        # H7H exact full-group Q5 consumers are separately scoped to gfx1100.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}{weight_layout}_activation_tile_k_row_"
+                f"full_group_compute_coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype, weight_layout in (
+                (8, 4, "bf16", "tile_k_col"),
+                (12, 8, "bf16", "row_major"),
+            )
+        ),
         # H6E exact Q6 activation-row consumers are separately scoped to
         # gfx1100 pending their standalone physical/performance gate.
         *(

@@ -1673,6 +1673,32 @@ extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_tile_k_col_ac
       input, weight, out, rows, in_features, out_features, stream);
 }
 
+extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_tile_k_col_activation_tile_k_row_full_group_compute_coltile8_rowbatch4_bf16_bf16_out(
+    const uint16_t* input,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_padded_compute<
+      uint16_t, 8, 4, true, 3072, 1024>(
+      input, weight, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_full_group_compute_coltile12_rowbatch8_bf16_bf16_out(
+    const uint16_t* input,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_padded_compute<
+      uint16_t, 12, 8, false, 9216, 3072>(
+      input, weight, out, rows, in_features, out_features, stream);
+}
+
 #define HIPENGINE_Q6_ACTIVATION_TILE_K_ROW_EXPORT( \
     ROW_BATCH, OUTPUT_DTYPE, OUTPUT_TYPE, EXACT_K, EXACT_N) \
 extern "C" int hipengine_gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_coltile16_rowbatch##ROW_BATCH##_bf16_##OUTPUT_DTYPE##_out( \
