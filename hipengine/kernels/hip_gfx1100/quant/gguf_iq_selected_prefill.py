@@ -99,6 +99,12 @@ _SYMBOL_IQ3_ACTIVATION_RESIDENT_DPP_PEER_STAGED_TRIPLE_OUTPUT = (
     "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_SYMBOL_IQ3_ACTIVATION_RESIDENT_FUSED_DPP_ADD_STAGED_TRIPLE_OUTPUT = (
+    "hipengine_gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_"
+    "active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_"
+    "staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_"
+    "rowbatch8_bf16_bf16_out"
+)
 
 
 def _iq3_active_expert_persistent_symbol(partition: int) -> str:
@@ -1077,6 +1083,58 @@ def gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activa
     )
 
 
+def gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_common(
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+    )
+    if in_features != 1024:
+        raise ValueError(
+            "in_features must be exactly 1024 for fused-DPP-add staged-wave IQ3"
+        )
+    if out_features != 3072:
+        raise ValueError(
+            "out_features must be exactly 3072 for fused-DPP-add staged-wave IQ3"
+        )
+    if num_experts != 256:
+        raise ValueError(
+            "num_experts must be exactly 256 for fused-DPP-add staged-wave IQ3"
+        )
+    _launch_active_expert_persistent_single(
+        _SYMBOL_IQ3_ACTIVATION_RESIDENT_FUSED_DPP_ADD_STAGED_TRIPLE_OUTPUT,
+        x_ptr,
+        expert_start_compact_ptr,
+        active_experts_ptr,
+        active_count_ptr,
+        qweight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -1849,6 +1907,11 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_bf16_bf16_out",
+            gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq3_xxs",
             "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
             gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
         ),
@@ -1947,6 +2010,7 @@ __all__ = [
     "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out",
+    "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out",
     "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
