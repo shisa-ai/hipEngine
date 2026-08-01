@@ -139,7 +139,10 @@ exact deferred path, one-pass 16K/64K/128K decode improves
 inactive and flat within **-0.022%** sample noise. Every established generated
 hash/final position and all **87.408 GB / 1,452 allocations** recover exactly.
 Parity with same-GGUF Vulkan is now **79.916%/55.366%/43.673%** at
-16K/64K/128K; the remaining target is the exact first eight global layers.
+16K/64K/128K. The committed tracked-clean 16K confirmation is
+**17.365 tok/s**, within **+0.0049%** of the directional row and **+2.532%**
+over the prior clean exact checkpoint; the remaining target is the exact first
+eight global layers.
 [`late-four context-parallel production`](results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights

@@ -9389,8 +9389,12 @@ The remaining attention sequence is:
      hash/final token/position and returns **87,407,934,744 bytes / 1,452
      allocations** to zero. The focused bundle passes **89 tests**, including
      CPU-reference attention, complete span visibility, runtime selection, and
-     backend scoping. Context parallelism is now proven usable, but the exact
-     first eight global layers still dominate the remaining long-depth gap:
+     backend scoping. At committed revision `af2a79fbe`, the tracked-clean 16K
+     confirmation is **17.365235 tok/s**, within **+0.0049%** of the dirty row
+     and **+2.532%** over the prior clean exact checkpoint, with the same
+     token/hash/position and complete teardown. Context parallelism is now
+     proven usable, but the exact first eight global layers still dominate the
+     remaining long-depth gap:
      [`late-four context-parallel production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json).
 
 ### Long-context decode attack

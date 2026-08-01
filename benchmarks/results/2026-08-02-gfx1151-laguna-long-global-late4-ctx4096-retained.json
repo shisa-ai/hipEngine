@@ -151,6 +151,23 @@
     "repair_kernel_dispatched": false,
     "csv_sha256": "66bc78553c180cb0e657a12fc3f242bc14c48b128b2a1f37a1b8006a3663faba"
   },
+  "clean_confirmation": {
+    "revision": "af2a79fbe5070f2c08716ac98703af5adf02086e",
+    "tracked_clean": true,
+    "depth": 16384,
+    "decode_forward_calls": 127,
+    "decode_tok_s": 17.3652352551727,
+    "decode_seconds": 7.313462681835517,
+    "delta_vs_dirty_percent": 0.004890162488480065,
+    "delta_vs_prior_clean_exact_percent": 2.5318575431261037,
+    "llamacpp_vulkan_parity_percent": 79.91972539453968,
+    "final_token_id": 13815,
+    "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+    "final_position": 16510,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_sha256": "d3bf0ba8182585c1711972243eeddfd218922c78847737d6b860c7e9f3b83764"
+  },
   "rejected_screens": [
     {
       "candidate": "ctx4096 on all twelve global layers",

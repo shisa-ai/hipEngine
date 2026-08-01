@@ -197247,3 +197247,20 @@ Vulkan local sizes verbatim will close the measured gap.
   rollup/changelog, and compact artifact
   `2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json`. Commit
   this production unit next, then run the tracked-clean d16K confirmation.
+
+## 2026-08-02 01:18 JST — Confirm late-four context split from clean commit
+
+- Committed the production unit as `af2a79fbe`, then repeated the cached-only
+  capacity131,200/chunk2,048 d16K/127 protocol with no tracked changes. Decode
+  is **17.365235 tok/s / 57.586 ms/token**, within **+0.0049%** of the dirty
+  **17.364386** row and **+2.532%** over the prior clean exact
+  **16.936429 tok/s** checkpoint. Vulkan parity is **79.920%**.
+- The established final token **13815**, generated SHA-256
+  `b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6`,
+  and position **16,510** match. All **87,407,934,744 bytes / 1,452
+  allocations** recover. Provenance records revision
+  `af2a79fbe5070f2c08716ac98703af5adf02086e`, no staged/unstaged changes, and
+  required cached build. Raw JSON SHA-256 is
+  `d3bf0ba8182585c1711972243eeddfd218922c78847737d6b860c7e9f3b83764`.
+- Update the compact artifact, decode plan, rollup, changelog, and worklog in
+  one evidence-only commit.
