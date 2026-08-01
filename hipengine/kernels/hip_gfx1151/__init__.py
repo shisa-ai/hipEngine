@@ -890,6 +890,27 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 10, "f32", "tile_k_col"),
             )
         ),
+        # H7G exact padded-row Q5 consumers are gfx1100-only pending an
+        # independent gfx1151 physical/performance transfer gate.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}{weight_layout}_activation_tile_k_row_"
+                f"padded_compute_coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype, weight_layout in (
+                (8, 12, "bf16", "row_major"),
+                (16, 5, "bf16", "tile_k_col"),
+                (16, 5, "f32", "tile_k_col"),
+                (8, 10, "f32", "tile_k_col"),
+            )
+        ),
         # H6E exact Q6 activation-row consumers are separately scoped to
         # gfx1100 pending their standalone physical/performance gate.
         *(

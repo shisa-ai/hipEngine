@@ -1,6 +1,6 @@
 # Laguna S 2.1 Prefill Attack Plans
 
-Last updated: 2026-08-01
+Last updated: 2026-08-02
 
 ## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
@@ -38,8 +38,9 @@ qrow4 caller-record source ownership with H6W/H6N rollback, H7A rejects
 late-SWA scaled-score replay at complete-byte exactness, H7B rejects exact
 lane-parallel IQ3 final-row publication at its metadata-VGPR gate, H7C promotes
 exact DPP-add reduction for the three raw-Q6 fallbacks, H7D closes exact Q5 row-
-interleaved VOPD scheduling, and H7E selects target-only IQ3 two-plane residual-
-D4 source-MMQ behind the mandatory complete quality gate; 16K+ remains
+interleaved VOPD scheduling, H7E rejects residual-D4 runtime ownership at the
+mandatory complete quality gate, and H7G admits a standalone exact padded-row
+Q5 leaf pending bounded runtime/source qualification; 16K+ remains
 deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
@@ -1240,6 +1241,24 @@ add prompt/layer conditioning
 ([H7E rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json) ·
 [candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+
+Reject exact Q6 padded-row compute H7F without post-timing salvage: both
+rowbatch5 roles win, but rowbatch4 loses **0.75% event / 2.28% wall**. H7G is a
+separate predeclared Q5 operation covering only M512 `r12/r5/r5/r10` padded-tail
+roles (**61 calls**); Q5 `r4/r8` were excluded before timing. The candidate
+preserves H5Y activation/weight planes and valid-row arithmetic/store order,
+removing only the redundant compute predicate over producer-zeroed padding.
+
+The frozen H7G matrix passes **23/23** across rows1/7/8/9/M512 with complete
+H5Y bytes, sampled CPU gates, poison overwrite, finiteness, and lifecycle. First-
+object dual/scalar FMA sites become **91/5, 66/14, 66/14, 73/7** at metadata
+VGPR **194/162/162/162**, private/spill/scratch0. Cached rocprof names H7G at
+**434.801 us** with zero compiler. Immutable selection event/wall improves
+**136.918/137.009 -> 128.598/129.496 ms (-6.077%/-5.483%)**; integrated replay
+again wins all roles at **136.701/136.993 -> 128.691/129.092 ms
+(-5.860%/-5.767%)**, byte-exact. Admit only the standalone leaf and keep H5Y
+production **422.786 tok/s** until complete bounded-runtime qualification
+([H7G candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

@@ -116,6 +116,24 @@ _Q5_ACTIVATION_TILE_K_ROW_PRIMITIVE_VARIANT = (
 _Q5_ACTIVATION_TILE_K_ROW_COMPOSITE_VARIANT = (
     "f32_ordered_weight_major_{weight_layout}_activation_tile_k_row_{suffix}"
 )
+_Q5_PADDED_COMPUTE_ROLES = (
+    (8, 12, "bf16", "row_major", 3_072, 12_288),
+    (16, 5, "bf16", "tile_k_col", 6_144, 3_072),
+    (16, 5, "f32", "tile_k_col", 3_072, 6_144),
+    (8, 10, "f32", "tile_k_col", 3_072, 9_216),
+)
+_Q5_PADDED_COMPUTE_SYMBOL = (
+    "hipengine_gguf_q5_k_f32_weight_ordered_weight_major_"
+    "{weight_layout}_activation_tile_k_row_padded_compute_{suffix}"
+)
+_Q5_PADDED_COMPUTE_PRIMITIVE_VARIANT = (
+    "ordered_weight_major_{weight_layout}_activation_tile_k_row_"
+    "padded_compute_{suffix}"
+)
+_Q5_PADDED_COMPUTE_COMPOSITE_VARIANT = (
+    "f32_ordered_weight_major_{weight_layout}_activation_tile_k_row_"
+    "padded_compute_{suffix}"
+)
 _Q6_ACTIVATION_TILE_K_ROW_ROLES = (
     (16, 5, "bf16", 3_072, 1_024),
     (16, 4, "bf16", 1_024, 3_072),
@@ -970,6 +988,202 @@ def _make_q5_activation_tile_k_row_composite(
     return launch
 
 
+def _q5_padded_compute_shape(
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    weight_layout: str,
+) -> tuple[int, int]:
+    for (
+        role_col_tile,
+        role_row_batch,
+        role_dtype,
+        role_layout,
+        hidden,
+        outputs,
+    ) in _Q5_PADDED_COMPUTE_ROLES:
+        if (col_tile, row_batch, output_dtype, weight_layout) == (
+            role_col_tile,
+            role_row_batch,
+            role_dtype,
+            role_layout,
+        ):
+            return hidden, outputs
+    raise ValueError("padded-compute Q5 geometry must be an admitted role")
+
+
+def _check_q5_padded_compute_role(
+    *,
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    weight_layout: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> tuple[int, int, int]:
+    parsed_rows = _check_rows(rows)
+    exact_hidden, exact_outputs = _q5_padded_compute_shape(
+        col_tile,
+        row_batch,
+        output_dtype,
+        weight_layout,
+    )
+    hidden = int(in_features)
+    outputs = int(out_features)
+    if hidden != exact_hidden:
+        raise ValueError(f"in_features must be exactly {exact_hidden}")
+    if outputs != exact_outputs:
+        raise ValueError(f"out_features must be exactly {exact_outputs}")
+    return parsed_rows, hidden, outputs
+
+
+def _launch_q5_f32_weight_ordered_weight_major_padded_compute(
+    *,
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    weight_layout: str,
+    activation_ptr: int,
+    weight_f32_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    parsed_rows, hidden, outputs = _check_q5_padded_compute_role(
+        col_tile=col_tile,
+        row_batch=row_batch,
+        output_dtype=output_dtype,
+        weight_layout=weight_layout,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    library = library or build_gguf_q5_k_f32_rocblas_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    suffix = _Q5_ACTIVATION_TILE_K_ROW_SUFFIX.format(
+        col_tile=col_tile,
+        row_batch=row_batch,
+        output_dtype=output_dtype,
+    )
+    function = getattr(
+        library,
+        _Q5_PADDED_COMPUTE_SYMBOL.format(
+            weight_layout=weight_layout,
+            suffix=suffix,
+        ),
+    )
+    function.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    function.restype = ctypes.c_int
+    error = function(
+        ctypes.c_void_p(activation_ptr),
+        ctypes.c_void_p(weight_f32_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(parsed_rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(outputs),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def _make_q5_f32_weight_ordered_weight_major_padded_compute(
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    weight_layout: str,
+):
+    def launch(
+        activation_ptr: int,
+        weight_f32_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        **kwargs,
+    ) -> None:
+        _launch_q5_f32_weight_ordered_weight_major_padded_compute(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+            weight_layout=weight_layout,
+            activation_ptr=activation_ptr,
+            weight_f32_ptr=weight_f32_ptr,
+            out_ptr=out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            **kwargs,
+        )
+
+    return launch
+
+
+def _make_q5_padded_compute_composite(
+    activation_pack,
+    weight_dequantize,
+    primitive,
+    *,
+    col_tile: int,
+    row_batch: int,
+    output_dtype: str,
+    weight_layout: str,
+):
+    base = _make_q5_activation_tile_k_row_composite(
+        activation_pack,
+        weight_dequantize,
+        primitive,
+        col_tile=col_tile,
+    )
+
+    def launch(
+        x_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        weight_f32_ptr: int,
+        activation_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        **kwargs,
+    ) -> None:
+        parsed_rows, hidden, outputs = _check_q5_padded_compute_role(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+            weight_layout=weight_layout,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        base(
+            x_ptr,
+            qweight_ptr,
+            out_ptr,
+            weight_f32_ptr,
+            activation_ptr,
+            parsed_rows,
+            hidden,
+            outputs,
+            **kwargs,
+        )
+
+    return launch
+
+
 def _q6_activation_tile_k_row_shape(
     col_tile: int,
     row_batch: int,
@@ -1498,6 +1712,63 @@ del _col_tile, _row_batch, _output_dtype, _weight_layout, _suffix
 del _pack_name, _primitive_name, _composite_name
 del _pack, _primitive, _weight_dequantize, _composite, _key
 
+_Q5_PADDED_COMPUTE_PRIMITIVES = {}
+_Q5_PADDED_COMPUTE_COMPOSITES = {}
+for (
+    _col_tile,
+    _row_batch,
+    _output_dtype,
+    _weight_layout,
+    _in_features,
+    _out_features,
+) in _Q5_PADDED_COMPUTE_ROLES:
+    _suffix = _Q5_ACTIVATION_TILE_K_ROW_SUFFIX.format(
+        col_tile=_col_tile,
+        row_batch=_row_batch,
+        output_dtype=_output_dtype,
+    )
+    _primitive_name = (
+        "gguf_q5_k_f32_weight_ordered_weight_major_"
+        f"{_weight_layout}_activation_tile_k_row_padded_compute_{_suffix}"
+    )
+    _composite_name = (
+        "gguf_q5_k_f32_ordered_weight_major_"
+        f"{_weight_layout}_activation_tile_k_row_padded_compute_{_suffix}"
+    )
+    _geometry = (_col_tile, _row_batch, _output_dtype, _weight_layout)
+    _pack = _Q5_ACTIVATION_TILE_K_ROW_PACKS[_geometry]
+    _primitive = _make_q5_f32_weight_ordered_weight_major_padded_compute(
+        _col_tile,
+        _row_batch,
+        _output_dtype,
+        _weight_layout,
+    )
+    _weight_dequantize = (
+        _Q5_TILE_K_COL_PRODUCERS[(_col_tile, _row_batch, _output_dtype)]
+        if _weight_layout == "tile_k_col"
+        else gguf_q5_k_dequantize_f32_exact
+    )
+    _composite = _make_q5_padded_compute_composite(
+        _pack,
+        _weight_dequantize,
+        _primitive,
+        col_tile=_col_tile,
+        row_batch=_row_batch,
+        output_dtype=_output_dtype,
+        weight_layout=_weight_layout,
+    )
+    _primitive.__name__ = _primitive_name
+    _composite.__name__ = _composite_name
+    globals()[_primitive_name] = _primitive
+    globals()[_composite_name] = _composite
+    _Q5_PADDED_COMPUTE_PRIMITIVES[_geometry] = _primitive
+    _Q5_PADDED_COMPUTE_COMPOSITES[_geometry] = _composite
+    _ORDERED_EXPORT_NAMES.extend((_primitive_name, _composite_name))
+del _col_tile, _row_batch, _output_dtype, _weight_layout
+del _in_features, _out_features, _suffix, _geometry
+del _primitive_name, _composite_name, _pack, _primitive
+del _weight_dequantize, _composite
+
 _Q6_ACTIVATION_TILE_K_ROW_PRIMITIVES = {}
 _Q6_ACTIVATION_TILE_K_ROW_COMPOSITES = {}
 for (
@@ -1895,6 +2166,40 @@ def register_gguf_q5_k_f32_rocblas_prefill_kernels(
                 "linear",
                 "gguf_q5_k",
                 _Q5_ACTIVATION_TILE_K_ROW_COMPOSITE_VARIANT.format(
+                    weight_layout=weight_layout,
+                    suffix=suffix,
+                ),
+            ),
+            composite,
+            replace=replace,
+        )
+    for geometry, primitive in _Q5_PADDED_COMPUTE_PRIMITIVES.items():
+        col_tile, row_batch, output_dtype, weight_layout = geometry
+        suffix = _Q5_ACTIVATION_TILE_K_ROW_SUFFIX.format(
+            col_tile=col_tile,
+            row_batch=row_batch,
+            output_dtype=output_dtype,
+        )
+        composite = _Q5_PADDED_COMPUTE_COMPOSITES[geometry]
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "f32_weight",
+                _Q5_PADDED_COMPUTE_PRIMITIVE_VARIANT.format(
+                    weight_layout=weight_layout,
+                    suffix=suffix,
+                ),
+            ),
+            primitive,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q5_k",
+                _Q5_PADDED_COMPUTE_COMPOSITE_VARIANT.format(
                     weight_layout=weight_layout,
                     suffix=suffix,
                 ),
