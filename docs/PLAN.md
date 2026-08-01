@@ -1449,7 +1449,11 @@ first **<=20-ms** gate; tracked-clean 16K reproduces **16.756 tok/s
 because the implementation still
 materializes the full F32 score/physical plane; the next owner must replace it
 with bounded output/max/denominator partials while moving the same depth gates
-and targeting **<=5 ms/token** at 16K.
+and targeting **<=5 ms/token** at 16K. A clean post-promotion trace measures
+the remaining global interval at **16.293 ms/token = 3.660 score + 3.371
+normalize + 9.261 PV**. Its gap to Vulkan's global scheduled group explains
+**98.081%** of the remaining device-union gap, so context-parallel PV/merge is
+the immediate implementation target, followed by parallel normalization.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|
