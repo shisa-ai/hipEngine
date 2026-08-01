@@ -2569,6 +2569,8 @@ should be boring.
   depths; cached cross-workgroup V behavior remains beneficial.
   Cached 32-byte ext-vector V loads are removed for the same mixed-depth
   result; native uint4 remains the exact D32 load contract.
+  Exact D32/local1024 is removed after losing to local512 at every depth;
+  further PV local-size permutations are closed.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered

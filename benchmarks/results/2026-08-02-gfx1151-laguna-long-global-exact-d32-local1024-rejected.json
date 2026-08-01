@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T04:48:36+09:00",
+  "kind": "hipengine_laguna_long_global_exact_d32_local1024_rejected",
+  "status": "rejected_leaf_regression",
+  "performance_claim": false,
+  "model": {"name": "Poolside Laguna S 2.1", "quant": "Q4_K_M mixed GGUF v3", "kv_dtype": "bf16"},
+  "platform": {"device_name": "AMD Radeon 8060S Graphics", "backend": "hip_gfx1151", "target_arch": "gfx1151", "rocm": "TheRock HIP 7.15.0-0000000", "gpu_max_hw_queues": 2},
+  "candidate": {
+    "control": "exact normalized GQA6 D32/V64 local512",
+    "route": "exact deferred-normalization GQA6 D32/V64 local1024",
+    "premise": "preserve all 32 workgroups while filling each active CU with 32 waves and exposing 832 loader threads",
+    "arithmetic": "byte-exact chronological scalar-F32 output",
+    "candidate_code_retained": false
+  },
+  "leaf": {
+    "protocol": "paired capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "control_ms": 0.3285927057266235, "candidate_ms": 0.3297830104827881, "latency_change_percent": 0.3622432072959203},
+      {"live_count": 16448, "control_ms": 1.3440905570983888, "candidate_ms": 1.3534201622009276, "latency_change_percent": 0.6941202773330657},
+      {"live_count": 65664, "control_ms": 5.54612922668457, "candidate_ms": 5.5684150695800785, "latency_change_percent": 0.40182696768553683},
+      {"live_count": 131200, "control_ms": 11.090476989746094, "candidate_ms": 11.121774291992187, "latency_change_percent": 0.2821997852304303}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "720e26593a3d328753c32c6b2ee0ddf31442185157e910b45888b4eabe0ab0e8"
+  },
+  "decision": {
+    "reason": "local1024 is slower at every depth despite preserving the 32-workgroup grid; local512 is the measured occupancy/loader balance",
+    "production_gate_run": false,
+    "mandatory_128k_gate_run": false,
+    "next_attack": "stop PV geometry tuning and eliminate or fuse an exact score/denominator/probability pass"
+  },
+  "validation": {"cpu_reference_fixture": "passed", "restored_production_tracked_diff": "none"}
+}

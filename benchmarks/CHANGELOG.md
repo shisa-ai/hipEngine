@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna exact D32/local1024 long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: filling each of the 32 D32 workgroups to local1024 is **0.282-0.694% slower** than local512 at every depth, so restore local512 and close PV local-size tuning; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-local1024-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna exact D32 32-byte-V-vector long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: replacing four cached uint4 loads with two 32-byte vectors improves 16K **0.957%** but regresses 4K/64K/128K **1.669%/0.756%/1.253%**, so restore native uint4 transactions; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vector32-v-rejected.json`.
 
 - [rejected byte-exact gfx1151 Laguna exact D32 non-temporal-V long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: bypassing cache on exact D32 V loads improves 16K **1.489%** but regresses 4K/64K/128K **1.950%/0.479%/1.285%**, so restore cached uint4 loads; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-nontemporal-v-rejected.json`.

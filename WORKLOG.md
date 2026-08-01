@@ -197507,3 +197507,14 @@ Vulkan local sizes verbatim will close the measured gap.
   **+1.669%/-0.957%/+0.756%/+1.253%** versus the fresh uint4 baseline.
   Restore native uint4 before production timing. Raw SHA-256 is
   `356f0c334fac83d970f04d2d1dffd0b9c5414425d1852fa31367823d8631be60`.
+
+## 2026-08-02 04:49 JST — Reject exact D32/local1024 PV
+
+- Kept all 32 exact D32 workgroups but widened only the deferred PV block from
+  local512 to local1024, exposing 832 loader threads behind six output waves.
+  The fixture and byte-exact leaves pass, but paired live
+  4,097/16,448/65,664/131,200 latency regresses
+  **0.362%/0.694%/0.402%/0.282%**. Raw SHA-256 is
+  `720e26593a3d328753c32c6b2ee0ddf31442185157e910b45888b4eabe0ab0e8`.
+  Restore local512 and close PV local-size tuning; the next exact owner must
+  remove or fuse a full score/denominator/probability pass.
