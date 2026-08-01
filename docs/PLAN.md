@@ -2529,9 +2529,22 @@ Layer-0 down is **14.866/14.868→14.741/14.750 ms**, layer-47 Q is
 **10.752/10.795→10.705/10.700 ms**, and layer-47 output is
 **11.630/11.639→11.537/11.547 ms** event/wall. Aggregate improves
 **37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)** with exact bytes and
-lifecycle. Admit the leaf without rerun/tuning; runtime and source decisions
-remain separate, and production stays generic until those gates pass
-([H7C candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+lifecycle.
+
+Qualify H7C's bounded default-off runtime owner separately. A generic
+`gguf_linear` package map binds only the three exact M512 `(quant, output ABI,
+rows, K, N)` roles; the named generic rollback and live source map remain empty,
+and every wrong-shape/registration/backend case fails closed. Complete M512
+state is KL0/byte-exact across all **48/48** hidden boundaries and full KV/spans
+at unchanged scratch. Four cached requests preserve **2,192 dispatches** and
+replace exactly **2 BF16 + 1 F32** generic calls with H7C, moving selected
+raw-Q6/Q6/span **28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero
+compiler. Fixed C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**;
+512/1K/4K medians improve **+0.0552%/+0.0274%/+0.0179%**, all exact and
+lifecycle-clean. Retain the runtime capability under cycle-wall policy, but
+production stays generic **422.947 tok/s / 1,199.578 ms** until a separate
+source-default RED/promotion gate
+([H7C candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

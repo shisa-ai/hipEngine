@@ -4,7 +4,7 @@ Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
 score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the admitted standalone H7C raw-Q6 leaf in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the qualified default-off H7C raw-Q6 runtime candidate in
 [`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json), its clean post-H7B target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json), H7B's superseding physical-resource rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json), the clean post-H7A residual/H7B target in
@@ -681,10 +681,21 @@ The consumed actual-weight 5/15/5 screen is byte-exact/finite and improves every
 role on both clocks: layer-0 down **14.866/14.868→14.741/14.750 ms**, layer-47 Q
 **10.752/10.795→10.705/10.700 ms**, and layer-47 output
 **11.630/11.639→11.537/11.547 ms** event/wall. The weighted three-call aggregate
-improves **37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)**. Admit only the
-registry leaf; runtime/source remain on the generic rollback and clean
-production remains **422.947 tok/s / 1,199.578 ms** pending a separate gate
-([H7C candidate](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+improves **37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)**. A separate
+bounded-runtime gate adds a package-owned exact `(quant, output ABI, rows, K,
+N)` map for only those three M512 roles while retaining a named empty generic
+rollback and zero new allocation/workspace. Complete natural M512 state is KL0
+and byte-exact across logits, final/post hidden, **48/48** hidden boundaries,
+full KV/spans, and repeat. Four cache-only requests preserve **2,192
+dispatches** and exact family counts while generic **2 BF16 + 1 F32** becomes
+H7C **2 BF16 + 1 F32**; selected raw-Q6/Q6/span medians move
+**28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero compiler.
+Matched C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**; transfer
+512/1K/4K medians improve **+0.0552%/+0.0274%/+0.0179%**, all exact and
+lifecycle-clean. Runtime is qualified default-off, but the live source map stays
+empty and clean production remains **422.947 tok/s / 1,199.578 ms** pending a
+separate source-default gate
+([H7C candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
