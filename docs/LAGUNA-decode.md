@@ -9477,6 +9477,22 @@ The remaining attention sequence is:
      checkpoint, with the same trajectory and teardown:
      [`D64 context-PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dim64-retained.json).
 
+206. Test the next isolated precision boundary at global layer 24.
+     **Rejected on the cheap quality gate; no production timing performed.**
+
+     Adding only layer 24 to the compensated D64 context-parallel schedule
+     reaches maximum/mean KL **0.235600/0.003411** at d16K over 70
+     teacher-forced steps. Top-1 remains **69/70 (98.57%)**, but maximum KL is
+     **4.712x** the project ceiling and the sole divergence arrives at step
+     68. The candidate was removed immediately; the full 127-step run,
+     production sweep, and mandatory 128K gate cannot change its promotion
+     decision. Production remains compensated layer 28, ordinary layers
+     32/36/40/44, and exact deferred GQA6 for layers 0..24. This closes
+     boundary widening as the next LC-D3 lever and selects an
+     arithmetic-order-preserving structural owner for the first seven global
+     layers:
+     [`layer-24 compensated rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-layer24-compensated-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9508,9 +9524,11 @@ allocation teardown remain mandatory at every retained step.
    max KL **0.007761**, preserves the mandatory 128K trajectory, and improves
    16K/64K/128K another **0.393%/0.479%/1.667%**. Widening those five
    admitted PV owners from D32 to D64 is byte-identical and improves complete
-   16K/64K/128K another **1.705%/2.558%/2.348%**. The next step must reduce
-   the exact first-seven-layer score/PV path, improve partial precision enough
-   to widen the measured layer scope, or use an exact tiled replay.
+   16K/64K/128K another **1.705%/2.558%/2.348%**. An isolated compensated
+   layer-24 boundary is rejected at **0.235600 max KL** on teacher70, closing
+   precision-scope widening as the immediate lever. The next step must reduce
+   the exact first-seven-layer score/PV path with wider exact ownership or an
+   ordered tiled replay.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

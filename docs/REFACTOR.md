@@ -2553,7 +2553,9 @@ should be boring.
   128K trajectory while improving it **1.667%**. Both admitted arithmetic
   variants now use byte-identical D64 PV geometry, improving production
   16K/64K/128K another **1.705%/2.558%/2.348%**. These five measured layers
-  are admitted; layers 0..24 remain exact.
+  are admitted; layers 0..24 remain exact. A subsequent isolated compensated
+  layer-24 screen is also removed after teacher70 reaches **0.235600 max KL**
+  despite **69/70 top-1**; no temporary capability or runtime branch remains.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered

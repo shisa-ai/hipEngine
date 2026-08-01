@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T04:00:53+09:00",
+  "kind": "hipengine_laguna_long_global_layer24_compensated_rejected",
+  "status": "rejected_quality",
+  "performance_claim": false,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "candidate": {
+    "control_route": "exact_gqa6_deferrednorm_dim32_vstage64",
+    "route": "ctx4096_dim64_compensated_layers24_28_plus_retained_uncompensated_layers32_36_40_44",
+    "change": "add compensated 4,096-token context-parallel PV at global layer 24 while preserving the retained compensated layer 28 and ordinary layers 32/36/40/44",
+    "production_before_and_after": "unchanged: layer 28 compensated, layers 32/36/40/44 ordinary D64, layers 0..24 exact deferred GQA6",
+    "candidate_code_retained": false
+  },
+  "quality_gate": {
+    "protocol": "capacity131200, d16K teacher-forced c1, 70 steps, chunk2048, mixed_ja_en_review",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_attention_quality.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --context-length 131200 --length 16384 --prompt-id mixed_ja_en_review --teacher-steps 70 --chunk-size 2048 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd6-ctx4096-dim64-compensated-layers24-28-quality70-16k.json",
+    "finite": true,
+    "max_kl_divergence": 0.2355995750740747,
+    "mean_kl_divergence": 0.0034109146194663473,
+    "top1_matches": 69,
+    "teacher_steps": 70,
+    "top1_agreement": 0.9857142857142858,
+    "max_abs_logit_delta": 2.690049171447754,
+    "divergent_steps": [68],
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_top1_agreement": 0.9
+    },
+    "pass": false,
+    "raw_sha256": "be78eb7f0a1ac793f86b9da394c6efcd42cdc7b5aed340cabc8e58b7ac23284d"
+  },
+  "decision": {
+    "reason": "maximum KL is 4.712x the admissible ceiling, so the candidate is decisively rejected at the cheap quality gate",
+    "full_127_step_gate_run": false,
+    "production_depth_sweep_run": false,
+    "mandatory_128k_gate_run": false,
+    "why_later_gates_were_skipped": "the candidate cannot be promoted regardless of speed after failing the first correctness gate",
+    "next_attack": "preserve the exact first-seven-layer arithmetic and reduce score/PV traffic with wider ownership or ordered tiled replay"
+  },
+  "lifecycle": {
+    "tracked_total_allocated_and_freed_bytes": 97819717168,
+    "peak_allocations": 1825,
+    "recovered": true
+  },
+  "validation": {
+    "restored_production_tests": "2 passed",
+    "restored_production_tracked_diff": "none",
+    "provenance_revision": "c8c20a5ba1503e91d2e3e5d41c30b9f8ab8dc03b"
+  }
+}
