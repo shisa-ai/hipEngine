@@ -298,11 +298,10 @@ GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset(
     }
 )
 GGUF_RAW_K_PREFILL_VARIANT = "coltile"
-# WPF-H7C is a bounded default-off exact raw-Q6 capability for only the three
-# physically and actually timed M512 roles below. The live map remains the
-# named empty generic rollback until complete model-state and matched timing
-# qualify source promotion. gguf_linear consumes this package map generically;
-# no model/backend/quant branch owns these variants.
+# WPF-H7C is the retained exact raw-Q6 source for only the three physically and
+# actually timed M512 roles below. The named empty map remains the explicit
+# generic rollback. gguf_linear consumes this package map generically; no
+# model/backend/quant branch owns these variants.
 GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS = {}
 GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS = {
     (
@@ -327,9 +326,7 @@ GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS = {
         3_072,
     ): "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
 }
-GGUF_RAW_K_PREFILL_ROLE_VARIANTS = dict(
-    GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS
-)
+GGUF_RAW_K_PREFILL_ROLE_VARIANTS = dict(GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS)
 # WPF-H5D promotes the exact H5C producer/ordered-consumer chain after KL0,
 # byte-identical complete state, and clean +7.235%/+6.519% M512/M1024 gates.
 # H5E doubles output ownership on six role-qualified geometries, reducing the

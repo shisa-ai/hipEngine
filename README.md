@@ -590,9 +590,19 @@ exactly two BF16 plus one F32 generic calls, cutting the selected subwindow
 **28.543→28.220 ms (-1.132%)** and span **1,280.898→1,279.005 ms**. Matched
 C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**, and 512/1K/4K
 medians improve **+0.0552%/+0.0274%/+0.0179%** with exact state and unchanged
-scratch. The live source map remains the named empty generic rollback, so
-production stays **422.947 tok/s / 1,199.578 ms** pending a separate source gate
-([H7C candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+scratch. Source promotion now selects the qualified H7C map while preserving
+the named empty generic rollback. Fresh source-selected M512 state remains KL0
+and byte-exact across **48/48** boundaries and full KV/spans. A fresh four-run
+trace again replaces exactly **2 BF16 + 1 F32** calls and improves selected
+raw-Q6/Q6/span **28.583/81.639/1,283.417→28.376/81.470/1,280.788 ms** with zero
+compiler. Fresh source aggregate timing is mixed: fixed C4096/M512 is
+**419.433→418.487 tok/s (-0.225%, 2/5)**, while 512/1K/4K is
+**+0.0925%/+0.0372%/-0.0488%**. Retain source under the cycle-wall policy based
+on repeatable selected-subwindow/span wins and the immutable all-role leaf
+screen; do not claim the noisy aggregate rows as wins. The last clean committed
+checkpoint remains **422.947 tok/s / 1,199.578 ms** pending post-commit reprofile
+([H7C production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) ·
+[candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 Both short

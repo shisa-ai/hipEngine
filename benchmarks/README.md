@@ -2,10 +2,11 @@
 
 Last updated: **2026-08-01**
 
-The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
-score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the qualified default-off H7C raw-Q6 runtime candidate in
-[`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json), its clean post-H7B target in
+The current W7900 Laguna UD-Q2_K_XL source publication retains H6Z global
+score/weight replay and promotes H7C raw-Q6 DPP wave reduction in
+[`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json), with the preceding qualified runtime packet in
+[`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json), H6Z's production packet in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), and H7C's clean post-H7B target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json), H7B's superseding physical-resource rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json), the clean post-H7A residual/H7B target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json), H7A's superseding exactness rejection in
@@ -692,10 +693,21 @@ H7C **2 BF16 + 1 F32**; selected raw-Q6/Q6/span medians move
 **28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero compiler.
 Matched C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**; transfer
 512/1K/4K medians improve **+0.0552%/+0.0274%/+0.0179%**, all exact and
-lifecycle-clean. Runtime is qualified default-off, but the live source map stays
-empty and clean production remains **422.947 tok/s / 1,199.578 ms** pending a
-separate source-default gate
-([H7C candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+lifecycle-clean. Source promotion changes only the live role map to H7C; the
+named empty generic rollback remains. Fresh source-selected M512 state is again
+KL0/byte-exact across **48/48** boundaries and full KV/spans. A fresh four-run
+trace preserves **2,192 dispatches** and cuts selected raw-Q6/Q6/span
+**28.583/81.639/1,283.417→28.376/81.470/1,280.788 ms** with zero compiler.
+Fresh source aggregate timing is explicitly mixed: fixed C4096/M512
+**419.433→418.487 tok/s (-0.225%, 2/5)**; 512/1K/4K
+**389.743/311.172/194.421→390.103/311.288/194.326 tok/s
+(+0.0925%/+0.0372%/-0.0488%)**. Retain source under cycle-wall policy because
+two independent integrated traces and the immutable 15-repeat leaf screen show
+the changed work/span winning; the negative aggregate rows are recorded as
+noise, not wins. The last clean committed checkpoint remains
+**422.947 tok/s / 1,199.578 ms** until post-commit reprofile
+([H7C production](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) ·
+[candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The

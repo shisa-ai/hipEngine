@@ -1767,9 +1767,23 @@ three H7C calls at unchanged offsets/resources. Selected raw-Q6/Q6/span medians
 improve **28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero
 compiler. Matched C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**,
 and 512/1K/4K medians improve **+0.0552%/+0.0274%/+0.0179%** with exact state
-and complete lifecycle. Admit runtime ownership but keep the live generic map
-until the separate source-default gate
-([H7C candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+and complete lifecycle.
+
+Source promotion changes only `GGUF_RAW_K_PREFILL_ROLE_VARIANTS` to copy H7C;
+the named empty map remains explicit rollback. Fresh source-selected M512 state
+is KL0/byte-exact across **48/48** boundaries and full KV/spans. A fresh four-run
+trace preserves **2,192 dispatches** and exact **2 BF16 + 1 F32** ownership while
+selected raw-Q6/Q6/span improves
+**28.583/81.639/1,283.417→28.376/81.470/1,280.788 ms** with zero compiler. Fresh
+source aggregate results are mixed: fixed C4096/M512 is
+**419.433→418.487 tok/s (-0.225%, 2/5)**; 512/1K/4K is
+**+0.0925%/+0.0372%/-0.0488%**. Retain source under the cycle-wall policy based
+on repeatable selected-subwindow/span gains and the immutable all-role leaf
+screen, while recording the fixed/4K rows as aggregate noise rather than wins.
+The last clean committed checkpoint remains **422.947 tok/s / 1,199.578 ms**
+until the required post-commit reprofile
+([H7C production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

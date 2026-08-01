@@ -296,13 +296,15 @@ def test_raw_k_prefill_rowbatch_dispatch_is_exactly_scoped() -> None:
     )
 
 
-def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped() -> None:
+def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped(monkeypatch) -> None:
+    from hipengine.kernels import hip_gfx1100
     from hipengine.kernels.registry import KernelKey
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch,
         _raw_k_prefill_rowbatch_dispatch,
     )
 
+    monkeypatch.setattr(hip_gfx1100, "GGUF_RAW_K_PREFILL_ROLE_VARIANTS", {})
     qualified = {
         ("gguf_q5_k", "bf16_bf16_out", 12288),
         ("gguf_q5_k", "bf16_f32_out", 6144),
