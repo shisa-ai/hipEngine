@@ -61,6 +61,12 @@ _H6R_IQ3 = (
     "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_H6T_IQ3 = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_staged_wave_"
+    "publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_"
+    "bf16_bf16_out"
+)
 _H6C_IQ3_GATE_UP = (
     "selected_dual_silu_grouped_prefill_compact_"
     "k3072_n1024_e256_rowbatch4_bf16_bf16_out"
@@ -107,6 +113,7 @@ def test_h6q_source_default_is_retained_as_h6r_rollback(
         _H6P_IQ3: _ACTIVE_EXPERT_ABI,
         _H6Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H6R_IQ3: _ACTIVE_EXPERT_ABI,
+        _H6T_IQ3: _ACTIVE_EXPERT_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants

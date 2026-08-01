@@ -50,6 +50,12 @@ _H6R_RUNTIME_VARIANT = (
     "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_H6T_RUNTIME_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_staged_wave_"
+    "publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_"
+    "bf16_bf16_out"
+)
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
 
 
@@ -75,6 +81,7 @@ def test_h5z_source_default_is_retained_under_h6r_source_and_fail_closed(
         _H6P_IQ3: _ACTIVE_EXPERT_ABI,
         _H6Q_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
         _H6R_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
+        _H6T_RUNTIME_VARIANT: _ACTIVE_EXPERT_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants

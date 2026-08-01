@@ -54,6 +54,12 @@ _H6R_RUNTIME_VARIANT = (
     "staged_wave_publication_dpp_peer_exchange_triple_output_"
     "rowbatch8_bf16_bf16_out"
 )
+_H6T_RUNTIME_VARIANT = (
+    "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+    "activation_resident_out_p256_row_interleaved_vopd_staged_wave_"
+    "publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_"
+    "bf16_bf16_out"
+)
 _H5Q_ABI = "grouped_raw_iq_active_experts"
 
 
@@ -79,6 +85,7 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
         _H6P_IQ3: _H5Q_ABI,
         _H6Q_RUNTIME_VARIANT: _H5Q_ABI,
         _H6R_RUNTIME_VARIANT: _H5Q_ABI,
+        _H6T_RUNTIME_VARIANT: _H5Q_ABI,
     }
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants

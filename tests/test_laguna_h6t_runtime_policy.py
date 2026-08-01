@@ -120,7 +120,7 @@ def test_h6t_runtime_capability_is_default_off_bounded_and_fail_closed(
 
     live_abis = getattr(hip_gfx1100, _ABI_CAPABILITY)
     assert getattr(hip_gfx1100, _CAPABILITY) == source_variants
-    assert live_abis == retained_abis
+    assert live_abis == qualified_abis
     assert getattr(hip_gfx1151, _CAPABILITY) == {}
     assert getattr(hip_gfx1151, _ABI_CAPABILITY) == {}
 
@@ -223,6 +223,5 @@ def test_h6t_runtime_capability_is_default_off_bounded_and_fail_closed(
     with pytest.raises(ValueError, match="unsupported variant ABI"):
         resolve_laguna_moe_plan(config, backend="hip_gfx1100")
 
-    # Intentional RED after source, routing, resources, fail-closed behavior,
-    # registration, and the in-memory ninth capability have all been proven.
+    # The live ninth capability remains default-off because source stays H6R.
     assert live_abis == qualified_abis
