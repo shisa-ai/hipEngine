@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T01:08:00+09:00",
+  "kind": "hipengine_laguna_long_global_late4_context_parallel_retained",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "variant": "global_context_split_gated_gqa6_dim32_vstage64_ctx4096_spans",
+    "scope": "global layers 32, 36, 40, and 44 when live_count exceeds 6000",
+    "mechanism": "reuse exact GQA6 scores and exp32 normalization, compute 4096-token D32/V64 context partials, merge partial outputs in chronological split order, and publish one BF16 gated boundary",
+    "gfx1151_capability": {
+      "name": "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
+      "value": 32
+    },
+    "fallback": "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans on layers 0 through 28 and every peer backend",
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0,
+    "repair_launch_removed": true
+  },
+  "quality": {
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_top1_agreement": 0.9
+    },
+    "teacher_forced_16k_127_steps": [
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "control": "exact normalized GQA6",
+        "max_kl_divergence": 0.04256864141605354,
+        "mean_kl_divergence": 0.00043030233658560403,
+        "top1_matches": 127,
+        "top1_total": 127,
+        "max_abs_logit_delta": 1.5325918197631836,
+        "pass": true,
+        "raw_sha256": "c4cb0b0870be777daf8e5653bb36707ccd9a782f2680d056a127f6c396d85c64"
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "category": "general_en",
+        "control": "exact deferred-normalization GQA6",
+        "max_kl_divergence": 0.00734411365810958,
+        "mean_kl_divergence": 0.00022352047487109885,
+        "top1_matches": 127,
+        "top1_total": 127,
+        "max_abs_logit_delta": 1.9103031158447266,
+        "pass": true,
+        "raw_sha256": "3bfe7e1645bcacce5320b18f3161cc0303f9c3120cea3887e9f801f03a3c494d"
+      }
+    ],
+    "cpu_reference_fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "lifecycle_returned_to_baseline": true
+  },
+  "leaf": {
+    "live_count": 16448,
+    "prior_exact_generic_ms": 7.244991779327393,
+    "candidate_ms": 1.039289951324463,
+    "latency_change_percent": -85.6550568588644,
+    "f32_max_abs": 1.7229467630386353e-08,
+    "bf16_boundary_mismatches": 9,
+    "raw_sha256": "46cfc0cac680be4d2e8008683c8e66aa17111bc20e05344228e66074518a88bb"
+  },
+  "production_sweep": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd4-ctx4096-layers32plus-production-sweep.json",
+    "repetitions": 1,
+    "decode_forward_calls_per_row": 127,
+    "rows": [
+      {
+        "depth": 4096,
+        "prior_exact_tok_s": 21.670243,
+        "candidate_tok_s": 21.665381335483705,
+        "delta_percent": -0.022434748499566837,
+        "pre_lcd3_tok_s": 15.477837,
+        "total_delta_percent": 39.976802543428434,
+        "llamacpp_vulkan_tok_s": 23.037017,
+        "vulkan_parity_percent": 94.04594933225819,
+        "route_active": false,
+        "final_token_id": 6436,
+        "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"
+      },
+      {
+        "depth": 16384,
+        "prior_exact_tok_s": 16.970569,
+        "candidate_tok_s": 17.364386108476868,
+        "delta_percent": 2.3205887114148505,
+        "pre_lcd3_tok_s": 7.731808,
+        "total_delta_percent": 124.58377275375784,
+        "llamacpp_vulkan_tok_s": 21.728347,
+        "vulkan_parity_percent": 79.91581738121573,
+        "route_active": true,
+        "final_token_id": 13815,
+        "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"
+      },
+      {
+        "depth": 65536,
+        "prior_exact_tok_s": 9.213843,
+        "candidate_tok_s": 9.820541836480508,
+        "delta_percent": 6.58464482714225,
+        "pre_lcd3_tok_s": 2.506331,
+        "total_delta_percent": 291.82940467482183,
+        "llamacpp_vulkan_tok_s": 17.737473,
+        "vulkan_parity_percent": 55.366070671287325,
+        "route_active": true,
+        "final_token_id": 1869,
+        "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"
+      },
+      {
+        "depth": 131072,
+        "prior_exact_tok_s": 5.725365,
+        "candidate_tok_s": 6.2177259644031935,
+        "delta_percent": 8.599643243761633,
+        "pre_lcd3_tok_s": 1.312921,
+        "total_delta_percent": 373.5795957565759,
+        "llamacpp_vulkan_tok_s": 14.237076,
+        "vulkan_parity_percent": 43.67277356953909,
+        "route_active": true,
+        "final_token_id": 874,
+        "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+      }
+    ],
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "all_hashes_positions_and_lifecycle_pass": true,
+    "raw_sha256": "206b7faba33430fa54d04a2c4c70f70ac28d8e0c0a92a3850b1610107959b9f3"
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lcd4-trace.nlh6uH --output-file ctx4096 -- .venv/bin/python3 -m pytest -q tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "ctx4096_pv_duration_ns": 660641,
+    "ctx4096_merge_duration_ns": 1844,
+    "pv_local_size": 512,
+    "pv_lds_bytes": 11264,
+    "pv_vgpr": 32,
+    "pv_scratch_bytes": 0,
+    "merge_local_size": 128,
+    "merge_vgpr": 16,
+    "merge_scratch_bytes": 0,
+    "repair_kernel_dispatched": false,
+    "csv_sha256": "66bc78553c180cb0e657a12fc3f242bc14c48b128b2a1f37a1b8006a3663faba"
+  },
+  "rejected_screens": [
+    {
+      "candidate": "ctx4096 on all twelve global layers",
+      "max_kl_divergence": 0.687034,
+      "top1_agreement": 1.0,
+      "decision": "rejected"
+    },
+    {
+      "candidate": "ctx8192 on all twelve global layers",
+      "max_kl_divergence": 0.77613366,
+      "top1_agreement": 0.992126,
+      "raw_quality_sha256": "75690e02518a98e6d75416465ea1bdbd10400f056b4f14b228e9416688bbf053",
+      "decision": "rejected"
+    },
+    {
+      "candidate": "ctx4096 only on layer 44",
+      "max_kl_divergence": 0.000186291,
+      "top1_agreement": 1.0,
+      "raw_quality_sha256": "1057fa1f94abc83e45696678793d4004b1958b1fefe0108e741ca0e7979e96ec",
+      "decision": "superseded by admitted final-four-layer scope"
+    }
+  ],
+  "validation": {
+    "python_compile": "passed",
+    "focused_tests": "89 passed",
+    "lineage": "Original in-tree implementation; the configured external atlas lineage tree is absent, so scripts/check_lineage.py cannot complete."
+  }
+}

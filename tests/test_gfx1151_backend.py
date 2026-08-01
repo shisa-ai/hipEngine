@@ -96,6 +96,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_F16_PREFILL_MODE,
     LAGUNA_F16_PREFILL_STRATEGY,
     LAGUNA_GLOBAL_PREFILL_VARIANT,
+    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER,
     LAGUNA_MOE_BRANCH_CONCURRENCY,
     LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY,
     LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY,
@@ -360,6 +361,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         LAGUNA_GLOBAL_PREFILL_VARIANT
         == "global_context_rows_qrow4_m128_online_spans"
     )
+    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER == 32
     assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_qrow4_m128_online_spans"
     assert (
         backend_package_capability(

@@ -130,6 +130,18 @@ top-1, so it is not counted as production progress. The committed tracked-clean
 **+1.075%** over the preceding clean GQA6 checkpoint, with exact teardown.
 [`deferred-normalization production`](results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json).
 
+The first admitted context-parallel decode owner now runs only on the final
+four global layers (32/36/40/44). Two independent 16K/127-step teacher-forced
+trajectories pass at maximum KL **0.042569/0.007344** and **254/254 top-1**;
+the all-layer schedule remains rejected at KL **0.687034**. Relative to the
+exact deferred path, one-pass 16K/64K/128K decode improves
+**2.321%/6.585%/8.600%** to **17.364/9.821/6.218 tok/s**. The 4K route is
+inactive and flat within **-0.022%** sample noise. Every established generated
+hash/final position and all **87.408 GB / 1,452 allocations** recover exactly.
+Parity with same-GGUF Vulkan is now **79.916%/55.366%/43.673%** at
+16K/64K/128K; the remaining target is the exact first eight global layers.
+[`late-four context-parallel production`](results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

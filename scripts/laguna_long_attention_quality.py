@@ -45,6 +45,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=131_200)
     parser.add_argument("--length", type=int, default=16_384)
+    parser.add_argument(
+        "--prompt-id",
+        help="canonical prompt to extend; defaults to the longest prompt",
+    )
     parser.add_argument("--teacher-steps", type=int, default=127)
     parser.add_argument("--chunk-size", type=int, default=2048)
     parser.add_argument("--compiler-version-file", type=Path)
@@ -138,7 +142,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     reader = GGUFReader(args.model)
     tokenizer = LagunaGGUFTokenizer.from_gguf_info(reader.info)
     prompts = _load_prompts(args.prompts, tokenizer)
-    token_stream, token_source = _profile_token_stream(prompts, args.length)
+    prompt_pool = prompts
+    if args.prompt_id is not None:
+        prompt_pool = tuple(
+            prompt for prompt in prompts if str(prompt.get("id")) == args.prompt_id
+        )
+        if not prompt_pool:
+            raise ValueError(f"unknown prompt id: {args.prompt_id}")
+    token_stream, token_source = _profile_token_stream(prompt_pool, args.length)
     tracked_before = memory_stats()
     free_before, total_bytes = runtime.mem_get_info()
     control: LagunaGGUFResidentSession | None = None
@@ -168,8 +179,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             require_cached_build=args.require_cached_build,
             prefill_chunk_size=args.chunk_size,
         )
-        control.kv_cache.global_split_gqa6_deferrednorm_dim32_vstage64 = False
-        candidate.kv_cache.global_split_gqa6_deferrednorm_dim32_vstage64 = True
+        control.kv_cache.global_split_gqa6_ctx4096_min_layer = None
+        candidate.kv_cache.global_split_gqa6_ctx4096_min_layer = 32
         control_result = control.prefill(token_stream, use_bulk=True)
         candidate_result = candidate.prefill(token_stream, use_bulk=True)
         if int(control_result.next_token_id) != int(candidate_result.next_token_id):
@@ -235,8 +246,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "context_length": args.context_length,
             "chunk_size": args.chunk_size,
             "token_source": token_source,
-            "control_route": "exact_gqa6_dim32_vstage64",
-            "candidate_route": "exact_gqa6_deferrednorm_dim32_vstage64",
+            "control_route": "exact_gqa6_deferrednorm_dim32_vstage64",
+            "candidate_route": "ctx4096_no_repair_layers32_36_40_44",
         },
         "quality": {
             "finite": finite,

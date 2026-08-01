@@ -197209,3 +197209,41 @@ Vulkan local sizes verbatim will close the measured gap.
   `f9148ce8f038633239c4c1cf9029bd4d9d8db4206fa0232af6901caa58fbf3d6`.
 - Updated the retained artifact, decode/project plans, rollup, and changelog
   with the clean confirmation. Commit this evidence-only publication next.
+
+## 2026-08-02 01:12 JST — Retain late-four context-parallel global attention
+
+- Reopened the rejected 4,096-token context-PV/merge path by measuring model
+  sensitivity by global-layer depth. Layer 44 alone passes d16K/127 at max KL
+  **0.000186**. Layers 32/36/40/44 pass the canonical mixed-language stream at
+  max/mean KL **0.0425686/0.0004303** and **127/127 top-1**. A second
+  independent `general_en_plan` stream passes at **0.0073441/0.0002235** and
+  **127/127 top-1**. The original all-twelve-layer path remains rejected at
+  KL **0.687034**; an 8,192-token version is also rejected at **0.776134**.
+- Added the gfx1151-only
+  `LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER=32` capability. Above 6,000 live
+  slots, global layers 32/36/40/44 select bounded D32/V64 context partials and
+  ordered merge; layers 0..28 and peer backends retain exact deferred GQA6.
+  Removed the unused exact repair launch. The registered exact owners remain
+  fallback, with no resident-byte or allocation-count increase.
+- The required one-pass capacity131,200/chunk2,048 d4K/d16K/d64K/d128K sweep
+  moves exact **21.670243/16.970569/9.213843/5.725365** to
+  **21.665381/17.364386/9.820542/6.217726 tok/s**. The inactive 4K row is
+  **-0.022%** sample noise; active long rows improve
+  **2.321%/6.585%/8.600%**. Total gains from pre-LC-D3 are
+  **39.977%/124.584%/291.829%/373.580%**. All established generated hashes,
+  final tokens/positions, and **87,407,934,744 bytes / 1,452 allocations**
+  recover exactly. Raw sweep SHA-256 is
+  `206b7faba33430fa54d04a2c4c70f70ac28d8e0c0a92a3850b1610107959b9f3`.
+- The CPU-reference global fixture passes the context owner. Cached rocprof
+  names context PV/merge at **0.660641/0.001844 ms**, local **512/128**, VGPR
+  **32/16**, LDS **11,264/0**, scratch0, with no repair kernel. Trace SHA-256
+  is `66bc78553c180cb0e657a12fc3f242bc14c48b128b2a1f37a1b8006a3663faba`.
+  Python compile and **89 focused tests** pass. The full first run had one
+  stale allocation-count assertion (**243 vs 245**) after the prior shared
+  score/physical scratch promotion; the focused assertion repair and affected
+  bundle pass. Lineage still cannot inspect the absent external atlas tree;
+  this is original in-tree work.
+- Published the kernel catalog, decode/architecture attack, refactor trigger,
+  rollup/changelog, and compact artifact
+  `2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json`. Commit
+  this production unit next, then run the tracked-clean d16K confirmation.

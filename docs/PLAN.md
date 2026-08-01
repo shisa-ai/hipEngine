@@ -1450,16 +1450,19 @@ defers probability normalization into the D32/V64 PV loader, removes one full
 score-plane writeback/read pass, and improves complete 4K/16K/64K/128K another
 **0.036%/1.078%/1.490%/2.190%** to
 **21.670/16.971/9.214/5.725 tok/s**, with identical F32/BF16 leaves, generated
-hashes, positions, residency, and lifecycle. A faster 4,096-token
-context-parallel partial/merge path is rejected at maximum KL **0.687034**
-despite 100% teacher-forced top-1; exact repair is slower than the retained
-path. The tracked-clean committed 16K confirmation is **16.936 tok/s**, within
-**-0.201%** of the directional row and **+1.075%** over the preceding clean
-GQA6 owner. LC-D3 therefore remains active because the full score/physical
-plane still exists. The next owner must replace it with bounded exact
-output/max/denominator partials or an ordered tiled replay while targeting
-**<=5 ms/token** at 16K. Reassociated online-softmax arithmetic is not a
-numerics waiver.
+hashes, positions, residency, and lifecycle. The 4,096-token context-parallel
+partial/merge path is rejected across all twelve global layers at maximum KL
+**0.687034**, but a measured final-four-layer scope passes two independent
+16K/127-step gates at maximum KL **0.042569/0.007344** and 100% top-1. gfx1151
+therefore applies bounded context-parallel PV only to layers 32/36/40/44,
+improving exact 16K/64K/128K another **2.321%/6.585%/8.600%** to
+**17.364/9.821/6.218 tok/s**; 4K is route-inactive and flat. All generated
+hashes/positions and lifecycle checks pass. LC-D3 remains active because the
+exact first eight global layers still carry the full score/physical plane.
+The next owner must reduce that exact path, improve partial precision enough
+to widen its quality-scoped layer boundary, or use an ordered tiled replay
+while targeting **<=5 ms/token** at 16K. Reassociated online-softmax arithmetic
+is not a numerics waiver.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

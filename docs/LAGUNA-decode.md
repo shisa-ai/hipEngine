@@ -9357,6 +9357,42 @@ The remaining attention sequence is:
      softmax is not permitted by the failed quality gate:
      [`deferred-normalization production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json).
 
+203. Context-parallelize the quality-tolerant tail of the global stack.
+     **Retained and production-default; LC-D3 quality-scoped checkpoint.**
+
+     The all-layer 4,096-token partial-PV merge was fast but failed quality, so
+     the promotion boundary was measured by model depth rather than guessed.
+     Layer 44 alone reaches maximum KL **0.000186**. The final four global
+     layers (32/36/40/44) pass two independent 16K/127-step teacher-forced
+     trajectories at maximum KL **0.042569** and **0.007344**, mean KL
+     **0.000430/0.000224**, and **254/254 top-1**. Adding earlier global layers
+     is not admitted. The new gfx1151 capability records minimum layer 32;
+     layers 0..28 and peer backends retain exact deferred-normalization GQA6.
+
+     Each selected layer keeps the exact GQA6 score producer and exp32
+     normalization, shards PV into bounded 4,096-token D32/V64 partials, then
+     merges those partial outputs in split order before the existing BF16 gate.
+     The unused exact-repair launch is removed. The live16,448 leaf is
+     **1.039 ms**, **85.66%** below the old generic exact owner, with F32 max
+     error **1.72e-8** and nine BF16 boundary differences. A cached trace names
+     the intended context-PV and merge kernels at **0.661/0.0018 ms**, with
+     PV local512/VGPR32/LDS11,264/scratch0 and no repair dispatch.
+
+     | Decode depth | Prior exact | Late-four context split | Delta | Pre-LC-D3 | Total delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 21.670243 | **21.665381 tok/s** | -0.022% (inactive/noise) | 15.477837 | **+39.977%** | 23.037017 | **94.046%** |
+     | 16K | 16.970569 | **17.364386 tok/s** | **+2.321%** | 7.731808 | **+124.584%** | 21.728347 | **79.916%** |
+     | 64K | 9.213843 | **9.820542 tok/s** | **+6.585%** | 2.506331 | **+291.829%** | 17.737473 | **55.366%** |
+     | 128K | 5.725365 | **6.217726 tok/s** | **+8.600%** | 1.312921 | **+373.580%** | 14.237076 | **43.673%** |
+
+     The mandatory one-session sweep preserves every established generated
+     hash/final token/position and returns **87,407,934,744 bytes / 1,452
+     allocations** to zero. The focused bundle passes **89 tests**, including
+     CPU-reference attention, complete span visibility, runtime selection, and
+     backend scoping. Context parallelism is now proven usable, but the exact
+     first eight global layers still dominate the remaining long-depth gap:
+     [`late-four context-parallel production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9374,16 +9410,18 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Two exact milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Three milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
    4K/16K/64K/128K another **0.036%/1.078%/1.490%/2.190%**, all byte-exact.
-   The obvious 4,096-token context-parallel merge is quality-rejected at max KL
-   **0.687034** despite 100% top-1, and exact sparse repair is too slow. The
-   next step must emit bounded per-split `(maximum, denominator, output[6,D])`
-   state while reproducing the current ordered-FP32 contract, or use an exact
-   tiled replay that eliminates most score traffic without reassociating PV.
+   Quality-scoping the 4,096-token context-parallel merge to global layers
+   32/36/40/44 then improves 16K/64K/128K another
+   **2.321%/6.585%/8.600%**, passing two independent 127-step gates at maximum
+   KL **0.042569/0.007344** and 100% top-1. All-layer use remains rejected at
+   max KL **0.687034**, and exact sparse repair is too slow. The next step must
+   reduce the exact first-eight-layer score/PV path, improve partial precision
+   enough to widen the measured layer scope, or use an exact tiled replay.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

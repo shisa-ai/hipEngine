@@ -840,7 +840,9 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         for layer in cache.layers
         if layer.attention_type == SLIDING_ATTENTION
     )
-    assert cache.allocation_count == 243
+    # The exact/quality-gated long-attention owners share one score plane and
+    # one physical-index plane across all layers.
+    assert cache.allocation_count == 245
     assert (
         resolve_laguna_global_prefill_variant("hip_gfx1151")
         == "global_context_rows_qrow4_m128_online_spans"
@@ -4641,6 +4643,7 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_exact_gated_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -4816,6 +4819,37 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                 num_kv_heads=8,
             )
             np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
+            if scan_slots == 4097:
+                laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+                    *common,
+                    candidate_out.ptr,
+                    gate_device.ptr,
+                    candidate_gated.ptr,
+                    *tail,
+                    library=library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                candidate = np.empty_like(query)
+                candidate_gate_bits = np.empty(query.shape, dtype=np.uint16)
+                for host, device in (
+                    (candidate, candidate_out),
+                    (candidate_gate_bits, candidate_gated),
+                ):
+                    copy_device_to_host(
+                        host_array_ptr(host),
+                        device,
+                        host.nbytes,
+                        runtime=runtime,
+                    )
+                np.testing.assert_allclose(
+                    candidate,
+                    expected,
+                    rtol=3e-4,
+                    atol=3e-4,
+                )
+                assert np.isfinite(candidate).all()
+                assert np.isfinite(candidate_gate_bits).all()
             candidate_fn(
                 *common,
                 candidate_out.ptr,
@@ -4998,6 +5032,7 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache.position = 6000
         cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.attend(32, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache._dense_initial_metadata_valid = False
         cache.position = 1023
         cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
@@ -5021,6 +5056,7 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
             "vstage64_vec16_direct_assume_exp_fixedshape_spans"
         ),
         "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
+        "global_context_split_gated_gqa6_dim32_vstage64_ctx4096_spans",
         (
             "global_context_fused_exact_gated_mixed40_local512_exp32_"
             "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_"

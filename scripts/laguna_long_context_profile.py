@@ -540,6 +540,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_fixedshape_reduce = False
     active_global_split_gqa6_dim32_vstage64 = False
     active_global_split_gqa6_deferrednorm_dim32_vstage64 = False
+    active_global_split_gqa6_ctx4096_min_layer: int | None = None
     active_global_fused_fixedshape = False
     active_global_gqa2_vstage64_fixedshape = False
     active_global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape = (
@@ -767,6 +768,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_deferrednorm_dim32_vstage64 = (
             owner.kv_cache.global_split_gqa6_deferrednorm_dim32_vstage64
+        )
+        active_global_split_gqa6_ctx4096_min_layer = (
+            owner.kv_cache.global_split_gqa6_ctx4096_min_layer
         )
         active_global_fused_fixedshape = owner.kv_cache.global_fused_fixedshape
         active_global_gqa2_vstage64_fixedshape = (
@@ -1293,6 +1297,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_split_gqa6_deferrednorm_dim32_vstage64": (
                 active_global_split_gqa6_deferrednorm_dim32_vstage64
+            ),
+            "global_split_gqa6_ctx4096_min_layer": (
+                active_global_split_gqa6_ctx4096_min_layer
             ),
             "global_fused_fixedshape": active_global_fused_fixedshape,
             "global_gqa2_vstage64_fixedshape": (
