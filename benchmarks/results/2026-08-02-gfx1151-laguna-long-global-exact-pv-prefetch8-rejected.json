@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T07:09:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_pv_prefetch8_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "candidate": {
+    "kernel": "laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel",
+    "change": "increase explicitly ordered PV operand prefetch from four to eight tokens while retaining six output waves and chronological v_fma_f32",
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0
+  },
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "prefetch4_ms": 0.1854761000, "prefetch8_ms": 0.1735975981, "delta_percent": -6.404330},
+      {"live_count": 16448, "prefetch4_ms": 0.8304656030, "prefetch8_ms": 0.8151129723, "delta_percent": -1.848677},
+      {"live_count": 65664, "prefetch4_ms": 3.4685817720, "prefetch8_ms": 3.4297286987, "delta_percent": -1.120143},
+      {"live_count": 131200, "prefetch4_ms": 6.9828865050, "prefetch8_ms": 6.9459526062, "delta_percent": -0.528920}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "6b6d516c250c559e7adea25f518fc166fe050916d6a05d1bd9bda2773cbef259"
+  },
+  "production_sweep": {
+    "protocol": "capacity131200, chunk2048, eager c1, one warmup row, one 127-transition sample per depth",
+    "rows": [
+      {"depth": 4096, "prefetch4_tok_s": 21.663871, "prefetch8_tok_s": 21.6649962404, "delta_percent": 0.005194, "final_token_id": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+      {"depth": 16384, "prefetch4_tok_s": 18.930785, "prefetch8_tok_s": 18.9662922889, "delta_percent": 0.187564, "final_token_id": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+      {"depth": 65536, "prefetch4_tok_s": 11.868234, "prefetch8_tok_s": 11.8891925670, "delta_percent": 0.176594, "final_token_id": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+      {"depth": 131072, "prefetch4_tok_s": 7.976295, "prefetch8_tok_s": 7.9651328934, "delta_percent": -0.139941, "final_token_id": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+    ],
+    "all_established_generated_hashes_match": true,
+    "mandatory_128k_final_position": 131198,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_4k_16k_64k_sha256": "4d2fdf0662fbce813bd7d31b035c12f58a161ac221b12e3ec10430654fedb61d",
+    "raw_128k_sha256": "69e3f40c403e1714d0cde0ec53b2033f9f73e61d32c6faf60d411cfe831d3622"
+  },
+  "decision": {
+    "gate": "positive at every directional depth and mandatory recurrent 128K before promotion",
+    "reason": "the candidate is positive at 4K/16K/64K but regresses mandatory 128K by 0.139941%; the small leaf gain has reached the register/ILP knee",
+    "disposition": "restore committed ordered prefetch4 exactly; no candidate source, flag, capability, or dispatch remains"
+  }
+}

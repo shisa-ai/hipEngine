@@ -9667,6 +9667,19 @@ The remaining attention sequence is:
      not optional tuning:
      [`ordered-prefetch exact PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json).
 
+217. Double ordered exact PV prefetch from four to eight tokens.
+     **Rejected by mandatory 128K direction and removed.**
+
+     Prefetch8 preserves the six output waves and explicit chronological FMA
+     chain. It is byte-exact and improves live4K/16K/64K/128K leaves
+     **6.404%/1.849%/1.120%/0.529%**. Complete d16K/d64K also improves
+     **0.188%/0.177%**, but the mandatory 128K row regresses
+     **7.976295 -> 7.965133 tok/s (-0.140%)**. Its final token/hash/position
+     and lifecycle remain exact, so this is a pure scheduling loss at the
+     deepest required shape. Restore committed prefetch4 exactly and close
+     simple prefetch-distance widening:
+     [`ordered-prefetch8 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch8-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

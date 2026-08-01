@@ -2584,6 +2584,9 @@ should be boring.
   prefetch followed by explicit ordered `v_fma_f32`, which improves exact
   leaves **23.13-34.03%** and complete 16K/64K/128K
   **4.313%/9.400%/12.851%** with the established trajectory.
+  Ordered prefetch8 is removed after improving the exact leaf at all depths and
+  complete 16K/64K **0.188%/0.177%**, but regressing mandatory 128K
+  **0.140%**. Four tokens is the measured prefetch-distance knee.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered

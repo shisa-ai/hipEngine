@@ -197621,3 +197621,20 @@ Vulkan local sizes verbatim will close the measured gap.
 - Final token/hash/position remain **13815 / b10569... / 16,510** and all
   **87,407,934,744 bytes / 1,452 allocations** recover. Raw SHA-256 is
   `1b44770ce783fa1929bacbe062cb4e5beaa48dc2d2930a097b40ca9efb7fdc22`.
+
+## 2026-08-02 07:09 JST — Reject ordered exact PV prefetch8 at 128K
+
+- Doubled only the explicitly ordered operand group from four to eight while
+  retaining six output waves and chronological `v_fma_f32`. The focused exact
+  fixture passes; live4K/16K/64K/128K leaf latency improves
+  **6.404%/1.849%/1.120%/0.529%**, byte-exact. Raw leaf SHA-256 is
+  `6b6d516c250c559e7adea25f518fc166fe050916d6a05d1bd9bda2773cbef259`.
+- Complete d4K/d16K/d64K improves **0.005%/0.188%/0.177%** to
+  **21.664996/18.966292/11.889193 tok/s**, with established hashes and exact
+  teardown. Mandatory d128K preserves **874 / c8307c... / 131,198** and all
+  **87,407,934,744 bytes / 1,452 allocations**, but regresses
+  **7.976295 -> 7.965133 tok/s (-0.13994%)**. Raw production SHA-256 values
+  are `4d2fdf0662fbce813bd7d31b035c12f58a161ac221b12e3ec10430654fedb61d`
+  and `69e3f40c403e1714d0cde0ec53b2033f9f73e61d32c6faf60d411cfe831d3622`.
+- Restored committed prefetch4 exactly; no candidate code or dispatch remains.
+  Simple ordered-prefetch widening is closed at four tokens.
