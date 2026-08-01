@@ -515,21 +515,21 @@ tok/s**
 ([H6V rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
 [post-H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
-After complete H6V cleanup, **WPF-H6W exact late-start dense-initial SWA qrow4
-aligned global-score-record replay is the next target-only leaf; no executable
-or speed claim exists yet.** Attention is the first materially distinct
-remaining family at a **127.370-ms** gap. H6A SWA owns **117.085 ms / 144
-calls**; starts 256/384 alone own 72 calls and over 70% of the frozen standalone
-stack. H6W will write each lane-0 four-row unscaled-dot set as one aligned
-`float4` record into an **18,874,368-byte** caller plane, then replay that record
-instead of the second BF16-K load/reduction pass. The predeclared late-start
-model removes **1.280 billion** bpermute wave instructions and **14.343 GB** of
-net logical traffic per request, but is not measured performance. Starts 0/128
-remain H6A. Admission requires complete H6A/CPU/`KVLiveSpans` bytes, local32/
-LDS0/scratch0 and runtime VGPR <=80, one cached-only named trace, and both
-starts plus the 72-call aggregate to win HIP-event and synchronized-wall clocks;
-any miss removes H6W without tuning
-([post-H6V rejection / H6W target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+**WPF-H6W exact late-start dense-initial SWA qrow4 aligned global-score-record
+replay is admitted as a standalone default-off gfx1100 leaf; production remains
+H6A SWA pending runtime qualification.** Complete starts256/384 outputs are
+byte-exact to H6A, sampled CPU rows and all five `KVLiveSpans` fields pass, the
+aligned **18,874,368-byte** caller plane overwrites every required record while
+preserving poisoned suffixes, and lifecycle recovers. Physical code emits one
+`global_store_b128` plus one `global_load_b128`, removes the four second-QK load
+and 20 bpermute sites (**12→8** u16 loads, **52→32** bpermutes), cuts code
+**7,044→4,984 B** and metadata VGPR **64→54**, and traces at runtime VGPR56,
+local32/LDS0/scratch0 with no compiler. The one-shot 72-call event/wall gate
+improves **71.741/72.544→54.906/55.128 ms** (**1.307×/1.316×**); both starts win
+both clocks. H6W is not yet selected by runtime, so fixed production remains
+**410.220 tok/s** versus matched llama.cpp HIP **690.791 tok/s**
+([H6W candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
+[post-H6V rejection / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
