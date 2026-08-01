@@ -2532,13 +2532,15 @@ should be boring.
 
 ## Laguna gfx1151 LC-D3 long-global geometry and context-split prototypes
 
-- Added 2026-08-02 while screening the second and third LC-D3 milestones. The
-  HIP source and leaf harness retain internal D64/V64, D64/V32, local256
+- Added 2026-08-02 while screening the second through fifth LC-D3 milestones.
+  The HIP source and leaf harness retain internal exact D64/V64, D64/V32, local256
   D32/V64, direct-qhead D32, GQA6 score-tile4, and context-split/merge
-  variants. The 4,096-token context path is now production-selected on
-  gfx1151 only from global layer 32; exact deferred-normalization D32/V64 is
-  the earlier-layer and peer-backend fallback.
-- Every exact geometry alternative is slower at a mandatory depth. The
+  variants. Separately registered D32 and D64 4,096-token context owners are
+  not part of that dead set: gfx1151 production selects D64 at admitted layer
+  28 and layers 32/36/40/44, while D32 stays the peer-backend/rollback owner.
+  Exact deferred-normalization D32/V64 is the earlier-layer fallback.
+- Every remaining internal exact geometry alternative is slower at a
+  mandatory depth. The
   all-layer context-split route is faster but fails the same-state 127-step
   quality gate at maximum KL **0.687034** versus the **0.05** ceiling; an
   8,192-token sibling fails at **0.776134**, and exact sparse BF16-boundary
@@ -2548,7 +2550,9 @@ should be boring.
   mandatory recurrent 128K final token/hash and is removed. The narrower
   compensated-layer-28 symbol is retained: it leaves uncompensated layers
   32/36/40/44 unchanged, passes at maximum KL **0.007761**, and preserves the
-  128K trajectory while improving it **1.667%**. These five measured layers
+  128K trajectory while improving it **1.667%**. Both admitted arithmetic
+  variants now use byte-identical D64 PV geometry, improving production
+  16K/64K/128K another **1.705%/2.558%/2.348%**. These five measured layers
   are admitted; layers 0..24 remain exact.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release

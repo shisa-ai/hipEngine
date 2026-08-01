@@ -91,6 +91,14 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM32_VSTAGE64_CTX4096_COMPENSATED = (
     "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_"
     "vstage64_ctx4096_compensated_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096 = (
+    "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
+    "vstage64_ctx4096_bf16_spans"
+)
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_COMPENSATED = (
+    "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
+    "vstage64_ctx4096_compensated_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_FIXEDSHAPE = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_fixedshape_"
     "bf16_spans"
@@ -2270,7 +2278,7 @@ def laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_
         _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM32_VSTAGE64_CTX4096
     ),
 ) -> None:
-    """Run GQA6/D32 PV through contiguous 4,096-token split partials."""
+    """Run GQA6 PV through contiguous 4,096-token split partials."""
 
     capacity = _check_global_spans(spans, num_kv_heads, head_dim)
     if int(max_context_len) != capacity:
@@ -2282,7 +2290,7 @@ def laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_
         or int(head_dim) != 128
     ):
         raise ValueError(
-            "GQA6/D32 context-split attention requires 48 query heads, "
+            "GQA6 context-split attention requires 48 query heads, "
             "8 KV heads, and D128"
         )
     library = library or build_laguna_kv_attention(load=True)
@@ -2333,6 +2341,36 @@ def laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compe
 
     kwargs["_symbol"] = (
         _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM32_VSTAGE64_CTX4096_COMPENSATED
+    )
+    laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+        *args,
+        **kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Run the D64 4,096-token GQA6 context split."""
+
+    kwargs["_symbol"] = (
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096
+    )
+    laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+        *args,
+        **kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Run the compensated D64 4,096-token GQA6 context split."""
+
+    kwargs["_symbol"] = (
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_COMPENSATED
     )
     laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
         *args,
@@ -8579,6 +8617,19 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_spans",
+            laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            (
+                "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
+                "compensated_spans"
+            ),
+            laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_gated_fixedshape_spans",
             (
                 laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans
@@ -9158,6 +9209,8 @@ __all__ = [
     "laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans",
+    "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans",
+    "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans",

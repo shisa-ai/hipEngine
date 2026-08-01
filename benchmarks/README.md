@@ -166,6 +166,20 @@ the dirty row and **+0.188%** over the prior clean late-four checkpoint, with
 the same hash/position and full teardown.
 [`layer-28 compensated production`](results/2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json).
 
+The fifth LC-D3 checkpoint widens only the five admitted context-parallel PV
+owners from D32 to D64. Two output waves share each staged probability/V64
+tile, halving the PV grid without changing any output's chronological
+scalar-F32 order. Ordinary and compensated leaves are byte-identical to D32
+at 4K/16K/64K/128K; their active long-depth latency falls
+**10.665-17.258%** and **12.989-19.729%**, respectively. One-pass complete
+decode improves **17.433/9.868/6.321 -> 17.731/10.120/6.470 tok/s
+(+1.705%/+2.558%/+2.348%)** at 16K/64K/128K. Vulkan parity rises to
+**81.602%/57.055%/45.444%**. The mandatory 128K token/hash/position remains
+**874 / c8307c... / 131,198**, all shorter trajectories match, and all
+**87.408 GB / 1,452 allocations** recover. D32 remains the registered
+peer-backend rollback; the exact first seven global layers remain unchanged.
+[`D64 context-PV production`](results/2026-08-02-gfx1151-laguna-long-global-dim64-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve
