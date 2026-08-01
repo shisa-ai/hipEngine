@@ -2560,6 +2560,9 @@ should be boring.
   leaves improve **0.93-1.85%**, but d16K is flat and the mandatory 128K
   recurrent gate aborts on an out-of-vocabulary token rather than preserving
   the retained trajectory.
+  An exact D64/local1024 retry is removed as well: increasing loader capacity
+  does not repair D64's lost workgroup parallelism and regresses D32 by
+  **12.28-13.12%** across live4K-d128K.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
