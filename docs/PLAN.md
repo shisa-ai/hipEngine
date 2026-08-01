@@ -2319,6 +2319,26 @@ reopen Q5 wave reduction for a materially different role-specific mechanism
 ([H6V rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
+Select target-only **WPF-H6W exact late-start dense-initial SWA qrow4 aligned
+global-score-record replay** after H6V cleanup. Production and the matched H6U
+row remain unchanged at **410.220 tok/s / 1,232.836 ms**, with attention the
+first materially distinct actionable gap at **127.370 ms**. Current H6A SWA is
+**117.085 ms / 144 calls**. Bind H6W only to starts256/384 (**72 calls**, over
+70% of the standalone control); starts0/128 stay H6A. H6J already proved that
+removing the second four-site K load and 20 wave reductions is byte-exact, but
+its full 4x512 LDS replay raised runtime VGPR **64 -> 248** and regressed every
+start. H6W instead stores one aligned 16-byte `float4` unscaled-dot record per
+logical slot in an **18,874,368-byte** caller plane. The operation model removes
+**1,280,655,360** bpermute wave instructions and **14.343 GB** net logical
+traffic/request; it is not a speed claim. Freeze RED first. Require complete
+H6A/CPU/span bytes, exact late-start/fallback preflight, one b128 score
+store/load, zero second-QK loads/reductions, local32/LDS0/private0/spill0/
+scratch0 and runtime VGPR <=80, then both starts plus the 72-call aggregate to
+win event and wall. Remove H6W without tuning on any miss. Runtime qualification
+must separately prove same-stream reuse of the existing workspace, exact **48
+H6N + 72 H6A + 72 H6W** topology, complete state, and fixed plus 512/1K/4K wins
+([post-H6V rejection / H6W target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
