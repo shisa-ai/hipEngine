@@ -9471,7 +9471,10 @@ The remaining attention sequence is:
      LDS19,456B, scratch0, and half the D32 grid. gfx1151 selects D64 only for
      the five already quality-admitted context-parallel layers; D32 remains
      the registered peer-backend rollback and layers 0..24 remain exact.
-     The focused bundle passes **89 tests**:
+     The focused bundle passes **89 tests**. At committed revision
+     `ff6979c0a`, tracked-clean 16K confirms **17.707730 tok/s**, within
+     **-0.130%** of the dirty row and **+1.781%** over the prior clean D32
+     checkpoint, with the same trajectory and teardown:
      [`D64 context-PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dim64-retained.json).
 
 ### Long-context decode attack
