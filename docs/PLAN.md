@@ -2475,6 +2475,27 @@ export/gfx1151-exclusion surface, retain byte-identical H6W/H6Z production
 **423.233 tok/s / 1,195.702 ms**, and rerank a materially distinct operation
 ([H7A rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
 
+The clean post-rejection reprofile is **422.602 tok/s** and representative
+compiler-free trace is **1,200.759 ms / 2,192 dispatches**. Q5/IQ-down/attention/
+Q6 remain the top gaps at **198.174/118.581/93.991/67.187 ms**. Select target-
+only **WPF-H7B exact lane-parallel IQ3 final-row publication** on H6T's
+**263.748 ms / 45 calls**. Do not reopen H6X/H6Y: H7B changes only ownership
+after the first barrier. Lanes0..7 each publish one row while preserving that
+row's exact serial wave0→1→2→3 sums and three BF16 stores. This models H6T's
+static/dynamic DS-load and global-store issue sites **24/824,451,072→3/
+103,056,384 each (-87.5%)** across **34,352,128** phases without changing
+logical bytes or arithmetic.
+
+Freeze RED first. Bind complete H6T/CPU bytes, all actual layers, poison,
+finite/lifecycle behavior, exact **3 b128 LDS loads + 3 d16 stores**, unchanged
+23 global loads/12 LDS stores/two barriers/216 FMAs/24 permlanex16/96 DPP, code
+**<=7,920 B / <=1,384 slots**, VGPR **<=101/104**, LDS **384/<=512 B**, and
+private/spill/scratch0. Require named cached execution with no compiler and all
+**45/45** layers plus aggregate to win event and wall under the immutable
+5/15/5 screen. Any miss removes every H7B surface without tuning/rerun; leaf,
+runtime, and source decisions remain separate
+([post-H7A residual / H7B target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

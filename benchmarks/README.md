@@ -4,7 +4,8 @@ Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
 score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with H7A's superseding exactness rejection in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the clean post-H7A residual/H7B target in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json), H7A's superseding exactness rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json), the clean post-H6Z matched residual/H7A target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json), bounded candidate/runtime evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json), its target packet in
@@ -607,6 +608,38 @@ timing; do not apply a quality waiver, tune, or rerun. Delete the committed RED
 and every H7A implementation/key/export/exclusion surface, restore H6W/H6Z
 sources byte-for-byte, and keep production **423.233 tok/s / 1,195.702 ms**
 ([H7A rejection](results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
+
+Clean post-H7A production rechecks at **422.602 tok/s** from
+**421.381/423.070/422.886/422.602/421.666**, all exact/finite/lifecycle-clean.
+The unchanged source is **0.149% below** the retained **423.233 tok/s**
+checkpoint and remains **1.63461x** behind matched llama.cpp HIP. A cache-only
+trace preserves **2,192 dispatches** and exact **24 H6N + 24 H6Z + 72 H6A +
+72 H6W + 45 H6T** topology with zero compiler; representative kernel sum/span
+is **1,200.759/1,222.392 ms**. Fresh hipEngine/llama.cpp Q5, IQ-down, attention,
+and Q6 milliseconds are **256.488/58.314**, **272.441/153.860**,
+**115.504/21.512**, and **81.854/14.668**. Their **198.174/118.581/93.991/
+67.187-ms** gaps explain **98.188%** of the residual.
+
+Select target-only **WPF-H7B exact lane-parallel IQ3 final-row publication** on
+H6T's **263.748 ms / 45 calls**. H6T already preserves the required math, but
+after its first barrier thread0 serially publishes eight rows, yielding **24
+`ds_load_b128` + 24 `global_store_d16_hi_b16`** sites. H7B keeps every load,
+decode, FMA, DPP, LDS publication, and per-row serial wave0→1→2→3 sum, while
+lanes0..7 each own one row and write its same three BF16 outputs before the
+unchanged trailing barrier. Natural M512 models **34,352,128** publication
+phases and moves DS-load/store wave issues **824,451,072→103,056,384 each
+(-87.5%)** with unchanged logical bytes; this is target rationale only.
+
+Freeze RED before code. Require complete rows1/7/8/9/M512, P64/P65/reversed/
+tails, H6T/CPU bytes, poison, finiteness, lifecycle, and all 45 actual layers.
+Physical admission requires exact **3 b128 LDS loads + 3 d16 stores**, unchanged
+23 global loads/12 LDS stores/two barriers/216 FMAs/24 permlanex16/96 DPP, code
+**<=7,920 B / <=1,384 slots**, metadata/runtime VGPR **<=101/104**, LDS
+**384/<=512 B**, and private/spill/scratch0. Cached named execution without a
+compiler and every layer **1..45** plus aggregate winning both clocks under one
+5/15/5 screen are binding. Remove H7B on any miss without tuning/rerun; runtime
+and source work remain separate
+([post-H7A residual / H7B target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
