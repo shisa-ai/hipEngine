@@ -1690,6 +1690,30 @@ HIP/Python/key/export/gfx1151-exclusion surfaces and retain byte-identical H6W/
 H6Z production **423.233 tok/s / 1,195.702 ms**
 ([H7A rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
 
+Fresh post-H7A production reaches **422.602 tok/s** with exact state/lifecycle;
+a compiler-free representative trace is **1,200.759 ms / 2,192 dispatches** and
+retains **45 H6T calls / 263.748 ms**. Select target-only **WPF-H7B exact lane-
+parallel IQ3 final-row publication**, materially distinct from the closed H6X/
+H6Y load reductions. H6T's thread0 final phase emits **24 `ds_load_b128` + 24
+`global_store_d16_hi_b16`** sites to serially handle eight rows. A separate
+sibling leaves the complete IQ3/decode/FMA/DPP/LDS-publication path unchanged,
+then assigns lanes0..7 one row each. Every row retains the identical serial
+wave0→1→2→3 F32 association and same three BF16 destinations before the
+unchanged trailing barrier.
+
+Across **34,352,128** natural publication phases, modeled DS-load and global-
+store wave issues each move **824,451,072→103,056,384 (-87.5%)**, with unchanged
+logical bytes; this is issue-count rationale, not speed evidence. Freeze RED
+before code. Require complete H6T/CPU/poison/lifecycle bytes across boundary and
+M512 cases plus all **45/45** actual layers. Static admission is exact **3 b128
+LDS loads + 3 d16 stores**, unchanged 23 global loads/12 LDS stores/two barriers/
+216 FMAs/24 permlanex16/96 DPP, code **<=7,920 B / <=1,384 slots**, metadata/
+runtime VGPR **<=101/104**, LDS **384/<=512 B**, and private/spill/scratch0.
+Cached named execution without compiler and all 45 layers plus aggregate both-
+clock wins under one immutable 5/15/5 screen are binding. Remove H7B on any miss
+without tuning/rerun; runtime/source qualification remains separate
+([post-H7A residual / H7B target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

@@ -553,6 +553,17 @@ or rerun. H6W/H6Z production stays **423.233 tok/s**
 [target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json) ·
 [H6Z production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json)).
 
+A fresh post-rejection check reaches **422.602 tok/s** and a compiler-free trace
+records **1,200.759 ms / 2,192 dispatches**; the unchanged source remains within
+**0.149%** of the retained 423.233-tok/s checkpoint. Next target **WPF-H7B exact
+lane-parallel IQ3 final-row publication** attacks H6T's **263.748 ms / 45
+calls** without changing arithmetic: lanes0..7 each publish one row using the
+same wave0→1→2→3 sum. It models static/dynamic LDS-load and global-store wave
+instructions **24 / 824,451,072 → 3 / 103,056,384 each (-87.5%)** at unchanged
+logical bytes. RED-first complete bytes, exact code-object resources, cached
+trace, and **45/45 plus aggregate** both-clock wins are binding
+([post-H7A residual / H7B target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
