@@ -9547,6 +9547,17 @@ The remaining attention sequence is:
      discard that locality:
      [`exact D32 non-temporal-V rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-nontemporal-v-rejected.json).
 
+211. Widen exact D32 cached V transactions from 16 to 32 bytes.
+     **Rejected on mixed depth direction and removed.**
+
+     Two cached 32-byte ext-vector reads replace four uint4 reads per V row
+     without changing the shared layout or arithmetic. Live16K improves
+     **0.957%**, but live4K/64K/128K regress
+     **1.669%/0.756%/1.253%**. The native uint4 path is restored. With stage
+     size and cache/load policy closed, the next exact seam is block occupancy
+     while preserving all 32 D32 workgroups:
+     [`exact D32 32-byte V rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vector32-v-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
