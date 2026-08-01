@@ -2645,25 +2645,30 @@ H5Y rollback, unchanged workspace/allocation, and gfx1151 isolation
 ([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
-Qualify bounded default-off **WPF-H7H exact full-group Q5 compute** rather than
-reopen a closed changed-association, prefetch, DPP-reduction, or VOPD premise.
-H7H covers both and only the divisible H5Y roles: BF16 K3072/N1024 `c8r4` (**92
-calls / 24.093 ms**) and BF16 K9216/N3072 `c12r8` (**35 / 80.144 ms**), totaling
-**104.237 ms / 41.881%** of current Q5. It reuses the qualified unconditional
-body through separately named gfx1100 exports/keys; H5Y remains fallback, H7G
-remains source, and gfx1151 is excluded.
+Promote **WPF-H7H exact full-group Q5 compute** after its separately frozen
+source RED proves the atomic live-map switch and complete named H7G rollback.
+H7H covers both and only the divisible natural-M512 roles: BF16 K3072/N1024
+`c8r4` (**92 calls / 24.093 ms**) and BF16 K9216/N3072 `c12r8` (**35 / 80.144
+ms**), totaling **104.237 ms / 41.881%** of pre-H7H Q5. It reuses the qualified
+unconditional body through separately named gfx1100 exports/keys; H5Y remains
+fallback, H7G remains complete-map rollback, and gfx1151 is excluded.
 
 RED-first leaf correctness passes **13/13** and the production object retains
-metadata VGPR **72/194**, LDS **512/1,536**, private/spill/scratch0. Complete
-default-off M512 is KL0/byte-exact across **48/48** hidden boundaries, full
-state, and repeat at unchanged **161,120,256-byte** workspace /
-**600,141,856-byte** scratch. Cache-only tracing records exact **61 H7G + 127
-H7H** Q5 calls among **2,925** dispatches on one queue/stream with zero compiler.
-Fixed C4096/M512 improves **423.542 -> 426.070 tok/s (+0.597%, 5/5)**; clean
-512/1K/4K improves **+1.013%/+0.685%/+0.394%**, all 3/3. Production remains H7G
-**424.845 tok/s**. Next freeze a separate source-default RED with named H7G
-rollback, then rerun source exactness, fixed/512/1K/4K timing, and clean profile
-([candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
+metadata VGPR **72/194**, LDS **512/1,536**, private/spill/scratch0. Fresh
+selector-unset H7G -> H7H source is KL0/byte-exact across **48/48** hidden
+boundaries, full state, and repeat at unchanged **161,120,256-byte** workspace /
+**600,141,856-byte** scratch. Fixed C4096/M512 improves **423.045 -> 426.745
+tok/s (+0.874%, 5/5)**; clean 512/1K/4K improves
+**+1.042%/+0.896%/+0.477%**, all 3/3. Source tracing records exact **61 H7G +
+127 H7H** calls among **2,925** dispatches; all five production-profile requests
+preserve that topology at **2,192 dispatches** and zero compiler. Clean
+production reaches **427.407 tok/s / 1,185.096-ms** representative kernel sum,
+**+0.603%** over H7G and **1.61624x** behind llama.cpp; Q5 falls **248.888 ->
+237.185 ms**. Continue parity work from Q5/IQ-down/attention/Q6 gaps
+**178.871/119.717/94.715/67.233 ms**, requiring a materially new exact
+mechanism
+([production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

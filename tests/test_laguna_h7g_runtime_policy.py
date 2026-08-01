@@ -146,8 +146,10 @@ def _install_q5_policy(
     )
 
 
-def test_h7g_runtime_capability_is_source_qualified_and_workspace_neutral() -> None:
-    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _H7G_POLICY
+def test_h7g_runtime_capability_is_retained_rollback_and_workspace_neutral() -> None:
+    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == (
+        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY
+    )
     assert getattr(hip_gfx1100, _H5Y_CAPABILITY) == _H5Y_POLICY
     assert not hasattr(hip_gfx1151, _H5Y_CAPABILITY)
     assert not hasattr(hip_gfx1151, _CAPABILITY)
@@ -188,7 +190,7 @@ def test_h7g_runtime_capability_is_source_qualified_and_workspace_neutral() -> N
         use_activation_tile_k_row=True,
     ) == 161_120_256
 
-    # H7G is source-qualified while the complete H5Y map remains rollback.
+    # H7G remains the complete exact rollback under the H7H source.
     assert getattr(hip_gfx1100, _CAPABILITY) == _H7G_POLICY
 
 

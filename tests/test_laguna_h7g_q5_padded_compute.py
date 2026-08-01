@@ -366,11 +366,13 @@ def test_h7g_registry_source_policy_and_h5y_immutability() -> None:
     )
     assert (
         hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY
-        == hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY
+        == hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY
     )
     assert {
         role
-        for role, variant in hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY.items()
+        for role, variant in (
+            hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY.items()
+        )
         if variant != _Q5_PRODUCTION_POLICY[role]
     } == {(role[2], role[4], role[5]) for role in _ROLES}
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _Q6_PRODUCTION_POLICY

@@ -143,11 +143,12 @@ def test_h7g_source_default_promotes_only_qualified_q5_roles_and_keeps_h5y(
 
     live_source = hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY
     live_policies = hip_gfx1100.GGUF_F32_ORDERED_PREFILL_POLICIES
-    assert live_source == _H7G_POLICY
+    h7h_policy = hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY
+    assert live_source == h7h_policy
     assert getattr(hip_gfx1100, _H5Y_CAPABILITY) == _H5Y_POLICY
     assert getattr(hip_gfx1100, _H7G_CAPABILITY) == _H7G_POLICY
     assert live_policies == {
-        "gguf_q5_k": _H7G_POLICY,
+        "gguf_q5_k": h7h_policy,
         "gguf_q6_k": hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY,
     }
     assert not hasattr(hip_gfx1151, "GGUF_Q5_F32_ORDERED_PREFILL_POLICY")
@@ -281,9 +282,10 @@ def test_h7g_source_default_promotes_only_qualified_q5_roles_and_keeps_h5y(
             is gfx1151
         )
 
-    # Source publication atomically selects H7G and names complete H5Y rollback.
+    # H7G and H5Y remain complete named rollbacks under the H7H source.
     assert (
         live_source,
         getattr(hip_gfx1100, _H5Y_CAPABILITY, None),
+        getattr(hip_gfx1100, _H7G_CAPABILITY, None),
         live_policies["gguf_q5_k"],
-    ) == (_H7G_POLICY, _H5Y_POLICY, _H7G_POLICY)
+    ) == (h7h_policy, _H5Y_POLICY, _H7G_POLICY, h7h_policy)

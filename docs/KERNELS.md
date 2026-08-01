@@ -1833,11 +1833,12 @@ evidence. H6T/IQ4 remain production at **422.786 tok/s**
 [candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
-**WPF-H7G exact padded-row Q5 compute is the retained gfx1100 Q5 source** in
-`quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. Its four exact-role exports and
-wrappers cover natural-M512 BF16 K3072/N12288 `c8r12`, BF16 K6144/N3072
-`c16r5`, F32 K3072/N6144 `c16r5`, and F32 K3072/N9216 `c8r10`; divisible
-`r4/r8` remain H5Y. The complete H5Y eight-role map is a named rollback. The
+**WPF-H7G exact padded-row Q5 compute is the retained complete-map rollback
+under H7H source** in `quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. Its four
+exact-role exports and wrappers cover natural-M512 BF16 K3072/N12288 `c8r12`,
+BF16 K6144/N3072 `c16r5`, F32 K3072/N6144 `c16r5`, and F32 K3072/N9216
+`c8r10`; its `r4/r8` values retain H5Y arithmetic. The complete H5Y eight-role
+map remains a second named rollback. The
 standalone rows1/7/8/9/M512 matrix passes **23/23**, first-object dual/scalar
 FMA sites become **91/5, 66/14, 66/14, 73/7**, and integrated leaf wall
 improves **136.993 -> 129.092 ms (-5.767%)** with exact H5Y bytes.
@@ -1857,24 +1858,28 @@ pass
 ([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
-Bounded default-off **WPF-H7H exact full-group Q5 compute** reuses the qualified
+Retained-source **WPF-H7H exact full-group Q5 compute** reuses the qualified
 unconditional-compute body through separately named gfx1100 exports, primitive
-and composite registry keys for the two divisible natural-M512 H5Y roles. H5Y
-remains unfused fallback, H7G remains source, and gfx1151 is excluded. BF16
-K3072/N1024 `c8r4` owns **92 calls / 24.093 ms** and BF16 K9216/N3072 `c12r8`
-owns **35 / 80.144 ms**.
+and composite registry keys for the two divisible natural-M512 roles. H5Y
+remains unfused fallback, the complete H7G map remains named rollback, and
+gfx1151 is excluded. BF16 K3072/N1024 `c8r4` owns **92 calls / 24.093 ms** and
+BF16 K9216/N3072 `c12r8` owns **35 / 80.144 ms**.
 
 RED-first leaf correctness passes **13/13**. The production object emits `r4`
 **15 dual + 5 scalar** FMA sites at **3,584 B / 587 slots / VGPR72 / LDS512**,
 and `r8` **47+9** at **9,728 B / 1,588 slots / VGPR194 / LDS1,536**; both stay
-private/spill/dynamic-stack/scratch0. Complete default-off M512 is KL0/exact
-across **48/48** boundaries, full state, and repeat at unchanged workspace and
-scratch. Cache-only tracing records exact **61 H7G + 127 H7H** Q5 calls among
-**2,925** dispatches on one queue/stream at runtime VGPR **72/200**, scratch0,
-and zero compiler. Fixed C4096/M512 improves **423.542 -> 426.070 tok/s
-(+0.597%, 5/5)**; clean 512/1K/4K gains **+1.013%/+0.685%/+0.394%**, all 3/3.
-Freeze a separate source-default RED before replacing the two H7G values
-([candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
+private/spill/dynamic-stack/scratch0. Fresh selector-unset H7G -> H7H source is
+KL0/exact across **48/48** boundaries, full state, and repeat at unchanged
+workspace/scratch. Cache-only source tracing records exact **61 H7G + 127 H7H**
+Q5 calls among **2,925** dispatches on one queue/stream at runtime VGPR
+**72/200**, scratch0, and zero compiler. Fixed C4096/M512 improves **423.045 ->
+426.745 tok/s (+0.874%, 5/5)**; clean 512/1K/4K gains
+**+1.042%/+0.896%/+0.477%**, all 3/3. Clean production reaches **427.407 tok/s
+/ 1,185.096 ms / 2,192 dispatches**, **1.61624x** behind matched llama.cpp HIP;
+Q5 falls **248.888 -> 237.185 ms**. Final exact guards pass **83/83** plus
+**65/65** runner/backend/registry nodes
+([production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

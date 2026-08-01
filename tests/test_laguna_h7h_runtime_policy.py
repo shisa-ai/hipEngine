@@ -172,8 +172,8 @@ def _install_q5_policy(
     )
 
 
-def test_h7h_runtime_capability_is_default_off_exact_and_workspace_neutral() -> None:
-    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _H7G_POLICY
+def test_h7h_runtime_capability_is_source_qualified_exact_and_workspace_neutral() -> None:
+    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _H7H_POLICY
     assert getattr(hip_gfx1100, _H5Y_CAPABILITY) == _H5Y_POLICY
     assert getattr(hip_gfx1100, _H7G_CAPABILITY) == _H7G_POLICY
     assert not hasattr(hip_gfx1151, _H5Y_CAPABILITY)
@@ -194,10 +194,12 @@ def test_h7h_runtime_capability_is_default_off_exact_and_workspace_neutral() -> 
     assert all(_H7H_POLICY[role] == _H7G_POLICY[role] for role in _UNCHANGED_ROLES)
 
     artifact = json.loads(_ARTIFACT.read_text())
-    assert artifact["status"] == "admitted_standalone_exact_leaf"
+    assert artifact["status"] == "qualified_bounded_default_off_runtime_owner"
     assert artifact["decision"]["leaf_admitted"]
-    assert not artifact["decision"]["runtime_capability_admitted"]
+    assert artifact["decision"]["runtime_capability_admitted"]
     assert not artifact["decision"]["source_owner_admitted"]
+    assert artifact["scope"]["source_policy"] == "H7G"
+    assert artifact["scope"]["source_promotion_pending"]
     assert artifact["scope"]["workspace_bytes"] == 161_120_256
     assert [role["production_invocations"] for role in artifact["scope"]["owned_roles"]] == [92, 35]
 
