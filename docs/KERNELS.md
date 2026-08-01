@@ -1786,6 +1786,39 @@ until the required post-commit reprofile
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
+Fresh post-H7C production reaches **422.786 tok/s** with cache-only
+**1,197.499/1,219.043-ms** representative kernel sum/span, **2,192 dispatches**,
+and zero compiler. Q5/IQ-down/attention/Q6 gaps are
+**196.915/117.620/93.693/66.653 ms**. The isolated **WPF-H7D** Q5 schedule probe
+closes row-interleaved VOPD as an exact next leaf: both scalar-order variants
+compile to **52 paired FMAs** at VGPR122, and forced pairing is illegal under
+gfx1100 `src0` VGPR-bank assignment. Do not create a production H7D surface or
+retry Q5 scheduling without a new layout/codegen premise.
+
+Select **WPF-H7E IQ3-only two-plane residual-D4 source-MMQ** in
+`quant/gguf_iq_source_mmq_prefill.{hip,py}`. Reuse the already-qualified
+`gguf_q8_0_mmq128_quantize_bf16_d4x2` producer and add one separately named
+I128/J128/K256 IQ3 consumer that accumulates both planes while each raw-IQ3
+weight tile is staged. Keep the existing one-plane IQ3/IQ4 source functions
+byte-frozen, both production IQ4 layers exact, H6T as fallback, and gfx1151
+excluded. The selection-only all-layer probe moves producer-inclusive
+**248.421→172.854 ms (1.437x)** with **45/45** layers faster and median BF16
+mismatch **2.268%**; D4x3 is speed-closed at **1.006x** and **27/45**.
+
+Before implementation, freeze exact producer/one-plane source hashes plus
+rows1/7/8/9/M512, empty/uneven/127/128/129 expert tails, complete overwrite,
+independent CPU KL/top-1, metadata immutability, lifecycle, strict IQ3
+K1024/N3072 registration, exact fallback, and gfx1151 exclusion. The first
+candidate object must be local `(32,8)`, grid `(24,mmq_total_rows/128)`, dynamic
+LDS57,856, metadata VGPR/SGPR **<=148/44**, private/spill/dynamic-stack/scratch0,
+exact **128 integer WMMAs / five barriers / 64 BF16 stores**, and code
+**<=31,564 B**. Only then consume one producer-inclusive 5/15/5 screen where
+all **45/45** layers and aggregate win event and synchronized wall. Runtime and
+source remain separate; runtime must reuse `expert_gate_up` after SiLU, add no
+allocation/workspace, and pass complete state plus the mandatory counterbalanced
+**18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate before source timing
+([post-H7C residual / H7E target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
