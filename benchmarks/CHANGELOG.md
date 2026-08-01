@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna exact-denominator score sentinel] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d64K: deriving invisible weights from `-FLT_MAX` removes the physical-map read and improves exact leaves **0.20-1.08%**, but complete decode regresses **0.012%/0.137%/0.284%** at 4K/16K/64K, so restore the physical check and skip 128K; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-denominator-sentinel-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna exact PV tied-accumulator FMAC] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: spelling the ordered recurrence as `v_fmac_f32_e32` instead of three-source `v_fma_f32` changes leaves **+0.266%/-0.205%/-0.344%/-0.046%**, so restore the all-depth winner without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-fmac-rejected.json`.
 
 - [rejected byte-exact gfx1151 Laguna direct-wave exact PV probability loads] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: removing probability loader/LDS staging and broadcasting four direct score/inverse loads from each output wave is byte-exact but **2.88-3.02x slower** than retained staged prefetch4 at every depth, so restore LDS probability broadcast without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-direct-probability-rejected.json`.

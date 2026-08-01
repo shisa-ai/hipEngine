@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T07:29:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_denominator_sentinel_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "candidate": "derive invisible denominator weights from the existing -FLT_MAX score sentinel and remove the per-token physical_scratch load",
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "physical_check_ms": 0.1854761000, "score_sentinel_ms": 0.1850710988, "delta_percent": -0.218358},
+      {"live_count": 16448, "physical_check_ms": 0.8304656030, "score_sentinel_ms": 0.8287865639, "delta_percent": -0.202180},
+      {"live_count": 65664, "physical_check_ms": 3.4685817720, "score_sentinel_ms": 3.4322975159, "delta_percent": -1.046083},
+      {"live_count": 131200, "physical_check_ms": 6.9828865050, "score_sentinel_ms": 6.9072036743, "delta_percent": -1.083833}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "wrapped_evicted_cpu_reference_pass": true,
+    "raw_sha256": "2bbad86980f7cbbcba11ee47517d1d0c6c65e3f330148e1cb6bfc8265bd3fe34"
+  },
+  "production_sweep": {
+    "rows": [
+      {"depth": 4096, "physical_check_tok_s": 21.663871, "score_sentinel_tok_s": 21.6612367867, "delta_percent": -0.012159, "final_token_id": 6436},
+      {"depth": 16384, "physical_check_tok_s": 18.930785, "score_sentinel_tok_s": 18.9048511883, "delta_percent": -0.136993, "final_token_id": 13815},
+      {"depth": 65536, "physical_check_tok_s": 11.868234, "score_sentinel_tok_s": 11.8345357155, "delta_percent": -0.283937, "final_token_id": 1869}
+    ],
+    "all_established_generated_hashes_match": true,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_sha256": "7d1c2240f7c508e9a442496d80cdea26689df15ee576f934f904658ce4ebaf61"
+  },
+  "decision": {
+    "reason": "the leaf saves 0.20-1.08%, but complete decode regresses at all three directional depths; the physical map is cache-resident/hidden and the sentinel branch costs more",
+    "mandatory_128k": "not run because 4K/16K/64K all fail the directional promotion gate",
+    "disposition": "restore committed physical_scratch visibility check exactly"
+  }
+}

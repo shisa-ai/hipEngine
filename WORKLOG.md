@@ -197663,3 +197663,20 @@ Vulkan local sizes verbatim will close the measured gap.
   `00dd5dcc549f94a687c579d112d1729fd3a69f9bf8427c1d48ad22e770cd05cf`.
 - Restored committed `v_fma_f32` exactly. Mixed leaf direction fails the gate,
   so no complete-model timing is justified.
+
+## 2026-08-02 07:29 JST — Reject exact-denominator score sentinel
+
+- Replaced the per-token denominator `physical_scratch` load with the existing
+  `-FLT_MAX` invisible-score sentinel plus a uniform all-invisible guard. Two
+  focused tests, including wrapped/evicted CPU reference, pass. Exact
+  live4K/16K/64K/128K leaves improve
+  **0.218%/0.202%/1.046%/1.084%**, byte-identical; raw SHA-256 is
+  `2bbad86980f7cbbcba11ee47517d1d0c6c65e3f330148e1cb6bfc8265bd3fe34`.
+- Cached d4K/d16K/d64K decode regresses
+  **21.663871/18.930785/11.868234 ->
+  21.661237/18.904851/11.834536 tok/s**
+  (**-0.0122%/-0.1370%/-0.2839%**) with exact hashes and teardown. Raw
+  SHA-256 is
+  `7d1c2240f7c508e9a442496d80cdea26689df15ee576f934f904658ce4ebaf61`.
+- Restored the committed physical-map check. All directional production gates
+  fail, so mandatory 128K is not justified.

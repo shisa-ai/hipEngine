@@ -9701,6 +9701,18 @@ The remaining attention sequence is:
      `v_fma_f32`. Restore the all-depth winner without production timing:
      [`ordered FMAC rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-fmac-rejected.json).
 
+220. Replace the denominator physical-map read with the score sentinel.
+     **Rejected by complete directional decode and removed.**
+
+     Invisible scores are already `-FLT_MAX`, so a uniform all-invisible guard
+     can remove the per-token int32 visibility load. Wrapped/evicted CPU
+     coverage and all byte checks pass; exact leaves improve
+     **0.218%/0.202%/1.046%/1.084%** at live4K/16K/64K/128K. Complete
+     d4K/d16K/d64K nevertheless regresses
+     **0.012%/0.137%/0.284%**. Restore the cache-resident physical check and
+     skip the mandatory 128K run because every directional row fails:
+     [`denominator sentinel rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-denominator-sentinel-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

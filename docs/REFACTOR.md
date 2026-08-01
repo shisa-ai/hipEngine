@@ -2592,6 +2592,8 @@ should be boring.
   broadcast remains required latency hiding.
   Tied-accumulator `v_fmac_f32_e32` is removed after mixed leaf direction;
   production retains the three-source ordered `v_fma_f32` spelling.
+  Score-sentinel visibility is removed after its leaf win reverses to complete
+  4K/16K/64K regressions; the denominator keeps `physical_scratch` checks.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
