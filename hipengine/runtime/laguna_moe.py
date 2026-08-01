@@ -24,6 +24,12 @@ from hipengine.loading.laguna_gguf_materialize import (
     LAYOUT_RAW_GGUF,
     LagunaGGUFResidentLayerWeights,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    register_gguf_iq_source_mmq_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+    gguf_q8_0_mmq128_quantize_bf16_d4x2,
+)
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
 from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
@@ -60,6 +66,8 @@ _GROUPED_IQ_DOWN_BASELINE_VARIANTS = MappingProxyType(
     }
 )
 _GROUPED_IQ_DOWN_ROLE = (1024, 3072, 256)
+_GROUPED_IQ_DOWN_RESIDUAL_QUANTS = frozenset({"gguf_iq3_xxs"})
+_GROUPED_IQ_DOWN_RESIDUAL_ABI = "grouped_source_mmq_d4x2"
 _GROUPED_IQ_DOWN_BASELINE_ABI = "grouped_raw_iq"
 _GROUPED_IQ_DOWN_SUPPORTED_ABIS = frozenset(
     {_GROUPED_IQ_DOWN_BASELINE_ABI, "grouped_raw_iq_active_experts"}
@@ -160,6 +168,11 @@ _Q8_1_DS4_F32_BLOCK_BYTES = 160
 _Q8_1_DS4_RESIDUAL_PLANES = 3
 _MMQ32_ROWS = 32
 _MMQ64_ROWS = 64
+_MMQ128_ROWS = 128
+_H7E_RUNTIME_ROWS = 512
+
+
+register_gguf_iq_source_mmq_prefill_kernels()
 
 
 def _should_fuse_grouped_weighted_sum(
@@ -415,6 +428,50 @@ def _resolve_laguna_grouped_iq_down_variants(
     return MappingProxyType(selected)
 
 
+def _resolve_laguna_grouped_iq_down_residual_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[str, str]:
+    """Resolve changed-arithmetic IQ-down routes behind a separate live map."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_IQ_DOWN_RESIDUAL_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped-IQ residual variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for raw_quant, raw_variant in raw_variants.items():
+        quant = str(raw_quant)
+        if quant not in _GROUPED_IQ_DOWN_RESIDUAL_QUANTS:
+            raise ValueError(
+                f"Laguna grouped-IQ residual policy has unsupported quant {quant!r}"
+            )
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError(
+                "Laguna grouped-IQ residual policy requires non-empty variants"
+            )
+        parsed[quant] = variant
+
+    role = (
+        config.expert_feed_forward_length,
+        config.hidden_size,
+        config.expert_count,
+    )
+    if role != _GROUPED_IQ_DOWN_ROLE:
+        return MappingProxyType({})
+    return MappingProxyType(
+        {
+            quant: variant
+            for quant, variant in parsed.items()
+            if is_registered(KernelKey(backend, "moe_linear", quant, variant))
+        }
+    )
+
+
 def _resolve_laguna_grouped_pair16_gate_up_variants(
     config: LagunaGGUFConfig,
     *,
@@ -606,6 +663,8 @@ class LagunaMoEKernelPlan:
     ]
     grouped_exact_down_keys: Mapping[str, KernelKey]
     grouped_exact_down_routes: Mapping[str, LagunaMoESelectedRoute]
+    grouped_residual_down_keys: Mapping[str, KernelKey]
+    grouped_residual_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -625,6 +684,7 @@ class LagunaMoEKernelPlan:
     grouped_compact_source_rows_parallel_key: KernelKey
     mmq_tile_map_key: KernelKey
     mmq64_tile_map_key: KernelKey
+    mmq128_tile_map_key: KernelKey
     grouped_gather_key: KernelKey
     grouped_smallm_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
@@ -659,6 +719,7 @@ class LagunaMoEKernelPlan:
     grouped_compact_source_rows_parallel: Callable
     mmq_tile_map: Callable
     mmq64_tile_map: Callable
+    mmq128_tile_map: Callable
     grouped_gather: Callable
     grouped_smallm_downs: Mapping[str, Callable]
     grouped_weighted_sum: Callable
@@ -685,6 +746,7 @@ class LagunaMoEKernelPlan:
             *tuple(self.grouped_pair16_gate_up_keys.values()),
             *tuple(self.grouped_special_gate_up_keys.values()),
             *tuple(self.grouped_exact_down_keys.values()),
+            *tuple(self.grouped_residual_down_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -701,6 +763,7 @@ class LagunaMoEKernelPlan:
             self.grouped_compact_source_rows_parallel_key,
             self.mmq_tile_map_key,
             self.mmq64_tile_map_key,
+            self.mmq128_tile_map_key,
             self.grouped_gather_key,
             *tuple(self.grouped_smallm_down_keys.values()),
             self.grouped_weighted_sum_key,
@@ -1055,6 +1118,12 @@ def resolve_laguna_moe_plan(
             "generic",
             "tile64",
         ),
+        "mmq128_tile_map": KernelKey(
+            backend,
+            "moe_mmq_tile_map",
+            "generic",
+            "tile128",
+        ),
         "grouped_gather": KernelKey(
             backend, "moe_gather_packed_hidden", "generic", "bf16_lanes"
         ),
@@ -1248,6 +1317,30 @@ def resolve_laguna_moe_plan(
             for quant, key in grouped_exact_down_keys.items()
         }
     )
+    grouped_residual_down_policies = (
+        _resolve_laguna_grouped_iq_down_residual_variants(
+            config,
+            backend=backend,
+        )
+    )
+    grouped_residual_down_keys = MappingProxyType(
+        {
+            quant: KernelKey(backend, "moe_linear", quant, variant)
+            for quant, variant in grouped_residual_down_policies.items()
+        }
+    )
+    grouped_residual_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi=_GROUPED_IQ_DOWN_RESIDUAL_ABI,
+                allocation_name="raw",
+                library_key="iq_source_mmq",
+            )
+            for quant, key in grouped_residual_down_keys.items()
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1369,6 +1462,8 @@ def resolve_laguna_moe_plan(
         grouped_special_gate_up_routes=grouped_special_gate_up_routes,
         grouped_exact_down_keys=grouped_exact_down_keys,
         grouped_exact_down_routes=grouped_exact_down_routes,
+        grouped_residual_down_keys=grouped_residual_down_keys,
+        grouped_residual_down_routes=grouped_residual_down_routes,
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
         selected_down_key=keys["selected_down"],
@@ -1413,6 +1508,7 @@ def resolve_laguna_moe_plan(
         ],
         mmq_tile_map_key=keys["mmq_tile_map"],
         mmq64_tile_map_key=keys["mmq64_tile_map"],
+        mmq128_tile_map_key=keys["mmq128_tile_map"],
         grouped_gather_key=keys["grouped_gather"],
         grouped_smallm_down_keys=grouped_smallm_down_keys,
         grouped_weighted_sum_key=keys["grouped_weighted_sum"],
@@ -1430,6 +1526,7 @@ def resolve_laguna_moe_plan(
         ],
         mmq_tile_map=functions["mmq_tile_map"],
         mmq64_tile_map=functions["mmq64_tile_map"],
+        mmq128_tile_map=functions["mmq128_tile_map"],
         grouped_gather=functions["grouped_gather"],
         grouped_smallm_downs=grouped_smallm_downs,
         grouped_weighted_sum=functions["grouped_weighted_sum"],
@@ -1993,6 +2090,74 @@ _GROUPED_EXACT_DOWN_ABIS = MappingProxyType(
 )
 
 
+def _launch_grouped_down_iq3_residual_d4x2(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Run the bounded H7E producer and IQ3 residual source-MMQ consumer."""
+
+    mmq_total_rows = _mmq_static_upper_rows(
+        lanes,
+        plan.expert_count,
+        tile_rows=_MMQ128_ROWS,
+    )
+    tile_capacity = mmq_total_rows // _MMQ128_ROWS
+    if tile_capacity > lanes:
+        raise ValueError("Laguna MMQ128 tile metadata exceeds bounded lane storage")
+    plan.mmq128_tile_map(
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_expert_start_mmq32.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        scratch.grouped_mmq_total.ptr,
+        plan.expert_count,
+        tile_capacity=tile_capacity,
+        **_stage_kwargs(
+            "grouped_metadata",
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+    gguf_q8_0_mmq128_quantize_bf16_d4x2(
+        scratch.expert_gate.ptr,
+        scratch.expert_gate_up.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            "q8_mmq_prefill",
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+    route.function(
+        scratch.expert_gate_up.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_expert_start_mmq32.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        compact_rows=lanes,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        num_experts=plan.expert_count,
+        mmq_total_rows=mmq_total_rows,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
 def _launch_selected_down_grouped_exact(
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
@@ -2015,16 +2180,35 @@ def _launch_selected_down_grouped_exact(
             f"no Laguna exact grouped-down route for {weight.spec.quant_key!r}"
         ) from exc
     active_runtime = runtime or get_hip_runtime()
-    launch(
-        route,
-        plan,
-        weight.allocation(route.allocation_name).tensor.ptr,
-        scratch,
-        lanes=lanes,
-        stream=stream,
-        runtime=active_runtime,
-        libraries=libraries,
+    residual_route = (
+        getattr(plan, "grouped_residual_down_routes", {}).get(
+            weight.spec.quant_key
+        )
+        if tokens == _H7E_RUNTIME_ROWS
+        else None
     )
+    if residual_route is None:
+        launch(
+            route,
+            plan,
+            weight.allocation(route.allocation_name).tensor.ptr,
+            scratch,
+            lanes=lanes,
+            stream=stream,
+            runtime=active_runtime,
+            libraries=libraries,
+        )
+    else:
+        _launch_grouped_down_iq3_residual_d4x2(
+            residual_route,
+            plan,
+            weight.allocation(residual_route.allocation_name).tensor.ptr,
+            scratch,
+            lanes=lanes,
+            stream=stream,
+            runtime=active_runtime,
+            libraries=libraries,
+        )
     plan.grouped_weighted_sum(
         scratch.expert_down.ptr,
         scratch.grouped_sorted_weights.ptr,

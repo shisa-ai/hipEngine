@@ -14,6 +14,21 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Laguna H7E bounded default-off IQ3 residual-D4 owner
+
+- Added 2026-08-02 to qualify WPF-H7E before its mandatory complete-quality
+  gate. The gfx1100-only live map remains empty; the candidate is bounded to
+  IQ3 at exact M512/K1024/N3072/E256, lazily loads its two existing libraries,
+  and reuses `expert_gate_up` with zero allocation/workspace growth. H6T/IQ4
+  remain source and required exact fallbacks.
+- If the counterbalanced 18-prompt/576-step gate fails, remove the temporary
+  residual-route resolver/plan fields, tile128 runtime route if it has no other
+  owner, optional eager-library fields, qualified/live maps, and runtime test;
+  retain the standalone registered leaf and rejection evidence. If the gate
+  passes and H7E is promoted, collapse the duplicate qualified/live map and
+  candidate-only tests after one clean production checkpoint. Never remove H6T
+  or the unfused D4x2 producer/consumer fallback chain.
+
 ## Laguna H6Z bounded default-off global-attention capability
 
 - Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact

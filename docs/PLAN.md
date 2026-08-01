@@ -2585,14 +2585,22 @@ The immutable producer-inclusive 5/15/5 all-layer screen wins event and
 synchronized wall for every **45/45** actual IQ3 layer. Aggregate event moves
 **247.297→186.732 ms (-24.491%, 1.324x)** and wall
 **260.672→180.752 ms (-30.659%, 1.442x)**; max leaf KL is **0.000487** and
-minimum top-1 **99.941%**, with finite output and recovered lifecycle. Admit only
-the registry leaf: production remains H6T/IQ4 exact at **422.786 tok/s** and no
-runtime owner/allocation/workspace changes exist. Next freeze a separate
-zero-growth owner that reuses the **20,971,520-byte** `expert_gate_up` plane for
-**11,796,480-byte** D4x2 records. Before source timing or promotion, the complete
-counterbalanced **18-prompt/576-step** lane must remain finite and pass max KL
-**<=0.05**, top-1 **>=90%**, Poolside, determinism, free-running diagnostics,
-and lifecycle; no prompt/layer subset is admissible
+minimum top-1 **99.941%**, with finite output and recovered lifecycle. The
+separate bounded default-off runtime owner is now qualified: it is IQ3-only,
+exact-M512/K1024/N3072/E256, reuses the existing **20,971,520-byte**
+`expert_gate_up` plane for **11,796,480-byte** D4x2 records, and adds zero
+allocation/workspace growth. Natural-M512 control/candidate/repeat passes at KL
+**0.000224**, top-1 **100%**, token **2930**, exact repeat/span metadata, and
+clean lifecycle with **600,141,856-byte** total scratch.
+
+Cached paired tracing proves exact **45 H6T → 45 tile128 + 45 producer + 45
+H7E** topology with zero compiler and diagnostic C512 IQ-down/kernel-sum/span
+**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. This does not
+change production: H6T/IQ4 remain source at **422.786 tok/s**. Before source
+timing or promotion, the complete counterbalanced **18-prompt/576-step** lane
+must remain finite and pass max KL **<=0.05**, top-1 **>=90%**, Poolside,
+determinism, free-running diagnostics, and lifecycle; no prompt/layer subset is
+admissible
 ([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 

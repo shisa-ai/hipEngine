@@ -1815,11 +1815,18 @@ layer and aggregate event/wall
 **247.297/260.672→186.732/180.752 ms (-24.491%/-30.659%)**. Max leaf KL is
 **0.000487**, minimum top-1 **99.941%**, and lifecycle recovers.
 
-Admit only the registry leaf. Runtime/source stay H6T/IQ4 exact and production
-stays **422.786 tok/s**. A separate owner must reuse `expert_gate_up` after
-SiLU, add no allocation/workspace, and pass complete state plus the mandatory
-counterbalanced **18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate before
-source timing
+The bounded default-off runtime owner is now qualified. It selects only IQ3 at
+exact M512/K1024/N3072/E256, emits tile128 metadata, writes the existing
+`expert_gate_up` plane with D4x2 records after SiLU, then runs H7E and the
+unchanged weighted sum. Natural-M512 control/candidate/repeat passes at KL
+**0.000224**, top-1 **100%**, token **2930**, exact repeat/span metadata,
+unchanged **104,370,208-B** MoE / **600,141,856-B** total scratch, and clean
+lifecycle. Cached tracing records **45 H6T → 45 tile128 + 45 producer + 45 H7E**,
+runtime H7E VGPR152/scratch0, and zero compiler; diagnostic IQ-down/kernel-sum/
+span falls **269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**.
+H6T/IQ4 remain production source at **422.786 tok/s**. The mandatory
+counterbalanced **18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate remains
+pending before source timing
 ([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
