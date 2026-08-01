@@ -10,16 +10,22 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
 _CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS"
 _H6A_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS"
+_H6Z_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS"
 _SOURCE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
+_H6Z_GLOBAL = (
+    "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+    "exact_spans"
+)
 _H6A_SWA = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
 _H6W_SWA = (
     "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
 )
 _SOURCE_POLICY = {_GLOBAL_ROLE: _H6N_GLOBAL, _SWA_ROLE: _H6A_SWA}
 _H6W_POLICY = {_GLOBAL_ROLE: _H6N_GLOBAL, _SWA_ROLE: _H6W_SWA}
+_H6Z_POLICY = {_GLOBAL_ROLE: _H6Z_GLOBAL, _SWA_ROLE: _H6W_SWA}
 _FALLBACK_STARTS = (0, 128)
 _H6W_STARTS = (256, 384)
 _SCORE_SCRATCH_BYTES = 18_874_368
@@ -154,7 +160,10 @@ def test_h6w_runtime_capability_and_h6a_rollback_survive_source_promotion() -> N
     from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
 
     assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _SOURCE_POLICY
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6W_POLICY
+    assert getattr(hip_gfx1100, _CAPABILITY) == _H6W_POLICY
+    assert getattr(hip_gfx1100, _H6Z_CAPABILITY) == _H6Z_POLICY
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY
+    assert not hasattr(hip_gfx1151, _H6Z_CAPABILITY)
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert not hasattr(hip_gfx1151, _H6A_CAPABILITY)
     assert is_registered(
@@ -184,7 +193,7 @@ def test_h6w_runtime_capability_and_h6a_rollback_survive_source_promotion() -> N
         use_activation_tile_k_row=True,
     ) == _Q5_WORKSPACE_BYTES
 
-    # Intentional RED after source, leaf, backend, and workspace controls pass.
+    # H6W remains the explicit H6N-global rollback after H6Z promotion.
     assert getattr(hip_gfx1100, _CAPABILITY) == _H6W_POLICY
 
 

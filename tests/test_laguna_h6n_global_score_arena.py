@@ -37,8 +37,12 @@ _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _SWA_H6W_VARIANT = (
     "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
 )
+_H6Z_VARIANT = (
+    "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+    "exact_spans"
+)
 _PRODUCTION_POLICY = {
-    _DENSE_ROLE: _H6N_VARIANT,
+    _DENSE_ROLE: _H6Z_VARIANT,
     _SWA_ROLE: _SWA_H6W_VARIANT,
 }
 _H6A_KERNEL_SHA256 = "9c6ec1d45e375f22c9e97854f2d8c7a70dbcfaa2df9dcd710a8dba4fbd56721b"
