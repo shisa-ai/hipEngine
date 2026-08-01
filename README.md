@@ -575,16 +575,18 @@ retain H6T/H6Z production **422.602 tok/s / 1,200.759 ms**
 
 Fresh committed production is **422.947 tok/s** and a compiler-free trace is
 **1,199.578 ms / 2,192 dispatches**. The residual Q5/IQ-down/attention/Q6 gaps
-are **197.783/118.305/93.890/66.748 ms**. Next target **WPF-H7C exact raw-Q6
-DPP-add wave reduction** attacks the three remaining raw source-GGUF calls,
-which own **28.474 ms (34.904% of Q6)**. Their generic exact bodies execute
-**160 `ds_bpermute_b32`** sites; H7C transfers retained H6U's exact
-shuffle16→8→4→2→1 association as **32 permlanex16 + 128 DPP adds** across
-**245,760 workgroups / 983,040 wave instances**, replacing **157,286,400**
-dynamic bpermute wave instructions without changing bytes, layout, ABI, or
-arithmetic. RED-first complete bytes, first-object resources, cached execution,
-and all three roles plus aggregate both-clock wins are binding
-([post-H7B residual / H7C target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
+are **197.783/118.305/93.890/66.748 ms**. Standalone **WPF-H7C exact raw-Q6
+DPP-add wave reduction** is admitted for the three remaining raw source-GGUF
+calls, which own **28.474 ms (34.904% of Q6)**. Complete correctness passes
+**22/22**. BF16/F32 code/slots fall **4,840/843→4,228/681** and
+**5,040/909→4,452/749**, with exact **0 bpermutes + 32 permlanex16 + 128 DPP
+adds**, metadata/runtime VGPR **60/64** and **55/56**, LDS512, and scratch0.
+The one-shot actual-weight screen improves all three roles on both clocks and
+the aggregate **37.248/37.303→36.983/36.998 ms event/wall
+(-0.712%/-0.817%)**. Runtime/source remain on the generic rollback pending a
+separate gate, so production is unchanged
+([H7C candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+[target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
