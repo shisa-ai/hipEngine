@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-02
+
+- [accepted matched gfx1100 Laguna Q2 XL post-H7C residual / selected WPF-H7E target] Radeon Pro W7900 / clean H7C production is **422.786 tok/s** with compiler-free representative **1,197.499 ms / 2,192 dispatches**, **1.63390x** behind matched llama.cpp HIP. Q5/IQ-down/attention/Q6 gaps are **196.915/117.620/93.693/66.653 ms**. H7D closes Q5 row-interleaved VOPD at unchanged **52 paired FMAs** plus illegal explicit VGPR-bank pairing. D4x3 is speed-closed at **249.471→247.909 ms (1.006x), 27/45**. Select target-only H7E IQ3 D4x2 residual-MMQ after producer-inclusive **248.421→172.854 ms (1.437x, -30.419%), 45/45**, median BF16 mismatch **2.268%**, max leaf KL **0.000487**, and minimum top-1 **99.941%**. This is selection evidence only; RED-first physical/all-layer timing and complete **18-prompt/576-step** quality remain binding; `benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json`.
+
 ## 2026-08-01
 
 - [promoted exact gfx1100 Laguna Q2 XL WPF-H7C raw-Q6 DPP source] Radeon Pro W7900 / source changes only the live three-role map and keeps the named empty generic rollback. Fresh selector-unset M512 is KL0/byte-exact across complete state, **48/48** boundaries, full KV/spans, and repeat. Four cached requests preserve **2,192 dispatches**, substitute exact **2 BF16 + 1 F32** H7C calls, and improve selected raw-Q6/Q6/span **28.583/81.639/1,283.417→28.376/81.470/1,280.788 ms** with zero compiler. Fresh aggregate timing is mixed: fixed C4096/M512 **419.433→418.487 tok/s (-0.225%, 2/5)** and 512/1K/4K **+0.0925%/+0.0372%/-0.0488%**. Retain under cycle-wall policy from two independent selected-subwindow/span wins plus the immutable all-role leaf screen; record negative aggregates as noise, not wins. Scratch/lifecycle stay exact and **80/80** guards pass; `benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json`.

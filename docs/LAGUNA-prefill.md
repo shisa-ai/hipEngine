@@ -36,10 +36,10 @@ aligned global-score replay with H6A rollback, H6X/H6Y reject exact IQ3 load
 reductions at frozen physical gates, H6Z promotes exact late-start global
 qrow4 caller-record source ownership with H6W/H6N rollback, H7A rejects
 late-SWA scaled-score replay at complete-byte exactness, H7B rejects exact
-lane-parallel IQ3 final-row publication at its metadata-VGPR gate, and H7C
-admits exact DPP-add reduction plus bounded default-off runtime ownership for
-the three raw-Q6 fallbacks while its live source map remains generic; 16K+
-remains
+lane-parallel IQ3 final-row publication at its metadata-VGPR gate, H7C promotes
+exact DPP-add reduction for the three raw-Q6 fallbacks, H7D closes exact Q5 row-
+interleaved VOPD scheduling, and H7E selects target-only IQ3 two-plane residual-
+D4 source-MMQ behind the mandatory complete quality gate; 16K+ remains
 deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
@@ -1186,6 +1186,53 @@ post-commit reprofile
 ([H7C production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
+
+The clean post-H7C checkpoint is **422.786 tok/s** from
+**422.089/423.485/423.133/422.786/422.348**, all exact/finite/lifecycle-clean,
+and remains **1.63390x** behind matched llama.cpp HIP **690.791 tok/s**. The
+median representative cache-only request is **1,197.499 ms** in a
+**1,219.043-ms** span across **2,192 dispatches**, with zero compiler. Current
+hipEngine/llama.cpp Q5, IQ-down, attention, Q6, gate/up, and remaining
+milliseconds are **255.229/58.314**, **271.480/153.860**,
+**115.205/21.512**, **81.321/14.668**, **398.027/397.805**, and
+**76.236/67.849**. The first four gaps explain **98.219%** of the
+**483.490-ms** kernel gap.
+
+**WPF-H7D is closed without a production candidate.** An isolated exact Q5
+row-order probe leaves both control and candidate at **52 `v_dual_fmac_f32`**
+sites and metadata VGPR122. Replacing the same pairs with inline explicit VOPD
+fails compilation on all 16 emitted pair groups with `src0 operands must use
+different VGPR banks`. This latest Q5 scheduling mechanism adds no issue
+reduction and cannot be forced legally; prior Q5 exact/changed-association
+closures remain binding.
+
+Select target-only **WPF-H7E IQ3 two-plane residual-D4 source-MMQ**. The
+retained H3 source consumer is **4.866x** faster at one plane but complete-
+quality rejected at max KL **0.372917**. H7E is not a blind retry: it adds a
+second D4 residual reconstruction plane and keeps both IQ4 layers exact. The
+D4x3 feasibility control reaches median BF16 mismatch **0.0231%** but consumes
+the speed opportunity: producer-inclusive **249.471→247.909 ms (1.006x)** and
+only **27/45** layers win. D4x2 instead moves **248.421→172.854 ms (1.437x,
+-30.419%)**, wins all **45/45**, and records mismatch **2.187–2.501%** (median
+**2.268%**), max leaf KL **0.000487**, minimum top-1 **99.941%**, finite output,
+and recovered lifecycle. This single natural-M512 stream is a selection probe,
+not a production or complete-quality speed claim.
+
+Freeze RED before code. Reuse the qualified D4x2 producer and add one separately
+named gfx1100 IQ3 consumer; byte-freeze the one-plane IQ3/IQ4 source path and
+keep H6T/exact IQ4/gfx1151 fallbacks. Primitive gates cover rows1/7/8/9/M512,
+empty/uneven/127/128/129 tails, complete overwrite, CPU KL/top-1, metadata, and
+lifecycle. First-object admission is local `(32,8)`, dynamic LDS57,856,
+metadata VGPR/SGPR **<=148/44**, private/spill/scratch0, exact **128 integer
+WMMAs / five barriers / 64 BF16 stores**, and code **<=31,564 B**. Only then run
+one producer-inclusive 5/15/5 screen requiring every actual IQ3 layer and
+aggregate to win both clocks. A separate default-off owner must reuse the dead
+**20,971,520-byte** `expert_gate_up` plane for the **11,796,480-byte** D4x2
+records with zero allocation/workspace growth. Before source timing, require
+complete M512 state and the full counterbalanced **18-prompt/576-step** lane at
+finite max KL **<=0.05**, top-1 **>=90%**, Poolside, deterministic repeats, and
+clean lifecycle; never add prompt/layer conditioning
+([post-H7C residual / H7E target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

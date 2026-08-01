@@ -605,6 +605,28 @@ checkpoint remains **422.947 tok/s / 1,199.578 ms** pending post-commit reprofil
 [candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
+Fresh post-H7C production is **422.786 tok/s**, **1.63390x behind** matched
+llama.cpp HIP **690.791 tok/s**. The representative cache-only request is
+**1,197.499 ms** in a **1,219.043-ms** span across **2,192 dispatches** with
+zero compiler. Q5/IQ-down/attention/Q6 gaps are
+**196.915/117.620/93.693/66.653 ms** and explain **98.219%** of the remaining
+kernel gap. **WPF-H7D closes the latest exact Q5 VOPD scheduling premise**:
+naive row interleaving leaves control/candidate at the same **52 paired FMAs**,
+and forced pairing fails compilation with gfx1100's `src0` VGPR-bank rule.
+
+Select target-only **WPF-H7E IQ3 two-plane residual-D4 source-MMQ**. This is not
+a blind H3 retry: H3 used one D4 plane, while H7E accumulates a primary plus
+one residual plane and keeps IQ4 exact. A producer-inclusive one-prompt M512
+selection probe improves all **45/45** IQ3 layers and aggregate
+**248.421→172.854 ms (1.437x, -30.419%)**; BF16 mismatch is
+**2.187–2.501%** (median **2.268%**). Three planes are nearly exact but
+speed-closed at **249.471→247.909 ms (1.006x)** with only **27/45** layers
+faster. H7E has no production-speed claim yet. RED-first primitive, first-object
+resource, all-layer 5/15/5 both-clock, complete-state, and mandatory
+**18-prompt/576-step max-KL <=0.05 / top-1 >=90%** gates are binding before any
+source promotion; prompt/layer conditioning is forbidden
+([post-H7C residual / H7E target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

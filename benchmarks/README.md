@@ -1,7 +1,10 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-01**
+Last updated: **2026-08-02**
 
+The clean post-H7C W7900 Laguna residual and selected H7E IQ3 two-plane target
+are recorded in
+[`2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json).
 The current W7900 Laguna UD-Q2_K_XL source publication retains H6Z global
 score/weight replay and promotes H7C raw-Q6 DPP wave reduction in
 [`2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json), with the preceding qualified runtime packet in
@@ -709,6 +712,20 @@ noise, not wins. The last clean committed checkpoint remains
 ([H7C production](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json) ·
 [candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
+
+Clean post-H7C production is **422.786 tok/s** with representative cache-only
+kernel sum/span **1,197.499/1,219.043 ms**, **2,192 dispatches**, and zero
+compiler, remaining **1.63390x** behind matched llama.cpp HIP. Q5/IQ-down/
+attention/Q6 gaps are **196.915/117.620/93.693/66.653 ms**. H7D closes exact Q5
+row-interleaved VOPD because both orders emit **52 paired FMAs** and forced
+pairing violates gfx1100 VGPR banks. Select target-only **WPF-H7E IQ3 two-plane
+residual-D4 source-MMQ**: the producer-inclusive selection probe improves
+**248.421→172.854 ms (1.437x)** with all **45/45** layers faster, median BF16
+mismatch **2.268%**, max leaf KL **0.000487**, and minimum top-1 **99.941%**.
+D4x3 is speed-closed at **1.006x / 27 of 45**. H7E remains non-production until
+RED-first physical/all-layer timing, complete-state, and full
+**18-prompt/576-step max-KL <=0.05/top-1 >=90%** gates pass
+([post-H7C residual / H7E target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
