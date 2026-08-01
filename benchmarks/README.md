@@ -6,7 +6,8 @@ The current W7900 Laguna UD-Q2_K_XL source publication is
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json), with bounded H6W candidate/runtime evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json), its target packet in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json), the clean post-H6W residual and H6X target in
-[`2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json), retained H6U Q6 source evidence in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json), H6X's superseding physical rejection in
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json), retained H6U Q6 source evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json), and H6V's superseding rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
@@ -484,6 +485,17 @@ reads, three barriers, 1,408/<=1,536-byte metadata/runtime LDS, VGPR
 cache-only named execution, and every **45/45** actual layer to win both clocks.
 Remove every H6X surface on any miss; H6T remains source
 ([post-H6W residual / H6X target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json)).
+
+**WPF-H6X is rejected at its frozen physical gate before profiler/timing.**
+Rows1/7/8/9/M512 and reversed P64/P65 are complete-byte/CPU exact and lifecycle-
+clean. ISA realizes global loads **23→19**, six LDS grid reads, one coalesced
+preload store, barriers **2→3**, metadata LDS **384→1,408 bytes**, and unchanged
+216 FMAs/24 permlanex16/96 DPP/private0/spill0/scratch0. Code/slots move
+**7,920/1,384→7,944/1,381**, but metadata VGPR rises **101→103**, violating the
+predeclared **≤101** ceiling. Therefore skip cached trace and the 45-layer
+one-shot, remove every H6X source/test/key/export/exclusion surface without
+tuning, and retain H6T/H6W production **416.891 tok/s**
+([H6X rejection](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

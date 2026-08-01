@@ -2363,6 +2363,17 @@ private/spill/scratch0**, rows1/7/8/9/M512 plus P64/P65/tails/CPU bytes, and
 runtime and source promotion are separate
 ([post-H6W residual / H6X target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json)).
 
+H6X is **rejected at the binding physical gate**. Its cached exact matrix passes
+**10/10**, and ISA realizes the intended global-load **23→19**, six LDS-read,
+one coalesced-preload-store, and barrier **2→3** changes at metadata LDS
+**1,408 bytes**, unchanged 216 FMAs/24 permlanex16/96 DPP, and zero private/
+spill/scratch. Metadata VGPR nevertheless rises **101→103**, exceeding the
+frozen **≤101** maximum. Do not profile, time, tune, or rerun after this miss;
+remove every H6X implementation/test/key/export/gfx1151-exclusion surface,
+retain H6T/H6W production **416.891 tok/s**, and rerank a materially distinct
+operation
+([H6X rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
