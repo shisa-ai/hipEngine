@@ -5,7 +5,8 @@ Last updated: **2026-08-01**
 The current W7900 Laguna UD-Q2_K_XL source publication is
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json), with bounded H6W candidate/runtime evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json), its target packet in
-[`2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json), retained H6U Q6 source evidence in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json), the clean post-H6W residual and H6X target in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json), retained H6U Q6 source evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json), and H6V's superseding rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
@@ -13,8 +14,9 @@ WPF-2b rowbatch8 same-ABI rollback, H6T fused-DPP-add staged-wave triple-output
 IQ3 with H6R/H6Q/H6P/H6I/H6F/H6D/H5Z/H5Q registered rollback, H6C special-IQ3 gate/up
 with its
 route-major registered
-rollback, H6N fixed-512 dense-initial global attention with H6A global rollback
-and unchanged H6A SWA ownership, H5J local32 IQ4, H6E Q6 with H5W/H5I rollback, and
+rollback, H6N fixed-512 dense-initial global attention with H6A global rollback,
+H6A early SWA plus H6W late-SWA global-score replay with explicit all-H6A rollback,
+H5J local32 IQ4, H6U Q6 with H6E/H5W/H5I rollback, and
 H5X/H5L Q5 weight layouts. H5Y adds one bounded exact BF16
 `[row_group][k][row_slot]` activation plane and width-matched consumers on all
 **188** ordered-Q5 calls; F32 N48/N72 retain **47 H5G** calls. Complete M512
@@ -445,6 +447,43 @@ improves **385.356/309.745/194.411→390.382/312.026/194.709 tok/s
 pass
 ([H6W production](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
 [candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
+
+**The clean committed H6W matched refresh is 416.891 tok/s / 1,214.475 ms /
+2,192 dispatches**, from **416.032/417.324/417.398/416.503/416.891**, all
+exact token 2930 and allocation-clean. It is **+145.930%** over campaign start,
+**+1.626%** over clean H6U, and **1.65700x** behind matched llama.cpp HIP
+**690.791 tok/s / 714.008 ms**. The user-reported **714.07 tok/s** is the
+synthetic/random `pp512` protocol and is not substituted for the natural-token
+comparator.
+
+| Matched natural M512 component | Campaign start | Current H6W | llama.cpp HIP matched | Current gap |
+| --- | ---: | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 ms | **256.331 ms** | **58.314 ms** | **+198.017 ms** |
+| IQ3/IQ4 down | 557.091 ms | **273.289 ms** | **153.860 ms** | **+119.429 ms** |
+| Attention | 488.304 ms | **127.202 ms** | **21.512 ms** | **+105.690 ms** |
+| Q6 projections | 157.073 ms | **81.456 ms** | **14.668 ms** | **+66.788 ms** |
+| IQ2/special-IQ3 gate/up | 460.143 ms | **399.939 ms** | **397.805 ms** | **+2.134 ms** |
+| Remaining | 68.623 ms | **76.258 ms** | **67.849 ms** | **+8.408 ms** |
+| **Kernel sum** | **3,001.692 ms** | **1,214.475 ms** | **714.008 ms** | **+500.467 ms** |
+| **Wall prefill** | **169.516 tok/s** | **416.891 tok/s** | **690.791 tok/s** | **1.65700x behind** |
+
+The reconciled representative Q5 request decomposes exactly to **223.393 ms
+H5Y consumers / 26.241 producers / 4.781 packs / 1.916 fallback**. A non-gamed
+static-shape audit rejects all six material source-MMQ shapes at max KL **0.585291–4.622387**, plus all three
+dominant exact-value F32/SGEMM shapes at **0.402533–0.846753**, over the full
+18-prompt/four-category **576-step** train+heldout gate. H6V stays closed without
+subsetting. Select target-only **WPF-H6X exact workgroup-resident IQ3_XXS grid
+table** on H6T's **264.602 ms / 45 calls**. Natural routing models
+**824,451,072** global grid-table wave instructions / **105.530 GB** logical
+bytes; H6X stages the exact **1,024-byte** table once/workgroup in LDS and
+changes only the two lookup sources. It must preserve all 216 FMAs/24
+permlanex16/96 DPP adds, staged scopes, traversal, ABI, allocation, and
+workspace. Require exact **19 static global loads, two table preloads, six LDS
+reads, three barriers, 1,408/<=1,536-byte metadata/runtime LDS, VGPR
+<=101/104**, zero private/spill/scratch, complete row/tail/CPU exactness,
+cache-only named execution, and every **45/45** actual layer to win both clocks.
+Remove every H6X surface on any miss; H6T remains source
+([post-H6W residual / H6X target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

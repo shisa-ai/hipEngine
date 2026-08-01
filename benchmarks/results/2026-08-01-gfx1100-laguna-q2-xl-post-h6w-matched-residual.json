@@ -1,0 +1,526 @@
+{
+  "authority_files": {
+    "README.md": "bf6ec940f7af42e54d624b79ca75dfb55803ca2e2dc30d91813b2d920ed18401",
+    "WORKLOG.md": "1777258f7cf248f8996a318129eb558d1ce02a288c6b44fd584423e0e227883e",
+    "benchmarks/CHANGELOG.md": "149e02d9066226e93d7bc73345874b7b6610282250f9ad0a022fcd29b02dc3e8",
+    "benchmarks/README.md": "2d1235cafd1b2b8f8bbcab06470a00e1150ce826aaf1d0c0c332c17807cd132c",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "950aed69f9701c598382331afef7146bded5c450f086c479136e520174e9ec89",
+    "docs/LAGUNA-prefill.md": "94d1d7f842e8a412f076bfded54e7e3e171d436dea1b753eb79ccd736a0b6592",
+    "docs/PLAN.md": "d24cad6c6573dbb750d2f45e310e023b4d721986ff876dc485816edad890f1ef",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "commands": {
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "q5_shape_quality": "18-prompt code/general_en/general_ja/mixed_ja_en train+heldout suite, 32 teacher-forced steps/prompt, static shape policy only, no prompt/layer/token conditioning",
+    "target_analysis": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -u /tmp/capture_laguna_h6x_iq3_grid_counts.py",
+    "trace": "prebuild outside profiler; compiler-free PATH=/usr/bin:/bin; cached-only rocprofv3 --kernel-trace --output-format csv over the identical five-request child",
+    "wall": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h6w-matched-c4096-m512.json"
+  },
+  "created_at": "2026-08-01",
+  "decision": {
+    "current_source": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6L/H6C gate-up + H6N global + H6A early SWA + H6W late SWA",
+    "next_action": "Commit this synchronized measurement/target packet, freeze H6X RED in a separate test-only commit, then implement and run the immutable one-shot leaf gate.",
+    "pass": true,
+    "production_unchanged": true
+  },
+  "h6t_source_audit": {
+    "calls": 45,
+    "grid_table": {
+      "immediate_wait_pattern_present": true,
+      "source_helper": "load_iq3_segment",
+      "static_table_global_loads": 6,
+      "static_total_global_loads": 23,
+      "type": "uint32_t __constant__[256]"
+    },
+    "grid_x": 32768,
+    "grid_y": 64,
+    "kernel": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+    "local_size": 128,
+    "median_ms": 264.6023229999999,
+    "metadata": {
+      "group_segment_fixed_size": 384,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 78,
+      "sgpr_spill_count": 0,
+      "uses_dynamic_stack": false,
+      "vgpr_count": 101,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "runtime_lds_bytes": 512,
+    "runtime_scratch_bytes": 0,
+    "runtime_vgpr": 104,
+    "static": {
+      "barriers_static": 2,
+      "code_bytes": 7920,
+      "dpp_total": 96,
+      "ds_opcodes": {
+        "ds_load_b128": 24,
+        "ds_store_2addr_b32": 12
+      },
+      "fma_issue_slots": 183,
+      "fma_operations": 216,
+      "function_instruction_slots": 1384,
+      "global_load_instructions": 23,
+      "out_stride_0x300": 1,
+      "permlanex16": 24,
+      "row_shl_add": {
+        "1": 24,
+        "2": 24,
+        "4": 24,
+        "8": 24
+      },
+      "row_shl_move": {
+        "1": 0,
+        "2": 0,
+        "4": 0,
+        "8": 0
+      },
+      "scratch_instructions": 0,
+      "v_add_f32_dpp": 96,
+      "v_mov_b32_dpp": 0,
+      "vopd_slots_all_classes": 106
+    }
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "kv_dtype": "bf16",
+    "queues": 1
+  },
+  "implementation_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "96bc6c701542747c1dfdb95b4eaa580f1cb8e0d87abdb636a7f82bd47665d716",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "b78198db6edee39099378d0adce3629dce020edddc67378b93716be90db6c87a",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "6c9dec990540e35d6bf9f65b7b489c0d1b1545ded1800f6cd5c4d2593751d0df",
+    "hipengine/runtime/laguna_gguf_runner.py": "61ff2f193a53eb0c48a55e3616e6c55b7cbc77705b58ac552559cf9b56814688"
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h6w_matched_residual_h6x_iq3_lds_grid_target",
+  "matched_components": {
+    "campaign_start_kernel_sum_ms": 3001.69225,
+    "hipengine_h6w_kernel_sum_ms": 1214.475158,
+    "llamacpp_hip_kernel_sum_ms": 714.008408,
+    "rows": [
+      {
+        "campaign_start_ms": 1270.457977,
+        "family": "q5",
+        "gap_ms": 198.01721000000006,
+        "hipengine_h6w_ms": 256.33130000000006,
+        "llamacpp_hip_ms": 58.31409,
+        "rank": 1,
+        "ratio": 4.395700936085945
+      },
+      {
+        "campaign_start_ms": 557.09136,
+        "family": "iq_down",
+        "gap_ms": 119.42924299999987,
+        "hipengine_h6w_ms": 273.2891539999999,
+        "llamacpp_hip_ms": 153.859911,
+        "rank": 2,
+        "ratio": 1.7762206686834745
+      },
+      {
+        "campaign_start_ms": 488.304264,
+        "family": "attention",
+        "gap_ms": 105.68964599999998,
+        "hipengine_h6w_ms": 127.20209299999999,
+        "llamacpp_hip_ms": 21.512447,
+        "rank": 3,
+        "ratio": 5.912953231215397
+      },
+      {
+        "campaign_start_ms": 157.072613,
+        "family": "q6",
+        "gap_ms": 66.78816,
+        "hipengine_h6w_ms": 81.455758,
+        "llamacpp_hip_ms": 14.667598,
+        "rank": 4,
+        "ratio": 5.553449037804281
+      },
+      {
+        "campaign_start_ms": 68.622802,
+        "family": "remaining",
+        "gap_ms": 8.408280000000005,
+        "hipengine_h6w_ms": 76.25771900000001,
+        "llamacpp_hip_ms": 67.849439,
+        "rank": 5,
+        "ratio": 1.1239255640713552
+      },
+      {
+        "campaign_start_ms": 460.143234,
+        "family": "gate_up",
+        "gap_ms": 2.134211000000164,
+        "hipengine_h6w_ms": 399.93913400000014,
+        "llamacpp_hip_ms": 397.804923,
+        "rank": 6,
+        "ratio": 1.0053649687990416
+      }
+    ],
+    "total_kernel_gap_ms": 500.46674999999993
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": "measured current production and target selection only; no H6X speed/default claim",
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-rejected.json": "e32ee20cc37e14ba3a074bd98a14a8dbe754ef031b1b188898daf0c4c4072124",
+    "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-sgemm-rejected.json": "7a93378df7ba7a36056c98d5f0760a5230deeac3ffe0689c889cd2b838f55d1d",
+    "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json": "fa9b30efda5a18d0ea7ba30f3a3bbf468ec8ec6b5adcb7f493c3cb91fc572db1",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json": "6034259ae146bd7c9b6b3818bec8dacfb8da87d26a2e30ea59ad23ef9e5eaf63",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json": "bd56a6285633513df5d7eaa8eea3c35a872f5c41786c3207e6e81a75f465cf96",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json": "8bd49a3457d98b76711ef320ca183256e3544d5f42a59282f909b9dd22041263"
+  },
+  "protocol": {
+    "attention_rows": 128,
+    "comparison": "matched patched llama.cpp HIP natural token stream, C4096, M512, BF16 K/V",
+    "compiler_free_profile_child_path": "/usr/bin:/bin",
+    "context_length": 4096,
+    "direct_gguf": true,
+    "flash_attention": true,
+    "matrix_rows": 512,
+    "model_load_excluded": true,
+    "require_cached_build": true,
+    "shape": "fixed natural C4096/direct-M512; one M128 warmup then five requests",
+    "synthetic_user_row_is_not_comparator": true
+  },
+  "q5_audit": {
+    "activation_pack_ms": 4.7813669999999995,
+    "consumer_share_percent": 87.15006751028844,
+    "decision": "No shape-qualified source-MMQ or exact-value-SGEMM reopening: every screened static shape fails max KL <=0.05; H6V stays universally rejected and no subset is reopened. Producer-only work has <=10.3% direct share and another geometry/prefetch/DPP screen is not materially new.",
+    "exact_h5y_consumers_ms": 223.392901,
+    "h5g_fallback_ms": 1.9164980000000007,
+    "pack_share_percent": 1.86530751414283,
+    "producer_ms": 26.240534000000004,
+    "producer_share_percent": 10.236960527255158,
+    "route_ms": {
+      "h5g_fallback": 1.9164980000000007,
+      "h5y_bf16_12x8_row_major": 80.324229,
+      "h5y_bf16_16x5_tile_k_col": 15.179486999999998,
+      "h5y_bf16_8x12_row_major": 7.740705,
+      "h5y_bf16_8x4_tile_k_col": 24.22008399999999,
+      "h5y_f32_16x5_tile_k_col": 16.665499999999998,
+      "h5y_f32_8x10_tile_k_col": 79.26289600000001,
+      "pack_bf16_12x8_row_major": 1.173051,
+      "pack_bf16_16x5_tile_k_col": 0.435083,
+      "pack_bf16_8x12_row_major": 0.0344,
+      "pack_bf16_8x4_tile_k_col": 2.2353859999999997,
+      "pack_f32_16x5_tile_k_col": 0.22824099999999997,
+      "pack_f32_8x10_tile_k_col": 0.6752059999999998,
+      "row_major_producer": 6.005891,
+      "tile_k_col_producer": 20.234643000000005
+    },
+    "shape_quality_probes": [
+      {
+        "max_kl_divergence": 0.5852912712975381,
+        "mechanism": "source_q8_1_mmq",
+        "pass": false,
+        "shape": "bf16_k3072_n1024",
+        "steps": 576,
+        "top1_agreement": 0.9791666666666666,
+        "top1_matches": 564,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 1.155681655720989,
+        "mechanism": "source_q8_1_mmq",
+        "pass": false,
+        "shape": "bf16_k3072_n12288",
+        "steps": 576,
+        "top1_agreement": 0.9774305555555556,
+        "top1_matches": 563,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 1.1038581688303994,
+        "mechanism": "source_q8_1_mmq",
+        "pass": false,
+        "shape": "bf16_k6144_n3072",
+        "steps": 576,
+        "top1_agreement": 0.9791666666666666,
+        "top1_matches": 564,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 0.7052833119697993,
+        "mechanism": "source_q8_1_mmq",
+        "pass": false,
+        "shape": "bf16_k9216_n3072",
+        "steps": 576,
+        "top1_agreement": 0.9809027777777778,
+        "top1_matches": 565,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 1.3342226409992797,
+        "mechanism": "source_q8_1_mmq",
+        "pass": false,
+        "shape": "f32_k3072_n6144",
+        "steps": 576,
+        "top1_agreement": 0.9774305555555556,
+        "top1_matches": 563,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 4.622387333399165,
+        "mechanism": "source_q8_1_mmq",
+        "pass": false,
+        "shape": "f32_k3072_n9216",
+        "steps": 576,
+        "top1_agreement": 0.9861111111111112,
+        "top1_matches": 568,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 0.8467527113016771,
+        "mechanism": "exact_value_f32_sgemm",
+        "pass": false,
+        "shape": "bf16_k3072_n1024",
+        "steps": 576,
+        "top1_agreement": 0.9913194444444444,
+        "top1_matches": 571,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 0.7583405572904204,
+        "mechanism": "exact_value_f32_sgemm",
+        "pass": false,
+        "shape": "bf16_k9216_n3072",
+        "steps": 576,
+        "top1_agreement": 0.984375,
+        "top1_matches": 567,
+        "tracked_returned_to_baseline": true
+      },
+      {
+        "max_kl_divergence": 0.40253271024546855,
+        "mechanism": "exact_value_f32_sgemm",
+        "pass": false,
+        "shape": "f32_k3072_n9216",
+        "steps": 576,
+        "top1_agreement": 0.9791666666666666,
+        "top1_matches": 564,
+        "tracked_returned_to_baseline": true
+      }
+    ],
+    "total_ms": 256.3313
+  },
+  "raw_evidence_sha256": {
+    "/tmp/capture_laguna_h6x_iq3_grid_counts.py": "7017306ff0875abfe3d95c8f4019ef4ae6ca1b699cf3fa83038d36c15fab7753",
+    "/tmp/h6t-arch-h6t.isa": "e9e5d23f065855799374f441508d50b2c7f5095703580edbd18fcde768d2cd63",
+    "/tmp/h6x-lineage.out": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/h6x-q5-sgemm-shape-quality-dominant.json": "de47080bf8182a1edbbfe913fc57a8a3b736eaefb51a9de78b1039e9b220bf04",
+    "/tmp/h6x-q5-shape-quality-dominant.json": "9cac3bb1247c72e2cc02a82c632232939616dd77d6f87685d738d4ca47d16908",
+    "/tmp/h6x-q5-shape-quality-minor.json": "8b0e59cfc6aa50c85ce799835ba629c22983dbb9ae99d6132c33d9a10a5de5bd",
+    "/tmp/h6x_q5_sgemm_shape_quality_probe.py": "071074c4121cf4924705ab8c9c9964a163a5fad41b4a241b14a9c14729c6f9bb",
+    "/tmp/h6x_q5_shape_quality_probe.py": "c822cd139c550a498277f9540875e49597dfde40e28460ab990cd54958fd465b",
+    "/tmp/laguna-h6t-physical-summary.json": "384dba5aad54b6c1082f355b48b7b95657055c78b3a9aba2dccf5604ace47a68",
+    "/tmp/laguna-post-h6w-compiler-monitor.json": "eb730720ca2c579a1bfe10bf0eb5f1228e1bf7fee5dba94f74c782f35c0007cd",
+    "/tmp/laguna-post-h6w-h6x-iq3-grid-target-analysis.json": "2fce180c409ee970c1a890023e737eb2652eb3442f30cfdf1113aeaba28bc9b9",
+    "/tmp/laguna-post-h6w-h6x-iq3-grid-target-analysis.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-post-h6w-h6x-iq3-grid-target-analysis.stdout": "f6935bbf1aa2514e938bcb47a58f5da5f2e135db103ed0e1ac2cec38a14ddb01",
+    "/tmp/laguna-post-h6w-matched-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6w-matched-analysis.stdout": "b4773ebcce048884b8b103af5c4204d24e09cb4767858e1831bb166dd3e33186",
+    "/tmp/laguna-post-h6w-matched-c4096-m512-rocprof-csv-child.json": "c172b2f9bac6f4d1fd9aee7b3d188b66decb1d37d7a1a7d42b8598124ce6f5f4",
+    "/tmp/laguna-post-h6w-matched-c4096-m512-trace-summary.json": "b4773ebcce048884b8b103af5c4204d24e09cb4767858e1831bb166dd3e33186",
+    "/tmp/laguna-post-h6w-matched-c4096-m512.json": "d3d4bf65e5a0bd7e611e69a9251d0393ff0ebe7aede1b916ddef3118c24b2dc1",
+    "/tmp/laguna-post-h6w-matched-c4096-m512.stderr": "4437ecf1332be2bd0434e54bf80ad37a2b348594ae027cdd4ab160f5db94f905",
+    "/tmp/laguna-post-h6w-matched-c4096-m512.stdout": "d3d4bf65e5a0bd7e611e69a9251d0393ff0ebe7aede1b916ddef3118c24b2dc1",
+    "/tmp/laguna-post-h6w-matched-rocprof-csv/h6w_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-post-h6w-matched-rocprof-csv/h6w_kernel_trace.csv": "fb332ef883de1a06cba0152570a1f54f0d5b2abf3a05b15c8d16a5ecd9587b3a"
+  },
+  "repo": {
+    "revision": "84ceec31a5b8a63977bb2fa04efefa2729972741",
+    "tracked_clean": true
+  },
+  "schema": 1,
+  "selected_target": {
+    "admission": {
+      "correctness": "all 256 table entries; rows1/7/8/9/M512; P64/P65/reversed/tails; all 45 actual layers complete-byte exact plus sampled CPU",
+      "physical": "exact 2 table preload global b32, 6 LDS table reads, 19 total static global loads, no per-segment global table load, 3 barriers, LDS metadata 1408/runtime <=1536, metadata/runtime VGPR <=101/104, private/spill/scratch0, unchanged FMA/DPP/loads/stores/stride",
+      "red_first": true,
+      "reject_rule": "On any correctness, physical, resource, compiler, lifecycle, or both-clock miss, remove every H6X implementation/test/key/export/gfx1151-exclusion surface without follow-up tuning.",
+      "runtime_and_source_promotion_separate": true,
+      "timing": "five warmups, 15 counter-rotated repetitions, five launches/sample; every 45/45 actual layer wins HIP-event and synchronized wall and aggregate wins both",
+      "trace": "named cache-only H6X local128/grid32768x64 with no compiler process"
+    },
+    "expected_static": {
+      "barriers_static": 3,
+      "dpp_total": 96,
+      "fma_operations": 216,
+      "global_load_instructions": 19,
+      "grid_table_preload_global_b32": 2,
+      "group_segment_fixed_size_bytes": 1408,
+      "per_segment_global_grid_loads": 0,
+      "per_segment_lds_grid_reads": 6,
+      "permlanex16": 24
+    },
+    "name": "WPF-H6X exact workgroup-resident IQ3_XXS grid table",
+    "operation": "Cooperatively load the exact 256-entry uint32 IQ3_XXS_GRID into 1,024 bytes of LDS once per workgroup, barrier, then change only the two per-segment grid lookup sources from constant/global memory to LDS.",
+    "preserve": [
+      "all IQ3 block/aux/sign/scale decoding and exact uint32 grid values",
+      "216 ordered FMAs, three staged scopes, rowbatch8, stride 0x300",
+      "24 permlanex16 + 96 direct DPP adds, wave publication, serial wave0..3 sum and BF16 stores",
+      "active-expert P64/P256 traversal, grid, ABI, raw allocation, workspace/scratch, lifecycle"
+    ],
+    "scope": "one separately named gfx1100 H6T sibling at strict K1024/N3072/E256/P256/P64/local128/rowbatch8; source remains H6T",
+    "selection_arithmetic": {
+      "added_barriers_vs_current_main_percent": 1.073121292514979,
+      "candidate_added_table_barriers": 737280,
+      "candidate_preload_logical_bytes": 754974720,
+      "candidate_table_preload_global_wave_instructions": 5898240,
+      "candidate_table_preload_lane_loads": 188743680,
+      "current_grid_table_global_wave_instructions": 824451072,
+      "current_grid_table_lane_loads": 26382434304,
+      "current_grid_table_logical_bytes": 105529737216,
+      "current_main_dynamic_barriers": 68704256,
+      "iq3_segment_calls": 103056384,
+      "modeled_global_table_logical_byte_reduction_percent": 99.28458580499002,
+      "modeled_global_table_wave_instruction_reduction_percent": 99.28458580499002,
+      "rowbatch8_epochs": 33547
+    },
+    "selection_warning": "logical traffic/instruction model only; physical cache traffic and speed must be measured"
+  },
+  "status": "accepted_matched_reprofile_target_only",
+  "trace": {
+    "compiler_monitor_samples": 1595,
+    "dispatches": 2192,
+    "exact_kernel_dispatches": {
+      "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 1,
+      "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 1,
+      "(anonymous namespace)::gguf_iq4_xs_selected_grouped_prefill_compact_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int)": 2,
+      "(anonymous namespace)::gguf_q5_k_dequantize_f32_exact_kernel(unsigned char const*, float*)": 84,
+      "(anonymous namespace)::gguf_q6_k_dequantize_f32_exact_kernel(unsigned char const*, float*)": 143,
+      "(anonymous namespace)::laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)": 48,
+      "(anonymous namespace)::laguna_global_write_kv_rows_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long, long)": 48,
+      "(anonymous namespace)::laguna_sigmoid_correction_topk_kernel(float const*, float const*, float*, float*, long*, float*, float*, long, long, float)": 47,
+      "(anonymous namespace)::laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, HIP_vector_type<float, 4u>*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)": 72,
+      "(anonymous namespace)::laguna_swa_write_kv_rows_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long)": 144,
+      "(anonymous namespace)::qwen35_moe_gather_packed_hidden_kernel(unsigned short const*, long const*, unsigned short*, long, long, long, long)": 47,
+      "(anonymous namespace)::qwen35_moe_group_compact_active_kernel(long const*, float const*, long*, long*, long*, long*, long*, long*, float*, long, long, long)": 47,
+      "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 47,
+      "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": 48,
+      "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)": 95,
+      "gguf_q5_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": 1,
+      "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": 49,
+      "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<10>(unsigned short const*, unsigned short*, int, int)": 35,
+      "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<12>(unsigned short const*, unsigned short*, int, int)": 2,
+      "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<4>(unsigned short const*, unsigned short*, int, int)": 138,
+      "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<5>(unsigned short const*, unsigned short*, int, int)": 120,
+      "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<8>(unsigned short const*, unsigned short*, int, int)": 35,
+      "void (anonymous namespace)::gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_kernel<16>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)": 46,
+      "void (anonymous namespace)::gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4, true>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)": 1,
+      "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)": 45,
+      "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_kernel<unsigned short, float, 6, 2, 16>(unsigned short const*, unsigned char const*, float*, int, int, int)": 1,
+      "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_kernel<unsigned short, unsigned short, 6, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 2,
+      "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 8>(unsigned short const*, unsigned char const*, float*, int, int, int)": 2,
+      "void (anonymous namespace)::gguf_q4_k_pack8_gemv_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, long, long, long)": 1,
+      "void (anonymous namespace)::gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel<16>(unsigned char const*, float*, int)": 24,
+      "void (anonymous namespace)::gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel<8>(unsigned char const*, float*, int)": 127,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_coltile_kernel<float, 12, 4>(unsigned short const*, float const*, float*, int, int, int)": 12,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_coltile_kernel<float, 8, 4>(unsigned short const*, float const*, float*, int, int, int)": 36,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_kernel<float, 16, 5, true>(unsigned short const*, float const*, float*, int, int, int)": 12,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_kernel<float, 8, 10, true>(unsigned short const*, float const*, float*, int, int, int)": 35,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_kernel<unsigned short, 12, 8, false>(unsigned short const*, float const*, unsigned short*, int, int, int)": 35,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_kernel<unsigned short, 16, 5, true>(unsigned short const*, float const*, unsigned short*, int, int, int)": 12,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_kernel<unsigned short, 8, 12, false>(unsigned short const*, float const*, unsigned short*, int, int, int)": 2,
+      "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_kernel<unsigned short, 8, 4, true>(unsigned short const*, float const*, unsigned short*, int, int, int)": 92,
+      "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<float, 5>(unsigned short const*, float const*, float*, int, int, int)": 94,
+      "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)": 46,
+      "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)": 2,
+      "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 16, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 1,
+      "void (anonymous namespace)::laguna_attention_prefill_qrow4_cached_exact_bf16_kernel<false, true>(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)": 72,
+      "void (anonymous namespace)::laguna_softplus_head_gate_kernel<unsigned short, false>(float const*, float const*, unsigned short*, long, long, long)": 48,
+      "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>(unsigned short const*, float const*, float*, long, long, long)": 47,
+      "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)": 48,
+      "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)": 47,
+      "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)": 48
+    },
+    "families": {
+      "attention": {
+        "dispatches": 192,
+        "hipengine_ms": 127.20209299999999
+      },
+      "gate_up": {
+        "dispatches": 47,
+        "hipengine_ms": 399.93913400000014
+      },
+      "iq_down": {
+        "dispatches": 47,
+        "hipengine_ms": 273.2891539999999
+      },
+      "q5": {
+        "dispatches": 658,
+        "hipengine_ms": 256.33130000000006
+      },
+      "q6": {
+        "dispatches": 431,
+        "hipengine_ms": 81.455758
+      },
+      "remaining": {
+        "dispatches": 817,
+        "hipengine_ms": 76.25771900000001
+      }
+    },
+    "h6a_swa_calls": 72,
+    "h6n_global_calls": 48,
+    "h6t_calls": 45,
+    "h6t_ms": 264.6023229999999,
+    "h6t_resources": {
+      "grid_x": 32768,
+      "grid_y": 64,
+      "kernel": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+      "lds_bytes": 512,
+      "local_size": 128,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 104
+    },
+    "h6w_swa_calls": 72,
+    "kernel_span_ms": 1235.616591,
+    "kernel_sum_ms": 1214.475158,
+    "new_compiler_processes": 0,
+    "no_compiler_under_profile": true,
+    "q5_sequence_exact": true,
+    "q6_sequence_exact": true,
+    "span_minus_sum_ms": 21.141433000000006
+  },
+  "wall": {
+    "allocation_clean": true,
+    "campaign_start_tok_s": 169.516,
+    "clean_h6u_tok_s": 410.219973,
+    "deterministic": true,
+    "final_positions": [
+      511,
+      511,
+      511,
+      511,
+      511
+    ],
+    "gain_vs_campaign_start_percent": 145.93037818529888,
+    "gain_vs_clean_h6u_percent": 1.6262901183973444,
+    "llamacpp_over_hipengine_ratio": 1.6570049168956904,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_tok_s": 416.8913398845912,
+    "next_token_ids": [
+      2930,
+      2930,
+      2930,
+      2930,
+      2930
+    ],
+    "samples_tok_s": [
+      416.0322063141881,
+      417.32430229839673,
+      417.3980143693568,
+      416.5031112425916,
+      416.8913398845912
+    ],
+    "user_synthetic_pp512_tok_s": 714.07
+  }
+}

@@ -1541,6 +1541,41 @@ gfx1151 exclusion, and **115/115** guards
 ([production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
 
+Clean post-H6W reprofiling reaches **416.891 tok/s / 1,214.475 ms / 2,192
+dispatches**, **1.65700x** behind matched llama.cpp HIP **690.791 tok/s /
+714.008 ms**. Q5/IQ-down/attention/Q6 gaps are **198.017/119.429/105.690/
+66.788 ms**. Q5's representative **223.393-ms** H5Y consumers remain dominant,
+but static-shape source-MMQ rejects all six material shapes at max KL **0.585291–4.622387**
+and the three dominant exact-value F32/SGEMM shapes reject at **0.402533–
+0.846753** over the complete 18-prompt/576-step category-heldout gate. H6V
+remains closed without role subsetting; producer/prefetch/geometry routes are
+not reopened.
+
+Select target-only **WPF-H6X exact workgroup-resident IQ3_XXS grid table** on
+the **264.602-ms / 45-call** H6T body. Current `load_iq3_segment` issues two
+lane-divergent constant/global `IQ3_XXS_GRID[256]` loads per segment and waits.
+Natural M512 routing has **33,547 rowbatch8 epochs / 103,056,384 segment
+calls**, modeling **824,451,072** table-load wave instructions and **105.530
+GB** logical table bytes. A separate gfx1100 sibling must use all 128 threads to
+copy the exact 256-entry uint32 table into **1,024 bytes LDS** once/workgroup,
+barrier, and source only those two lookups from LDS. Selection arithmetic moves
+global table loads to **5,898,240 wave instructions / 0.755 GB (-99.2846%)**
+while adding **737,280 barriers**, **1.0731%** of H6T's existing dynamic main
+barriers; this is not physical-traffic or speed evidence.
+
+Freeze RED before executable changes. Preserve exact table values, aux/sign/
+scale decode, **216 FMAs, 24 permlanex16, 96 DPP adds**, three staged scopes,
+wave publication/serial sum/store, rowbatch8, P256/P64 traversal, grid, ABI,
+raw allocation, and workspace. Physical admission requires exact **19 static
+global loads, two coalesced table preloads, six LDS table reads, three barriers,
+1,408-byte metadata LDS / <=1,536 runtime LDS, VGPR <=101/104**, and zero
+private/spill/scratch. Rows1/7/8/9/M512, P64/P65/reversed/tails/CPU, cached named
+execution with no compiler, and every **45/45** actual-layer event+wall win are
+binding. Any miss removes all H6X implementation/test/key/export/gfx1151-
+exclusion surfaces without tuning; H6T stays source and runtime qualification is
+separate
+([post-H6W residual / target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
