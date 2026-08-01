@@ -1833,6 +1833,27 @@ evidence. H6T/IQ4 remain production at **422.786 tok/s**
 [candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
+Standalone **WPF-H7G exact padded-row Q5 compute is admitted** in
+`quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. The separately named kernel,
+four exact-role exports/wrappers, and eight registry keys cover only natural-
+M512 BF16 K3072/N12288 `c8r12`, BF16 K6144/N3072 `c16r5`, F32 K3072/N6144
+`c16r5`, and F32 K3072/N9216 `c8r10`; `r4/r8` are excluded because M512 has no
+padded tail. H5Y source policy, workspace, allocation, and fallback remain
+unchanged, and gfx1151 fails closed.
+
+The frozen rows1/7/8/9/M512 matrix passes **23/23** with complete H5Y bytes,
+sampled CPU gates, poison overwrite, finiteness, and lifecycle recovery. The
+first object converts dual/scalar FMA sites
+**1/95, 1/79, 1/79, 1/79 -> 91/5, 66/14, 66/14, 73/7**, uses
+**1,577/1,234/1,231/1,248 slots**, metadata VGPR **194/162/162/162**, and zero
+private/spill/scratch/dynamic stack. Cached rocprof names H7G at **434.801 us**,
+local128/runtime VGPR200/LDS1536/scratch0, with zero compiler. Immutable
+selection event/wall improves **136.918/137.009 -> 128.598/129.496 ms**; an
+integrated replay again wins all four roles and improves
+**136.701/136.993 -> 128.691/129.092 ms**, byte-exact. Admit only the leaf;
+H5Y remains source at **422.786 tok/s** pending bounded runtime qualification
+([H7G candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

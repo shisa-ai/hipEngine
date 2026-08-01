@@ -2605,6 +2605,28 @@ or layer subset is admissible
 [candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
+Reject exact Q6 padded-compute **WPF-H7F** under its universal all-role gate:
+rowbatch5 wins, but the rowbatch4 role regresses **0.992574x event / 0.977688x
+wall**, so no post-timing subset is admissible. Before Q5 timing, select only
+four M512 geometries with a real padded tail (`r12/r5/r5/r10`, **61 calls**) and
+exclude divisible `r4/r8` roles. Standalone **WPF-H7G exact padded-row Q5
+compute is admitted** after RED-first rows1/7/8/9/M512 correctness reaches
+**23/23**, first-object codegen converts control dual/scalar FMA sites to
+**91/5, 66/14, 66/14, 73/7** at metadata VGPR **194/162/162/162** and
+private/spill/scratch0, and cached rocprof names the intended local128 body at
+**434.801 us** with zero compiler.
+
+The immutable selection improves weighted event/wall
+**136.918/137.009 -> 128.598/129.496 ms (-6.077%/-5.483%)** with all four roles
+both-clock positive and byte-exact. A non-adjudicative integrated replay
+confirms every role and improves **136.701/136.993 -> 128.691/129.092 ms
+(-5.860%/-5.767%)**. Keep H5Y source, workspace, allocation, and gfx1151
+isolation unchanged. Next freeze bounded runtime ownership for exactly these
+four M512 roles, then require complete natural-M512 state, compiler-free
+integrated topology, matched C4096/M512, and 512/1K/4K transfer before any
+source promotion
+([H7G candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

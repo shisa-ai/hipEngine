@@ -2,8 +2,10 @@
 
 Last updated: **2026-08-02**
 
+The standalone H7G exact padded-row Q5 leaf is summarized below in
+[`2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json).
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
-rejection are summarized below; the rejection packet is
+rejection are also summarized below; the rejection packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),
 with the immutable leaf packet and clean post-H7C target boundary in
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) and
@@ -738,6 +740,28 @@ surfaces are removed
 ([H7E rejection](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json) ·
 [candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+
+Standalone **WPF-H7G exact padded-row Q5 compute is admitted** for the four
+natural-M512 `r12/r5/r5/r10` roles with real padded tails (**61 calls**); Q5
+`r4/r8` were excluded before timing because 512 divides both row batches. H7G
+retains H5Y's activation/weight planes, valid-row FMA association, shuffle tree,
+serial wave sum, and guarded final store, removing only the redundant inner
+compute predicate over producer-zeroed padded activations. Frozen complete
+H5Y-byte/CPU/poison/finite/lifecycle coverage passes **23/23** at rows
+1/7/8/9/M512.
+
+The first object changes control dual/scalar FMA sites
+**1/95, 1/79, 1/79, 1/79 -> 91/5, 66/14, 66/14, 73/7**, cuts instruction slots
+to **1,577/1,234/1,231/1,248**, retains metadata VGPR
+**194/162/162/162**, and stays private/spill/scratch-free. A cache-only trace
+names H7G at **434.801 us**, local128, runtime VGPR200/LDS1536/scratch0, with
+zero compiler. The immutable selection improves 61-call event/wall
+**136.918/137.009 -> 128.598/129.496 ms (-6.077%/-5.483%)**; the independent
+integrated replay again wins all four roles and moves event/wall
+**136.701/136.993 -> 128.691/129.092 ms (-5.860%/-5.767%)**, byte-exact with
+recovered lifecycle. Admit only the leaf: H5Y production remains
+**422.786 tok/s**, and bounded runtime/source qualification is separate
+([H7G candidate](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

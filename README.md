@@ -634,6 +634,22 @@ lifecycle pass. No promotion timing was run. Production remains H6T/IQ4 at
 [candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
+Standalone **WPF-H7G exact padded-row Q5 compute is admitted as a gfx1100
+leaf** for only the four natural-M512 `r12/r5/r5/r10` roles with a real padded
+tail (**61 calls**); `r4/r8` were excluded before timing. It removes only the
+redundant compute predicate over producer-zeroed padded activations while
+retaining H5Y's valid-row FMA/reduction/store order and guarded final store.
+Frozen rows1/7/8/9/M512 correctness passes **23/23**. The first object converts
+control dual/scalar FMA sites **1/95, 1/79, 1/79, 1/79** to
+**91/5, 66/14, 66/14, 73/7**, stays private/spill/scratch-free, and a named
+cache-only trace records H7G at **434.801 us** with zero compiler. The immutable
+selection and integrated replay both win every role on event and wall; the
+integrated 61-call wall aggregate improves **136.993 -> 129.092 ms
+(-5.767%, 1.06120x)** with byte-exact output. Production remains H5Y at
+**422.786 tok/s** pending separate bounded-runtime/state/trace/matched/transfer
+qualification
+([H7G candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
