@@ -4,7 +4,8 @@ Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
 score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the clean post-H6Z matched residual/H7A target in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with H7A's superseding exactness rejection in
+[`2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json), the clean post-H6Z matched residual/H7A target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json), bounded candidate/runtime evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json), its target packet in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json), prior H6W SWA production in
@@ -591,6 +592,21 @@ starts plus the weighted **72-call** aggregate winning HIP-event and wall under
 one immutable 5/15/5 screen. Any miss removes H7A without tuning/rerun; runtime
 and source ownership remain separate
 ([post-H6Z residual / H7A target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
+
+**WPF-H7A is rejected at the first binding correctness gate; all candidate
+surfaces are removed.** The separately named body, wrapper, registry key, and
+gfx1151 exclusion pass structural/strict-preflight checks and compile once from
+the frozen RED. Both complete starts are finite, but byte identity fails:
+start256 differs at **80,469/1,179,648 elements** (max **4.656613e-9**) and
+start384 at **100,075/1,179,648** (max **3.7252903e-9**). H6W's replay
+`dot * scale - max` is compiled as four fused `v_fma_f32` sites; recording the
+first-pass scaled score necessarily rounds before subtraction and changes exp/
+PV bits. This invalidates the exact premise even though the numerical delta is
+tiny. Per the immutable contract, skip code-object adjudication, rocprof, and
+timing; do not apply a quality waiver, tune, or rerun. Delete the committed RED
+and every H7A implementation/key/export/exclusion surface, restore H6W/H6Z
+sources byte-for-byte, and keep production **423.233 tok/s / 1,195.702 ms**
+([H7A rejection](results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

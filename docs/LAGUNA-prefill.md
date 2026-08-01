@@ -34,8 +34,8 @@ H6U promotes exact Q6 DPP-reduction source ownership with H6E rollback, H6V
 rejects exact Q5 DPP-add wave reduction, H6W promotes exact late-start SWA
 aligned global-score replay with H6A rollback, H6X/H6Y reject exact IQ3 load
 reductions at frozen physical gates, H6Z promotes exact late-start global
-qrow4 caller-record source ownership with H6W/H6N rollback, and H7A selects an
-exact target-only late-SWA scaled-score replay leaf; 16K+ remains deferred**.
+qrow4 caller-record source ownership with H6W/H6N rollback, and H7A rejects
+late-SWA scaled-score replay at complete-byte exactness; 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -1076,6 +1076,19 @@ immutable 5/15/5 screen. Any miss removes H7A without tuning/rerun; runtime and
 source work remain separate
 ([post-H6Z residual / H7A target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
 
+H7A is **rejected at complete-byte exactness before code-object adjudication,
+rocprof, or timing**. Structure, registry/backend exclusion, strict preflight,
+and one cached build pass. Both complete starts are finite, but start256 differs
+from H6W at **80,469/1,179,648** elements (max **4.656613e-9**) and start384 at
+**100,075/1,179,648** (max **3.7252903e-9**). H6W's replay
+`dot * scale - max` is four fused `v_fma_f32` sites; storing the first-pass
+scaled score adds an intermediate multiply rounding before subtraction and
+changes exp/PV bits. The tiny delta cannot waive the frozen exact gate. Remove
+the RED and every implementation/key/export/gfx1151-exclusion surface without
+tuning/rerun, restore H6W/H6Z byte-for-byte, and keep production
+**423.233 tok/s / 1,195.702 ms**
+([H7A rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
@@ -1848,7 +1861,7 @@ heldouts before any clean publication.
 | **WPF-H6X exact workgroup-resident IQ3_XXS grid table** | **Rejected at frozen physical gate; all candidate surfaces removed** | The exact matrix passes **10/10**. ISA realizes global loads **23→19**, six LDS reads, one coalesced preload store, barriers **2→3**, metadata LDS **384→1,408 B**, and unchanged 216 FMAs/24 permlanex16/96 DPP/private0/spill0/scratch0. Metadata VGPR rises **101→103**, failing the predeclared **≤101** ceiling. Skip profiler and all-45 timing by contract, remove H6X without tuning/rerun, and retain H6T/H6W **416.891 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json). |
 | **WPF-H6Y exact IQ3 packed-prefix b32 load** | **Rejected at frozen physical gate; all candidate surfaces removed** | Cached exactness passes **11/11**, including all finite FP16 classes and selector bytes. The rolling-window leaf realizes global loads **23→20**, unchanged barriers/LDS/216 FMAs/24 permlanex16/96 DPP, and code/slots **7,920/1,384→7,872/1,357**. It adds three `ds_bpermute_b32` scale broadcasts and raises metadata VGPR **101→106**, failing frozen unchanged-DS/**≤101** gates. Skip profiler/all-45 timing, remove H6Y without tuning/rerun, and retain H6T/H6W **416.891 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json). |
 | **WPF-H6Z exact late-start global qrow4 aligned score/weight replay** | **Retained gfx1100 global source default; H6W/H6N rollback** | Source changes only the global role and reuses H6W's aligned caller plane with zero allocation/workspace growth. Fresh M512 is KL0/exact across **48/48** boundaries and complete state. Four requests preserve **2,192** dispatches and exact **24 H6N + 24 H6Z + 72 H6A + 72 H6W**, moving late-global/attention/kernel-sum/span **23.894/125.254/1,214.563/1,241.814→12.231/116.041/1,205.023/1,227.056 ms**. Fixed C4096/M512 improves **417.180→420.785 tok/s (+0.864%, 5/5)**; C512/C1024 are unchanged paths and binding 4K improves **194.478→194.694 (+0.111%, 2/3)**. Keep H6W/H6N and H6A rollbacks; **126/126** guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json). |
-| **WPF-H7A exact late-start SWA scaled-score replay** | **Target only; implementation absent** | Clean H6Z is **423.233 tok/s / 1,195.702 ms**, **1.63218x** behind matched llama.cpp. H6W owns **62.562 ms / 72 calls**. Compute/store each scaled score once in pass one and remove **255,135,744** duplicate second-pass scale multiplies without changing bytes/workgroups/results. Require RED-first complete bytes, exact four-FMA removal, no resource regression, cached named execution, and both starts plus weighted 72-call both-clock wins; remove on any miss. [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json). |
+| **WPF-H7A exact late-start SWA scaled-score replay** | **Rejected at complete-byte gate; all candidate surfaces removed** | Structure/preflight and one cached build pass, but complete H6W equality fails at **80,469 / 100,075** elements for starts256/384 (max **4.656613e-9 / 3.7252903e-9**). H6W uses fused `dot*scale-max`; stored scaled scores round before subtraction. Skip code-object/profiler/timing, remove H7A without tuning/rerun, and keep H6W/H6Z **423.233 tok/s** production. [`rejection`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json). |
 | **WPF-H6T exact fused-DPP-add staged-wave IQ3** | **Retained gfx1100 IQ3 source default; H6R same-ABI rollback** | Leaf **9/9** and **45/45** layers are exact/both-clock positive; codegen realizes **24 permlanex16 + 96 DPP adds + zero moves**, cuts slots/code **1,399 -> 1,384 / 8,016 -> 7,920 B**, and keeps runtime VGPR104/scratch0. Complete M512 is KL0/exact across all 48 boundaries and K/V/spans. Exact **45 H6R -> 45 H6T** cuts IQ3/request/span **2.090%/0.116%/0.642%**. Fresh fixed M512 gains **+0.319% (5/5)** at **408.900 tok/s**, **1.68939x** behind matched llama.cpp HIP; fresh 512/1K/4K gains **+0.351%/+0.423%/+0.176%**, all 3/3 wins. The nine-entry ABI/resources/dispatches are unchanged, gfx1151 is excluded, and **144/144** source guards pass. [`production`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) · [`candidate/runtime`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) · [`target`](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json). |
 | WPF-Q lane sensitivity calibration | Diagnostic only | Explain non-monotonic autoregressive amplification; never change thresholds or use calibration to promote a failing approximate path. |
 | WPF-4 launch/fusion | Deferred | Fresh H5W M512 span-minus-sum is only **26.726 ms / 1.461%**, and llama.cpp remains faster despite more launches. Start only after span-minus-sum or launch-only boundaries exceed 5% of retained wall. |
