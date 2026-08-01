@@ -411,10 +411,21 @@ selector-unset 512/1K/4K improves **367.777/299.019/190.144 ->
 wins each. Fixed natural C4096/M512 improves **391.307 -> 407.780 tok/s
 (+4.210%, 5/5 wins)** and remains **1.69403x** behind matched llama.cpp HIP
 **690.791 tok/s**. Workspace/scratch remain **161,120,256/600,141,856 bytes**,
-gfx1151 fails closed, and **219/219** guards pass. Clean committed-source
-reprofiling is next; these are fresh paired publication results, not a relabeled
-clean row
-([H6R production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-production.json) ·
+gfx1151 fails closed, and **219/219** guards pass. Clean committed H6R
+reprofiling reaches **407.091 tok/s** from
+**406.301/407.165/407.091/407.141/406.318**, all token 2930 and
+lifecycle-clean, with **1,247.252 ms / 2,192 dispatches** versus matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. Campaign-start/current/llama.cpp
+component milliseconds are Q5 **1,270.458/255.672/58.314**, attention
+**488.304/149.392/21.512**, IQ-down **557.091/279.045/153.860**, Q6
+**157.073/87.437/14.668**, gate/up **460.143/399.483/397.805**, and remaining
+**68.623/76.224/67.849**. The next target-only leaf is **WPF-H6S exact DPP
+peer-exchange dense-initial SWA qrow4**: transfer only H6R's proven
+permlanex16+DPP 8/4/2/1 peer operation into H6A SWA's **117.506 ms / 144-call**
+exact reduction, preserving attention ownership, arithmetic, K/V traffic, and
+`KVLiveSpans` behavior
+([post-H6R residual / H6S target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6r-matched-residual.json) ·
+[H6R production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-production.json) ·
 [H6R candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
 [post-H6Q residual / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json)).

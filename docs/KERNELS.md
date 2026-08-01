@@ -1425,9 +1425,23 @@ falls **13.837%/3.578%/4.014%**. Fresh selector-unset 512/1K/4K gains
 **3.793%/3.274%/1.992%**, all 3/3 exact wins, while fixed C4096/M512 improves
 **391.307 -> 407.780 tok/s (+4.210%, 5/5)**. H6R reuses raw allocation and
 `grouped_iq_prefill`; ABI, workspace/scratch, sidecar, and dispatch count remain
-unchanged. gfx1151 fails closed and **219/219** guards pass. Reprofile clean
-committed production next
-([H6R production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-production.json) ·
+unchanged. gfx1151 fails closed and **219/219** guards pass. Clean committed H6R
+reprofiling reaches **407.091 tok/s / 1,247.252 ms / 2,192 dispatches**, versus
+campaign-start **169.516 tok/s / 3,001.692 ms** and matched llama.cpp HIP
+**690.791 tok/s / 714.008 ms**. Q5/attention/IQ-down/Q6 gaps are now
+**197.358/127.879/125.185/72.769 ms**. Q5 remains mechanism-closed; H6A SWA is
+the largest actionable exact leaf at **117.506 ms / 144 calls**. Select
+one-shot target-only **WPF-H6S exact DPP peer-exchange dense-initial SWA qrow4**:
+retain H6A's local32/grid2304x32/LDS0 ownership, BF16 cache reads, two QK passes,
+ordered F32 adds, softmax/PV order, complete bytes, and `KVLiveSpans`; replace
+only offset16/8/4/2/1 bpermute peer sources with H6R's permlanex16 then DPP
+8/4/2/1. Admission requires exact **12 remaining bpermutes + 8 permlanex16 + 32
+DPP**, unchanged 12 global u16 loads/4 exp/no barriers, code <=8,000 bytes,
+metadata/runtime VGPR <=80/80, private0/spill0/scratch0, and every
+starts0/128/256/384 plus weighted 144-call both-clock win. Remove all H6S
+surfaces on any miss
+([post-H6R residual / H6S target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6r-matched-residual.json) ·
+[H6R production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-production.json) ·
 [H6R candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-dpp-peer-exchange-candidate.json) ·
 [post-H6Q target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6q-matched-residual.json) ·
 [H6Q production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json)).
