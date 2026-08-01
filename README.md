@@ -564,6 +564,15 @@ logical bytes. RED-first complete bytes, exact code-object resources, cached
 trace, and **45/45 plus aggregate** both-clock wins are binding
 ([post-H7A residual / H7B target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
 
+**WPF-H7B is rejected at its first compiled resource gate.** Exactness passes
+**10/10**, and ISA realizes the intended **24→3** b128 LDS-load and d16-store
+sites with unchanged 23 global loads/12 LDS stores/two barriers/216 FMAs/24
+permlanex16/96 DPP while shrinking code **7,920→5,916 B**. Metadata VGPR,
+however, rises **101→108** beyond the frozen **≤101** ceiling. Per contract,
+skip rocprof/timing, do not tune or recompile, remove every H7B surface, and
+retain H6T/H6Z production **422.602 tok/s / 1,200.759 ms**
+([H7B rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

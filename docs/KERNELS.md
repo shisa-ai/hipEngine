@@ -1714,6 +1714,18 @@ clock wins under one immutable 5/15/5 screen are binding. Remove H7B on any miss
 without tuning/rerun; runtime/source qualification remains separate
 ([post-H7A residual / H7B target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7a-rejection-matched-residual.json)).
 
+H7B is **rejected at the first compiled physical-resource gate**. The frozen
+boundary/preflight matrix passes **10/10** with complete H6T/CPU bytes and clean
+lifecycle. Its first code object realizes exact **23 global loads / 3
+`ds_load_b128` / 12 `ds_store_2addr_b32` / 3
+`global_store_d16_hi_b16` / 2 barriers / 216 FMAs / 24 permlanex16 / 96 DPP**,
+and cuts code/slots **7,920/1,384→5,916/994**. Metadata remains LDS384,
+private0, spill0, but VGPR rises **101→108**, violating the frozen **≤101**
+ceiling. Stop before rocprof/runtime resources/all-layer timing; do not tune,
+recompile, or rerun. Remove the RED plus every H7B HIP/Python/key/export/gfx1151
+surface and retain H6T/H6Z production **422.602 tok/s / 1,200.759 ms**
+([H7B rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
