@@ -1857,23 +1857,24 @@ pass
 ([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
-Standalone **WPF-H7H exact full-group Q5 compute** now reuses the qualified
+Bounded default-off **WPF-H7H exact full-group Q5 compute** reuses the qualified
 unconditional-compute body through separately named gfx1100 exports, primitive
-and composite registry keys for the two remaining natural-M512 full-group H5Y
-roles. H5Y remains the unfused fallback, H7G remains source, and gfx1151 is
-explicitly excluded. BF16 K3072/N1024 `c8r4` owns **92 calls / 24.093 ms** and
-BF16 K9216/N3072 `c12r8` owns **35 / 80.144 ms**.
+and composite registry keys for the two divisible natural-M512 H5Y roles. H5Y
+remains unfused fallback, H7G remains source, and gfx1151 is excluded. BF16
+K3072/N1024 `c8r4` owns **92 calls / 24.093 ms** and BF16 K9216/N3072 `c12r8`
+owns **35 / 80.144 ms**.
 
-RED-first rows1/7/8/9/M512 correctness passes **13/13**. The production object
-emits `r4` **15 dual + 5 scalar** FMA sites at **3,584 B / 587 slots /
-VGPR72 / LDS512**, and `r8` **47+9** at **9,728 B / 1,588 slots / VGPR194 /
-LDS1,536**; both remain private/spill/dynamic-stack/scratch0. Cache-only named
-execution is **0.516/5.072 ms** at runtime VGPR **72/200**. The one-time
-production-library 5/15/5 replay is exact and both-clock positive per role;
-weighted event/wall improves **140.659/138.993 -> 119.035/121.655 ms
-(-15.373%/-12.474%)** with zero compiler and clean lifecycle. Admit only the
-leaf; freeze a separate bounded-runtime RED before any package/source ownership
-([candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
+RED-first leaf correctness passes **13/13**. The production object emits `r4`
+**15 dual + 5 scalar** FMA sites at **3,584 B / 587 slots / VGPR72 / LDS512**,
+and `r8` **47+9** at **9,728 B / 1,588 slots / VGPR194 / LDS1,536**; both stay
+private/spill/dynamic-stack/scratch0. Complete default-off M512 is KL0/exact
+across **48/48** boundaries, full state, and repeat at unchanged workspace and
+scratch. Cache-only tracing records exact **61 H7G + 127 H7H** Q5 calls among
+**2,925** dispatches on one queue/stream at runtime VGPR **72/200**, scratch0,
+and zero compiler. Fixed C4096/M512 improves **423.542 -> 426.070 tok/s
+(+0.597%, 5/5)**; clean 512/1K/4K gains **+1.013%/+0.685%/+0.394%**, all 3/3.
+Freeze a separate source-default RED before replacing the two H7G values
+([candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
