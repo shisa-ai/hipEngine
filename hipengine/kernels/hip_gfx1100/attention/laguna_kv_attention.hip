@@ -106,6 +106,18 @@ __device__ __forceinline__ float laguna_ordered_add_f32(float lhs, float rhs) {
   return result;
 }
 
+__device__ __forceinline__ float laguna_ordered_fma_f32(
+    float lhs,
+    float rhs,
+    float acc) {
+  float result;
+  asm volatile(
+      "v_fma_f32 %[result], %[lhs], %[rhs], %[acc]"
+      : [result] "=v"(result)
+      : [lhs] "v"(lhs), [rhs] "v"(rhs), [acc] "v"(acc));
+  return result;
+}
+
 __device__ inline int64_t laguna_global_physical_slot(
     const int32_t* base_offsets,
     int64_t logical_slot,
@@ -2265,12 +2277,33 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
     if (active_output) {
       const uint16_t* stage_value =
           shared_value + stage_parity * kValueStage * kDimTile;
-      for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
+      int stage_token = 0;
+      for (; stage_token + 3 < stage_count; stage_token += 4) {
+        float weight[4];
+        float value[4];
+#pragma unroll
+        for (int item = 0; item < 4; ++item) {
+          weight[item] =
+              shared_probability[stage_parity][wave][stage_token + item];
+          value[item] = laguna_bf16_bits_to_float(
+              stage_value[(stage_token + item) * kDimTile + lane]);
+        }
+#pragma unroll
+        for (int item = 0; item < 4; ++item) {
+          if (weight[item] > 0.0f) {
+            acc = laguna_ordered_fma_f32(weight[item], value[item], acc);
+          }
+        }
+      }
+      for (; stage_token < stage_count; ++stage_token) {
         const float weight =
             shared_probability[stage_parity][wave][stage_token];
         if (!(weight > 0.0f)) continue;
-        acc += weight * laguna_bf16_bits_to_float(
-            stage_value[stage_token * kDimTile + lane]);
+        acc = laguna_ordered_fma_f32(
+            weight,
+            laguna_bf16_bits_to_float(
+                stage_value[stage_token * kDimTile + lane]),
+            acc);
       }
     }
     __syncthreads();

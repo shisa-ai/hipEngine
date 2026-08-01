@@ -198,6 +198,21 @@ established token/hash/position matches, including mandatory 128K
 recover exactly.
 [`parallel exact-max production`](results/2026-08-02-gfx1151-laguna-long-global-exact-parallel-max-retained.json).
 
+The seventh LC-D3 checkpoint overlaps exact D32 PV operand transport without
+changing the recurrent arithmetic. Each output wave preloads four probability
+and BF16-to-F32 V operands, then applies four explicit ordered `v_fma_f32`
+instructions in chronological token order. Exact F32/BF16 leaves improve
+**23.13-34.03%**. Complete d16K/d64K/d128K decode improves
+**18.148/10.848/7.068 -> 18.931/11.868/7.976 tok/s
+(+4.313%/+9.400%/+12.851%)**; route-inactive d4K is flat within **-0.044%**
+noise. Vulkan parity rises to **87.125%/66.911%/56.025%** at
+16K/64K/128K. All established tokens, hashes, positions, and the full
+**87.408 GB / 1,452-allocation** lifecycle remain exact, including mandatory
+128K **874 / c8307c... / 131,198**. A plain source unroll was correctly
+rejected because compiler reassociation changed the 128K trajectory; only the
+explicitly ordered implementation is retained.
+[`ordered-prefetch exact PV production`](results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

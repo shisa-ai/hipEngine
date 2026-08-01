@@ -197580,3 +197580,34 @@ Vulkan local sizes verbatim will close the measured gap.
   Removed the complete template/launch diff and restored production before
   complete-model timing. Future exact PV work must retain at least six output
   waves per D32 block.
+
+## 2026-08-02 06:33 JST — Retain ordered four-token exact PV prefetch
+
+- The exact D32 PV loop now preloads four probability/BF16-V operands before
+  applying four explicitly ordered `v_fma_f32` instructions. Workgroup,
+  output-wave ownership, loads, barriers, predicates, and chronological
+  scalar-F32 association are unchanged. RED-first is not meaningful for this
+  scheduling-only change; the existing byte oracle and recurrent 128K hash are
+  the gates.
+- Capacity131201 leaf medians at live4,097/16,448/65,664/131,200 move
+  **0.281136/1.153269/4.558652/9.084503 ->
+  0.185476/0.830466/3.468582/6.982887 ms**
+  (**-34.026%/-27.990%/-23.912%/-23.134%**). F32 context and BF16 gated
+  bytes match at every depth. Raw SHA-256 is
+  `92b4dd128d0cead8b4aed525c1b152765cde44bbd13a397349714be9b8ddfd59`.
+- Cached one-pass d4K/d16K/d64K/d128K production measures
+  **21.663871/18.930785/11.868234/7.976295 tok/s**. Relative to the parallel
+  max default this is **-0.044%/+4.313%/+9.400%/+12.851%**. All established
+  tokens/hashes/positions match, including mandatory d128K
+  **874 / c8307c... / 131,198**; all **87,407,934,744 bytes / 1,452
+  allocations** recover. Raw SHA-256 values are
+  `385701000fc50b71f441a396c88327c9fb02a59b02bddbe03744ab7be0074107`
+  and `f692fd992fc08976ccc717957140578ea8116fb6783e29cee16320329548ae3f`.
+- A plain source unroll was fast but compiler reassociation changed the
+  mandatory 128K final token to **4094**; a volatile accumulator restored
+  ordering but made the leaf about 3-4x slower. Both are removed. Cached native
+  tracing names the intended PV symbol at local512/VGPR32/LDS11,264/scratch0;
+  CSV SHA-256 is
+  `cf83555f4a5a5c42ffd7b5d88e5153b47043d26e8c4597c4d183bf7a9854c4de`.
+  `scripts/check_lineage.py --kind kernel --diff stat` remains blocked by the
+  absent configured `/home/lhl/amd-gpu-tuning/reference/atlas` tree.

@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T06:33:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_pv_prefetch4_retained",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "kernel": "laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel",
+    "scope": "the exact deferred-normalization global layers 0/4/8/12/16/20/24",
+    "before": "each output wave loaded one probability and one BF16 V element immediately before its dependent FMA",
+    "after": "each output wave preloads four probabilities and four BF16-to-F32 V elements, then applies four explicitly ordered v_fma_f32 operations in chronological token order",
+    "correctness_contract": "the explicit inline-assembly FMA prevents compiler reassociation while preserving every output's original scalar-F32 recurrent order, probability predicate, BF16 conversion, BF16 gate, and KVLiveSpans behavior",
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0
+  },
+  "rejected_development_screens": [
+    {
+      "candidate": "plain four-token source unroll",
+      "result": "fast and synthetic-leaf byte-exact, but the compiler formed four partial accumulators and the mandatory recurrent 128K run changed final token/hash",
+      "depth_128k_tok_s": 7.991700,
+      "final_token_id": 4094,
+      "generated_ids_sha256": "92d3f2c357e69f20c84c5c1370ab0b1875813998643c8fa3a04ce06180e37f3",
+      "raw_128k_sha256": "be48ffb3545cc10b73d4e1bf5b77fc24f64dab96f1b2d540717e0388f384e1f1",
+      "disposition": "removed"
+    },
+    {
+      "candidate": "volatile scalar accumulator",
+      "result": "restored source ordering but forced accumulator traffic and made the exact leaf about three to four times slower",
+      "live_16448_ms": 3.916,
+      "live_131200_ms": 31.118,
+      "raw_leaf_sha256": "2e0ec66933a74de80fcab9332322cc4abeca2d48774bda08951a4eaa5cc7cf46",
+      "disposition": "removed"
+    }
+  ],
+  "leaf": {
+    "command": "uv run python scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-deferrednorm-dim32-vstage64 --capacity 131201 --live-counts 4097,16448,65664,131200 --warmups 3 --samples 7 --burst 10 --allow-dirty --output /tmp/laguna-exact-pv-prefetch4-orderedasm-leaf.json",
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "serial_dependency_ms": 0.2811356068, "prefetch4_ordered_ms": 0.1854761000, "delta_percent": -34.026000},
+      {"live_count": 16448, "serial_dependency_ms": 1.1532685280, "prefetch4_ordered_ms": 0.8304656030, "delta_percent": -27.990000},
+      {"live_count": 65664, "serial_dependency_ms": 4.5586521149, "prefetch4_ordered_ms": 3.4685817720, "delta_percent": -23.912000},
+      {"live_count": 131200, "serial_dependency_ms": 9.0845031738, "prefetch4_ordered_ms": 6.9828865050, "delta_percent": -23.134000}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "92b4dd128d0cead8b4aed525c1b152765cde44bbd13a397349714be9b8ddfd59"
+  },
+  "production_sweep": {
+    "command_4k_16k_64k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-exact-pv-prefetch4-orderedasm-production-4k16k64k.json",
+    "command_128k": "same command with --lengths 131072 --output /tmp/laguna-exact-pv-prefetch4-orderedasm-production-128k.json",
+    "protocol": "capacity131200, chunk2048, eager c1, one warmup row, one 127-transition sample per depth",
+    "rows": [
+      {"depth": 4096, "before_tok_s": 21.673401371, "after_tok_s": 21.663871, "delta_percent": -0.043971, "vulkan_tok_s": 23.037017, "vulkan_parity_percent": 94.039000, "final_token_id": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+      {"depth": 16384, "before_tok_s": 18.148072058, "after_tok_s": 18.930785, "delta_percent": 4.312900, "vulkan_tok_s": 21.728347, "vulkan_parity_percent": 87.125000, "final_token_id": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+      {"depth": 65536, "before_tok_s": 10.848461113, "after_tok_s": 11.868234, "delta_percent": 9.400200, "vulkan_tok_s": 17.737473, "vulkan_parity_percent": 66.911000, "final_token_id": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+      {"depth": 131072, "before_tok_s": 7.067963325, "after_tok_s": 7.976295, "delta_percent": 12.851400, "vulkan_tok_s": 14.237076, "vulkan_parity_percent": 56.025000, "final_token_id": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+    ],
+    "all_established_generated_hashes_match": true,
+    "final_positions_exact": true,
+    "mandatory_128k_final_position": 131198,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_4k_16k_64k_sha256": "385701000fc50b71f441a396c88327c9fb02a59b02bddbe03744ab7be0074107",
+    "raw_128k_sha256": "f692fd992fc08976ccc717957140578ea8116fb6783e29cee16320329548ae3f"
+  },
+  "trace": {
+    "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "live_count": 4097,
+    "pv_duration_ns": 97703,
+    "workgroup_size": 512,
+    "grid_size": 16384,
+    "vgpr": 32,
+    "lds_bytes": 11264,
+    "scratch_bytes": 0,
+    "csv_sha256": "cf83555f4a5a5c42ffd7b5d88e5153b47043d26e8c4597c4d183bf7a9854c4de"
+  },
+  "validation": {
+    "focused_tests": "2 passed: exact large-capacity dense-prefix fixture and resource-safe fast-route fixture",
+    "cpu_reference_fixture": "F32 context and BF16 gated outputs byte-exact at all four leaf depths",
+    "mandatory_128k_gate": "passed at token 874 / c8307c... / position 131198 with exact lifecycle",
+    "kernel_trace": "passed with the expected exact PV symbol at local512/VGPR32/LDS11264/scratch0",
+    "lineage": "Original in-tree instruction-scheduling change; scripts/check_lineage.py is blocked by the absent configured /home/lhl/amd-gpu-tuning/reference/atlas tree."
+  }
+}

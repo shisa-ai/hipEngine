@@ -9632,6 +9632,39 @@ The remaining attention sequence is:
      future exact PV candidates at least that parallel:
      [`exact PV query-pair rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-querypair-rejected.json).
 
+216. Prefetch four exact PV operands while preserving the recurrent FMA chain.
+     **Retained and production-default; LC-D3 seventh checkpoint.**
+
+     Each D32 output wave now loads four probabilities and four BF16 V values
+     into registers before consuming them. The four FMAs still execute in
+     chronological token order through an explicit `v_fma_f32` helper, so the
+     loader/conversion dependency is overlapped without changing any output's
+     recurrent scalar-F32 association.
+
+     | Live slots | Serial load/FMA | Ordered prefetch4 | Delta | Exact |
+     | ---: | ---: | ---: | ---: | :---: |
+     | 4,097 | 0.281136 ms | **0.185476 ms** | **-34.026%** | Yes |
+     | 16,448 | 1.153269 ms | **0.830466 ms** | **-27.990%** | Yes |
+     | 65,664 | 4.558652 ms | **3.468582 ms** | **-23.912%** | Yes |
+     | 131,200 | 9.084503 ms | **6.982887 ms** | **-23.134%** | Yes |
+
+     | Decode depth | Prior parallel-max | Ordered prefetch4 | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 21.673401 | **21.663871 tok/s** | **-0.044%** | 23.037017 | **94.039%** |
+     | 16K | 18.148072 | **18.930785 tok/s** | **+4.313%** | 21.728347 | **87.125%** |
+     | 64K | 10.848461 | **11.868234 tok/s** | **+9.400%** | 17.737473 | **66.911%** |
+     | 128K | 7.067963 | **7.976295 tok/s** | **+12.851%** | 14.237076 | **56.025%** |
+
+     Every established trajectory remains exact, including mandatory 128K
+     **874 / c8307c... / position 131,198** and full lifecycle recovery. The
+     trace keeps local512, VGPR32, LDS11,264, and scratch0. A plain four-item
+     source unroll was fast but the compiler formed four partial accumulators;
+     it failed the recurrent 128K gate at token 4,094. A volatile accumulator
+     restored ordering but made the leaf 3-4x slower. Both are removed. The
+     explicit ordered helper is therefore part of the correctness contract,
+     not optional tuning:
+     [`ordered-prefetch exact PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9649,7 +9682,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Six milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Seven milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9669,8 +9702,12 @@ allocation teardown remain mandatory at every retained step.
    maximum scan over all 256 denominator threads then improves the exact leaf
    **12.36-16.31%** and complete 16K/64K/128K another
    **2.487%/7.198%/9.245%**, with byte-identical leaves and exact recurrent
-   state. The next step packs exact GQA6 score waves into larger workgroups,
-   then returns to an ordered tiled PV replay if that screen is insufficient.
+   state. Score-wave packing is slower at every depth. Four-token ordered PV
+   prefetch then overlaps LDS/BF16 conversion with the unchanged recurrent FMA
+   chain, improving exact leaves **23.13-34.03%** and complete
+   16K/64K/128K another **4.313%/9.400%/12.851%** with exact recurrent state.
+   The next step increases safe ordered prefetch distance or removes a complete
+   exact score/probability traffic pass without reducing output-wave ownership.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
