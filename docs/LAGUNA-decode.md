@@ -9604,6 +9604,21 @@ The remaining attention sequence is:
      products or reduction order:
      [`parallel exact-max production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-parallel-max-retained.json).
 
+214. Pack exact score-token waves into larger workgroups.
+     **Rejected at every leaf depth and removed.**
+
+     The local256 candidate groups eight otherwise unchanged token waves and
+     cuts score workgroups eightfold; local128 groups four. Both retain every
+     ordered product and wave32 reduction and are F32/BF16 byte-exact. Against
+     the retained one-wave local32 producer, wave8 regresses live
+     4K/16K/64K/128K **4.145%/0.989%/0.816%/0.860%**, while wave4 regresses
+     **3.457%/1.408%/1.295%/1.252%**. Workgroup packing reduces scheduler
+     granularity without reducing K traffic and loses at every gate, so the
+     original local32 score owner is restored before production timing. The
+     next exact score seam must remove scratch traffic or a whole pass, not
+     merely group identical waves:
+     [`exact score-wave packing rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-score-wavepack-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

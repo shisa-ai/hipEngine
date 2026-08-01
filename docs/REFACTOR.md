@@ -2571,6 +2571,9 @@ should be boring.
   result; native uint4 remains the exact D32 load contract.
   Exact D32/local1024 is removed after losing to local512 at every depth;
   further PV local-size permutations are closed.
+  Exact score wave8/local256 and wave4/local128 packing is removed after both
+  regress every 4K-128K leaf; the production score owner remains one local32
+  wave per KV-head/token.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
