@@ -9535,6 +9535,18 @@ The remaining attention sequence is:
      and targets streamed V-cache behavior:
      [`exact D32 V-stage128 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-vstage128-rejected.json).
 
+210. Bypass cache for exact D32 streamed V loads.
+     **Rejected on mixed depth direction and removed.**
+
+     Replacing each cached uint4 V read with four non-temporal dword reads is
+     byte-exact and leaves all arithmetic unchanged. It improves live16K
+     **1.489%**, but regresses live4K/64K/128K
+     **1.950%/0.479%/1.285%**. The value path therefore has useful
+     cross-workgroup cache behavior despite being consumed once per layer.
+     Cached uint4 loads are restored; the next exact traffic screen must not
+     discard that locality:
+     [`exact D32 non-temporal-V rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-nontemporal-v-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

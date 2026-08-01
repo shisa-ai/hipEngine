@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T04:43:57+09:00",
+  "kind": "hipengine_laguna_long_global_exact_d32_nontemporal_v_rejected",
+  "status": "rejected_mixed_leaf_direction",
+  "performance_claim": false,
+  "model": {"name": "Poolside Laguna S 2.1", "quant": "Q4_K_M mixed GGUF v3", "kv_dtype": "bf16"},
+  "platform": {"device_name": "AMD Radeon 8060S Graphics", "backend": "hip_gfx1151", "target_arch": "gfx1151", "rocm": "TheRock HIP 7.15.0-0000000", "gpu_max_hw_queues": 2},
+  "candidate": {
+    "control": "exact deferred-normalization GQA6 D32/V64 cached uint4 value loads",
+    "route": "same owner with four scalar nontemporal dword loads per uint4",
+    "mechanism": "bypass cache for the streamed BF16 value path without changing ownership, conversion, FMA order, or output rounding",
+    "candidate_code_retained": false
+  },
+  "leaf": {
+    "protocol": "back-to-back capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "cached_ms": 0.3207860946655273, "nontemporal_ms": 0.32704188823699953, "latency_change_percent": 1.9501448708351576},
+      {"live_count": 16448, "cached_ms": 1.3328296661376953, "nontemporal_ms": 1.3129884719848632, "latency_change_percent": -1.4886519003083354},
+      {"live_count": 65664, "cached_ms": 5.447389221191406, "nontemporal_ms": 5.473482131958008, "latency_change_percent": 0.47899846526653356},
+      {"live_count": 131200, "cached_ms": 10.844319152832032, "nontemporal_ms": 10.983631896972657, "latency_change_percent": 1.2846610485845344}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "cached_raw_sha256": "ad62296f1ea2bdef86e761dbe4bfbdea5fd28af74768f6b7d934df866d20ce35",
+    "nontemporal_raw_sha256": "9adbb56ba558832d7f8c21415f1b8576a783773fe2e073c46203a622e287e153"
+  },
+  "decision": {
+    "reason": "nontemporal loads improve only 16K and regress 4K/64K/128K, showing that cached cross-workgroup value behavior remains useful",
+    "production_gate_run": false,
+    "mandatory_128k_gate_run": false,
+    "next_attack": "retain cached loads and reduce load instruction count or score-plane traffic"
+  },
+  "validation": {"cpu_reference_fixture": "passed", "restored_production_tracked_diff": "none"}
+}
