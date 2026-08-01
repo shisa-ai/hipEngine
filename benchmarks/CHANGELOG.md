@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna exact PV query-pair ILP] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: carrying two independent query accumulators per wave shares each V register but halves output waves and regresses the retained exact D32 owner **21.21-22.11%** at every depth, so restore one query per wave; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-querypair-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna exact score-wave packing] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: packing eight/four token waves into local256/local128 workgroups regresses the retained one-wave local32 score producer **0.82-4.15% / 1.25-3.46%** at every depth, so restore local32 before production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-score-wavepack-rejected.json`.
 
 - [accepted byte-exact gfx1151 Laguna parallel-max long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: let all 256 denominator threads scan scores instead of only lane 0 in each of eight waves; exact leaves improve **12.36-16.31%**, and complete d16K/d64K/d128K improves **17.708/10.120/6.470 -> 18.148/10.848/7.068 tok/s (+2.487%/+7.198%/+9.245%)** with exact mandatory trajectory and lifecycle; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-parallel-max-retained.json`.

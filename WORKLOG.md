@@ -197563,3 +197563,20 @@ Vulkan local sizes verbatim will close the measured gap.
   production exactly before any complete-model timing. Score-wave workgroup
   packing is closed; the next exact attack must eliminate scratch traffic or a
   pass while retaining local32 scheduling.
+
+## 2026-08-02 05:31 JST — Reject exact PV query-pair ILP
+
+- Re-profiled the retained exact leaf at live16,448/131,200: score is
+  **0.284/2.239 ms**, the new parallel denominator **0.074/0.670 ms**, and PV
+  **0.766/6.102 ms**. PV is now about two-thirds of the exact wall and remains
+  the target.
+- Paired two queries on each D32 PV output wave, sharing the staged BF16 V
+  register across two independent accumulators while preserving every output's
+  chronological scalar-F32 FMA order. F32 context and BF16 gate bytes match.
+- Halving output waves from six to three dominates the extra ILP: live
+  4,097/16,448/65,664/131,200 regresses
+  **22.109%/21.207%/21.658%/21.647%**. Raw SHA-256 is
+  `f7e7e4c14cfd08e867313316afc9b29440cdc1c5a5b0c2c93ea54caa3fd4b9ec`.
+  Removed the complete template/launch diff and restored production before
+  complete-model timing. Future exact PV work must retain at least six output
+  waves per D32 block.
