@@ -2516,3 +2516,16 @@ should be boring.
   rollback, gfx1151 capability, both four-axis registrations, exact fallback,
   and diagnostic leaf/quality selectors until a later exact path matches or
   exceeds the candidate.
+
+## Laguna gfx1151 long-global mixed32 reducer prototype
+
+- Added 2026-08-01 while constructing LC-D3. The internal-only
+  `laguna_global_attention_split_exact_gated_mixed32_vstage64_reduce_kernel`
+  established exact exp32 probability caching, local512 idle-wave V64
+  prefetch, and paired-query V reuse, but it was superseded before runtime
+  integration by the faster GQA6 score + normalization + D32 PV route.
+- It has no C wrapper, Python export, registry key, runtime selector, or
+  production dispatch and therefore cannot run. Remove the unused body after
+  the clean GQA6 production confirmation, when LC-D3's next score-plane
+  rewrite reopens this source file. Do not retain it as a rollback; the
+  registered generic exact split path is the rollback.

@@ -9242,6 +9242,53 @@ The remaining attention sequence is:
      are the transferable mechanisms:
      [`matched 16K profiles`](../benchmarks/results/2026-08-01-gfx1151-laguna-16k-hip-vulkan-decode-profile.json).
 
+201. Replace the serial sixfold-V long-global owner with exact GQA6/D32.
+     **First LC-D3 structural milestone retained; clean confirmation pending.**
+
+     The new gfx1151 path above the retained 6,000-live-slot fused bound has
+     three exact phases. One wave32 owns all six queries for a KV-head/token,
+     so each BF16 K row is loaded once. A local256 query-head normalizer
+     reproduces the generic eight-wave exp32 maximum/denominator tree and
+     stores the identical normalized F32 probability. Four D32/local512 blocks
+     per KV head ping-pong V64 and probability tiles through LDS, so one V
+     stream serves all six queries while every output dimension retains its
+     chronological scalar-F32 FMA chain. The generic gated split route remains
+     registered fallback; short fused routes remain unchanged.
+
+     | Live slots | Generic exact leaf | GQA6/D32/V64 | Delta | Exact |
+     | ---: | ---: | ---: | ---: | :---: |
+     | 4,097 | 1.290 ms | **0.342 ms** | **-73.47%** | Yes |
+     | 16,448 | 7.203 ms | **1.373 ms** | **-80.94%** | Yes |
+     | 65,664 | 29.752 ms | **5.720 ms** | **-80.77%** | Yes |
+     | 131,200 | 60.035 ms | **11.383 ms** | **-81.04%** | Yes |
+
+     At live 16,448, cached tracing splits the new path into
+     **0.305-ms score + 0.280-ms normalization + 0.766-ms PV = 1.351
+     ms/layer**, or **16.209 ms/token** across the twelve global layers. This
+     clears LC-D3's first **<=20-ms/token** gate by **18.95%** and cuts the
+     profiled 86.240-ms global baseline by an inferred **81.20%**. The three
+     kernels are scratch-free; score/normalize/PV use VGPR **16/56/32** and
+     LDS **0/512/11,264 B**.
+
+     The required dirty one-pass production sweep moves every depth in the
+     right direction with the established exact generated trajectory:
+
+     | Decode depth | Before | GQA6/D32/V64 | Delta | Vulkan | New / Vulkan |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 15.477837 | **21.662375 tok/s** | **+39.957%** | 23.037017 | **94.033%** |
+     | 16K | 7.731808 | **16.789574 tok/s** | **+117.149%** | 21.728347 | **77.270%** |
+     | 64K | 2.506331 | **9.078577 tok/s** | **+262.226%** | 17.737473 | **51.183%** |
+     | 128K | 1.312921 | **5.602687 tok/s** | **+326.735%** | 14.237076 | **39.353%** |
+
+     GQA6 score tile8/local256, D16 PV, local1024 PV, and V-stage128 were all
+     exact but slower and are reverted. The retained implementation has no
+     resident-byte or allocation-count increase and passes **66 focused
+     tests**. The broad sweep intentionally ran against the dirty candidate;
+     commit it, repeat a clean 16K production confirmation, and only then
+     promote the benchmark rollup. The full F32 score/normalization plane still
+     exists, so LC-D3 is not complete:
+     [`retained milestone`](../benchmarks/results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9259,16 +9306,17 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Active.** Build an
-   exact GQA6 context-parallel global owner: load each KV tile once for six
-   queries, emit bounded per-split `(maximum, denominator, output[6,D])`
-   partials, then merge those partials without a query-head/token score or
-   physical-slot plane. If the current ordered FP32 association cannot be
-   replayed online, use an exact multi-pass tiled form or a separately proven
-   repair certificate. Do not tune the already-near-ceiling score producer in
-   isolation. The first 16K gate is **global <=20 ms/token**; the stretch gate
-   is **<=5 ms/token**. Every big step must move 4K/16K/64K positively and pass
-   128K before promotion.
+3. **LC-D3 — replace the full score-plane/reducer path. First milestone
+   retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
+   live16,448 global attention to **16.209 ms/token**, clear the first gate,
+   and improve the mandatory 4K/16K/64K/128K production rows. The next step is
+   to remove the still-materialized query-head/token F32 score/physical plane:
+   emit bounded per-split `(maximum, denominator, output[6,D])` partials, then
+   merge without losing the current ordered-FP32 contract. If exact online
+   association cannot be replayed, use an exact multi-pass tiled form or a
+   separately proven repair certificate. The stretch gate remains **<=5
+   ms/token** at 16K, and every structural step must repeat the directional
+   depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
    numerics waiver. Source audit complete.** The running path is wave64
    KHR-coopmat, Br16/Bc64/local256, GQA-folded, online, and context-split.

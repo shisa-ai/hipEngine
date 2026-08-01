@@ -44,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_wmma_gqa6_k64_three_term_raw_numerator_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
 )
 from hipengine.loading.laguna_gguf import FULL_ATTENTION
 from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
@@ -61,10 +62,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=9)
     parser.add_argument("--warmups", type=int, default=5)
     parser.add_argument("--burst", type=int, default=50)
+    parser.add_argument("--capacity", type=int, default=CAPACITY)
+    parser.add_argument(
+        "--live-counts",
+        default=",".join(str(value) for value in LIVE_COUNTS),
+    )
     parser.add_argument(
         "--candidate",
         choices=(
             "fixedshape",
+            "split-gqa6-dim32-vstage64",
             "fused-gqa1",
             "fused-gqa2-vstage64",
             "fused-gqa2-vstage64-vec16",
@@ -139,6 +146,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
             args.compiler_version_file
         )
+    capacity = int(args.capacity)
+    live_counts = tuple(
+        int(value.strip())
+        for value in str(args.live_counts).split(",")
+        if value.strip()
+    )
+    if capacity <= 0 or not live_counts:
+        raise ValueError("capacity and live counts must be positive")
+    if min(live_counts) <= 0 or max(live_counts) > capacity:
+        raise ValueError("live counts must be within [1, capacity]")
 
     runtime = get_hip_runtime()
     library = build_laguna_kv_attention(
@@ -156,11 +173,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     )
     cache = allocate_laguna_kv_cache(
         config,
-        context_length=CAPACITY,
+        context_length=capacity,
         backend="hip_gfx1151",
         runtime=runtime,
     )
-    max_live = max(LIVE_COUNTS)
+    max_live = max(live_counts)
     rng = np.random.default_rng(20260728)
     keys = rng.normal(
         0.0, 0.12, size=(max_live, KV_HEADS, HEAD_DIM)
@@ -180,8 +197,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         candidate_context = malloc(query.nbytes, runtime=runtime)
         control_gated = malloc(query.size * 2, runtime=runtime)
         candidate_gated = malloc(query.size * 2, runtime=runtime)
-        score_scratch = malloc(Q_HEADS * CAPACITY * 4, runtime=runtime)
-        physical_scratch = malloc(Q_HEADS * CAPACITY * 4, runtime=runtime)
+        score_scratch = malloc(Q_HEADS * capacity * 4, runtime=runtime)
+        physical_scratch = malloc(Q_HEADS * capacity * 4, runtime=runtime)
         allocations.extend(
             (
                 key_device,
@@ -225,13 +242,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             state.value_cache.ptr,
         )
         results = []
-        for live_count in LIVE_COUNTS:
+        for live_count in live_counts:
             tail = (
                 score_scratch.ptr,
                 physical_scratch.ptr,
                 state.spans,
                 live_count,
-                CAPACITY,
+                capacity,
                 Q_HEADS,
                 KV_HEADS,
                 HEAD_DIM,
@@ -333,6 +350,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
             candidate_kernel = {
                 "fixedshape": laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
+                "split-gqa6-dim32-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
                 "fused-gqa1": laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64-vec16": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
@@ -476,11 +494,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "arch": os.environ.get("HIPENGINE_HIP_ARCH"),
             },
             "shape": {
-                "capacity": CAPACITY,
+                "capacity": capacity,
                 "query_heads": Q_HEADS,
                 "kv_heads": KV_HEADS,
                 "head_dim": HEAD_DIM,
-                "live_counts": LIVE_COUNTS,
+                "live_counts": live_counts,
             },
             "protocol": {
                 "samples": args.samples,

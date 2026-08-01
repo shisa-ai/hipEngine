@@ -197042,3 +197042,58 @@ Vulkan local sizes verbatim will close the measured gap.
   context-parallel replacement for the full score-plane/reducer route, with a
   first 16K global gate of **<=20 ms/token**, stretch **<=5 ms**, positive
   4K/16K/64K direction, and mandatory 128K before promotion.
+
+## 2026-08-01 21:55 JST — Retain the first exact LC-D3 GQA6/D32 owner
+
+- Implemented the first exact long-global attention replacement for gfx1151.
+  `global_context_split_exact_gated_gqa6_dim32_vstage64_spans` uses one
+  wave32 score owner for all six queries of a KV head, a separate local256
+  exact exp32 normalizer, and four D32/local512 PV blocks per KV head with
+  ping-pong V64/probability LDS. This removes sixfold K/V streaming while
+  preserving the old four-product QK, eight-wave max/denominator merge, and
+  chronological scalar-F32 PV association. The old gated split path remains
+  registered rollback; the <=6,000-live-slot fused owners remain unchanged.
+- RED first failed because the named wrapper did not exist. GREEN proves F32
+  context and BF16 gated output byte-identical to the generic exact route at
+  capacity 8,192/live 4,097. A second live4,224/scan4,097 fixture injects
+  explicit evictions and a future-position slot and remains byte-identical,
+  covering the complete visibility ABI rather than only dense prefix. The
+  final focused integration bundle passes
+  **66 tests**: the exact large-capacity fixture, resource-safe route
+  selection, owner rollback, complete long-profile harness, and gfx1151
+  backend tests. `py_compile` and `git diff --check` also pass.
+- The cached-only four-depth leaf/trace command is:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-lcd3-final-leaf-trace --output-file trace -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim32-vstage64 --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-lcd3-final-leaf-trace/bench.json`.
+  Generic -> candidate is **1.290 -> 0.342 ms (-73.47%)** at live4,097,
+  **7.203 -> 1.373 (-80.94%)** at 16,448, **29.752 -> 5.720
+  (-80.77%)** at 65,664, and **60.035 -> 11.383 (-81.04%)** at 131,200;
+  every row is byte-exact. Bench/trace SHA-256 are
+  `979c50c0b2783e706dc39ed222818644fe6a9a95fd6588f26d487446a439354e`
+  and
+  `79d7364fa31fc61f0ec5b187eb52f62559a9f069f6e9f80ad013cbf02e720492`.
+- At live16,448, the trace attributes **0.305-ms GQA6 scores + 0.280-ms
+  normalize + 0.766-ms PV = 1.351 ms/layer**, or **16.209 ms/token** over the
+  twelve global layers. Score/normalize/PV are scratch-free and report
+  local **32/256/512**, VGPR **16/56/32**, and LDS **0/512/11,264 B**. This
+  clears LC-D3's first 20-ms gate, though it does not yet clear the 5-ms
+  stretch gate and still materializes the F32 score plane.
+- Ran the required dirty one-pass production gate with:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536,131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd3-gqa6-dim32-production-sweep.json`.
+  d4K/d16K/d64K/d128K improve the matched pre-LC-D3 curve
+  **15.477837/7.731808/2.506331/1.312921 ->
+  21.662375/16.789574/9.078577/5.602687 tok/s**, or
+  **+39.957%/+117.149%/+262.226%/+326.735%**. All generated IDs/hashes and
+  positions remain exact; tracked allocations return to zero. Raw SHA-256 is
+  `80a28ef9edad893cb1d37db66e2f7eb987ea4c00a4a3340664747e93e895d197`.
+- Rejected and reverted four exact micro-screens: score tile8/local256
+  (**1.4032 ms** at 16K), D16 PV (**1.4065 ms**), local1024 PV
+  (**1.39005 ms**), and V-stage128 (flat/slightly slower than V64). An earlier
+  internal mixed32 prototype remains unreachable and is recorded in
+  `docs/REFACTOR.md` for removal after the clean checkpoint.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot complete
+  because the configured external `/home/lhl/amd-gpu-tuning/reference/atlas`
+  tree is absent. A narrow attention query selects no external tracked source;
+  this is an original in-tree extension, not a port. Published the retained
+  candidate artifact and updated `docs/KERNELS.md`, `docs/LAGUNA-decode.md`,
+  benchmark rollup/changelog, and refactor ledger. Commit next, then run the
+  required tracked-clean 16K confirmation before promoting production status.
