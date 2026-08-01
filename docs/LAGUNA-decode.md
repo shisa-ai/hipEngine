@@ -9493,6 +9493,23 @@ The remaining attention sequence is:
      layers:
      [`layer-24 compensated rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-layer24-compensated-rejected.json).
 
+207. Widen admitted context-PV ownership from D64 to D128/local1024.
+     **Rejected at the mandatory 128K correctness gate and removed.**
+
+     D128 halves the D64 grid and remains byte-exact in isolated ordinary and
+     compensated leaves. At active 16K/64K/128K it improves those leaves by
+     **1.112%/1.846%/1.756%** and **0.928%/1.773%/1.675%**, respectively.
+     Complete-model d16K is flat-negative against clean D64
+     (**17.707730 -> 17.704203 tok/s, -0.020%**) while d64K improves
+     **10.120043 -> 10.142980 tok/s (+0.227%)** with exact trajectories.
+     The required 128K run does not complete: its decode window publishes an
+     out-of-vocabulary token ID instead of the retained
+     **874 / c8307c... / position 131,198** state. No retry is warranted for a
+     correctness-failed candidate with a flat primary row. All D128 symbols,
+     registry entries, capability/runtime support, harness plumbing, and tests
+     are removed; production remains D64:
+     [`D128 mandatory-gate rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dim128-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

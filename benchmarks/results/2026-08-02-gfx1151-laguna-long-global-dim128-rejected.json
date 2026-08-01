@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T04:33:57+09:00",
+  "kind": "hipengine_laguna_long_global_dim128_rejected",
+  "status": "rejected_mandatory_128k_correctness",
+  "performance_claim": false,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "candidate": {
+    "mechanism": "assign all D128 output dimensions for each KV head to one local1024 context-PV block, halving the retained D64 grid while preserving each output's chronological scalar-F32 accumulation",
+    "scope": "the five already admitted context-parallel layers only",
+    "control": "D64/local512",
+    "candidate_code_retained": false,
+    "production_before_and_after": "unchanged at D64/local512"
+  },
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "ordinary_delta_percent": [3.3755506407963987, -1.1122808823434749, -1.8457469632512047, -1.7560458014204916],
+    "compensated_delta_percent": [6.172282431354814, -0.9284808553948087, -1.773489461279809, -1.674737247594893],
+    "route_active": [false, true, true, true],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "ordinary_raw_sha256": "0b8f780a151a199451579a7b92155bd4219c41cd2ae63c4e18f86afd7c5246cb",
+    "compensated_raw_sha256": "d4e02f3c22ed75f7a5ee4869bce094818c1157624a0d54252f52fa50867bdb5a"
+  },
+  "production_directional": {
+    "protocol": "capacity131200, chunk2048, eager c1, one 127-transition sample per depth",
+    "rows": [
+      {"depth": 4096, "d64_tok_s": 21.656928980790454, "d128_tok_s": 21.66133873114906, "delta_percent": 0.02036184522060669, "route_active": false, "trajectory_exact": true},
+      {"depth": 16384, "d64_dirty_tok_s": 17.730693076405704, "d64_clean_tok_s": 17.707729598315264, "d128_tok_s": 17.70420311714372, "delta_vs_dirty_percent": -0.1494017134458958, "delta_vs_clean_percent": -0.019914925580744036, "route_active": true, "trajectory_exact": true},
+      {"depth": 65536, "d64_tok_s": 10.120043273516172, "d128_tok_s": 10.142980028319414, "delta_percent": 0.22664680558497352, "route_active": true, "trajectory_exact": true}
+    ],
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_sha256": "89f37880f418b63d5bbf0f566cbfc4539a15bd7d4ffd6d5959fc5ce2740ac8d4"
+  },
+  "mandatory_128k_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd7-ctx4096-dim128-production-128k.json",
+    "completed": false,
+    "failure": "ValueError: token_id must be within [0, 100352)",
+    "failure_site": "LagunaGGUFRunner.forward_token during the 127-transition decode window",
+    "artifact_written": false,
+    "retained_d64_reference": {
+      "tok_s": 6.469839525746534,
+      "final_token_id": 874,
+      "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed",
+      "final_position": 131198
+    },
+    "pass": false
+  },
+  "decision": {
+    "reason": "the candidate cannot pass the mandatory 128K recurrent correctness gate; its small leaf and 64K wins are not retainable",
+    "rerun": false,
+    "why_not_rerun": "the failure is correctness-significant and the candidate is only flat at 16K; repeating an expensive failed gate would not justify promotion",
+    "restored_production_tests": "2 passed",
+    "restored_production_tracked_diff": "none"
+  }
+}

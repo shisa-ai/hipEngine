@@ -197435,3 +197435,28 @@ Vulkan local sizes verbatim will close the measured gap.
   because none can make the quality-failed candidate promotable. LC-D3 now
   proceeds only with arithmetic-order-preserving structural work on exact
   layers 0..24.
+
+## 2026-08-02 04:34 JST — Reject D128 context-PV ownership
+
+- Screened a D128/local1024 sibling for the five already-admitted context
+  layers. It assigns four output waves per query, halves D64's workgroup grid,
+  and preserves each output's chronological scalar-F32 accumulation. Ordinary
+  and compensated outputs are F32/BF16 byte-exact at live
+  4,097/16,448/65,664/131,200. Active ordinary leaf deltas versus D64 are
+  **-1.112%/-1.846%/-1.756%** latency and compensated deltas are
+  **-0.928%/-1.773%/-1.675%**. Raw SHA-256 values are
+  `0b8f780a151a199451579a7b92155bd4219c41cd2ae63c4e18f86afd7c5246cb`
+  and `d4e02f3c22ed75f7a5ee4869bce094818c1157624a0d54252f52fa50867bdb5a`.
+- Complete d4K/d16K/d64K measures
+  **21.661339/17.704203/10.142980 tok/s**. The route-inactive 4K row is flat,
+  d16K is **-0.020%** against clean D64, and d64K is **+0.227%**; all three
+  trajectories and the **87,407,934,744-byte / 1,452-allocation** lifecycle
+  match. Raw SHA-256 is
+  `89f37880f418b63d5bbf0f566cbfc4539a15bd7d4ffd6d5959fc5ce2740ac8d4`.
+- The mandatory d128K gate fails during the 127-transition decode window with
+  `ValueError: token_id must be within [0, 100352)` and writes no result
+  artifact, instead of preserving the D64 final state
+  **874 / c8307c... / position 131,198**. Do not rerun an expensive
+  correctness-failed candidate that is already flat at d16K. Removed the
+  entire D128 implementation/runtime/harness/test diff and restored D64; the
+  focused backend/routing checks pass with no tracked production-code diff.

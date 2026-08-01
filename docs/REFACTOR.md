@@ -2556,6 +2556,10 @@ should be boring.
   are admitted; layers 0..24 remain exact. A subsequent isolated compensated
   layer-24 screen is also removed after teacher70 reaches **0.235600 max KL**
   despite **69/70 top-1**; no temporary capability or runtime branch remains.
+  A D128/local1024 sibling is likewise fully removed: its isolated active
+  leaves improve **0.93-1.85%**, but d16K is flat and the mandatory 128K
+  recurrent gate aborts on an out-of-vocabulary token rather than preserving
+  the retained trajectory.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
