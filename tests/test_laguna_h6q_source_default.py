@@ -103,7 +103,7 @@ def test_h6q_source_default_is_retained_as_h6r_rollback(
         _QUANT: _H6Q_IQ3,
         "gguf_iq4_xs": _H5J_IQ4,
     }
-    production_variants = {**rollback_variants, _QUANT: _H6R_IQ3}
+    production_variants = {**rollback_variants, _QUANT: _H6T_IQ3}
     qualified_abis = {
         _H5Q_IQ3: _ACTIVE_EXPERT_ABI,
         _H5Z_IQ3: _ACTIVE_EXPERT_ABI,
@@ -122,7 +122,7 @@ def test_h6q_source_default_is_retained_as_h6r_rollback(
     assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
-    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6R_IQ3
+    assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6T_IQ3
     package_route = package_default.grouped_exact_down_routes[_QUANT]
     assert package_route.abi == _ACTIVE_EXPERT_ABI
     assert package_route.allocation_name == "raw"
@@ -196,7 +196,7 @@ def test_h6q_source_default_is_retained_as_h6r_rollback(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6R_IQ3 and original_is_registered(key),
+        lambda key: key.variant != _H6T_IQ3 and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys[_QUANT].variant == _BASELINE_IQ3

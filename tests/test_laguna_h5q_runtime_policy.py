@@ -74,7 +74,7 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
     h5q_variants = {**h5j_variants, "gguf_iq3_xxs": _H5Q_IQ3}
     production_variants = {
         **h5j_variants,
-        "gguf_iq3_xxs": _H6R_RUNTIME_VARIANT,
+        "gguf_iq3_xxs": _H6T_RUNTIME_VARIANT,
     }
     production_abis = {
         _H5Q_IQ3: _H5Q_ABI,
@@ -95,7 +95,7 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
-        _H6R_RUNTIME_VARIANT
+        _H6T_RUNTIME_VARIANT
     )
     assert package_default.grouped_exact_down_routes["gguf_iq3_xxs"].abi == _H5Q_ABI
     assert package_default.grouped_exact_down_keys["gguf_iq4_xs"].variant == _H5J_IQ4
@@ -141,7 +141,7 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
         backend="hip_gfx1100",
     )
     assert wrong_shape.grouped_exact_down_keys["gguf_iq3_xxs"].variant != (
-        _H6R_RUNTIME_VARIANT
+        _H6T_RUNTIME_VARIANT
     )
     assert wrong_shape.grouped_exact_down_routes["gguf_iq3_xxs"].abi == "grouped_raw_iq"
 
@@ -149,12 +149,12 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
     monkeypatch.setattr(
         laguna_moe_module,
         "is_registered",
-        lambda key: key.variant != _H6R_RUNTIME_VARIANT
+        lambda key: key.variant != _H6T_RUNTIME_VARIANT
         and original_is_registered(key),
     )
     registration_miss = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert registration_miss.grouped_exact_down_keys["gguf_iq3_xxs"].variant != (
-        _H6R_RUNTIME_VARIANT
+        _H6T_RUNTIME_VARIANT
     )
     assert registration_miss.grouped_exact_down_routes["gguf_iq3_xxs"].abi == (
         "grouped_raw_iq"
@@ -162,7 +162,7 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
 
     gfx1151 = resolve_laguna_moe_plan(config, backend="hip_gfx1151")
     assert gfx1151.grouped_exact_down_keys["gguf_iq3_xxs"].variant != (
-        _H6R_RUNTIME_VARIANT
+        _H6T_RUNTIME_VARIANT
     )
     assert gfx1151.grouped_exact_down_routes["gguf_iq3_xxs"].abi == "grouped_raw_iq"
 

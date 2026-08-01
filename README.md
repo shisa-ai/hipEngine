@@ -442,23 +442,25 @@ keeps H6A SWA and H6N global production unchanged and closes DPP attention peer
 exchange without runtime qualification or follow-up tuning
 ([H6S rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
-**WPF-H6T exact fused-DPP-add staged-wave IQ3 is now a qualified bounded
-default-off runtime owner; H6R remains source production.** The exact leaf still
-passes **9/9** and **45/45** actual layers on both clocks while converting **72
-DPP adds + 24 row-shift-1 moves -> 96 DPP adds + zero moves**, cutting slots/code
-**1,399 -> 1,384 / 8,016 -> 7,920 bytes** at unchanged metadata/runtime VGPR
-**101/104** and scratch0. Complete natural M512 is KL0 and byte-exact across all
-**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached
-requests preserve **2,192** dispatches and substitute exact **45 H6R -> 45 H6T**;
+**WPF-H6T exact fused-DPP-add staged-wave IQ3 is now the retained gfx1100 IQ3
+source default; H6R remains explicit same-ABI rollback.** The exact leaf passes
+**9/9** and **45/45** actual layers on both clocks while converting **72 DPP adds
++ 24 row-shift-1 moves -> 96 DPP adds + zero moves**, cutting slots/code **1,399
+-> 1,384 / 8,016 -> 7,920 bytes** at unchanged metadata/runtime VGPR **101/104**
+and scratch0. Complete natural M512 is KL0 and byte-exact across all **48/48**
+hidden boundaries, K/V/`KVLiveSpans`, repeat, and teardown. Four cached requests
+preserve **2,192** dispatches and substitute exact **45 H6R -> 45 H6T**;
 IQ3/request-sum/span move **267.433/1,284.605/1,313.165 ->
-261.844/1,283.120/1,304.737 ms (-2.090%/-0.116%/-0.642%)**. Fixed C4096/M512
-improves **406.849 -> 407.922 tok/s (+0.264%, 5/5 wins)**. Default-off
-512/1K/4K improves **380.968/307.393/193.481 -> 382.181/308.683/193.772 tok/s
-(+0.318%/+0.420%/+0.150%)**, all **3/3** exact wins. H6T is the ninth same-ABI
-capability with no allocation/workspace/dispatch change; **228/228** guards pass
-and H6R remains source at clean **407.091 tok/s** pending a separate
-source-default RED
-([H6T candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
+261.844/1,283.120/1,304.737 ms (-2.090%/-0.116%/-0.642%)**. Fresh selector-
+unset fixed C4096/M512 improves H6R rollback -> H6T source **407.600 -> 408.900
+tok/s (+0.319%, 5/5 wins)** and is **1.68939x** behind matched llama.cpp HIP
+**690.791 tok/s**. Fresh 512/1K/4K publication improves **381.821/307.478/193.289
+-> 383.162/308.780/193.629 tok/s (+0.351%/+0.423%/+0.176%)**, all **3/3** exact
+wins. Allocation/workspace/dispatch remain unchanged, gfx1151 fails closed, and
+**144/144** source-policy/runner guards pass; a clean committed H6T component
+reprofile is next
+([H6T production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
+[H6T candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 Both short

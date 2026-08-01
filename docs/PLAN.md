@@ -2260,23 +2260,26 @@ H6A SWA, H6N global, and clean H6R **407.091 tok/s** remain unchanged. Close DPP
 attention peer exchange unless a materially new premise appears
 ([H6S rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
-Qualify **WPF-H6T exact fused-DPP-add staged-wave IQ3** as a bounded default-off
-runtime owner while keeping H6R source production unchanged. The leaf remains
+Promote **WPF-H6T exact fused-DPP-add staged-wave IQ3** as the retained gfx1100
+IQ3 source default, with H6R as explicit same-ABI rollback. The leaf remains
 exact through **9/9** and **45/45** both-clock wins, realizing **24 permlanex16 +
 96 DPP adds + zero moves**, **1,384 slots / 7,920 bytes**, and unchanged runtime
 VGPR104/LDS512/scratch0. Complete natural M512 is KL0 and byte-exact across all
 **48/48** hidden boundaries, complete K/V/`KVLiveSpans`, repeat, and teardown.
 Four cached requests preserve **2,192** dispatches and substitute exact **45 H6R
 -> 45 H6T**; IQ3/request-sum/span move **267.433/1,284.605/1,313.165 ->
-261.844/1,283.120/1,304.737 ms (-2.090%/-0.116%/-0.642%)**. Fixed C4096/M512
-improves **406.849 -> 407.922 tok/s (+0.264%, 5/5)**. Default-off 512/1K/4K
-improves **380.968/307.393/193.481 -> 382.181/308.683/193.772 tok/s
-(+0.318%/+0.420%/+0.150%)**, every **3/3** pair exact/finite/lifecycle-clean.
-Add only a ninth active-expert ABI capability: raw allocation, grouped-IQ
-library, workspace, total scratch, dispatch count, H6R source map, and gfx1151
-fail-closed behavior remain unchanged; **228/228** guards pass. Commit this owner,
-then freeze a separate source-default RED before changing the H6R selected map
-([H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
+261.844/1,283.120/1,304.737 ms (-2.090%/-0.116%/-0.642%)**. Fresh selector-
+unset fixed C4096/M512 improves **407.600 -> 408.900 tok/s (+0.319%, 5/5)** and
+is **1.68939x** behind matched llama.cpp HIP **690.791**. Fresh 512/1K/4K
+improves **381.821/307.478/193.289 -> 383.162/308.780/193.629 tok/s
+(+0.351%/+0.423%/+0.176%)**, every **3/3** pair exact/finite/lifecycle-clean.
+Change only the selected-map value: the nine-entry active-expert ABI, raw
+allocation, grouped-IQ library, workspace, total scratch, dispatch count, and
+gfx1151 fail-closed behavior remain unchanged; **144/144** source guards pass.
+Commit this source owner, then cleanly reprofile C4096/direct-M512 and rerank the
+matched residual
+([H6T production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
+[H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

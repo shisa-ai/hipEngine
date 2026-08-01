@@ -187,8 +187,8 @@ LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS = {
 # H6F remains the immediate registered rollback and H5J remains unchanged.
 # H6P is a qualified default-off same-ABI capability; source stays H6I until
 # complete-state, integrated-topology, and clean request gates adjudicate it.
-# H6T is a qualified default-off sibling of H6R through the same raw allocation
-# and active-expert ABI; H6R remains source until separate source-default gates.
+# H6T is the retained source through the same raw allocation and active-expert
+# ABI after complete-state, topology, fixed, and 512/1K/4K publication gates.
 _H5Q_IQ3_ACTIVE_EXPERT_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
     "resident_rowbatch8_bf16_bf16_out"
@@ -235,7 +235,7 @@ _H6T_IQ3_FUSED_DPP_ADD_VARIANT = (
     "bf16_bf16_out"
 )
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
-    "gguf_iq3_xxs": _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT,
+    "gguf_iq3_xxs": _H6T_IQ3_FUSED_DPP_ADD_VARIANT,
     "gguf_iq4_xs": (
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),
