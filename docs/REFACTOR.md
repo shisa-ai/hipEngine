@@ -2545,13 +2545,15 @@ should be boring.
   repair is **7.25x** slower than the retained GQA6 owner. Kahan compensation
   still fails all-layer quality at **0.450784**. A compensated layer-28-plus
   route passes teacher forcing and is faster through 128K, but changes the
-  mandatory recurrent 128K final token/hash and is removed. Only the measured
-  late-four scope is admitted, at maximum KL **0.042569/0.007344** and 254/254
-  top-1 across two independent prompts.
+  mandatory recurrent 128K final token/hash and is removed. The narrower
+  compensated-layer-28 symbol is retained: it leaves uncompensated layers
+  32/36/40/44 unchanged, passes at maximum KL **0.007761**, and preserves the
+  128K trajectory while improving it **1.667%**. These five measured layers
+  are admitted; layers 0..24 remain exact.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered
-  4,096-token production owner, its gfx1151 minimum-layer capability, compact
-  evidence, and same-state quality harness. The exact normalized/deferred
-  GQA6 siblings and generic complete-`KVLiveSpans` split route remain required
-  rollback/fallback paths.
+  uncompensated 4,096-token production owner, the isolated compensated-layer
+  owner, their gfx1151 capabilities, compact evidence, and same-state quality
+  harness. The exact normalized/deferred GQA6 siblings and generic
+  complete-`KVLiveSpans` split route remain required rollback/fallback paths.

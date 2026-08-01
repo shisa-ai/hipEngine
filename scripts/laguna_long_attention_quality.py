@@ -180,7 +180,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             prefill_chunk_size=args.chunk_size,
         )
         control.kv_cache.global_split_gqa6_ctx4096_min_layer = None
+        control.kv_cache.global_split_gqa6_ctx4096_compensated_layer = None
         candidate.kv_cache.global_split_gqa6_ctx4096_min_layer = 32
+        candidate.kv_cache.global_split_gqa6_ctx4096_compensated_layer = 28
         control_result = control.prefill(token_stream, use_bulk=True)
         candidate_result = candidate.prefill(token_stream, use_bulk=True)
         if int(control_result.next_token_id) != int(candidate_result.next_token_id):
@@ -247,7 +249,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "chunk_size": args.chunk_size,
             "token_source": token_source,
             "control_route": "exact_gqa6_deferrednorm_dim32_vstage64",
-            "candidate_route": "ctx4096_no_repair_layers32_36_40_44",
+            "candidate_route": (
+                "ctx4096_compensated_layer28_plus_retained_uncompensated_"
+                "layers32_36_40_44"
+            ),
         },
         "quality": {
             "finite": finite,

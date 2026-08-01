@@ -215,6 +215,19 @@ class LagunaKVCache:
             )
             else None
         )
+        ctx4096_compensated_layer = backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
+            None,
+        )
+        self.global_split_gqa6_ctx4096_compensated_layer = (
+            int(ctx4096_compensated_layer)
+            if (
+                self.global_split_gqa6_deferrednorm_dim32_vstage64
+                and ctx4096_compensated_layer is not None
+            )
+            else None
+        )
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -764,6 +777,21 @@ class LagunaKVCache:
                         and self.global_split_fixedshape_reduce
                         and state.capacity == 4096
                         and state.q_heads == 48
+                    )
+                    else (
+                        "global_context_split_gated_gqa6_dim32_"
+                        "vstage64_ctx4096_compensated_spans"
+                    )
+                    if (
+                        use_gated
+                        and self.global_split_gqa6_deferrednorm_dim32_vstage64
+                        and (
+                            self.global_split_gqa6_ctx4096_compensated_layer
+                            is not None
+                        )
+                        and state.q_heads == 48
+                        and layer_id
+                        == self.global_split_gqa6_ctx4096_compensated_layer
                     )
                     else (
                         "global_context_split_gated_gqa6_dim32_"

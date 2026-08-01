@@ -2501,6 +2501,7 @@ void laguna_global_attention_split_exact_qhead_dim32_direct_pv_kernel(
 // chronological order. This preserves QK, probability, value conversion, and
 // per-split scalar-F32 FMA order; only cross-split accumulation association
 // differs from the exact fallback.
+template <bool kCompensated>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_gqa6_dim32_vstage64_ctx4096_pv_kernel(
     const uint16_t* value_cache,
@@ -2596,6 +2597,7 @@ void laguna_global_attention_split_gqa6_dim32_vstage64_ctx4096_pv_kernel(
   __syncthreads();
 
   float acc = 0.0f;
+  float correction = 0.0f;
   for (int64_t stage_base = 0; stage_base < split_count;
        stage_base += kValueStage) {
     const int stage_count = static_cast<int>(
@@ -2654,8 +2656,17 @@ void laguna_global_attention_split_gqa6_dim32_vstage64_ctx4096_pv_kernel(
         const float weight =
             shared_probability[stage_parity][wave][stage_token];
         if (!(weight > 0.0f)) continue;
-        acc += weight * laguna_bf16_bits_to_float(
+        const float value = laguna_bf16_bits_to_float(
             stage_value[stage_token * kDimTile + lane]);
+        const float product = weight * value;
+        if constexpr (kCompensated) {
+          const float corrected = product - correction;
+          const float next = acc + corrected;
+          correction = (next - acc) - corrected;
+          acc = next;
+        } else {
+          acc += product;
+        }
       }
     }
     __syncthreads();
@@ -2668,6 +2679,7 @@ void laguna_global_attention_split_gqa6_dim32_vstage64_ctx4096_pv_kernel(
   }
 }
 
+template <bool kCompensated>
 __global__ __launch_bounds__(128)
 void laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel(
     const float* partial_out,
@@ -2687,9 +2699,18 @@ void laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel(
   }
   const int output_idx = q_head * kHeadDim + dim;
   float acc = 0.0f;
+  float correction = 0.0f;
   for (int split = 0; split < num_splits; ++split) {
-    acc += partial_out[static_cast<int64_t>(split) * kOutputElements +
-                       output_idx];
+    const float partial =
+        partial_out[static_cast<int64_t>(split) * kOutputElements + output_idx];
+    if constexpr (kCompensated) {
+      const float corrected = partial - correction;
+      const float next = acc + corrected;
+      correction = (next - acc) - corrected;
+      acc = next;
+    } else {
+      acc += partial;
+    }
   }
   float reverse_acc = 0.0f;
   for (int split = num_splits - 1; split >= 0; --split) {
@@ -9819,8 +9840,9 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int
-hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+template <bool kCompensated>
+static int
+laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_impl(
     const float* query,
     const uint16_t* key_cache,
     const uint16_t* value_cache,
@@ -9903,7 +9925,7 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      laguna_global_attention_split_gqa6_dim32_vstage64_ctx4096_pv_kernel,
+      (laguna_global_attention_split_gqa6_dim32_vstage64_ctx4096_pv_kernel<kCompensated>),
       dim3(32, static_cast<unsigned int>(num_splits)),
       dim3(512),
       0,
@@ -9920,7 +9942,7 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel,
+      (laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel<kCompensated>),
       dim3(48),
       dim3(128),
       0,
@@ -9935,6 +9957,41 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096
   error = static_cast<int>(hipGetLastError());
   return error;
 }
+
+#define LAGUNA_CTX4096_ARGUMENTS                                               \
+    const float* query, const uint16_t* key_cache,                            \
+        const uint16_t* value_cache, float* out, const float* gate,           \
+        uint16_t* gated_out, float* score_scratch, int32_t* physical_scratch, \
+        const int32_t* base_offsets, const int64_t* live_counts,              \
+        const int64_t* token_positions, const uint8_t* evict_mask,            \
+        const int64_t* row_positions, int64_t capacity, int64_t block_size,   \
+        int64_t block_table_len, int64_t scratch_stride, int64_t scan_slots,  \
+        int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim,          \
+        float scale, hipStream_t stream
+
+#define LAGUNA_CTX4096_FORWARD                                                \
+    query, key_cache, value_cache, out, gate, gated_out, score_scratch,       \
+        physical_scratch, base_offsets, live_counts, token_positions,         \
+        evict_mask, row_positions, capacity, block_size, block_table_len,     \
+        scratch_stride, scan_slots, num_q_heads, num_kv_heads, head_dim,      \
+        scale, stream
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_impl<
+      false>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_impl<
+      true>(LAGUNA_CTX4096_FORWARD);
+}
+
+#undef LAGUNA_CTX4096_FORWARD
+#undef LAGUNA_CTX4096_ARGUMENTS
 
 extern "C" int
 hipengine_laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans(

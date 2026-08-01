@@ -197295,3 +197295,45 @@ Vulkan local sizes verbatim will close the measured gap.
 - Production remains the scalar-F32 late-four split at revision `59bd73684`.
   The next bounded screen must compensate only newly added layer 28 while
   leaving retained layers 32/36/40/44 bit-for-bit unchanged.
+
+## 2026-08-02 02:53 JST — Retain isolated compensated layer-28 global attention
+
+- Added a separately registered context-split owner that Kahan-compensates
+  scalar-F32 accumulation inside each 4,096-token D32/V64 partial and its
+  chronological merge. gfx1151 selects it only at global layer 28. The
+  retained layers 32/36/40/44 still call the uncompensated symbol, layers
+  0..24 stay exact, and peer backends have no capability. The implementation
+  keeps complete `KVLiveSpans`, resident bytes, and allocation count.
+- RED pinned the missing architecture capability and layer-28 route. The new
+  wrapper, registry key, runtime equality selector, backend capability, and
+  quality/profile metadata then pass the CPU-reference attention fixture,
+  routing/backend checks, Python compile, and the complete affected
+  **89-test** bundle.
+- Same-resident d16K/70 and d16K/127 teacher-forced screens both pass. The full
+  gate is maximum/mean KL **0.00776076/0.000221617**, **127/127 top-1**, finite
+  logits, and exact teardown. Raw 70/127 SHA-256 values are
+  `b2c2e9d57bcec4d305d4e05d0eec1edc7ee84179f816a964214264c93a54556d`
+  and `65bf48c01a0eb4747ce2282c1d9d7abf1743d4c312bb735703c97842ad6a1b10`.
+- The required one-pass capacity131,200/chunk2,048 production gate moves
+  late-four d4K/d16K/d64K/d128K
+  **21.665381/17.365235/9.820542/6.217726 ->
+  21.664951/17.433488/9.867588/6.321390 tok/s**. The inactive 4K row is
+  **-0.002%** noise; active rows improve **+0.393%/+0.479%/+1.667%**.
+  Crucially, the mandatory 128K row preserves final token/hash
+  **874 / c8307c...**, position **131,198**, and all established hashes at
+  shorter depths. **87,407,934,744 bytes / 1,452 allocations** recover fully.
+  Raw d4K+d16K+d64K and d128K SHA-256 values are
+  `63541bf717e0f6f70bdd17a1d4fafcdc744c58b403e8e2def2901f8d5566cfa1`
+  and `65638b9720cee6c2503ad4282a90fa90b2bcba07f2da728cc8fd207dcac10e12`.
+- Cached rocprof confirms the compensated PV/merge symbols at live4,097 with
+  local **512/128**, VGPR **32/16**, LDS **11,264/0**, and scratch0. The trace
+  duration is not used as a performance comparison because the compensated
+  dispatch follows the ordinary path in the fixture and benefits from warm
+  cache. CSV SHA-256 is
+  `b142761a0c4888b0c3b0c9a0385e033cb350b30a8484b7904554097fe09e13ac`.
+- Published
+  `2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json`,
+  the kernel/decode/architecture/refactor docs, and rollup/changelog. Lineage
+  inspection still cannot open the absent configured atlas tree; this is an
+  original in-tree variant rather than a port. Commit the production unit
+  next, then run a tracked-clean 16K confirmation.

@@ -9411,6 +9411,33 @@ The remaining attention sequence is:
      retained layers unchanged and isolate any arithmetic change to the newly
      proposed boundary layer.
 
+204. Admit compensated context parallelism on layer 28 alone.
+     **Retained and production-default; LC-D3 fourth checkpoint.**
+
+     The isolated variant Kahan-compensates each scalar-F32 4,096-token PV
+     partial and its ordered merge only at global layer 28. The already
+     retained layers 32/36/40/44 continue through the original uncompensated
+     symbol, and layers 0..24 remain on exact deferred GQA6. This distinction
+     fixes the prior layer-28-plus trajectory failure: the full d16K/127 gate
+     passes at maximum/mean KL **0.007761/0.000222** and **127/127 top-1**.
+
+     | Decode depth | Prior late-four | Layer-28 compensated | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 21.665381 | **21.664951 tok/s** | -0.002% (inactive/noise) | 23.037017 | **94.044%** |
+     | 16K | 17.365235 | **17.433488 tok/s** | **+0.393%** | 21.728347 | **80.234%** |
+     | 64K | 9.820542 | **9.867588 tok/s** | **+0.479%** | 17.737473 | **55.631%** |
+     | 128K | 6.217726 | **6.321390 tok/s** | **+1.667%** | 14.237076 | **44.401%** |
+
+     The mandatory 128K row now preserves final token/hash
+     **874 / c8307c...**, position **131,198**, and complete
+     **87,407,934,744-byte / 1,452-allocation** recovery. Cached tracing names
+     both compensated kernels at local **512/128**, VGPR **32/16**, LDS
+     **11,264/0**, and scratch0. The focused bundle passes **89 tests**. The
+     remaining exact burden is seven global layers (0/4/8/12/16/20/24), so
+     LC-D3 continues with a tiled exact replay or a newly isolated precision
+     seam rather than broad arithmetic changes:
+     [`layer-28 compensated production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9428,7 +9455,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Three milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Four milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9437,9 +9464,12 @@ allocation teardown remain mandatory at every retained step.
    32/36/40/44 then improves 16K/64K/128K another
    **2.321%/6.585%/8.600%**, passing two independent 127-step gates at maximum
    KL **0.042569/0.007344** and 100% top-1. All-layer use remains rejected at
-   max KL **0.687034**, and exact sparse repair is too slow. The next step must
-   reduce the exact first-eight-layer score/PV path, improve partial precision
-   enough to widen the measured layer scope, or use an exact tiled replay.
+   max KL **0.687034**, and exact sparse repair is too slow. Isolating Kahan
+   compensation to layer 28 while leaving the final four unchanged passes at
+   max KL **0.007761**, preserves the mandatory 128K trajectory, and improves
+   16K/64K/128K another **0.393%/0.479%/1.667%**. The next step must reduce
+   the exact first-seven-layer score/PV path, improve partial precision enough
+   to widen the measured layer scope, or use an exact tiled replay.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

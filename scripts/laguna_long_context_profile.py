@@ -540,6 +540,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_fixedshape_reduce = False
     active_global_split_gqa6_dim32_vstage64 = False
     active_global_split_gqa6_deferrednorm_dim32_vstage64 = False
+    active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_min_layer: int | None = None
     active_global_fused_fixedshape = False
     active_global_gqa2_vstage64_fixedshape = False
@@ -768,6 +769,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_deferrednorm_dim32_vstage64 = (
             owner.kv_cache.global_split_gqa6_deferrednorm_dim32_vstage64
+        )
+        active_global_split_gqa6_ctx4096_compensated_layer = (
+            owner.kv_cache.global_split_gqa6_ctx4096_compensated_layer
         )
         active_global_split_gqa6_ctx4096_min_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_min_layer
@@ -1301,6 +1305,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_gqa6_ctx4096_min_layer": (
                 active_global_split_gqa6_ctx4096_min_layer
             ),
+            "global_split_gqa6_ctx4096_compensated_layer": (
+                active_global_split_gqa6_ctx4096_compensated_layer
+            ),
             "global_fused_fixedshape": active_global_fused_fixedshape,
             "global_gqa2_vstage64_fixedshape": (
                 active_global_gqa2_vstage64_fixedshape
@@ -1418,7 +1425,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "live-context bands (local1024 through 4000 slots, local512 "
                 "through 6000); larger live contexts use GQA6 score "
                 "ownership, ordered exp/sum reduction, deferred exact "
-                "normalization, and dimension-sharded staged-V PV.",
+                "normalization, and dimension-sharded staged-V PV; gfx1151 "
+                "quality-gates a compensated 4,096-token split at global "
+                "layer 28 and the uncompensated split at layers "
+                "32/36/40/44.",
             ]
         ),
     }
