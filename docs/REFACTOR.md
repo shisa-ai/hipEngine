@@ -2574,6 +2574,9 @@ should be boring.
   Exact score wave8/local256 and wave4/local128 packing is removed after both
   regress every 4K-128K leaf; the production score owner remains one local32
   wave per KV-head/token.
+  Exact PV query-pair ILP is removed after halving output waves regresses every
+  depth by about **21-22%**; one query/output accumulator per wave remains the
+  required D32 ownership.
 - Remove rejected geometries, the unused repair kernel/mask calculation, the
   8,192-token experiment, and non-registered symbols after one clean release
   plus the next exact/precision LC-D3 iteration. Preserve the registered

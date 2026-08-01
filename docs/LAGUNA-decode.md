@@ -9619,6 +9619,19 @@ The remaining attention sequence is:
      merely group identical waves:
      [`exact score-wave packing rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-score-wavepack-rejected.json).
 
+215. Pair independent query accumulators inside each exact PV wave.
+     **Rejected at every leaf depth and removed.**
+
+     A query-pair wave loads one staged BF16 V value and applies two query
+     probabilities to two independent accumulators, preserving the complete
+     chronological FMA chain for each output. It also halves output waves from
+     six to three per D32 workgroup. The candidate is F32/BF16 byte-exact, but
+     regresses live4K/16K/64K/128K
+     **22.109%/21.207%/21.658%/21.647%**. Independent ILP does not compensate
+     for lost output-wave parallelism. Restore six one-query waves and keep all
+     future exact PV candidates at least that parallel:
+     [`exact PV query-pair rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-pv-querypair-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

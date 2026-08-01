@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T05:31:00+09:00",
+  "kind": "hipengine_laguna_long_global_exact_pv_querypair_rejected",
+  "status": "rejected_leaf_regression",
+  "performance_claim": false,
+  "model": {"name": "Poolside Laguna S 2.1", "quant": "Q4_K_M mixed GGUF v3", "kv_dtype": "bf16"},
+  "platform": {"device_name": "AMD Radeon 8060S Graphics", "backend": "hip_gfx1151", "target_arch": "gfx1151", "rocm": "TheRock HIP 7.15.0-0000000"},
+  "candidate": {
+    "control": "six output waves per D32 workgroup, one query/output accumulator per wave",
+    "route": "three output waves per D32 workgroup, two independent query accumulators per wave",
+    "mechanism": "reuse each staged V register across two query weights and expose two independent chronological FMA chains per lane",
+    "candidate_code_retained": false
+  },
+  "leaf": {
+    "protocol": "capacity131201, live4097/16448/65664/131200, 3 warmups, 7 samples, burst10",
+    "rows": [
+      {"live_count": 4097, "one_query_ms": 0.2811356068, "query_pair_ms": 0.3432923079, "delta_percent": 22.109153},
+      {"live_count": 16448, "one_query_ms": 1.1532685280, "query_pair_ms": 1.3978473663, "delta_percent": 21.207449},
+      {"live_count": 65664, "one_query_ms": 4.5586521149, "query_pair_ms": 5.5459804535, "delta_percent": 21.658339},
+      {"live_count": 131200, "one_query_ms": 9.0845031738, "query_pair_ms": 11.0509811401, "delta_percent": 21.646511}
+    ],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "raw_sha256": "f7e7e4c14cfd08e867313316afc9b29440cdc1c5a5b0c2c93ea54caa3fd4b9ec"
+  },
+  "decision": {
+    "reason": "independent accumulator ILP cannot compensate for halving output-wave parallelism; all required depths regress about 21-22%",
+    "production_gate_run": false,
+    "mandatory_128k_gate_run": false,
+    "production_restored": "451544b4a one-query-per-wave parallel-max default",
+    "next_attack": "retain six output waves and reduce exact PV synchronization or probability transport"
+  },
+  "validation": {"cpu_reference_fixture": "passed", "restored_production_tracked_diff": "none"}
+}
