@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "created_at": "2026-08-02T02:48:24+09:00",
+  "kind": "hipengine_laguna_long_global_layer28_compensated_retained",
+  "status": "accepted_production_default",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "variant": "global_context_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_spans",
+    "scope": "global layer 28 above 6000 live slots",
+    "mechanism": "Kahan-compensate the scalar-F32 accumulation inside each 4096-token PV partial and its chronological split merge only for newly admitted layer 28",
+    "retained_unmodified_scope": "global layers 32, 36, 40, and 44 continue through the uncompensated ctx4096 symbol",
+    "exact_fallback_scope": "global layers 0 through 24 and every peer backend retain exact deferred-normalization GQA6",
+    "gfx1151_capabilities": {
+      "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER": 28,
+      "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER": 32
+    },
+    "resident_byte_delta": 0,
+    "allocation_count_delta": 0
+  },
+  "quality": {
+    "protocol": "same-resident d16K mixed_ja_en_review teacher forcing against exact deferred-normalization GQA6",
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_attention_quality.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --context-length 131200 --length 16384 --prompt-id mixed_ja_en_review --teacher-steps 127 --chunk-size 2048 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd4-ctx4096-compensated-layer28-only-quality127-16k.json",
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_top1_agreement": 0.9
+    },
+    "steps": 127,
+    "max_kl_divergence": 0.007760759932248973,
+    "mean_kl_divergence": 0.00022161747748507995,
+    "max_abs_logit_delta": 2.033012866973877,
+    "top1_matches": 127,
+    "top1_total": 127,
+    "finite": true,
+    "pass": true,
+    "raw_sha256": "65bf48c01a0eb4747ce2282c1d9d7abf1743d4c312bb735703c97842ad6a1b10"
+  },
+  "production_sweep": {
+    "protocol": "capacity131200, chunk2048, eager c1, one warmup row, one 127-transition sample per depth",
+    "commands": [
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd4-ctx4096-compensated-layer28-only-production-4k16k64k.json",
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-lcd4-ctx4096-compensated-layer28-only-production-128k.json"
+    ],
+    "rows": [
+      {
+        "depth": 4096,
+        "prior_tok_s": 21.665381335483705,
+        "candidate_tok_s": 21.66495140641239,
+        "delta_percent": -0.0019844057423168415,
+        "route_active": false,
+        "llamacpp_vulkan_tok_s": 23.037017,
+        "vulkan_parity_percent": 94.04408307903923,
+        "final_token_id": 6436,
+        "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"
+      },
+      {
+        "depth": 16384,
+        "prior_tok_s": 17.3652352551727,
+        "candidate_tok_s": 17.433488161039417,
+        "delta_percent": 0.3930433700654046,
+        "route_active": true,
+        "llamacpp_vulkan_tok_s": 21.728347,
+        "vulkan_parity_percent": 80.2338445765774,
+        "final_token_id": 13815,
+        "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"
+      },
+      {
+        "depth": 65536,
+        "prior_tok_s": 9.820541836480508,
+        "candidate_tok_s": 9.867588161612558,
+        "delta_percent": 0.47906038093830094,
+        "route_active": true,
+        "llamacpp_vulkan_tok_s": 17.737473,
+        "vulkan_parity_percent": 55.63130758035576,
+        "final_token_id": 1869,
+        "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"
+      },
+      {
+        "depth": 131072,
+        "prior_tok_s": 6.2177259644031935,
+        "candidate_tok_s": 6.321389771728166,
+        "delta_percent": 1.6672302368816672,
+        "route_active": true,
+        "llamacpp_vulkan_tok_s": 14.237076,
+        "vulkan_parity_percent": 44.400899255775315,
+        "final_token_id": 874,
+        "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+      }
+    ],
+    "final_positions_exact": true,
+    "all_established_generated_hashes_match": true,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_4k_16k_64k_sha256": "63541bf717e0f6f70bdd17a1d4fafcdc744c58b403e8e2def2901f8d5566cfa1",
+    "raw_128k_sha256": "65638b9720cee6c2503ad4282a90fa90b2bcba07f2da728cc8fd207dcac10e12"
+  },
+  "trace": {
+    "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "live_count": 4097,
+    "compensated_pv_duration_ns": 230553,
+    "compensated_merge_duration_ns": 2084,
+    "pv_local_size": 512,
+    "pv_vgpr": 32,
+    "pv_lds_bytes": 11264,
+    "pv_scratch_bytes": 0,
+    "merge_local_size": 128,
+    "merge_vgpr": 16,
+    "merge_lds_bytes": 0,
+    "merge_scratch_bytes": 0,
+    "timing_note": "dispatch durations are execution proof only because the compensated fixture dispatch follows the ordinary dispatch and benefits from warm cache",
+    "csv_sha256": "b142761a0c4888b0c3b0c9a0385e033cb350b30a8484b7904554097fe09e13ac"
+  },
+  "validation": {
+    "python_compile": "passed",
+    "focused_tests": "89 passed",
+    "kernel_trace": "passed with the compensated PV and merge symbols",
+    "lineage": "Original in-tree implementation; scripts/check_lineage.py cannot inspect the absent configured atlas tree."
+  }
+}

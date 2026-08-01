@@ -153,6 +153,16 @@ and is **1.357%** faster at 128K, but changes the required recurrent final
 token/hash. Both candidates are rejected and removed; the late-four default
 and its established trajectory remain unchanged.
 
+An isolated follow-up changes that conclusion only for newly admitted global
+layer 28: Kahan compensation runs there alone while layers 32/36/40/44 keep
+the retained uncompensated arithmetic. The d16K/127 gate passes at maximum KL
+**0.007761** and **127/127 top-1**. One-pass d16K/d64K/d128K improves
+**17.365/9.821/6.218 -> 17.433/9.868/6.321 tok/s
+(+0.393%/+0.479%/+1.667%)**; the mandatory 128K final token/hash remains
+**874 / c8307c...**, and lifecycle is exact. Vulkan parity is now
+**80.234%/55.631%/44.401%** at 16K/64K/128K.
+[`layer-28 compensated production`](results/2026-08-02-gfx1151-laguna-long-global-layer28-compensated-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

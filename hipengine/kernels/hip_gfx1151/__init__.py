@@ -378,6 +378,9 @@ LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = True
 # layers (32/36/40/44) at max KL 0.04257 and 100% top-1, while an all-layer
 # route exceeds the quality ceiling. Earlier global layers retain exact GQA6.
 LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER = 32
+# The isolated quality/trajectory gate admits compensated split accumulation
+# only at layer 28 while preserving the final-four arithmetic unchanged.
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER = 28
 # The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
 # removes the score plane/launch while preserving reduction association.
 LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
@@ -980,6 +983,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
