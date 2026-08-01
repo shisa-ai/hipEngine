@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted quality-gated gfx1151 Laguna late-four context-parallel long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: scope 4,096-token partial-PV/merge to global layers 32/36/40/44 after two independent d16K/127-step gates pass at max KL **0.042569/0.007344** and **254/254 top-1**, moving exact d16K/d64K/d128K **16.971/9.214/5.725 -> 17.364/9.821/6.218 tok/s (+2.321%/+6.585%/+8.600%)** with established hashes/positions/lifecycle; d4K is route-inactive and flat; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-late4-ctx4096-retained.json`.
+
 - [accepted production/default gfx1151 Laguna exact deferred-normalization long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: keep exact exp32 reduction but apply its inverse denominator once in D32/V64 PV instead of writing normalized scores, improving the first GQA6 owner **21.662/16.790/9.079/5.603 -> 21.670/16.971/9.214/5.725 tok/s (+0.036%/+1.078%/+1.490%/+2.190%)** with exact leaves/trajectories and no residency delta; tracked-clean d16K confirms **16.936 tok/s (+1.075%)**, while faster context split is rejected at max KL **0.687034**; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json`.
 
 ## 2026-08-01

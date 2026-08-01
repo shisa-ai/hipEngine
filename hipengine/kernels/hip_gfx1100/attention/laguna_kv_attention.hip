@@ -9933,26 +9933,7 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096
       row_positions,
       num_splits);
   error = static_cast<int>(hipGetLastError());
-  if (error != static_cast<int>(hipSuccess)) return error;
-  hipLaunchKernelGGL(
-      laguna_global_attention_split_gqa6_ctx4096_pv_repair_kernel,
-      dim3(48),
-      dim3(128),
-      0,
-      stream,
-      value_cache,
-      score_scratch,
-      physical_scratch,
-      repair_mask,
-      out,
-      gate,
-      gated_out,
-      live_counts,
-      row_positions,
-      capacity,
-      scratch_stride,
-      scan_slots);
-  return static_cast<int>(hipGetLastError());
+  return error;
 }
 
 extern "C" int
