@@ -906,6 +906,29 @@ def _raw_k_prefill_rowbatch_dispatch(
             else "coltile4_rowbatch8"
         )
         selected_variant = f"{geometry}_{output_variant}"
+        role_variants = backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_RAW_K_PREFILL_ROLE_VARIANTS",
+            {},
+        )
+        role_key = (
+            dispatch.key.quant,
+            output_variant,
+            int(rows),
+            int(in_features),
+            int(out_features),
+        )
+        if isinstance(role_variants, Mapping):
+            role_variant = role_variants.get(role_key)
+            if isinstance(role_variant, str) and role_variant:
+                role_dispatch_key = KernelKey(
+                    dispatch.key.backend,
+                    dispatch.key.layer,
+                    dispatch.key.quant,
+                    role_variant,
+                )
+                if is_registered(role_dispatch_key):
+                    selected_variant = role_variant
     return GGUFLinearDispatch(
         KernelKey(
             dispatch.key.backend,

@@ -1747,9 +1747,29 @@ wall. Layer-0 down is **14.866/14.868→14.741/14.750 ms**, layer-47 Q is
 **10.752/10.795→10.705/10.700 ms**, and layer-47 output is
 **11.630/11.639→11.537/11.547 ms**. Aggregate event/wall improves
 **37.248/37.303→36.983/36.998 ms (-0.712%/-0.817%)** with exact bytes and
-lifecycle. Runtime/source qualification remains separate; keep the generic
-selected path until that gate passes
-([H7C candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+lifecycle.
+
+H7C now also has a qualified bounded default-off runtime owner. gfx1100 exports
+`GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS` for exactly the three M512
+`(quant, output ABI, rows, K, N)` keys, while
+`GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS` and the live
+`GGUF_RAW_K_PREFILL_ROLE_VARIANTS` remain empty. `gguf_linear` consumes the map
+generically and validates registration; wrong row/quant/K/N, malformed map,
+missing key, and gfx1151 all retain the existing generic coltile route. No
+runner, allocation, ABI, wrapper, registry, kernel, or gfx1151 change is needed.
+
+Complete natural M512 state is KL0/byte-exact across logits, final/post hidden,
+**48/48** hidden boundaries, full KV/spans, and repeat at unchanged
+**161,120,256 / 600,141,856-byte** ordered workspace/total scratch. Four
+cache-only C512 requests preserve **2,192 dispatches** and exact family counts;
+controls own **2 BF16 + 1 F32** generic calls and candidates own the matching
+three H7C calls at unchanged offsets/resources. Selected raw-Q6/Q6/span medians
+improve **28.543/81.457/1,280.898→28.220/81.105/1,279.005 ms** with zero
+compiler. Matched C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**,
+and 512/1K/4K medians improve **+0.0552%/+0.0274%/+0.0179%** with exact state
+and complete lifecycle. Admit runtime ownership but keep the live generic map
+until the separate source-default gate
+([H7C candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

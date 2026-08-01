@@ -583,9 +583,16 @@ calls, which own **28.474 ms (34.904% of Q6)**. Complete correctness passes
 adds**, metadata/runtime VGPR **60/64** and **55/56**, LDS512, and scratch0.
 The one-shot actual-weight screen improves all three roles on both clocks and
 the aggregate **37.248/37.303→36.983/36.998 ms event/wall
-(-0.712%/-0.817%)**. Runtime/source remain on the generic rollback pending a
-separate gate, so production is unchanged
-([H7C candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
+(-0.712%/-0.817%)**. Bounded default-off runtime ownership is now qualified:
+complete M512 state is KL0/byte-exact across all 48 hidden boundaries and full
+KV/spans; four cache-only requests preserve **2,192 dispatches** while replacing
+exactly two BF16 plus one F32 generic calls, cutting the selected subwindow
+**28.543→28.220 ms (-1.132%)** and span **1,280.898→1,279.005 ms**. Matched
+C4096/M512 improves **420.701→420.914 tok/s (+0.0505%, 4/5)**, and 512/1K/4K
+medians improve **+0.0552%/+0.0274%/+0.0179%** with exact state and unchanged
+scratch. The live source map remains the named empty generic rollback, so
+production stays **422.947 tok/s / 1,199.578 ms** pending a separate source gate
+([H7C candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json) ·
 [target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json)).
 
 Both short
