@@ -1445,15 +1445,19 @@ live16,448 global attention to **16.209 ms/token** and improve directional
 4K/16K/64K/128K production decode by
 **39.96%/117.15%/262.23%/326.73%** with exact recurrent state. This clears the
 first **<=20-ms** gate; tracked-clean 16K reproduces **16.756 tok/s
-(+116.72%)** within **0.20%** of the directional row. LC-D3 remains active
-because the implementation still
-materializes the full F32 score/physical plane; the next owner must replace it
-with bounded output/max/denominator partials while moving the same depth gates
-and targeting **<=5 ms/token** at 16K. A clean post-promotion trace measures
-the remaining global interval at **16.293 ms/token = 3.660 score + 3.371
-normalize + 9.261 PV**. Its gap to Vulkan's global scheduled group explains
-**98.081%** of the remaining device-union gap, so context-parallel PV/merge is
-the immediate implementation target, followed by parallel normalization.
+(+116.72%)** within **0.20%** of the directional row. The next exact checkpoint
+defers probability normalization into the D32/V64 PV loader, removes one full
+score-plane writeback/read pass, and improves complete 4K/16K/64K/128K another
+**0.036%/1.078%/1.490%/2.190%** to
+**21.670/16.971/9.214/5.725 tok/s**, with identical F32/BF16 leaves, generated
+hashes, positions, residency, and lifecycle. A faster 4,096-token
+context-parallel partial/merge path is rejected at maximum KL **0.687034**
+despite 100% teacher-forced top-1; exact repair is slower than the retained
+path. LC-D3 therefore remains active because the full score/physical plane
+still exists. The next owner must replace it with bounded exact
+output/max/denominator partials or an ordered tiled replay while targeting
+**<=5 ms/token** at 16K. Reassociated online-softmax arithmetic is not a
+numerics waiver.
 
 | Phase | Scope | New LoC | Adapted LoC | Total |
 |-------|-------|---------|-------------|-------|

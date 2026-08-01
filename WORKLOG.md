@@ -197144,3 +197144,50 @@ Vulkan local sizes verbatim will close the measured gap.
   `aea0af7807f20aafa9e9369dd76ab9f6a614f6bc9b81d1d0bb42b78962398d3c`,
   and
   `c6e2b50a0b619b84dcb1b82a998bcb20e7ac520bbe622d25035f885e49234631`.
+
+## 2026-08-02 00:40 JST — Retain exact deferred-normalization long attention
+
+- Screened the obvious post-GQA6 geometry changes against the byte-exact
+  live4,097/16,448/65,664/131,200 leaf. D64/V64 regresses **11.74-12.92%**,
+  D64/V32 regresses **13.56-14.77%**, local256 D32 regresses
+  **1.99%/13.81%/16.06%** at 16K/64K/128K, direct-qhead D32 regresses about
+  **3.12x**, and GQA6 score tile4 regresses **0.73-3.08%**. All remain exact
+  diagnostics and are not runtime-selected.
+- A bounded 4,096-token context-split PV/merge prototype improves dirty
+  directional complete decode to **21.674/18.201/11.138/7.386 tok/s** at
+  4K/16K/64K/128K, but changes long generated hashes. Added
+  `scripts/laguna_long_attention_quality.py` to teacher-force two resident
+  sessions sharing one weight set from identical state. Its 16K/127-step gate
+  keeps **127/127 top-1** but fails at maximum KL **0.687034** (mean
+  **0.008730**, max-logit delta **8.3202**) versus the **0.05** ceiling.
+  Exact sparse BF16-boundary repair is several milliseconds/layer and slower
+  than retained GQA6. Reject context-split production rather than treating
+  top-1 equality as sufficient quality.
+- Retained an exact smaller traffic cut. The exp32 denominator kernel now
+  leaves unnormalized exponentials in the existing F32 plane and writes 48
+  inverse sums into unused physical-scratch tail space; the D32/V64 PV loader
+  applies the same inverse once before the unchanged chronological scalar-F32
+  FMA. Live4,097/16,448/65,664/131,200 leaf improves
+  **0.512%/0.864%/0.755%/0.638%**, with zero F32 or BF16 mismatches. Cached
+  live16,448 tracing records **0.286874-ms score + 0.249075-ms denominator +
+  0.765256-ms PV**, local **32/256/512**, VGPR **16/56/32**, LDS
+  **0/512/11,264**, and scratch0.
+- The required one-session capacity131,200 directional production gate passes
+  exactly. Prior-GQA6 -> deferred-normalization 4K/16K/64K/128K is
+  **21.662375/16.789574/9.078577/5.602687 ->
+  21.670243/16.970569/9.213843/5.725365 tok/s
+  (+0.036%/+1.078%/+1.490%/+2.190%)**. From the pre-LC-D3 baseline, total
+  gains are **40.008%/119.490%/267.623%/336.078%**. All final tokens,
+  generated hashes, and positions match; **87,407,934,744 bytes / 1,452
+  allocations** recover fully. The raw leaf/production JSON SHA-256 values are
+  `c5a414eec634f8f0a43115145da4bb04209bd6e590e707ed9fd5d242e23fd57b`
+  and `882f12395486f0d4e68cb0e3b22516c341c1bd26c970bc3f1e431f8664510896`.
+- Validation passes: Python compile and **66 focused tests**, including the
+  large-capacity exact global fixture, route/resource selection, harness, and
+  gfx1151 package bundle. `scripts/check_lineage.py --kind kernel --diff stat`
+  still cannot complete because the configured external
+  `/home/lhl/amd-gpu-tuning/reference/atlas` tree is absent; this is original
+  in-tree work rather than a port. Published the compact benchmark artifact,
+  kernel catalog, decode/architecture plans, rollup/changelog, and refactor
+  removal trigger. Commit next, then run the required tracked-clean 16K
+  production confirmation.

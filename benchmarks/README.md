@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-01**
+Last updated: **2026-08-02**
 
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -115,6 +115,18 @@ score + 3.371-ms normalize + 9.261-ms PV**. The global-group gap still explains
 **98.081%** of the remaining device gap, selecting context-parallel PV/merge
 before normalization.
 [`GQA6/D32 production`](results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json).
+
+The next exact checkpoint removes normalized-score writeback and applies the
+unchanged inverse denominator once in the D32/V64 PV loader. Relative to the
+first GQA6 owner, directional 4K/16K/64K/128K decode improves another
+**0.036%/1.078%/1.490%/2.190%** to
+**21.670/16.971/9.214/5.725 tok/s**, with byte-exact leaves, identical
+generated hashes/positions, unchanged residency, and full allocation recovery.
+Total improvement from the pre-LC-D3 curve is now
+**40.008%/119.490%/267.623%/336.078%**. A faster 4,096-token context-parallel
+merge is rejected at maximum KL **0.687034** despite 100% teacher-forced
+top-1, so it is not counted as production progress.
+[`deferred-normalization production`](results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json).
 
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven

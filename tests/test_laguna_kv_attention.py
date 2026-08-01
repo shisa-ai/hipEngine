@@ -4640,7 +4640,10 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
+        laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans,
     )
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+    from hipengine.quant.gguf import bf16_to_float32
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
     runtime = get_hip_runtime()
@@ -4670,6 +4673,8 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
     values = rng.normal(0.0, 0.12, size=(rows, 8, 128)).astype(np.float32)
     query = rng.normal(0.0, 0.12, size=(48, 128)).astype(np.float32)
     gate = rng.normal(0.0, 0.4, size=48).astype(np.float32)
+    keys_bf16 = bf16_to_float32(float_array_to_bf16_bits(keys))
+    values_bf16 = bf16_to_float32(float_array_to_bf16_bits(values))
     allocations = []
     try:
         key_device = malloc(keys.nbytes, runtime=runtime)
@@ -4780,6 +4785,37 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                 )
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            candidate = np.empty_like(query)
+            candidate_gate_bits = np.empty(query.shape, dtype=np.uint16)
+            for host, device in (
+                (candidate, candidate_out),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            expected = _attention_reference(
+                query,
+                keys_bf16[:scan_slots],
+                values_bf16[:scan_slots],
+                num_kv_heads=8,
+            )
+            np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
             candidate_fn(
                 *common,
                 candidate_out.ptr,
@@ -4847,7 +4883,7 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
             library=library,
             runtime=runtime,
         )
-        laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans(
+        laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans(
             *common,
             candidate_out.ptr,
             gate_device.ptr,
@@ -4861,6 +4897,60 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         candidate = np.empty_like(query)
         control_gate_bits = np.empty(query.shape, dtype=np.uint16)
         candidate_gate_bits = np.empty_like(control_gate_bits)
+        for host, device in (
+            (control, control_out),
+            (candidate, candidate_out),
+            (control_gate_bits, control_gated),
+            (candidate_gate_bits, candidate_gated),
+        ):
+            copy_device_to_host(
+                host_array_ptr(host),
+                device,
+                host.nbytes,
+                runtime=runtime,
+            )
+        assert np.array_equal(candidate, control)
+        assert np.array_equal(candidate_gate_bits, control_gate_bits)
+
+        # A caller may conservatively scan farther than the live prefix. The
+        # deferred-normalization path must retain exact visibility semantics.
+        live_count = np.asarray([1024], dtype=np.int64)
+        runtime.memcpy(
+            state.spans.live_counts.ptr,
+            host_array_ptr(live_count),
+            live_count.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+        )
+        tail = (
+            cache._split_score_scratch.ptr,
+            cache._split_physical_scratch.ptr,
+            state.spans,
+            capacity,
+            capacity,
+            48,
+            8,
+            128,
+            128**-0.5,
+        )
+        laguna_global_attention_decode_split_exact_gated_bf16_spans(
+            *common,
+            control_out.ptr,
+            gate_device.ptr,
+            control_gated.ptr,
+            *tail,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans(
+            *common,
+            candidate_out.ptr,
+            gate_device.ptr,
+            candidate_gated.ptr,
+            *tail,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
         for host, device in (
             (control, control_out),
             (candidate, candidate_out),
@@ -4930,7 +5020,7 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
             "producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_"
             "vstage64_vec16_direct_assume_exp_fixedshape_spans"
         ),
-        "global_context_split_exact_gated_gqa6_dim32_vstage64_spans",
+        "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
         (
             "global_context_fused_exact_gated_mixed40_local512_exp32_"
             "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_"

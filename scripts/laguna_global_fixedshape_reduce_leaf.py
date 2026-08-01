@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from hipengine.core.hip import get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -45,8 +45,16 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_split_exact_gated_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_t256_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage32_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf16_spans,
+    laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans,
 )
 from hipengine.loading.laguna_gguf import FULL_ATTENTION
+from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
 
@@ -72,6 +80,13 @@ def _parse_args() -> argparse.Namespace:
         choices=(
             "fixedshape",
             "split-gqa6-dim32-vstage64",
+            "split-gqa6-deferrednorm-dim32-vstage64",
+            "split-gqa6-dim32-vstage64-t256",
+            "split-gqa6-tile4-dim32-vstage64",
+            "split-gqa6-dim64-vstage64",
+            "split-gqa6-dim64-vstage32",
+            "split-qhead-dim32-direct",
+            "split-gqa6-dim32-vstage64-ctx4096",
             "fused-gqa1",
             "fused-gqa2-vstage64",
             "fused-gqa2-vstage64-vec16",
@@ -348,9 +363,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     if args.candidate.startswith("fused-")
                     else laguna_global_attention_decode_split_exact_gated_bf16_spans
                 )
+            if args.candidate in (
+                "split-gqa6-dim32-vstage64-t256",
+                "split-gqa6-deferrednorm-dim32-vstage64",
+                "split-gqa6-tile4-dim32-vstage64",
+                "split-gqa6-dim64-vstage64",
+                "split-gqa6-dim64-vstage32",
+                "split-qhead-dim32-direct",
+            ):
+                control_kernel = laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans
             candidate_kernel = {
                 "fixedshape": laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
                 "split-gqa6-dim32-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
+                "split-gqa6-deferrednorm-dim32-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans,
+                "split-gqa6-dim32-vstage64-t256": laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_t256_bf16_spans,
+                "split-gqa6-tile4-dim32-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans,
+                "split-gqa6-dim64-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
+                "split-gqa6-dim64-vstage32": laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage32_bf16_spans,
+                "split-qhead-dim32-direct": laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf16_spans,
+                "split-gqa6-dim32-vstage64-ctx4096": laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans,
                 "fused-gqa1": laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64-vec16": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,
@@ -404,11 +435,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             candidate_gated_host = _download(
                 runtime, candidate_gated, np.uint16
             )
+            repair_mask_host = np.empty(Q_HEADS * HEAD_DIM, dtype=np.int32)
+            if args.candidate == "split-gqa6-dim32-vstage64-ctx4096":
+                runtime.memcpy(
+                    host_array_ptr(repair_mask_host),
+                    physical_scratch.ptr + args.capacity * 4,
+                    repair_mask_host.nbytes,
+                    HipMemcpyKind.DEVICE_TO_HOST,
+                )
+            else:
+                repair_mask_host.fill(0)
             context_exact = np.array_equal(
                 control_context_host, candidate_context_host
             )
             gated_exact = np.array_equal(control_gated_host, candidate_gated_host)
             approximate_candidate = args.candidate in (
+                "split-gqa6-dim32-vstage64-ctx4096",
                 "wmma-qk-three-term-mixed32-exact-pv",
                 "wmma-gqa6-k64-three-term-raw-numerator",
             )
@@ -427,6 +469,55 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             gated_mismatches = int(
                 np.count_nonzero(candidate_gated_host != control_gated_host)
             )
+            mismatch_mask = candidate_gated_host != control_gated_host
+            gate_softplus = (
+                np.log1p(np.exp(-np.abs(gate), dtype=np.float32), dtype=np.float32)
+                + np.maximum(gate, np.float32(0.0))
+            ).astype(np.float32)
+            candidate_gated_f32 = (
+                candidate_context_host.reshape(Q_HEADS, HEAD_DIM)
+                * gate_softplus[:, None]
+            ).astype(np.float32).reshape(-1)
+            control_gated_f32 = (
+                control_context_host.reshape(Q_HEADS, HEAD_DIM)
+                * gate_softplus[:, None]
+            ).astype(np.float32).reshape(-1)
+            if gated_mismatches:
+                candidate_rounded = bf16_to_float32(candidate_gated_host)
+                control_rounded = bf16_to_float32(control_gated_host)
+                mismatch_midpoint = (
+                    candidate_rounded[mismatch_mask].astype(np.float64)
+                    + control_rounded[mismatch_mask].astype(np.float64)
+                ) * 0.5
+                mismatch_boundary_distance = np.abs(
+                    candidate_gated_f32[mismatch_mask].astype(np.float64)
+                    - mismatch_midpoint
+                )
+                mismatch_relative_boundary_distance = (
+                    mismatch_boundary_distance
+                    / np.maximum(np.abs(mismatch_midpoint), np.finfo(np.float32).tiny)
+                )
+                mismatch_gated_delta = np.abs(
+                    candidate_gated_f32[mismatch_mask].astype(np.float64)
+                    - control_gated_f32[mismatch_mask].astype(np.float64)
+                )
+                rounding_diagnostics = {
+                    "max_mismatch_boundary_distance": float(
+                        np.max(mismatch_boundary_distance)
+                    ),
+                    "max_mismatch_relative_boundary_distance": float(
+                        np.max(mismatch_relative_boundary_distance)
+                    ),
+                    "max_mismatch_gated_f32_delta": float(
+                        np.max(mismatch_gated_delta)
+                    ),
+                }
+            else:
+                rounding_diagnostics = {
+                    "max_mismatch_boundary_distance": 0.0,
+                    "max_mismatch_relative_boundary_distance": 0.0,
+                    "max_mismatch_gated_f32_delta": 0.0,
+                }
 
             for _ in range(args.warmups):
                 control()
@@ -455,6 +546,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         "gated_bf16_byte_exact": gated_exact,
                         "context_max_abs": context_max_abs,
                         "gated_bf16_mismatches": gated_mismatches,
+                        "repair_outputs": int(np.count_nonzero(repair_mask_host)),
+                        "rounding_diagnostics": rounding_diagnostics,
                         "context_sha256": hashlib.sha256(
                             candidate_context_host.tobytes()
                         ).hexdigest(),

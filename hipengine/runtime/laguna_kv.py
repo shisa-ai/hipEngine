@@ -194,6 +194,14 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_deferrednorm_dim32_vstage64 = bool(
+            self.global_split_gqa6_dim32_vstage64
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64",
+                False,
+            )
+        )
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -742,6 +750,15 @@ class LagunaKVCache:
                         use_gated
                         and self.global_split_fixedshape_reduce
                         and state.capacity == 4096
+                        and state.q_heads == 48
+                    )
+                    else (
+                        "global_context_split_exact_gated_gqa6_"
+                        "deferrednorm_dim32_vstage64_spans"
+                    )
+                    if (
+                        use_gated
+                        and self.global_split_gqa6_deferrednorm_dim32_vstage64
                         and state.q_heads == 48
                     )
                     else (

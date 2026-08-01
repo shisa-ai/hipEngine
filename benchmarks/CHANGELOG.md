@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-02
+
+- [accepted production/default gfx1151 Laguna exact deferred-normalization long-global decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: keep exact exp32 reduction but apply its inverse denominator once in D32/V64 PV instead of writing normalized scores, improving the first GQA6 owner **21.662/16.790/9.079/5.603 -> 21.670/16.971/9.214/5.725 tok/s (+0.036%/+1.078%/+1.490%/+2.190%)** with exact leaves/trajectories and no residency delta; reject faster context-split merge at max KL **0.687034**; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-deferrednorm-retained.json`.
+
 ## 2026-08-01
 
 - [accepted production/default gfx1151 Laguna exact long-global GQA6/D32 decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d128K: load K/V once per six-query group, preserve exact exp32 normalization and ordered scalar-F32 PV, and improve directional d4K/d16K/d64K/d128K **15.478/7.732/2.506/1.313 -> 21.662/16.790/9.079/5.603 tok/s (+39.96%/+117.15%/+262.23%/+326.73%)**; tracked-clean d16K confirms **16.756 tok/s (+116.72%, within -0.20% of dirty)** with exact state/lifecycle, while post-profile global attention falls **86.240 -> 16.293 ms/token** and its **9.261-ms PV** selects context split/merge next; `benchmarks/results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json`.

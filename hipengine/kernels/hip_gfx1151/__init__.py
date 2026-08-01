@@ -370,6 +370,9 @@ LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = True
 # normalizer, and dimension-sharded shared-V owner. The live16,448 leaf is
 # byte-exact and 80.94% faster than the generic split path.
 LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64 = True
+# Defer the exact normalization product into each shared-probability load,
+# removing one full score-plane pass without changing its F32 bits.
+LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = True
 # The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
 # removes the score plane/launch while preserving reduction association.
 LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
@@ -971,6 +974,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
