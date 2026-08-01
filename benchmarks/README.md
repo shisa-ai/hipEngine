@@ -8,7 +8,8 @@ The current W7900 Laguna UD-Q2_K_XL source publication is
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json), the clean post-H6W residual and H6X target in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json), H6X's superseding physical rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json), the post-H6X H6Y target in
-[`2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json), retained H6U Q6 source evidence in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json), H6Y's superseding physical rejection in
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json), retained H6U Q6 source evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json), and H6V's superseding rejection in
 [`2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json`](results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
@@ -510,6 +511,18 @@ VGPR **≤101/104**, complete row/FP16/CPU/lifecycle bytes, cached named executi
 and **45/45** event+wall wins. Remove H6Y on any miss without tuning/rerun; H6T
 remains source
 ([post-H6X residual / H6Y target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json)).
+
+**WPF-H6Y is rejected at its frozen physical gate before profiler/timing.**
+The cached **11/11** matrix is complete-byte/CPU exact across rows1/7/8/9/M512,
+reversed P64/P65, all 12 finite FP16 classes, all selector bytes, poison
+coverage, finiteness, and lifecycle. The exact rolling-window implementation
+realizes global loads **23→20**, unchanged barriers/LDS/216 FMAs/24
+permlanex16/96 DPP, and cuts code/slots **7,920/1,384→7,872/1,357**. It also
+requires three `ds_bpermute_b32` scale broadcasts and raises metadata VGPR
+**101→106**, violating the frozen unchanged-DS and **≤101** gates. Therefore
+skip trace and all-45 timing, remove every H6Y source/test/key/export/exclusion
+surface without tuning/rerun, and retain H6T/H6W production **416.891 tok/s**
+([H6Y rejection](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

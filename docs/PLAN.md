@@ -2390,6 +2390,17 @@ clocks under 5/15/5. Remove H6Y on any miss without tuning/rerun; runtime/source
 work remains separate
 ([post-H6X residual / H6Y target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json)).
 
+H6Y is **rejected at the binding physical gate**. The correctness-preserving
+rolling-window/wave-lane0-scale implementation passes cached **11/11** and
+realizes global loads **23→20**, unchanged barriers/LDS/arithmetic/DPP, and
+smaller code/slots **7,920/1,384→7,872/1,357**. It nevertheless adds three
+`ds_bpermute_b32` scale broadcasts to the frozen unchanged-DS set and raises
+metadata VGPR **101→106**, exceeding the frozen **≤101** maximum. Do not
+profile, time, tune, or rerun after these misses; remove every H6Y
+implementation/test/key/export/gfx1151-exclusion surface and retain H6T/H6W
+production **416.891 tok/s**
+([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

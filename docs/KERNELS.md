@@ -1603,6 +1603,19 @@ without compiler, and every layer **1..45** plus aggregate to win both clocks
 under 5/15/5. Any miss removes H6Y without tuning/rerun; H6T remains source
 ([post-H6X residual / H6Y target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6x-rejection-matched-residual.json)).
 
+H6Y is **rejected at the frozen physical gate before profiler/timing**. The
+correct rolling-window implementation loads `block + group32*8 + 2*local8`,
+takes selectors from bits16..31, and broadcasts wave-lane0's scale bits0..15.
+Its cached exact matrix passes **11/11**, including all 12 finite FP16 classes
+and all 256 selector bytes. ISA realizes global loads **23→20**, unchanged two
+barriers/LDS384/216 FMAs/24 permlanex16/96 DPP, and cuts code/slots
+**7,920/1,384→7,872/1,357**. However the scale exchange adds three
+`ds_bpermute_b32` instructions to the frozen unchanged-DS set and metadata VGPR
+rises **101→106**, exceeding the frozen **≤101** ceiling. Skip cached trace and
+all-45 timing by contract; remove every implementation/test/key/export/gfx1151-
+exclusion surface without tuning or rerun, and retain H6T source
+([H6Y rejection](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
