@@ -2585,23 +2585,24 @@ The immutable producer-inclusive 5/15/5 all-layer screen wins event and
 synchronized wall for every **45/45** actual IQ3 layer. Aggregate event moves
 **247.297→186.732 ms (-24.491%, 1.324x)** and wall
 **260.672→180.752 ms (-30.659%, 1.442x)**; max leaf KL is **0.000487** and
-minimum top-1 **99.941%**, with finite output and recovered lifecycle. The
-separate bounded default-off runtime owner is now qualified: it is IQ3-only,
-exact-M512/K1024/N3072/E256, reuses the existing **20,971,520-byte**
-`expert_gate_up` plane for **11,796,480-byte** D4x2 records, and adds zero
-allocation/workspace growth. Natural-M512 control/candidate/repeat passes at KL
-**0.000224**, top-1 **100%**, token **2930**, exact repeat/span metadata, and
-clean lifecycle with **600,141,856-byte** total scratch.
+minimum top-1 **99.941%**, with finite output and recovered lifecycle. A
+separate bounded default-off owner then reused `expert_gate_up` with zero growth.
+Natural-M512 state passed at KL **0.000224** / top-1 **100%**, and cached tracing
+proved **45 H6T → 45 tile128 + 45 producer + 45 H7E** while diagnostic IQ-down
+fell **269.921→208.298 ms**.
 
-Cached paired tracing proves exact **45 H6T → 45 tile128 + 45 producer + 45
-H7E** topology with zero compiler and diagnostic C512 IQ-down/kernel-sum/span
-**269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**. This does not
-change production: H6T/IQ4 remain source at **422.786 tok/s**. Before source
-timing or promotion, the complete counterbalanced **18-prompt/576-step** lane
-must remain finite and pass max KL **<=0.05**, top-1 **>=90%**, Poolside,
-determinism, free-running diagnostics, and lifecycle; no prompt/layer subset is
-admissible
-([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+Reject and remove that owner on the binding complete gate. Every one of the 18
+committed prompts is independently extended to M512; all **576/576** steps
+exercise changed arithmetic. Max KL is **5.630805 > 0.05**, general-Japanese
+top-1 is **115/128 = 89.844% < 90%**, and suite top-1 is **531/576 = 92.188%**.
+Same-mode repeats are deterministic, but free-running pair equality is only
+**21/54 h16** and **6/54 h32**. Poolside off-shape fallback and lifecycle pass.
+Skip promotion timing; retain only the standalone leaf/evidence. H6T/IQ4 remain
+production source at **422.786 tok/s**. Do not reopen residual-D4x2 without a
+materially different repair/representation and a fresh complete gate; no prompt
+or layer subset is admissible
+([H7E rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json) ·
+[candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

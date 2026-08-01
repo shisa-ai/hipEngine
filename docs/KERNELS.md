@@ -1815,19 +1815,22 @@ layer and aggregate event/wall
 **247.297/260.672→186.732/180.752 ms (-24.491%/-30.659%)**. Max leaf KL is
 **0.000487**, minimum top-1 **99.941%**, and lifecycle recovers.
 
-The bounded default-off runtime owner is now qualified. It selects only IQ3 at
-exact M512/K1024/N3072/E256, emits tile128 metadata, writes the existing
-`expert_gate_up` plane with D4x2 records after SiLU, then runs H7E and the
-unchanged weighted sum. Natural-M512 control/candidate/repeat passes at KL
-**0.000224**, top-1 **100%**, token **2930**, exact repeat/span metadata,
-unchanged **104,370,208-B** MoE / **600,141,856-B** total scratch, and clean
-lifecycle. Cached tracing records **45 H6T → 45 tile128 + 45 producer + 45 H7E**,
-runtime H7E VGPR152/scratch0, and zero compiler; diagnostic IQ-down/kernel-sum/
-span falls **269.921/1,251.537/1,278.495→208.298/1,174.903/1,197.276 ms**.
-H6T/IQ4 remain production source at **422.786 tok/s**. The mandatory
-counterbalanced **18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate remains
-pending before source timing
-([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+A temporary bounded default-off owner selected only exact-M512 IQ3, reused
+`expert_gate_up`, and added zero scratch. Natural-M512 state passed at KL
+**0.000224** / top-1 **100%**; cached tracing proved **45 H6T → 45 tile128 + 45
+producer + 45 H7E**, runtime VGPR152/scratch0, and diagnostic IQ-down
+**269.921→208.298 ms**.
+
+The complete gate rejects runtime ownership. All **18 prompts / 576 steps**
+exercise H7E-derived state at M512; max KL is **5.630805 > 0.05** and general-
+Japanese top-1 is **115/128 = 89.844% < 90%** (suite **531/576 = 92.188%**).
+Same-mode repeats are deterministic, free-running equality is **21/54 h16** and
+**6/54 h32**, and Poolside fallback/lifecycle pass. Remove the live/qualified
+maps, residual plan/launch route, tile128 export, optional libraries, and runtime
+test; skip promotion timing. Keep only the standalone H7E leaf as diagnostic
+evidence. H6T/IQ4 remain production at **422.786 tok/s**
+([H7E rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json) ·
+[candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

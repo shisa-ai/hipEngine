@@ -262,19 +262,6 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),
 }
-# WPF-H7E's changed-arithmetic residual-D4x2 source-MMQ route is qualified as a
-# standalone leaf and bounded runtime owner but remains default-off until the
-# binding 18-prompt/576-step quality lane passes. The separate live map is the
-# only runtime/source selector; H6T/IQ4 remain the exact fallback and production
-# map.
-_H7E_IQ3_RESIDUAL_D4X2_VARIANT = (
-    "selected_mmq_i128_j128_k256_q8_1_ds4x2_"
-    "prefill_compact_bf16_bf16_out"
-)
-LAGUNA_GROUPED_IQ_DOWN_H7E_VARIANTS = {
-    "gguf_iq3_xxs": _H7E_IQ3_RESIDUAL_D4X2_VARIANT
-}
-LAGUNA_GROUPED_IQ_DOWN_RESIDUAL_VARIANTS = {}
 LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
     _H5Q_IQ3_ACTIVE_EXPERT_VARIANT: "grouped_raw_iq_active_experts",
     _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT: "grouped_raw_iq_active_experts",
@@ -469,8 +456,6 @@ __all__ = [
     "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANT_ABIS",
     "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
     "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
-    "LAGUNA_GROUPED_IQ_DOWN_H7E_VARIANTS",
-    "LAGUNA_GROUPED_IQ_DOWN_RESIDUAL_VARIANTS",
     "LAGUNA_IQ2_GRID64",
     "LAGUNA_IQ3_C1_DOWN_SCHEDULE",
     "LAGUNA_IQ3_WAVE10_FUSED",
