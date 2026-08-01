@@ -63,6 +63,22 @@
     },
     "raw_sha256": "882f12395486f0d4e68cb0e3b22516c341c1bd26c970bc3f1e431f8664510896"
   },
+  "tracked_clean_confirmation_16384": {
+    "revision": "5f81ee947c53b024d4566394eca92e9eb559bde5",
+    "decode_tok_s": 16.9364292789,
+    "decode_ms_per_token": 59.0443087790,
+    "prior_clean_gqa6_tok_s": 16.756283,
+    "delta_vs_prior_clean_percent": 1.075097,
+    "delta_vs_dirty_candidate_percent": -0.201169,
+    "delta_vs_pre_lcd3_percent": 119.048761,
+    "vulkan_parity_percent": 77.946239,
+    "final_token": 13815,
+    "final_position": 16510,
+    "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+    "tracked_bytes_recovered": 87407934744,
+    "tracked_allocations_recovered": 1452,
+    "raw_sha256": "f9148ce8f038633239c4c1cf9029bd4d9d8db4206fa0232af6901caa58fbf3d6"
+  },
   "rejected_screens": {
     "context_parallel_4096": {
       "directional_tok_s": {"4096": 21.674, "16384": 18.201, "65536": 11.138, "131072": 7.386},

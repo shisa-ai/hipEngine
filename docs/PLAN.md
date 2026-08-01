@@ -1453,8 +1453,10 @@ score-plane writeback/read pass, and improves complete 4K/16K/64K/128K another
 hashes, positions, residency, and lifecycle. A faster 4,096-token
 context-parallel partial/merge path is rejected at maximum KL **0.687034**
 despite 100% teacher-forced top-1; exact repair is slower than the retained
-path. LC-D3 therefore remains active because the full score/physical plane
-still exists. The next owner must replace it with bounded exact
+path. The tracked-clean committed 16K confirmation is **16.936 tok/s**, within
+**-0.201%** of the directional row and **+1.075%** over the preceding clean
+GQA6 owner. LC-D3 therefore remains active because the full score/physical
+plane still exists. The next owner must replace it with bounded exact
 output/max/denominator partials or an ordered tiled replay while targeting
 **<=5 ms/token** at 16K. Reassociated online-softmax arithmetic is not a
 numerics waiver.
