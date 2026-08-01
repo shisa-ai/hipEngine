@@ -90,7 +90,10 @@ def test_h5w_registry_scope_and_production_immutability() -> None:
     assert q5_f32._Q6_ORDERED_WEIGHT_MAJOR_GEOMETRIES == _CANDIDATES
     q5_f32.register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
-    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == _Q5_PRODUCTION_POLICY
+    assert (
+        hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY
+        == _Q5_PRODUCTION_POLICY
+    )
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _Q6_PRODUCTION_POLICY
 
     for col_tile, row_batch, output_dtype in _CANDIDATES:

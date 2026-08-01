@@ -337,11 +337,12 @@ GGUF_RAW_K_PREFILL_ROLE_VARIANTS = dict(GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS)
 # exact weight-major traversal cuts the six-role/235-call leaf 44.857%/46.544%
 # by event/wall. H5X promotes tile-K-col layout on 151 calls after KL0 complete
 # state. H5Y then adds an exact tile-K-row BF16 activation plane on all 188
-# ordered-Q5 calls, preserving H5X/H5L weight layouts. Selector-unset one-queue
-# 512/1K/4K improves 10.862%/8.969%/5.829%; N48/N72 and every miss retain
-# H5G/raw exact routes.
+# ordered-Q5 calls, preserving H5X/H5L weight layouts. H7G promotes exact
+# padded-row compute for the four natural-M512 roles with a real padded tail
+# after complete-state, integrated-topology, and positive fixed/512/1K/4K
+# gates. Divisible r4/r8, N48/N72, and every miss retain H5Y/H5G/raw rollback.
 GGUF_Q5_F32_ORDERED_PREFILL = True
-GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
+GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY = {
     ("bf16", 3072, 1024): (
         "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch4"
     ),
@@ -363,12 +364,10 @@ GGUF_Q5_F32_ORDERED_PREFILL_POLICY = {
         "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch10"
     ),
 }
-# WPF-H7G is a bounded default-off capability until complete state, integrated
-# topology, and selector-unset fixed/512/1K/4K gates qualify source promotion.
-# It changes only the four natural-M512 Q5 roles with a genuinely padded final
-# row group; the exactly divisible r4/r8 roles retain H5Y.
+# WPF-H7G is the retained Q5 source after complete-state, integrated-topology,
+# and selector-unset fixed/512/1K/4K publication; H5Y remains exact rollback.
 GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY = {
-    **GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
+    **GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY,
     ("bf16", 3072, 12288): (
         "weight_major_row_major_activation_tile_k_row_"
         "padded_compute_coltile8_rowbatch12"
@@ -386,6 +385,9 @@ GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY = {
         "padded_compute_coltile8_rowbatch10"
     ),
 }
+GGUF_Q5_F32_ORDERED_PREFILL_POLICY = dict(
+    GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY
+)
 # WPF-H5I introduced the shared serial F32 plane and ordered Q6 consumers.
 # WPF-H5W retains exact weight-major rollback. WPF-H6E retains exact generic-
 # shuffle activation-row rollback. WPF-H6U promotes DPP wave reduction on
@@ -522,6 +524,7 @@ __all__ = [
     "GGUF_F32_ORDERED_PREFILL_POLICIES",
     "GGUF_F32_ORDERED_PREFILL_QUANTS",
     "GGUF_Q5_F32_ORDERED_PREFILL",
+    "GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY",
     "GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY",
     "GGUF_Q5_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL",

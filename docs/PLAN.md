@@ -2622,17 +2622,28 @@ both-clock positive and byte-exact. A non-adjudicative integrated replay
 confirms every role and improves **136.701/136.993 -> 128.691/129.092 ms
 (-5.860%/-5.767%)**.
 
-The separately frozen bounded owner is now qualified without changing H5Y
-source. Complete natural-M512 state is KL0/byte-exact across logits, all
-**48/48** hidden boundaries, K/V/`KVLiveSpans`, repeat, scratch, and teardown.
-Cache-only integrated tracing records exact **2/12/12/35 = 61** H7G calls on
-one queue with zero compiler executable. Matched C4096/M512 improves
-**420.846 -> 423.410 tok/s (+0.609%, 5/5)**; clean 512/1K/4K improves
-**+0.631%/+0.471%/+0.292%**, all **3/3** exact wins. Keep workspace,
-allocation, and gfx1151 isolation unchanged. Next freeze source-default RED,
-retain a named H5Y rollback, and rerun source-state, matched/transfer, and
-production profiling before publication
-([H7G candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
+The separately frozen bounded owner qualifies complete natural-M512 state at
+KL0/byte identity across logits, all **48/48** hidden boundaries, K/V/
+`KVLiveSpans`, repeat, scratch, and teardown. Its cache-only trace records exact
+**2/12/12/35 = 61** H7G calls with zero compiler. The independent source RED
+then requires one atomic publication: preserve the complete eight-role H5Y map
+as named rollback and change only the four padded-tail live values to H7G.
+Divisible `r4/r8`, wrong shapes, absent registration/activation, and gfx1151
+remain fail-closed.
+
+Fresh selector-unset source qualification passes complete state and improves
+H5Y -> H7G fixed C4096/M512 **420.569 -> 423.981 tok/s (+0.811%, 5/5)** and
+512/1K/4K **390.598/312.509/195.078 -> 394.355/313.789/195.471 tok/s
+(+0.962%/+0.410%/+0.201%)**, all **3/3** exact wins. Clean production reaches
+**424.845 tok/s** (**+0.487%** over pre-H7G), with representative cache-only
+kernel sum/span **1,192.424/1,213.450 ms** and exact **2,192** dispatches. Q5
+falls **255.229 -> 248.888 ms**, narrowing its llama.cpp gap
+**196.915 -> 190.574 ms**. Remaining Q5/IQ-down/attention/Q6 gaps are
+**190.574/118.366/93.960/66.873 ms** and own **98.194%** of the matched kernel
+gap. Continue parity work only with a materially new exact operation; retain
+H5Y rollback, unchanged workspace/allocation, and gfx1151 isolation
+([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

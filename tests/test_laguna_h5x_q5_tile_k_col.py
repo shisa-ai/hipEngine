@@ -108,7 +108,7 @@ def test_h5x_registry_scope_and_production_immutability() -> None:
     assert q5_f32._Q5_TILE_K_COL_GEOMETRIES == _CANDIDATES
     q5_f32.register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
-    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY == (
+    assert hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY == (
         _Q5_PRODUCTION_POLICY
     )
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == (
