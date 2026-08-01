@@ -457,11 +457,22 @@ tok/s (+0.319%, 5/5 wins)** and is **1.68939x** behind matched llama.cpp HIP
 **690.791 tok/s**. Fresh 512/1K/4K publication improves **381.821/307.478/193.289
 -> 383.162/308.780/193.629 tok/s (+0.351%/+0.423%/+0.176%)**, all **3/3** exact
 wins. Allocation/workspace/dispatch remain unchanged, gfx1151 fails closed, and
-**144/144** source-policy/runner guards pass; a clean committed H6T component
-reprofile is next
+**144/144** source-policy/runner guards pass
 ([H6T production](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
 [H6T candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
+The clean committed H6T profile is **408.919 tok/s / 1,237.150 ms / 2,192
+dispatches**, versus campaign-start **169.516 tok/s / 3,001.692 ms** and matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. Current Q5/attention/IQ-down/Q6
+gaps are **196.768/127.175/117.982/72.393 ms**. With Q5 and the newest attention
+premise closed and IQ-down just changed, the next target is **WPF-H6U exact
+DPP-add wave reduction** on Q6's **142 H6E consumers / 54.515 ms**. It will
+replace only their **320/400/400** generic bpermute trees with exact
+permlanex16+DPP-add while preserving arithmetic, LDS/store order, packs,
+producer, allocation, and policy; every role must remain byte-exact and win
+both clocks
+([post-H6T residual / H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

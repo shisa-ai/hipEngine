@@ -3,8 +3,8 @@
 Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is
-[`2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json), advancing the independently clean H6R matched packet
-[`2026-08-01-gfx1100-laguna-q2-xl-post-h6r-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6r-matched-residual.json).
+[`2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json), with the independently clean H6T matched packet and next target in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json).
 It retains exact matrix512/attention128, H6L rowbatch16 IQ2 pair16 gate/up with
 WPF-2b rowbatch8 same-ABI rollback, H6T fused-DPP-add staged-wave triple-output
 IQ3 with H6R/H6Q/H6P/H6I/H6F/H6D/H5Z/H5Q registered rollback, H6C special-IQ3 gate/up
@@ -362,10 +362,35 @@ matched llama.cpp HIP **690.791 tok/s**. Fresh 512/1K/4K improves
 **381.821/307.478/193.289 -> 383.162/308.780/193.629 tok/s
 (+0.351%/+0.423%/+0.176%)**, all **3/3** exact wins. Allocation/workspace/
 dispatch remain unchanged, gfx1151 fails closed, and **144/144** source guards
-pass; clean committed H6T reprofiling is next
+pass
 ([H6T production](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json) ·
 [H6T candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
+**The clean committed H6T matched refresh is 408.919 tok/s / 1,237.150 ms /
+2,192 dispatches**, **+141.227%** over campaign start and **1.68931x** behind
+matched llama.cpp HIP **690.791 tok/s / 714.008 ms**. Campaign-start / H6R /
+current-H6T / llama.cpp component milliseconds are Q5
+**1,270.458/255.672/255.082/58.314**, attention
+**488.304/149.392/148.687/21.512**, IQ down
+**557.091/279.045/271.842/153.860**, Q6
+**157.073/87.437/87.061/14.668**, gate/up
+**460.143/399.483/398.657/397.805**, remaining
+**68.623/76.224/75.821/67.849**, and kernel sum
+**3,001.692/1,247.252/1,237.150/714.008**.
+
+Select target-only **WPF-H6U exact DPP-add wave reduction for H6E Q6
+activation-row consumers** after keeping Q5 mechanism-closed, binding H6S's
+attention rejection, and giving newly promoted IQ-down a distinct-family
+interval. H6E's **142 consumers own 54.515 ms / 62.617% of Q6** and still emit
+**320/400/400 generic bpermutes**, zero permlanex16/DPP. Separate three-role
+siblings may change only the exact five-step peer tree to permlanex16 plus
+direct DPP-add 8/4/2/1. Admission requires exact **64+256 / 80+320 / 80+320**
+permlane+DPP, zero bpermutes/moves, no resource regression, complete
+rows17/33/M512/CPU/lifecycle bytes, and every actual role plus weighted 142-call
+schedule positive on event and wall. This is a target, not a speed/default
+claim
+([post-H6T residual / H6U target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
