@@ -9570,6 +9570,40 @@ The remaining attention sequence is:
      denominator, or probability-transport pass:
      [`exact D32/local1024 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-d32-local1024-rejected.json).
 
+213. Parallelize the exact denominator maximum scan.
+     **Retained and production-default; LC-D3 sixth checkpoint.**
+
+     The retained denominator used only lane 0 in each of eight waves to scan
+     every eighth score, leaving 248 of its 256 threads idle during the maximum
+     pass. The new schedule gives every thread a disjoint strided partition,
+     then keeps the same wave32 and ordered eight-wave `fmax` merge. Since the
+     finite maximum is a selected input value, the maximum bits do not change;
+     exp32, the chronological denominator sum, reciprocal, PV FMA chain, and
+     BF16 gate are untouched.
+
+     | Live slots | Serial max owner | Parallel max owner | Delta | Exact |
+     | ---: | ---: | ---: | ---: | :---: |
+     | 4,097 | 0.320786 ms | **0.281136 ms** | **-12.360%** | Yes |
+     | 16,448 | 1.332830 ms | **1.153269 ms** | **-13.472%** | Yes |
+     | 65,664 | 5.447389 ms | **4.558652 ms** | **-16.315%** | Yes |
+     | 131,200 | 10.844319 ms | **9.084503 ms** | **-16.228%** | Yes |
+
+     | Decode depth | Prior D64 production | Parallel exact max | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4K | 21.656929 | **21.673401 tok/s** | **+0.076%** | 23.037017 | **94.081%** |
+     | 16K | 17.707730 | **18.148072 tok/s** | **+2.487%** | 21.728347 | **83.523%** |
+     | 64K | 10.120043 | **10.848461 tok/s** | **+7.198%** | 17.737473 | **61.161%** |
+     | 128K | 6.469840 | **7.067963 tok/s** | **+9.245%** | 14.237076 | **49.645%** |
+
+     All four established trajectories, tokens, and positions match. The
+     mandatory 128K row remains **874 / c8307c... / position 131,198**, and
+     **87,407,934,744 bytes / 1,452 allocations** recover exactly. Cached
+     tracing proves the intended denominator at local256, VGPR56, LDS512,
+     scratch0. The next exact structural screen packs the one-wave-per-token
+     score producer into multi-wave workgroups without changing its GQA6 dot
+     products or reduction order:
+     [`parallel exact-max production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-parallel-max-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9587,7 +9621,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Five milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Six milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9603,9 +9637,12 @@ allocation teardown remain mandatory at every retained step.
    admitted PV owners from D32 to D64 is byte-identical and improves complete
    16K/64K/128K another **1.705%/2.558%/2.348%**. An isolated compensated
    layer-24 boundary is rejected at **0.235600 max KL** on teacher70, closing
-   precision-scope widening as the immediate lever. The next step must reduce
-   the exact first-seven-layer score/PV path with wider exact ownership or an
-   ordered tiled replay.
+   precision-scope widening as the immediate lever. Parallelizing the exact
+   maximum scan over all 256 denominator threads then improves the exact leaf
+   **12.36-16.31%** and complete 16K/64K/128K another
+   **2.487%/7.198%/9.245%**, with byte-identical leaves and exact recurrent
+   state. The next step packs exact GQA6 score waves into larger workgroups,
+   then returns to an ordered tiled PV replay if that screen is insufficient.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
