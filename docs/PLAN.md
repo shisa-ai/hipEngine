@@ -2280,22 +2280,23 @@ gfx1151 fail-closed behavior remain unchanged; **144/144** source guards pass
 [H6T candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json) ·
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
-The clean committed H6T reprofile is **408.919 tok/s / 1,237.150 ms / 2,192
-dispatches**, **+141.227%** over campaign start and **1.68931x** behind matched
-llama.cpp HIP **690.791 tok/s / 714.008 ms**. Current Q5/attention/IQ-down/Q6
-gaps are **196.768/127.175/117.982/72.393 ms**. Q5 remains exact-mechanism
-closed, H6S closes the latest exact attention peer premise, and IQ-down was just
-changed. Select target-only **WPF-H6U exact DPP-add wave reduction for H6E Q6
-activation-row consumers**. The 142 consumers own **54.515 ms / 62.617% of
-Q6** and still emit **320/400/400** generic bpermutes with no permlanex16/DPP.
-Add separate three-role siblings changing only the five-step peer source/add to
-permlanex16 plus direct DPP-add 8/4/2/1; preserve all 64/80 FMAs, four-wave LDS
-publication, serial wave sum/store, producer/packs, shapes, maps, allocation,
-and workspace. Freeze RED first; require exact **64+256 / 80+320 / 80+320**
-permlane+DPP and zero bpermutes/moves, no code/resource regression, complete
-rows17/33/M512/CPU/lifecycle gates, and every actual role plus weighted 142-call
-schedule to win event and wall. Remove H6U on any miss
-([post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
+Admit **WPF-H6U exact DPP-add wave reduction for H6E Q6 activation-row
+consumers** as a standalone gfx1100 leaf; H6E source/package policy remains
+unchanged. Frozen rows17/33/M512 passes **11/11** and retained H6U/H6E/H5W/H5Y/
+base/registry guards pass **46/46**. The three roles replace **320/400/400**
+generic bpermutes with exact **64+256 / 80+320 / 80+320 permlanex16+DPP-add**,
+zero bpermutes/moves, and preserve all FMA/load/LDS/barrier/store facts. Code
+falls **7,244/8,516/8,488 -> 5,992/7,128/7,100 bytes**, slots
+**1,245/1,440/1,437 -> 923/1,082/1,079**, metadata VGPR
+**130/162/162 -> 111/139/139**, and runtime VGPR **136/168/168 -> 112/144/144**
+at unchanged LDS/private0/spill0/scratch0. Cached rocprof names all three with
+no compiler activity. Every role wins both clocks; weighted 142-call consumer
+event/wall improves **55.432/56.237 -> 48.520/48.644 ms
+(-12.471%/-13.503%, 1.1425x/1.1561x)** with exact finite bytes and clean
+lifecycle. Commit the leaf, then freeze a separate bounded-runtime capability
+RED before any package or source-map change
+([H6U candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
+[post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

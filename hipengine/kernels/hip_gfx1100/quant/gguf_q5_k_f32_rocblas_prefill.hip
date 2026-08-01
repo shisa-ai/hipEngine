@@ -784,6 +784,180 @@ __global__ void gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_t
   }
 }
 
+// H6U preserves H6E's four-wave compute and exact reduction association while
+// replacing only the five wave-peer transfers with permlanex16 plus DPP adds.
+__device__ inline float h6u_permlanex16_f32(float value) {
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_permlanex16(
+      data.bits, data.bits, 0x76543210U, 0xFEDCBA98U, false, false);
+  return data.value;
+}
+
+template <int DPP_CTRL>
+__device__ inline float h6u_dpp_move_f32(float value) {
+  union FloatBits {
+    float value;
+    int bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_mov_dpp(
+      data.bits, DPP_CTRL, 0xF, 0xF, true);
+  return data.value;
+}
+
+__device__ inline float h6u_dpp_add_row_shl1_f32(float value) {
+  float result;
+  asm volatile(
+      "v_add_f32_dpp %0, %1, %1 row_shl:1 row_mask:0xf bank_mask:0xf bound_ctrl:1"
+      : "=v"(result)
+      : "v"(value));
+  return result;
+}
+
+template <int ROW_BATCH, int COL_TILE>
+__device__ inline void h6u_reduce_wave_accumulators_dpp(
+    float (&acc)[ROW_BATCH][COL_TILE]) {
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      acc[row][col] += h6u_permlanex16_f32(acc[row][col]);
+    }
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      acc[row][col] += h6u_dpp_move_f32<0x108>(acc[row][col]);
+    }
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      acc[row][col] += h6u_dpp_move_f32<0x104>(acc[row][col]);
+    }
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      acc[row][col] += h6u_dpp_move_f32<0x102>(acc[row][col]);
+    }
+  }
+#pragma unroll
+  for (int row = 0; row < ROW_BATCH; ++row) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      acc[row][col] = h6u_dpp_add_row_shl1_f32(acc[row][col]);
+    }
+  }
+}
+
+template <typename out_t, int ROW_BATCH>
+__launch_bounds__(128, 1)
+__global__ void gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel(
+    const uint16_t* __restrict__ input,
+    const float* __restrict__ weight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  static_assert(
+      ROW_BATCH == 4 || ROW_BATCH == 5,
+      "H6U Q6 uses only the admitted rowbatch4/5 roles");
+  constexpr int COL_TILE = 16;
+  constexpr int PADDED_ROWS = 8;
+  constexpr int ACTIVATION_WORDS = (ROW_BATCH + 1) / 2;
+  const int row_groups = (rows + ROW_BATCH - 1) / ROW_BATCH;
+  const int workgroup = static_cast<int>(blockIdx.x);
+  const int row_group = workgroup % row_groups;
+  const int out_tile = workgroup / row_groups;
+  const int out_col_base = out_tile * COL_TILE;
+  const int row_base = row_group * ROW_BATCH;
+  const int tid = static_cast<int>(threadIdx.x);
+  if (out_col_base >= out_features || row_base >= rows) return;
+
+  const float* weight_rows[COL_TILE];
+#pragma unroll
+  for (int col = 0; col < COL_TILE; ++col) {
+    weight_rows[col] =
+        weight + static_cast<int64_t>(out_col_base + col) * in_features;
+  }
+
+  float acc[ROW_BATCH][COL_TILE] = {};
+  const uint16_t* __restrict__ activation_group =
+      input + static_cast<int64_t>(row_group) * in_features * PADDED_ROWS;
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[COL_TILE];
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      weights[col] = weight_rows[col][k];
+    }
+
+    const uint16_t* __restrict__ activation_record =
+        activation_group + static_cast<int64_t>(k) * PADDED_ROWS;
+    uint32_t activation_words[ACTIVATION_WORDS];
+    const uint2 first4 = *reinterpret_cast<const uint2*>(activation_record);
+    activation_words[0] = first4.x;
+    activation_words[1] = first4.y;
+    if constexpr (ROW_BATCH == 5) {
+      activation_words[2] = activation_record[4];
+    }
+
+#pragma unroll
+    for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+      const int row = row_base + row_index;
+      if (row < rows) {
+        const uint16_t input_bits = static_cast<uint16_t>(
+            activation_words[row_index >> 1] >> ((row_index & 1) * 16));
+        const float input_value = bf16_bits_to_float(input_bits);
+#pragma unroll
+        for (int col = 0; col < COL_TILE; ++col) {
+          acc[row_index][col] =
+              fmaf(input_value, weights[col], acc[row_index][col]);
+        }
+      }
+    }
+  }
+
+  h6u_reduce_wave_accumulators_dpp<ROW_BATCH, COL_TILE>(acc);
+  __shared__ float wave_sums[4][ROW_BATCH][COL_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        wave_sums[wave][row_index][col] = acc[row_index][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_BATCH * COL_TILE) {
+    const int row_index = tid / COL_TILE;
+    const int col = tid - row_index * COL_TILE;
+    const int row = row_base + row_index;
+    if (row < rows) {
+      float total = 0.0f;
+#pragma unroll
+      for (int wave_index = 0; wave_index < 4; ++wave_index) {
+        total += wave_sums[wave_index][row_index][col];
+      }
+      store_output<out_t>(
+          out,
+          static_cast<int64_t>(row) * out_features + out_col_base + col,
+          total);
+    }
+  }
+}
+
 __global__ void gguf_q5_k_dequantize_bf16_to_f32_exact_fused_kernel(
     const uint8_t* __restrict__ qweight,
     float* __restrict__ weight_out,
@@ -989,6 +1163,40 @@ int launch_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row(
   const dim3 grid(static_cast<unsigned int>(row_groups * output_tiles));
   hipLaunchKernelGGL(
       (gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_kernel<
+          out_t,
+          ROW_BATCH>),
+      grid,
+      dim3(128),
+      0,
+      stream,
+      input,
+      weight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t, int ROW_BATCH, int EXACT_K, int EXACT_N>
+int launch_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction(
+    const uint16_t* input,
+    const float* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !weight || !out || rows <= 0 || in_features != EXACT_K ||
+      out_features != EXACT_N) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int COL_TILE = 16;
+  const int64_t row_groups = (rows + ROW_BATCH - 1) / ROW_BATCH;
+  const int64_t output_tiles = out_features / COL_TILE;
+  const dim3 grid(static_cast<unsigned int>(row_groups * output_tiles));
+  hipLaunchKernelGGL(
+      (gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<
           out_t,
           ROW_BATCH>),
       grid,
@@ -1235,6 +1443,30 @@ HIPENGINE_Q6_ACTIVATION_TILE_K_ROW_EXPORT(4, bf16, uint16_t, 1024, 3072)
 HIPENGINE_Q6_ACTIVATION_TILE_K_ROW_EXPORT(5, f32, float, 3072, 1024)
 
 #undef HIPENGINE_Q6_ACTIVATION_TILE_K_ROW_EXPORT
+
+extern "C" int hipengine_gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_bf16_out(
+    const uint16_t* input, const float* weight, uint16_t* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction<
+      uint16_t, 5, 3072, 1024>(
+      input, weight, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch4_bf16_bf16_out(
+    const uint16_t* input, const float* weight, uint16_t* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction<
+      uint16_t, 4, 1024, 3072>(
+      input, weight, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_f32_out(
+    const uint16_t* input, const float* weight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction<
+      float, 5, 3072, 1024>(
+      input, weight, out, rows, in_features, out_features, stream);
+}
 
 extern "C" int hipengine_gguf_q5_k_dequantize_bf16_to_f32_exact_fused(
     const uint8_t* qweight,

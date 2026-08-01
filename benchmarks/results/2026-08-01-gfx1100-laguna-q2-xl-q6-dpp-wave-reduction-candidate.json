@@ -1,0 +1,765 @@
+{
+  "authority_files": {
+    "README.md": "d8fd56285c5a48773990cc0b0c0c155e4a1ed362baf14bb318778ba89452f0a5",
+    "WORKLOG.md": "dab3a8978501f2a59ca2fb00056a412a8887d0bd316b0bbbe2d3a3d55bd819cd",
+    "benchmarks/CHANGELOG.md": "906f8b3ea1be7d619d935814601eb1b1dc9b3fdf951e08d9915e1d63c825ae8c",
+    "benchmarks/README.md": "5c103cc7505910e6e9e0de8f224fa7b2b694a3071d0e16376469e1495024f692",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "f71d68ca38fbd8e94e675318d5f9f4b2bfab6c1364f5bf3d2cf7176e8ae2b9f6",
+    "docs/LAGUNA-prefill.md": "95a6a81cb889d53366d1ca6f5e864d0757b19c00de1e1bd97a3f497e2d3edd52",
+    "docs/PLAN.md": "e774337eb424e016371b2443b93fdba26671bfce9830f8b4ac3a1daf596c24d2",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/h6t-compiler-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_h6u_q6_dpp_wave_reduction.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "retained_guards": "same cache-only environment; H6U/H6E/H5W/H5Y/base-prefill/registry six-file bundle",
+    "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run python /tmp/laguna_wpfh6u_q6_dpp_actual_role_screen.py",
+    "trace": "rocprofv3 --kernel-trace -f csv -d /tmp/laguna-h6u-resource-rocprof -o h6u -- uv run python /tmp/laguna_wpfh6u_q6_dpp_resource_smoke.py"
+  },
+  "correctness": {
+    "complete_activation_plane_identity": true,
+    "complete_cross_product_cases": 9,
+    "complete_output_byte_identity": true,
+    "finite": true,
+    "focused_passes": 11,
+    "gfx1151_candidate_absent": true,
+    "production_policy_h6e_unchanged": true,
+    "retained_guard_passes": 46,
+    "rows": [
+      17,
+      33,
+      512
+    ],
+    "sampled_independent_cpu_gate": true,
+    "source_h6e_kernel_and_wrapper_hashes_unchanged": true,
+    "strict_role_preflight_before_hip_load": true,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-08-01",
+  "decision": {
+    "admitted": true,
+    "all_three_roles_both_clock_positive": true,
+    "next_action": "Commit this standalone leaf, then freeze a separate bounded-runtime capability RED before any package policy or source-map edit.",
+    "production_changed": false,
+    "weighted_142_call_both_clock_positive": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vram_bytes": 48301604864,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_h6u_q6_dpp_wave_reduction_candidate",
+  "lineage": {
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "4ef2f2c2d5f708682a2ef43dc820d2a3ca35c4518d9e3d282544504174b978b2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "cf7354e539a7aaf35794b8dfca0c108d440f79dd2c4ebb32b6d74aa0cd601d8e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5bd3295ab3c032727cc2e2dac4106e98b5d77ceb9c0f8b42ae15ec8e0af61230",
+      "tests/test_laguna_h6u_q6_dpp_wave_reduction.py": "17bfa6d295371551bcaf93cd46e6509b4eb072aa70fbbc1288dba20cc87d93fe"
+    },
+    "kernel_lineage_state": "all tracked Laguna/llama.cpp parents clean; four unrelated documented Qwen/PARO drifts",
+    "red_revision": "2b7ced608",
+    "source": "Net-new in-tree instruction-form sibling transferring retained H6R/H6T exact DPP-add reduction to H6E Q6 consumers; no external kernel body copied.",
+    "target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json",
+    "target_artifact_sha256": "63c243215198f208ae92f7cbed4f49a8fedf555441a55d08e6b1acbd5762cb8b",
+    "target_revision": "94360617c5d99026d4fdb046dfafe37c2f9e47e5"
+  },
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_compact_json_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+    "token_stream_int64_bytes_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a"
+  },
+  "performance_claim": true,
+  "physical": {
+    "candidate_dispatches": [
+      {
+        "dispatch_id": 3,
+        "duration_us": 273.318,
+        "grid_x": 843776,
+        "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+        "lds_bytes": 1536,
+        "local_size": 128,
+        "output_type": "unsigned short",
+        "row_batch": 5,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 144
+      },
+      {
+        "dispatch_id": 6,
+        "duration_us": 350.918,
+        "grid_x": 3145728,
+        "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+        "lds_bytes": 1024,
+        "local_size": 128,
+        "output_type": "unsigned short",
+        "row_batch": 4,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 112
+      },
+      {
+        "dispatch_id": 9,
+        "duration_us": 268.799,
+        "grid_x": 843776,
+        "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<float, 5>(unsigned short const*, float const*, float*, int, int, int)",
+        "lds_bytes": 1536,
+        "local_size": 128,
+        "output_type": "float",
+        "row_batch": 5,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 144
+      }
+    ],
+    "compiler_ran_under_profiler": false,
+    "dispatches": 9,
+    "passed": true,
+    "physical": {
+      "baselines": {
+        "bf16_16x4": {
+          "code_bytes": 7244,
+          "metadata_vgpr": 130,
+          "slots": 1245
+        },
+        "bf16_16x5": {
+          "code_bytes": 8516,
+          "metadata_vgpr": 162,
+          "slots": 1440
+        },
+        "f32_16x5": {
+          "code_bytes": 8488,
+          "metadata_vgpr": 162,
+          "slots": 1437
+        }
+      },
+      "isa": {
+        "bf16_16x4": {
+          "ds_bpermute_b32": 0,
+          "ds_store_b128": 16,
+          "function_instruction_slots": 923,
+          "global_load_b32": 16,
+          "global_load_b64": 1,
+          "global_load_d16_hi_b16": 0,
+          "physical_code_bytes": 5992,
+          "row_shl:1": 64,
+          "row_shl:2": 64,
+          "row_shl:4": 64,
+          "row_shl:8": 64,
+          "s_barrier": 1,
+          "v_add_f32_dpp": 256,
+          "v_dual_fmac_f32": 1,
+          "v_fmac_f32_e32": 63,
+          "v_mov_b32_dpp": 0,
+          "v_mul_f32_e32": 1,
+          "v_permlanex16_b32": 64
+        },
+        "bf16_16x5": {
+          "ds_bpermute_b32": 0,
+          "ds_store_b128": 20,
+          "function_instruction_slots": 1082,
+          "global_load_b32": 16,
+          "global_load_b64": 1,
+          "global_load_d16_hi_b16": 1,
+          "physical_code_bytes": 7128,
+          "row_shl:1": 80,
+          "row_shl:2": 80,
+          "row_shl:4": 80,
+          "row_shl:8": 80,
+          "s_barrier": 1,
+          "v_add_f32_dpp": 320,
+          "v_dual_fmac_f32": 1,
+          "v_fmac_f32_e32": 79,
+          "v_mov_b32_dpp": 0,
+          "v_mul_f32_e32": 1,
+          "v_permlanex16_b32": 80
+        },
+        "f32_16x5": {
+          "ds_bpermute_b32": 0,
+          "ds_store_b128": 20,
+          "function_instruction_slots": 1079,
+          "global_load_b32": 16,
+          "global_load_b64": 1,
+          "global_load_d16_hi_b16": 1,
+          "physical_code_bytes": 7100,
+          "row_shl:1": 80,
+          "row_shl:2": 80,
+          "row_shl:4": 80,
+          "row_shl:8": 80,
+          "s_barrier": 1,
+          "v_add_f32_dpp": 320,
+          "v_dual_fmac_f32": 1,
+          "v_fmac_f32_e32": 79,
+          "v_mov_b32_dpp": 0,
+          "v_mul_f32_e32": 1,
+          "v_permlanex16_b32": 80
+        }
+      },
+      "metadata": {
+        "bf16_16x4": {
+          "group_segment_fixed_size": 1024,
+          "name": "_ZN12_GLOBAL__N_199gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernelItLi4EEEvPKtPKfPT_iii",
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 51,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 111,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "bf16_16x5": {
+          "group_segment_fixed_size": 1280,
+          "name": "_ZN12_GLOBAL__N_199gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernelItLi5EEEvPKtPKfPT_iii",
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 52,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 139,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "f32_16x5": {
+          "group_segment_fixed_size": 1280,
+          "name": "_ZN12_GLOBAL__N_199gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernelIfLi5EEEvPKtPKfPT_iii",
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 52,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 139,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        }
+      },
+      "passed": true,
+      "schema": 1
+    },
+    "schema": 1,
+    "sha256": {
+      "/home/lhl/.cache/hipengine/build/gguf_q5_k_f32_rocblas_prefill-d9127b5c3ba5f9ec/gguf_q5_k_f32_rocblas_prefill.so": "4a2910cb096b68ffc56671ee085acf1aabf9edea4fc9f961dcd2239d014c9b3a",
+      "/tmp/analyze_laguna_h6u_resource_trace.py": "31d66eb77359259fd775b5a55e262a4f45c615deef78f0eda66d25277aa50a3d",
+      "/tmp/laguna-h6u-code-object-notes.txt": "5bf97441f7c8c438b46c319f94722d972f0a76942e675774b82b267a53fe9a7d",
+      "/tmp/laguna-h6u-device-isa.txt": "9a8167a7cc167cbda3a35e999ff7fd33c329d8bdae80659ced171980bdf49128",
+      "/tmp/laguna-h6u-gfx1100.hsaco": "6aff5264562d8aedeed56ac671a6b4847b2ea18496e1aebd71c505d8383662d6",
+      "/tmp/laguna-h6u-resource-rocprof.stderr": "988dae743478eaaa63fcdd72f36ec5111e8aea8a60fcd4f69cffcffcdb626bbe",
+      "/tmp/laguna-h6u-resource-rocprof.stdout": "6b1a759b40426c8a14df807d0118a65c4ec72ab99c918bc37811998f88839d31",
+      "/tmp/laguna-h6u-resource-rocprof/h6u_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "/tmp/laguna-h6u-resource-rocprof/h6u_kernel_trace.csv": "4130577ed45bfce28f0f69a5c7f07211f674e7747f9e62812a0b805e7f0d26ce",
+      "/tmp/laguna_wpfh6u_q6_dpp_resource_smoke.py": "4390803629bc8a458df06bceadc37429c184f954090772d3848cc406b0a114f6"
+    }
+  },
+  "production_baseline": {
+    "current_h6t_kernel_sum_ms": 1237.149763,
+    "current_h6t_tok_s": 408.9193475254898,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_tok_s": 690.791,
+    "production_changed": false,
+    "source_q6": "H6E"
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/.cache/hipengine/build/gguf_q5_k_f32_rocblas_prefill-d9127b5c3ba5f9ec/gguf_q5_k_f32_rocblas_prefill.so": "4a2910cb096b68ffc56671ee085acf1aabf9edea4fc9f961dcd2239d014c9b3a",
+    "/tmp/analyze_laguna_h6u_physical.py": "8b1d6f2b4204ac5ad9e68e14f646e2d2b4659590dbb87dbdaa60f124829cef89",
+    "/tmp/analyze_laguna_h6u_resource_trace.py": "31d66eb77359259fd775b5a55e262a4f45c615deef78f0eda66d25277aa50a3d",
+    "/tmp/build_laguna_h6u_q6_dpp_candidate.py": "6d590de7ae1d9d961d72c929fdcc456b192afe5e1baf2d248d02ed49b7425483",
+    "/tmp/laguna-h6u-actual-role-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-actual-role-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-actual-role-screen.stdout": "ef912dc73ee29fa0d52f076915cf4478aae8cad9983672cf398fb66ecdcc1312",
+    "/tmp/laguna-h6u-code-object-notes.txt": "5bf97441f7c8c438b46c319f94722d972f0a76942e675774b82b267a53fe9a7d",
+    "/tmp/laguna-h6u-device-isa.txt": "9a8167a7cc167cbda3a35e999ff7fd33c329d8bdae80659ced171980bdf49128",
+    "/tmp/laguna-h6u-gfx1100.hsaco": "6aff5264562d8aedeed56ac671a6b4847b2ea18496e1aebd71c505d8383662d6",
+    "/tmp/laguna-h6u-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-green.stdout": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869",
+    "/tmp/laguna-h6u-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6u-physical-summary.json": "b491e788917ac1e51e6f3cbf3aecf411820fbbcb30761d7b3556ac6490ca6232",
+    "/tmp/laguna-h6u-physical.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-physical.stdout": "b491e788917ac1e51e6f3cbf3aecf411820fbbcb30761d7b3556ac6490ca6232",
+    "/tmp/laguna-h6u-resource-rocprof.stderr": "988dae743478eaaa63fcdd72f36ec5111e8aea8a60fcd4f69cffcffcdb626bbe",
+    "/tmp/laguna-h6u-resource-rocprof.stdout": "6b1a759b40426c8a14df807d0118a65c4ec72ab99c918bc37811998f88839d31",
+    "/tmp/laguna-h6u-resource-rocprof/h6u_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6u-resource-rocprof/h6u_kernel_trace.csv": "4130577ed45bfce28f0f69a5c7f07211f674e7747f9e62812a0b805e7f0d26ce",
+    "/tmp/laguna-h6u-resource-summary.json": "6640db02ba47e3fbbf8f9338864d5c7d5e34f4ecbe7e9da519549d65e44a6360",
+    "/tmp/laguna-h6u-retained-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-retained-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-retained-guards.stdout": "2fdbfd8ca4b1f03517583a95c9d797258bdf9116d64cf90fbdaa175b61869611",
+    "/tmp/laguna-wpfh6u-q6-dpp-actual-role-screen.json": "77427023ebfab5a213488ebbf5ab8811deb4f90905e37bc9e72042fa81560622",
+    "/tmp/laguna_wpfh6u_q6_dpp_actual_role_screen.py": "cf9651a755ca2458ca30c6c9ac2b9d3b502c6d465e0e3b6499daafafa9cf5d52",
+    "/tmp/laguna_wpfh6u_q6_dpp_resource_smoke.py": "4390803629bc8a458df06bceadc37429c184f954090772d3848cc406b0a114f6",
+    "/tmp/validate_laguna_h6u_q6_dpp_candidate.py": "4ac47b033c0669753de95dfc0b1cf62ba5d6025d95a7edd6e129a20e002e4337",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json": "63c243215198f208ae92f7cbed4f49a8fedf555441a55d08e6b1acbd5762cb8b"
+  },
+  "registry_variants": [
+    {
+      "composite_name": "gguf_q6_k_f32_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_bf16_out",
+      "composite_variant": "f32_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_bf16_out",
+      "primitive_name": "gguf_q5_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_bf16_out",
+      "primitive_variant": "ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_bf16_out",
+      "role": [
+        16,
+        5,
+        "bf16"
+      ]
+    },
+    {
+      "composite_name": "gguf_q6_k_f32_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch4_bf16_bf16_out",
+      "composite_variant": "f32_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch4_bf16_bf16_out",
+      "primitive_name": "gguf_q5_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch4_bf16_bf16_out",
+      "primitive_variant": "ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch4_bf16_bf16_out",
+      "role": [
+        16,
+        4,
+        "bf16"
+      ]
+    },
+    {
+      "composite_name": "gguf_q6_k_f32_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_f32_out",
+      "composite_variant": "f32_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_f32_out",
+      "primitive_name": "gguf_q5_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_f32_out",
+      "primitive_variant": "ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5_bf16_f32_out",
+      "role": [
+        16,
+        5,
+        "f32"
+      ]
+    }
+  ],
+  "schema": 1,
+  "scope": "Standalone WPF-H6U exact DPP-add wave-reduction siblings for all three H6E Q6 activation-row consumer roles on W7900; production remains H6E.",
+  "screen": {
+    "aggregate": {
+      "event_percent_change": -12.470712312840659,
+      "event_speedup": 1.142474737797622,
+      "h6e_event_weighted_ms": 55.43244366645813,
+      "h6e_wall_weighted_ms": 56.2374422326684,
+      "h6u_event_weighted_ms": 48.519623088836674,
+      "h6u_wall_weighted_ms": 48.643766064196825,
+      "wall_percent_change": -13.502883251792696,
+      "wall_speedup": 1.1561079000020258
+    },
+    "all_candidate_bytes_exact": true,
+    "all_candidate_finite": true,
+    "all_roles_both_clock_positive": true,
+    "candidate_admitted": true,
+    "created_at": "2026-08-01T03:25:39.309294+00:00",
+    "elapsed_seconds": 0.4750585248693824,
+    "hardware": {
+      "arch": "gfx1100",
+      "gpu": "AMD Radeon Pro W7900",
+      "queues": 1
+    },
+    "harness_sha256": "cf9651a755ca2458ca30c6c9ac2b9d3b502c6d465e0e3b6499daafafa9cf5d52",
+    "kind": "laguna_wpfh6u_exact_q6_dpp_actual_role_screen",
+    "model": {
+      "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "quant": "UD-Q2_K_XL",
+      "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+    },
+    "protocol": {
+      "actual_weights": true,
+      "candidate": "H6U exact DPP-add activation-row Q6 consumer",
+      "control": "H6E exact activation-row Q6 consumer",
+      "counter_rotated_repetitions": 15,
+      "deterministic_bf16_input": true,
+      "event_and_synchronized_wall": true,
+      "launches_per_sample": 5,
+      "mode_starts_per_role": {
+        "h6e": 8,
+        "h6u": 7
+      },
+      "producer_and_activation_pack": "prepared once outside timed consumer region",
+      "production_invocations": 142,
+      "rows": 512,
+      "selection_rule": "all three roles and their 142-call weighted aggregate must improve on both clocks",
+      "unique_configurations": 3,
+      "warmups": 5
+    },
+    "revision": "2b7ced608+working-h6u",
+    "rows": [
+      {
+        "activation_workspace_bytes": 5062656,
+        "both_clock_positive": true,
+        "geometry": "coltile16_rowbatch5",
+        "output_dtype": "bf16",
+        "production_invocations": 2,
+        "quality": {
+          "byte_exact": true,
+          "candidate_sha256": "448539011899ecdb72ac832be2a55aaf58c7455e7c61ba1eb4c371342eb42ab7",
+          "control_sha256": "448539011899ecdb72ac832be2a55aaf58c7455e7c61ba1eb4c371342eb42ab7",
+          "finite": true,
+          "mismatch_count": 0
+        },
+        "quant": "gguf_q6_k",
+        "rows": 512,
+        "shape": [
+          1024,
+          3072
+        ],
+        "speedup": {
+          "event": 1.0169933023711104,
+          "wall": 1.0306206884416327
+        },
+        "tensor": "blk.47.ffn_gate_shexp.weight",
+        "timing": {
+          "h6e": {
+            "event_ms_mean": 0.3170346705118815,
+            "event_ms_median": 0.31973578929901125,
+            "event_ms_samples": [
+              0.2985640048980713,
+              0.2903670072555542,
+              0.31497480869293215,
+              0.30867140293121337,
+              0.31973578929901125,
+              0.32101600170135497,
+              0.3199440002441406,
+              0.3218244075775146,
+              0.3267604112625122,
+              0.3192244052886963,
+              0.33167319297790526,
+              0.3148332118988037,
+              0.32008121013641355,
+              0.31960101127624513,
+              0.328249192237854
+            ],
+            "wall_ms_mean": 0.3257132228463888,
+            "wall_ms_median": 0.32728658989071846,
+            "wall_ms_samples": [
+              0.334340613335371,
+              0.3200964070856571,
+              0.3031881991773844,
+              0.31509040854871273,
+              0.33116061240434647,
+              0.32493057660758495,
+              0.33336859196424484,
+              0.32728658989071846,
+              0.33178459852933884,
+              0.3249365836381912,
+              0.3332527820020914,
+              0.3192384261637926,
+              0.3293885849416256,
+              0.32429657876491547,
+              0.33333878964185715
+            ]
+          },
+          "h6u": {
+            "event_ms_mean": 0.3116243998209635,
+            "event_ms_median": 0.31439321041107177,
+            "event_ms_samples": [
+              0.35314819812774656,
+              0.27563700675964353,
+              0.28592739105224607,
+              0.29393539428710935,
+              0.3211997985839844,
+              0.3156078100204468,
+              0.3161600112915039,
+              0.31014399528503417,
+              0.3184403896331787,
+              0.31168038845062257,
+              0.3187690019607544,
+              0.31439321041107177,
+              0.3141052007675171,
+              0.3082969903945923,
+              0.31692121028900144
+            ],
+            "wall_ms_mean": 0.3125414562722047,
+            "wall_ms_median": 0.3175626043230295,
+            "wall_ms_samples": [
+              0.3113584127277136,
+              0.27140178717672825,
+              0.29471623711287975,
+              0.2970702014863491,
+              0.3258385695517063,
+              0.31308243051171303,
+              0.3197146113961935,
+              0.3204823937267065,
+              0.32153837382793427,
+              0.31268238089978695,
+              0.32023643143475056,
+              0.32707061618566513,
+              0.322938384488225,
+              0.3124284092336893,
+              0.3175626043230295
+            ]
+          },
+          "mode_starts": {
+            "h6e": 8,
+            "h6u": 7
+          }
+        },
+        "weight_bytes": 2580480,
+        "weight_workspace_bytes": 12582912
+      },
+      {
+        "activation_workspace_bytes": 2097152,
+        "both_clock_positive": true,
+        "geometry": "coltile16_rowbatch4",
+        "output_dtype": "bf16",
+        "production_invocations": 46,
+        "quality": {
+          "byte_exact": true,
+          "candidate_sha256": "b1c6bc344a41f79453c055543095ec077351cbdc9c778ffd149b43883d0733eb",
+          "control_sha256": "b1c6bc344a41f79453c055543095ec077351cbdc9c778ffd149b43883d0733eb",
+          "finite": true,
+          "mismatch_count": 0
+        },
+        "quant": "gguf_q6_k",
+        "rows": 512,
+        "shape": [
+          3072,
+          1024
+        ],
+        "speedup": {
+          "event": 1.33130296913163,
+          "wall": 1.350384896421202
+        },
+        "tensor": "blk.1.ffn_down_shexp.weight",
+        "timing": {
+          "h6e": {
+            "event_ms_mean": 0.5542644278208415,
+            "event_ms_median": 0.5548577785491944,
+            "event_ms_samples": [
+              0.6025859832763671,
+              0.5548577785491944,
+              0.5824577808380127,
+              0.5445785999298096,
+              0.568794584274292,
+              0.5384826183319091,
+              0.5718026161193848,
+              0.5310905933380127,
+              0.5677227973937988,
+              0.5266186237335205,
+              0.5655948162078858,
+              0.5285868167877197,
+              0.5538187980651855,
+              0.5206667900085449,
+              0.5563072204589844
+            ],
+            "wall_ms_mean": 0.5619231890887022,
+            "wall_ms_median": 0.5630778148770332,
+            "wall_ms_samples": [
+              0.5167332012206316,
+              0.5748579744249582,
+              0.5940201692283154,
+              0.5658880341798067,
+              0.5738722160458565,
+              0.5625158082693815,
+              0.5779142025858164,
+              0.5630778148770332,
+              0.5634597968310118,
+              0.5572738125920296,
+              0.5643100012093782,
+              0.5556358024477959,
+              0.5546658299863338,
+              0.5528915673494339,
+              0.5517316050827503
+            ]
+          },
+          "h6u": {
+            "event_ms_mean": 0.418908584912618,
+            "event_ms_median": 0.4167779922485352,
+            "event_ms_samples": [
+              0.39947340488433836,
+              0.4113614082336426,
+              0.44296941757202146,
+              0.42760138511657714,
+              0.4337619781494141,
+              0.42356200218200685,
+              0.4303460121154785,
+              0.41182599067687986,
+              0.4241541862487793,
+              0.41165800094604493,
+              0.42269020080566405,
+              0.4055461883544922,
+              0.4167779922485352,
+              0.4060341835021973,
+              0.41586642265319823
+            ],
+            "wall_ms_mean": 0.4191485575089852,
+            "wall_ms_median": 0.4169757943600416,
+            "wall_ms_samples": [
+              0.4123978316783905,
+              0.41853198781609535,
+              0.44007222168147564,
+              0.4278319887816906,
+              0.43493020348250866,
+              0.41863578371703625,
+              0.43133217841386795,
+              0.41586384177207947,
+              0.4203779622912407,
+              0.4123937804251909,
+              0.4154718015342951,
+              0.40952558629214764,
+              0.4169757943600416,
+              0.40459963493049145,
+              0.4082877654582262
+            ]
+          },
+          "mode_starts": {
+            "h6e": 8,
+            "h6u": 7
+          }
+        },
+        "weight_bytes": 2580480,
+        "weight_workspace_bytes": 12582912
+      },
+      {
+        "activation_workspace_bytes": 5062656,
+        "both_clock_positive": true,
+        "geometry": "coltile16_rowbatch5",
+        "output_dtype": "f32",
+        "production_invocations": 94,
+        "quality": {
+          "byte_exact": true,
+          "candidate_sha256": "aba1b8d5f616b5dd8f1c2907668b05ab5a99294049b9791a49e9deaef0a42c20",
+          "control_sha256": "aba1b8d5f616b5dd8f1c2907668b05ab5a99294049b9791a49e9deaef0a42c20",
+          "finite": true,
+          "mismatch_count": 0
+        },
+        "quant": "gguf_q6_k",
+        "rows": 512,
+        "shape": [
+          1024,
+          3072
+        ],
+        "speedup": {
+          "event": 1.019167252005597,
+          "wall": 1.0296081076669503
+        },
+        "tensor": "blk.0.attn_k.weight",
+        "timing": {
+          "h6e": {
+            "event_ms_mean": 0.3082678524653117,
+            "event_ms_median": 0.31137781143188475,
+            "event_ms_samples": [
+              0.27534539699554444,
+              0.3015537977218628,
+              0.31664180755615234,
+              0.3120255947113037,
+              0.3169617891311646,
+              0.3091536045074463,
+              0.3179297924041748,
+              0.3112735986709595,
+              0.3137458086013794,
+              0.31137781143188475,
+              0.31146559715270994,
+              0.30696179866790774,
+              0.3125377893447876,
+              0.3007698059082031,
+              0.3062737941741943
+            ],
+            "wall_ms_mean": 0.3152437477062146,
+            "wall_ms_median": 0.3157583996653557,
+            "wall_ms_samples": [
+              0.29138820245862007,
+              0.3096544183790684,
+              0.3215203993022442,
+              0.3208186011761427,
+              0.3264266066253185,
+              0.31577241607010365,
+              0.3256823867559433,
+              0.31456840224564075,
+              0.3209623973816633,
+              0.3157583996653557,
+              0.312990415841341,
+              0.3149963915348053,
+              0.3160384017974138,
+              0.30996440909802914,
+              0.31211436726152897
+            ]
+          },
+          "h6u": {
+            "event_ms_mean": 0.3055254793167114,
+            "event_ms_median": 0.3055217981338501,
+            "event_ms_samples": [
+              0.3389780044555664,
+              0.28972959518432617,
+              0.30638580322265624,
+              0.30596179962158204,
+              0.31084980964660647,
+              0.30690560340881345,
+              0.3065697908401489,
+              0.3065376043319702,
+              0.30525779724121094,
+              0.3055217981338501,
+              0.30428979396820066,
+              0.29670560359954834,
+              0.3046977996826172,
+              0.29509758949279785,
+              0.2993937969207764
+            ],
+            "wall_ms_mean": 0.30639241449534893,
+            "wall_ms_median": 0.3066782373934984,
+            "wall_ms_samples": [
+              0.331496587023139,
+              0.2857720013707876,
+              0.31006839126348495,
+              0.3085281699895859,
+              0.3151324111968279,
+              0.30291820876300335,
+              0.31021442264318466,
+              0.3066782373934984,
+              0.3083623945713043,
+              0.3017641603946686,
+              0.3081041853874922,
+              0.2999241929501295,
+              0.30559422448277473,
+              0.29532620683312416,
+              0.3060024231672287
+            ]
+          },
+          "mode_starts": {
+            "h6e": 8,
+            "h6u": 7
+          }
+        },
+        "weight_bytes": 2580480,
+        "weight_workspace_bytes": 12582912
+      }
+    ],
+    "schema": 1,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 27566080,
+      "peak_allocations": 6,
+      "total_allocated_bytes": 77635584,
+      "total_freed_bytes": 77635584
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true,
+    "weighted_aggregate_both_clock_positive": true
+  },
+  "status": "retained_exact_standalone_leaf_source_h6e_unchanged",
+  "weighted_replay": {
+    "event": {
+      "h6e_ms": 55.43244366645813,
+      "h6u_ms": 48.519623088836674,
+      "speedup": 1.142474737797622
+    },
+    "wall": {
+      "h6e_ms": 56.2374422326684,
+      "h6u_ms": 48.643766064196825,
+      "speedup": 1.1561079000020258
+    }
+  }
+}
