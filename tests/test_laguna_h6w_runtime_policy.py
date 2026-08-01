@@ -238,7 +238,7 @@ def test_h6w_runtime_routes_late_starts_and_reuses_external_workspace(
                 "launch:swa_f32_rows_spans",
                 f"launch:{_H6A_SWA}",
             ]
-            assert launches[-1][1][6].span_role == "prefill"
+            assert launches[-1][1][6].span_role == cache.layer(1).spans.span_role
             assert "score_scratch_nbytes" not in launches[-1][2]
 
         for start in _H6W_STARTS:
@@ -254,7 +254,7 @@ def test_h6w_runtime_routes_late_starts_and_reuses_external_workspace(
             h6w_args = launches[-1][1]
             h6w_kwargs = launches[-1][2]
             assert h6w_args[6] == score_ptr
-            assert h6w_args[7].span_role == "prefill"
+            assert h6w_args[7].span_role == cache.layer(1).spans.span_role
             assert h6w_args[8] == 128
             assert h6w_kwargs["score_scratch_nbytes"] == _SCORE_SCRATCH_BYTES
             assert h6w_kwargs["start_position"] == start

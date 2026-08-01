@@ -95,6 +95,11 @@ _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT = (
 _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT = (
     "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
 )
+_DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+)
+_PREFILL_GLOBAL_SCORE_REPLAY_STARTS = frozenset({256, 384})
+_PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES = 18_874_368
 _PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
     _PREFILL_DENSE_INITIAL_GLOBAL_ROLE: frozenset(
         {
@@ -103,7 +108,10 @@ _PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
         }
     ),
     _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
-        {_DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT}
+        {
+            _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT,
+            _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+        }
     ),
 }
 
@@ -193,6 +201,9 @@ class LagunaKVCache:
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
         self._dense_initial_metadata_valid = True
+        self._prefill_score_scratch_ptr = 0
+        self._prefill_score_scratch_nbytes = 0
+        self._prefill_score_scratch_available_nbytes = 0
         self._closed = False
 
     @property
@@ -214,6 +225,54 @@ class LagunaKVCache:
     @property
     def pending_positions(self) -> tuple[int, ...]:
         return self._pending_positions
+
+    @property
+    def prefill_score_scratch_required(self) -> bool:
+        return self.prefill_preappend_role_variants.get(
+            _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+        ) == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+
+    @property
+    def prefill_score_scratch_bound(self) -> bool:
+        return (
+            self._prefill_score_scratch_ptr > 0
+            and self._prefill_score_scratch_nbytes
+            == _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES
+        )
+
+    @property
+    def prefill_score_scratch_ptr(self) -> int:
+        return self._prefill_score_scratch_ptr
+
+    @property
+    def prefill_score_scratch_nbytes(self) -> int:
+        return self._prefill_score_scratch_nbytes
+
+    def bind_prefill_score_scratch(self, ptr: int, available_nbytes: int) -> None:
+        """Borrow one aligned same-stream prefix without taking ownership."""
+
+        self._check_open()
+        parsed_ptr = int(ptr)
+        parsed_available = int(available_nbytes)
+        if parsed_ptr <= 0:
+            raise ValueError("Laguna prefill score scratch pointer must be non-zero")
+        if parsed_ptr % 16:
+            raise ValueError("Laguna prefill score scratch must be 16-byte aligned")
+        if parsed_available < _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES:
+            raise ValueError(
+                "Laguna prefill score scratch must provide at least "
+                f"{_PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES} bytes"
+            )
+        if (
+            self._prefill_score_scratch_ptr
+            and self._prefill_score_scratch_ptr != parsed_ptr
+        ):
+            raise ValueError("Laguna prefill score scratch is already bound")
+        self._prefill_score_scratch_ptr = parsed_ptr
+        self._prefill_score_scratch_nbytes = (
+            _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES
+        )
+        self._prefill_score_scratch_available_nbytes = parsed_available
 
     def layer(self, layer_id: int) -> LagunaKVLayerState:
         self._check_open()
@@ -666,7 +725,11 @@ class LagunaKVCache:
         return (
             variant is not None
             and (
-                variant != _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT
+                variant
+                not in {
+                    _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT,
+                    _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+                }
                 or self._dense_initial_metadata_valid
             )
             and state.attention_type == SLIDING_ATTENTION
@@ -831,6 +894,18 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         start_position = int(self._pending_positions[int(row_offset)])
+        if (
+            role_variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        ):
+            role_variant = (
+                _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+                if (
+                    start_position in _PREFILL_GLOBAL_SCORE_REPLAY_STARTS
+                    and self.prefill_score_scratch_bound
+                )
+                else _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT
+            )
         dense_initial = (
             self.prefill_dense_initial
             and self.can_dense_initial_prefill(
@@ -889,6 +964,31 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 **extra,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif (
+            variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        ):
+            fn(
+                query_ptr,
+                current_key_ptr,
+                current_value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                out_ptr,
+                self._prefill_score_scratch_ptr,
+                spans,
+                int(rows),
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                score_scratch_nbytes=self._prefill_score_scratch_nbytes,
+                sliding_window=self.sliding_window,
+                start_position=start_position,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,

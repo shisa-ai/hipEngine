@@ -516,19 +516,22 @@ tok/s**
 [post-H6U target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 **WPF-H6W exact late-start dense-initial SWA qrow4 aligned global-score-record
-replay is admitted as a standalone default-off gfx1100 leaf; production remains
-H6A SWA pending runtime qualification.** Complete starts256/384 outputs are
-byte-exact to H6A, sampled CPU rows and all five `KVLiveSpans` fields pass, the
-aligned **18,874,368-byte** caller plane overwrites every required record while
-preserving poisoned suffixes, and lifecycle recovers. Physical code emits one
-`global_store_b128` plus one `global_load_b128`, removes the four second-QK load
-and 20 bpermute sites (**12→8** u16 loads, **52→32** bpermutes), cuts code
-**7,044→4,984 B** and metadata VGPR **64→54**, and traces at runtime VGPR56,
-local32/LDS0/scratch0 with no compiler. The one-shot 72-call event/wall gate
-improves **71.741/72.544→54.906/55.128 ms** (**1.307×/1.316×**); both starts win
-both clocks. H6W is not yet selected by runtime, so fixed production remains
-**410.220 tok/s** versus matched llama.cpp HIP **690.791 tok/s**
-([H6W candidate](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
+replay is qualified as a bounded default-off gfx1100 runtime owner; H6A remains
+the source default.** H6W borrows the first **18,874,368 bytes** of the existing
+aligned Q5 F32 plane with no allocation/workspace growth and same-stream
+projection → attention → FFN lifetime. Complete natural M512 is KL0 and
+byte-exact across logits, all **48/48** hidden boundaries, K/V/`KVLiveSpans`,
+repeat, and teardown. Four cached requests preserve **2,192** dispatches and
+route exact **48 H6N + 72 H6A + 72 H6W**; selected late SWA/attention/kernel-sum/
+span move **81.990/144.957/1,224.048/1,254.740 →
+62.470/127.063/1,207.903/1,229.421 ms**. Fixed natural C4096/M512 improves
+**411.764→417.920 tok/s (+1.495%, 5/5 wins)**, while default-off 512/1K/4K
+improves **384.904/309.699/194.214→389.922/311.383/194.392 tok/s
+(+1.304%/+0.544%/+0.092%)**, all **3/3** exact wins. Workspace/scratch remain
+**161,120,256/600,141,856 bytes**, no compiler appears under profiling, and
+**112/112** guards pass. Production remains H6A at **410.220 tok/s** versus
+matched llama.cpp HIP **690.791 tok/s** pending separate source-default RED
+([H6W candidate/runtime](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
 [post-H6V rejection / target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
 
 Both short

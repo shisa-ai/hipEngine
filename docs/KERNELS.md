@@ -1522,26 +1522,26 @@ this exact universal transfer
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 **WPF-H6W exact late-start dense-initial SWA qrow4 aligned global-score-record
-replay is an admitted standalone default-off gfx1100 leaf.** It retains H6A for
-starts0/128 and all production runtime/source policy. The **5/5** exact matrix
-proves complete starts256/384 H6A bytes, sampled CPU rows, immutable five-field
-spans, poisoned-output/record coverage, strict preflight, gfx1151 exclusion, and
-lifecycle at a fixed 16-byte-aligned **18,874,368-byte** caller plane. The
-arch-tagged code object emits exact one `global_store_b128` and one
-`global_load_b128`, removes all four second-QK u16-load and 20 wave-reduction
-sites (**global u16 12→8, bpermute 52→32**), and preserves query/value/output
-loads, four exp, 56 FMA, and 16 output stores. H6A→H6W code/slots fall
-**7,044→4,984 B / 1,345→871**, metadata VGPR **64→54**, SGPR **46→40**, and
-LDS/private/spill/barrier remain zero. Cached rocprof names the intended kernel
-at **770.525 us**, local32/grid2304x32/runtime-VGPR56/SGPR128/LDS0/scratch0;
-a 5-ms monitor sees zero new compilers. The binding starts256/384 event/wall
-medians improve **0.855/0.870→0.656/0.662 ms** and
-**1.138/1.145→0.869/0.870 ms**. Weighted 72 calls improve
-**71.741/72.544→54.906/55.128 ms (1.307×/1.316×)**, with every required clock
-positive. Commit only the leaf; bounded runtime still requires an explicit
-existing-workspace lifetime proof, complete state and exact **48 H6N + 72 H6A
-+ 72 H6W** topology, then fixed plus 512/1K/4K gates
-([candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
+replay is a qualified bounded default-off gfx1100 runtime owner; H6A remains
+source.** Its admitted leaf emits one b128 global score store/load, removes all
+four second-QK loads and 20 reduction sites, cuts code/slots
+**7,044→4,984 B / 1,345→871**, and runs local32/VGPR56/LDS0/scratch0. Runtime
+binds the fixed aligned **18,874,368-byte** score plane to the prefix of the
+existing **150,994,944-byte** Q5 ordered F32 weight plane after KV/workspace
+allocation. KV never owns or frees that pointer; identical rebinding is
+idempotent, invalid/different owners fail closed, and same-stream projection →
+attention → sparse-FFN order provides non-overlapping producer/consumer
+lifetime without allocation growth. Starts0/128 dynamically retain H6A while
+starts256/384 use H6W. Complete natural M512 is KL0/byte-exact across all
+**48/48** hidden boundaries, logits, K/V/spans, repeat, and lifecycle. Four
+cached requests prove exact **48 H6N + 72 H6A + 72 H6W** topology at **2,192**
+dispatches; selected late SWA/attention/kernel-sum/span improve
+**81.990/144.957/1,224.048/1,254.740→62.470/127.063/1,207.903/1,229.421 ms**.
+Fixed C4096/M512 gains **+1.495% (5/5)** and default-off 512/1K/4K gains
+**+1.304%/+0.544%/+0.092%**, all **3/3**, with unchanged workspace/scratch, no
+compiler under profiling, and **112/112** guards. Commit bounded ownership,
+then freeze separate source-default RED before selecting H6W production
+([candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
