@@ -1483,22 +1483,21 @@ count, and gfx1151 exclusion stay unchanged; **144/144** source guards pass
 [H6T target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
 
 **WPF-H6U exact DPP-add wave reduction for H6E Q6 activation-row consumers** is
-an admitted standalone gfx1100 leaf; H6E remains the source policy and package
-capability is unchanged. Frozen rows17/33/M512 passes **11/11** and the retained
-H6U/H6E/H5W/H5Y/base/registry bundle passes **46/46**. BF16 16x4 / BF16 16x5 /
-F32 16x5 ISA replaces **320/400/400 `ds_bpermute_b32`** with exact **64+256 /
-80+320 / 80+320 permlanex16 + `v_add_f32_dpp`**, zero bpermutes/moves, while
-preserving logical FMAs, global loads, LDS stores, one barrier, and output
-stores. Physical code falls **7,244/8,516/8,488 -> 5,992/7,128/7,100 bytes**,
-slots **1,245/1,440/1,437 -> 923/1,082/1,079**, metadata VGPR
-**130/162/162 -> 111/139/139**, and runtime VGPR **136/168/168 -> 112/144/144**
-at LDS **1024/1536/1536**, private0/spill0/scratch0. Cached named rocprof runs
-all three candidates with no compiler activity. Every actual role wins both
-clocks; weighted 142-call consumer event/wall improves **55.432/56.237 ->
-48.520/48.644 ms (-12.471%/-13.503%, 1.1425x/1.1561x)** with exact finite bytes
-and clean lifecycle. Freeze a separate bounded-runtime RED before changing any
-package or source policy
-([H6U candidate](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
+a qualified bounded default-off gfx1100 owner; H6E remains source. The exact
+**11/11** leaf replaces **320/400/400 `ds_bpermute_b32`** with **64+256 / 80+320 /
+80+320 permlanex16 + `v_add_f32_dpp`**, cutting physical code/slots and runtime
+VGPR **136/168/168 -> 112/144/144** at unchanged LDS/private0/spill0/scratch0.
+Complete natural M512 is KL0 and byte-exact across all **48/48** hidden
+boundaries, complete logits, K/V/`KVLiveSpans`, repeat, and teardown. Four cached
+requests preserve **2,192** dispatches and substitute exact **2/46/94 H6E ->
+H6U** consumers; consumer/Q6/request-sum/span move
+**54.144/86.958/1,276.589/1,305.317 -> 48.443/81.029/1,274.060/1,295.123 ms
+(-10.529%/-6.817%/-0.198%/-0.781%)** with H6U runtime VGPR **144/112/144** and
+scratch0. Fixed C4096/M512 improves **408.686 -> 410.339 tok/s (+0.405%, 5/5)**;
+default-off 512/1K/4K gains **+0.423%/+0.335%/+0.276%**, all **3/3** exact
+wins. Workspace/scratch are unchanged, gfx1151 fails closed, and **118/118**
+guards pass. Freeze a separate source-default RED before changing H6E policy
+([H6U candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json) ·
 [post-H6T residual / H6U target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32

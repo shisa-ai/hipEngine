@@ -1,19 +1,22 @@
 {
   "authority_files": {
-    "README.md": "d8fd56285c5a48773990cc0b0c0c155e4a1ed362baf14bb318778ba89452f0a5",
-    "WORKLOG.md": "dab3a8978501f2a59ca2fb00056a412a8887d0bd316b0bbbe2d3a3d55bd819cd",
-    "benchmarks/CHANGELOG.md": "906f8b3ea1be7d619d935814601eb1b1dc9b3fdf951e08d9915e1d63c825ae8c",
-    "benchmarks/README.md": "5c103cc7505910e6e9e0de8f224fa7b2b694a3071d0e16376469e1495024f692",
-    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
-    "docs/KERNELS.md": "f71d68ca38fbd8e94e675318d5f9f4b2bfab6c1364f5bf3d2cf7176e8ae2b9f6",
-    "docs/LAGUNA-prefill.md": "95a6a81cb889d53366d1ca6f5e864d0757b19c00de1e1bd97a3f497e2d3edd52",
-    "docs/PLAN.md": "e774337eb424e016371b2443b93fdba26671bfce9830f8b4ac3a1daf596c24d2",
-    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+    "README.md": "592d6001795fc6eed65135622b4da7927f727ab5e28563b018b6d985b557f014",
+    "WORKLOG.md": "33ea323707156ac21c4b71acf52e374c46790c963ca921a2c21473ef7e409439",
+    "benchmarks/CHANGELOG.md": "21ac83532fec0f990c0441e046feb947a7bbd6edbacca6f2ab988ae47d7ff2e9",
+    "benchmarks/README.md": "5e9cc272bdee64551d811edcfa5f2e55758797113addc6ed98c40c229d26296b",
+    "docs/KERNELS.md": "ce5bf578683546c569aac94be8bfc90a7c75344c0e44c46d78b6123f0e70ea66",
+    "docs/LAGUNA-prefill.md": "e8e40c11de063e6ee67600d430bac38eadb873a11b64947adb12f430aa855ff0",
+    "docs/PLAN.md": "a561f45a9c13a00f8d81dce336485ff7e54621ef6c1a463510d362d38841cd41"
   },
   "commands": {
     "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/h6t-compiler-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_h6u_q6_dpp_wave_reduction.py",
     "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
     "retained_guards": "same cache-only environment; H6U/H6E/H5W/H5Y/base-prefill/registry six-file bundle",
+    "runtime_clean_512_1k_4k": "same one-queue cached environment; uv run python3 -u /tmp/laguna_wpfh6u_default_off_clean_512_4k.py",
+    "runtime_complete_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python3 -u /tmp/laguna_wpfh6u_runtime_m512_full_state.py",
+    "runtime_fixed_c4096_m512": "same one-queue cached environment; uv run python3 -u /tmp/laguna_wpfh6u_matched_c4096_m512.py",
+    "runtime_guards": "118/118 split retained package/kernel and Laguna runner guards",
+    "runtime_integrated_trace": "cached-only rocprofv3 --kernel-trace over /tmp/laguna_wpfh6u_runtime_trace_integrated_paired.py",
     "screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run python /tmp/laguna_wpfh6u_q6_dpp_actual_role_screen.py",
     "trace": "rocprofv3 --kernel-trace -f csv -d /tmp/laguna-h6u-resource-rocprof -o h6u -- uv run python /tmp/laguna_wpfh6u_q6_dpp_resource_smoke.py"
   },
@@ -24,6 +27,8 @@
     "finite": true,
     "focused_passes": 11,
     "gfx1151_candidate_absent": true,
+    "package_h6e_source_map_unchanged": true,
+    "package_h6u_capability_added": true,
     "production_policy_h6e_unchanged": true,
     "retained_guard_passes": 46,
     "rows": [
@@ -31,6 +36,12 @@
       33,
       512
     ],
+    "runtime_complete_state_hidden_boundaries_exact": 48,
+    "runtime_complete_state_kl_zero": true,
+    "runtime_contract_green_passes": 3,
+    "runtime_retained_guard_passes": 80,
+    "runtime_runner_guard_passes": 38,
+    "runtime_total_guard_passes": 118,
     "sampled_independent_cpu_gate": true,
     "source_h6e_kernel_and_wrapper_hashes_unchanged": true,
     "strict_role_preflight_before_hip_load": true,
@@ -39,11 +50,11 @@
   "correctness_claim": true,
   "date": "2026-08-01",
   "decision": {
-    "admitted": true,
-    "all_three_roles_both_clock_positive": true,
-    "next_action": "Commit this standalone leaf, then freeze a separate bounded-runtime capability RED before any package policy or source-map edit.",
-    "production_changed": false,
-    "weighted_142_call_both_clock_positive": true
+    "leaf_admitted": true,
+    "next_action": "Commit the bounded H6U owner, then freeze a separate source-default RED before changing the H6E selected policy.",
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true,
+    "source_default_changed": false
   },
   "hardware": {
     "architecture": "gfx1100",
@@ -55,6 +66,189 @@
     "wavefront_size": 32
   },
   "kind": "gfx1100_laguna_q2_xl_h6u_q6_dpp_wave_reduction_candidate",
+  "leaf_admission_snapshot": {
+    "artifact_sha256": "687004281e7ecb68cadf85e2a67ceb1618068a9642522fe775d307d45d60c9d2",
+    "physical": {
+      "candidate_dispatches": [
+        {
+          "dispatch_id": 3,
+          "duration_us": 273.318,
+          "grid_x": 843776,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_type": "unsigned short",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 144
+        },
+        {
+          "dispatch_id": 6,
+          "duration_us": 350.918,
+          "grid_x": 3145728,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+          "lds_bytes": 1024,
+          "local_size": 128,
+          "output_type": "unsigned short",
+          "row_batch": 4,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 112
+        },
+        {
+          "dispatch_id": 9,
+          "duration_us": 268.799,
+          "grid_x": 843776,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<float, 5>(unsigned short const*, float const*, float*, int, int, int)",
+          "lds_bytes": 1536,
+          "local_size": 128,
+          "output_type": "float",
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 144
+        }
+      ],
+      "compiler_ran_under_profiler": false,
+      "dispatches": 9,
+      "passed": true,
+      "physical": {
+        "baselines": {
+          "bf16_16x4": {
+            "code_bytes": 7244,
+            "metadata_vgpr": 130,
+            "slots": 1245
+          },
+          "bf16_16x5": {
+            "code_bytes": 8516,
+            "metadata_vgpr": 162,
+            "slots": 1440
+          },
+          "f32_16x5": {
+            "code_bytes": 8488,
+            "metadata_vgpr": 162,
+            "slots": 1437
+          }
+        },
+        "isa": {
+          "bf16_16x4": {
+            "ds_bpermute_b32": 0,
+            "ds_store_b128": 16,
+            "function_instruction_slots": 923,
+            "global_load_b32": 16,
+            "global_load_b64": 1,
+            "global_load_d16_hi_b16": 0,
+            "physical_code_bytes": 5992,
+            "row_shl:1": 64,
+            "row_shl:2": 64,
+            "row_shl:4": 64,
+            "row_shl:8": 64,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 256,
+            "v_dual_fmac_f32": 1,
+            "v_fmac_f32_e32": 63,
+            "v_mov_b32_dpp": 0,
+            "v_mul_f32_e32": 1,
+            "v_permlanex16_b32": 64
+          },
+          "bf16_16x5": {
+            "ds_bpermute_b32": 0,
+            "ds_store_b128": 20,
+            "function_instruction_slots": 1082,
+            "global_load_b32": 16,
+            "global_load_b64": 1,
+            "global_load_d16_hi_b16": 1,
+            "physical_code_bytes": 7128,
+            "row_shl:1": 80,
+            "row_shl:2": 80,
+            "row_shl:4": 80,
+            "row_shl:8": 80,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 320,
+            "v_dual_fmac_f32": 1,
+            "v_fmac_f32_e32": 79,
+            "v_mov_b32_dpp": 0,
+            "v_mul_f32_e32": 1,
+            "v_permlanex16_b32": 80
+          },
+          "f32_16x5": {
+            "ds_bpermute_b32": 0,
+            "ds_store_b128": 20,
+            "function_instruction_slots": 1079,
+            "global_load_b32": 16,
+            "global_load_b64": 1,
+            "global_load_d16_hi_b16": 1,
+            "physical_code_bytes": 7100,
+            "row_shl:1": 80,
+            "row_shl:2": 80,
+            "row_shl:4": 80,
+            "row_shl:8": 80,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 320,
+            "v_dual_fmac_f32": 1,
+            "v_fmac_f32_e32": 79,
+            "v_mov_b32_dpp": 0,
+            "v_mul_f32_e32": 1,
+            "v_permlanex16_b32": 80
+          }
+        },
+        "metadata": {
+          "bf16_16x4": {
+            "group_segment_fixed_size": 1024,
+            "name": "_ZN12_GLOBAL__N_199gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernelItLi4EEEvPKtPKfPT_iii",
+            "private_segment_fixed_size": 0,
+            "sgpr_count": 51,
+            "sgpr_spill_count": 0,
+            "uses_dynamic_stack": false,
+            "vgpr_count": 111,
+            "vgpr_spill_count": 0,
+            "wavefront_size": 32
+          },
+          "bf16_16x5": {
+            "group_segment_fixed_size": 1280,
+            "name": "_ZN12_GLOBAL__N_199gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernelItLi5EEEvPKtPKfPT_iii",
+            "private_segment_fixed_size": 0,
+            "sgpr_count": 52,
+            "sgpr_spill_count": 0,
+            "uses_dynamic_stack": false,
+            "vgpr_count": 139,
+            "vgpr_spill_count": 0,
+            "wavefront_size": 32
+          },
+          "f32_16x5": {
+            "group_segment_fixed_size": 1280,
+            "name": "_ZN12_GLOBAL__N_199gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernelIfLi5EEEvPKtPKfPT_iii",
+            "private_segment_fixed_size": 0,
+            "sgpr_count": 52,
+            "sgpr_spill_count": 0,
+            "uses_dynamic_stack": false,
+            "vgpr_count": 139,
+            "vgpr_spill_count": 0,
+            "wavefront_size": 32
+          }
+        },
+        "passed": true,
+        "schema": 1
+      },
+      "schema": 1,
+      "sha256": {
+        "/home/lhl/.cache/hipengine/build/gguf_q5_k_f32_rocblas_prefill-d9127b5c3ba5f9ec/gguf_q5_k_f32_rocblas_prefill.so": "4a2910cb096b68ffc56671ee085acf1aabf9edea4fc9f961dcd2239d014c9b3a",
+        "/tmp/analyze_laguna_h6u_resource_trace.py": "31d66eb77359259fd775b5a55e262a4f45c615deef78f0eda66d25277aa50a3d",
+        "/tmp/laguna-h6u-code-object-notes.txt": "5bf97441f7c8c438b46c319f94722d972f0a76942e675774b82b267a53fe9a7d",
+        "/tmp/laguna-h6u-device-isa.txt": "9a8167a7cc167cbda3a35e999ff7fd33c329d8bdae80659ced171980bdf49128",
+        "/tmp/laguna-h6u-gfx1100.hsaco": "6aff5264562d8aedeed56ac671a6b4847b2ea18496e1aebd71c505d8383662d6",
+        "/tmp/laguna-h6u-resource-rocprof.stderr": "988dae743478eaaa63fcdd72f36ec5111e8aea8a60fcd4f69cffcffcdb626bbe",
+        "/tmp/laguna-h6u-resource-rocprof.stdout": "6b1a759b40426c8a14df807d0118a65c4ec72ab99c918bc37811998f88839d31",
+        "/tmp/laguna-h6u-resource-rocprof/h6u_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+        "/tmp/laguna-h6u-resource-rocprof/h6u_kernel_trace.csv": "4130577ed45bfce28f0f69a5c7f07211f674e7747f9e62812a0b805e7f0d26ce",
+        "/tmp/laguna_wpfh6u_q6_dpp_resource_smoke.py": "4390803629bc8a458df06bceadc37429c184f954090772d3848cc406b0a114f6"
+      }
+    },
+    "status": "retained_exact_standalone_leaf_source_h6e_unchanged",
+    "weighted_event_speedup": 1.142474737797622,
+    "weighted_wall_speedup": 1.1561079000020258
+  },
   "lineage": {
     "implementation_sha256": {
       "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "4ef2f2c2d5f708682a2ef43dc820d2a3ca35c4518d9e3d282544504174b978b2",
@@ -63,7 +257,18 @@
       "tests/test_laguna_h6u_q6_dpp_wave_reduction.py": "17bfa6d295371551bcaf93cd46e6509b4eb072aa70fbbc1288dba20cc87d93fe"
     },
     "kernel_lineage_state": "all tracked Laguna/llama.cpp parents clean; four unrelated documented Qwen/PARO drifts",
+    "leaf_artifact_sha256": "687004281e7ecb68cadf85e2a67ceb1618068a9642522fe775d307d45d60c9d2",
     "red_revision": "2b7ced608",
+    "runtime_implementation_patch_sha256": "ad4d9c87220565568e2d143cde5c2b581aa6a31acd90c691bfe2ad15082ab471",
+    "runtime_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "f9e809f8973a20bdb2cdc633e444034e35f8422b56135aa0b562e8ffb8baba05",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "4ef2f2c2d5f708682a2ef43dc820d2a3ca35c4518d9e3d282544504174b978b2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "cf7354e539a7aaf35794b8dfca0c108d440f79dd2c4ebb32b6d74aa0cd601d8e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5bd3295ab3c032727cc2e2dac4106e98b5d77ceb9c0f8b42ae15ec8e0af61230",
+      "tests/test_laguna_h6u_q6_dpp_wave_reduction.py": "17bfa6d295371551bcaf93cd46e6509b4eb072aa70fbbc1288dba20cc87d93fe",
+      "tests/test_laguna_h6u_runtime_policy.py": "3c54ec1a7ae64e48d931750b654153008162adbfadc3c5b8fa643477b74a097b"
+    },
+    "runtime_red_revision": "ccf4e62b9",
     "source": "Net-new in-tree instruction-form sibling transferring retained H6R/H6T exact DPP-add reduction to H6E Q6 consumers; no external kernel body copied.",
     "target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json",
     "target_artifact_sha256": "63c243215198f208ae92f7cbed4f49a8fedf555441a55d08e6b1acbd5762cb8b",
@@ -263,19 +468,28 @@
   "production_baseline": {
     "current_h6t_kernel_sum_ms": 1237.149763,
     "current_h6t_tok_s": 408.9193475254898,
+    "h6u_in_package_capability": true,
     "matched_llamacpp_kernel_sum_ms": 714.008408,
     "matched_llamacpp_tok_s": 690.791,
     "production_changed": false,
+    "runtime_qualification_pending": false,
+    "source_default_adjudication_pending": true,
     "source_q6": "H6E"
   },
   "raw_evidence_sha256": {
     "/home/lhl/.cache/hipengine/build/gguf_q5_k_f32_rocblas_prefill-d9127b5c3ba5f9ec/gguf_q5_k_f32_rocblas_prefill.so": "4a2910cb096b68ffc56671ee085acf1aabf9edea4fc9f961dcd2239d014c9b3a",
     "/tmp/analyze_laguna_h6u_physical.py": "8b1d6f2b4204ac5ad9e68e14f646e2d2b4659590dbb87dbdaa60f124829cef89",
     "/tmp/analyze_laguna_h6u_resource_trace.py": "31d66eb77359259fd775b5a55e262a4f45c615deef78f0eda66d25277aa50a3d",
+    "/tmp/analyze_laguna_wpfh6u_runtime_integrated_trace.py": "371b46bd5b81d6f0f409c87f094787e33c8e611201335fcb1a2cc4a352ef28cf",
     "/tmp/build_laguna_h6u_q6_dpp_candidate.py": "6d590de7ae1d9d961d72c929fdcc456b192afe5e1baf2d248d02ed49b7425483",
+    "/tmp/build_laguna_h6u_runtime_publication.py": "2d94cdcc8a55333872056c4adb8773133a05c18fe790264f5b50b34b1a30ae72",
+    "/tmp/h6u-leaf-final-before-runtime.json": "687004281e7ecb68cadf85e2a67ceb1618068a9642522fe775d307d45d60c9d2",
     "/tmp/laguna-h6u-actual-role-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
     "/tmp/laguna-h6u-actual-role-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "/tmp/laguna-h6u-actual-role-screen.stdout": "ef912dc73ee29fa0d52f076915cf4478aae8cad9983672cf398fb66ecdcc1312",
+    "/tmp/laguna-h6u-clean.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-clean.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h6u-clean.stdout": "f58e76670737837376e2819eefece80ce44c69940f522b21a3efa3b2dca2ad90",
     "/tmp/laguna-h6u-code-object-notes.txt": "5bf97441f7c8c438b46c319f94722d972f0a76942e675774b82b267a53fe9a7d",
     "/tmp/laguna-h6u-device-isa.txt": "9a8167a7cc167cbda3a35e999ff7fd33c329d8bdae80659ced171980bdf49128",
     "/tmp/laguna-h6u-gfx1100.hsaco": "6aff5264562d8aedeed56ac671a6b4847b2ea18496e1aebd71c505d8383662d6",
@@ -285,6 +499,9 @@
     "/tmp/laguna-h6u-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
     "/tmp/laguna-h6u-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "/tmp/laguna-h6u-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6u-matched.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-matched.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h6u-matched.stdout": "b252e475549940577e604075a63155e2322c3e9495e3bd0d1ea9af5aec5d6416",
     "/tmp/laguna-h6u-physical-summary.json": "b491e788917ac1e51e6f3cbf3aecf411820fbbcb30761d7b3556ac6490ca6232",
     "/tmp/laguna-h6u-physical.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "/tmp/laguna-h6u-physical.stdout": "b491e788917ac1e51e6f3cbf3aecf411820fbbcb30761d7b3556ac6490ca6232",
@@ -296,10 +513,53 @@
     "/tmp/laguna-h6u-retained-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
     "/tmp/laguna-h6u-retained-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "/tmp/laguna-h6u-retained-guards.stdout": "2fdbfd8ca4b1f03517583a95c9d797258bdf9116d64cf90fbdaa175b61869611",
+    "/tmp/laguna-h6u-runtime-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h6u-runtime-full-state.stdout": "03f67716f845f3f6bbcefdbbd50fa0b4c4dc553422234ac7b2ca01c233cc4256",
+    "/tmp/laguna-h6u-runtime-h6e-control.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-h6e-control.stdout": "cf426ab35f3b06fccef8290fde5325d90af130a79da1d1752031518df77c4236",
+    "/tmp/laguna-h6u-runtime-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6u-runtime-owner.patch": "ad4d9c87220565568e2d143cde5c2b581aa6a31acd90c691bfe2ad15082ab471",
+    "/tmp/laguna-h6u-runtime-profiler-compiler-monitor-summary.json": "fa38087b0ae144467cf23a7d5ad8898fc1bcb0fac0406d886f1a749c9eed9669",
+    "/tmp/laguna-h6u-runtime-profiler-compiler-monitor.log": "4c27f28739092cd9646fc5007ef3289b3a2aa29ef5d07feb9c3dd069ecdea223",
+    "/tmp/laguna-h6u-runtime-red.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h6u-runtime-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-red.stdout": "4b871f204e5211ff1eed641853e9a334ce8212a8e738db5b724aac4c5916502a",
+    "/tmp/laguna-h6u-runtime-retained.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-retained.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-retained.stdout": "7aab9d03d5aad3ae7953c0ac55e01a47a25a852128e93ee579eb4dadf81d7df0",
+    "/tmp/laguna-h6u-runtime-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-rocprof.stderr": "7ce1c4a858d1104ea39f46d4a821f4b12a181e79f0de684dbf4d2de6fabc7825",
+    "/tmp/laguna-h6u-runtime-rocprof.stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "/tmp/laguna-h6u-runtime-runner-clean.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-runner-clean.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-runner-clean.stdout": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+    "/tmp/laguna-h6u-runtime-runner.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h6u-runtime-runner.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-runner.stdout": "7936cda651081f50dbaf77193c14694a00181e964fcc5806302dd4e6b91c8034",
+    "/tmp/laguna-h6u-runtime-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6u-runtime-trace-analysis.stdout": "4906fa074009781362dffa4ee74ac868e43263a62f7eb844adbb0f02f8fc3a90",
+    "/tmp/laguna-h6u-runtime-trace-prebuild.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6u-runtime-trace-prebuild.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h6u-runtime-trace-prebuild.stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "/tmp/laguna-wpfh6u-default-off-clean-512-4k.json": "30921e8b2154c1f47015381bedc4d861d0b0855fe210c1d47d997e3553701062",
+    "/tmp/laguna-wpfh6u-matched-c4096-m512.json": "46dfbfadf1cc598cfcca8f719ae07497af5c7da513448205d96821a3230340f5",
     "/tmp/laguna-wpfh6u-q6-dpp-actual-role-screen.json": "77427023ebfab5a213488ebbf5ab8811deb4f90905e37bc9e72042fa81560622",
+    "/tmp/laguna-wpfh6u-runtime-integrated-rocprof/h6u-runtime_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-wpfh6u-runtime-integrated-rocprof/h6u-runtime_kernel_trace.csv": "5eead44afb8152a713c6af100ef97f6d8e86d9c7065ee65df59d09bbdf275905",
+    "/tmp/laguna-wpfh6u-runtime-integrated-trace-summary.json": "4906fa074009781362dffa4ee74ac868e43263a62f7eb844adbb0f02f8fc3a90",
+    "/tmp/laguna-wpfh6u-runtime-m512-full-state.json": "11d9a3f70a456d82a7f484dd80c4f85c2d9e640ef7ae4e9c604a4cba1d688bc0",
+    "/tmp/laguna_wpfh6u_default_off_clean_512_4k.py": "b66c60c85526f78bad043db9669030454a1682198c61e2f19b15cbb1d306789d",
+    "/tmp/laguna_wpfh6u_matched_c4096_m512.py": "bbdb15b6353a8dda7ebe3535de217070af311c430e1e554dfaae135a45d60def",
     "/tmp/laguna_wpfh6u_q6_dpp_actual_role_screen.py": "cf9651a755ca2458ca30c6c9ac2b9d3b502c6d465e0e3b6499daafafa9cf5d52",
     "/tmp/laguna_wpfh6u_q6_dpp_resource_smoke.py": "4390803629bc8a458df06bceadc37429c184f954090772d3848cc406b0a114f6",
+    "/tmp/laguna_wpfh6u_runtime_m512_full_state.py": "d6a075d3e014a7e4a07647c6ca774e2fa87b7442dfd6f78655e112a1e7134940",
+    "/tmp/laguna_wpfh6u_runtime_trace_integrated_paired.py": "bdc828143b92c712ae6797011a73b856d6894edacc2066479ec1e7f248076759",
     "/tmp/validate_laguna_h6u_q6_dpp_candidate.py": "4ac47b033c0669753de95dfc0b1cf62ba5d6025d95a7edd6e129a20e002e4337",
+    "/tmp/validate_laguna_h6u_runtime_publication.py": "ae896cf4fb8a45980db7069f969c8ddb3e5d86b0bca4d2ddaba8aca58a4209a3",
     "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json": "63c243215198f208ae92f7cbed4f49a8fedf555441a55d08e6b1acbd5762cb8b"
   },
   "registry_variants": [
@@ -337,8 +597,245 @@
       ]
     }
   ],
+  "runtime_qualification": {
+    "cached_integrated_trace": {
+      "all_scratch_bytes": 0,
+      "candidate_consumer_median_ms": 48.44281899999999,
+      "candidate_consumer_topology": {
+        "bf16_k1024_n3072": 46,
+        "bf16_k3072_n1024": 2,
+        "f32_k3072_n1024": 94
+      },
+      "candidate_kernel_sum_median_ms": 1274.059805,
+      "candidate_q6_median_ms": 81.0294515,
+      "candidate_span_median_ms": 1295.123054,
+      "consumer_delta_ms": -5.7009609999999995,
+      "consumer_reduction_percent": 10.529299949135428,
+      "control_consumer_median_ms": 54.14377999999999,
+      "control_consumer_topology": {
+        "bf16_k1024_n3072": 46,
+        "bf16_k3072_n1024": 2,
+        "f32_k3072_n1024": 94
+      },
+      "control_kernel_sum_median_ms": 1276.588837,
+      "control_q6_median_ms": 86.95757450000002,
+      "control_span_median_ms": 1305.317399,
+      "dispatches_per_request": 2192,
+      "family_dispatches_each_request": {
+        "attention": 192,
+        "gate_up": 47,
+        "iq_down": 47,
+        "q5": 658,
+        "q6": 431,
+        "remaining": 817
+      },
+      "h6e_runtime_vgpr_by_role": {
+        "bf16_k1024_n3072": 136,
+        "bf16_k3072_n1024": 168,
+        "f32_k3072_n1024": 168
+      },
+      "h6u_runtime_vgpr_by_role": {
+        "bf16_k1024_n3072": 112,
+        "bf16_k3072_n1024": 144,
+        "f32_k3072_n1024": 144
+      },
+      "kernel_sum_delta_ms": -2.5290319999999156,
+      "kernel_sum_reduction_percent": 0.19810857863548081,
+      "mode_order": [
+        "control",
+        "candidate",
+        "candidate",
+        "control"
+      ],
+      "no_compiler_spawned_under_profile": true,
+      "preexisting_orphan_compiler_version_processes": 28,
+      "q6_delta_ms": -5.928123000000028,
+      "q6_reduction_percent": 6.817258915150659,
+      "requests": 4,
+      "span_delta_ms": -10.194345000000112,
+      "span_reduction_percent": 0.7809859125305407
+    },
+    "capability": {
+      "allocation": "raw_k_f32_ordered_activation_tile_k_row",
+      "changed_invocation_total": 142,
+      "changed_role_invocations": {
+        "bf16_k1024_n3072": 46,
+        "bf16_k3072_n1024": 2,
+        "f32_k3072_n1024": 94
+      },
+      "gfx1151_fail_closed": true,
+      "library": "ordered-library / shared ordered-prefill owner",
+      "name": "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
+      "new_allocation_bytes": 0,
+      "new_dispatches_per_request": 0,
+      "new_sidecar_bytes": 0,
+      "new_workspace_bytes": 0,
+      "q5_ordered_workspace_bytes": 161120256,
+      "retained_f32_k3072_n72_fallback": "coltile8_rowbatch4",
+      "roles": [
+        [
+          [
+            "bf16",
+            1024,
+            3072
+          ],
+          "weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch4"
+        ],
+        [
+          [
+            "bf16",
+            3072,
+            1024
+          ],
+          "weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5"
+        ],
+        [
+          [
+            "f32",
+            3072,
+            72
+          ],
+          "coltile8_rowbatch4"
+        ],
+        [
+          [
+            "f32",
+            3072,
+            1024
+          ],
+          "weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5"
+        ]
+      ],
+      "runtime_owner_default_off": true,
+      "source_default": false,
+      "source_selected_policy": "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY",
+      "total_scratch_bytes": 600141856,
+      "wrong_shape_registration_activation_backend_fallback_exact": true
+    },
+    "complete_natural_m512_state": {
+      "candidate_repeat_exact": true,
+      "complete_logits_hidden_kv_live_spans_exact": true,
+      "hidden_boundaries_exact": 48,
+      "hidden_boundaries_total": 48,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "next_token_id": 2930,
+      "owner_lifecycle_recovered": true,
+      "quality_gate": true,
+      "scratch_unchanged": true,
+      "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+      "top1_agreement": 1.0,
+      "tracked_allocations_recovered": true
+    },
+    "default_off_clean_512_1k_4k": {
+      "all_finite": true,
+      "all_outputs_exact": true,
+      "all_sessions_recovered": true,
+      "all_total_scratch_bytes": [
+        600141856
+      ],
+      "all_workspace_bytes": [
+        161120256
+      ],
+      "initial_lifecycle_recovered": true,
+      "protocol": "same resident weights; model load excluded; fresh request session/sample; one warmup/mode/length; three counter-rotated repetitions; matrix512; attention128; one queue",
+      "rows": {
+        "1024": {
+          "all_finite": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 3.301942748017609,
+          "candidate_median_tok_s": 310.12045881618633,
+          "control_median_seconds": 3.312998421024531,
+          "control_median_tok_s": 309.08556837866894,
+          "exact_all_repetitions": true,
+          "gain_percent": 0.3348232798270123,
+          "paired_candidate_wins": 3,
+          "speedup": 1.0033482327982701
+        },
+        "4096": {
+          "all_finite": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 21.044030833989382,
+          "candidate_median_tok_s": 194.63951713016516,
+          "control_median_seconds": 21.10214343899861,
+          "control_median_tok_s": 194.10350478569077,
+          "exact_all_repetitions": true,
+          "gain_percent": 0.2761476898967885,
+          "paired_candidate_wins": 3,
+          "speedup": 1.0027614768989679
+        },
+        "512": {
+          "all_finite": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 1.3303033281117678,
+          "candidate_median_tok_s": 384.8746291018701,
+          "control_median_seconds": 1.3359318049624562,
+          "control_median_tok_s": 383.25309577788573,
+          "exact_all_repetitions": true,
+          "gain_percent": 0.42309725396820763,
+          "paired_candidate_wins": 3,
+          "speedup": 1.004230972539682
+        }
+      },
+      "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1"
+    },
+    "fixed_c4096_m512": {
+      "all_finite": true,
+      "all_outputs_exact": true,
+      "all_sessions_recovered": true,
+      "initial_lifecycle_recovered": true,
+      "protocol": "same resident weights; pinned natural M512 IDs; model load excluded; fresh session/sample; one warmup/mode; five counter-rotated repetitions; context4096; matrix512; attention128; one queue",
+      "row": {
+        "all_finite": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 1.2477474270854145,
+        "candidate_median_tok_s": 410.33945563483906,
+        "candidate_over_llamacpp": 0.59401389947877,
+        "control_median_seconds": 1.2527953458484262,
+        "control_median_tok_s": 408.6860648841731,
+        "exact_all_repetitions": true,
+        "gain_percent": 0.40456254634826383,
+        "llamacpp_hip_tok_s": 690.791,
+        "llamacpp_over_candidate": 1.6834622908276575,
+        "paired_candidate_wins": 5,
+        "speedup": 1.0040456254634826
+      }
+    },
+    "retained_guards": {
+      "command_induced_runner_failure_excluded": "The W7900 GPU_MAX_HW_QUEUES=1 override intentionally disables gfx1151 branch concurrency; runner guards pass without that unrelated override.",
+      "failed": 0,
+      "passed": 118,
+      "scope": "80 H6U/H6E/H5W/H5X/H5Y/base-prefill/registry/gfx1151 package+leaf guards plus 38 Laguna runner guards"
+    },
+    "runtime_red_revision": "ccf4e62b9",
+    "status": "qualified_default_off"
+  },
   "schema": 1,
-  "scope": "Standalone WPF-H6U exact DPP-add wave-reduction siblings for all three H6E Q6 activation-row consumer roles on W7900; production remains H6E.",
+  "scope": "WPF-H6U exact Q6 DPP-add wave-reduction standalone leaf plus bounded default-off gfx1100 package capability on one Radeon Pro W7900 queue; H6E remains source.",
   "screen": {
     "aggregate": {
       "event_percent_change": -12.470712312840659,
@@ -749,7 +1246,7 @@
     "tracked_returned_to_baseline": true,
     "weighted_aggregate_both_clock_positive": true
   },
-  "status": "retained_exact_standalone_leaf_source_h6e_unchanged",
+  "status": "retained_exact_default_off_runtime_owner_source_h6e_unchanged",
   "weighted_replay": {
     "event": {
       "h6e_ms": 55.43244366645813,
