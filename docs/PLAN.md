@@ -2428,6 +2428,38 @@ commit source production, then cleanly reprofile and rerank toward llama.cpp
 ([H6Z production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json)).
 
+The clean committed H6Z checkpoint reaches **423.233 tok/s** from
+**422.351/424.811/424.219/423.140/423.233**, all exact token 2930, finite, and
+lifecycle-clean. This is **+149.671%** over campaign start and **1.63218x**
+behind matched llama.cpp HIP **690.791 tok/s**. Cache-only profiling preserves
+**2,192 dispatches**, exact **24 H6N + 24 H6Z + 72 H6A + 72 H6W** topology,
+**1,195.702-ms** kernel sum, **1,217.373-ms** span, and zero compiler process.
+The matched Q5/IQ-down/attention/Q6 gaps are **198.740/116.810/93.654/66.495
+ms**, explaining **98.756%** of the **481.694-ms** kernel residual; gate/up is
+already **1.929 ms faster** than llama.cpp.
+
+Select target-only **WPF-H7A exact late-start SWA scaled-score replay**. H6W's
+**62.562 ms / 72 calls** stores unscaled dots, uses `dot * scale` for max, then
+repeats the identical multiplication after loading each aligned record. H7A
+must compute the scaled score once in pass one, use that same F32 bit pattern
+for max and the `float4` record, and replay `exp(score - max)` in pass two. The
+natural schedule removes **255,135,744** duplicate scale multiplications with
+no byte, workgroup, plane, allocation, workspace, or result change. Q5
+changed-association/H6V, H6X/H6Y, wider-qrow, cross-head, and changed-association
+attention controls stay closed.
+
+Commit a RED-only leaf contract before executable changes. Require complete
+H6W/CPU/scaled-record/five-span/poison/lifecycle equality at starts256/384;
+remove exactly four second-pass scale-subtract FMA sites (**total
+`v_fma_f32` <=52 versus 56**) while preserving eight u16 loads, one b128 record
+load/store, 32 bpermutes, four exp sites, code **<=4,984 B / <=871 slots**,
+metadata/runtime VGPR **<=54/56**, and LDS0/private0/spill0/scratch0; prove a
+named cache-only launch with zero compiler; and consume one immutable 5/15/5
+screen where both starts and the weighted **72-call** aggregate win event and
+wall. Any miss removes all H7A surfaces without tuning/rerun. Leaf, bounded
+runtime, and source promotion remain separate
+([post-H6Z residual / H7A target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

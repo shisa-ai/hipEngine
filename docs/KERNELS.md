@@ -1644,6 +1644,38 @@ rollbacks; gfx1151 remains excluded and **126/126** guards pass
 ([H6Z production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json)).
 
+Clean committed H6Z reprofiling reaches **423.233 tok/s / 1,195.702 ms / 2,192
+dispatches**, **+149.671%** over campaign start and **1.63218x** behind matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. The exact topology remains **24
+H6N + 24 H6Z + 72 H6A + 72 H6W**, the kernel span is **1,217.373 ms**, and
+profiling spawns no compiler. Current Q5/IQ-down/attention/Q6 gaps are
+**198.740/116.810/93.654/66.495 ms**; those four explain **98.756%** of the
+**481.694-ms** kernel gap. Gate/up is already **1.929 ms faster** than llama.cpp.
+
+Select target-only **WPF-H7A exact late-start SWA scaled-score replay** on the
+**62.562-ms / 72-call** H6W body. H6W stores one aligned `float4` of unscaled
+dots per logical slot, computes `dot * scale` for max in pass one, then repeats
+the same multiply after loading the record in pass two. A separate gfx1100
+sibling must compute each visible scaled score once, use that same F32 bit
+pattern for max and the record, and replay `exp(score - max)`. The natural-M512
+schedule removes **255,135,744** duplicate scale multiplications with zero byte,
+workgroup, record, allocation, workspace, ABI, or result change; this is target
+operation-count rationale, not a speed claim.
+
+Freeze RED first. Preserve H6W's one-wave/one-head/qrow4 ownership, every QK
+product/reduction, score/max/exp/denominator/PV/output bit, aligned
+**18,874,368-byte** plane, complete `KVLiveSpans`, starts0/128 fallback, package
+policy, and gfx1151 exclusion. Physical admission requires four second-pass
+scale-subtract FMA sites removed (**total `v_fma_f32` <=52 versus 56**),
+unchanged eight u16 loads, one b128 record load/store, 32 bpermutes, four exp
+sites, code **<=4,984 B / <=871 slots**, metadata/runtime VGPR **<=54/56**, and
+LDS0/private0/spill0/scratch0. Complete starts256/384 H6W/CPU/scaled-record/
+span/poison/lifecycle bytes, cached named execution without compiler, and both
+starts plus weighted **72-call** event+wall wins under one immutable 5/15/5
+screen are binding. Any miss removes every H7A surface without tuning/rerun;
+runtime/source qualification stays separate
+([post-H6Z residual / H7A target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

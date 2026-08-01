@@ -1,0 +1,286 @@
+{
+  "authority_files": {
+    "README.md": "5b4c4b06ce0b3a5cb0960c8fb67edc9c730ab78df4f3e71467c7392a18069585",
+    "WORKLOG.md": "8bb060a40346b1011a7b18a377377a702e1545df4f5411f73a8ed35f03adfebd",
+    "benchmarks/CHANGELOG.md": "2dd29c98c8f93e0a29205fae345ef133335929adb2cb646cf80d047f3dc7ad90",
+    "benchmarks/README.md": "9286224e2824cd560e447e4eb1049b6f6e5f8a604b632ff2a9910fa22296c27e",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "959dd21852ca79eb6144a357772fd5a122bd95b2edee778d0e5b7434ead3258c",
+    "docs/LAGUNA-prefill.md": "c4fa6340ccd169cd28f17328797b22db8ff4c906ab9ce83446e0d125503519b5",
+    "docs/PLAN.md": "7219664d3ebb580035e141abd17ef2ac78088c4dfa3829a44adc2a767861570a",
+    "docs/REFACTOR.md": "f0ec9356d9a97cde2a8ddcd8c0ea3b0256d3ea24ce378e3c0472343a6282c10c",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "builder_sha256": "6d58b1224960acf843a2fe891e4afc790e7d040c28f16df758756d9e809dc8a9",
+  "closed_controls": {
+    "attention_grouping": "wider qrows and cross-head ownership regress; H7A preserves one wave, one qhead, qrow4 and changes only duplicate score scaling.",
+    "changed_association": "online and library-class gfx1100 routes fail the complete quality lane; H7A is byte-exact.",
+    "iq_down": "H6X/H6Y load reductions are closed at their frozen physical gates; do not tune or reopen them.",
+    "q5": "H6V universal DPP transfer is closed; all source-MMQ/F32-SGEMM static shapes fail the complete 576-step max-KL gate."
+  },
+  "correctness_claim": true,
+  "created_at": "2026-08-01",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "Commit this synchronized packet, freeze WPF-H7A RED separately, then implement and consume the immutable leaf gate.",
+    "pass": true,
+    "performance_claim_qualification": "423.233 tok/s and 1,195.702 ms are measured clean H6Z production; H7A has operation-count rationale only and no speed/default claim.",
+    "production_changed": false,
+    "production_reprofile_accepted": true,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "implementation_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "d56d42bbc0612b5c97b8d509888f5f6e0eb7217cf5ded5091878a92d8de22d58",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "3a64be6aaefba6a8b0c074da048cf66d1cd2cda0aea476f02bf6754926671244",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "887bba90443ef009056c87976deed6e057af3024136908cdc441a8fa24e8b5da",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "721cb362680d6ead190df419bd1f62e4de6663c02816ae50ece659d94c0423ca",
+    "hipengine/runtime/laguna_kv.py": "a9d046bd793aca0a3085d4040a14992d80f2b7261ee16f2721ce3ad2ed8bc31f",
+    "tests/test_laguna_h6w_swa_global_score_replay.py": "850cbf6c7ea4981b525c774db2886ce484c59200bd2f7a7cd0a6106cd485f57b",
+    "tests/test_laguna_h6z_global_score_weight_replay.py": "3e95f7e4d14fc43a0d91bfba1340138594c35d4236e07c9695cec0e47d226d7a",
+    "tests/test_laguna_h6z_runtime_policy.py": "0affbafb52f0bb547186bdc5275a46fe2c1af26f51d690b06ab43513420f9825",
+    "tests/test_laguna_h6z_source_default.py": "3d29cdfa54a67cb8f8dcbf7281c9f31b4cf92c46a317b16011dd3dbb94d66f42"
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h6z_matched_residual_h7a_scaled_score_target",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": true,
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json": "ad401fd72c2e9d298010fab1d3c8d7840f2de5aa29695804e7f0ed47d8c2e580",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json": "26008c491b7aafde9636a4c8d57bd1f0dcadc7ad2fa944539fcd632e3c6de5cf",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json": "9414d3c59d4241025c90253b84020175396d655caabb5eed937d517b9640f0df",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-packed-prefix-b32-rejected.json": "d07739be1ab086a41ce3f9f88d407f3060303a18a8c4746c179b8990bc84afa2",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json": "315e6d6e744f8c727a98b1e48681b9e79424c78aebd19be47344d388c07f1837",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json": "7aca9055739ec2c56719db866e5d93981c04fe60d50ba9c84cd2e49c359fe051",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json": "6034259ae146bd7c9b6b3818bec8dacfb8da87d26a2e30ea59ad23ef9e5eaf63",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json": "bd56a6285633513df5d7eaa8eea3c35a872f5c41786c3207e6e81a75f465cf96",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json": "8bd49a3457d98b76711ef320ca183256e3544d5f42a59282f909b9dd22041263"
+  },
+  "production": {
+    "h6w_residual": {
+      "calls": 72,
+      "code_bytes": 4984,
+      "instruction_slots": 871,
+      "kernel_sha256": "d025a3c73c499c75b2dc0444ae4fdd479cb72729eaad2b1e1aa6e38491748aee",
+      "lds_bytes": 0,
+      "median_ms": 62.562204999999985,
+      "metadata_vgpr": 54,
+      "runtime_vgpr": 56,
+      "score_plane_bytes": 18874368,
+      "scratch_bytes": 0,
+      "share_of_attention_percent": 54.323231843295076,
+      "source_scale_sites": 2
+    },
+    "matched_components": {
+      "campaign_start": {
+        "attention": 488.304264,
+        "gate_up": 460.143234,
+        "iq_down": 557.09136,
+        "kernel_sum": 3001.69225,
+        "q5": 1270.457977,
+        "q6": 157.072613,
+        "remaining": 68.622802,
+        "wall_tok_s": 169.516
+      },
+      "gaps": {
+        "attention": 93.65412699999999,
+        "gate_up": -1.928891999999962,
+        "iq_down": 116.81048399999997,
+        "kernel_sum": 481.694012999999,
+        "q5": 198.7403200000002,
+        "q6": 66.49506199999998,
+        "remaining": 7.9229120000000535
+      },
+      "hipengine_h6z": {
+        "attention": 115.166574,
+        "gate_up": 395.876031,
+        "iq_down": 270.670395,
+        "kernel_sum": 1195.702420999999,
+        "q5": 257.0544100000002,
+        "q6": 81.16265999999997,
+        "remaining": 75.77235100000006
+      },
+      "llamacpp_hip": {
+        "attention": 21.512447,
+        "gate_up": 397.804923,
+        "iq_down": 153.859911,
+        "kernel_sum": 714.008408,
+        "q5": 58.31409,
+        "q6": 14.667598,
+        "remaining": 67.849439,
+        "wall_tok_s": 690.791
+      },
+      "ranked": [
+        {
+          "family": "q5",
+          "gap_ms": 198.7403200000002
+        },
+        {
+          "family": "iq_down",
+          "gap_ms": 116.81048399999997
+        },
+        {
+          "family": "attention",
+          "gap_ms": 93.65412699999999
+        },
+        {
+          "family": "q6",
+          "gap_ms": 66.49506199999998
+        },
+        {
+          "family": "remaining",
+          "gap_ms": 7.9229120000000535
+        },
+        {
+          "family": "gate_up",
+          "gap_ms": -1.928891999999962
+        }
+      ],
+      "top_four_explain_percent": 98.75563742993855,
+      "top_four_gap_ms": 475.6999930000001
+    },
+    "source": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6N early global + H6Z late global + H6A early SWA + H6W late SWA + H6L/H6C gate-up",
+    "trace": {
+      "compiler_processes": 0,
+      "dispatches": 2192,
+      "kernel_span_ms": 1217.373345,
+      "kernel_sum_ms": 1195.702420999999,
+      "span_minus_sum_ms": 21.670924000000923,
+      "topology": {
+        "H6A": 72,
+        "H6N": 24,
+        "H6W": 72,
+        "H6Z": 24
+      }
+    },
+    "wall": {
+      "all_exact": true,
+      "all_finite": true,
+      "all_sessions_recovered": true,
+      "campaign_start_tok_s": 169.516,
+      "gain_vs_campaign_start_percent": 149.6713034582081,
+      "llamacpp_over_hipengine": 1.632177347667305,
+      "matched_llamacpp_hip_tok_s": 690.791,
+      "median_tok_s": 423.232806770216,
+      "samples_tok_s": [
+        422.350734,
+        424.810811,
+        424.219275,
+        423.139583,
+        423.232807
+      ]
+    }
+  },
+  "protocol": {
+    "comparison": "matched patched llama.cpp HIP natural token stream, C4096, direct M512, BF16 K/V",
+    "fresh_request_session_per_sample": true,
+    "model_load_excluded": true,
+    "profile_child_path": "/usr/bin:/bin",
+    "profiling_prebuilt_outside_rocprof": true,
+    "require_cached_build": true,
+    "same_resident_weights": true,
+    "shape": "one M128 warmup plus five M512 source-default requests, package matrix512/attention128, one queue",
+    "synthetic_user_pp512_is_not_comparator": true,
+    "unprofiled_json_note": "The original unprofiled stdout is authoritative. The same harness JSON sink was later overwritten by the intentional profiled run; no samples were reconstructed or rerun for selection."
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_post_h6z_h7a_scaled_score_target.py": "73063829ff96cc1545d8599f8d4c1c750ce361ab2901ca8404920cdad0c71294",
+    "/tmp/laguna-post-h6z-clean-compiler-monitor.json": "82687fed87f4e4d98a7852be0545768aad1c05148b421e8702414b2e22ef4bb8",
+    "/tmp/laguna-post-h6z-clean-matched-c4096-m512-trace-summary.json": "3e3f6fd5f156d8f6ad57fe7237555d21ea6aff8607ce2171b23092fc433d7548",
+    "/tmp/laguna-post-h6z-clean-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-clean-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-post-h6z-clean-matched-c4096-m512.stdout": "40019a4c296bae243fc85f30fb0915ef07542ac90b141140410ae92586d55c1e",
+    "/tmp/laguna-post-h6z-clean-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-clean-rocprof.stderr": "5bedaf35c9768e4ebeec405d529aa7deda21c4fb10eeaace3dd701973e68a43e",
+    "/tmp/laguna-post-h6z-clean-rocprof.stdout": "16016769b68bae6b7aff67634a4be1a13cead621c4fbd0adf3d075a2804964fa",
+    "/tmp/laguna-post-h6z-clean-rocprof/h6z_clean_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-post-h6z-clean-rocprof/h6z_clean_kernel_trace.csv": "12a9beb8e119435a9e8e86e0e7ea90b2693800c69cd697c532f0ca10bea25553",
+    "/tmp/laguna-post-h6z-clean-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-clean-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-clean-trace-analysis.stdout": "3e3f6fd5f156d8f6ad57fe7237555d21ea6aff8607ce2171b23092fc433d7548",
+    "/tmp/laguna-post-h6z-h7a-diff-check.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-h7a-diff-check.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-h7a-diff-check.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-h7a-hip-health.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-h7a-hip-health.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-h7a-hip-health.stdout": "dc678f658891c7b2088c472077629621a36553b68ea407c2deb6672bca19ed02",
+    "/tmp/laguna-post-h6z-h7a-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-h7a-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-h7a-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-post-h6z-h7a-scaled-score-target-analysis.json": "08fe83fa1142899cd2c71c479066707d11fc62d85cb395eddbd91f2d992671cd",
+    "/tmp/laguna-post-h6z-h7a-scaled-score-target-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-h7a-scaled-score-target-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-h7a-scaled-score-target-analysis.stdout": "08fe83fa1142899cd2c71c479066707d11fc62d85cb395eddbd91f2d992671cd",
+    "/tmp/laguna-post-h6z-h7a-worklog-check.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h6z-h7a-worklog-check.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6z-h7a-worklog-check.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "repo": {
+    "measurement_revision": "c348e9f0854b724eb461cacfc1fa347fc478ca5b",
+    "measurement_tracked_clean": true,
+    "production_code_changed": false,
+    "selection_revision": "c348e9f0854b724eb461cacfc1fa347fc478ca5b",
+    "target_implementation_absent": true
+  },
+  "schema": 1,
+  "scope": "Clean committed H6Z fixed-natural C4096/direct-M512 wall and cached trace, matched llama.cpp HIP component reconciliation, and target-only WPF-H7A exact late-SWA scaled-score replay selection on W7900.",
+  "status": "accepted_matched_production_reprofile_and_exact_h7a_target",
+  "target": {
+    "admission": {
+      "correctness": "complete H6W bytes plus sampled CPU at starts256/384, exact scaled-record F32 bits, all five spans immutable, poison overwrite, finite, lifecycle",
+      "red_first": true,
+      "reject": "remove every H7A source/test/key/export/gfx1151-exclusion surface on any miss without tuning or rerun",
+      "runtime_and_source_separate": true,
+      "timing": "one immutable 5/15/5 counter-rotated screen; starts256/384 and weighted 72-call aggregate each win HIP-event and synchronized-wall clocks",
+      "trace": "named cached-only H7A at local32/grid2304x32 with zero compiler processes"
+    },
+    "dynamic_model": {
+      "logical_bytes_changed": 0,
+      "removed_duplicate_scale_multiplies": 255135744,
+      "visible_score_replays_by_start": {
+        "256": 106334208,
+        "384": 148801536
+      },
+      "warning": "Operation-count target rationale only; it is not a speed or physical-cycle claim.",
+      "workgroups_changed": 0
+    },
+    "id": "WPF-H7A",
+    "implementation_absent": true,
+    "name": "exact late-start SWA scaled-score replay",
+    "names_absent": [
+      "WPF-H7A",
+      "swa_context_rows_qrow4_dense_initial_global_scaled_score_replay_exact_spans",
+      "laguna_swa_attention_prefill_qrow4_dense_initial_global_scaled_score_replay_exact_bf16_kernel",
+      "laguna_swa_attention_prefill_qrow4_dense_initial_global_scaled_score_replay_exact_bf16_spans",
+      "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_global_scaled_score_replay_exact_bf16_spans"
+    ],
+    "operation": "Add one separately named gfx1100 H6W sibling for starts256/384. In the first pass compute each visible scaled score once, use that same F32 bit pattern for max and the aligned float4 record, then replay exp(score-max) in the second pass instead of recomputing dot*scale. Preserve every QK product/reduction, score/max/exp/denominator/PV/output byte, memory site, qrow4 workgroup, span check, scratch extent, and fallback.",
+    "physical_gate": {
+      "candidate_second_pass_scale_subtract_v_fma_sites": 0,
+      "candidate_total_v_fma_f32_max": 52,
+      "code_bytes_max": 4984,
+      "control_second_pass_scale_subtract_v_fma_sites": 4,
+      "control_total_v_fma_f32": 56,
+      "instruction_slots_max": 871,
+      "lds_bytes": 0,
+      "metadata_vgpr_max": 54,
+      "private_spill_scratch": 0,
+      "runtime_vgpr_max": 56,
+      "unchanged_ds_bpermute_b32": 32,
+      "unchanged_global_load_b128": 1,
+      "unchanged_global_load_u16": 8,
+      "unchanged_global_store_b128": 1,
+      "unchanged_v_exp_f32_e32": 4
+    },
+    "scope": "registry-only leaf; H6Z global and H6A/H6W SWA package/runtime/source unchanged"
+  }
+}

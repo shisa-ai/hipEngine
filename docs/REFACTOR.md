@@ -22,12 +22,13 @@ should be removed or collapsed.
   reuses H6W's existing caller plane without allocation or workspace growth.
   The named H6W map is the H6N-global rollback; H6A and unbound routes remain
   complete fallbacks.
-- The duplicate H6Z capability/source map is retained only through the first
-  clean committed production reprofile for rollback and artifact replay. After
-  that checkpoint proves selected topology and H6W rollback, collapse any
-  candidate-only resolver/test path that independently restates selected H6Z
-  ownership. Keep the named H6W rollback and required unfused H6N/H6A kernels;
-  never retain two independently evolving H6Z dispatch routes.
+- The first clean committed production reprofile is now complete at **423.233
+  tok/s / 1,195.702 ms / 2,192 dispatches** with exact selected topology and
+  H6W rollback evidence. Collapse any candidate-only resolver/test path that
+  independently restates selected H6Z ownership in a separate atomic cleanup
+  before the next source promotion; do not mix that cleanup with the H7A
+  registry-leaf screen. Keep the named H6W rollback and required unfused
+  H6N/H6A kernels; never retain two independently evolving H6Z dispatch routes.
 
 ## Laguna default-off F32 hipBLASLt attention selector
 

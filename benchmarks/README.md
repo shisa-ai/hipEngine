@@ -4,7 +4,8 @@ Last updated: **2026-08-01**
 
 The current W7900 Laguna UD-Q2_K_XL source publication is retained H6Z global
 score/weight replay in
-[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with bounded candidate/runtime evidence in
+[`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json), with the clean post-H6Z matched residual/H7A target in
+[`2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json), bounded candidate/runtime evidence in
 [`2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json`](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json), its target packet in
 [`2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json`](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json), prior H6W SWA production in
 [`2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json`](results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json), and the clean post-H6W residual/H6X target in
@@ -549,6 +550,47 @@ controls at **390.831/311.543 tok/s**, while binding 4K improves
 despite aggregate 4K noise; **126/126** guards pass
 ([H6Z production](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json) ·
 [candidate/runtime](results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json)).
+
+**The clean committed H6Z matched checkpoint is 423.233 tok/s / 1,195.702 ms /
+2,192 dispatches.** Unprofiled samples are **422.351/424.811/424.219/423.140/
+423.233 tok/s**, all exact token 2930, finite, and lifecycle-clean. This is
+**169.516→423.233 tok/s (+149.671%)** over campaign start and **1.63218x**
+behind matched llama.cpp HIP **690.791 tok/s**. Cached profiling preserves exact
+**24 H6N + 24 H6Z + 72 H6A + 72 H6W** topology, measures a **1,217.373-ms**
+kernel span, and observes zero compiler process.
+
+| Matched natural M512 component | Campaign start | Current H6Z | llama.cpp HIP matched | Current gap |
+| --- | ---: | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 ms | **257.054 ms** | **58.314 ms** | **+198.740 ms** |
+| IQ3/IQ4 down | 557.091 ms | **270.670 ms** | **153.860 ms** | **+116.810 ms** |
+| Attention | 488.304 ms | **115.167 ms** | **21.512 ms** | **+93.654 ms** |
+| Q6 projections | 157.073 ms | **81.163 ms** | **14.668 ms** | **+66.495 ms** |
+| IQ2/special-IQ3 gate/up | 460.143 ms | **395.876 ms** | **397.805 ms** | **-1.929 ms** |
+| Remaining | 68.623 ms | **75.772 ms** | **67.849 ms** | **+7.923 ms** |
+| **Kernel sum** | **3,001.692 ms** | **1,195.702 ms** | **714.008 ms** | **+481.694 ms** |
+| **Wall prefill** | **169.516 tok/s** | **423.233 tok/s** | **690.791 tok/s** | **1.63218x behind** |
+
+The top four gaps still explain **98.756%** of the kernel residual. Q5 changed-
+association/source-MMQ and H6V remain quality/contract closed; H6X/H6Y remain
+physically closed. Select target-only **WPF-H7A exact late-start SWA scaled-
+score replay** on H6W's **62.562 ms / 72 calls (54.323% of attention)**. H6W
+currently stores each unscaled dot, uses `dot * scale` for max, then recomputes
+the identical multiplication after loading the record. H7A must compute the
+scaled score once in pass one, use that same F32 bit pattern for max and the
+aligned `float4` record, and replay `exp(score - max)` in pass two. This removes
+**255,135,744** duplicate scale multiplications without changing bytes,
+workgroups, records, allocation, or arithmetic results.
+
+Freeze RED before code. Require complete H6W/CPU/scaled-record/span/poison/
+lifecycle exactness at starts256/384; exact removal of four second-pass scale-
+subtract FMA sites (**total `v_fma_f32` <=52 versus 56**) with unchanged eight
+u16 loads, one b128 record load/store, 32 bpermutes, four exp sites, code
+**<=4,984 B / <=871 slots**, metadata/runtime VGPR **<=54/56**, and zero LDS/
+private/spill/scratch; cache-only named execution with zero compiler; and both
+starts plus the weighted **72-call** aggregate winning HIP-event and wall under
+one immutable 5/15/5 screen. Any miss removes H7A without tuning/rerun; runtime
+and source ownership remain separate
+([post-H6Z residual / H7A target](results/2026-08-01-gfx1100-laguna-q2-xl-post-h6z-matched-residual.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
