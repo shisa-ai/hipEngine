@@ -2570,29 +2570,31 @@ row-interleaved VOPD scheduling**: the naive control/candidate both emit **52
 compilation 16 times at gfx1100's `src0 operands must use different VGPR banks`
 constraint. No production H7D surface exists.
 
-Select target-only **WPF-H7E IQ3-only two-plane residual-D4 source-MMQ**, a
-materially new activation-reconstruction premise rather than H3's rejected
-one-plane source route. The D4x3 control is speed-closed at
-**249.471→247.909 ms (1.006x)** with only **27/45** layers faster despite median
-BF16 mismatch **0.0231%**. D4x2 moves producer-inclusive exact/source sum
-**248.421→172.854 ms (1.437x, -30.419%)**, wins **45/45**, and has BF16
-mismatch **2.187–2.501%** (median **2.268%**), max leaf KL **0.000487**, and
-minimum top-1 **99.941%**. This one-prompt nonstateful leaf packet is selection
-evidence only, not a production/full-quality speed claim.
+Standalone **WPF-H7E IQ3-only two-plane residual-D4 source-MMQ is admitted**.
+The RED-first matrix turns GREEN **9/9** across rows1/7/8/9/M512 plus
+empty/uneven/127/128/129 expert tails, complete overwrite, independent CPU
+quality, immutable metadata, finiteness, lifecycle, strict IQ3 registry/backend
+scope, exact H6T/IQ4 fallback, and gfx1151 exclusion. The first candidate
+object independently reproduces local `(32,8)`, grid
+`(24,mmq_total_rows/128)`, dynamic LDS57,856, code **31,564 B**, metadata
+VGPR/SGPR **148/44**, runtime VGPR **152**, private/spill/dynamic-stack/scratch0,
+and exact **128 integer WMMAs / five barriers / 64 BF16 stores**. Cached rocprof
+names H7E and records zero compiler activity.
 
-Freeze RED before production code. Add only a separately named gfx1100 IQ3
-D4x2 consumer; retain the qualified producer, one-plane consumer, IQ4 exact
-path, H6T fallback, and gfx1151 exclusion. Require tails/poison/CPU quality and
-lifecycle; first-object local `(32,8)`, dynamic LDS57,856, metadata VGPR/SGPR
-**<=148/44**, private/spill/scratch0, exact **128 integer WMMAs / five barriers
-/ 64 BF16 stores**, and code **<=31,564 B**; then one immutable producer-
-inclusive 5/15/5 all-45 both-clock screen. Default-off runtime work is separate
-and must reuse the dead **20,971,520-byte** `expert_gate_up` plane for the
-**11,796,480-byte** D4x2 records with zero allocation/workspace growth. Before
-source timing or promotion, the complete **18-prompt/576-step** counterbalanced
-lane must be finite and pass max KL **<=0.05**, top-1 **>=90%**, Poolside,
-determinism, and lifecycle. No prompt/layer subset is admissible
-([post-H7C residual / H7E target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+The immutable producer-inclusive 5/15/5 all-layer screen wins event and
+synchronized wall for every **45/45** actual IQ3 layer. Aggregate event moves
+**247.297→186.732 ms (-24.491%, 1.324x)** and wall
+**260.672→180.752 ms (-30.659%, 1.442x)**; max leaf KL is **0.000487** and
+minimum top-1 **99.941%**, with finite output and recovered lifecycle. Admit only
+the registry leaf: production remains H6T/IQ4 exact at **422.786 tok/s** and no
+runtime owner/allocation/workspace changes exist. Next freeze a separate
+zero-growth owner that reuses the **20,971,520-byte** `expert_gate_up` plane for
+**11,796,480-byte** D4x2 records. Before source timing or promotion, the complete
+counterbalanced **18-prompt/576-step** lane must remain finite and pass max KL
+**<=0.05**, top-1 **>=90%**, Poolside, determinism, free-running diagnostics,
+and lifecycle; no prompt/layer subset is admissible
+([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

@@ -614,18 +614,26 @@ kernel gap. **WPF-H7D closes the latest exact Q5 VOPD scheduling premise**:
 naive row interleaving leaves control/candidate at the same **52 paired FMAs**,
 and forced pairing fails compilation with gfx1100's `src0` VGPR-bank rule.
 
-Select target-only **WPF-H7E IQ3 two-plane residual-D4 source-MMQ**. This is not
-a blind H3 retry: H3 used one D4 plane, while H7E accumulates a primary plus
-one residual plane and keeps IQ4 exact. A producer-inclusive one-prompt M512
-selection probe improves all **45/45** IQ3 layers and aggregate
-**248.421→172.854 ms (1.437x, -30.419%)**; BF16 mismatch is
-**2.187–2.501%** (median **2.268%**). Three planes are nearly exact but
-speed-closed at **249.471→247.909 ms (1.006x)** with only **27/45** layers
-faster. H7E has no production-speed claim yet. RED-first primitive, first-object
-resource, all-layer 5/15/5 both-clock, complete-state, and mandatory
-**18-prompt/576-step max-KL <=0.05 / top-1 >=90%** gates are binding before any
-source promotion; prompt/layer conditioning is forbidden
-([post-H7C residual / H7E target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+Standalone **WPF-H7E IQ3 two-plane residual-D4 source-MMQ is admitted** while
+runtime/source remain unchanged. The frozen rows1/7/8/9/M512 plus expert-tail
+matrix passes **9/9**, with complete overwrite, sampled CPU quality, immutable
+metadata, finiteness, and lifecycle. Its first object is local `(32,8)`, dynamic
+LDS57,856, code **31,564 B**, metadata/runtime VGPR **148/152**, SGPR **44/128**,
+private/spill/scratch0, and exact **128 integer WMMAs / five barriers / 64 BF16
+stores**; cached rocprof names H7E and records zero compiler activity.
+
+The immutable producer-inclusive 5/15/5 screen wins both clocks on every
+**45/45** actual IQ3 layer. Aggregate event moves **247.297→186.732 ms
+(-24.491%, 1.324x)** and synchronized wall **260.672→180.752 ms (-30.659%,
+1.442x)**, with max leaf KL **0.000487**, minimum top-1 **99.941%**, finite
+output, and recovered lifecycle. This is a standalone leaf result, not a
+production-throughput claim: production remains **422.786 tok/s**, H6T/IQ4
+remain exact source, and no runtime owner or scratch growth exists. A separate
+zero-growth owner plus the complete **18-prompt/576-step max-KL <=0.05 / top-1
+>=90%** gate remain binding before source timing; prompt/layer conditioning is
+forbidden
+([H7E candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+[target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

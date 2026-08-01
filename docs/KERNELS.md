@@ -1795,29 +1795,33 @@ compile to **52 paired FMAs** at VGPR122, and forced pairing is illegal under
 gfx1100 `src0` VGPR-bank assignment. Do not create a production H7D surface or
 retry Q5 scheduling without a new layout/codegen premise.
 
-Select **WPF-H7E IQ3-only two-plane residual-D4 source-MMQ** in
-`quant/gguf_iq_source_mmq_prefill.{hip,py}`. Reuse the already-qualified
-`gguf_q8_0_mmq128_quantize_bf16_d4x2` producer and add one separately named
-I128/J128/K256 IQ3 consumer that accumulates both planes while each raw-IQ3
-weight tile is staged. Keep the existing one-plane IQ3/IQ4 source functions
-byte-frozen, both production IQ4 layers exact, H6T as fallback, and gfx1151
-excluded. The selection-only all-layer probe moves producer-inclusive
-**248.421→172.854 ms (1.437x)** with **45/45** layers faster and median BF16
-mismatch **2.268%**; D4x3 is speed-closed at **1.006x** and **27/45**.
+Standalone **WPF-H7E IQ3-only two-plane residual-D4 source-MMQ is admitted** in
+`quant/gguf_iq_source_mmq_prefill.{hip,py}`. The new separately named
+I128/J128/K256 IQ3 consumer reuses the qualified
+`gguf_q8_0_mmq128_quantize_bf16_d4x2` producer and accumulates both activation
+planes while each raw-IQ3 tile is staged. Existing one-plane IQ3/IQ4 functions
+remain byte-frozen, H6T/IQ4 remain production source, and gfx1151 is excluded.
+The frozen correctness matrix passes **9/9** across rows1/7/8/9/M512 and expert
+tails with complete overwrite, independent CPU quality, immutable metadata,
+finiteness, and lifecycle.
 
-Before implementation, freeze exact producer/one-plane source hashes plus
-rows1/7/8/9/M512, empty/uneven/127/128/129 expert tails, complete overwrite,
-independent CPU KL/top-1, metadata immutability, lifecycle, strict IQ3
-K1024/N3072 registration, exact fallback, and gfx1151 exclusion. The first
-candidate object must be local `(32,8)`, grid `(24,mmq_total_rows/128)`, dynamic
-LDS57,856, metadata VGPR/SGPR **<=148/44**, private/spill/dynamic-stack/scratch0,
-exact **128 integer WMMAs / five barriers / 64 BF16 stores**, and code
-**<=31,564 B**. Only then consume one producer-inclusive 5/15/5 screen where
-all **45/45** layers and aggregate win event and synchronized wall. Runtime and
-source remain separate; runtime must reuse `expert_gate_up` after SiLU, add no
-allocation/workspace, and pass complete state plus the mandatory counterbalanced
-**18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate before source timing
-([post-H7C residual / H7E target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+The first object is local `(32,8)`, grid `(24,mmq_total_rows/128)`, dynamic
+LDS57,856, code **31,564 B**, metadata VGPR/SGPR **148/44**, private/spill/
+dynamic-stack0; cached execution reports runtime VGPR **152**, LDS launch
+57,856, scratch0, the intended symbol, and zero compiler. ISA contains exact
+**128 integer WMMAs / five barriers / 64 BF16 stores**. The one-shot
+producer-inclusive 5/15/5 screen wins both clocks on every **45/45** actual IQ3
+layer and aggregate event/wall
+**247.297/260.672→186.732/180.752 ms (-24.491%/-30.659%)**. Max leaf KL is
+**0.000487**, minimum top-1 **99.941%**, and lifecycle recovers.
+
+Admit only the registry leaf. Runtime/source stay H6T/IQ4 exact and production
+stays **422.786 tok/s**. A separate owner must reuse `expert_gate_up` after
+SiLU, add no allocation/workspace, and pass complete state plus the mandatory
+counterbalanced **18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate before
+source timing
+([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

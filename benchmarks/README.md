@@ -2,8 +2,9 @@
 
 Last updated: **2026-08-02**
 
-The clean post-H7C W7900 Laguna residual and selected H7E IQ3 two-plane target
-are recorded in
+The admitted standalone H7E IQ3 two-plane leaf is recorded in
+[`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json),
+with its clean post-H7C residual and target boundary in
 [`2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json).
 The current W7900 Laguna UD-Q2_K_XL source publication retains H6Z global
 score/weight replay and promotes H7C raw-Q6 DPP wave reduction in
@@ -718,14 +719,21 @@ kernel sum/span **1,197.499/1,219.043 ms**, **2,192 dispatches**, and zero
 compiler, remaining **1.63390x** behind matched llama.cpp HIP. Q5/IQ-down/
 attention/Q6 gaps are **196.915/117.620/93.693/66.653 ms**. H7D closes exact Q5
 row-interleaved VOPD because both orders emit **52 paired FMAs** and forced
-pairing violates gfx1100 VGPR banks. Select target-only **WPF-H7E IQ3 two-plane
-residual-D4 source-MMQ**: the producer-inclusive selection probe improves
-**248.421→172.854 ms (1.437x)** with all **45/45** layers faster, median BF16
-mismatch **2.268%**, max leaf KL **0.000487**, and minimum top-1 **99.941%**.
-D4x3 is speed-closed at **1.006x / 27 of 45**. H7E remains non-production until
-RED-first physical/all-layer timing, complete-state, and full
-**18-prompt/576-step max-KL <=0.05/top-1 >=90%** gates pass
-([post-H7C residual / H7E target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+pairing violates gfx1100 VGPR banks. Standalone **WPF-H7E IQ3 two-plane
+residual-D4 source-MMQ is admitted**. Frozen
+correctness passes **9/9** across rows1/7/8/9/M512 and expert tails. The first
+object is local `(32,8)`, dynamic LDS57,856, code **31,564 B**, metadata/runtime
+VGPR **148/152**, private/spill/scratch0, and exact **128 integer WMMAs / five
+barriers / 64 BF16 stores**; cached rocprof names H7E with zero compiler. The
+one-shot producer-inclusive 5/15/5 screen wins event and synchronized wall on
+every **45/45** actual IQ3 layer and aggregate
+**247.297/260.672→186.732/180.752 ms (-24.491%/-30.659%)**, with max leaf KL
+**0.000487**, minimum top-1 **99.941%**, finite output, and clean lifecycle.
+Runtime/source remain H6T and production remains **422.786 tok/s**. A separate
+zero-growth owner and full **18-prompt/576-step max-KL <=0.05/top-1 >=90%** gate
+remain binding before source timing
+([H7E candidate](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+[target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

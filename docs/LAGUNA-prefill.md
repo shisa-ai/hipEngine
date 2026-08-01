@@ -1206,33 +1206,33 @@ different VGPR banks`. This latest Q5 scheduling mechanism adds no issue
 reduction and cannot be forced legally; prior Q5 exact/changed-association
 closures remain binding.
 
-Select target-only **WPF-H7E IQ3 two-plane residual-D4 source-MMQ**. The
-retained H3 source consumer is **4.866x** faster at one plane but complete-
-quality rejected at max KL **0.372917**. H7E is not a blind retry: it adds a
-second D4 residual reconstruction plane and keeps both IQ4 layers exact. The
-D4x3 feasibility control reaches median BF16 mismatch **0.0231%** but consumes
-the speed opportunity: producer-inclusive **249.471→247.909 ms (1.006x)** and
-only **27/45** layers win. D4x2 instead moves **248.421→172.854 ms (1.437x,
--30.419%)**, wins all **45/45**, and records mismatch **2.187–2.501%** (median
-**2.268%**), max leaf KL **0.000487**, minimum top-1 **99.941%**, finite output,
-and recovered lifecycle. This single natural-M512 stream is a selection probe,
-not a production or complete-quality speed claim.
+Standalone **WPF-H7E IQ3 two-plane residual-D4 source-MMQ is admitted**. The
+separate gfx1100 IQ3 I128/J128/K256 consumer reuses the qualified D4x2 producer;
+one-plane IQ3/IQ4 bytes, H6T/IQ4 production ownership, and gfx1151 isolation
+remain unchanged. Frozen correctness turns GREEN **9/9** for rows1/7/8/9/M512
+and empty/uneven/127/128/129 expert tails, with complete overwrite, sampled CPU
+KL/top-1, immutable metadata, finiteness, and allocation recovery.
 
-Freeze RED before code. Reuse the qualified D4x2 producer and add one separately
-named gfx1100 IQ3 consumer; byte-freeze the one-plane IQ3/IQ4 source path and
-keep H6T/exact IQ4/gfx1151 fallbacks. Primitive gates cover rows1/7/8/9/M512,
-empty/uneven/127/128/129 tails, complete overwrite, CPU KL/top-1, metadata, and
-lifecycle. First-object admission is local `(32,8)`, dynamic LDS57,856,
-metadata VGPR/SGPR **<=148/44**, private/spill/scratch0, exact **128 integer
-WMMAs / five barriers / 64 BF16 stores**, and code **<=31,564 B**. Only then run
-one producer-inclusive 5/15/5 screen requiring every actual IQ3 layer and
-aggregate to win both clocks. A separate default-off owner must reuse the dead
-**20,971,520-byte** `expert_gate_up` plane for the **11,796,480-byte** D4x2
-records with zero allocation/workspace growth. Before source timing, require
+The first candidate object independently meets every bound: local `(32,8)`,
+dynamic LDS57,856, code **31,564 B**, metadata VGPR/SGPR **148/44**, private/
+spill/dynamic-stack0, exact **128 integer WMMAs / five barriers / 64 BF16
+stores**. Cached rocprof names H7E at runtime VGPR **152**, LDS launch 57,856,
+scratch0, and records zero compiler. The immutable producer-inclusive 5/15/5
+screen wins event and synchronized wall on every **45/45** actual IQ3 layer.
+Aggregate event moves **247.297→186.732 ms (-24.491%, 1.324x)** and wall
+**260.672→180.752 ms (-30.659%, 1.442x)**; max leaf KL is **0.000487**, minimum
+top-1 **99.941%**, output finite, and lifecycle clean.
+
+This admits only the registry leaf. Production stays **422.786 tok/s** and no
+runtime owner or scratch growth exists. Next freeze a separate default-off owner
+that reuses the dead **20,971,520-byte** `expert_gate_up` plane for the
+**11,796,480-byte** D4x2 records with zero growth. Before source timing, require
 complete M512 state and the full counterbalanced **18-prompt/576-step** lane at
-finite max KL **<=0.05**, top-1 **>=90%**, Poolside, deterministic repeats, and
-clean lifecycle; never add prompt/layer conditioning
-([post-H7C residual / H7E target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
+finite max KL **<=0.05**, top-1 **>=90%**, Poolside, deterministic repeats,
+free-running diagnostics, and clean lifecycle; never add prompt/layer
+conditioning
+([H7E candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-source-mmq-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7c-matched-residual-iq3-d4x2-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
