@@ -1,0 +1,564 @@
+{
+  "candidate": {
+    "cache_key": "5b1707cc625b332804604f38665aa228d6a1044187f5f9c092233e1174e94e43",
+    "function": "laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_spans",
+    "gfx1151_excluded": true,
+    "id": "WPF-H6Z",
+    "implementation_patch_sha256": "33a987002aee376d6284d0eb1ff2b2c2b921925e4f56d16a09d18e39f099bc2c",
+    "kernel": "laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernel",
+    "library_sha256": "8832f8f15962fb2eb6b84cf520394b42470b1cf253d7acead3e186344ae08956",
+    "name": "exact late-start global qrow4 aligned score/weight replay",
+    "package_policy_unchanged": true,
+    "red_revision": "887fc225d2aa0d74f4a74194317d1bc180bf2a02",
+    "registry_only": true,
+    "runtime_owner_added": false,
+    "source_default_changed": false,
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "3a64be6aaefba6a8b0c074da048cf66d1cd2cda0aea476f02bf6754926671244",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "887bba90443ef009056c87976deed6e057af3024136908cdc441a8fa24e8b5da",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "721cb362680d6ead190df419bd1f62e4de6663c02816ae50ece659d94c0423ca",
+      "tests/test_laguna_h6z_global_score_weight_replay.py": "6788ec8f66f6b6e13aea20fe1318c5e8db6277da7fb8e3dc1cdfc6f9b8f656a8"
+    },
+    "symbol": "hipengine_laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_spans",
+    "variant": "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans"
+  },
+  "commands": {
+    "green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_HIP_MAX_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/pytest -q tests/test_laguna_h6z_global_score_weight_replay.py",
+    "guards": "69/69 H6Z/H6W/H6N/H6A/KV/registry/gfx1151 bundle",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "physical": "llvm-objcopy + clang-offload-bundler + llvm-readobj/llvm-objdump plus /tmp/analyze_laguna_h6z_physical.py",
+    "screen": "cache-only /tmp/laguna_wpfh6z_global_score_weight_replay_screen.py (immutable 5/15/5)",
+    "trace": "cache-only rocprofv3 --kernel-trace on start384 H6Z test under compiler-free child PATH and 5-ms process monitor"
+  },
+  "correctness": {
+    "complete_outputs": "2/2 byte-exact to H6N after poisoned overwrite",
+    "finite": true,
+    "focused_green": "5/5",
+    "kv_live_spans": "all five fields byte-immutable after H6N and H6Z",
+    "lifecycle": {
+      "final": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 69279904,
+        "peak_allocations": 20,
+        "total_allocated_bytes": 69279904,
+        "total_freed_bytes": 69279904
+      },
+      "initial": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 0,
+        "peak_allocations": 0,
+        "total_allocated_bytes": 0,
+        "total_freed_bytes": 0
+      },
+      "recovered": true
+    },
+    "red": {
+      "result": "one pass / four intentional missing-wrapper failures",
+      "revision": "887fc225d",
+      "status_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_sha256": "19d0dd3ee9782662f61cbc2b430a73ddb0da2ae8beb0e50b1ceb1ea941f8709b"
+    },
+    "sampled_cpu_rows": "rows0/63/127 pass independent BF16 K/V CPU attention at starts256/384",
+    "score_weight_scratch": {
+      "alignment": 16,
+      "bytes": 12582912,
+      "record_bytes": 16,
+      "records": 786432
+    },
+    "score_weight_scratch_rows": [
+      {
+        "all_weights_finite_nonnegative": true,
+        "complete_prefix_overwrite": true,
+        "complete_suffix_poison_preserved": true,
+        "overwritten_records": 494592,
+        "sha256": "e339b9c2c2121283fad8117e050a1fe0ebfcfab48d3e4a2baf27f8ee6b03c52f",
+        "start_position": 256,
+        "untouched_records": 291840
+      },
+      {
+        "all_weights_finite_nonnegative": true,
+        "complete_prefix_overwrite": true,
+        "complete_suffix_poison_preserved": true,
+        "overwritten_records": 691200,
+        "sha256": "50252f776877c3a2a84d0cde07eda9f0014d9412f5d45feef2f5133d69e80a22",
+        "start_position": 384,
+        "untouched_records": 95232
+      }
+    ],
+    "strict_preflight": true
+  },
+  "current_production": {
+    "candidate_selected_by_runtime": false,
+    "dispatches": 2192,
+    "fixed_natural_c4096_m512_tok_s": 416.89134,
+    "gap_ratio": 1.657005,
+    "kernel_sum_ms": 1214.475158,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "production_changed": false,
+    "source": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6N global + H6A early SWA + H6W late SWA"
+  },
+  "date": "2026-08-01",
+  "decision": {
+    "candidate_admitted": true,
+    "next_action": "Commit the standalone H6Z leaf, then freeze a separate bounded-runtime/source-qualification RED before reusing the existing H6W caller plane.",
+    "production_unchanged": true,
+    "runtime_qualification_pending": true
+  },
+  "guards": {
+    "expanded_attention_registry_backend": 69,
+    "expanded_status_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "expanded_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "expanded_stdout_sha256": "b156e9922f76d25723911762a7fc411b0a8aeb840a9069496bef64f6b3877445",
+    "focused_green": 5,
+    "hip_health": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6z_global_score_weight_replay_candidate",
+  "lineage": {
+    "kernel_lineage_report_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "source": "Net-new in-tree caller-global replay sibling; no external device body copied.",
+    "target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6y-rejection-matched-residual.json",
+    "target_artifact_sha256": "7aca9055739ec2c56719db866e5d93981c04fe60d50ba9c84cd2e49c359fe051"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "role_inventory": "12 global layers x starts256/384 = 24 calls",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "M128/C4096/H48/KV8/D128 dense-initial starts256/384"
+  },
+  "operation_model": {
+    "candidate_kv_bytes": 7285506048,
+    "candidate_kv_plus_record_bytes": 8196194304,
+    "candidate_record_bytes": 910688256,
+    "candidate_workgroups": 36864,
+    "control_kv_bytes": 29028777984,
+    "control_workgroups": 147456,
+    "logical_bytes_reduction_percent": -71.7652800956023,
+    "selection_rationale_only": true,
+    "workgroups_reduction_percent": -75.0
+  },
+  "performance": {
+    "all_starts_event_positive": true,
+    "all_starts_wall_positive": true,
+    "claim_scope": "standalone exact leaf only; no full-model/source speed claim",
+    "one_shot": true,
+    "protocol": {
+      "append_cost_excluded_equally": true,
+      "cache_state_preappended_before_timing": true,
+      "cached_build_required": true,
+      "complete_outputs_copied_after_timing": true,
+      "counter_rotated_clocks": true,
+      "counter_rotated_modes": true,
+      "launches_per_sample": 5,
+      "preappend_fallback_starts": [
+        0,
+        128
+      ],
+      "rows": 128,
+      "samples_per_arm": 15,
+      "score_scratch_memset_excluded": true,
+      "selected_starts": [
+        256,
+        384
+      ],
+      "warmups_per_arm": 5
+    },
+    "reruns_allowed": false,
+    "rows": [
+      {
+        "candidate_sha256": "0f9fb1152e9dcc9e0de2adae48ae5d11080bb510b2f5b907229ee4f0516cc5aa",
+        "control_sha256": "0f9fb1152e9dcc9e0de2adae48ae5d11080bb510b2f5b907229ee4f0516cc5aa",
+        "event_candidate_percent": -48.031497044845985,
+        "event_medians_ms": {
+          "candidate": 0.3875201940536499,
+          "control": 0.7456828117370605
+        },
+        "event_samples_ms": {
+          "candidate": [
+            0.43941621780395507,
+            0.3875201940536499,
+            0.3979935884475708,
+            0.39831359386444093,
+            0.4061378002166748,
+            0.39642560482025146,
+            0.39215381145477296,
+            0.3861216068267822,
+            0.39012980461120605,
+            0.3819936037063599,
+            0.38361780643463134,
+            0.3782098054885864,
+            0.38222579956054686,
+            0.3770498037338257,
+            0.37928218841552735
+          ],
+          "control": [
+            0.718096399307251,
+            0.7456828117370605,
+            0.7778029918670655,
+            0.7666431903839112,
+            0.7677073955535889,
+            0.752891206741333,
+            0.7666594028472901,
+            0.7462833881378174,
+            0.7566514015197754,
+            0.7348676204681397,
+            0.7435716152191162,
+            0.7304515838623047,
+            0.7367315769195557,
+            0.7287156105041503,
+            0.7406201839447022
+          ]
+        },
+        "event_speedup": 1.924242460597615,
+        "finite": true,
+        "mismatches": 0,
+        "role_multiplier": 12,
+        "score_scratch": {
+          "all_weights_finite_nonnegative": true,
+          "complete_prefix_overwrite": true,
+          "complete_suffix_poison_preserved": true,
+          "overwritten_records": 494592,
+          "sha256": "e339b9c2c2121283fad8117e050a1fe0ebfcfab48d3e4a2baf27f8ee6b03c52f",
+          "untouched_records": 291840
+        },
+        "start_position": 256,
+        "wall_candidate_percent": -47.989658964524104,
+        "wall_medians_ms": {
+          "candidate": 0.3960215952247381,
+          "control": 0.7614285685122013
+        },
+        "wall_samples_ms": {
+          "candidate": [
+            0.43759620748460293,
+            0.4187338054180145,
+            0.4038796294480562,
+            0.4014595877379179,
+            0.4059458151459694,
+            0.40355161763727665,
+            0.3960215952247381,
+            0.3941296134144068,
+            0.3954073879867792,
+            0.3884654026478529,
+            0.39682560600340366,
+            0.3836073912680149,
+            0.3906254190951586,
+            0.3824834246188402,
+            0.38269320502877235
+          ],
+          "control": [
+            0.7258561905473471,
+            0.765548599883914,
+            0.7808370050042868,
+            0.7683707866817713,
+            0.7781748194247484,
+            0.7614285685122013,
+            0.7708488032221794,
+            0.7655106019228697,
+            0.7639307994395494,
+            0.7440864108502865,
+            0.7562146056443453,
+            0.7382883690297604,
+            0.7487543858587742,
+            0.7335601840168238,
+            0.7374924141913652
+          ]
+        },
+        "wall_speedup": 1.922694564371164
+      },
+      {
+        "candidate_sha256": "a262d37b6d1e26c628d8a2f863065499c5b031e02ffe82b3d29fed49490ea9de",
+        "control_sha256": "a262d37b6d1e26c628d8a2f863065499c5b031e02ffe82b3d29fed49490ea9de",
+        "event_candidate_percent": -49.025552443979294,
+        "event_medians_ms": {
+          "candidate": 0.5122352123260498,
+          "control": 1.0048862457275392
+        },
+        "event_samples_ms": {
+          "candidate": [
+            0.5384751796722412,
+            0.5332352161407471,
+            0.5345310211181641,
+            0.518379020690918,
+            0.5166912078857422,
+            0.5144351959228516,
+            0.5122352123260498,
+            0.5072830200195313,
+            0.5122111797332763,
+            0.4995232105255127,
+            0.5031949996948242,
+            0.49173917770385744,
+            0.4963551998138428,
+            0.48861122131347656,
+            0.51317138671875
+          ],
+          "control": [
+            1.0108898162841797,
+            1.0501179695129395,
+            1.0619660377502442,
+            1.0262539863586426,
+            1.0356220245361327,
+            1.012158203125,
+            1.0151424407958984,
+            0.9898380279541016,
+            1.0048862457275392,
+            0.9720540046691895,
+            0.9945261955261231,
+            0.9603500366210938,
+            0.9676059722900391,
+            0.9531501770019531,
+            0.9695502281188965
+          ]
+        },
+        "event_speedup": 1.9617672146441687,
+        "finite": true,
+        "mismatches": 0,
+        "role_multiplier": 12,
+        "score_scratch": {
+          "all_weights_finite_nonnegative": true,
+          "complete_prefix_overwrite": true,
+          "complete_suffix_poison_preserved": true,
+          "overwritten_records": 691200,
+          "sha256": "50252f776877c3a2a84d0cde07eda9f0014d9412f5d45feef2f5133d69e80a22",
+          "untouched_records": 95232
+        },
+        "start_position": 384,
+        "wall_candidate_percent": -48.93098213781442,
+        "wall_medians_ms": {
+          "candidate": 0.5157992243766785,
+          "control": 1.010004198178649
+        },
+        "wall_samples_ms": {
+          "candidate": [
+            0.5475075915455818,
+            0.5407196003943682,
+            0.54195960983634,
+            0.5332834087312222,
+            0.5246134009212255,
+            0.5195751786231995,
+            0.5273112095892429,
+            0.5144852213561535,
+            0.5157992243766785,
+            0.5062771961092949,
+            0.5143612157553434,
+            0.497998995706439,
+            0.510499207302928,
+            0.4974127747118473,
+            0.5137891974300146
+          ],
+          "control": [
+            1.06167895719409,
+            1.0617167688906193,
+            1.0630608070641756,
+            1.0390504263341427,
+            1.0462605860084295,
+            1.0294843930751085,
+            1.0214763693511486,
+            1.0046400129795074,
+            1.010004198178649,
+            0.9945080149918795,
+            0.9983898140490055,
+            0.9730636142194271,
+            0.987617764621973,
+            0.9668373968452215,
+            0.9932178072631359
+          ]
+        },
+        "wall_speedup": 1.9581343872689927
+      }
+    ],
+    "weighted_24_call_event_ms": {
+      "candidate": 10.797064876556398,
+      "control": 21.006828689575194
+    },
+    "weighted_24_call_wall_ms": {
+      "candidate": 10.941849835216999,
+      "control": 21.257193200290203
+    },
+    "weighted_event_positive": true,
+    "weighted_event_speedup": 1.9456054890609387,
+    "weighted_wall_positive": true,
+    "weighted_wall_speedup": 1.9427421798344056
+  },
+  "physical": {
+    "kernels": {
+      "h6n": {
+        "code_bytes": 4732,
+        "instruction_slots": 982,
+        "instructions": {
+          "ds_bpermute_b32": 15,
+          "ds_load_b32": 10,
+          "ds_store_b32": 7,
+          "global_load_b128": 0,
+          "global_load_b32": 1,
+          "global_load_b64": 1,
+          "global_load_u16": 3,
+          "global_store_b128": 0,
+          "global_store_b32": 1,
+          "s_barrier": 5,
+          "v_dual_fmac_f32": 0,
+          "v_exp_f32_e32": 1,
+          "v_fma_f32": 4,
+          "v_fmac_f32_e32": 10
+        },
+        "metadata": {
+          "lds_bytes": 0,
+          "max_workgroup_size": 1024,
+          "private_bytes": 0,
+          "sgpr": 36,
+          "sgpr_spills": 0,
+          "uses_dynamic_stack": false,
+          "vgpr": 33,
+          "vgpr_spills": 0,
+          "wavefront_size": 32
+        },
+        "name": "_ZN12_GLOBAL__N_179laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernelEPKfPKtS3_PfPKiPKlS8_PKhS8_lllllllf"
+      },
+      "h6z": {
+        "code_bytes": 4024,
+        "instruction_slots": 690,
+        "instructions": {
+          "ds_bpermute_b32": 56,
+          "ds_load_b32": 0,
+          "ds_store_b32": 0,
+          "global_load_b128": 6,
+          "global_load_b32": 0,
+          "global_load_b64": 2,
+          "global_load_u16": 0,
+          "global_store_b128": 6,
+          "global_store_b32": 0,
+          "s_barrier": 0,
+          "v_dual_fmac_f32": 5,
+          "v_exp_f32_e32": 4,
+          "v_fma_f32": 36,
+          "v_fmac_f32_e32": 16
+        },
+        "metadata": {
+          "lds_bytes": 0,
+          "max_workgroup_size": 32,
+          "private_bytes": 0,
+          "sgpr": 43,
+          "sgpr_spills": 0,
+          "uses_dynamic_stack": false,
+          "vgpr": 47,
+          "vgpr_spills": 0,
+          "wavefront_size": 32
+        },
+        "name": "_ZN12_GLOBAL__N_196laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernelEPKfPKtS3_PfP15HIP_vector_typeIfLj4EEPKiPKlSB_PKhSB_lllllllf"
+      }
+    },
+    "proof": {
+      "denominator_score_load_b128_sites": 1,
+      "denominator_weight_store_b128_sites": 1,
+      "metadata_vgpr_limit": 96,
+      "no_lds_or_barrier": true,
+      "output_store_b128_sites": 4,
+      "physical_gate_pass": true,
+      "private_spill_scratch_free": true,
+      "pv_weight_load_b128_sites": 1,
+      "query_load_b128_sites": 4,
+      "record_load_b128_sites": 2,
+      "record_store_b128_sites": 2,
+      "score_record_store_b128_sites": 1,
+      "shared_k_load_b64_sites": 1,
+      "shared_v_load_b64_sites": 1
+    }
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h6z_physical.py": "c19ba3aec25b40ab8994a131d8e1b37396f01c0662c4b82a926e954d298991bb",
+    "/tmp/analyze_laguna_h6z_trace.py": "847d904f0b9da1c3490c4fc410d135150d19cb24cb21b00cd78397e10787950c",
+    "/tmp/hipengine-hipcc-version-laguna-iq2.txt": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "/tmp/laguna-h6n-global-score-weight-function.isa": "ffe5c9c2edff67574dc2e684c63cdd912243c4c56aa0ea8fe0016b13f8941bc9",
+    "/tmp/laguna-h6z-codeobj/device.isa": "8f38fc7421f677712a41b715adad4ac40c4d83ca15799c3455bc931c7e652945",
+    "/tmp/laguna-h6z-codeobj/gfx1100.hsaco": "0b4506c38de8477653b8f4f8dcf6a3d1dd8179c00cc1615a06d2630ae96cdab9",
+    "/tmp/laguna-h6z-codeobj/notes.txt": "8860d63bdc024dc2b6e1698491112896ae38ca133f908ca374ca39d45268b85f",
+    "/tmp/laguna-h6z-compiler-monitor.json": "00ac1d1c35d8fefa68396ed4878a404ba14916ca190cd498da79ab66cfa8ad31",
+    "/tmp/laguna-h6z-expanded-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-expanded-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-expanded-guards.stdout": "b156e9922f76d25723911762a7fc411b0a8aeb840a9069496bef64f6b3877445",
+    "/tmp/laguna-h6z-global-score-weight-function.isa": "491802e3495474d3adfd62126b16a60407e68b07a793580d0bb5b15fa6c8a20b",
+    "/tmp/laguna-h6z-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-green.stdout": "4d2df7a96ce4a667da3ccf295f2d16c728a65ed0e861a3baa919f7bb469b02b5",
+    "/tmp/laguna-h6z-hip-health.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-hip-health.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-hip-health.stdout": "25e8b4aeab2132ef660c7925876b0e1679b6816abdb261faa7937fde4236bf87",
+    "/tmp/laguna-h6z-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6z-physical-summary.json": "517339f3788ec30ca5a1e685f2337c02760d8b6f3fec626df8445667093f1b1b",
+    "/tmp/laguna-h6z-red.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h6z-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-red.stdout": "19d0dd3ee9782662f61cbc2b430a73ddb0da2ae8beb0e50b1ceb1ea941f8709b",
+    "/tmp/laguna-h6z-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-rocprof.stderr": "8326859c4105bd81a1282404e2b7f473dddf3ba197d83351d5dacf885e8e720a",
+    "/tmp/laguna-h6z-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "/tmp/laguna-h6z-rocprof/epyc/1987990_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6z-rocprof/epyc/1987990_kernel_trace.csv": "e22b01af4f349d74f649ca927a10b7c4a2845f1be4fd0b7f85192dfac33ec024",
+    "/tmp/laguna-h6z-trace-summary.json": "b31fca2f9438f5a8d7ca328252dba1e958bb9fb5d0740f2e9e9241c289c4718d",
+    "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.json": "e15e1b7ef6862e61185e1f440c8177492041cd2c214592f0ede21dd60ad1ef67",
+    "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-wpfh6z-global-score-weight-replay-screen.stdout": "7d5f661403f8086823e9fc578c5cd9c49be612b08eea1f6cd9ff37627b279444",
+    "/tmp/laguna_wpfh6z_global_score_weight_replay_screen.py": "79f059acfbc44d6dc97106943faebfafd0f016922631e76093bae82b0f3a1e21"
+  },
+  "schema": 1,
+  "status": "admitted_standalone_leaf_default_off",
+  "trace": {
+    "candidate": {
+      "duration_ns": 550404,
+      "grid_x": 1536,
+      "grid_y": 32,
+      "grid_z": 1,
+      "kernel": "(anonymous namespace)::laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, HIP_vector_type<float, 4u>*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+      "lds_bytes": 0,
+      "local_x": 32,
+      "local_y": 1,
+      "local_z": 1,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 48
+    },
+    "candidate_dispatches": 1,
+    "compiler_free_child_path": "/usr/bin:/bin",
+    "compiler_monitor": {
+      "new_compiler_processes": 0,
+      "poll_interval_ms": 5,
+      "preexisting_compiler_processes": 29,
+      "samples": 1253
+    },
+    "control": {
+      "duration_ns": 952281,
+      "grid_x": 12288,
+      "grid_y": 128,
+      "grid_z": 1,
+      "kernel": "(anonymous namespace)::laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+      "lds_bytes": 0,
+      "local_x": 256,
+      "local_y": 1,
+      "local_z": 1,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 40
+    },
+    "control_dispatches": 1,
+    "hardware": {
+      "architecture": "gfx1100",
+      "product": "AMD Radeon Pro W7900",
+      "wavefront_size": 32
+    },
+    "require_cached": true,
+    "schema": "hipengine.laguna.h6z.cached_trace.v1",
+    "trace_gate_pass": true
+  }
+}

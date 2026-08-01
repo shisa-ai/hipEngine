@@ -514,6 +514,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "global_context_rows_dense_initial_fixed512_cached_exact_spans",
         ),
+        # WPF-H6Z exact late-start global qrow4 score/weight replay is W7900-
+        # only pending independent gfx1151 resource/performance evidence.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans",
+        ),
         # WPF-H5R and H6A exact cached-only two-pass SWA qrow4 leaves are
         # W7900-only pending independent gfx1151 resource/performance gates.
         (
