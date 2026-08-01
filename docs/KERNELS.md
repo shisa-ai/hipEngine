@@ -1857,6 +1857,24 @@ pass
 ([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
+Target-only **WPF-H7H exact full-group Q5 compute** extends the same exact
+unconditional-compute mechanism to the two remaining natural-M512 full-group
+H5Y roles without changing H7G production. BF16 K3072/N1024 `c8r4` owns **92
+calls / 24.093 ms** and BF16 K9216/N3072 `c12r8` owns **35 / 80.144 ms**. The
+frozen actual-weight screen admits both roles together: weighted event/wall
+improves **140.327/140.003 -> 118.799/121.173 ms (-15.341%/-13.450%)**, and
+each role is byte-exact and both-clock positive.
+
+The immutable out-of-tree object emits `r4` **15 dual + 5 scalar** FMA sites
+versus H5Y **1+31**, with code/slots **3,840/635 -> 3,584/587** and metadata
+VGPR72/LDS512. `r8` emits **47+9** versus **1+95**, with code/slots
+**9,984/1,674 -> 9,728/1,588** and metadata VGPR194/LDS1536. Both remain
+private/spill/dynamic-stack/scratch0. No H7H symbol, wrapper, key, test, runtime
+capability, or source policy exists yet. Freeze a separate two-role RED and use
+a separately named `full_group_compute` route backed by the existing exact body;
+retain H5Y as the required unfused fallback and H7G source unchanged
+([post-H7G residual / H7H target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

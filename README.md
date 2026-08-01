@@ -669,6 +669,24 @@ families are profiling noise. Q5/IQ-down/attention/Q6 still account for
 ([H7G production](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
+The post-H7G rerank selects target-only **WPF-H7H exact full-group Q5
+compute**. The two remaining divisible H5Y consumers own **127 calls / 104.237
+ms**, or **41.881%** of current Q5. A frozen first-and-only actual-weight screen
+requires both roles and their aggregate to win both clocks: `r4` event/wall
+improves **0.303408/0.305878 -> 0.271544/0.278936 ms
+(-10.502%/-8.808%)**, `r8` improves
+**3.211801/3.196062 -> 2.680494/2.728876 ms (-16.542%/-14.618%)**, and the
+127-call weighted schedule improves **140.327/140.003 -> 118.799/121.173 ms
+(-15.341%/-13.450%)**. Both outputs are byte-exact, finite, and allocation-clean.
+
+The immutable diagnostic object changes `r4/r8` dual/scalar FMA sites
+**1/31 -> 15/5** and **1/95 -> 47/9**, cuts code/slots
+**3,840/635 -> 3,584/587** and **9,984/1,674 -> 9,728/1,588**, and retains
+metadata VGPR **72/194**, LDS **512/1,536**, private/spill/scratch0. Production
+remains H7G **424.845 tok/s**. Freeze a separate RED before adding only named
+H7H wrappers/keys; no runtime/source claim exists yet
+([post-H7G residual / H7H target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

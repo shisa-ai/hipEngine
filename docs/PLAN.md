@@ -2645,6 +2645,27 @@ H5Y rollback, unchanged workspace/allocation, and gfx1151 isolation
 ([H7G production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-candidate.json)).
 
+Select target-only **WPF-H7H exact full-group Q5 compute** rather than reopen a
+closed changed-association, prefetch, DPP-reduction, or VOPD premise. H7G leaves
+two divisible H5Y roles: BF16 K3072/N1024 `c8r4` (**92 calls / 24.093 ms**) and
+BF16 K9216/N3072 `c12r8` (**35 calls / 80.144 ms**). Together they own
+**104.237 ms / 41.881%** of current Q5 while retaining the dynamic per-FMA
+`row < rows` predicate despite exact-full natural-M512 groups.
+
+Freeze both roles before timing with no subset salvage. The first and only
+actual-weight 5/15/5 screen is byte-exact, finite, lifecycle-clean, and improves
+`r4` event/wall **0.303408/0.305878 -> 0.271544/0.278936 ms**, `r8`
+**3.211801/3.196062 -> 2.680494/2.728876 ms**, and weighted 127-call event/wall
+**140.327/140.003 -> 118.799/121.173 ms (-15.341%/-13.450%)**. The immutable
+object changes `r4/r8` dual/scalar FMA sites **1/31 -> 15/5** and
+**1/95 -> 47/9**, cuts code/slots **3,840/635 -> 3,584/587** and
+**9,984/1,674 -> 9,728/1,588**, and retains metadata VGPR **72/194**, LDS
+**512/1,536**, private/spill/scratch0. Production remains H7G **424.845 tok/s**.
+Next freeze a separate two-role RED, add no runtime/source owner, and require
+complete rows1/7/8/9/M512 bytes, first-object bounds, cached named execution,
+and immutable-screen replay before standalone admission
+([post-H7G residual / H7H target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
