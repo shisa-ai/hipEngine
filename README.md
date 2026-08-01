@@ -442,6 +442,21 @@ keeps H6A SWA and H6N global production unchanged and closes DPP attention peer
 exchange without runtime qualification or follow-up tuning
 ([H6S rejection](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json)).
 
+The next one-shot target is **WPF-H6T exact fused-DPP-add staged-wave IQ3** on
+unchanged H6R production. H6R's cached ISA realizes its 96 DPP peers as **72
+`v_add_f32_dpp` at row shifts 8/4/2 plus 24 `v_mov_b32_dpp` at row shift 1**;
+the latter are followed by ordered adds. A standalone gfx1100 probe emits direct
+row-shift-1 `v_add_f32_dpp`, and a complete permlanex16+DPP 8/4/2/1 reduction
+matches the retained move-then-add tree on all **32/32 lanes**. H6T may replace
+only those 24 move+add pairs in a separate sibling. Admission requires exact
+**24 permlanex16 + 96 DPP adds + zero DPP moves**, unchanged 216 FMAs, memory,
+barriers, stride, bytes, ABI, and policy, code <=8,016 bytes, instruction slots
+<1,399, metadata/runtime VGPR <=101/104, private/spill/scratch0, and **45/45**
+actual layers winning both event and synchronized-wall clocks. Any miss removes
+all H6T surfaces without tuning; this is target evidence, not a speed/default
+claim
+([H6T target](benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
