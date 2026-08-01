@@ -10,6 +10,7 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
 
 _DENSE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
+_H6A_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _GLOBAL_CANDIDATE = "global_context_rows_dense_initial_cached_exact_spans"
 _SOURCE_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
@@ -130,11 +131,11 @@ def _dispatch(cache, layer_id: int, start: int, rows: int) -> bool:
     return qualified
 
 
-def test_h6a_runtime_metadata_preserves_promoted_source_and_runner_gate() -> None:
+def test_h6a_runtime_metadata_preserves_rollback_and_runner_gate() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner
 
-    assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _PRODUCTION_POLICY
+    assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _PRODUCTION_POLICY
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == {
         _SWA_ROLE: _H5R
     }

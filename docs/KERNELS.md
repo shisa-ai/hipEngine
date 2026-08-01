@@ -1522,27 +1522,24 @@ this exact universal transfer
 [target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json)).
 
 **WPF-H6W exact late-start dense-initial SWA qrow4 aligned global-score-record
-replay is a qualified bounded default-off gfx1100 runtime owner; H6A remains
-source.** Its admitted leaf emits one b128 global score store/load, removes all
-four second-QK loads and 20 reduction sites, cuts code/slots
-**7,044→4,984 B / 1,345→871**, and runs local32/VGPR56/LDS0/scratch0. Runtime
-binds the fixed aligned **18,874,368-byte** score plane to the prefix of the
-existing **150,994,944-byte** Q5 ordered F32 weight plane after KV/workspace
-allocation. KV never owns or frees that pointer; identical rebinding is
-idempotent, invalid/different owners fail closed, and same-stream projection →
-attention → sparse-FFN order provides non-overlapping producer/consumer
-lifetime without allocation growth. Starts0/128 dynamically retain H6A while
-starts256/384 use H6W. Complete natural M512 is KL0/byte-exact across all
-**48/48** hidden boundaries, logits, K/V/spans, repeat, and lifecycle. Four
-cached requests prove exact **48 H6N + 72 H6A + 72 H6W** topology at **2,192**
-dispatches; selected late SWA/attention/kernel-sum/span improve
-**81.990/144.957/1,224.048/1,254.740→62.470/127.063/1,207.903/1,229.421 ms**.
-Fixed C4096/M512 gains **+1.495% (5/5)** and default-off 512/1K/4K gains
-**+1.304%/+0.544%/+0.092%**, all **3/3**, with unchanged workspace/scratch, no
-compiler under profiling, and **112/112** guards. Commit bounded ownership,
-then freeze separate source-default RED before selecting H6W production
-([candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json) ·
-[target](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6v-rejection-matched-residual.json)).
+replay is the retained gfx1100 SWA source default; H6A is explicit rollback.**
+The admitted local32/VGPR56/LDS0/scratch0 leaf emits one b128 score store/load,
+removes all four second-QK loads and 20 reduction sites, and cuts code/slots
+**7,044→4,984 B / 1,345→871**. Runtime borrows the aligned
+**18,874,368-byte** prefix of the existing Q5 F32 plane with same-stream
+projection → attention → FFN lifetime and no allocation/workspace growth.
+Source promotion changes only one selected-map SWA value and adds the complete
+H6A rollback map; H6N global, starts0/128 fallback, runner/KV ABI, and kernel
+bodies do not change. Complete M512 remains KL0/exact across all **48/48**
+boundaries, logits, K/V/spans, repeat, and lifecycle. Production-identical
+cached topology remains exact **48 H6N + 72 H6A + 72 H6W** at **2,192**
+dispatches and cuts selected late SWA/attention/kernel-sum/span
+**23.808%/12.344%/1.319%/2.018%**. Fresh selector-unset fixed M512 gains
+**+1.515% (5/5)** at **417.421 tok/s**; 512/1K/4K gains
+**+1.304%/+0.736%/+0.153%**, all **3/3**, with unchanged workspace/scratch,
+gfx1151 exclusion, and **115/115** guards
+([production](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-candidate.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

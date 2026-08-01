@@ -8,6 +8,7 @@ from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
 
 _DENSE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
+_H6A_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
 _GLOBAL_CANDIDATE = "global_context_rows_dense_initial_cached_exact_spans"
 _H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
@@ -79,9 +80,11 @@ def test_h6a_dense_initial_leaves_remain_registered_rollbacks(monkeypatch) -> No
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
-    assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _SOURCE_POLICY
+    assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _SOURCE_POLICY
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == _H5R_POLICY
     assert not hasattr(hip_gfx1151, _DENSE_CAPABILITY)
+    assert not hasattr(hip_gfx1151, _H6A_CAPABILITY)
+    monkeypatch.setattr(hip_gfx1100, _DENSE_CAPABILITY, _SOURCE_POLICY)
 
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(

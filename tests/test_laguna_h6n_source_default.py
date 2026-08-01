@@ -12,6 +12,9 @@ _H6A_GLOBAL = "global_context_rows_dense_initial_cached_exact_spans"
 _H6N_GLOBAL = "global_context_rows_dense_initial_fixed512_cached_exact_spans"
 _SWA_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
 _H6A_SWA = "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+_H6W_SWA = (
+    "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+)
 _H5R_SWA = "swa_context_rows_qrow4_cached_exact_spans"
 _ROLLBACK_POLICY = {
     _GLOBAL_ROLE: _H6A_GLOBAL,
@@ -19,7 +22,7 @@ _ROLLBACK_POLICY = {
 }
 _PRODUCTION_POLICY = {
     _GLOBAL_ROLE: _H6N_GLOBAL,
-    _SWA_ROLE: _H6A_SWA,
+    _SWA_ROLE: _H6W_SWA,
 }
 _H5R_POLICY = {_SWA_ROLE: _H5R_SWA}
 _PRODUCTION_WORKSPACE_BYTES = 161_120_256
@@ -95,7 +98,7 @@ def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> N
     assert getattr(hip_gfx1100, _DENSE_CAPABILITY) == _PRODUCTION_POLICY
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == _H5R_POLICY
     assert not hasattr(hip_gfx1151, _DENSE_CAPABILITY)
-    for variant in (_H6A_GLOBAL, _H6N_GLOBAL, _H6A_SWA, _H5R_SWA):
+    for variant in (_H6A_GLOBAL, _H6N_GLOBAL, _H6A_SWA, _H6W_SWA, _H5R_SWA):
         assert is_registered(
             KernelKey(
                 "hip_gfx1100",
@@ -167,7 +170,7 @@ def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> N
         global_prefill_variant="global_context_rows_qrow2_online_spans",
     )
     try:
-        assert explicit.prefill_preappend_role_variants == {_SWA_ROLE: _H6A_SWA}
+        assert explicit.prefill_preappend_role_variants == {_SWA_ROLE: _H6W_SWA}
         assert not _qualifies(explicit, 0, 0, 128)
         assert _qualifies(explicit, 1, 0, 128)
     finally:
@@ -188,7 +191,7 @@ def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> N
         runtime=missing_runtime,
     )
     try:
-        assert missing.prefill_preappend_role_variants == {_SWA_ROLE: _H6A_SWA}
+        assert missing.prefill_preappend_role_variants == {_SWA_ROLE: _H6W_SWA}
         assert not _qualifies(missing, 0, 0, 128)
         assert _qualifies(missing, 1, 0, 128)
     finally:

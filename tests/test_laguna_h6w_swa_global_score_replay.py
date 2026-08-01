@@ -302,7 +302,7 @@ def test_h6w_frozen_leaf_and_one_shot_admission_contract() -> None:
     assert sum(_PROMOTION_TOPOLOGY.values()) == 192
 
 
-def test_h6w_registry_source_abi_and_production_immutability() -> None:
+def test_h6w_registry_abi_and_h6a_rollback_immutability() -> None:
     from hipengine.kernels import hip_gfx1100
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -320,7 +320,7 @@ def test_h6w_registry_source_abi_and_production_immutability() -> None:
         is h6a
     )
     assert (
-        hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS
+        hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS
         == _PRODUCTION_POLICY
     )
     assert hip_gfx1100.LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS == _H5R_POLICY
@@ -364,7 +364,7 @@ def test_h6w_registry_source_abi_and_production_immutability() -> None:
     assert is_registered(candidate_key)
     assert not is_registered(gfx1151_key)
     assert (
-        hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS
+        hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS
         == _PRODUCTION_POLICY
     )
 
