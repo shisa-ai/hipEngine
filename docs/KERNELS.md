@@ -2398,12 +2398,23 @@ immutable `KVLiveSpans`, and lifecycle. Then consume one all-72 actual-state
 must win event and wall. Any miss removes H7Y without subset, packing-width
 retune, rewrite, recompile, or favorable rerun.
 
-Runtime/source qualification is separate. Only an admitted leaf may add exact
-**72 MiB** SWA K/V mirrors and a separately named fused natural+mirror writer;
-the bounded gate must retain natural H6A/H6W fallback, unchanged **144 writer
-calls / 2,286 dispatches**, and include writer cost. No H7Y code/build/execution
-or speed claim exists
-([H7Y target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+H7Y passes every standalone gate and remains a separately registered explicit
+leaf. The sole object is **4,900 B / 855 slots / metadata VGPR54 / SGPR40 /
+spill0**, with exactly **2 `global_load_b64`, 0 `global_load_u16`, 2 vmcnt
+waits** and unchanged b128-record/bpermute/exp/FMA/FMAC/output-store counts.
+GREEN passes **6/6**. An actual-cache trace names exact **72 H7Y** calls at
+local32/grid2304x32/runtime-VGPR56/LDS0/scratch0 on one queue with zero compiler.
+All 72 actual-layer outputs and score planes are byte-exact.
+
+The immutable all-72 H6W→H7Y screen improves start256 **23.739→23.681 ms event
+/ 23.719→23.703 wall**, start384 **32.868→32.577 / 32.840→32.614**, and
+aggregate **56.607→56.259 ms event (-0.616%) / 56.559→56.317 wall (-0.428%)**.
+Runtime/source remain separate: only the next RED-gated owner may add exact **72
+MiB** mirrors and a fused natural+mirror writer, retaining H6A/H6W fallback and
+unchanged **144 writer calls / 2,286 dispatches**, with writer-inclusive fixed
+and length gates
+([standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

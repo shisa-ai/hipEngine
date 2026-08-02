@@ -1092,12 +1092,16 @@ payload is unchanged. This is selection arithmetic, not speed evidence. Freeze
 RED first, then require one object with exactly **2 b64 / 0 u16 / ≤2 waits**,
 unchanged H6W opcodes/resources, complete transpose/H6W/CPU/record/span bytes,
 and one inseparable all-72 per-start+aggregate dual-clock 5/15/5 screen.
-Standalone mirrors are caller-owned. Only after leaf admission may a separate
-runtime gate add an exact **72 MiB** K/V mirror plus one fused natural+mirror
-writer at unchanged **144 writer calls / 2,286 request dispatches**; H6A/H6W
-natural-cache rollback remains mandatory. No H7Y implementation, build,
-execution, or speed result exists
-([post-H7X / H7Y target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+H7Y is now retained as an explicit standalone leaf. Its sole object is **4,900
+B / 855 slots / metadata VGPR54 / SGPR40 / spill0**, with exactly **2 b64 / 0
+u16 / 2 waits**; named execution is runtime VGPR56/LDS0/scratch0. All **72
+actual-layer** outputs and score planes are byte-exact. The immutable screen
+moves H6W→H7Y **56.607→56.259 ms event (-0.616%)** and **56.559→56.317 ms
+wall (-0.428%)**, with both starts positive. Production remains **437.189
+tok/s**: only the separate next gate may add the exact **72 MiB** mirrors and
+fused natural+mirror writer while retaining H6A/H6W rollback
+([standalone](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+[target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

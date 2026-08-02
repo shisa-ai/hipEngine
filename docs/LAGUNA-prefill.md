@@ -1814,12 +1814,20 @@ span/poison/repeat/lifecycle bytes; and one inseparable all-72 starts256/384 plu
 aggregate dual-clock 5/15/5 screen. Any miss removes H7Y without subset,
 packing-width retune, rewrite, recompile, or rerun.
 
-Standalone mirrors are caller-owned and production remains unchanged. Only an
-admitted leaf may enter the separate writer-inclusive runtime gate: exact
-**72 MiB** SWA K/V mirrors, one fused natural+mirror writer, retained natural
-H6A/H6W rollback, and unchanged **144 writer calls / 2,286 dispatches**. No H7Y
-code, build, execution, or speed result exists
-([H7Y target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+H7Y is admitted as an explicit standalone leaf. The sole object is **4,900 B /
+855 slots / metadata VGPR54 / SGPR40 / spill0**, exactly **2 b64 / 0 u16 / 2
+waits** with unchanged arithmetic; GREEN is **6/6**. Cache-only actual-state
+tracing names **72 H7Y** calls at runtime VGPR56/LDS0/scratch0, one queue, zero
+compiler. Every actual-layer output and score plane is byte-exact.
+
+The immutable H6W→H7Y screen improves start256 **1.00246x event / 1.00067x
+wall**, start384 **1.00891x / 1.00693x**, and aggregate **56.607→56.259 ms
+event (-0.616%) / 56.559→56.317 wall (-0.428%)**. Production remains
+**437.189 tok/s**. Runtime/source are still separate: next freeze a writer-
+inclusive exact-**72 MiB** mirror owner, retain H6A/H6W rollback and unchanged
+**144 writer calls / 2,286 dispatches**, then require fixed and 512/1K/4K wins
+([standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

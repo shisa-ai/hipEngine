@@ -4108,6 +4108,170 @@ __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrow4_dense_i
   }
 }
 
+__global__ __launch_bounds__(32) void laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_global_score_replay_exact_bf16_kernel(
+    const float* query,
+    const uint16_t* lane_major_key_cache,
+    const uint16_t* lane_major_value_cache,
+    float* out,
+    float4* score_records,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t expected_start_position,
+    float scale) {
+  constexpr int kQueryRows = 4;
+  constexpr int kCapacity = 512;
+  constexpr float kLowest = -3.4028234663852886e38f;
+
+  const int64_t query_row_base =
+      static_cast<int64_t>(blockIdx.y) * kQueryRows;
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t lane = static_cast<int64_t>(threadIdx.x);
+  if (query_row_base >= rows || q_head >= num_q_heads || lane >= 32) return;
+
+  const int64_t start_position = row_positions[0];
+  if (rows != 128 || capacity != kCapacity || sliding_window != kCapacity ||
+      num_q_heads != 72 || num_kv_heads != 8 || head_dim != 128 ||
+      start_position != expected_start_position ||
+      (start_position != 256 && start_position != 384) ||
+      live_counts[0] < start_position + rows) {
+    return;
+  }
+  const int64_t q_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / q_group;
+  const int64_t workgroup_index =
+      static_cast<int64_t>(blockIdx.y) * num_q_heads + q_head;
+  float4* workgroup_score_records =
+      score_records + workgroup_index * kCapacity;
+
+  float query_values[kQueryRows][4];
+#pragma unroll
+  for (int row_index = 0; row_index < kQueryRows; ++row_index) {
+    const int64_t query_row = query_row_base + row_index;
+    const int64_t query_base =
+        (query_row * num_q_heads + q_head) * head_dim;
+#pragma unroll
+    for (int part = 0; part < 4; ++part) {
+      query_values[row_index][part] =
+          query[query_base + lane + part * 32];
+    }
+  }
+
+  const int64_t context_len =
+      start_position + query_row_base + kQueryRows;
+  float max_scores[kQueryRows];
+#pragma unroll
+  for (int row_index = 0; row_index < kQueryRows; ++row_index) {
+    max_scores[row_index] = kLowest;
+  }
+  for (int64_t logical_slot = 0;
+       logical_slot < context_len;
+       ++logical_slot) {
+    const int64_t lane_record_base =
+        (logical_slot * num_kv_heads + kv_head) * head_dim + lane * 4;
+    const uint2 packed_keys = *reinterpret_cast<const uint2*>(
+        lane_major_key_cache + lane_record_base);
+    const float cached_keys[4] = {
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_keys.x)),
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_keys.x >> 16)),
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_keys.y)),
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_keys.y >> 16)),
+    };
+    float replay_values[kQueryRows] = {};
+#pragma unroll
+    for (int row_index = 0; row_index < kQueryRows; ++row_index) {
+      if (logical_slot > start_position + query_row_base + row_index) continue;
+      float products[4];
+#pragma unroll
+      for (int part = 0; part < 4; ++part) {
+        products[part] = laguna_ordered_mul_f32(
+            query_values[row_index][part], cached_keys[part]);
+      }
+      const float dot = laguna_wave32_sum_128_exact(
+          products[0], products[1], products[2], products[3]);
+      if (lane == 0) {
+        replay_values[row_index] = dot;
+        max_scores[row_index] = fmaxf(max_scores[row_index], dot * scale);
+      }
+    }
+    if (lane == 0) {
+      workgroup_score_records[logical_slot] = make_float4(
+          replay_values[0],
+          replay_values[1],
+          replay_values[2],
+          replay_values[3]);
+    }
+  }
+#pragma unroll
+  for (int row_index = 0; row_index < kQueryRows; ++row_index) {
+    max_scores[row_index] = __shfl(max_scores[row_index], 0);
+  }
+
+  float denominators[kQueryRows] = {};
+  float output_acc[kQueryRows][4] = {};
+  for (int64_t logical_slot = 0;
+       logical_slot < context_len;
+       ++logical_slot) {
+    float4 replay_record = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (lane == 0) {
+      replay_record = workgroup_score_records[logical_slot];
+    }
+    const float replay_dots[kQueryRows] = {
+        replay_record.x,
+        replay_record.y,
+        replay_record.z,
+        replay_record.w,
+    };
+    const int64_t lane_record_base =
+        (logical_slot * num_kv_heads + kv_head) * head_dim + lane * 4;
+    const uint2 packed_values = *reinterpret_cast<const uint2*>(
+        lane_major_value_cache + lane_record_base);
+    const float cached_values[4] = {
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_values.x)),
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_values.x >> 16)),
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_values.y)),
+        laguna_bf16_bits_to_float(static_cast<uint16_t>(packed_values.y >> 16)),
+    };
+#pragma unroll
+    for (int row_index = 0; row_index < kQueryRows; ++row_index) {
+      if (logical_slot > start_position + query_row_base + row_index) continue;
+      float weight = 0.0f;
+      if (lane == 0) {
+        const float dot = replay_dots[row_index];
+        weight = expf(dot * scale - max_scores[row_index]);
+        denominators[row_index] += weight;
+      }
+      weight = __shfl(weight, 0);
+#pragma unroll
+      for (int part = 0; part < 4; ++part) {
+        output_acc[row_index][part] += weight * cached_values[part];
+      }
+    }
+  }
+
+#pragma unroll
+  for (int row_index = 0; row_index < kQueryRows; ++row_index) {
+    denominators[row_index] = __shfl(denominators[row_index], 0);
+    const float safe_denominator =
+        fmaxf(denominators[row_index], 1.0e-20f);
+    const int64_t out_base =
+        ((query_row_base + row_index) * num_q_heads + q_head) * head_dim;
+#pragma unroll
+    for (int part = 0; part < 4; ++part) {
+      out[out_base + lane + part * 32] =
+          output_acc[row_index][part] / safe_denominator;
+    }
+  }
+}
+
 template <
     int kQueryRows,
     bool kQualifiedSourceLoads = false,
@@ -7903,6 +8067,69 @@ extern "C" int hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_global
       query,
       key_cache,
       value_cache,
+      out,
+      score_records,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      capacity,
+      sliding_window,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      start_position,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_global_score_replay_exact_bf16_spans(
+    const float* query,
+    const float* current_key,
+    const float* current_value,
+    const uint16_t* lane_major_key_cache,
+    const uint16_t* lane_major_value_cache,
+    float* out,
+    float4* score_records,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t start_position,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || current_key == nullptr || current_value == nullptr ||
+      lane_major_key_cache == nullptr || lane_major_value_cache == nullptr ||
+      (reinterpret_cast<unsigned long long>(lane_major_key_cache) & 7ULL) != 0 ||
+      (reinterpret_cast<unsigned long long>(lane_major_value_cache) & 7ULL) != 0 ||
+      out == nullptr || score_records == nullptr ||
+      (reinterpret_cast<unsigned long long>(score_records) & 15ULL) != 0 ||
+      base_offsets == nullptr || live_counts == nullptr ||
+      token_positions == nullptr || evict_mask == nullptr ||
+      row_positions == nullptr || rows != 128 || capacity != 512 ||
+      sliding_window != 512 || num_q_heads != 72 || num_kv_heads != 8 ||
+      head_dim != 128 ||
+      (start_position != 256 && start_position != 384)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_global_score_replay_exact_bf16_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), 32),
+      dim3(32),
+      0,
+      stream,
+      query,
+      lane_major_key_cache,
+      lane_major_value_cache,
       out,
       score_records,
       base_offsets,

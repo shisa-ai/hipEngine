@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-03
+
+- [admitted standalone exact gfx1100 Laguna Q2 XL WPF-H7Y lane-major SWA cache] Radeon Pro W7900 / H6W→H7Y first object is **4,984→4,900 B / 871→855 slots / metadata VGPR54**, with **8 u16 + 8 waits→2 b64 + 2 waits** and unchanged record/reduction/math/store opcodes. GREEN is **6/6**; actual-cache trace names exact **72 H7Y** at runtime VGPR56/LDS0/scratch0, one queue, zero compiler. All 72 outputs/score planes are byte-exact. Immutable all-72 H6W→H7Y improves **56.607→56.259 ms event (-0.616%)** and **56.559→56.317 ms wall (-0.428%)**, both starts positive. Retain explicit leaf only; production remains **437.189 tok/s** pending writer-inclusive **72 MiB** runtime qualification. [`artifact`](results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json).
+
 ## 2026-08-02
 
 - [selected exact gfx1100 Laguna Q2 XL post-H7X residual / WPF-H7Y H6W lane-major BF16 K/V mirror target] Radeon Pro W7900 / retain **437.189 tok/s / 1,153.347-ms / 2,286-dispatch** production, **1.58007x** behind matched llama.cpp HIP. H6W owns **72 calls / 62.656 ms** and issues **8 u16 loads + 8 staged waits** over its K/V passes. Freeze one caller-mirror leaf mapping `[part4][lane32]→[lane32][part4]`, requiring **2 b64 / 0 u16 / ≤2 waits** and unchanged arithmetic. The complete route models **512,262,144→128,065,536 load-issue slots (-75%)** at unchanged payload. Require RED-first transpose/H6W/CPU/record/span exactness and an all-72 per-start+aggregate both-clock gate; only then qualify a writer-inclusive **72 MiB** runtime mirror at unchanged 144 writer calls / 2,286 dispatches. No candidate or speed result exists. [`artifact`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json).
