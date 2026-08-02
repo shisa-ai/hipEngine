@@ -1405,6 +1405,102 @@ void laguna_global_attention_split_exact_gqa6_scores_kernel(
   }
 }
 
+// Exact four-token single-wave score owner. Unlike the four-wave tile below,
+// one wave keeps all six query vectors in registers and visits four consecutive
+// KV tokens. Each token retains the original four ordered products, wave32
+// reduction tree, scale, and scratch location.
+__global__ __launch_bounds__(32)
+void laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    float scale) {
+  constexpr int kNumKvHeads = 8;
+  constexpr int kQueryGroup = 6;
+  constexpr int kHeadDim = 128;
+  constexpr int kTokenLoop = 4;
+  const int kv_head = static_cast<int>(blockIdx.x);
+  const int64_t logical_base =
+      static_cast<int64_t>(blockIdx.y) * kTokenLoop;
+  if (kv_head >= kNumKvHeads || logical_base >= scan_slots) return;
+
+  const int lane = static_cast<int>(threadIdx.x);
+  float query_values[kQueryGroup][4];
+#pragma unroll
+  for (int q_local = 0; q_local < kQueryGroup; ++q_local) {
+    const int q_head = kv_head * kQueryGroup + q_local;
+    const int64_t q_offset =
+        static_cast<int64_t>(q_head) * kHeadDim + lane * 4;
+#pragma unroll
+    for (int item = 0; item < 4; ++item) {
+      query_values[q_local][item] = query[q_offset + item];
+    }
+  }
+
+  const int64_t context_len = live_counts[0] < capacity ? live_counts[0] : capacity;
+  const int64_t query_position = row_positions[0];
+#pragma unroll
+  for (int token_local = 0; token_local < kTokenLoop; ++token_local) {
+    const int64_t logical_slot = logical_base + token_local;
+    if (logical_slot >= scan_slots) continue;
+    const int64_t key_position =
+        logical_slot < context_len ? token_positions[logical_slot] : -1;
+    const bool visible = logical_slot < context_len && query_position >= 0 &&
+                         evict_mask[logical_slot] == 0 && key_position >= 0 &&
+                         key_position <= query_position;
+    int64_t physical_slot = -1;
+    if (visible) {
+      physical_slot =
+          laguna_global_physical_slot(base_offsets, logical_slot, block_size);
+    }
+
+    float key_values[4] = {};
+    if (physical_slot >= 0) {
+      const int64_t key_offset =
+          (physical_slot * kNumKvHeads + kv_head) * kHeadDim + lane * 4;
+#pragma unroll
+      for (int item = 0; item < 4; ++item) {
+        key_values[item] =
+            laguna_bf16_bits_to_float(key_cache[key_offset + item]);
+      }
+    }
+#pragma unroll
+    for (int q_local = 0; q_local < kQueryGroup; ++q_local) {
+      const int q_head = kv_head * kQueryGroup + q_local;
+      float acc = 0.0f;
+      if (physical_slot >= 0) {
+        acc += query_values[q_local][0] * key_values[0];
+        acc += query_values[q_local][1] * key_values[1];
+        acc += query_values[q_local][2] * key_values[2];
+        acc += query_values[q_local][3] * key_values[3];
+      }
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        acc += __shfl_down(acc, offset);
+      }
+      if (lane == 0) {
+        const int64_t scratch_idx =
+            static_cast<int64_t>(q_head) * scratch_stride + logical_slot;
+        score_scratch[scratch_idx] =
+            physical_slot >= 0 ? acc * scale : -3.4028234663852886e38f;
+        if (kv_head == 0 && q_local == 0) {
+          physical_scratch[logical_slot] =
+              static_cast<int32_t>(physical_slot);
+        }
+      }
+    }
+  }
+}
+
 // Exact four-token score owner. Four wave32s share one staged copy of the six
 // query vectors while each wave retains the original token's four ordered
 // products and wave reduction tree.
@@ -9362,6 +9458,101 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim
   hipLaunchKernelGGL(
       laguna_global_attention_split_exact_gqa6_scores_kernel,
       dim3(8, static_cast<unsigned int>(scan_slots)),
+      dim3(32),
+      0,
+      stream,
+      query,
+      key_cache,
+      score_scratch,
+      physical_scratch,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      capacity,
+      block_size,
+      scratch_stride,
+      scan_slots,
+      scale);
+  int error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_exp32_denominator_kernel,
+      dim3(48),
+      dim3(256),
+      0,
+      stream,
+      score_scratch,
+      physical_scratch,
+      inverse_sums,
+      live_counts,
+      row_positions,
+      capacity,
+      scratch_stride,
+      scan_slots);
+  error = static_cast<int>(hipGetLastError());
+  if (error != static_cast<int>(hipSuccess)) return error;
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel,
+      dim3(32),
+      dim3(512),
+      0,
+      stream,
+      value_cache,
+      score_scratch,
+      inverse_sums,
+      physical_scratch,
+      out,
+      gate,
+      gated_out,
+      live_counts,
+      row_positions,
+      capacity,
+      scratch_stride,
+      scan_slots);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const float* gate,
+    uint16_t* gated_out,
+    float* score_scratch,
+    int32_t* physical_scratch,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t scratch_stride,
+    int64_t scan_slots,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (query == nullptr || key_cache == nullptr || value_cache == nullptr ||
+      out == nullptr || gate == nullptr || gated_out == nullptr ||
+      score_scratch == nullptr || physical_scratch == nullptr ||
+      capacity <= 0 || block_size != 256 || block_table_len <= 0 ||
+      (capacity + block_size - 1) / block_size > block_table_len ||
+      scratch_stride < scan_slots || scan_slots <= 0 || scan_slots > capacity ||
+      num_q_heads != 48 || num_kv_heads != 8 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  float* inverse_sums =
+      reinterpret_cast<float*>(physical_scratch + capacity);
+  hipLaunchKernelGGL(
+      laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel,
+      dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
       dim3(32),
       0,
       stream,

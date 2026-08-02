@@ -197723,3 +197723,38 @@ Vulkan local sizes verbatim will close the measured gap.
   **18.945635 tok/s**, **+0.078%** over the prior production anchor and within
   **-0.107%** of the dirty directional row. Final token/hash/position remain
   **13,815 / b10569... / 16,510** and all allocations recover.
+
+## 2026-08-02 18:45 JST — Retain exact GQA6 token-loop4 score ownership
+
+- Added a gfx1151-only exact score producer in which one local32 wave retains
+  all six GQA query vectors and processes four consecutive KV tokens. It keeps
+  the original four ordered products, wave32 reduction tree, scale, scratch
+  locations, exp32 denominator, and ordered-prefetch4 D32/V64 PV. The existing
+  rejected four-wave tile remains separate.
+- The cached natural-depth leaf is F32/BF16 byte-exact and improves
+  live4,097/16,448/65,664/131,200
+  **0.185720/0.813815/3.416601/6.882758 ->
+  0.169847/0.738181/3.090992/6.229044 ms
+  (-8.547%/-9.294%/-9.530%/-9.498%)**. Raw SHA-256 is
+  `4567ba194db8ae484a72dc4eedd3c0e84601bc95bd43bd1eb51708b4c80aed9b`.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel` at
+  local32/VGPR40/scratch0. At live4,097 its grid is **1,025** workgroups versus
+  **4,097**, with median traced score duration **42.360 us versus 58.190 us**.
+  CSV SHA-256 is
+  `1a501ecb7f6dabbdc6161e26717b3abe921ef63c6201281be892b2e0055081e4`.
+- Production 512/1K/4K is noise-flat and exact at
+  **23.210538/23.050173/21.679950 tok/s
+  (+0.020%/-0.075%/-0.023%)**. Complete d16K/d64K/d128K improves
+  **18.945635/11.891734/7.929078 ->
+  19.258829/12.450417/8.255068 tok/s
+  (+1.653%/+4.698%/+4.111%)**. All established hashes/positions match,
+  including mandatory 128K **874 / c8307c... / 131,198**, and every run frees
+  all **87,407,934,744 bytes / 1,452 allocations**.
+- Exact production commands use the retained cached-only
+  `scripts/laguna_long_context_profile.py` protocol with capacity 131,200,
+  matrix chunks 2,048, d128, and length groups `512,1024,4096`,
+  `16384,65536`, and `131072`. Raw SHA-256 values are
+  `21cda8a44cd2970f71cb4a3ac8f9d40cc3e7833bd35ab865b2e4fdc1626037dc`,
+  `1c39acde1b0e43a8233d8a0c217fdf29d76b3349f11ea327bb081e7074776395`,
+  and `b77908ee9ee1132be2589f4f279c3a5c60dfab3a96aa3c7f9dffcc6bd19ec7c0`.

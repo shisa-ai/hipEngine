@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted byte-exact gfx1151 Laguna token-loop4 exact score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: keep six GQA queries resident while one local32 wave scores four KV tokens, cutting exact leaves **8.55-9.53%** and d16K/d64K/d128K **18.946/11.892/7.929 -> 19.259/12.450/8.255 tok/s (+1.653%/+4.698%/+4.111%)** with noise-flat 512/1K/4K, exact mandatory trajectory, and full lifecycle recovery; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-retained.json`.
+
 - [accepted gfx1151 Laguna long-global depth crossover] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: move ctx4096 activation from live **6,001 -> 98,304**, so ordered-prefetch4 exact improves d16K/d64K **18.931/11.868 -> 18.966/11.892 tok/s (+0.186%/+0.198%)** while the unchanged deep route passes mandatory 128K and 512/1K/4K show no regression; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json`.
 
 - [rejected gfx1151 Laguna ctx4096 sparse repair] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: GQA-shared repair makes the synthetic BF16 gate exact but costs **0.451/1.402/5.860/11.594 ms** versus today's exact **0.186/0.831/3.461/6.986 ms**, and all-global production changes the 16K final token **13,815 -> 855**; remove repair/promotion and re-gate retained context layers against ordered-prefetch4 exact; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-sparse-repair-rejected.json`.
