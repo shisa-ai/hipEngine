@@ -29,6 +29,14 @@ _H7C_POLICY = {
     _ROLES[1]: "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
     _ROLES[2]: "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
 }
+_H7I_POLICY = {
+    role: variant.replace(
+        "dpp_wave_reduction_",
+        "dpp_wave_reduction_full_group_compute_",
+        1,
+    )
+    for role, variant in _H7C_POLICY.items()
+}
 _GENERIC_VARIANTS = {
     _ROLES[0]: "coltile4_rowbatch8_bf16_bf16_out",
     _ROLES[1]: "coltile2_rowbatch16_bf16_f32_out",
@@ -164,6 +172,9 @@ def test_h7c_source_default_changes_only_the_exact_m512_role_map(
         is gfx1151
     )
 
-    # Intentional RED after candidate/rollback/backend/shape/registry controls:
-    # source promotion changes only the live map from empty to H7C.
-    assert (generic, live_source) == (_GENERIC_POLICY, _H7C_POLICY)
+    # H7C remains the complete named rollback after H7I source promotion.
+    assert (generic, capability, live_source) == (
+        _GENERIC_POLICY,
+        _H7C_POLICY,
+        _H7I_POLICY,
+    )

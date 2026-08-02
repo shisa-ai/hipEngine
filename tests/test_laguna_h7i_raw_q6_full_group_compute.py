@@ -411,7 +411,7 @@ def test_h7i_source_registry_package_workspace_and_backend_isolation(
     register_gfx1151_kernels(replace=True)
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS == {}
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS == _H7C_POLICY
-    assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == _H7C_POLICY
+    assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == _H7I_POLICY
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS == _H7I_POLICY
     assert not hasattr(hip_gfx1151, "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS")
     assert LagunaQ5F32OrderedScratch.planned_nbytes(
@@ -455,7 +455,7 @@ def test_h7i_source_registry_package_workspace_and_backend_isolation(
             col_tile,
             row_batch,
             output_dtype,
-            candidate=False,
+            candidate=True,
         ),
         "raw",
     )
@@ -471,8 +471,8 @@ def test_h7i_source_registry_package_workspace_and_backend_isolation(
         assert "full_group_compute" not in fallback.key.variant
         assert fallback.abi == "raw"
 
-    # Intentional RED only after target artifact, H7C bytes/wrappers, package
-    # source selection, fallback dispatch, workspace, and backend controls pass.
+    # H7I source selection preserves H7C bytes/wrappers, strict fallback,
+    # workspace, and backend controls.
     candidate = _candidate(col_tile, row_batch, output_dtype)
     candidate_key = _key(
         col_tile,
@@ -502,7 +502,7 @@ def test_h7i_source_registry_package_workspace_and_backend_isolation(
     )
     assert source.count("hipengine_" + candidate.__name__) == 1
     assert source.count(_H7I_KERNEL) == 2
-    assert selected.key.variant == _H7C_POLICY[
+    assert selected.key.variant == _H7I_POLICY[
         ("gguf_q6_k", output_variant, 512, in_features, out_features)
     ]
 

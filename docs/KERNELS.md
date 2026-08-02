@@ -1931,6 +1931,25 @@ zero compiler. Keep H7C as named complete source/rollback until the separate
 source-default gate
 ([H7I candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
+Retained-source **WPF-H7I exact raw-Q6 full-group compute** atomically copies
+the complete three-role H7I capability into `GGUF_RAW_K_PREFILL_ROLE_VARIANTS`;
+the complete H7C map remains named rollback and the empty generic map remains
+fallback. No kernel/wrapper/registry, selector, allocation/workspace, or gfx1151
+change accompanies source promotion. Fresh selector-unset H7C -> H7I state is
+KL0/exact across **48/48** boundaries, complete logits/KV/`KVLiveSpans`, repeat,
+scratch, and teardown. Fixed C4096/M512 improves **427.903 -> 429.434 tok/s
+(+0.358%, 5/5)**; clean 512/1K/4K gains **+0.455%/+0.309%/+0.322%**.
+
+Cache-only source tracing records exact **2 BF16 + 1 F32 H7I**, zero H7C,
+**2,925** dispatches, local128/LDS512/runtime-VGPR72/64/scratch0, and zero
+compiler. Every clean profiled request preserves **2,192** dispatches and that
+three-call topology. Clean production reaches **431.310 tok/s / 1,172.241 ms**,
+**1.60161x** behind matched llama.cpp HIP; raw-Q6 falls **81.900 -> 74.409 ms**.
+Final exact guards pass **93/93** plus **65/65** runner/backend/registry nodes
+([production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

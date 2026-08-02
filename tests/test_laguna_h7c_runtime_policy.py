@@ -35,6 +35,14 @@ _H7C_POLICY = {
     _ROLES[1]: "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
     _ROLES[2]: "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
 }
+_H7I_POLICY = {
+    role: variant.replace(
+        "dpp_wave_reduction_",
+        "dpp_wave_reduction_full_group_compute_",
+        1,
+    )
+    for role, variant in _H7C_POLICY.items()
+}
 _GENERIC_VARIANTS = {
     _ROLES[0]: "coltile4_rowbatch8_bf16_bf16_out",
     _ROLES[1]: "coltile2_rowbatch16_bf16_f32_out",
@@ -126,7 +134,7 @@ def test_h7c_runtime_capability_and_rollback_survive_source_promotion() -> None:
 
     assert getattr(hip_gfx1100, _CAPABILITY) == _H7C_POLICY
     assert getattr(hip_gfx1100, _GENERIC_CAPABILITY) == _GENERIC_POLICY
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H7C_POLICY
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H7I_POLICY
 
 
 def test_h7c_runtime_dispatch_is_exact_role_owner_and_fails_closed(

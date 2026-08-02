@@ -361,7 +361,7 @@ GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS = {
         "coltile4_rowbatch8_bf16_bf16_out"
     ),
 }
-GGUF_RAW_K_PREFILL_ROLE_VARIANTS = dict(GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS)
+GGUF_RAW_K_PREFILL_ROLE_VARIANTS = dict(GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS)
 # WPF-H5D promotes the exact H5C producer/ordered-consumer chain after KL0,
 # byte-identical complete state, and clean +7.235%/+6.519% M512/M1024 gates.
 # H5E doubles output ownership on six role-qualified geometries, reducing the

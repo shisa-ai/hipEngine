@@ -100,7 +100,7 @@ def test_h7i_source_default_promotes_only_three_roles_and_keeps_h7c_rollback(
     assert generic == _GENERIC_POLICY
     assert h7c == _H7C_POLICY
     assert h7i == _H7I_POLICY
-    assert live_source == _H7C_POLICY
+    assert live_source == _H7I_POLICY
     assert set(h7c) == set(h7i) == set(_ROLES)
     assert all("full_group_compute" not in value for value in h7c.values())
     assert all("full_group_compute" in value for value in h7i.values())

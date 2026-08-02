@@ -138,7 +138,7 @@ def test_h7i_runtime_contract_binds_standalone_artifact_and_exact_role_set() -> 
     ) == 161_120_256
 
 
-def test_h7i_runtime_capability_is_default_off_and_gfx1100_only() -> None:
+def test_h7i_runtime_capability_is_source_qualified_and_gfx1100_only() -> None:
     load_backend_kernel_package("hip_gfx1100")
     load_backend_kernel_package("hip_gfx1151")
 
@@ -156,7 +156,7 @@ def test_h7i_runtime_capability_is_default_off_and_gfx1100_only() -> None:
 
     assert getattr(hip_gfx1100, _GENERIC_CAPABILITY) == _GENERIC_POLICY
     assert getattr(hip_gfx1100, _H7C_CAPABILITY) == _H7C_POLICY
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H7C_POLICY
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H7I_POLICY
     for role in _ROLES:
         h7c_key = _key(role, _H7C_POLICY[role])
         h7i_key = _key(role, _H7I_POLICY[role])

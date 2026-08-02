@@ -2725,6 +2725,27 @@ source-default RED retaining the complete named H7C rollback; production
 remains H7H/H7C **427.407 tok/s** until that source gate
 ([H7I candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
+Promote **WPF-H7I exact raw-Q6 full-group compute** after the separate source
+RED proves the atomic live-map switch, complete named H7C rollback, empty
+generic fallback, and unchanged selector/workspace/gfx1151 behavior. Fresh
+selector-unset source qualification is KL0/byte-exact across **48/48** hidden
+boundaries, full state, and repeat at unchanged **161,120,256-byte** workspace /
+**600,141,856-byte** scratch. Fixed C4096/M512 improves **427.903 -> 429.434
+tok/s (+0.358%, 5/5)**; clean 512/1K/4K gains
+**+0.455%/+0.309%/+0.322%** with positive medians and exact state throughout.
+
+Source tracing records exact **2 BF16 + 1 F32 H7I**, zero H7C, and **2,925**
+dispatches on one queue/stream at local128/LDS512/runtime-VGPR72/64/scratch0.
+All five clean profile requests preserve **2,192 dispatches** and the same H7I
+topology. Clean production reaches **431.310 tok/s / 1,172.241-ms**
+representative kernel sum, **+0.913%** over H7H/H7C and **1.60161x** behind
+matched llama.cpp HIP; raw-Q6 falls **81.900 -> 74.409 ms**. Continue parity
+from Q5/IQ-down/attention/Q6 gaps **176.885/118.449/93.805/59.742 ms** with a
+materially new exact mechanism
+([production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json) ·
+[candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
