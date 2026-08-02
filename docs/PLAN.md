@@ -3266,11 +3266,24 @@ and lifecycle. Named tracing records exact **24 setup / zero request producers +
 24 target packs + 24 H7G consumers / 2,262 dispatches**, one queue/stream and
 zero compiler. Fixed C4096/M512 improves **436.765→438.368 tok/s (+0.367%,
 5/5)**; clean 512/1K/4K medians improve **+0.748%/+0.332%/+0.257%**, all 3/3
-paired wins. Retain H6Z/H6W source production **437.189 tok/s** and the transient
-H7G/allocation-failure fallback; freeze source promotion separately with no
-subset or favorable rerun
+paired wins. At this bounded checkpoint retain H6Z/H6W source **437.189 tok/s**
+and freeze source promotion separately
 ([H8A runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
 [H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
+H8A source promotion now passes the complete frozen source and post-commit gate.
+Selector-unset complete planes/state remain exact; fixed transient H7G→source
+improves **435.272→437.286 tok/s (+0.463%, 5/5)** and clean 512/1K/4K improves
+**+0.290%/+0.142%/+0.215%**, all 3/3. Clean commit `c4ea62347` reaches
+**440.353 tok/s (+0.724% over 437.189)**. Five exact profiled requests record
+**2,262 dispatches**, **1,151.215-ms** representative sum / **1,174.598-ms**
+median span, exact **24 setup / zero request coltile16 producers**, one
+queue/stream, and zero compiler. Retain the transient H7G/allocation-failure
+fallback and prohibit every role/layer/prompt/length subset. Current matched
+kernel gaps rank Q5 **173.395 ms**, IQ-down **120.186**, attention **94.231**,
+and Q6 **59.985**; rerank those families for the next materially distinct exact
+target
+([H8A production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent

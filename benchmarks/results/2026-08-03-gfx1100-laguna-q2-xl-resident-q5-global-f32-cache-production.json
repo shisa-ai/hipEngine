@@ -1,0 +1,504 @@
+{
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json",
+    "docs/REFACTOR.md": "440.353 tok/s"
+  },
+  "authority_sha256": {
+    "README.md": "426437bb7ef4d3a9159a0e2dad9a17c2ce29dd2af07e9a17f0cd1c8dd0ba1fc1",
+    "benchmarks/CHANGELOG.md": "04c79b035e427bf5c00978c2b2a577ff0dd328ec6b4867b2971e2f56bd42dd98",
+    "benchmarks/README.md": "928070058e0ef8267924c929e756545c6c608f59dd11458cd280afb7e57953d6",
+    "docs/KERNELS.md": "e6e5dd09f674e7576750792c9aae4034ca765792245e9cf1e16e1a9e73a4e619",
+    "docs/LAGUNA-prefill.md": "5ecbb0e7458a5bcfef7cd1c06069dd9c1accfe4b5b01f238882409fd09013f6f",
+    "docs/PLAN.md": "5e47a1fadf42e9418a47981b0654c482ea20fc8b5be90feecc447ddedfe6b12d",
+    "docs/REFACTOR.md": "43be4cb03eaa420de532c35c66f935033e60497971a5129268630bc1f4d748a7"
+  },
+  "builder_sha256": "58e2db4486726cf6ab3d8f0049a350c1c229778b49ab4fcf1ce7eca83588a99b",
+  "clean_production_profile": {
+    "application_dispatches_each": 2262,
+    "attention_leaf_medians_ms": {
+      "h6a_swa": 32.341871999999995,
+      "h6n_global": 8.345229,
+      "h6w_swa": 62.70849299999998,
+      "h6z_global": 12.297346000000001
+    },
+    "checks": {
+      "all_request_durations_positive": true,
+      "child_pass": true,
+      "five_full_request_segments": true,
+      "one_queue_each_request": true,
+      "one_stream_each_request": true,
+      "request_coltile16_producers_0": true,
+      "same_queue_all_requests": true,
+      "same_stream_all_requests": true,
+      "setup_coltile16_producers_24": true,
+      "setup_producers_before_requests": true,
+      "zero_compiler": true
+    },
+    "compiler_processes": 0,
+    "component_rows": [
+      {
+        "campaign_start_ms": 1270.458,
+        "current_gap_ms": 173.39483400000003,
+        "current_h8a_ms": 231.70892400000002,
+        "family": "q5",
+        "label": "Q5 projections",
+        "llamacpp_hip_ms": 58.31409,
+        "pre_h8a_ms": 237.023554
+      },
+      {
+        "campaign_start_ms": 557.091,
+        "current_gap_ms": 120.18628799999999,
+        "current_h8a_ms": 274.046199,
+        "family": "iq_down",
+        "label": "IQ3/IQ4 down",
+        "llamacpp_hip_ms": 153.859911,
+        "pre_h8a_ms": 273.379918
+      },
+      {
+        "campaign_start_ms": 488.304,
+        "current_gap_ms": 94.23148800000001,
+        "current_h8a_ms": 115.74393500000002,
+        "family": "attention",
+        "label": "attention",
+        "llamacpp_hip_ms": 21.512447,
+        "pre_h8a_ms": 115.385179
+      },
+      {
+        "campaign_start_ms": 157.073,
+        "current_gap_ms": 59.98491500000006,
+        "current_h8a_ms": 74.65251300000006,
+        "family": "q6",
+        "label": "Q6 projections",
+        "llamacpp_hip_ms": 14.667598,
+        "pre_h8a_ms": 74.66735
+      },
+      {
+        "campaign_start_ms": 460.143,
+        "current_gap_ms": 4.1162729999999215,
+        "current_h8a_ms": 401.9211959999999,
+        "family": "gate_up",
+        "label": "IQ2/special-IQ3 gate/up",
+        "llamacpp_hip_ms": 397.804923,
+        "pre_h8a_ms": 401.186982
+      },
+      {
+        "campaign_start_ms": 68.623,
+        "current_gap_ms": -14.707293999999997,
+        "current_h8a_ms": 53.142145000000006,
+        "family": "remaining",
+        "label": "remaining",
+        "llamacpp_hip_ms": 67.849439,
+        "pre_h8a_ms": 53.100995
+      }
+    ],
+    "gap_ranking": {
+      "families": [
+        {
+          "family": "q5",
+          "gap_ms": 173.39483400000003,
+          "hipengine_ms": 231.70892400000002,
+          "llamacpp_ms": 58.31409,
+          "rank": 1,
+          "ratio": 3.973463771791689,
+          "share_of_total_gap_percent": 39.65971055178998
+        },
+        {
+          "family": "iq_down",
+          "gap_ms": 120.18628799999999,
+          "hipengine_ms": 274.046199,
+          "llamacpp_ms": 153.859911,
+          "rank": 2,
+          "ratio": 1.7811410211981729,
+          "share_of_total_gap_percent": 27.48959288126236
+        },
+        {
+          "family": "attention",
+          "gap_ms": 94.23148800000001,
+          "hipengine_ms": 115.74393500000002,
+          "llamacpp_ms": 21.512447,
+          "rank": 3,
+          "ratio": 5.380324004981861,
+          "share_of_total_gap_percent": 21.553084672317695
+        },
+        {
+          "family": "q6",
+          "gap_ms": 59.98491500000006,
+          "hipengine_ms": 74.65251300000006,
+          "llamacpp_ms": 14.667598,
+          "rank": 4,
+          "ratio": 5.089620877256117,
+          "share_of_total_gap_percent": 13.72004177687166
+        },
+        {
+          "family": "gate_up",
+          "gap_ms": 4.1162729999999215,
+          "hipengine_ms": 401.9211959999999,
+          "llamacpp_ms": 397.804923,
+          "rank": 5,
+          "ratio": 1.0103474662127294,
+          "share_of_total_gap_percent": 0.9414939993664693
+        },
+        {
+          "family": "remaining",
+          "gap_ms": -14.707293999999997,
+          "hipengine_ms": 53.142145000000006,
+          "llamacpp_ms": 67.849439,
+          "rank": 6,
+          "ratio": 0.7832363212317791,
+          "share_of_total_gap_percent": -3.3639238816081294
+        }
+      ],
+      "named_families_explain_percent": 100.00000000000003,
+      "total_kernel_gap_ms": 437.2065039999999
+    },
+    "h5y_role_medians_ms": {
+      "bf16_12x8_row_major": {
+        "calls": 35,
+        "consumer_ms": 68.997145,
+        "pack_ms": 1.1735650000000004
+      },
+      "bf16_16x5_tile_k_col": {
+        "calls": 12,
+        "consumer_ms": 14.878165,
+        "pack_ms": 0.43552199999999996
+      },
+      "bf16_8x12_row_major": {
+        "calls": 2,
+        "consumer_ms": 6.997019,
+        "pack_ms": 0.03764
+      },
+      "bf16_8x4_tile_k_col": {
+        "calls": 92,
+        "consumer_ms": 22.045752000000007,
+        "pack_ms": 2.2351740000000007
+      },
+      "f32_16x5_tile_k_col": {
+        "calls": 12,
+        "consumer_ms": 16.746259,
+        "pack_ms": 0.22660100000000002
+      },
+      "f32_8x10_tile_k_col": {
+        "calls": 35,
+        "consumer_ms": 74.47331500000001,
+        "pack_ms": 0.6784889999999998
+      }
+    },
+    "h6u_role_medians_ms": {
+      "bf16_16x4": {
+        "calls": 46,
+        "consumer_ms": 20.469052,
+        "pack_ms": 0.3790030000000001
+      },
+      "bf16_16x5": {
+        "calls": 2,
+        "consumer_ms": 0.601324,
+        "pack_ms": 0.040999999999999995
+      },
+      "f32_16x5": {
+        "calls": 94,
+        "consumer_ms": 27.89332600000001,
+        "pack_ms": 1.8886130000000012
+      }
+    },
+    "iq2_gate_up_h6l_ms": 386.6652949999999,
+    "iq3_down_h6t_ms": 265.285846,
+    "kernel_span_ms": 1174.598206,
+    "kernel_sum_ms": 1151.214912,
+    "profiled_requests": 5,
+    "q5_route_medians_ms": {
+      "h5g_fallback": 1.919292,
+      "h5y_bf16_12x8_row_major": 68.997145,
+      "h5y_bf16_16x5_tile_k_col": 14.878165,
+      "h5y_bf16_8x12_row_major": 6.997019,
+      "h5y_bf16_8x4_tile_k_col": 22.045752000000007,
+      "h5y_f32_16x5_tile_k_col": 16.746259,
+      "h5y_f32_8x10_tile_k_col": 74.47331500000001,
+      "pack_bf16_12x8_row_major": 1.1735650000000004,
+      "pack_bf16_16x5_tile_k_col": 0.43552199999999996,
+      "pack_bf16_8x12_row_major": 0.03764,
+      "pack_bf16_8x4_tile_k_col": 2.2351740000000007,
+      "pack_f32_16x5_tile_k_col": 0.22660100000000002,
+      "pack_f32_8x10_tile_k_col": 0.6784889999999998,
+      "row_major_producer": 6.024689000000004,
+      "tile_k_col_producer": 14.719122000000002
+    },
+    "representative_kernel_span_ms": 1172.124682,
+    "representative_kernel_sum_ms": 1151.214912,
+    "request_coltile16_producers": 0,
+    "setup_coltile16_producers": 24
+  },
+  "clean_production_wall": {
+    "campaign_start_tok_s": 169.516,
+    "checks": {
+      "all_cache_shared": true,
+      "all_exact": true,
+      "all_finite": true,
+      "all_position_511": true,
+      "all_resident_plane_count_24": true,
+      "all_sessions_recovered": true,
+      "all_token_2930": true,
+      "clean_committed_revision": true,
+      "five_samples": true,
+      "owner_recovered": true
+    },
+    "compiler_processes": 0,
+    "gain_over_campaign_start_percent": 159.77097861009523,
+    "gain_over_prior_percent": 0.7237364429688808,
+    "llamacpp_over_current": 1.5687196778001444,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_seconds": 1.1627025757916272,
+    "median_tok_s": 440.35337210068906,
+    "prior_production_tok_s": 437.189274,
+    "samples_tok_s": [
+      440.2984346212475,
+      441.2481553560608,
+      440.5501459261649,
+      440.03379774250004,
+      440.35337210068906
+    ]
+  },
+  "complete_state": {
+    "candidate_exact": true,
+    "candidate_repeat_exact": true,
+    "complete_plane_matches": 24,
+    "hidden_boundaries_exact": 48,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "lifecycle_recovered": true,
+    "next_token_id": 2930,
+    "score_scratch_reuses_q5_plane": true,
+    "top1_agreement": 1.0,
+    "workspace_unchanged": true
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "correctness_regression": false,
+    "gfx1151_fail_closed": true,
+    "next_action": "remove the redundant positive candidate seam, then rerank Q5/IQ-down/attention/Q6 for a materially distinct exact target",
+    "performance_regression": false,
+    "production_changed": true,
+    "source_promoted": true,
+    "transient_h7g_rollback_retained": true
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "hipengine_measured_commit": "c4ea6234738d6d2dd1de432d24d6728766ca0fb6",
+  "kind": "gfx1100_laguna_q2_xl_h8a_resident_global_q5_f32_cache_production",
+  "llamacpp_comparator": {
+    "all_five_top1_token": 2930,
+    "kernel_sum_ms": 714.008408,
+    "matched_tok_s": 690.791,
+    "note": "the user-reported 714.07 tok/s is synthetic/random default pp512 and is not substituted for the matched natural-token comparator",
+    "protocol": "matched natural C4096/direct-M512 same-token comparator",
+    "samples_tok_s": [
+      694.342,
+      692.318,
+      690.152,
+      690.791,
+      690.48
+    ]
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "ownership": {
+    "all_or_nothing": true,
+    "explicit_child_sharing": true,
+    "immutable_raw_pointer_map": true,
+    "layers": [
+      0,
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44
+    ],
+    "plane_bytes": 75497472,
+    "planes": 24,
+    "resident_bytes": 1811939328,
+    "resident_gib": 1.6875,
+    "reverse_idempotent_teardown": true,
+    "roles": [
+      "attn_q",
+      "attn_output"
+    ]
+  },
+  "protocol": {
+    "attention_rows": 128,
+    "commands": {
+      "post_commit_profile": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-directory /tmp/laguna-h8a-post-commit-rocprof --output-file h8a-post-commit --output-format csv -- .venv/bin/python -u /tmp/laguna_h8a_post_commit_profile_child.py",
+      "post_commit_wall": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=1 .venv/bin/python -u /tmp/laguna_h8a_post_commit_wall.py",
+      "profile_analysis": "python3 /tmp/analyze_laguna_h8a_post_commit.py"
+    },
+    "context_length": 4096,
+    "fresh_explicitly_shared_request_session_per_sample": true,
+    "matrix_rows": 512,
+    "model_and_h8a_setup_excluded_from_wall": true,
+    "no_subset_or_favorable_rerun": true,
+    "require_cached_build": true,
+    "rows": 512,
+    "same_resident_weights_and_h8a_sidecar": true,
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a"
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json": "2cdb146629e10a2ae5992d8010dc5aa80d99a513f6d1a21209be4a236e84778f",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json": "50ed3cd81a5a350ac39e70eaed3560d88144251e40f07198acbbb10e2ae1a325",
+    "/tmp/analyze_laguna_h8a_post_commit.py": "a75760245a1af7c2dd9db42a9bebff6e8cb9f0a49c4a306f5678a7dfc5369072",
+    "/tmp/laguna-h8a-post-commit-profile-child.json": "86f749f5b21228e100369d80f77e24709e44c4557add8d5f6d25b8935acf2992",
+    "/tmp/laguna-h8a-post-commit-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-post-commit-rocprof.stderr": "9e8f7a55b9d502876d073cc49d4c2acaf8061a2229d02873ab53d09948258b72",
+    "/tmp/laguna-h8a-post-commit-rocprof.stdout": "53b5aa7dbb581d0247d04164a5eb340ca524e0f30bae7b0dd1200c6be5269d3c",
+    "/tmp/laguna-h8a-post-commit-rocprof/h8a-post-commit_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h8a-post-commit-rocprof/h8a-post-commit_kernel_trace.csv": "1f30fbed0d6096ad221e5ad7e6e1f997ed307365169ea18c1fae37b806b7e377",
+    "/tmp/laguna-h8a-post-commit-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-post-commit-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8a-post-commit-trace-analysis.stdout": "a033d9971b0ad49667766de76cd0f1863e0cd1f4b71ff35fec5abb4298078f21",
+    "/tmp/laguna-h8a-post-commit-trace-compiler-monitor.json": "9aef591224c12dd227b06b0de5ba3a651558c09172902e456bd69cf404789b16",
+    "/tmp/laguna-h8a-post-commit-trace-summary.json": "a033d9971b0ad49667766de76cd0f1863e0cd1f4b71ff35fec5abb4298078f21",
+    "/tmp/laguna-h8a-post-commit-wall-compiler-monitor.json": "681e58b3afb4e377a8e88fa8dec83ee7568e04b6a08afb6fd05bf1aaac691576",
+    "/tmp/laguna-h8a-post-commit-wall.json": "2dad7cce9fd1e0aa6c2b3d69d590607c2fdec14ef1facb183564f3133d8fb39e",
+    "/tmp/laguna-h8a-post-commit-wall.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-post-commit-wall.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8a-post-commit-wall.stdout": "8154ac43e3d7555044fdaca99cdcdd58e819e8d5859f2a3d070946835da91318",
+    "/tmp/laguna-h8a-source-default-clean-512-4k-compiler-monitor.json": "f0334038b0316d2b2845afdfd936441ae4541a9999d4efec5616b44d93735b7d",
+    "/tmp/laguna-h8a-source-default-clean-512-4k.json": "ee5683ee0f01b940bfee44802c4d65876a931e655f8d80f287ff1b1f869a55e4",
+    "/tmp/laguna-h8a-source-default-clean-512-4k.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-source-default-clean-512-4k.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8a-source-default-clean-512-4k.stdout": "e3b54006d449ad50af55b7b34e9eb35c5cbd053204d89ae264f61b32eaf98235",
+    "/tmp/laguna-h8a-source-full-state-compiler-monitor.json": "d2ddbd798cb5a5c9521623a3529f6c1218a2f39cfe68655c858d02727ca41c29",
+    "/tmp/laguna-h8a-source-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-source-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8a-source-full-state.stdout": "49f06f104a8f713153a13f89a4110076993bf2d3b7953ef1064f4eb2a8e087b8",
+    "/tmp/laguna-h8a-source-m512-full-state.json": "b7c5821c0ad0a7b5c2068fd684b5ad1a6d1f3c2b66a1098b07434243d1bb46aa",
+    "/tmp/laguna-h8a-source-matched-c4096-m512-compiler-monitor.json": "8dd43876bd863e697464a896660a1fb71d91e615d36400462251e11a65737cf3",
+    "/tmp/laguna-h8a-source-matched-c4096-m512.json": "53c2df848d652a167b094e6522680035dcb618bf6c2053b0a3325cdb03fbc98e",
+    "/tmp/laguna-h8a-source-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-source-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8a-source-matched-c4096-m512.stdout": "a40f3cd0acd36b6be8ed3640c821749b806d8255fb04dcdd28bc763ea7c7b835",
+    "/tmp/laguna-h8a-source-rocprof/h8a-source_kernel_trace.csv": "6674f3dca5595a639b3f07cab8209d541e00851534f6072528218d5777e6de54",
+    "/tmp/laguna-h8a-source-trace-child.json": "7fcd62440a27f092b392c6bc8b2f6a101b40cad669b29d7c9291ec2f154bd069",
+    "/tmp/laguna-h8a-source-trace-compiler-monitor.json": "79675b34e29c35c7abbc25f39ca98adf8f8ab293fccaef7fbff3c060f74f93a2",
+    "/tmp/laguna-h8a-source-trace-summary.json": "c95673204bcd7cd2d566e896b2b0d63a2458670a136b8851c86bb0dbde957579",
+    "/tmp/laguna_h8a_post_commit_profile_child.py": "681a4db66c2d7f8b283fb49db4e922384cc493d9875c3bb7bceaea4c6b8744f3",
+    "/tmp/laguna_h8a_post_commit_wall.py": "1f2a0424ef7083564811777bb50cd80faace1244e5c8cecf0c6e831a80323587",
+    "/tmp/run_laguna_h8a_post_commit_rocprof_with_compiler_monitor.py": "0bdde31f332b5690e04da7a888bdedc55ebd31c593773348c19c57d3389882d7",
+    "/tmp/run_laguna_h8a_post_commit_wall_with_compiler_monitor.py": "22971e517dd49619f3dc51ba13217820e6d0ae5b3705d18b28e17317b3880397"
+  },
+  "schema": 1,
+  "source_clean_lengths": {
+    "1024": {
+      "control_median_tok_s": 321.17439595506136,
+      "exact": true,
+      "finite": true,
+      "gain_percent": 0.14176844220896712,
+      "lifecycle_recovered": true,
+      "paired_source_wins": 3,
+      "samples_per_mode": 3,
+      "source_median_tok_s": 321.6297198929809,
+      "speedup": 1.0014176844220897
+    },
+    "4096": {
+      "control_median_tok_s": 198.10839964453726,
+      "exact": true,
+      "finite": true,
+      "gain_percent": 0.2153252728849031,
+      "lifecycle_recovered": true,
+      "paired_source_wins": 3,
+      "samples_per_mode": 3,
+      "source_median_tok_s": 198.53497709667977,
+      "speedup": 1.002153252728849
+    },
+    "512": {
+      "control_median_tok_s": 405.7191425937518,
+      "exact": true,
+      "finite": true,
+      "gain_percent": 0.28953968555129883,
+      "lifecycle_recovered": true,
+      "paired_source_wins": 3,
+      "samples_per_mode": 3,
+      "source_median_tok_s": 406.8938605234392,
+      "speedup": 1.002895396855513
+    }
+  },
+  "source_fixed_c4096_m512": {
+    "control_median_tok_s": 435.2724595017147,
+    "exact": true,
+    "finite": true,
+    "gain_percent": 0.46252716103918345,
+    "lifecycle_recovered": true,
+    "paired_source_wins": 5,
+    "samples_per_mode": 5,
+    "source_median_tok_s": 437.28571285143346,
+    "speedup": 1.0046252716103918
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "450d093aa2cef18f6b98755f8fbe1c26215ff8af32036888b96c88b534ddd515",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "0e018f37c0fe60ae3121019a4f67184a58ca2a05d49f41de05c4b52ff8878b2d",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+    "hipengine/runtime/gguf_linear.py": "f9ebb089b31937dcaea27f8bb43bfc2936b294d541c2841465c498d6f6dbd363",
+    "hipengine/runtime/laguna_gguf_runner.py": "d5517098484e00beae981aed3f374cfe956595250716bfe33cdfb0196292dbec",
+    "tests/test_laguna_h8a_resident_q5_global_cache.py": "f98f44a97cf57af0f1cba7967c27180a7847b47569aaacaf996be590670558a1",
+    "tests/test_laguna_h8a_source_default.py": "5b12642e8fc705bd03f019f139db603dc8909f035b02ef872b7cb36cbe6da6a6"
+  },
+  "source_topology": {
+    "checks": {
+      "all_setup_and_target_durations_positive": true,
+      "child_pass": true,
+      "consumer_expected_resources": true,
+      "one_queue": true,
+      "one_stream": true,
+      "producer_expected_resources": true,
+      "request_application_dispatches_2262": true,
+      "request_coltile16_producers_0": true,
+      "request_h7g_bf16_consumers_12": true,
+      "request_h7g_consumers_24": true,
+      "request_h7g_f32_consumers_12": true,
+      "request_segments_128_and_512": true,
+      "request_target_activation_packs_24": true,
+      "setup_coltile16_producers_24": true,
+      "setup_producers_before_first_request": true,
+      "zero_compiler": true
+    },
+    "compiler_processes": 0,
+    "queues": 1,
+    "request_application_dispatches": 2262,
+    "request_coltile16_producers": 0,
+    "request_h7g_bf16_consumers": 12,
+    "request_h7g_consumers": 24,
+    "request_h7g_f32_consumers": 12,
+    "request_target_activation_packs": 24,
+    "setup_coltile16_producers": 24,
+    "streams": 1
+  },
+  "source_transition": {
+    "explicit_rollback": "use_q5_f32_resident_global_cache=False selects transient H7G",
+    "gfx1151_changed": false,
+    "hip_source_changed": false,
+    "jit_object_changed": false,
+    "new_device_bodies": 0,
+    "source_capability": "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE",
+    "source_checkpoint_revision": "c4ea623473",
+    "source_default": true,
+    "source_red_revision": "db39dab1f",
+    "supported_backend": "hip_gfx1100"
+  },
+  "status": "retained_production_default"
+}
