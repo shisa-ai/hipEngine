@@ -854,6 +854,19 @@ distance-only guard. A materially different prompt-independent error-size
 certificate remains a separate hypothesis; production stays **431.310 tok/s**
 ([H7P rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
 
+**WPF-H7Q/H7R third-plane residual certificates are also rejected before code
+or candidate timing.** H7Q's sparse D4x2/D4x3 disagreement set selects
+**2.30385%** of outputs and catches **99.7364%** of D4x2 mismatches, but leaves
+**42,981** wrong; making its boundary union complete selects **99.7205%** of
+all outputs. H7R's outward-rounded producer-residual × exact-IQ3-L1 bound
+captures every observed mismatch, but even its tightest K64 form flags
+**74.5071%** of **707,788,800** outputs. Only **30.6591%** repair density could
+break even before guard cost; the best zero-guard-cost model is **0.695x**
+exact, and the declared read-ceiling models peak at **0.610x**. Add no guard,
+sidecar, queue, repair kernel, RED, runtime, or source owner; rerank outside IQ3
+residual repair and retain **431.310 tok/s**
+([H7Q/H7R rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

@@ -2909,6 +2909,25 @@ prompt-independent error-size certificate or activation representation.
 Production remains **431.310 tok/s**
 ([H7P rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
 
+Reject no-code/no-timing **WPF-H7Q/H7R third-plane residual certificates**.
+H7Q runs an actual D4x3 FP32 probe: D4x2/D4x3 BF16 disagreement selects
+**16,306,421 / 707,788,800 (2.30385%)** outputs and recalls **99.7364%** of D4x2
+mismatches, but leaves **42,981** wrong. Union with D4x3 boundary distance is
+complete only at **705,810,744 / 707,788,800 (99.7205%)** risk; moreover the
+prior producer-inclusive D4x3 path was only **1.0063x** exact with **27/45**
+layer wins, so even incomplete disagreement repair models **0.984x** exact
+before comparison/queue overhead.
+
+H7R is the materially distinct conservative certificate: outward-rounded
+post-D4x2 K32 residual maxima times exact-IQ3 weight L1 norms, grouped at
+K64/K128/K256/K1024. Every zero-margin form captures all **16,306,295** observed
+mismatches, but risk density is **74.5071%/81.1992%/86.4963%/92.8985%**. Only
+**30.6591%** repair could break even before any guard cost. The best model is
+already **0.695x** exact with every guard/sidecar/queue/locality/launch cost
+deleted and **0.610x** under the declared read ceiling. Add no repair surface,
+retain **431.310 tok/s**, and rerank outside IQ3 residual repair
+([H7Q/H7R rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
