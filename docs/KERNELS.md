@@ -2042,6 +2042,20 @@ remove the H7L kernel/export/wrapper/registry/test/gfx1151 surfaces and preserve
 H6T source/package/runtime/workspace exactly
 ([H7L physical rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json)).
 
+**WPF-H7M exact IQ3 two-wave/two-K256-partition replay is rejected
+out-of-tree.** It maps logical H6T partitions 0/2 and 1/3 to two physical waves while
+retaining each K256 dot/DPP tree and serial partition0..3 publication. Physical
+preselection occurs before timing: both source forms are private/spill/scratch0;
+register activation is **13,132 B / 2,172 slots / VGPR166 / LDS384**, and the
+selected lower-VGPR LDS form is **12,744 B / 2,171 / VGPR113 / LDS16,768**.
+
+The selected local64/grid16384x64 body is exact on all **45/45** production
+layers but has **0/45** both-clock wins. H6T -> H7M event regresses **246.763 ->
+392.180 ms (0.629x)** and wall **261.551 -> 377.358 ms (0.693x)**. No
+repository body/export/wrapper/key/test/exclusion exists; keep local128/four-wave
+H6T and close one-/two-wave K-partition collapse absent a new reuse operation
+([H7M rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-two-wave-k-partition-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
