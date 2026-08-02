@@ -3285,6 +3285,27 @@ and Q6 **59.985**; rerank those families for the next materially distinct exact
 target
 ([H8A production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
+Select **WPF-H8B exact scoped tile-K-row activation-pack reuse** after auditing
+the complete post-H8A request without changing execution. H5Y/H6U issue **330**
+packs; **95** immutable recurrence runs contain **107** redundant calls: 12
+full-attention Q/K/V triples remove 24, 35 SWA K/V pairs remove 35, 46 shared-
+Q5 gate/up pairs remove 46, and the dense-Q5 plus layer-47 shared-Q6 pairs remove
+two. Reuse is valid only inside an explicit host scope and only for an identical
+`(input pointer, activation pointer, rows, K, row batch, stream)` key after a
+successful producer. Different keys, streams, scopes, failed producers, c=1,
+non-M512, registry misses, and unmeasured backends retain the producer.
+
+The complete target models **330→223 packs / 2,262→2,155 dispatches**. Current
+profile medians assign **2.342313 ms** to the redundant calls, yielding a
+zero-replacement-cost wall ceiling of **441.242 tok/s (+0.202%)**; this is not a
+candidate performance claim. Freeze RED before implementation, keep the HIP
+source/object byte-identical, require all 95 runs together, complete state and
+scope/failure isolation, exact **223-pack / 2,155-dispatch** tracing, then fixed
+and 512/1K/4K positive medians before a separate source-default gate. Forbid
+attention-only, shared-only, layer, role, prompt, token, length, or favorable-
+rerun salvage
+([H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

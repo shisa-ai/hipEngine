@@ -2497,6 +2497,30 @@ queue/stream, and zero compiler. Retain transient H7G as explicit opt-out and
 all fail-closed fallbacks; source promotion changes no device body or object
 ([H8A production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
+No new device body is selected for **WPF-H8B exact scoped activation-pack
+reuse**. An execution-unchanged natural-M512 audit records **330** H5Y/H6U
+BF16 tile-K-row pack calls and finds **95** consecutive equal-key immutable
+runs with **107** redundant calls. The complete classes are 12 full-attention
+Q/K/V triples (**24 removed**), 35 SWA K/V pairs (**35**), 46 shared-Q5 gate/up
+pairs (**46**), one dense-Q5 gate/up pair, and one layer-47 shared-Q6 gate/up
+pair. Token2930/position511, finite complete state, lifecycle, and zero-compiler
+checks pass.
+
+Freeze one scope-local producer cache before implementation. Its key is exact
+input/activation pointers, rows, K, row batch, and stream; publication occurs
+only after a successful pack. Scope exit, a changed key/stream, producer
+failure, disabled policy, wrong shape, c=1, non-M512, registry miss, and backend
+miss all execute the retained producer. The HIP source/object, pack body,
+H7G/H7H/H6U consumers, F32 producers/resident planes, allocation, workspace,
+and arithmetic remain unchanged. The measured profile model removes
+**2.342313 ms** and changes **330→223 packs / 2,262→2,155 dispatches**; the
+zero-cost wall ceiling **441.242 tok/s (+0.202%)** is not a speed result.
+Require RED-first scope/failure/all-95-run exactness, complete M512 state,
+cache-only named topology, fixed and 512/1K/4K positive medians, then a separate
+source-default gate. No attention/shared/layer/role/prompt/length subset or
+favorable rerun is admissible
+([H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
