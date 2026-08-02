@@ -1882,6 +1882,27 @@ Q5 falls **248.888 -> 237.185 ms**. Final exact guards pass **83/83** plus
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
+Target-only **WPF-H7I exact raw-Q6 full-group compute** transfers H7H's proven
+predicate-elision premise to H7C's separate raw-Q6 body. The three and only
+natural-M512 H7C roles are BF16 K12288/N3072 `c4r8`, F32 K3072/N9216 `c2r16`,
+and BF16 K9216/N3072 `c4r8`; all row groups are exactly full. They own
+**28.482 ms / 34.776%** of current Q6. H7I must remove only the inner
+`row < rows` compute mask while preserving H7C's outer group guard, final live-
+row store guard, raw-Q6 decode, 32 ordered FMAs, DPP/LDS reduction, ABI, map,
+workspace, and generic rollback.
+
+The immutable first object cuts BF16/F32 code **4,228 -> 4,060 / 4,452 ->
+4,032 bytes**, slots **681 -> 623 / 749 -> 631**, scalar row comparisons
+**9 -> 2 / 17 -> 2**, and raises dual-FMAC sites **1 -> 10 / 1 -> 11**. It
+keeps 24 global loads, one global store, 32 permlanex16, 128 DPP adds, one
+barrier, LDS512, private0/spill0/scratch0; metadata VGPR **69/64** stays within
+the frozen 72 ceiling. The first-and-only all-role screen is byte-exact and
+improves weighted H7C -> H7I event/wall **35.840/34.854 -> 20.323/21.974 ms
+(-43.295%/-36.954%)**. No H7I source, export, wrapper, key, test, capability,
+or live-map change exists. Freeze RED first with strict M512/full-group
+preflight and complete H7C fallback; runtime/source remain separate
+([post-H7H residual / H7I target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
