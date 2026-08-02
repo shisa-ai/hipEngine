@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_dense_v80_nontemporal_key_value_retained",
+  "status": "accepted",
+  "decision": "retain_on_gfx1151_at_live_count_ge_65536",
+  "performance_claim": true,
+  "created_at": "2026-08-03T00:20:00+09:00",
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "7.15.0-0000000",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Once the 65,536-live cache-bypass route is active, use one aligned 8-byte non-temporal BF16 key load per score lane in addition to the retained 16-byte non-temporal value loads.",
+    "short_route": "unchanged temporal dense-prefix V80",
+    "eviction_route": "unchanged metadata-aware temporal V80",
+    "ctx4096_route": "unchanged quality-scoped D64/V64 owner"
+  },
+  "protocol": {
+    "leaf": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-dense-prefix-nontemporal-key-value --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 9 --warmups 5 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-dense-v80-nontemporal-key-value-leaf.json",
+    "production_short": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_16k_64k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_128k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-dense-v80-nontemporal-key-value-trace-20260802 --output-file dense-v80-nontemporal-key-value -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-dense-prefix-nontemporal-key-value --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-dense-v80-nontemporal-key-value-trace-leaf.json"
+  },
+  "leaf": {
+    "live_counts": [4097, 16448, 65664, 131200],
+    "control_ms": [0.1590343952, 0.6132947922, 2.5246528625, 5.0179431915],
+    "candidate_ms": [0.1660676003, 0.6331079006, 2.4422744751, 4.8384025574],
+    "latency_delta_percent": [4.422443, 3.230601, -3.262959, -3.577973],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "repair_outputs": 0,
+    "raw_sha256": "d14773792e5f37aaa02a3a21b8948694eed1dff64b1afbfd37166aab4162f08a"
+  },
+  "production": {
+    "lengths": [512, 1024, 4096, 16384, 65536, 131072],
+    "before_tok_s": [23.206131, 23.067114, 21.683673, 19.791449, 13.673356, 10.315773],
+    "after_tok_s": [23.198386, 23.045113, 21.671542, 19.782509, 13.849289, 10.446265],
+    "delta_percent": [-0.033, -0.095, -0.056, -0.045, 1.287, 1.265],
+    "dispatch_note": "The candidate is inactive below 65,536 live tokens; the 512/1K/4K/16K deltas are run-to-run noise on the unchanged temporal route.",
+    "vulkan_tok_s": [23.386100, 23.366122, 23.037017, 21.728347, 17.737473, 14.237076],
+    "vulkan_parity_percent": [99.197, 98.626, 94.073, 91.045, 78.079, 73.374],
+    "decode_128k_seconds_before": 12.311244,
+    "decode_128k_seconds_after": 12.157455,
+    "decode_128k_wall_delta_percent": -1.249,
+    "final_token_ids": [74825, 6273, 6436, 13815, 1869, 874],
+    "generated_ids_sha256": [
+      "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+      "18974f08ba7986767262103cb4c200ad36d3e8f675aad526887fad745bdc488c",
+      "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31",
+      "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+      "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f",
+      "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+    ],
+    "final_positions": [638, 1150, 4222, 16510, 65662, 131198],
+    "lifecycle": {
+      "allocated_bytes": 87407934744,
+      "freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "raw_sha256": {
+      "short": "59de5d314d579f34112af072db5abd156a46a6bf84b87e048d3974a0a251587a",
+      "16k_64k": "e12d2ec994c3f851403b320c4efdc76bceb5a41114896e8a59e6c0edfa833a89",
+      "128k": "4e466cbdc573a5c4db543386596fbe84dbdc23415d77f56b6708ede4cc66940b"
+    }
+  },
+  "trace": {
+    "candidate_score_kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<true, true>",
+    "candidate_pv_kernel": "laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80, true, true>",
+    "score_resources": "local32/VGPR40/SGPR128/LDS0/scratch0",
+    "pv_resources": "local512/VGPR32/SGPR128/LDS14336/scratch0",
+    "csv_sha256": "27e750fea9d9c0fed92e266e7cb4cd0b8f99049ba8f4c1f84ec6695057cb6d7c",
+    "leaf_sha256": "56ca98e3569e52567d9fd4423be8f61504858d2710076476903415e6d215e36d"
+  }
+}
