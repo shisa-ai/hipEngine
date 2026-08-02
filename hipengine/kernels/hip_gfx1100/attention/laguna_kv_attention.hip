@@ -2637,6 +2637,7 @@ __global__ __launch_bounds__(512)
 void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     const uint16_t* value_cache,
     const float* score_scratch,
+    const float* inverse_sums,
     const int32_t* physical_scratch,
     float* partial_out,
     const int64_t* live_counts,
@@ -2702,8 +2703,13 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     const int64_t scratch_base =
         static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
         scratch_stride;
-    shared_probability[0][probability_query][stage_token] =
+    float probability =
         score_scratch[scratch_base + token_begin + stage_token];
+    if (inverse_sums != nullptr) {
+      probability *=
+          inverse_sums[kv_head * kQueryGroup + probability_query];
+    }
+    shared_probability[0][probability_query][stage_token] = probability;
   }
   auto* first_stage_vectors = reinterpret_cast<uint4*>(shared_value);
   for (int vector_idx = tid;
@@ -2754,9 +2760,14 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
         const int64_t scratch_base =
             static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
             scratch_stride;
+        float probability = score_scratch[
+            scratch_base + token_begin + next_stage_base + stage_token];
+        if (inverse_sums != nullptr) {
+          probability *=
+              inverse_sums[kv_head * kQueryGroup + probability_query];
+        }
         shared_probability[stage_parity ^ 1][probability_query][stage_token] =
-            score_scratch[
-                scratch_base + token_begin + next_stage_base + stage_token];
+            probability;
       }
       auto* next_stage_vectors = reinterpret_cast<uint4*>(
           shared_value + (stage_parity ^ 1) * kValueStage * kDimTile);
@@ -10163,7 +10174,8 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false>
+template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false,
+          bool kDeferredNorm = false>
 static int
 laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
     const float* query,
@@ -10204,11 +10216,16 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
       static_cast<int>((scan_slots + kSplitTokens - 1) / kSplitTokens);
   const int64_t partial_elements =
       static_cast<int64_t>(num_splits) * kOutputElements;
-  if (partial_elements > 47 * capacity) {
+  constexpr int64_t kInverseElements = kDeferredNorm ? 48 : 0;
+  if (partial_elements + kInverseElements > 47 * capacity) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  float* partial_out =
-      reinterpret_cast<float*>(physical_scratch + capacity);
+  float* inverse_sums = kDeferredNorm
+      ? reinterpret_cast<float*>(physical_scratch + capacity)
+      : nullptr;
+  float* partial_out = kDeferredNorm
+      ? inverse_sums + kInverseElements
+      : reinterpret_cast<float*>(physical_scratch + capacity);
   int32_t* repair_mask = reinterpret_cast<int32_t*>(partial_out);
   if constexpr (kTokenLoop4) {
     hipLaunchKernelGGL(
@@ -10255,19 +10272,36 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   }
   int error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
-  hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_exp32_normalize_kernel,
-      dim3(48),
-      dim3(256),
-      0,
-      stream,
-      score_scratch,
-      physical_scratch,
-      live_counts,
-      row_positions,
-      capacity,
-      scratch_stride,
-      scan_slots);
+  if constexpr (kDeferredNorm) {
+    hipLaunchKernelGGL(
+        laguna_global_attention_split_exact_exp32_denominator_kernel,
+        dim3(48),
+        dim3(256),
+        0,
+        stream,
+        score_scratch,
+        physical_scratch,
+        inverse_sums,
+        live_counts,
+        row_positions,
+        capacity,
+        scratch_stride,
+        scan_slots);
+  } else {
+    hipLaunchKernelGGL(
+        laguna_global_attention_split_exact_exp32_normalize_kernel,
+        dim3(48),
+        dim3(256),
+        0,
+        stream,
+        score_scratch,
+        physical_scratch,
+        live_counts,
+        row_positions,
+        capacity,
+        scratch_stride,
+        scan_slots);
+  }
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
@@ -10278,6 +10312,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
       stream,
       value_cache,
       score_scratch,
+      inverse_sums,
       physical_scratch,
       partial_out,
       live_counts,
@@ -10362,6 +10397,20 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096
     LAGUNA_CTX4096_ARGUMENTS) {
   return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
       true, 64, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      false, 64, true, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      true, 64, true, true>(LAGUNA_CTX4096_FORWARD);
 }
 
 #undef LAGUNA_CTX4096_FORWARD

@@ -9898,6 +9898,47 @@ The remaining attention sequence is:
      repair mask remains diagnostic; no scalar repair kernel is launched:
      [`ctx4096 token-loop4 production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-tokenloop4-retained.json).
 
+227. Reuse the parallel exact-max denominator and defer ctx4096 normalization.
+     **Retained and production-default; LC-D3 twelfth checkpoint.**
+
+     The ctx4096 route still used the pre-parallel-max normalization kernel:
+     lane 0 of each wave scanned its strided chain, then a second pass wrote
+     every normalized probability. The new sibling stores the same exp32
+     values and reciprocal using the already-retained parallel exact-max
+     denominator, reserves 48 FP32 reciprocals in the existing scratch tail,
+     and applies each reciprocal in the partial-PV probability loader. Score,
+     per-split FMA/Kahan chains, merge association, gate, and BF16 store are
+     unchanged:
+
+     | Leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Ordinary normalized | 0.326938 ms | 0.750797 ms | 3.248607 ms | 6.290250 ms |
+     | Ordinary deferred | **0.284682 ms** | **0.560716 ms** | **2.252598 ms** | **4.278564 ms** |
+     | Delta | **-12.925%** | **-25.317%** | **-30.660%** | **-31.981%** |
+     | Compensated normalized | 0.356789 ms | 0.750019 ms | 3.247044 ms | 6.316829 ms |
+     | Compensated deferred | **0.307998 ms** | **0.574117 ms** | **2.289356 ms** | **4.331359 ms** |
+     | Delta | **-13.675%** | **-23.453%** | **-29.494%** | **-31.431%** |
+
+     Both F32 context and gated BF16 output are byte-exact at all four depths.
+     Cached tracing records the stale normalization pass at **769.985 us**
+     cross-depth median versus **201.538 us** for the parallel denominator;
+     both remain local256/VGPR56/LDS512/scratch0. D64 PV remains
+     local512/VGPR32/LDS19,456/scratch0, and the 192-byte reciprocal array adds
+     no allocation.
+
+     | Decode depth | Normalized ctx | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.205556 | **23.201880 tok/s** | -0.016% | 23.386100 | 99.212% |
+     | 1K | 23.060987 | **23.065973 tok/s** | +0.022% | 23.366122 | 98.715% |
+     | 4K | 21.684575 | **21.682607 tok/s** | -0.009% | 23.037017 | 94.121% |
+     | 128K | 8.688850 | **9.505380 tok/s** | **+9.397%** | 14.237076 | **66.765%** |
+
+     Mandatory 128K preserves **874 / c8307c... / position 131,198** and all
+     **87,407,934,744 bytes / 1,452 allocations** recover. The short route is
+     inactive and noise-flat. Normalized token-loop4 remains registered
+     rollback:
+     [`ctx4096 deferred-normalization production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-deferrednorm-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9915,7 +9956,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Eleven milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twelve milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9951,10 +9992,11 @@ allocation teardown remain mandatory at every retained step.
    closed. The five quality-scoped ctx4096 layers now reuse token-loop4 score
    ownership too, improving their ordinary/compensated leaves **3.93-9.69%**
    and complete 128K another **2.977%** with exact recurrent state and
-   noise-flat 512/1K/4K. Next remove the ctx4096 normalized-score traffic by
-   carrying the exact inverse denominator into partial PV, then profile the
-   remaining context-PV/value-transport and merge owners. The dormant scalar
-   repair is not an active optimization target.
+   noise-flat 512/1K/4K. Reusing the parallel exact-max denominator and
+   carrying its inverse into partial PV then improves those leaves another
+   **12.9-32.0%** and complete 128K another **9.397%**, also byte-exact. Next
+   profile the remaining context-PV/value-transport and merge owners. The
+   dormant scalar repair is not an active optimization target.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
