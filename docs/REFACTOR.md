@@ -46,13 +46,14 @@ should be removed or collapsed.
   `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS` map owns exact
   **72 MiB / 72 allocations** of SWA K/V mirrors and selects one fused
   natural+lane-major rows writer without adding dispatches.
-- Qualification is complete: full state, exact **2,286-dispatch** topology,
-  writer-inclusive fixed C4096/M512, and clean 512/1K/4K medians all pass. The
-  active source remains H6Z/H6W only until a separate source-default RED/gate.
-  On promotion, copy H7Y into the one active source capability, retain named
-  H6Z/H6W/H6A natural rollbacks, and remove the duplicate candidate map after
-  one clean committed production checkpoint. Never retain two evolving mirror
-  owners or allocate mirrors on unsupported backends/shapes.
+- Bounded qualification is complete: full state, exact **2,286-dispatch**
+  topology, writer-inclusive fixed C4096/M512, and clean 512/1K/4K medians pass.
+  Source promotion is separately rejected: exact selector-unset fixed M512
+  regresses **436.403→436.275 tok/s (-0.0294%)**. H6Z/H6W remains active and the
+  72-MiB owner stays default-off as an explicit diagnostic/rollback candidate.
+  Remove this candidate capability, mirror allocation route, fused writer, and
+  focused runtime test when no further materially different source mechanism
+  needs the layout; never allocate mirrors on the active H6Z/H6W path.
 
 ## Laguna H6Z bounded default-off global-attention capability
 

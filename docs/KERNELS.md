@@ -2424,9 +2424,15 @@ H6Z / 2,286 dispatches**, one queue/stream and zero compiler. Runtime resources
 are H7Y local32/grid2304x32/VGPR56/LDS0/scratch0 and writer local256/
 grid1024x128/VGPR24/LDS0/scratch0. Writer-inclusive fixed C4096/M512 improves
 **436.120→436.785 tok/s (+0.152%)**; clean 512/1K/4K medians improve
-**+0.0530%/+0.1217%/+0.0043%**. Keep source production H6Z/H6W **437.189 tok/s**
-until the separate source-default gate
-([runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
+**+0.0530%/+0.1217%/+0.0043%**.
+
+Selector-unset source promotion is rejected at its first binding fixed median.
+Complete source M512 remains KL0/byte-exact, but H6Z/H6W rollback→H7Y source
+moves **436.403→436.275 tok/s (-0.0294%, 0.99971×; 2/5)**. Run no later source
+length/trace/post-commit gate and allow no favorable rerun. Restore H6Z/H6W
+production **437.189 tok/s** and retain the bounded H7Y owner default-off
+([source rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-source-rejected.json) ·
+[runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
 [standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 

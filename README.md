@@ -1108,8 +1108,15 @@ H7Y + 72 H6A + 24 H6N + 24 H6Z** on one queue with zero compiler; H7Y is
 VGPR56/LDS0/scratch0 and the writer is VGPR24/LDS0/scratch0. Writer-inclusive
 fixed C4096/M512 improves **436.120→436.785 tok/s (+0.152%)**. Clean 512/1K/4K
 medians improve **+0.0530%/+0.1217%/+0.0043%**, all exact and lifecycle-clean.
-Production remains **437.189 tok/s** until the separate source-default gate
-([runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
+
+The separate selector-unset source gate is exact but rejects promotion at its
+first binding median: H6Z/H6W rollback **436.403 tok/s** versus H7Y source
+**436.275 tok/s (-0.0294%, 0.99971×; 2/5 paired wins)**. Per the frozen rule,
+no source 512/1K/4K, trace, or post-commit gate runs. The active H6Z/H6W map and
+published production **437.189 tok/s** remain unchanged; the qualified H7Y
+owner stays default-off
+([source rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-source-rejected.json) ·
+[runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
 [standalone](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 

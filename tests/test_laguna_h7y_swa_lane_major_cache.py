@@ -168,9 +168,11 @@ _TIMING_PROTOCOL = {
     "no_subset_salvage": True,
 }
 _AFFECTED_SOURCE_PATHS = {
+    "hipengine/kernels/hip_gfx1100/__init__.py",
     "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip",
     "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py",
     "hipengine/kernels/hip_gfx1151/__init__.py",
+    "hipengine/runtime/laguna_kv.py",
 }
 
 
@@ -395,7 +397,7 @@ def test_h7y_frozen_target_artifact_work_model_and_admission_protocol() -> None:
     assert runtime_module._PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES == (
         _SCORE_SCRATCH_BYTES
     )
-    assert _VARIANT not in repr(
+    assert _VARIANT in repr(
         runtime_module._PREFILL_DENSE_INITIAL_ROLE_CANDIDATES
     )
 
