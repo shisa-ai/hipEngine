@@ -197933,3 +197933,38 @@ Vulkan local sizes verbatim will close the measured gap.
   `tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact`.
   Canonical evidence is
   `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json`.
+
+## 2026-08-02 21:43 JST — Retain dense-prefix long score mapping
+
+- Added separate ordinary and compensated ctx4096 token-loop4 score owners for
+  the existing dense-initial cache invariant. They retain the full
+  `KVLiveSpans` ABI but use identity visibility/physical mapping and skip
+  token-position, eviction-mask, and block-base metadata traffic. Runtime
+  selects them only while `_dense_initial_metadata_valid`; explicit eviction
+  falls back to the prior metadata-aware fixed256 variants.
+- Formal 5-warmup/9-sample/burst10 ordinary live4,097/16,448/65,664/131,200
+  improves **0.280571/0.548245/2.200971/4.183965 ->
+  0.274355/0.519303/2.098663/3.990643 ms
+  (-2.215%/-5.279%/-4.648%/-4.621%)**. Compensated improves
+  **0.304071/0.559927/2.241980/4.239581 ->
+  0.298140/0.531333/2.140049/4.044648 ms
+  (-1.951%/-5.107%/-4.546%/-4.598%)**. Formal F32 context and BF16 gate
+  outputs are byte-exact; raw SHA-256 values are
+  `0e02e852713a9cd17acf408c15bc3b6563793797bc3e91dd5744c77766d6ca94`
+  and `6340fbc9aca18dd9aec7ec0a096db1645a911fffb3c47ffb1a99628c7b4e22d5`.
+- Cached tracing names both `<false>` and `<true>` score templates at
+  local32/VGPR40/SGPR128/LDS0/scratch0. Candidate score medians are
+  **34.344/170.440/663.285/1,322.562 us**, down **12.8-14.6%** from the
+  metadata-aware sibling. CSV SHA-256 is
+  `df6d6e852114f55a597b7658740d82e38262194131b4359ca5aeadb64cf9d854`.
+- Production 512/1K/4K is exact and noise-positive at
+  **23.208480/23.071437/21.692721 tok/s (+0.032%/+0.081%/+0.055%)**.
+  Mandatory d128K improves **9.595115 -> 9.716297 tok/s (+1.263%)**, cutting
+  127-transition wall **13.235901 -> 13.070823 s (-1.247%)** while preserving
+  **874 / c8307c... / position 131,198**. Both runs recover all
+  **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256 values
+  are `c70705471e4a64bb4bf36ab2bd49e9d169adf4d6a99f16273106f4599691e5bc`
+  and `db4c8972eeee3f92c168f8c445648ed8fb074275b50ab6fbbf6da33c4ffbfb57`.
+- Focused large-capacity exactness, dense/generic selector fallback, and
+  gfx1151 capability tests pass **3/3**. Canonical evidence is
+  `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json`.

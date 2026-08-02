@@ -9991,6 +9991,47 @@ The remaining attention sequence is:
      **87,407,934,744 bytes / 1,452 allocations**:
      [`fixed256 token-loop4 production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json).
 
+230. Specialize the long token-loop4 score owner for dense-initial KV identity.
+     **Retained and production-default; LC-D3 fourteenth checkpoint.**
+
+     Normal autoregressive append keeps logical slots, physical slots, token
+     positions, and visibility in a contiguous identity mapping. While the
+     runtime's existing `_dense_initial_metadata_valid` invariant holds, the
+     new score sibling therefore maps `physical_slot = logical_slot` and skips
+     the token-position, eviction-mask, and block-base streams. It retains the
+     complete `KVLiveSpans` ABI. Any explicit eviction clears the invariant
+     and selects the prior metadata-aware fixed256 kernel.
+
+     | Leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Ordinary metadata-aware | 0.280571 ms | 0.548245 ms | 2.200971 ms | 4.183965 ms |
+     | Ordinary dense-prefix | **0.274355 ms** | **0.519303 ms** | **2.098663 ms** | **3.990643 ms** |
+     | Delta | **-2.215%** | **-5.279%** | **-4.648%** | **-4.621%** |
+     | Compensated metadata-aware | 0.304071 ms | 0.559927 ms | 2.241980 ms | 4.239581 ms |
+     | Compensated dense-prefix | **0.298140 ms** | **0.531333 ms** | **2.140049 ms** | **4.044648 ms** |
+     | Delta | **-1.951%** | **-5.107%** | **-4.546%** | **-4.598%** |
+
+     F32 context and gated BF16 outputs are byte-exact in the formal leaf
+     sweep. A separate large-capacity differential fixture requires strict
+     F32 agreement plus BF16 bit equality and exercises the generic fallback
+     after invalidating dense metadata. Cached tracing names both template
+     siblings at local32/VGPR40/SGPR128/LDS0/scratch0; the dense score median
+     is **34.344/170.440/663.285/1,322.562 us**, down **12.8-14.6%**.
+
+     | Decode depth | Metadata-aware checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.201166 | **23.208480 tok/s** | +0.032% | 23.386100 | 99.241% |
+     | 1K | 23.052773 | **23.071437 tok/s** | +0.081% | 23.366122 | 98.739% |
+     | 4K | 21.680855 | **21.692721 tok/s** | +0.055% | 23.037017 | 94.171% |
+     | 128K | 9.595115 | **9.716297 tok/s** | **+1.263%** | 14.237076 | **68.246%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **13.235901 -> 13.070823 s (-1.247%)**, preserves
+     **874 / c8307c... / position 131,198**, and recovers all
+     **87,407,934,744 bytes / 1,452 allocations**. The short guard preserves
+     every established trajectory and is noise-positive:
+     [`dense-prefix score production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10008,7 +10049,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Thirteen milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Fourteen milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10053,8 +10094,13 @@ allocation teardown remain mandatory at every retained step.
    next removes four general 64-bit mapping divisions, shrinks score ISA
    **31.169%**, cuts ordinary/compensated leaves **1.18-2.83%**, and improves
    mandatory 128K another **0.944%** with exact state and noise-flat
-   512/1K/4K. Next attack value transport or a fused score/denominator/PV
-   ownership change; merge and dormant scalar repair are not active targets.
+   512/1K/4K. Specializing dense-initial identity then removes the remaining
+   position, eviction, and block-base metadata streams from that score owner,
+   cutting score **12.8-14.6%**, complete active leaves **1.95-5.28%**, and
+   mandatory 128K another **1.263%** with exact recurrent state and safe
+   generic fallback after eviction. Next attack value transport or a fused
+   score/denominator/PV ownership change; merge and dormant scalar repair are
+   not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
