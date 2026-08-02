@@ -1,0 +1,409 @@
+{
+  "correctness": {
+    "all_candidate_outputs_byte_exact": true,
+    "all_candidate_outputs_finite": true,
+    "mismatch_count": 0,
+    "total_allocated_bytes": 184156160,
+    "total_freed_bytes": 184156160,
+    "tracked_allocations_recovered": true
+  },
+  "created_at": "2026-08-02T02:31:39.765576+00:00",
+  "date": "2026-08-02",
+  "decision": {
+    "candidate_admitted": false,
+    "failed_rule": "both predeclared full-group roles and their 127-call weighted aggregate must improve on both clocks",
+    "failing_role": "BF16 K3072/N1024 coltile8 rowbatch4, 92 calls",
+    "failing_role_event_speedup": 0.999537695192254,
+    "failing_role_wall_speedup": 0.9912694750506764,
+    "next_action": "Commit the rejection, keep H7H/H7I production unchanged, and rerank a materially different exact operation without reopening or subsetting H7J.",
+    "passing_role": "BF16 K9216/N3072 coltile12 rowbatch8, 35 calls",
+    "passing_role_event_speedup": 1.0014880347165056,
+    "passing_role_wall_speedup": 1.0101172254393915,
+    "post_timing_role_subset_salvage_forbidden": true,
+    "production_changed": false,
+    "repository_cleanup_required": false,
+    "runtime_qualification_skipped": true,
+    "source_promotion_skipped": true,
+    "weighted_aggregate_event_speedup": 1.0010929902583359,
+    "weighted_aggregate_wall_speedup": 1.0062561515963033
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h7j_q5_full_grid_bounds_rejected",
+  "model": {
+    "context_capacity": 4096,
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "one_shot_screen": {
+    "aggregate": {
+      "event_percent_change": -0.10917969349218959,
+      "event_speedup": 1.0010929902583359,
+      "h7h_event_weighted_ms": 125.90169744491577,
+      "h7h_wall_weighted_ms": 126.50647885166109,
+      "h7j_event_weighted_ms": 125.76423835754395,
+      "h7j_wall_weighted_ms": 125.71995574980974,
+      "wall_percent_change": -0.6217255503361274,
+      "wall_speedup": 1.0062561515963033
+    },
+    "all_candidate_bytes_exact": true,
+    "all_candidate_finite": true,
+    "all_roles_both_clock_positive": false,
+    "candidate_admitted": false,
+    "candidate_library_sha256": "18d17063e6abd3b8179210cf2f2c6d2d23a187ae0b5c04974de35b5199429790",
+    "candidate_source_sha256": "c6b5ffde55a4f7e7a3d0ee25075224f969f4a14d92e1771d043ceeaea6cea9a7",
+    "control_library_sha256": "0129743d5619f86731273c50a52529bf7c1d2080d43a4385da0604f576ad74a7",
+    "created_at": "2026-08-02T02:31:39.765576+00:00",
+    "elapsed_seconds": 1.0909651720430702,
+    "hardware": {
+      "arch": "gfx1100",
+      "gpu": "AMD Radeon Pro W7900",
+      "queues": 1
+    },
+    "harness_sha256": "16c2c9233d9a3bdcc2c192ac0917424c65ea68fa0dbef277e84e74ba7448843d",
+    "kind": "laguna_wpfh7j_exact_q5_full_grid_bounds_actual_role_screen",
+    "model": {
+      "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "quant": "UD-Q2_K_XL",
+      "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+    },
+    "protocol": {
+      "actual_weights": true,
+      "candidate": "H7J exact full-grid Q5 consumer with only redundant outer/store bounds elided",
+      "control": "H7H exact full-group-compute Q5 consumer with dynamic outer/store bounds",
+      "counter_rotated_repetitions": 15,
+      "deterministic_bf16_input": true,
+      "event_and_synchronized_wall": true,
+      "launches_per_sample": 5,
+      "mode_starts_per_role": {
+        "h7h": 8,
+        "h7j": 7
+      },
+      "producer_and_activation_pack": "prepared once outside timed consumer region",
+      "production_invocations": 127,
+      "rows": 512,
+      "selection_rule": "both predeclared full-group roles and their 127-call weighted aggregate must improve on both clocks",
+      "unique_configurations": 2,
+      "warmups": 5
+    },
+    "revision": "407f5c972-production-h7h-control",
+    "rows": [
+      {
+        "activation_workspace_bytes": 6291456,
+        "both_clock_positive": false,
+        "geometry": "coltile8_rowbatch4",
+        "output_dtype": "bf16",
+        "production_invocations": 92,
+        "quality": {
+          "byte_exact": true,
+          "candidate_sha256": "f0c4853fc4f021a0120eb31ec652c0e9cd2a93eed30effdc85b44fd306c70edf",
+          "control_sha256": "f0c4853fc4f021a0120eb31ec652c0e9cd2a93eed30effdc85b44fd306c70edf",
+          "finite": true,
+          "mismatch_count": 0
+        },
+        "quant": "gguf_q5_k",
+        "rows": 512,
+        "shape": [
+          1024,
+          3072
+        ],
+        "speedup": {
+          "event": 0.999537695192254,
+          "wall": 0.9912694750506764
+        },
+        "tensor": "blk.1.ffn_gate_shexp.weight",
+        "timing": {
+          "h7h": {
+            "event_ms_mean": 0.2787881072362264,
+            "event_ms_median": 0.2767606019973755,
+            "event_ms_samples": [
+              0.2603085994720459,
+              0.3190386056900024,
+              0.2848314046859741,
+              0.27638380527496337,
+              0.27835960388183595,
+              0.2768160104751587,
+              0.269815993309021,
+              0.264847993850708,
+              0.27637639045715334,
+              0.2781044006347656,
+              0.2706883907318115,
+              0.2767606019973755,
+              0.27588059902191164,
+              0.2841686010360718,
+              0.28944060802459715
+            ],
+            "wall_ms_mean": 0.2799654100090265,
+            "wall_ms_median": 0.2774959895759821,
+            "wall_ms_samples": [
+              0.27340580709278584,
+              0.31172637827694416,
+              0.2838621847331524,
+              0.2781239803880453,
+              0.27295579202473164,
+              0.2758157905191183,
+              0.2761918120086193,
+              0.278984010219574,
+              0.2775197848677635,
+              0.2766299992799759,
+              0.2799900248646736,
+              0.2774959895759821,
+              0.2660095691680908,
+              0.277446024119854,
+              0.2933240029960871
+            ]
+          },
+          "h7j": {
+            "event_ms_mean": 0.28249148368835447,
+            "event_ms_median": 0.2768886089324951,
+            "event_ms_samples": [
+              0.311572003364563,
+              0.37027060985565186,
+              0.28139119148254393,
+              0.2808151960372925,
+              0.2706157922744751,
+              0.2728636026382446,
+              0.2670000076293945,
+              0.26192800998687743,
+              0.25494420528411865,
+              0.26810441017150877,
+              0.2748483896255493,
+              0.2850886106491089,
+              0.2824166059494019,
+              0.2768886089324951,
+              0.2786250114440918
+            ],
+            "wall_ms_mean": 0.2871471457183361,
+            "wall_ms_median": 0.27994001284241676,
+            "wall_ms_samples": [
+              0.3781293984502554,
+              0.33945278264582157,
+              0.283497991040349,
+              0.28285798616707325,
+              0.27994001284241676,
+              0.2761540003120899,
+              0.2608617767691612,
+              0.2591955941170454,
+              0.2687798347324133,
+              0.27439799159765244,
+              0.2721318043768406,
+              0.28681601397693157,
+              0.2865979913622141,
+              0.2803519833832979,
+              0.27804202400147915
+            ]
+          },
+          "mode_starts": {
+            "h7h": 8,
+            "h7j": 7
+          }
+        },
+        "weight_bytes": 2162688,
+        "weight_layout": "tile_k_col",
+        "weight_workspace_bytes": 12582912
+      },
+      {
+        "activation_workspace_bytes": 9437184,
+        "both_clock_positive": true,
+        "geometry": "coltile12_rowbatch8",
+        "output_dtype": "bf16",
+        "production_invocations": 35,
+        "quality": {
+          "byte_exact": true,
+          "candidate_sha256": "a686f4dd8ad798a6b115aaf5a88676ae8bb87a1c65c2a246336f59a3dd67871d",
+          "control_sha256": "a686f4dd8ad798a6b115aaf5a88676ae8bb87a1c65c2a246336f59a3dd67871d",
+          "finite": true,
+          "mismatch_count": 0
+        },
+        "quant": "gguf_q5_k",
+        "rows": 512,
+        "shape": [
+          3072,
+          9216
+        ],
+        "speedup": {
+          "event": 1.0014880347165056,
+          "wall": 1.0101172254393915
+        },
+        "tensor": "blk.1.attn_output.weight",
+        "timing": {
+          "h7h": {
+            "event_ms_mean": 2.7121375020345053,
+            "event_ms_median": 2.8697063446044924,
+            "event_ms_samples": [
+              2.3675817489624023,
+              2.3170612335205076,
+              2.280084991455078,
+              2.256363105773926,
+              2.2881336212158203,
+              2.919018363952637,
+              3.0507946014404297,
+              2.989820671081543,
+              2.972746658325195,
+              2.860682487487793,
+              2.8697063446044924,
+              2.8902589797973635,
+              2.87658634185791,
+              2.8633726119995115,
+              2.8798507690429687
+            ],
+            "wall_ms_mean": 2.717113820835948,
+            "wall_ms_median": 2.8850527945905924,
+            "wall_ms_samples": [
+              2.3657376412302256,
+              2.3120447993278503,
+              2.2616880014538765,
+              2.304552588611841,
+              2.271554199978709,
+              2.987464191392064,
+              3.066933434456587,
+              2.9675180092453957,
+              2.9105854220688343,
+              2.874098811298609,
+              2.87956059910357,
+              2.8928250074386597,
+              2.8909190092235804,
+              2.886172803118825,
+              2.8850527945905924
+            ]
+          },
+          "h7j": {
+            "event_ms_mean": 2.6904556274414064,
+            "event_ms_median": 2.86544246673584,
+            "event_ms_samples": [
+              2.3303878784179686,
+              2.289211654663086,
+              2.31466121673584,
+              2.2815372467041017,
+              2.3068944931030275,
+              2.621326446533203,
+              3.0876432418823243,
+              3.027034378051758,
+              2.885746192932129,
+              2.842306137084961,
+              2.8659305572509766,
+              2.8708026885986326,
+              2.886602783203125,
+              2.86544246673584,
+              2.881307029724121
+            ],
+            "wall_ms_mean": 2.7061861908684173,
+            "wall_ms_median": 2.8561564162373543,
+            "wall_ms_samples": [
+              2.3127267602831125,
+              2.283824235200882,
+              2.313444809988141,
+              2.2972926031798124,
+              2.3846637923270464,
+              2.855308400467038,
+              3.0471411999315023,
+              3.0009986367076635,
+              2.8654525987803936,
+              2.8516683727502823,
+              2.8561564162373543,
+              2.8690865729004145,
+              2.8916368260979652,
+              2.8702826239168644,
+              2.8931090142577887
+            ]
+          },
+          "mode_starts": {
+            "h7h": 8,
+            "h7j": 7
+          }
+        },
+        "weight_bytes": 19464192,
+        "weight_layout": "row_major",
+        "weight_workspace_bytes": 113246208
+      }
+    ],
+    "schema": 1,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 157876224,
+      "peak_allocations": 6,
+      "total_allocated_bytes": 184156160,
+      "total_freed_bytes": 184156160
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true,
+    "weighted_aggregate_both_clock_positive": true
+  },
+  "performance_claim": false,
+  "production": {
+    "clean_fixed_natural_c4096_m512_tok_s": 431.31016450993457,
+    "llamacpp_over_hipengine_ratio": 1.6016107591271218,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "remaining_gap_ms": {
+      "attention": 93.80462899999995,
+      "iq_down": 118.44889399999988,
+      "q5": 176.88518099999993,
+      "q6": 59.74162400000009
+    },
+    "representative_kernel_sum_ms": 1172.2412389999988,
+    "revision": "407f5c972",
+    "source": "H7H exact full-group Q5 + H7G padded-tail Q5 + H7I raw-Q6",
+    "unchanged": true
+  },
+  "provenance": {
+    "compiler_monitor": {
+      "baseline_executables": 0,
+      "new_executables": 0,
+      "sha256": "18647221803cea5352dfa8c29993291cfe331f6231c99eb25b7223e918f252d7"
+    },
+    "production_artifact": "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json",
+    "production_artifact_sha256": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e",
+    "production_q5_source_sha256": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "raw_evidence_sha256": {
+      "/tmp/build_laguna_wpfh7j_full_grid_source.py": "f790928dc44aa722c3774ad1dc38f4a4236c8ec760e079cda930a71673566c0c",
+      "/tmp/laguna-h7j-screen-compiler-monitor.json": "18647221803cea5352dfa8c29993291cfe331f6231c99eb25b7223e918f252d7",
+      "/tmp/laguna-h7j-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7j-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7j-screen.stdout": "e4d978d2c27e0833e178d537a7d6ddb7c3e1cae46e2e1a865026e1a60daa649b",
+      "/tmp/laguna-wpfh7j-q5-full-grid-bounds-actual-role-screen.json": "20384e7dc10d6b80021feebd6fc5973a5638b04742f0f2aba7efdfb716aa8ee5",
+      "/tmp/laguna-wpfh7j-q5-full-grid-bounds.patch": "d260da5aa312395a1d79a689ab7aba1f0433e3d463b129f7edc475cbeba20aff",
+      "/tmp/laguna_wpfh7j_q5_full_grid_bounds.hip": "c6b5ffde55a4f7e7a3d0ee25075224f969f4a14d92e1771d043ceeaea6cea9a7",
+      "/tmp/laguna_wpfh7j_q5_full_grid_bounds.so": "18d17063e6abd3b8179210cf2f2c6d2d23a187ae0b5c04974de35b5199429790",
+      "/tmp/laguna_wpfh7j_q5_full_grid_bounds_actual_role_screen.py": "16c2c9233d9a3bdcc2c192ac0917424c65ea68fa0dbef277e84e74ba7448843d"
+    }
+  },
+  "schema": 1,
+  "status": "rejected_all_role_timing",
+  "target": {
+    "candidate_library_sha256": "18d17063e6abd3b8179210cf2f2c6d2d23a187ae0b5c04974de35b5199429790",
+    "candidate_source_sha256": "c6b5ffde55a4f7e7a3d0ee25075224f969f4a14d92e1771d043ceeaea6cea9a7",
+    "id": "WPF-H7J",
+    "name": "exact Q5 full-grid bounds specialization",
+    "operation": "elide only compile-time redundant outer row/output and final live-row store bounds under strict rows==512/full-group host preflight",
+    "preserved": [
+      "all input/weight loads",
+      "all ordered FMAs and reduction order",
+      "activation and F32-weight planes",
+      "stores, output values, ABI, workspace, and fallback instantiations"
+    ],
+    "repository_candidate_surfaces_added": false,
+    "roles": [
+      "BF16 K3072/N1024 coltile8 rowbatch4, 92 calls",
+      "BF16 K9216/N3072 coltile12 rowbatch8, 35 calls"
+    ],
+    "scope": "both and only H7H natural-M512 full-group roles, inseparable before timing",
+    "source_diff_sha256": "d260da5aa312395a1d79a689ab7aba1f0433e3d463b129f7edc475cbeba20aff"
+  }
+}

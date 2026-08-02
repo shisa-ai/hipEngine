@@ -744,6 +744,15 @@ noise. Q5/IQ-down/attention/Q6 own **97.959%** of the matched kernel gap
 [candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
+**WPF-H7J exact Q5 full-grid bounds specialization is rejected.** The frozen
+actual-weight 5/15/5 gate predeclared both H7H roles as inseparable. Outputs are
+byte-exact/finite and all allocations recover, but the dominant `c8r4` role
+(**92 calls**) regresses to **0.99954x event / 0.99127x wall**. The `c12r8`
+role (**35 calls**) and weighted aggregate improve, but selecting that favorable
+subset after timing is forbidden. Production therefore remains H7H/H7I at
+**431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP
+([H7J rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

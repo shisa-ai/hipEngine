@@ -867,6 +867,16 @@ noise. Q5/IQ-down/attention/Q6 still own **97.959%** of the matched kernel gap
 [target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json) ·
 [H7C rollback production](results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json)).
 
+**WPF-H7J exact Q5 full-grid bounds specialization is rejected under its frozen
+all-role rule.** The single actual-weight 5/15/5 screen keeps both H7H roles
+inseparable and is byte-exact, finite, allocation-clean, and compiler-free.
+`c8r4` (**92 calls**) regresses to **0.99954x event / 0.99127x wall**;
+`c12r8` (**35 calls**) improves **1.00149x / 1.01012x**, making the weighted
+aggregate **1.00109x / 1.00626x**. That aggregate cannot admit H7J because one
+predeclared role fails, and post-timing `r8`-only salvage is forbidden.
+Production and the matched component table remain unchanged
+([H7J rejection](results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
+
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane
 exact. Cached ISA realizes **13/4 next-record loads, 32 useful current-record

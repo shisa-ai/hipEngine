@@ -2746,6 +2746,16 @@ materially new exact mechanism
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
+Reject target-screen **WPF-H7J exact Q5 full-grid bounds specialization**. The
+single predeclared two-role actual-weight 5/15/5 screen is byte-exact, finite,
+allocation-clean, and compiler-free, but the dominant 92-call `c8r4` role
+regresses to **0.99954x event / 0.99127x wall**. The 35-call `c12r8` role and
+127-call weighted aggregate improve, but the all-role rule is binding and
+post-timing subset salvage is forbidden. H7J added no repository source and
+changes no production metric. Keep H7H/H7I at **431.310 tok/s** and rerank a
+materially different exact operation
+([rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

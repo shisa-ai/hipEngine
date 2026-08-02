@@ -1950,6 +1950,16 @@ Final exact guards pass **93/93** plus **65/65** runner/backend/registry nodes
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
+Out-of-tree **WPF-H7J exact Q5 full-grid bounds specialization is rejected**.
+It removed only provably redundant outer/final bounds from H7H's two strict
+M512 full-group instantiations and changed no repository surface. The frozen
+single 5/15/5 actual-weight screen is byte-exact/finite/lifecycle-clean with
+zero compiler, but the 92-call `c8r4` role is **0.99954x event / 0.99127x
+wall**. The 35-call `c12r8` role and weighted aggregate are positive; both roles
+were predeclared inseparable, so `r8`-only salvage is inadmissible. Keep H7H
+source and do not reopen or subset H7J
+([rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
