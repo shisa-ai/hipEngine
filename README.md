@@ -1135,6 +1135,19 @@ and no compiler runs. Reject both repairs, add no runtime/source surface, and
 retain H6Z/H6W production
 ([repair-audit rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
 
+The next exact target is **WPF-H8A**, a bounded resident F32 cache for all 12
+full-attention `attn_q` and 12 `attn_output` Q5 tensors. The existing exact
+coltile16 producer builds each immutable **75,497,472-byte** plane once at
+session setup; requests retain the same activation pack and H7G consumer while
+skipping **24 producer launches / 5.596 ms**, modeling **2,286→2,262**
+dispatches. The cache is exactly **1,811,939,328 bytes (1.6875 GiB)**. A live
+owner+child+24-buffer feasibility run completed exact M512 with token 2930,
+**4.167 GB** free, zero compiler, and full lifecycle recovery. This is target
+selection, not a speed claim. Freeze an all-or-nothing RED owner and complete
+24-plane/state/topology/both-clock gates before implementation; the full Q5
+family and every layer/prompt subset remain forbidden
+([H8A target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

@@ -3242,6 +3242,21 @@ candidate call, token/lifecycle pass, and no compiler runs. Add no guard, queue,
 repair, runtime, or source surface; rerank outside both premises
 ([repair-audit rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
 
+Select **WPF-H8A exact resident global-Q5 tile-K-col F32 cache** as the next
+materially distinct target. Scope is the complete architecture-defined class:
+all 12 full-attention layers' `attn_q` and `attn_output`, never a prompt,
+route, token, or arbitrary layer subset. Reuse the retained exact coltile16
+producer once at setup to populate **24 × 75,497,472 = 1,811,939,328 bytes
+(1.6875 GiB)**, then keep the unchanged activation pack and H7G padded-compute
+consumer while deleting **24 request producers / 5.596 ms** and modeling
+**2,286→2,262 dispatches**. A stricter owner+child+24-buffer audit passes exact
+M512/token2930 with **4.167 GB** free, zero compiler, and lifecycle recovery.
+No HIP body/object or candidate speed result exists. Commit the target, then
+freeze all-or-nothing allocation/sharing, complete 24-plane bytes, complete
+state, setup/request topology, fixed and 512/1K/4K both-clock RED gates; source
+promotion remains separate and the full-family sidecar remains forbidden
+([H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

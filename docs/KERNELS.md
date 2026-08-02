@@ -2447,6 +2447,26 @@ cost. Keep both leaves diagnostic-only, add no repair kernel/runtime owner, and
 do not treat single-prompt mismatch sparsity as a dispatch policy
 ([repair-audit rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
 
+No new device body is selected for **WPF-H8A exact resident global-Q5 F32
+cache**. The target reuses the current exact tile-K-col16 producer at owner
+setup for all 12 full-attention `attn_q` and 12 `attn_output` tensors, publishing
+an immutable 24-entry raw-pointer→F32-plane map. Each plane is **75,497,472
+bytes**; total ownership is **1,811,939,328 bytes (1.6875 GiB)**. Request-time
+execution retains the exact activation pack and H7G padded-compute consumer but
+removes the measured **24 producer calls / 5.596 ms**, modeling **2,286→2,262
+dispatches**. A stricter owner+child dummy-allocation run completes exact M512
+with token2930, **4.167 GB** free, zero compiler, and lifecycle recovery.
+
+Freeze Python owner/registry RED while pinning the HIP source and cached object
+unchanged. Require all-or-nothing allocation/sharing and reverse teardown,
+complete bytes for all 24 actual planes, rows1/7/8/9/M512 H7G output identity,
+complete state, exact **24 setup / zero request producer** trace, and positive
+fixed plus 512/1K/4K medians before any default-off admission. The existing
+pack+transient producer+H7G chain is the mandatory unfused fallback; gfx1151,
+partial maps, wrong shapes, and unavailable memory fail closed. Full-family,
+role-only, layer, prompt, token, and favorable-rerun subsets are forbidden
+([H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

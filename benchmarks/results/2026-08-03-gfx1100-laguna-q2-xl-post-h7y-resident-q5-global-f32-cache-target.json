@@ -1,0 +1,224 @@
+{
+  "admission": {
+    "allocation": "exact 24 allocations / 1,811,939,328 bytes, all-or-nothing construction, deterministic reverse teardown, no duplicate allocation in shared child sessions, and exact memory_stats recovery",
+    "no_salvage": "any allocation, complete-plane, state, topology, fixed, length, or both-clock miss removes every H8A/RED surface; no attn_q-only, attn_output-only, layer, prompt, token, length, or favorable-rerun subset; no sidecar-size/layout/threshold retune",
+    "owner_abi": "one immutable raw-Q5-pointer -> (resident F32 pointer, exact extent, tile-K-col16 layout) map owned once by the weight-owning session and explicitly shared read-only with child sessions; partial construction is never published",
+    "red_first": true,
+    "request_correctness": "rows1/7/8/9/M512 both roles match current H7G output byte-for-byte with repeat/finiteness; complete natural-M512 state is KL0/top-1 100%, all 48 boundaries/logits/KV/KVLiveSpans exact, token2930, and lifecycle clean",
+    "setup_correctness": "for all 24 real tensors, complete resident F32 bytes equal a fresh retained coltile16 producer plane; include independent edge-pattern CPU F32 values and poison overwrite",
+    "source_separate": "only a qualified default-off owner may receive a separately RED-gated package-default attempt; source must preserve the same all-or-nothing admission/fallback and pass selector-unset complete state, fixed, 512/1K/4K, named trace, post-commit wall, and reprofile gates",
+    "static": "new Python owner/composite/registry surfaces only; exact HIP source and cached object hashes remain unchanged; gfx1151 is explicitly fail-closed",
+    "target_commit_before_red": true,
+    "timing": "one fixed C4096/direct-M512 five-pair owner-inclusive-request gate after setup, then clean 512/1K/4K three-pair transfer; candidate must improve every median and remain exact without including setup in request timing",
+    "trace": "cache-only setup names exactly 24 retained coltile16 producers before request; request names zero coltile16 producers, unchanged 24 packs + 24 H7G consumers, exact 2,262 application dispatches, one queue/stream, and zero compiler"
+  },
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json"
+  },
+  "authority_sha256": {
+    "README.md": "0fbce0a6a70d2f5cd856c57facca4889d2f1bfac99e14fb7b6218de88a54d8fe",
+    "benchmarks/CHANGELOG.md": "e82bf1ad00d7bf49fdfcec164819ed791ea5c5c31387ca1f6c629782e35ab07d",
+    "benchmarks/README.md": "31d853e91b16527fe0d75a7461a73d856d591d654245a77b1427b22dbfe969ea",
+    "docs/KERNELS.md": "8a9975123880c2379ce3193b64937cae10109e0d7926292a216f5f5a5fb89b42",
+    "docs/LAGUNA-prefill.md": "b14d42cc685c59b9796ac5c68e002c7ec4c3a27a78d3b760f052b59a8fc2a513",
+    "docs/PLAN.md": "42e4db6592c1aff5d2980ed727b4ee0ac7cb01eba79da2cb33ad38464883813b"
+  },
+  "ceiling_not_claim": {
+    "assumption": "remove the measured 24-call coltile16 producer time with zero lookup/cache-pressure/replacement cost and exclude one-time setup",
+    "dispatches": 2262,
+    "kernel_sum_ms": 1149.147939,
+    "not_a_performance_claim": true,
+    "q5_ms": 231.427515,
+    "wall_gain_percent": 0.4810320225475673,
+    "wall_speedup": 1.0048103202254757,
+    "wall_tok_s": 440.11200698271426
+  },
+  "current_coltile16_producer": {
+    "dispatches": 24,
+    "kernel": "void (anonymous namespace)::gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel<16>(unsigned char const*, float*, int)",
+    "local_size": 256,
+    "median_ms": 5.596038999999999,
+    "runtime_lds_bytes": 0,
+    "runtime_scratch_bytes": 0,
+    "runtime_vgpr": 16,
+    "share_of_kernel_sum_percent": 0.4846129624068063,
+    "share_of_q5_percent": 2.360963248403574
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "commit this target-only boundary, freeze H8A RED, then implement the default-off all-or-nothing owner without changing HIP source",
+    "production_changed": false,
+    "speed_result_exists": false,
+    "target_selected": true
+  },
+  "distinctions": {
+    "full_family_sidecar": "H8A caches only two architecture-defined global-attention shape families; the 236-tensor/full-Q5 alternate remains forbidden by the 48-GiB budget.",
+    "h5o_factorized": "H5O changed the plane representation and reconstructed coefficients in every consumer; H8A stores the ordinary complete F32 tile-K-col plane produced by retained exact code.",
+    "h7z_repair": "No SGEMM, candidate-distance guard, repair queue, or changed association is introduced.",
+    "h8a_discarded_producer_rewrite": "No block-cooperative producer rewrite is selected: H8A changes no HIP source, first object, producer arithmetic, or consumer body.",
+    "prompt_or_layer_subset": "Selection is the complete full-attention attn_q+attn_output architecture class, all 12 layers together; no observed prompt, token, route, expert, or arbitrary layer subset is used."
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1,
+    "total_vram_bytes": 48301604864
+  },
+  "head": "936b02faa7405103846abe553a972e182b6e2518",
+  "kind": "gfx1100_laguna_q2_xl_post_h7y_resident_q5_global_f32_cache_target",
+  "memory_feasibility": {
+    "after_exact_m512_free_bytes": 4167041024,
+    "after_exact_m512_free_gib": 3.880859375,
+    "audit_status": "pass",
+    "child_loaded_free_bytes": 6008340480,
+    "child_plus_sidecars_free_bytes": 4196401152,
+    "child_session_resident_nbytes": 40406037204,
+    "exact_m512_finite": true,
+    "exact_m512_position": 511,
+    "exact_m512_token": 2930,
+    "full_family_cache_forbidden": true,
+    "new_compiler_processes": 0,
+    "owner_loaded_free_bytes": 6905921536,
+    "owner_session_resident_nbytes": 40406037204,
+    "owner_weights_resident_nbytes": 39680849600,
+    "tracked_recovered": true
+  },
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": "retained-production status, measured current producer cost, feasibility, and target selection only; the producer-deletion ceiling is explicitly not a candidate speed claim",
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-tile-k-col-production.json": "a5947ddc2a4fbc33fb1e3fbab25dce6d85e6a8726be3de495ad7580da91729b9",
+    "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-activation-tile-k-row-production.json": "9949669de62ea3c395e5c977181e850f8d620fb426afc28ad15ebee1fc51c7fa",
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json": "052c75a9e0b65a1bdd53cf276b0c5d43397b813f0e58df9a4b905690ff16187e",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json": "9a8567b5ea561d47248571c7dbbdd80f5163b74d92f3d2b06fc8357c9d111547"
+  },
+  "production": {
+    "components_ms": {
+      "attention": 115.38517900000004,
+      "gate_up": 401.18698200000006,
+      "iq_down": 273.37991800000003,
+      "q5": 237.023554,
+      "q6": 74.66734999999997,
+      "remaining": 53.100995000000005
+    },
+    "dispatches": 2286,
+    "fresh_unprofiled_median_tok_s": 438.0050623723239,
+    "fresh_unprofiled_samples_tok_s": [
+      437.3010269903424,
+      438.742007526112,
+      438.83157071415974,
+      438.0050623723239,
+      437.3671813281849
+    ],
+    "kernel_span_ms": 1176.205153,
+    "kernel_sum_ms": 1154.743978,
+    "matched_llamacpp_hip_kernel_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "one_queue": true,
+    "published_retained_tok_s": 437.1892736544479,
+    "zero_compiler": true
+  },
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8a_resident_q5_sidecar_feasibility.py": "dcb89eed23fedb5a31384b60f76e5b376d55dced2deee419220bbf4b162b5a96",
+    "/tmp/laguna-h8a-resident-q5-sidecar-feasibility-compiler-monitor.json": "d16d7c46879f88895a25f777fa4e4bb4e1159cbe0e54cd582389e55894982daf",
+    "/tmp/laguna-h8a-resident-q5-sidecar-feasibility.json": "ee198e99b6b3380bb00c96a2d03162625865d23051b9f6e1a950b58048fa67ac",
+    "/tmp/laguna-h8a-resident-q5-sidecar-feasibility.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8a-resident-q5-sidecar-feasibility.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8a-resident-q5-sidecar-feasibility.stdout": "cd06b02b55eed0b3fac37b9ec0d971e53abe9ce1963740c56b18fa86d2b3f32b",
+    "/tmp/laguna-post-h7y-restored-clean-trace-summary.json": "bb0b36fb55107e4bbe5d5d629278a3777bf71c04072dc2ef4ad4e5dd485d3b08",
+    "/tmp/laguna-post-h7y-restored-clean-wall.json": "40b8f2cec15f1a440777ad16d992ed112449407be5cf38b3c0c0169d93ad02e7",
+    "/tmp/run_laguna_h8a_resident_q5_sidecar_feasibility_with_monitor.py": "d2aa08d3255464824c7c9428e3d586867f1a80a864251111c5935b7b31b0f8f1"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "bbd2e9f32c5cee8e1c720c8a065dae3e2460ade1614c4ec522995a02a74b3031",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "cd3f2272a341e7d854ac41b58c9041ec7d8769965c976c7c6cf3294370a79cfe",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "54e9b72005e919ce5f738b4ad4c8b81604138378e0a4fff65fdd172bf2800758",
+    "hipengine/loading/laguna_gguf_materialize.py": "754d006da9d18b9f7d600f76d174e0a1003b0a1bb00478c8d4d1819b0189f49b",
+    "hipengine/runtime/gguf_linear.py": "85e7faa7d5129a40cf5afcedfa538e8733b263d3c058f676a9aae9f9736fe8d1",
+    "hipengine/runtime/laguna_gguf_runner.py": "61ff2f193a53eb0c48a55e3616e6c55b7cbc77705b58ac552559cf9b56814688"
+  },
+  "status": "accepted_target_only_no_candidate_implementation",
+  "target": {
+    "activation_pack_changed": false,
+    "candidate_built": false,
+    "candidate_executed": false,
+    "consumer_arithmetic_changed": false,
+    "f32_plane_bytes_each": 75497472,
+    "fallback": "the registered unfused activation-pack + transient exact producer + H7G consumer remains mandatory for disabled, incomplete, allocation-failed, wrong-shape, wrong-backend, or unshared-cache cases",
+    "hip_source_change_allowed": false,
+    "id": "WPF-H8A",
+    "implemented": false,
+    "layers": [
+      0,
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44
+    ],
+    "name": "exact resident global-Q5 tile-K-col F32 cache",
+    "new_device_body": false,
+    "new_jit_object": false,
+    "raw_weight_bytes_changed": false,
+    "request": "resolve the raw-weight pointer through one immutable owner map, launch the unchanged BF16 activation pack, skip the Q5 producer, and launch the unchanged H7G padded-compute consumer against the resident plane",
+    "request_dispatch_delta_model": -24,
+    "request_dispatches_after_model": 2262,
+    "request_dispatches_before": 2286,
+    "request_producer_dispatches_after": 0,
+    "request_producer_dispatches_before": 24,
+    "resident_allocations": 24,
+    "resident_f32_bytes": 1811939328,
+    "resident_f32_gib": 1.6875,
+    "roles": [
+      {
+        "current_source_owner": "H7G padded-compute composite",
+        "geometry": "coltile16_rowbatch5",
+        "id": "bf16_k6144_n3072",
+        "in_features": 6144,
+        "out_features": 3072,
+        "output_dtype": "bf16",
+        "resident_f32_bytes": 905969664,
+        "slot": "attn_output",
+        "tensor_count": 12
+      },
+      {
+        "current_source_owner": "H7G padded-compute composite",
+        "geometry": "coltile16_rowbatch5",
+        "id": "f32_k3072_n6144",
+        "in_features": 3072,
+        "out_features": 6144,
+        "output_dtype": "f32",
+        "resident_f32_bytes": 905969664,
+        "slot": "attn_q",
+        "tensor_count": 12
+      }
+    ],
+    "scope": "all 12 full-attention layers together; attn_q and attn_output only; no layer, prompt, token, or routing subset",
+    "setup": "during weight-owning session construction, launch the retained exact tile-K-col<16> producer once for each immutable raw-Q5 tensor and synchronize before publication",
+    "setup_producer_dispatches": 24,
+    "source_default_changed": false,
+    "tensor_count": 24
+  }
+}
