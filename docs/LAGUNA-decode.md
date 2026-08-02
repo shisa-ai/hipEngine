@@ -9951,6 +9951,46 @@ The remaining attention sequence is:
      both candidates, keep V64, and close simple stage-size tuning:
      [`ctx4096 V-stage rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-vstage-screen-rejected.json).
 
+229. Specialize token-loop4 physical mapping for fixed 256-token blocks.
+     **Retained and production-default; LC-D3 thirteenth checkpoint.**
+
+     Disassembly first closed the tempting key-vector-load screen: the compiler
+     already emits one `global_load_b64` for each lane's four BF16 key values
+     and `global_load_b128` for each query fragment. The real score-side waste
+     was four unrolled general 64-bit divide/remainder sequences in the
+     logical-to-physical KV mapping. Every wrapper for this specialization
+     already rejects `block_size != 256`, so making that contract visible as
+     shift/mask arithmetic preserves all score, denominator, PV, merge, gate,
+     and BF16-store arithmetic while shrinking static score-kernel ISA
+     **9,304 -> 6,404 bytes (-31.169%)**.
+
+     | Leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Ordinary runtime-map | 0.284682 ms | 0.560716 ms | 2.252598 ms | 4.278564 ms |
+     | Ordinary fixed256 | **0.280991 ms** | **0.544838 ms** | **2.198931 ms** | **4.185275 ms** |
+     | Delta | **-1.296%** | **-2.832%** | **-2.382%** | **-2.180%** |
+     | Compensated runtime-map | 0.307998 ms | 0.574117 ms | 2.289356 ms | 4.331359 ms |
+     | Compensated fixed256 | **0.304355 ms** | **0.560063 ms** | **2.242701 ms** | **4.244546 ms** |
+     | Delta | **-1.183%** | **-2.448%** | **-2.038%** | **-2.004%** |
+
+     F32 context and gated BF16 output remain byte-exact at every depth.
+     Cached tracing names the intended token-loop4 score producer at
+     local32/VGPR40/SGPR128/LDS0/scratch0, with 128K score median
+     **1.517969 ms**.
+
+     | Decode depth | Runtime-map checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.201880 | **23.201166 tok/s** | -0.003% | 23.386100 | 99.209% |
+     | 1K | 23.065973 | **23.052773 tok/s** | -0.057% | 23.366122 | 98.659% |
+     | 4K | 21.682607 | **21.680855 tok/s** | -0.008% | 23.037017 | 94.113% |
+     | 128K | 9.505380 | **9.595115 tok/s** | **+0.944%** | 14.237076 | **67.395%** |
+
+     The inactive short guard is noise-flat and exact. Mandatory 128K cuts
+     the 127-transition wall **13.360855 -> 13.235901 s (-0.935%)**, preserves
+     **874 / c8307c... / position 131,198**, and recovers all
+     **87,407,934,744 bytes / 1,452 allocations**:
+     [`fixed256 token-loop4 production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9968,7 +10008,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twelve milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Thirteen milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10009,7 +10049,11 @@ allocation teardown remain mandatory at every retained step.
    **12.9-32.0%** and complete 128K another **9.397%**, also byte-exact. Next
    profile assigns the 128K leaf **37.9% score / 15.8% denominator / 46.0%
    partial PV / 0.3% merge**. V48 and V80 both regress, closing simple PV
-   stage sizing around V64. Next attack score/value transport or a fused
+   stage sizing around V64. Exposing the wrapper's fixed-256-block invariant
+   next removes four general 64-bit mapping divisions, shrinks score ISA
+   **31.169%**, cuts ordinary/compensated leaves **1.18-2.83%**, and improves
+   mandatory 128K another **0.944%** with exact state and noise-flat
+   512/1K/4K. Next attack value transport or a fused score/denominator/PV
    ownership change; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.

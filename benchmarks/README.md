@@ -75,17 +75,19 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
-The current long-decode checkpoint moves the five quality-scoped ctx4096
-layers onto the retained parallel exact-max denominator and defers only its
-final normalization multiply into D64/V64 partial PV. Ordinary/compensated
-leaves remain byte-exact and improve **12.9-32.0% / 13.7-31.4%**. Mandatory
-128K advances **8.688850 -> 9.505380 tok/s (+9.397%)** with the established
-recurrent hash and lifecycle, reaching **66.765%** of same-GGUF Vulkan's
+The current long-decode checkpoint exposes the wrapper-enforced 256-token
+block size inside the retained token-loop4 score producer, replacing four
+unrolled 64-bit divide/remainder mappings with exact shift/mask arithmetic.
+Static score ISA shrinks **9,304 -> 6,404 bytes (-31.169%)**, and the active
+ordinary/compensated leaves improve **1.18-2.83%**. Mandatory 128K advances
+**9.505380 -> 9.595115 tok/s (+0.944%)** with the established recurrent hash
+and lifecycle, reaching **67.395%** of same-GGUF Vulkan's
 **14.237076 tok/s**. The route-inactive 512/1K/4K guard is noise-flat and
-exact at **23.202/23.066/21.683 tok/s**. Retained 16K/64K remain
+exact at **23.201/23.053/21.681 tok/s**. Retained 16K/64K remain
 **19.481/12.848 tok/s**, or **89.658%/72.436%** of Vulkan. The ctx4096
 merge's repair mask remains diagnostic only; production does not launch
 scalar repair.
+[`fixed256 token-loop4 production`](results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json),
 [`ctx4096 deferred-normalization production`](results/2026-08-02-gfx1151-laguna-long-global-ctx4096-deferrednorm-retained.json),
 [`ctx4096 token-loop4 production`](results/2026-08-02-gfx1151-laguna-long-global-ctx4096-tokenloop4-retained.json),
 [`V80 exact PV production`](results/2026-08-02-gfx1151-laguna-long-global-vstage80-retained.json).

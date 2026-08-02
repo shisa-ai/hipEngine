@@ -197890,3 +197890,46 @@ Vulkan local sizes verbatim will close the measured gap.
   SHA-256 values are
   `9d0c1fe6a317828c99a4b3f4dda15664e96190b688d96b3b177e03a5ea535cf2`
   and `b00db0c9c891f3ba206beb9441f36d50e3c55990724c554f04a0a80fa089d9f5`.
+
+## 2026-08-02 21:06 JST — Retain fixed256 token-loop4 score mapping
+
+- Audited the retained score producer before changing its BF16 transport.
+  gfx1151 disassembly proves that the four scalar-looking key loads already
+  compile to one `global_load_b64` per lane and the query fragments compile to
+  `global_load_b128`; explicit vectorization had no instruction seam to remove.
+  The real waste was the generic `logical_slot / block_size` mapping repeated
+  in each of four unrolled token bodies, even though every launching wrapper
+  rejects `block_size != 256`.
+- Replaced only that token-loop4 mapping with exact shift/mask arithmetic.
+  Score, denominator, partial PV, ordinary/Kahan merge, gate, BF16 store,
+  resident bytes, and launches are unchanged. Static score-kernel ISA shrinks
+  **9,304 -> 6,404 bytes (-31.169%)**.
+- The cached 5-warmup/9-sample/burst10 ordinary leaf improves live
+  4,097/16,448/65,664/131,200
+  **0.284682/0.560716/2.252598/4.278564 ->
+  0.280991/0.544838/2.198931/4.185275 ms
+  (-1.296%/-2.832%/-2.382%/-2.180%)**. Compensated improves
+  **0.307998/0.574117/2.289356/4.331359 ->
+  0.304355/0.560063/2.242701/4.244546 ms
+  (-1.183%/-2.448%/-2.038%/-2.004%)**. F32 context and gated BF16 output are
+  byte-exact throughout. Raw SHA-256 values are
+  `3118c16840b2385b2efaf6827df4136f17f3cef83518c136a9d21a79ce704337`
+  and `66e374567b35bab92211fc3c2451576a86aaab4c013b79f68cc8eb19ed40373a`.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel` at
+  local32/VGPR40/SGPR128/LDS0/scratch0. Score medians at the four depths are
+  **39.875/199.534/767.340/1,517.969 us**; CSV SHA-256 is
+  `1d95c07ef00b4cd4bd38b0c2707915d692ab9bc3bb8839348c73014e03a459fd`.
+- Production 512/1K/4K is exact and noise-flat at
+  **23.201166/23.052773/21.680855 tok/s
+  (-0.003%/-0.057%/-0.008%)**. Mandatory d128K improves
+  **9.505380 -> 9.595115 tok/s (+0.944%)**, cutting its 127-transition wall
+  **13.360855 -> 13.235901 s (-0.935%)** while preserving
+  **874 / c8307c... / position 131,198**. Both runs recover all
+  **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256 values
+  are `64c106ee8cb1467331de2a264f74b40e4b10276a84dec24ac0d514a9ce94c619`
+  and `b245fcfcde161ef1ddb9bb1a2fe71f09c59dca72ddf73a23e19e34e9cd5d215b`.
+- Focused correctness ran
+  `tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact`.
+  Canonical evidence is
+  `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json`.
