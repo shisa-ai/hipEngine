@@ -4649,6 +4649,8 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -4936,6 +4938,8 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                 for dim64_fn in (
                     laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
                     laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans,
+                    laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_bf16_spans,
+                    laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans,
                 ):
                     dim64_fn(
                         *common,
@@ -5181,9 +5185,9 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
-            "compensated_spans"
+            "tokenloop4_compensated_spans"
         ),
-        "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_spans",
+        "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_spans",
         (
             "global_context_fused_exact_gated_mixed40_local512_exp32_"
             "producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_"

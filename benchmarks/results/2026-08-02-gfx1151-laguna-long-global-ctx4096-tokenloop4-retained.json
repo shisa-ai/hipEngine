@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_ctx4096_tokenloop4_retention",
+  "created_at": "2026-08-02T20:01:04+09:00",
+  "status": "accepted",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "change": "Reuse the retained exact token-loop4 GQA6 score producer inside both ordinary and compensated D64/V64 ctx4096 leaves. One local32 wave scores four consecutive KV tokens for all six GQA queries; the context-split normalization, partial PV, Kahan/ordinary merge, gate, and BF16 store remain unchanged.",
+  "leaf": {
+    "shape": "48Q/8KV/D128, BF16 KV, capacity 131328",
+    "live_counts": [4097, 16448, 65664, 131200],
+    "ordinary": {
+      "control_ms": [0.341130, 0.816171, 3.547299, 6.940900],
+      "tokenloop4_ms": [0.327719, 0.738694, 3.219906, 6.268094],
+      "delta_percent": [-3.931, -9.493, -9.229, -9.693],
+      "raw_sha256": "73563b845ef71c60844d141f55066d35e0c169d221304c9f626dfb5cae95e065"
+    },
+    "compensated": {
+      "control_ms": [0.366452, 0.842950, 3.591359, 6.976824],
+      "tokenloop4_ms": [0.350413, 0.766675, 3.269447, 6.323521],
+      "delta_percent": [-4.377, -9.049, -8.964, -9.364],
+      "raw_sha256": "54045a0a968b56369b0531ac0fdb991c6015b8017832dcd0dd8b773aae22dc54"
+    },
+    "f32_context_byte_exact": true,
+    "bf16_gated_byte_exact": true
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-ctx-tl4-trace.KiKtaA --output-file trace -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4 --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-ctx-tl4-trace.KiKtaA/bench.json",
+    "score_kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel",
+    "score_local_size": 32,
+    "score_vgpr": 40,
+    "score_lds_bytes": 0,
+    "score_scratch_bytes": 0,
+    "score_workgroups_at_live4097": 1025,
+    "control_score_workgroups_at_live4097": 4097,
+    "pv_kernel": "laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<false, 64>",
+    "pv_local_size": 512,
+    "pv_vgpr": 32,
+    "pv_lds_bytes": 19456,
+    "pv_scratch_bytes": 0,
+    "merge_kernel": "laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel<false>",
+    "merge_local_size": 128,
+    "merge_vgpr": 16,
+    "merge_lds_bytes": 0,
+    "merge_scratch_bytes": 0,
+    "csv_sha256": "ca6719b12c3175a7c0735e5949ecf4e638eab7241ba133b2d29de710c92bee37"
+  },
+  "production": {
+    "workload": "same resident Q4_K_M model, capacity 131200, matrix chunk 2048, d128 eager c=1, one run/depth",
+    "depths": [512, 1024, 4096, 131072],
+    "previous_tok_s": [23.212639, 23.071784, 21.678087, 8.437685],
+    "tokenloop4_tok_s": [23.205556, 23.060987, 21.684575, 8.688850],
+    "delta_percent": [-0.031, -0.047, 0.030, 2.977],
+    "llama_cpp_vulkan_tok_s": [23.386100, 23.366122, 23.037017, 14.237076],
+    "vulkan_parity_percent": [99.228, 98.692, 94.129, 61.030],
+    "route_active": [false, false, false, true],
+    "generated_trajectory_hashes_match": true,
+    "mandatory_128k": {
+      "decode_seconds": 14.616433947114274,
+      "final_token": 874,
+      "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed",
+      "final_position": 131198
+    },
+    "lifecycle": {
+      "allocated_and_freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "commands": [
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-ctx4096-tokenloop4-prod-128k.json",
+      "same command with --lengths 512,1024,4096 and --output /tmp/laguna-ctx4096-tokenloop4-prod-short.json"
+    ],
+    "raw_sha256": {
+      "short": "f941ffe9af5278aae5bf5a100b4be69af9b395e8b9a326a0644a3c4054f59fa2",
+      "128k": "abb80a59c4be4323a166add451bbe82f6528223409d00b592664a37f14d9e752"
+    }
+  },
+  "correctness": {
+    "gate": "KL <= 0.05 and top-1 >= 90%; the changed leaf is byte-exact to its admitted context-split control, and complete recurrent hashes match",
+    "focused_tests": [
+      "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+      "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes",
+      "tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys"
+    ],
+    "result": "3 passed"
+  },
+  "repair_observation": {
+    "production_repair_kernel_dispatched": false,
+    "merge_writes_dormant_mask": true,
+    "note": "This change accelerates the score producer used by the five quality-scoped ctx4096 layers. It does not activate the previously rejected scalar repair kernel."
+  },
+  "decision": "Promote token-loop4 score ownership for ordinary and compensated D64/V64 ctx4096 leaves on gfx1151; retain the prior one-token score variants as registered rollback and leave peer backends unchanged."
+}

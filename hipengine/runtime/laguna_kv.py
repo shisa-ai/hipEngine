@@ -267,6 +267,15 @@ class LagunaKVCache:
                 "Laguna 4,096-token split dimension tile must be 32 or 64"
             )
         self.global_split_gqa6_ctx4096_dim_tile = ctx4096_dim_tile
+        self.global_split_gqa6_ctx4096_tokenloop4 = bool(
+            self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage64
+            and self.global_split_gqa6_ctx4096_dim_tile == 64
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4",
+                False,
+            )
+        )
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -820,7 +829,8 @@ class LagunaKVCache:
                     else (
                         "global_context_split_gated_gqa6_"
                         f"dim{self.global_split_gqa6_ctx4096_dim_tile}_"
-                        "vstage64_ctx4096_compensated_spans"
+                        f"vstage64_ctx4096_{'tokenloop4_' if self.global_split_gqa6_ctx4096_tokenloop4 else ''}"
+                        "compensated_spans"
                     )
                     if (
                         use_gated
@@ -838,7 +848,7 @@ class LagunaKVCache:
                     else (
                         "global_context_split_gated_gqa6_"
                         f"dim{self.global_split_gqa6_ctx4096_dim_tile}_"
-                        "vstage64_ctx4096_spans"
+                        f"vstage64_ctx4096{'_tokenloop4' if self.global_split_gqa6_ctx4096_tokenloop4 else ''}_spans"
                     )
                     if (
                         use_gated

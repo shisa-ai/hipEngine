@@ -391,6 +391,10 @@ LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE = 98_304
 # D64 is byte-identical to D32 and reduces the active long-context leaf by
 # 17.3%/10.7%/10.9% at 16K/64K/128K on gfx1151.
 LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE = 64
+# The quality-scoped D64 context-split owners reuse the same exact score plane
+# as the V80 path. Four-token ownership cuts their score grid by 4x while the
+# admitted partial-PV/merge arithmetic remains unchanged.
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4 = True
 # The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
 # removes the score plane/launch while preserving reduction association.
 LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
@@ -999,6 +1003,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",

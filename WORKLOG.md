@@ -197805,3 +197805,36 @@ Vulkan local sizes verbatim will close the measured gap.
   writes a repair mask, but production does not dispatch the scalar repair
   kernel. The retained >=98,304-live approximation remains limited to layers
   28/32/36/40/44; V80 accelerates the seven earlier exact global layers.
+
+## 2026-08-02 20:01 JST — Retain ctx4096 GQA6 token-loop4 score ownership
+
+- Reused the retained exact token-loop4 GQA6 score producer inside both the
+  ordinary and compensated D64/V64 ctx4096 leaves. One local32 wave now keeps
+  all six queries resident across four KV tokens; normalization, partial PV,
+  ordinary/Kahan merge, gate, and BF16 store remain unchanged.
+- Final ordinary leaves at live4K/16K/64K/128K improve
+  **0.341130/0.816171/3.547299/6.940900 ->
+  0.327719/0.738694/3.219906/6.268094 ms
+  (-3.931%/-9.493%/-9.229%/-9.693%)**. Compensated leaves improve
+  **0.366452/0.842950/3.591359/6.976824 ->
+  0.350413/0.766675/3.269447/6.323521 ms
+  (-4.377%/-9.049%/-8.964%/-9.364%)**. F32 context and BF16 gated output are
+  byte-exact throughout. Raw SHA-256 values are
+  `73563b845ef71c60844d141f55066d35e0c169d221304c9f626dfb5cae95e065`
+  and `54045a0a968b56369b0531ac0fdb991c6015b8017832dcd0dd8b773aae22dc54`.
+- Cached `rocprofv3 --kernel-trace` names the token-loop4 score producer at
+  local32/VGPR40/LDS0/scratch0 and shows **4,097 -> 1,025** workgroups at
+  live4,097. D64 PV remains local512/VGPR32/LDS19,456/scratch0; merge is
+  local128/VGPR16/LDS0/scratch0. CSV SHA-256 is
+  `ca6719b12c3175a7c0735e5949ecf4e638eab7241ba133b2d29de710c92bee37`.
+- Mandatory d128K improves **8.437685 -> 8.688850 tok/s (+2.977%)** and
+  preserves **874 / c8307c... / position 131,198**. The route-inactive
+  512/1K/4K guard is noise-flat at **23.205556/23.060987/21.684575 tok/s**
+  with established hashes. Both runs recover all **87,407,934,744 bytes /
+  1,452 allocations**. Raw production SHA-256 values are
+  `f941ffe9af5278aae5bf5a100b4be69af9b395e8b9a326a0644a3c4054f59fa2`
+  and `abb80a59c4be4323a166add451bbe82f6528223409d00b592664a37f14d9e752`.
+- Focused large-capacity byte-exact, selector/resource-route, and gfx1151
+  backend tests pass **3/3**. Production still does not dispatch the dormant
+  scalar repair kernel. The next bounded seam is exact deferred normalization
+  inside ctx4096, followed by a fresh component trace of partial PV and merge.
