@@ -10455,6 +10455,32 @@ The remaining attention sequence is:
      wrapper/registry/harness surface is removed:
      [`dense V128 prefetch16 production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json).
 
+242. Publish exact per-head maxima from a wider score owner and remove the
+     denominator's max traversal. **Rejected at every depth and fully removed;
+     LC-D3 twenty-fourth screen.**
+
+     A tokenloop128 diagnostic keeps the established GQA6 QK products,
+     wave32 reduction, scaling, scratch placement, exp32 denominator sum,
+     chronological D32/V128 PV, gate, and BF16 rounding byte-exact. Each score
+     owner reduces its 128 tokens to six local maxima and atomically publishes
+     them after a 48-float reset, allowing the denominator to skip only its max
+     scan. The resulting leaf is exact but slower everywhere:
+
+     | Exact leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Retained tokenloop4 | 0.164539 ms | 0.571833 ms | 2.209106 ms | 4.302394 ms |
+     | Tokenloop128 producer-max | 0.241854 ms | 0.635232 ms | 2.438897 ms | 4.644117 ms |
+     | Delta | **+46.989%** | **+11.087%** | **+10.402%** | **+7.943%** |
+
+     This directly closes the review's proposed producer-atomic shortcut. The
+     complete retained denominator was only **0.518 ms/layer** at 128K, and
+     its max traversal is only part of that cost; reset/atomic overhead plus
+     the loss of score-grid parallelism overwhelms the saved read. The public
+     HIP symbol, Python wrapper/registry, harness route, and RED/GREEN test call
+     are removed, production remains at item 241, and no long production run
+     is justified:
+     [`tokenloop128 producer-max rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-tokenloop128-producermax-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10473,7 +10499,7 @@ allocation teardown remain mandatory at every retained step.
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
 3. **LC-D3 — replace the full score-plane/reducer path. Twenty-three milestones
-   retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
+   retained plus one structural rejection; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
    4K/16K/64K/128K another **0.036%/1.078%/1.490%/2.190%**, all byte-exact.
@@ -10557,7 +10583,10 @@ allocation teardown remain mandatory at every retained step.
    exact V128 over V80/V160, cutting the leaf **2.148-2.366%** and improving
    complete 16K/64K/128K another **0.502%/1.206%/1.082%** to
    **92.669%/81.207%/77.919%** Vulkan parity. Local stage/prefetch depth is now
-   screened and closed. Next replace the remaining
+   screened and closed. A byte-exact tokenloop128 score producer that publishes
+   per-head atomic maxima is also closed after regressing every leaf
+   **7.943-46.989%**: the denominator max traversal is too small to repay its
+   reset/atomic cost and lost score parallelism. Next replace the remaining
    score/denominator/PV ownership structurally or increase value-stream
    concurrency; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
