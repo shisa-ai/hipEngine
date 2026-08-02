@@ -1460,8 +1460,17 @@ void laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel(
                          key_position <= query_position;
     int64_t physical_slot = -1;
     if (visible) {
+      // Every wrapper that launches this specialization rejects block sizes
+      // other than 256. Keep that invariant visible to device code so LLVM
+      // does not emit a general 64-bit divide/remainder sequence once for
+      // each unrolled token.
+      constexpr int64_t kBlockShift = 8;
+      constexpr int64_t kBlockMask = (1 << kBlockShift) - 1;
+      const int64_t logical_block = logical_slot >> kBlockShift;
+      const int64_t block_offset = logical_slot & kBlockMask;
       physical_slot =
-          laguna_global_physical_slot(base_offsets, logical_slot, block_size);
+          (static_cast<int64_t>(base_offsets[logical_block]) << kBlockShift) +
+          block_offset;
     }
 
     float key_values[4] = {};

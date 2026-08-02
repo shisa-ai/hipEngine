@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_tokenloop4_fixed256_decode",
+  "created_at": "2026-08-02T21:06:14+09:00",
+  "status": "retained",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "gguf_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "change": {
+    "description": "Specialize the token-loop4 score producer's logical-to-physical KV mapping for the wrapper-enforced 256-token block size, replacing four unrolled runtime 64-bit divide/remainder sequences with shift/mask arithmetic.",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "kernel_isa_bytes_before": 9304,
+    "kernel_isa_bytes_after": 6404,
+    "kernel_isa_delta_percent": -31.169
+  },
+  "leaf": {
+    "shape": "48Q/8KV/D128, BF16 KV, capacity 131328",
+    "live_counts": [4097, 16448, 65664, 131200],
+    "ordinary_before_ms": [0.284682, 0.560716, 2.252598, 4.278564],
+    "ordinary_after_ms": [0.280991, 0.544838, 2.198931, 4.185275],
+    "ordinary_delta_percent": [-1.296, -2.832, -2.382, -2.180],
+    "compensated_before_ms": [0.307998, 0.574117, 2.289356, 4.331359],
+    "compensated_after_ms": [0.304355, 0.560063, 2.242701, 4.244546],
+    "compensated_delta_percent": [-1.183, -2.448, -2.038, -2.004],
+    "f32_context_byte_exact": true,
+    "bf16_gated_byte_exact": true,
+    "ordinary_raw_sha256": "3118c16840b2385b2efaf6827df4136f17f3cef83518c136a9d21a79ce704337",
+    "compensated_raw_sha256": "66e374567b35bab92211fc3c2451576a86aaab4c013b79f68cc8eb19ed40373a"
+  },
+  "trace": {
+    "kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel",
+    "workgroup_size": 32,
+    "vgpr_count": 40,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "score_median_us_by_live_count": [39.875, 199.534, 767.340, 1517.969],
+    "csv_sha256": "1d95c07ef00b4cd4bd38b0c2707915d692ab9bc3bb8839348c73014e03a459fd"
+  },
+  "production": {
+    "lengths": [512, 1024, 4096, 131072],
+    "before_tok_s": [23.201880, 23.065973, 21.682607, 9.505380],
+    "after_tok_s": [23.201166, 23.052773, 21.680855, 9.595115],
+    "delta_percent": [-0.003, -0.057, -0.008, 0.944],
+    "vulkan_tok_s": [23.386100, 23.366122, 23.037017, 14.237076],
+    "vulkan_parity_percent": [99.209, 98.659, 94.113, 67.395],
+    "decode_128k_seconds_before": 13.360855,
+    "decode_128k_seconds_after": 13.235901,
+    "decode_128k_wall_delta_percent": -0.935,
+    "final_token_ids": [74825, 6273, 6436, 874],
+    "generated_ids_sha256": [
+      "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+      "18974f08ba7986767262103cb4c200ad36d3e8f675aad526887fad745bdc488c",
+      "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31",
+      "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+    ],
+    "final_positions": [638, 1150, 4222, 131198],
+    "lifecycle": {
+      "allocated_bytes": 87407934744,
+      "freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "short_raw_sha256": "64c106ee8cb1467331de2a264f74b40e4b10276a84dec24ac0d514a9ce94c619",
+    "128k_raw_sha256": "b245fcfcde161ef1ddb9bb1a2fe71f09c59dca72ddf73a23e19e34e9cd5d215b"
+  },
+  "protocol": {
+    "leaf_ordinary": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 9 --warmups 5 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "leaf_compensated": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 9 --warmups 5 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_short": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_128k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty"
+  },
+  "decision": "Retain the fixed-256 mapping inside the already-qualified token-loop4 score producer. The wrapper rejects all other block sizes; peer/general kernels retain runtime mapping. Short decode is exact and noise-flat, while mandatory 128K improves 0.944%."
+}
