@@ -9765,6 +9765,11 @@ The remaining attention sequence is:
      preserves short and deep behavior:
      [`depth-crossover production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json).
 
+     At committed revision `e17762e21`, the tracked-clean d16K confirmation is
+     **18.945635 tok/s**, **+0.078%** over the prior production anchor and
+     within **-0.107%** of the dirty directional row. Token/hash/position and
+     complete teardown remain exact.
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

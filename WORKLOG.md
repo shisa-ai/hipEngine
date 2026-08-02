@@ -197719,3 +197719,7 @@ Vulkan local sizes verbatim will close the measured gap.
   **23.205876/23.067535/21.684921 tok/s**, within
   **-0.064%/-0.003%/+0.097%** of quiet anchors with all hashes and teardown.
   Focused backend/selector coverage passes **24 tests**.
+- At committed `e17762e21`, tracked-clean d16K confirms
+  **18.945635 tok/s**, **+0.078%** over the prior production anchor and within
+  **-0.107%** of the dirty directional row. Final token/hash/position remain
+  **13,815 / b10569... / 16,510** and all allocations recover.
