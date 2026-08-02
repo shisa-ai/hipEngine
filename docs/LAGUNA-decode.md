@@ -10411,6 +10411,50 @@ The remaining attention sequence is:
      the prefetch suffix and selects the metadata-aware temporal fallback:
      [`ctx4096 operand-prefetch production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json).
 
+241. Re-open exact PV stage width under the retained non-temporal/prefetch16
+     regime. **V128 retained; V160 rejected and removed; LC-D3 twenty-third
+     checkpoint.**
+
+     The earlier V128 screen predated dense identity, non-temporal K/V, and
+     sixteen-operand overlap. Under the current latency regime, V128 still fits
+     two local512 workgroups inside the LDS budget while reducing exact-PV
+     stage/barrier rounds by 37.5% versus V80. V160 halves the rounds versus
+     V80 but spends enough extra LDS/loader work that its gain disappears at
+     long depth.
+
+     | Exact leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Retained V80 p16 | 0.153023 ms | 0.579646 ms | 2.232006 ms | 4.415272 ms |
+     | V128 p16 | **0.149737 ms** | **0.565933 ms** | **2.182268 ms** | **4.313096 ms** |
+     | V128 delta | **-2.148%** | **-2.366%** | **-2.228%** | **-2.314%** |
+     | V160 delta | -2.847% | -0.995% | -0.436% | -0.291% |
+
+     F32 context and gated BF16 are byte-exact at all four shapes. Cached
+     tracing names the selected PV `<128,true,true,16>` at
+     local512/VGPR56/SGPR128/LDS22,528/scratch0 and changes its 128K median
+     **2,606.169 -> 2,527.341 us**. The same trace measures score/complete
+     denominator at **1,261.647/517.511 us**, bounding a proposed producer-max
+     optimization well below the stale multi-millisecond estimate before its
+     own synchronization/atomic cost.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.211299 | 23.201460 tok/s | -0.042% (inactive/noise) | 23.386100 | 99.210% |
+     | 1K | 23.064718 | 23.046564 tok/s | -0.079% (inactive/noise) | 23.366122 | 98.632% |
+     | 4K | 21.672613 | 21.673361 tok/s | +0.003% (inactive) | 23.037017 | 94.081% |
+     | 16K | 20.034959 | **20.135472 tok/s** | **+0.502%** | 21.728347 | **92.669%** |
+     | 64K | 14.232457 | **14.404054 tok/s** | **+1.206%** | 17.737473 | **81.207%** |
+     | 128K | 10.974722 | **11.093431 tok/s** | **+1.082%** | 14.237076 | **77.919%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **11.572047 -> 11.448216 s (-1.070%)**, leaving about
+     **19.904 ms/token** to same-GGUF Vulkan. Every established token, hash,
+     and position is unchanged, and all three processes recover all
+     **87,407,934,744 bytes / 1,452 allocations**. Dense-initial gfx1151 uses
+     V128; explicit eviction and peer backends retain V80. V160's public
+     wrapper/registry/harness surface is removed:
+     [`dense V128 prefetch16 production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10428,7 +10472,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twenty-two milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty-three milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10461,8 +10505,8 @@ allocation teardown remain mandatory at every retained step.
    **1.653%/4.698%/4.111%**. The resulting profile assigns **61-63%** of the
    exact leaf to PV. Widening only its staged tile from V64 to V80 improves the
    exact leaf another **0.42-7.49%** and complete 16K/64K/128K another
-   **1.155%/3.195%/2.212%** with noise-flat 512/1K/4K. V92/V96/V128 are
-   closed. The five quality-scoped ctx4096 layers now reuse token-loop4 score
+   **1.155%/3.195%/2.212%** with noise-flat 512/1K/4K. V92/V96 were closed in
+   that older latency regime. The five quality-scoped ctx4096 layers now reuse token-loop4 score
    ownership too, improving their ordinary/compensated leaves **3.93-9.69%**
    and complete 128K another **2.977%** with exact recurrent state and
    noise-flat 512/1K/4K. Reusing the parallel exact-max denominator and
@@ -10508,8 +10552,12 @@ allocation teardown remain mandatory at every retained step.
    Finally, overlapping four chronological operands in ordinary ctx4096 PV
    and sixteen in compensated PV cuts those 128K leaves another
    **4.536%/9.360%** and improves complete 128K another **1.249%** to
-   **77.086%** Vulkan parity, with the full 512-64K guard noise-flat. Local
-   prefetch depth is now screened and closed. Next replace the remaining
+   **77.086%** Vulkan parity, with the full 512-64K guard noise-flat. Reopening
+   stage width under the resulting non-temporal/prefetch16 regime then selects
+   exact V128 over V80/V160, cutting the leaf **2.148-2.366%** and improving
+   complete 16K/64K/128K another **0.502%/1.206%/1.082%** to
+   **92.669%/81.207%/77.919%** Vulkan parity. Local stage/prefetch depth is now
+   screened and closed. Next replace the remaining
    score/denominator/PV ownership structurally or increase value-stream
    concurrency; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step

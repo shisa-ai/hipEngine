@@ -75,20 +75,20 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
-The current long-decode checkpoint extends dense-initial KV identity through
-the exact token-loop4 D32/V80 owner, uses non-temporal aligned BF16 K/V loads,
-and prefetches sixteen chronological probability/V operand pairs per output
-wave. The five quality-scoped ctx4096 owners now overlap their own partial-PV
-loads too: ordinary layers 32/36/40/44 use ordered prefetch4, while compensated
-layer 28 uses prefetch16. Their formal 128K leaves fall another
-**4.536%/9.360%**, F32/BF16 output remains byte-exact, and complete 128K
-advances **10.839382 -> 10.974722 tok/s (+1.249%)**, reaching **77.086%** of
-same-GGUF Vulkan. The inactive 4K/16K/64K guards change only
-**-0.037%/-0.035%/-0.038%** at **21.673/20.035/14.232 tok/s**; 512/1K are
-also noise-flat at **23.211/23.065 tok/s**. Explicit eviction still selects
-metadata-aware temporal owners. The ctx4096 merge's repair mask remains
-diagnostic only; production does not launch scalar repair, and the earlier
-grouped repair screen was slower than the exact owner.
+The current long-decode checkpoint widens the dense-initial exact token-loop4
+owner from D32/V80 to D32/V128 while retaining non-temporal aligned BF16 K/V
+and sixteen chronological probability/V operands in flight. V128 reduces
+stage/barrier rounds by 37.5%, stays at local512/VGPR56/LDS22,528/scratch0,
+and improves the exact leaf **2.148-2.366%** across live4K/16K/64K/128K; V160
+falls to **0.291%** at 128K and is removed. Complete 16K/64K/128K advances
+**20.034959/14.232457/10.974722 -> 20.135472/14.404054/11.093431 tok/s
+(+0.502%/+1.206%/+1.082%)**, reaching **92.669%/81.207%/77.919%** of
+same-GGUF Vulkan. The 512/1K/4K guard is noise-flat at
+**23.201/23.047/21.673 tok/s**, every generated hash is unchanged, and explicit
+eviction still selects metadata-aware temporal V80. The five quality-scoped
+ctx4096 owners remain ordinary prefetch4 at layers 32/36/40/44 and compensated
+prefetch16 at layer 28; their repair mask is diagnostic only.
+[`dense V128 prefetch16 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json),
 [`ctx4096 operand-prefetch production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json),
 [`ctx4096 non-temporal K+V production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json),
 [`dense V80 prefetch16 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json),
