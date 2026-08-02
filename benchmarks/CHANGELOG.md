@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna token-loop8 exact score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: extending the retained one-wave score loop from four to eight tokens regresses token-loop4 **2.043%/0.242%/0.328%** at 4K/16K/128K and is only noise-positive **0.057%** at 64K, so restore four-token ownership without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop8-rejected.json`.
+
 - [accepted byte-exact gfx1151 Laguna token-loop4 exact score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: keep six GQA queries resident while one local32 wave scores four KV tokens, cutting exact leaves **8.55-9.53%** and d16K/d64K/d128K **18.946/11.892/7.929 -> 19.259/12.450/8.255 tok/s (+1.653%/+4.698%/+4.111%)** with noise-flat 512/1K/4K, exact mandatory trajectory, and full lifecycle recovery; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-retained.json`.
 
 - [accepted gfx1151 Laguna long-global depth crossover] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: move ctx4096 activation from live **6,001 -> 98,304**, so ordered-prefetch4 exact improves d16K/d64K **18.931/11.868 -> 18.966/11.892 tok/s (+0.186%/+0.198%)** while the unchanged deep route passes mandatory 128K and 512/1K/4K show no regression; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json`.

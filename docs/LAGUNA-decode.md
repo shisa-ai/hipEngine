@@ -9810,6 +9810,16 @@ The remaining attention sequence is:
      only the exact global layers:
      [`token-loop4 exact score production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-retained.json).
 
+224. Extend exact single-wave score ownership from four to eight KV tokens.
+     **Rejected on mixed leaf direction and removed.**
+
+     Token-loop8 remains F32/BF16 byte-exact but changes latency versus the
+     retained token-loop4 owner by **+2.043%/+0.242%/-0.057%/+0.328%** at
+     live4K/16K/64K/128K. The additional query-load amortization cannot repay
+     the longer dependency chain and reduced wave parallelism. Restore the
+     four-token owner and skip production timing:
+     [`token-loop8 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop8-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

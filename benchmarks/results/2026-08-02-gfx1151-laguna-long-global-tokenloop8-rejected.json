@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_tokenloop8_rejection",
+  "created_at": "2026-08-02T18:50:57+09:00",
+  "status": "rejected",
+  "performance_claim": false,
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "model_shape": {
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "capacity": 131328
+  },
+  "change": "temporarily extend the retained exact single-wave token loop from four to eight KV tokens",
+  "rows": [
+    {"live": 4097, "tokenloop4_ms": 0.169846594, "tokenloop8_ms": 0.173317194, "delta_percent": 2.043373, "context_f32_byte_exact": true, "gated_bf16_byte_exact": true},
+    {"live": 16448, "tokenloop4_ms": 0.738180685, "tokenloop8_ms": 0.739964199, "delta_percent": 0.241609, "context_f32_byte_exact": true, "gated_bf16_byte_exact": true},
+    {"live": 65664, "tokenloop4_ms": 3.090991974, "tokenloop8_ms": 3.089235687, "delta_percent": -0.056820, "context_f32_byte_exact": true, "gated_bf16_byte_exact": true},
+    {"live": 131200, "tokenloop4_ms": 6.229044342, "tokenloop8_ms": 6.249504852, "delta_percent": 0.328469, "context_f32_byte_exact": true, "gated_bf16_byte_exact": true}
+  ],
+  "decision": "restore tokenloop4; tokenloop8 regresses three of four natural depths, so skip production timing and mandatory 128K",
+  "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage64 --capacity 131328 --live-counts 4097,16448,65664,131200 --warmups 5 --samples 9 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-tokenloop8-screen.json",
+  "raw_sha256": "c66e29909efb1b405443d646984e54f1102db0d76722aa353d54a735ea6dde8a"
+}
