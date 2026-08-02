@@ -197769,3 +197769,39 @@ Vulkan local sizes verbatim will close the measured gap.
   noise-positive, so restored token-loop4 exactly and skipped production/128K
   timing. Raw SHA-256 is
   `c66e29909efb1b405443d646984e54f1102db0d76722aa353d54a735ea6dde8a`.
+
+## 2026-08-02 19:33 JST — Retain exact D32/V80 long-global PV
+
+- Post-token-loop4 cached tracing attributes **61-63%** of the exact global
+  leaf to PV at live4K/16K/64K/128K. Templated only the exact D32 staged-PV
+  tile, kept V64 as registered rollback, and enabled V80 only through a new
+  gfx1151 capability. Score, denominator, chronological F32 FMA, gate, and
+  BF16 store arithmetic are unchanged.
+- The final 5-warmup/9-sample/10-burst V80-vs-V64 leaf is F32/BF16 byte-exact
+  and improves **0.169318/0.736582/3.085750/6.229004 ->
+  0.168604/0.700515/2.864355/5.762437 ms
+  (-0.421%/-4.897%/-7.175%/-7.490%)**. V92/V96 lose to V80 at long depth;
+  prior V128 is also mixed, closing simple stage-size widening above 80. Raw
+  final-leaf SHA-256 is
+  `e0d5a79474c3f5e165f3f5d3f6f0f7e6d09d253a91b0208aa1c1482fc4c39ead`.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80>` at
+  local512/VGPR32/LDS14,336/scratch0. CSV SHA-256 is
+  `6cd0e7c295baa796c65abad9739402bdf9bd821d92484b2891ed2bf220308f14`.
+- Production 512/1K/4K is noise-flat and exact at
+  **23.212639/23.071784/21.678087 tok/s
+  (+0.009%/+0.094%/-0.009%)**. Complete d16K/d64K/d128K improves
+  **19.258829/12.450417/8.255068 ->
+  19.481236/12.848251/8.437685 tok/s
+  (+1.155%/+3.195%/+2.212%)**. All established hashes/positions match,
+  including mandatory 128K **874 / c8307c... / 131,198**, and every run frees
+  all **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256
+  values are
+  `d3e5941d7f7640ef8b446d761d72e0cc2f2b07afd64c398ea79b0a566664d0f9`,
+  `4f2786dd783453c824bbd6f7226b01033550b5a22f2a09e77594555940663307`,
+  and `2af2ab5be934401dc5417b56986c7b4d1e8044add7bf5b9830f8a90719839529`.
+- Focused large-capacity byte-exact, selector/resource-route, and gfx1151
+  backend tests pass **3/3**. The ctx4096 observation was re-audited: its merge
+  writes a repair mask, but production does not dispatch the scalar repair
+  kernel. The retained >=98,304-live approximation remains limited to layers
+  28/32/36/40/44; V80 accelerates the seven earlier exact global layers.

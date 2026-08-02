@@ -377,6 +377,10 @@ LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = True
 # KV tokens. The natural-depth leaf is byte-exact and 8.6-9.6% faster from
 # 4K through 128K on gfx1151.
 LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64 = True
+# V80 keeps the same chronological FMA chain while reducing exact-PV staging
+# barriers by 20%. It wins all four natural depths; V92/V96 lose at long
+# context, so the V64 specialization remains the explicit rollback.
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 = True
 # Ordered-prefetch4 moved the exact/context-PV crossover above 64K. Keep the
 # quality-scoped layer schedule only at the measured deep-context band; shorter
 # long contexts use exact deferred-normalization GQA6.
@@ -990,6 +994,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE",

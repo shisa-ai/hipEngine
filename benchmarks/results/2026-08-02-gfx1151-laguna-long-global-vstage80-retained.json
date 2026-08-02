@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_exact_pv_vstage80_retention",
+  "created_at": "2026-08-02T19:31:00+09:00",
+  "status": "accepted",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "change": "Template the exact token-loop4 D32 staged-PV owner and select V80 on gfx1151. V80 preserves the chronological F32 FMA chain while reducing PV stages and barriers by 20%; V64 remains registered rollback.",
+  "leaf": {
+    "shape": "48Q/8KV/D128, BF16 KV, capacity 131328",
+    "live_counts": [4097, 16448, 65664, 131200],
+    "vstage64_ms": [0.169318, 0.736582, 3.085750, 6.229004],
+    "vstage80_ms": [0.168604, 0.700515, 2.864355, 5.762437],
+    "delta_percent": [-0.421, -4.897, -7.175, -7.490],
+    "f32_context_byte_exact": true,
+    "bf16_gated_byte_exact": true,
+    "raw_sha256": "e0d5a79474c3f5e165f3f5d3f6f0f7e6d09d253a91b0208aa1c1482fc4c39ead"
+  },
+  "rejected_stage_screens": {
+    "vstage92_delta_vs_vstage80_percent": [-1.626, 0.477, 1.677, 1.851],
+    "vstage96_delta_vs_vstage80_percent": [-1.873, -0.826, 0.083, 0.253],
+    "decision": "V92 and V96 give back the long-context V80 gain; the previously rejected V128 also has mixed direction.",
+    "raw_sha256": {
+      "vstage80": "46c7757ea0843dbd3d85b15bf642ad6b56730a11e099da5712160b458a76f64b",
+      "vstage92": "c08da1df10a045f6fb43df7ce66b318970213b57cd262bb7b34d8d3d9cc70b2e",
+      "vstage96": "5db80f771c44bc077a2412c84b933470ca53f6a6317a8479bb9b040e3d9af40a"
+    }
+  },
+  "trace": {
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-vstage80-trace.pMhdTJ --output-file trace -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage80 --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-vstage80-trace.pMhdTJ/bench.json",
+    "kernel": "laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80>",
+    "local_size": 512,
+    "grid_size": 16384,
+    "vgpr": 32,
+    "lds_bytes": 14336,
+    "scratch_bytes": 0,
+    "csv_sha256": "6cd0e7c295baa796c65abad9739402bdf9bd821d92484b2891ed2bf220308f14"
+  },
+  "production": {
+    "workload": "same resident Q4_K_M model, capacity 131200, matrix chunk 2048, d128 eager c=1, one run/depth",
+    "depths": [512, 1024, 4096, 16384, 65536, 131072],
+    "vstage64_tok_s": [23.210538, 23.050173, 21.679950, 19.258829, 12.450417, 8.255068],
+    "vstage80_tok_s": [23.212639, 23.071784, 21.678087, 19.481236, 12.848251, 8.437685],
+    "delta_percent": [0.009, 0.094, -0.009, 1.155, 3.195, 2.212],
+    "llama_cpp_vulkan_tok_s": [23.386100, 23.366122, 23.037017, 21.728347, 17.737473, 14.237076],
+    "vulkan_parity_percent": [99.258, 98.740, 94.101, 89.658, 72.436, 59.266],
+    "generated_trajectory_hashes_match": true,
+    "mandatory_128k": {
+      "final_token": 874,
+      "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed",
+      "final_position": 131198
+    },
+    "lifecycle": {
+      "allocated_and_freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "commands": [
+      "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-vstage80-production-short.json",
+      "same command with --lengths 16384,65536 and --output /tmp/laguna-vstage80-production-midlong.json",
+      "same command with --lengths 131072 and --output /tmp/laguna-vstage80-production-128k.json"
+    ],
+    "raw_sha256": {
+      "short": "d3e5941d7f7640ef8b446d761d72e0cc2f2b07afd64c398ea79b0a566664d0f9",
+      "midlong": "4f2786dd783453c824bbd6f7226b01033550b5a22f2a09e77594555940663307",
+      "128k": "2af2ab5be934401dc5417b56986c7b4d1e8044add7bf5b9830f8a90719839529"
+    }
+  },
+  "correctness": {
+    "gate": "KL <= 0.05 and top-1 >= 90%; exact candidate has KL 0 and top-1 100% at the changed boundary",
+    "focused_tests": [
+      "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+      "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes",
+      "tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys"
+    ],
+    "result": "3 passed"
+  },
+  "repair_observation": {
+    "production_repair_kernel_dispatched": false,
+    "merge_writes_dormant_mask": true,
+    "note": "The retained >=98304-live ctx4096 route remains a five-layer quality-scoped approximation. Prior exact-repair screens touch 47/48 heads and all 32 D32 GQA tiles at 128K and are slower than the exact owner."
+  },
+  "decision": "Promote V80 only on gfx1151 exact token-loop4 branches; retain V64 rollback and leave the later five ctx4096 layers unchanged."
+}
