@@ -800,6 +800,16 @@ Production remains **431.310 tok/s / 1,172.241 ms**, **1.60161x** behind matched
 llama.cpp HIP, and no H7L implementation or speed result exists before RED
 ([post-H7K residual / H7L target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json)).
 
+**WPF-H7L is rejected at its frozen first-object physical gate.** The single
+repository object preserves H6T at **7,920 B / 1,384 slots / VGPR101 / spill0**,
+but the full-batch/live-tail sibling expands to **49,592 B / 9,082 slots /
+VGPR133 / 270 SGPR spills**. It therefore fails the declared **14,000-byte**,
+**2,400-slot**, **VGPR<=101**, and spill0 bounds before candidate correctness,
+named tracing, or timing. No rewrite/recompile or tail/layer subset is allowed;
+every H7L body/export/wrapper/key/RED/gfx1151 surface is removed. Production
+remains H7H/H7I **431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP
+([H7L physical rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
