@@ -888,6 +888,18 @@ favorable-rerun salvage is admissible. Production remains **431.310 tok/s /
 speed result exists before RED
 ([post-H7R residual / H7S target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
 
+**WPF-H7S is rejected and fully removed after the immutable all-role screen.**
+Its first object passes every frozen physical gate at **5,912/5,884 bytes**,
+**864/860 slots**, **VGPR112 / SGPR24 / LDS1,024**, spill/scratch0, with exact
+**4 b128 + 8 raw-Q6 loads, 64 FMAs, 64 permlanex16, and 256 DPP adds**.
+Complete bytes, CPU samples, rowbatch32 packs, poison, finiteness, lifecycle,
+and the compiler-free pack→consumer/no-producer trace all pass. Nevertheless,
+every role loses both clocks; the weighted H6U→H7S aggregate regresses
+**49.193→149.544 ms event (0.329x)** and **49.721→146.161 ms wall (0.340x)**.
+Remove all H7S code/keys/RED/exclusion surfaces, forbid role/geometry/rerun
+salvage, and retain production **431.310 tok/s**
+([H7S rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

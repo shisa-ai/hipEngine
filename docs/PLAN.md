@@ -2962,6 +2962,19 @@ clocks. Any miss removes H7S without role/geometry/prompt subset, tuning,
 recompile, or favorable rerun; runtime/source qualification is separate
 ([post-H7R residual / H7S target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
 
+Reject **WPF-H7S** under that immutable rule. The sole object passes every
+physical bound at **5,912/5,884 B**, **864/860 slots**, and **VGPR112 / SGPR24 /
+LDS1,024 / spill/scratch0**, with the exact four-b128/eight-Q6-load/64-FMA/
+64-permlanex/256-DPP instruction form. Complete all-role correctness is **8/8**
+and the compiler-free named trace has only pack→consumer pairs. Yet every role
+loses both clocks: **0.290/0.320**, **0.402/0.411**, and **0.293/0.304**
+event/wall. The 142-call aggregate moves H6U→H7S **49.193→149.544 ms event
+(0.329x)** and **49.721→146.161 ms wall (0.340x)**. Delete all candidate and RED
+surfaces, skip runtime/source qualification, retain H6U and **431.310 tok/s**,
+and forbid role/geometry/recompile/rerun salvage. Rerank outside direct raw-Q6
+ordered-consumer shapes and IQ residual repair
+([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
