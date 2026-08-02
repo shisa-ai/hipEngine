@@ -248,6 +248,14 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value = bool(
+            self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_key_value
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE",
+                False,
+            )
+        )
         ctx4096_min_layer = backend_package_capability(
             backend,
             "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
@@ -914,20 +922,26 @@ class LagunaKVCache:
                         "global_context_split_exact_gated_gqa6_"
                         "tokenloop4_deferrednorm_dim32_vstage80"
                         + (
-                            "_dense_prefix"
-                            + (
-                                (
-                                    "_nontemporal_key_value"
-                                    if self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_key_value
-                                    else "_nontemporal"
+                            (
+                                "_prefetch8_dense_prefix_nontemporal_key_value"
+                                if self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value
+                                else (
+                                    "_dense_prefix"
+                                    + (
+                                        (
+                                            "_nontemporal_key_value"
+                                            if self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_key_value
+                                            else "_nontemporal"
+                                        )
+                                        if (
+                                            self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live
+                                            is not None
+                                            and live_count
+                                            >= self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live
+                                        )
+                                        else ""
+                                    )
                                 )
-                                if (
-                                    self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live
-                                    is not None
-                                    and live_count
-                                    >= self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live
-                                )
-                                else ""
                             )
                             if self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix
                             and self._dense_initial_metadata_valid

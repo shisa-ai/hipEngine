@@ -76,17 +76,18 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
 The current long-decode checkpoint extends dense-initial KV identity through
-the exact token-loop4 D32/V80 owner and, from **65,536 live tokens**, marks
-both its aligned 8-byte BF16 K lane loads and 16-byte BF16 V loads
-non-temporal. The threshold leaves the temporal owner at 16K and below;
-explicit eviction still selects the metadata-aware temporal fallback. The
-incremental K-bypass leaf is **3.263%/3.578%** faster at live64K/128K and
-F32/BF16 byte-exact. Complete 64K/128K decode advances
-**13.673356/10.315773 -> 13.849289/10.446265 tok/s
-(+1.287%/+1.265%)**, reaching **78.079%/73.374%** of same-GGUF Vulkan.
-The unchanged temporal 512/1K/4K/16K routes remain exact and noise-flat at
-**23.198/23.045/21.672/19.783 tok/s**. The ctx4096 merge's repair mask remains
-diagnostic only; production does not launch scalar repair.
+the exact token-loop4 D32/V80 owner, uses non-temporal aligned BF16 K/V loads,
+and prefetches eight chronological probability/V operand pairs per output
+wave. Prefetch8 is **6.836-6.939%** faster than the retained prefetch4 leaf at
+live4K-128K and F32/BF16 byte-exact. Complete 16K/64K/128K decode advances
+**19.782509/13.849289/10.446265 ->
+19.991285/14.170088/10.673232 tok/s
+(+1.055%/+2.316%/+2.173%)**, reaching
+**92.006%/79.888%/74.968%** of same-GGUF Vulkan. Short fused routes remain
+exact and noise-flat at **23.210/23.057/21.652 tok/s**; explicit eviction
+still selects metadata-aware temporal V80. The ctx4096 merge's repair mask
+remains diagnostic only; production does not launch scalar repair.
+[`dense V80 prefetch8 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json),
 [`dense V80 non-temporal K+V production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json),
 [`dense V80 non-temporal production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json),
 [`dense V80 identity production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json),
