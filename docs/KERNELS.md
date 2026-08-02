@@ -2216,6 +2216,25 @@ local-size retune, rewrite, recompile, or favorable rerun is allowed. Production
 remains **431.310 tok/s** and no W7900 candidate result exists
 ([H7U target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
 
+The unchanged registered H7U sibling now passes gfx1100 standalone admission.
+One bounded package-only `LAGUNA_MOE_GROUP_COMPACT_H7U_MODE="parallel"`
+capability turns RED **2/7** into GREEN **9/9** without changing HIP, wrappers,
+registry keys, allocation, or workspace; `LAGUNA_MOE_GROUP_COMPACT_MODE`
+remains absent so production resolves serial. The cached gfx1100 object reports
+count/prefix/scatter code **988/2,104/1,796 B**, metadata VGPR **10/17/31**,
+SGPR **18/18/42**, local256/wave32, LDS **2,048/2,120/80 B**, and zero private,
+spill, dynamic stack, or scratch instruction.
+
+Natural M512 proves exact all-47 metadata and packed-hidden bytes plus complete
+48-boundary/logit/KV/span state. Selected-region runtime tracing reports
+**0.304/0.176/0.673 ms** for 47 count/prefix/scatter calls (**1.153 ms total**),
+zero serial, unchanged **47 / 7.865-ms** gather, and **2,286 application
+dispatches** on one queue/stream. The immutable all-layer 5/15/5 screen wins
+**47/47** both-clock and moves aggregate event/wall **20.508/20.701 →
+1.297/1.445 ms (15.813x/14.331x)**. Keep this capability default-off until
+separate runtime/source gates qualify fixed and 512/1K/4K requests
+([H7U candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

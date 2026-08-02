@@ -1645,6 +1645,27 @@ admissible. Production remains **431.310 tok/s / 1,172.241 ms**; no gfx1100
 candidate has run
 ([H7U target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
 
+H7U now retains one **bounded default-off** gfx1100 package capability selecting
+that unchanged wrapper; source-default production remains serial. GREEN is
+**9/9**. The binding natural M512 pass captures and independently checks all
+**47** real selected-expert/weight records against stable CPU order, all 47
+packed-hidden gathers, every **48/48** hidden boundary, logits, K/V and
+`KVLiveSpans`, token **2930**, repeat state, and teardown. The first cached
+object passes all three local256/wave32 physical gates with metadata VGPR
+**10/17/31**, private/spill/scratch0.
+
+The corrected selected-region trace contains **2,291** runtime rows: five HIP
+copy rows plus exactly **2,286 application dispatches**. It names 47 contiguous
+count→prefix→scatter triples, zero serial compactor, unchanged 47 gather, one
+queue/stream, and zero compiler; the three stages total **1.153047 ms** while
+gather remains **7.864903 ms**. The first-and-only actual-routing 5/15/5 screen
+wins every layer on both clocks. Weighted event/wall changes
+**20.507806/20.701365 → 1.296858/1.444509 ms**, or **15.813x/14.331x**, with
+minimum layer speedups **14.012x/12.690x**. This qualifies the standalone leaf,
+not runtime/source ownership. Preserve serial rollback and run separate fixed
+C4096/M512 plus clean 512/1K/4K gates before promotion
+([H7U candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

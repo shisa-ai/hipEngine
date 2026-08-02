@@ -932,6 +932,24 @@ inseparable all-47-layer both-clock gate without layer/expert/length/rerun
 salvage
 ([H7U target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
 
+**WPF-H7U is now admitted as a bounded default-off gfx1100 capability; the
+production source remains serial.** The one package-only constant exposes the
+unchanged registered sibling. GREEN is **9/9**; all **47** natural M512
+metadata records, **47** packed-hidden gathers, **48/48** hidden boundaries,
+logits, KV/`KVLiveSpans`, token **2930**, repeat, and lifecycle are exact.
+Physical inspection shows local256/wave32 count/prefix/scatter at metadata
+VGPR **10/17/31**, private/spill/scratch0. Named tracing records exact
+**47+47+47**, zero serial, unchanged 47 gather, and **2,286 application
+dispatches** on one queue/stream.
+
+The first immutable all-layer 5/15/5 screen wins **47/47** on both clocks:
+serial→parallel aggregate is **20.508→1.297 ms event (15.813x)** and
+**20.701→1.445 ms synchronized wall (14.331x)**; minimum layer speedups are
+**14.012x/12.690x**. This is standalone leaf evidence only. Production remains
+**431.310 tok/s / 1,172.241 ms / 2,192 dispatches** until separate bounded
+runtime and clean source-default gates pass
+([H7U candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
