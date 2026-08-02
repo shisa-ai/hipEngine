@@ -867,6 +867,27 @@ sidecar, queue, repair kernel, RED, runtime, or source owner; rerank outside IQ3
 residual repair and retain **431.310 tok/s**
 ([H7Q/H7R rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
 
+The post-H7R rerank selects target-only **WPF-H7S exact raw-Q6 c2r32 packed-
+activation cross-row reuse**. Current H6U executes **142** exact activation-pack
++ Q6-to-F32 producer + ordered-consumer triples at weighted event/wall
+**48.267/48.520 ms**. H7S keeps the pack ABI but uses rowbatch32 and a raw-Q6
+c2r32 consumer, reducing each 64-accumulator K step from H7N's **16 decodes / 68
+load sites** to **2 decodes / 8 Q6-field + 4 aligned b128 activation loads**.
+The static model removes **142 producer launches/request** (**2,192 -> 2,050**
+dispatches if ultimately selected) and models **0.937x** current input bytes;
+these are source-level rationale, not a physical or speed claim.
+
+Freeze all three 2/46/94-call roles together, exact M512 bytes/CPU/pack/poison/
+finite/lifecycle and rows511/513 fail-closed behavior, unchanged H6U fallback/
+workspace/maps/gfx1151, first-object vector-load/opcode/VGPR/LDS/spill bounds,
+and named cache-only pack+consumer execution. One immutable actual-weight 5/15/5
+screen must improve every role and the weighted aggregate on HIP-event and
+synchronized-wall clocks. No role, geometry, prompt, tuning, recompilation, or
+favorable-rerun salvage is admissible. Production remains **431.310 tok/s /
+1,172.241 ms**, **1.60161x** behind matched llama.cpp HIP, and no H7S code or
+speed result exists before RED
+([post-H7R residual / H7S target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

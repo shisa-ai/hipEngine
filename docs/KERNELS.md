@@ -2118,6 +2118,42 @@ sidecar, guard, queue, sparse-exact leaf, key, runtime, or source owner; retain
 H6T at **431.310 tok/s** and do not implement H7Q/H7R
 ([H7Q/H7R rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
 
+Post-H7R, select target-only **WPF-H7S exact raw-Q6 c2r32 packed-activation
+cross-row reuse**. This is not H7N's one-launch row-major c16r4 route or H7O's
+constant-32 H7I geometry crossover. It targets the separate **142-call** H6U
+family currently composed as tile-K-row activation pack + exact Q6-to-F32
+producer + ordered DPP consumer, weighted at **48.267/48.520 ms** event/wall.
+H7S keeps the existing caller-owned activation plane and H6U fallback, packs
+strict M512 into sixteen rowbatch32 groups, then lets each local128 workgroup
+decode two raw-Q6 columns and apply them to 32 aligned BF16 rows.
+
+Every output retains `k = tid + 128n`, the exact signed `scale*quant` conversion,
+ordered FMA sequence, H6U permlanex16+DPP 16/8/4/2/1 tree, wave publication,
+serial wave0..3 sum, and BF16/F32 store. The 64-accumulator source model changes
+H7N's **16 Q6 decodes + 4 scalar activation loads = 68 global-load sites** to
+**2 decodes / 8 Q6-field sites + four b128 activation records = 12 sites**.
+Across the 2/46/94 production roles, logical input bytes model **0.937x** the
+current three-launch chain but **3.107x** H7N; H7N's 4–5x loss despite its lower
+byte model is why decode/load instruction count, not minimum bytes, selects
+c2r32. Removing only the producer models **142 fewer dispatches/request** and
+**2,192 -> 2,050** total. None of these source models is a physical or speed
+claim.
+
+Freeze RED before implementation for all three strict M512 roles together,
+complete primitive/composite H6U and sampled CPU bytes, exact rowbatch32 pack,
+poison/finite/lifecycle, rows511/513 and wrong-shape rejection, registry/source
+isolation, unchanged workspace/maps, and gfx1151 absence. The first object must
+show local128/wave32, LDS1,024, private/spill/scratch0, one barrier, 64 ordered
+FMAs, 64 permlanex16, 256 DPP adds, four activation `global_load_b128` sites,
+eight raw-Q6 field loads, code <=14,000 B, slots <=2,400, VGPR <=136, and SGPR
+<=96. Named cache-only tracing must show exactly pack then H7S consumer with no
+Q6-to-F32 producer and zero compiler. Then one immutable actual-weight 5-warmup/
+15-counter-rotated/5-launch screen must improve every role and the weighted
+142-call aggregate on event and wall. Any miss removes all H7S surfaces; no
+role/c4r16/c8r8/prompt subset, tuning, recompile, or favorable rerun is allowed.
+Runtime/source qualification remains separate
+([post-H7R residual / H7S target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

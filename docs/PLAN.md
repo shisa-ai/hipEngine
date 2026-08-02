@@ -2928,6 +2928,40 @@ deleted and **0.610x** under the declared read ceiling. Add no repair surface,
 retain **431.310 tok/s**, and rerank outside IQ3 residual repair
 ([H7Q/H7R rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
 
+Select target-only **WPF-H7S exact raw-Q6 c2r32 packed-activation cross-row
+reuse** after reranking outside IQ3 repair. Production remains **431.310 tok/s /
+1,172.241 ms**, with Q5/IQ-down/attention/Q6 gaps **176.885/118.449/93.805/
+59.742 ms**. The H6U portion of Q6 consists of **142** activation-pack + exact
+Q6-to-F32 producer + ordered-consumer triples at weighted event/wall
+**48.267/48.520 ms**. H7N proved one-launch row-major c16r4 direct decode is
+byte-exact but 4–5x slower; H7O adjudicated only the separate H7I constant-32
+roles. H7S therefore introduces cross-row decode reuse rather than reopening
+either target.
+
+Keep H6U's tile-K-row activation ABI and exact fallback. Pack strict M512 into
+rowbatch32, assign two raw-Q6 columns per local128 workgroup, and apply each
+decoded pair to 32 packed BF16 rows. Preserve every output's thread-local
+`k=tid+128n` FMA order, signed `scale*quant` conversion, H6U
+permlanex16+DPP tree, serial wave sum, and output store. At fixed 64
+accumulators, the source model reduces H7N from **16 column decodes / 68 load
+sites** to **2 decodes / 12 sites** (eight Q6 fields plus four b128 activation
+records), while removing only the F32 producer launch. This models **142 fewer
+request dispatches (2,192 -> 2,050)** and **0.937x** current logical input bytes;
+it is not physical ISA, traffic, or timing evidence.
+
+Freeze all three 2/46/94-call M512 roles together. RED must establish complete
+primitive/composite H6U and sampled CPU bytes, exact pack layout, poison/
+finite/lifecycle, strict fail-closed shape handling, unchanged workspace/maps,
+and gfx1151 absence. Before timing require the first object at local128/wave32,
+LDS1,024, VGPR<=136, SGPR<=96, code<=14,000 B, slots<=2,400,
+private/spill/scratch0, exact 64-FMA/64-permlanex16/256-DPP structure, and four
+b128 activation plus eight Q6-field load sites. Require named cache-only pack +
+consumer execution with no producer and zero compiler. Then one immutable
+actual-weight 5/15/5 screen must win every role and weighted aggregate on both
+clocks. Any miss removes H7S without role/geometry/prompt subset, tuning,
+recompile, or favorable rerun; runtime/source qualification is separate
+([post-H7R residual / H7S target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
