@@ -3020,6 +3020,25 @@ recompile, or favorable reruns. Production remains **431.310 tok/s**; no W7900
 candidate or speed claim exists
 ([H7U target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
 
+H7U now passes standalone admission through one bounded default-off gfx1100
+package constant; production and the source-default resolver remain serial.
+GREEN is **9/9**. One natural M512 serial/candidate gate proves exact metadata
+and packed hidden on all **47** MoE layers, exact **48/48** hidden boundaries,
+logits, KV/`KVLiveSpans`, token **2930**, deterministic state, and lifecycle.
+The unchanged cached object exposes all three local256/wave32 bodies at metadata
+VGPR **10/17/31** with private/spill/scratch0. Selected-region tracing records
+exact **47 count + 47 prefix + 47 scatter**, zero serial, unchanged 47 gather,
+and **2,286 application dispatches** on one queue/stream with zero compiler.
+
+The immutable first actual-routing 5/15/5 screen is exact and wins **47/47**
+layers on event and synchronized wall. Aggregate serial→parallel moves
+**20.508→1.297 ms event (15.813x)** and **20.701→1.445 ms wall (14.331x)**;
+minimum layer speedups are **14.012x/12.690x**. Retain the bounded capability
+and proceed to a separate runtime/source RED. Require fixed C4096/M512 and clean
+512/1K/4K non-regression before changing the live source owner; until then
+production remains **431.310 tok/s / 1,172.241 ms / 2,192 dispatches**
+([H7U candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

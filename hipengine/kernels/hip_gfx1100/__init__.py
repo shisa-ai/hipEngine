@@ -158,6 +158,10 @@ GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
 # Q8T16 schedule only through the independently measured request scope.
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
+# WPF-H7U exposes the exact registered stable parallel active-route compactor
+# only as a bounded default-off W7900 candidate. The live source owner remains
+# serial until complete standalone/runtime/source qualification.
+LAGUNA_MOE_GROUP_COMPACT_H7U_MODE = "parallel"
 # WPF-2b's exact expert-major IQ2 gate/up route compounds grouped IQ3/IQ4 down
 # at M512 with both attention capacities fixed at 128. Complete state is KL0 and
 # dirty paired 512/1K admission improves 19.65%/18.01%. Explicit grouped_exact
