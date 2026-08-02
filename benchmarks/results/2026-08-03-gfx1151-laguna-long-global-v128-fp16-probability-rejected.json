@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_global_attention_leaf_rejection",
+  "status": "rejected_and_removed",
+  "timestamp": "2026-08-03T04:07:00+09:00",
+  "source_revision": "73737a4515a1bbb5f69e6d8f1a0e662dd4114a24",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M",
+  "kv_dtype": "BF16",
+  "experiment": {
+    "control": "exact dense tokenloop4 score + FP32 post-exp plane + D32/V128 prefetch16 non-temporal K/V PV",
+    "candidate": "exact dense tokenloop4 score/max/exp/denominator + separate FP16 post-exp sidecar + unchanged D32/V128 prefetch16 non-temporal K/V PV",
+    "intent": "Halve denominator probability stores and the four dimension-shard PV probability reads while preserving the larger FP32 score plane until normalization finishes.",
+    "allocation": "Reuse unused space in the existing 48*capacity INT32 physical-scratch allocation; no new allocation or resident bytes."
+  },
+  "protocol": {
+    "warmups": 1,
+    "samples": 1,
+    "burst": 1,
+    "capacity": 131328,
+    "live_counts": [4097, 16448, 65664, 131200],
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-fp16prob-prefetch16-dense-prefix-nontemporal-key-value --capacity 131328 --live-counts 4097,16448,65664,131200 --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-v128-fp16prob-prebuild.json",
+    "note": "A one-pass directional screen is sufficient because the candidate regressed all active long depths; the user explicitly authorized one-run rough passes for architectural long-context changes."
+  },
+  "correctness": {
+    "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "fixture_result": "passed candidate-local tolerance before removal",
+    "f32_score_max_exp_denominator_unchanged": true,
+    "finite_all_shapes": true,
+    "full_model_quality_gate": "not_run_after_performance_rejection"
+  },
+  "rows": [
+    {
+      "live_count": 4097,
+      "control_ms": 0.15877799689769745,
+      "candidate_ms": 0.15553200244903564,
+      "latency_change_percent": -2.044360372396714,
+      "context_max_abs": 1.01444311439991e-06,
+      "gated_bf16_mismatches": 498
+    },
+    {
+      "live_count": 16448,
+      "control_ms": 0.57123202085495,
+      "candidate_ms": 0.588263988494873,
+      "latency_change_percent": 2.9816199054163217,
+      "context_max_abs": 5.640613380819559e-07,
+      "gated_bf16_mismatches": 501
+    },
+    {
+      "live_count": 65664,
+      "control_ms": 2.1939170360565186,
+      "candidate_ms": 2.212632894515991,
+      "latency_change_percent": 0.8530795901523058,
+      "context_max_abs": 2.894666977226734e-07,
+      "gated_bf16_mismatches": 500
+    },
+    {
+      "live_count": 131200,
+      "control_ms": 4.4170098304748535,
+      "candidate_ms": 4.578833103179932,
+      "latency_change_percent": 3.66363850015885,
+      "context_max_abs": 2.0570223568938673e-07,
+      "gated_bf16_mismatches": 549
+    }
+  ],
+  "decision": {
+    "gate": "Positive complete-leaf latency at every natural depth before full-model quality and production timing.",
+    "result": "failed_16k_64k_128k",
+    "reason": "FP16 conversion and separate-sidecar transport cost more than the narrower repeated probability reads save in the active long-context regime.",
+    "production_timing": "not_run",
+    "production_changed": false,
+    "candidate_surface": "removed"
+  },
+  "raw_output_sha256": "16361e7e60b93ee79d7f25768d045843bb4139a5e43f5d5cdd76282a6001d9cb"
+}

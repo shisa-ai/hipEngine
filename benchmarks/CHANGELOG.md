@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-03
 
+- [rejected quality-lane gfx1151 Laguna FP16 probability sidecar] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: keep exact FP32 score/max/exp/denominator arithmetic but store post-exp weights in an allocation-free FP16 sidecar, improving only live4K while regressing live16K/64K/128K **2.982%/0.853%/3.664%**, so remove it before full-model quality or production timing and retain the FP32 probability plane; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-fp16-probability-rejected.json`.
+
 - [rejected byte-exact gfx1151 Laguna tokenloop128 producer-max] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: publish per-head maxima from an exact tokenloop128 score owner and skip the denominator max traversal, but the complete leaf regresses **46.989%/11.087%/10.402%/7.943%** at live4K/16K/64K/128K, so remove the candidate without production timing and retain tokenloop4 plus the parallel denominator; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-tokenloop128-producermax-rejected.json`.
 
 - [accepted byte-exact gfx1151 Laguna dense V128 prefetch16] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: widen only exact dense-initial staged PV from V80 to V128, cutting the leaf **2.148-2.366%** and moving d16K/d64K/d128K **20.035/14.232/10.975 -> 20.135/14.404/11.093 tok/s (+0.502%/+1.206%/+1.082%)** with exact trajectories, noise-flat 512/1K/4K, full lifecycle recovery, and temporal V80 fallback after eviction; V160 was removed after collapsing to a 0.291% 128K leaf gain; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json`.
