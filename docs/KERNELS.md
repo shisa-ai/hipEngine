@@ -2027,6 +2027,21 @@ subset, tuning, recompile, or favorable rerun is admissible. No H7L
 implementation/test/key/export/exclusion exists before RED
 ([post-H7K residual / H7L target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json)).
 
+**WPF-H7L is rejected at the first-object physical gate.** The frozen
+**511,008-byte** host object preserves the H6T function at **7,920 B / 1,384
+slots / metadata VGPR101 / SGPR78 / LDS384 / spill0**. The H7L function is
+**49,592 B / 9,082 slots / metadata VGPR133 / SGPR107 / 270 SGPR spills**. It
+therefore misses four declared limits: code <=14,000 B, slots <=2,400, metadata
+VGPR <=101, and spill0. Its passing fields—LDS384, local ceiling128, wave32,
+private0, VGPR-spill0, dynamic-stack0, and scratch-instruction0—do not permit
+partial salvage.
+
+Do not change loop spelling, recompile, or retain a favorable tail/layer subset
+after this first-object miss. Skip candidate correctness, rocprof, and timing;
+remove the H7L kernel/export/wrapper/registry/test/gfx1151 surfaces and preserve
+H6T source/package/runtime/workspace exactly
+([H7L physical rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

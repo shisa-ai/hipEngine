@@ -2830,6 +2830,20 @@ Runtime/source qualification remains separate. Production stays **431.310
 tok/s / 1,172.241 ms**
 ([post-H7K residual / H7L target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json)).
 
+Reject **WPF-H7L** at the frozen first-object gate. The first and only object
+keeps H6T exact at **7,920 B / 1,384 slots / metadata VGPR101 / SGPR78 /
+spill0**. H7L is **49,592 B / 9,082 slots / metadata VGPR133 / SGPR107 / 270
+SGPR spills**, failing code <=14,000 B, slots <=2,400, VGPR <=101, and spill0.
+LDS384, private0, VGPR-spill0, dynamic-stack0, and scratch-instruction0 pass,
+but the target is inseparable and any physical miss is binding.
+
+Do not rewrite or recompile H7L, retain a tail/layer/prompt subset, or consume
+candidate correctness, named tracing, or the all-45 timing screen. Remove the
+H7L body/export/wrapper/key/RED/gfx1151 exclusion, retain H6T production, and
+rerank a materially different exact operation. Production remains H7H/H7I
+**431.310 tok/s / 1,172.241 ms**
+([H7L physical rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
