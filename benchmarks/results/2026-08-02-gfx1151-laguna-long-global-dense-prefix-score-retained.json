@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_dense_prefix_score_decode",
+  "created_at": "2026-08-02T21:43:15+09:00",
+  "status": "retained",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "gguf_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "change": {
+    "description": "Add a KVLiveSpans-compatible dense-prefix token-loop4 score specialization that maps logical slots directly to physical slots and skips token-position, eviction-mask, and block-base metadata reads while dense-initial cache identity is valid; retain the metadata-aware fixed256 sibling after any explicit eviction.",
+    "arithmetic_changed": false,
+    "resident_bytes_changed": false,
+    "dispatch_count_changed": false,
+    "fallback": "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm[_compensated]_spans"
+  },
+  "leaf": {
+    "shape": "48Q/8KV/D128, BF16 KV, capacity 131328",
+    "live_counts": [4097, 16448, 65664, 131200],
+    "ordinary_before_ms": [0.280571, 0.548245, 2.200971, 4.183965],
+    "ordinary_after_ms": [0.274355, 0.519303, 2.098663, 3.990643],
+    "ordinary_delta_percent": [-2.215, -5.279, -4.648, -4.621],
+    "compensated_before_ms": [0.304071, 0.559927, 2.241980, 4.239581],
+    "compensated_after_ms": [0.298140, 0.531333, 2.140049, 4.044648],
+    "compensated_delta_percent": [-1.951, -5.107, -4.546, -4.598],
+    "f32_context_byte_exact": true,
+    "bf16_gated_byte_exact": true,
+    "ordinary_raw_sha256": "0e02e852713a9cd17acf408c15bc3b6563793797bc3e91dd5744c77766d6ca94",
+    "compensated_raw_sha256": "6340fbc9aca18dd9aec7ec0a096db1645a911fffb3c47ffb1a99628c7b4e22d5"
+  },
+  "trace": {
+    "kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<true>",
+    "workgroup_size": 32,
+    "vgpr_count": 40,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "generic_score_median_us_by_live_count": [40.196, 197.851, 766.558, 1515.924],
+    "dense_score_median_us_by_live_count": [34.344, 170.440, 663.285, 1322.562],
+    "dense_score_delta_percent": [-14.559, -13.852, -13.473, -12.757],
+    "csv_sha256": "df6d6e852114f55a597b7658740d82e38262194131b4359ca5aeadb64cf9d854"
+  },
+  "production": {
+    "lengths": [512, 1024, 4096, 131072],
+    "before_tok_s": [23.201166, 23.052773, 21.680855, 9.595115],
+    "after_tok_s": [23.208480, 23.071437, 21.692721, 9.716297],
+    "delta_percent": [0.032, 0.081, 0.055, 1.263],
+    "vulkan_tok_s": [23.386100, 23.366122, 23.037017, 14.237076],
+    "vulkan_parity_percent": [99.241, 98.739, 94.171, 68.246],
+    "decode_128k_seconds_before": 13.235901,
+    "decode_128k_seconds_after": 13.070823,
+    "decode_128k_wall_delta_percent": -1.247,
+    "final_token_ids": [74825, 6273, 6436, 874],
+    "generated_ids_sha256": [
+      "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+      "18974f08ba7986767262103cb4c200ad36d3e8f675aad526887fad745bdc488c",
+      "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31",
+      "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+    ],
+    "final_positions": [638, 1150, 4222, 131198],
+    "lifecycle": {
+      "allocated_bytes": 87407934744,
+      "freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "short_raw_sha256": "c70705471e4a64bb4bf36ab2bd49e9d169adf4d6a99f16273106f4599691e5bc",
+    "128k_raw_sha256": "db4c8972eeee3f92c168f8c445648ed8fb074275b50ab6fbbf6da33c4ffbfb57"
+  },
+  "protocol": {
+    "leaf_ordinary": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-dense-prefix --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 9 --warmups 5 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "leaf_compensated": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-dense-prefix --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 9 --warmups 5 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_short": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_128k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-dense-prefix-trace-20260802 --output-file dense-prefix -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-dense-prefix --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty"
+  },
+  "decision": "Retain the dense-prefix score owner only while the runtime's dense-initial metadata invariant is valid. Explicit eviction falls back to the registered metadata-aware fixed256 route. The score stage improves 12.8-14.6%, complete active leaves improve 1.95-5.28%, short decode is exact/noise-positive, and mandatory 128K improves 1.263%."
+}

@@ -1409,6 +1409,7 @@ void laguna_global_attention_split_exact_gqa6_scores_kernel(
 // one wave keeps all six query vectors in registers and visits four consecutive
 // KV tokens. Each token retains the original four ordered products, wave32
 // reduction tree, scale, and scratch location.
+template <bool kDensePrefix = false>
 __global__ __launch_bounds__(32)
 void laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel(
     const float* query,
@@ -1453,24 +1454,30 @@ void laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel(
   for (int token_local = 0; token_local < kTokenLoop; ++token_local) {
     const int64_t logical_slot = logical_base + token_local;
     if (logical_slot >= scan_slots) continue;
-    const int64_t key_position =
-        logical_slot < context_len ? token_positions[logical_slot] : -1;
-    const bool visible = logical_slot < context_len && query_position >= 0 &&
-                         evict_mask[logical_slot] == 0 && key_position >= 0 &&
-                         key_position <= query_position;
     int64_t physical_slot = -1;
-    if (visible) {
-      // Every wrapper that launches this specialization rejects block sizes
-      // other than 256. Keep that invariant visible to device code so LLVM
-      // does not emit a general 64-bit divide/remainder sequence once for
-      // each unrolled token.
-      constexpr int64_t kBlockShift = 8;
-      constexpr int64_t kBlockMask = (1 << kBlockShift) - 1;
-      const int64_t logical_block = logical_slot >> kBlockShift;
-      const int64_t block_offset = logical_slot & kBlockMask;
-      physical_slot =
-          (static_cast<int64_t>(base_offsets[logical_block]) << kBlockShift) +
-          block_offset;
+    if constexpr (kDensePrefix) {
+      const bool visible =
+          logical_slot < context_len && query_position >= logical_slot;
+      physical_slot = visible ? logical_slot : -1;
+    } else {
+      const int64_t key_position =
+          logical_slot < context_len ? token_positions[logical_slot] : -1;
+      const bool visible = logical_slot < context_len && query_position >= 0 &&
+                           evict_mask[logical_slot] == 0 && key_position >= 0 &&
+                           key_position <= query_position;
+      if (visible) {
+        // Every wrapper that launches this specialization rejects block sizes
+        // other than 256. Keep that invariant visible to device code so LLVM
+        // does not emit a general 64-bit divide/remainder sequence once for
+        // each unrolled token.
+        constexpr int64_t kBlockShift = 8;
+        constexpr int64_t kBlockMask = (1 << kBlockShift) - 1;
+        const int64_t logical_block = logical_slot >> kBlockShift;
+        const int64_t block_offset = logical_slot & kBlockMask;
+        physical_slot =
+            (static_cast<int64_t>(base_offsets[logical_block]) << kBlockShift) +
+            block_offset;
+      }
     }
 
     float key_values[4] = {};
@@ -9571,7 +9578,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   float* inverse_sums =
       reinterpret_cast<float*>(physical_scratch + capacity);
   hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel,
+      (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<false>),
       dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
       dim3(32),
       0,
@@ -9666,7 +9673,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   float* inverse_sums =
       reinterpret_cast<float*>(physical_scratch + capacity);
   hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel,
+      (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<false>),
       dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
       dim3(32),
       0,
@@ -10184,7 +10191,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
 }
 
 template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false,
-          bool kDeferredNorm = false>
+          bool kDeferredNorm = false, bool kDensePrefixScore = false>
 static int
 laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
     const float* query,
@@ -10238,7 +10245,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   int32_t* repair_mask = reinterpret_cast<int32_t*>(partial_out);
   if constexpr (kTokenLoop4) {
     hipLaunchKernelGGL(
-        laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel,
+        (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<kDensePrefixScore>),
         dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
         dim3(32),
         0,
@@ -10420,6 +10427,20 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096
     LAGUNA_CTX4096_ARGUMENTS) {
   return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
       true, 64, true, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      false, 64, true, true, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      true, 64, true, true, true>(LAGUNA_CTX4096_FORWARD);
 }
 
 #undef LAGUNA_CTX4096_FORWARD

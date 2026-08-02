@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted gfx1151 Laguna dense-prefix long-score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: bypass token-position, eviction-mask, and block-base metadata only while dense-initial KV identity remains valid, cutting the score producer **12.8-14.6%**, active ordinary/compensated leaves **1.95-5.28%**, and mandatory d128K **9.595 -> 9.716 tok/s (+1.263%)** with exact trajectories, noise-positive 512/1K/4K, unchanged lifecycle, and generic fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json`.
+
 - [accepted byte-exact gfx1151 Laguna fixed256 token-loop4 score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: expose the wrapper-enforced 256-token block size to replace four unrolled 64-bit mapping divisions with shift/mask arithmetic, shrinking score ISA **31.169%**, cutting active ordinary/compensated leaves **1.18-2.83%**, and moving mandatory d128K **9.505 -> 9.595 tok/s (+0.944%)** with noise-flat exact 512/1K/4K and unchanged lifecycle; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json`.
 
 - [rejected byte-exact gfx1151 Laguna ctx4096 PV stage screen] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: D64/V80 regresses retained V64 **0.006-2.580%** and D64/V48 regresses **1.422-4.456%** at every depth, so remove both candidate paths and close simple stage sizing with production unchanged; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-vstage-screen-rejected.json`.

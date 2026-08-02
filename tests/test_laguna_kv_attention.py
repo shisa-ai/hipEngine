@@ -4653,6 +4653,8 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -4975,6 +4977,63 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                     )
                     assert np.isfinite(candidate).all()
                     assert np.isfinite(candidate_gate_bits).all()
+                for generic_fn, dense_prefix_fn in (
+                    (
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_bf16_spans,
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_bf16_spans,
+                    ),
+                    (
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_bf16_spans,
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans,
+                    ),
+                ):
+                    generic_fn(
+                        *common,
+                        control_out.ptr,
+                        gate_device.ptr,
+                        control_gated.ptr,
+                        *tail,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    dense_prefix_fn(
+                        *common,
+                        candidate_out.ptr,
+                        gate_device.ptr,
+                        candidate_gated.ptr,
+                        *tail,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    runtime.device_synchronize()
+                    for host, device in (
+                        (control, control_out),
+                        (candidate, candidate_out),
+                        (control_gate_bits, control_gated),
+                        (candidate_gate_bits, candidate_gated),
+                    ):
+                        copy_device_to_host(
+                            host_array_ptr(host),
+                            device,
+                            host.nbytes,
+                            runtime=runtime,
+                        )
+                    np.testing.assert_allclose(
+                        candidate,
+                        control,
+                        rtol=1e-6,
+                        atol=1e-8,
+                    )
+                    assert np.array_equal(candidate_gate_bits, control_gate_bits)
+                laguna_global_attention_decode_split_exact_gated_bf16_spans(
+                    *common,
+                    control_out.ptr,
+                    gate_device.ptr,
+                    control_gated.ptr,
+                    *tail,
+                    library=library,
+                    runtime=runtime,
+                )
             candidate_fn(
                 *common,
                 candidate_out.ptr,
@@ -5163,6 +5222,9 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         cache.attend(28, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache.attend(32, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache._dense_initial_metadata_valid = False
+        cache.position = 98303
+        cache.attend(28, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.attend(32, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache.position = 1023
         cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
     finally:
@@ -5187,6 +5249,14 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
+        (
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
+            "tokenloop4_deferrednorm_compensated_dense_prefix_spans"
+        ),
+        (
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
+            "tokenloop4_deferrednorm_dense_prefix_spans"
+        ),
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
             "tokenloop4_deferrednorm_compensated_spans"
