@@ -357,6 +357,7 @@ def test_h7y_runtime_capability_fused_writer_and_natural_writer_immutability() -
     module = importlib.import_module(
         "hipengine.kernels.hip_gfx1100.attention.laguna_kv"
     )
+    module.register_laguna_kv_attention_kernels(replace=True)
     capability = _candidate_capability()
     assert capability == _H7Y_POLICY
     assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY
