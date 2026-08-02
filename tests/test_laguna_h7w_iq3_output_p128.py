@@ -555,7 +555,12 @@ def test_h7w_registry_source_policy_and_h6t_immutability() -> None:
     assert "num_experts != 256" in h7w_export
     wrapper = inspect.getsource(candidate)
     assert _H7W_PY_SYMBOL_CONSTANT in wrapper
-    assert python_source.count(_H7W_SYMBOL) == 1
+    assert (
+        python_source.count(
+            "active_expert_p64_activation_resident_out_p128_row_interleaved_vopd_"
+        )
+        == 5
+    )
     assert python_source.count(_H7W_PY_SYMBOL_CONSTANT) >= 2
     assert not is_registered(_candidate_key("hip_gfx1151"))
     gfx1151_source = inspect.getsource(hip_gfx1151)
