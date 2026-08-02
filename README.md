@@ -831,6 +831,16 @@ is **3.95–5.46x slower**. The 142-call event aggregate regresses **48.267 ->
 tok/s**
 ([H7N rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json)).
 
+**WPF-H7O exact H7I raw-Q6 geometry crossover is rejected.** The immutable
+constant-32 object is physically clean: crossed BF16 c2r16 is **4,060 B / 634
+slots / VGPR64**, and crossed F32 c4r8 is **4,032 B / 620 / VGPR69**, both
+LDS512/spill0. Outputs remain byte-exact. Both BF16 roles win, but the F32 role
+regresses to **0.912x event / 0.913x wall**. The three-role aggregate improves
+**21.909 -> 21.314 ms event (1.028x)** and **21.905 -> 21.488 ms wall
+(1.019x)**, but the predeclared all-role gate forbids favorable BF16-only
+salvage. No repository surface is added and production stays **431.310 tok/s**
+([H7O rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-geometry-crossover-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

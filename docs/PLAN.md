@@ -2876,6 +2876,23 @@ retain H6U/H7I and **431.310 tok/s**, and close direct raw-Q6 ordered-consumer
 replacement absent a new decode/reuse premise
 ([H7N rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json)).
 
+Reject out-of-tree **WPF-H7O exact raw-Q6 full-group geometry crossover**. H7O
+crosses only H7I's constant-32 geometries: both BF16 roles move c4r8 -> c2r16
+and the F32 role moves c2r16 -> c4r8, preserving raw-Q6 decode, 32 ordered
+FMAs, full-group reduction, output order, ABI, and production topology. The
+immutable first object passes every frozen physical bound: BF16 is **4,060 B /
+634 slots / VGPR64**, F32 is **4,032 B / 620 / VGPR69**, and both are
+LDS512/private/spill/scratch0 with exact 32-permlanex16/128-DPP structure.
+
+All three actual roles are byte-exact and lifecycle-clean. BF16 improves
+**1.077x/1.063x** and **1.093x/1.080x** event/wall, but F32 regresses
+**0.912x/0.913x**. Although the three-call aggregate improves **21.909 ->
+21.314 ms event (1.028x)** and **21.905 -> 21.488 ms wall (1.019x)**, the
+predeclared all-role gate is binding; do not salvage only BF16 after timing.
+Add no repository/RED/runtime/source surface, retain H7I and **431.310 tok/s**,
+and rerank a materially different exact operation
+([H7O rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-geometry-crossover-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
