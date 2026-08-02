@@ -1998,6 +1998,35 @@ timing; remove all H7K body/export/wrapper/key/test/gfx1151 surfaces and retain
 H6W/H6Z production
 ([rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json)).
 
+Target-only **WPF-H7L exact IQ3 full-batch/live-tail split** is the next
+materially distinct boundary in `quant/gguf_iq_selected_prefill.hip`. The
+actual 45-layer route has **230,400** live IQ3 rows across **33,547** rowbatch8
+iterations. Exactly **24,650 batches (73.479%) / 197,200 rows (85.590%)** are
+full; the **8,897** final tails carry **33,200** live rows but H6T still runs
+**37,976 inactive slots (14.150% of current compute slots)** through its dot and
+publication bodies.
+
+H7L must split each expert at `begin + floor((end-begin)/8)*8`: complete batches
+retain H6T's eight-row activation loads, 216 ordered FMAs, 24 permlanex16, 96
+direct DPP adds, wave publication, serial wave0..3 sums, and BF16 stores. At
+most one tail computes/publishes only its 1..7 live rows while preserving each
+row's same eight magnitude FMAs, scale multiply, permlanex16+DPP 8/4/2/1 order,
+serial sum, and store. No padding/layout, compaction, metadata, allocation,
+workspace, ABI, package/runtime/source, H6T, or gfx1151 change is allowed. The
+source-operation model removes up to **4.200B inactive FMA + 2.333B inactive
+exchange wave operations**; it is not a physical-issue or speed claim.
+
+Freeze RED before implementation over empty/uneven experts, tail sizes1..7,
+rows1/7/8/9/M512, P64/P65/reversed traversal, complete H6T/CPU bytes, poison,
+finite output, and lifecycle. The first object must retain local128/grid32768x64,
+metadata/runtime VGPR <=101/104, LDS384/512, private/spill/scratch0, a bounded
+live-tail loop, and code <=14,000 B / slots <=2,400 before named cache-only
+trace. Consume one all-45 actual-layer 5-warmup/15-counter-rotated/5-launch
+screen; every layer and aggregate must win event and wall. No layer/tail/prompt
+subset, tuning, recompile, or favorable rerun is admissible. No H7L
+implementation/test/key/export/exclusion exists before RED
+([post-H7K residual / H7L target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
