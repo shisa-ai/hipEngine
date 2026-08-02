@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted byte-exact gfx1151 Laguna 65K+ non-temporal V80] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: bypass cache only for one-pass dense-prefix D32/V80 BF16 value loads at live >=65,536, moving d64K/d128K **13.575/10.239 -> 13.673/10.316 tok/s (+0.724%/+0.751%)** with exact trajectories, unchanged 16K-and-below dispatch, full lifecycle recovery, and temporal fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json`.
+
 - [accepted byte-exact gfx1151 Laguna dense V80 identity] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: compile identity metadata and physical-map replay out of the exact tokenloop4 D32/V80 score/denominator/PV owner, cutting its leaf **4.407-9.678%** and moving d16K/d64K/d128K **19.481/12.848/9.839 -> 19.791/13.575/10.239 tok/s (+1.592%/+5.657%/+4.067%)** with exact trajectories, noise-flat 512/1K/4K, lifecycle recovery, and generic fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json`.
 
 - [accepted gfx1151 Laguna dense ctx4096 value identity] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: extend dense-initial identity through the exact denominator and partial-PV value transport, cutting ordinary/compensated leaves up to **11.337%/8.948%** and mandatory d128K **9.716 -> 9.839 tok/s (+1.259%)** with exact trajectories, noise-flat 512/1K/4K, unchanged lifecycle, and metadata-aware fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json`.
