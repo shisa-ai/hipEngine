@@ -42,8 +42,9 @@ interleaved VOPD scheduling, H7E rejects residual-D4 runtime ownership at the
 mandatory complete quality gate, H7G remains complete-map rollback beneath H7H
 exact full-group Q5 source, and H7I is the retained exact raw-Q6 full-group
 source with complete H7C rollback, H7K/H7L are removed after frozen physical
-misses, and H7M through H7S are rejected under their exact no-salvage gates;
-16K+ remains deferred**.
+misses, H7M through H7S are rejected under their exact no-salvage gates, and
+H7T is the selected quality-gated late-start QK-only score-replay target; 16K+
+remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -1584,6 +1585,30 @@ event (0.329x)** and **49.721→146.161 ms wall (0.340x)**. Remove the candidate
 RED, and gfx1151 exclusion completely; keep H6U and **431.310 tok/s** and do not
 reopen H7S role/geometry subsets
 ([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
+
+Post-H7S, select target-only **WPF-H7T quality-gated late-start QK-only
+tensorized score replay**. H6W SWA starts256/384 own **72 calls / 62.627 ms**
+and H6Z global starts own **24 / 12.199 ms**: together **96 / 74.826 ms**, or
+**64.887%** of current attention. Rejected H5B's broad packed route changed QK,
+wave softmax, PV, value representation, and output layout together; it measured
+**23.585 ms QK + 21.524 ms PV** over 144 calls but failed the complete suite at
+maximum KL **0.444675**. H7T addresses that blocker rather than salvaging an
+H5B subset: only packed F32 QK score production may reassociate.
+
+Reuse the existing **18,874,368-byte** score plane (the global view is
+**12,582,912 bytes**) for exact key widening, query packing, one QK call, and a
+new H6W/H6Z-shaped score consumer. Preserve causal visibility, scale/exp,
+denominator order, BF16 value reads, token-order PV, divide, output layout,
+source bodies, workspace, and H6A/H6N fallback. RED must prove split-stage CPU
+behavior, exact consumer bytes from exact score records, spans/lifecycle,
+strict M128 starts256/384 contexts384/512 H48/H72/KV8/D128 fail-closed scope,
+and gfx1151 isolation. Run the full committed **18-prompt / 576-step** four-
+category heldout quality gate first at KL <=0.05 and top-1 >=90%; reject without
+timing on failure. Only then admit first-object/trace gates and one immutable
+all-global/SWA, both-start, both-clock 5/15/5 screen. No family/start/head/layer/
+prompt subset or favorable rerun is allowed. Production remains **431.310
+tok/s**; no candidate or speed result exists
+([post-H7S residual / H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

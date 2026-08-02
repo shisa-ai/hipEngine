@@ -2975,8 +2975,30 @@ and forbid role/geometry/recompile/rerun salvage. Rerank outside direct raw-Q6
 ordered-consumer shapes and IQ residual repair
 ([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
 
+Select target-only **WPF-H7T quality-gated late-start QK-only tensorized score
+replay**. Exact Q5/IQ-down/raw-Q6 mechanisms are closed or blocked, while H6W
+SWA + H6Z global starts256/384 own **96 calls / 74.826 ms (64.887% of current
+attention)**. H5B proved packed F32 QK/PV fast but failed complete quality at
+maximum KL **0.444675**. H7T is materially narrower: reassociate only packed
+F32 QK into the existing **18,874,368-byte** score plane, then retain H6W/H6Z
+causal masking, scale/exp, denominator order, BF16-V reads, token-order PV,
+divide, and output layout.
+
+Freeze RED before implementation. Require split-stage CPU/reference behavior,
+exact H6W/H6Z-score consumer bytes, complete spans/lifecycle, strict M128
+starts256/384 contexts384/512 H48/H72 KV8 D128 preflight, unchanged workspace/
+source/fallback/gfx1151, and no prompt/layer/head/start selection. The full
+committed **18-prompt / 576-step** code/general-English/general-Japanese/mixed
+heldout lane must pass KL <=0.05 and top-1 >=90% before physical or timing work;
+quality failure rejects without timing. If admitted, require first-object and
+named key-widen→query-pack→one-QK→consumer trace with no BLAS PV/value-widen/
+standalone-softmax/compiler, then one immutable all-role+96-call aggregate
+both-clock 5/15/5 gate. Any miss removes H7T without subset, retune, recompile,
+or favorable rerun; runtime/source qualification remains separate
+([post-H7S residual / H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
-attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
+attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
 P6/repair routes remain closed.
 Launch fusion remains deferred.
