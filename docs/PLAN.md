@@ -2893,6 +2893,22 @@ Add no repository/RED/runtime/source surface, retain H7I and **431.310 tok/s**,
 and rerank a materially different exact operation
 ([H7O rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-geometry-crossover-rejected.json)).
 
+Reject no-code/no-timing **WPF-H7P H7E candidate-distance-only BF16 boundary
+repair**. The prompt-independent natural-M512 audit exposes H7E's pre-BF16 FP32
+accumulators and compares them with exact H6T across all **45** IQ3 layers.
+Exactly **16,306,295 / 707,788,800 outputs (2.30384%)** differ after BF16
+publication. Distance to the candidate's nearest BF16 boundary is not a sparse
+complete certificate: risk/recall is **6.234%/43.799%** at 1/16 cell and
+**24.931%/68.070%** at 1/4 cell. The latter leaves **5,206,620** mismatches.
+At 1.0 cell the guard selects **99.719%** of outputs, still misses **14,702**
+values, and its ideal zero-overhead linear model is **0.592x** exact. No tested
+threshold captures all mismatches. Add no guard/queue/kernel/runtime/source
+surface and consume no candidate timing. This closes repair based only on the
+fast accumulator's BF16-boundary distance, not a materially different
+prompt-independent error-size certificate or activation representation.
+Production remains **431.310 tok/s**
+([H7P rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

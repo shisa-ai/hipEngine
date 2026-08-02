@@ -2089,6 +2089,21 @@ BF16-only salvage after timing. Add no body/export/wrapper/key/test/exclusion,
 retain H7I plus **431.310 tok/s**, and do not reopen H7O subsets
 ([H7O rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-geometry-crossover-rejected.json)).
 
+**WPF-H7P candidate-distance-only IQ3 D4x2 boundary repair is rejected without
+repository code or candidate timing.** An out-of-tree F32-publication probe
+keeps H7E's D4x2 producer/consumer arithmetic unchanged and audits every output
+against exact H6T for all **45** natural-M512 IQ3 layers. BF16 mismatch is
+**16,306,295 / 707,788,800 (2.30384%)**. Candidate-to-boundary distance alone
+has risk/recall **6.234%/43.799%** at 1/16 cell, **12.467%/55.611%** at 1/8,
+and **24.931%/68.070%** at 1/4; the last still leaves **5,206,620** mismatches.
+A 1.0-cell threshold repairs **99.719%** of all outputs yet misses **14,702**
+and has an ideal zero-overhead speedup of only **0.592x** versus exact. No
+threshold is complete. Add no guard, queue, exact-repair leaf, key, runtime, or
+source owner. Do not retry boundary distance without a materially different
+prompt-independent error-size signal; H6T remains production at **431.310
+tok/s**
+([H7P rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
