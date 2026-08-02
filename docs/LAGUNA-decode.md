@@ -10366,6 +10366,51 @@ The remaining attention sequence is:
      retains the temporal metadata-aware owner:
      [`ctx4096 non-temporal K+V production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json).
 
+240. Pipeline chronological operands in the deep ctx4096 partial-PV owners.
+     **Retained and production-default; LC-D3 twenty-second checkpoint.**
+
+     Non-temporal K/V exposed the dependent partial-PV recurrence as the next
+     local bottleneck. The new template loads a bounded group of probability
+     and BF16-V operands before replaying the same positive-weight branches
+     and chronological ordinary or Kahan F32 updates. A complete p4/p8/p16
+     screen is byte-exact for F32 context and gated BF16 output at every
+     natural leaf:
+
+     | Owner | Prefetch | 4K | 16K | 64K | 128K | Decision |
+     | --- | ---: | ---: | ---: | ---: | ---: | --- |
+     | Ordinary | 4 | **-26.822%** | -4.691% | -5.867% | -4.536% | **Retain** |
+     | Ordinary | 8 | -24.521% | -4.911% | -5.937% | -4.552% | Remove; tied at admitted depths |
+     | Ordinary | 16 | -27.171% | -4.886% | -5.735% | -4.590% | Remove; no 128K gain over p4 |
+     | Compensated | 4 | -29.412% | -7.972% | -8.927% | -7.392% | Remove |
+     | Compensated | 8 | -30.559% | -10.157% | **-10.417%** | -9.300% | Remove |
+     | Compensated | 16 | **-31.166%** | **-10.335%** | -10.274% | **-9.360%** | **Retain** |
+
+     Ordinary p4 ties the best admitted-depth latency with the smallest
+     operand window. Compensated p16 wins the mandatory 128K endpoint because
+     it overlaps the longer Kahan dependency chain. Cached tracing proves both
+     selected instantiations ran: ordinary `<false,64,true,true,4>` is
+     local512/VGPR32/SGPR128/LDS19,456/scratch0; compensated
+     `<true,64,true,true,16>` is local512/VGPR40/SGPR128/LDS19,456/scratch0.
+     The four losing public wrappers/registry keys are removed rather than
+     retained as dispatch debt.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.186925 | 23.211299 tok/s | +0.105% (inactive/noise) | 23.386100 | 99.253% |
+     | 1K | 23.061912 | 23.064718 tok/s | +0.012% (inactive) | 23.366122 | 98.710% |
+     | 4K | 21.680655 | 21.672613 tok/s | -0.037% (inactive/noise) | 23.037017 | 94.077% |
+     | 16K | 20.041884 | 20.034959 tok/s | -0.035% (inactive/noise) | 21.728347 | 92.207% |
+     | 64K | 14.237877 | 14.232457 tok/s | -0.038% (inactive/noise) | 17.737473 | 80.239% |
+     | 128K | 10.839382 | **10.974722 tok/s** | **+1.249%** | 14.237076 | **77.086%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **11.716535 -> 11.572047 s (-1.233%)** and preserves
+     **874 / c8307c... / position 131,198**. The complete ladder preserves all
+     established generated hashes and each process recovers all
+     **87,407,934,744 bytes / 1,452 allocations**. Explicit eviction omits
+     the prefetch suffix and selects the metadata-aware temporal fallback:
+     [`ctx4096 operand-prefetch production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10383,7 +10428,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twenty-one milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty-two milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10460,9 +10505,13 @@ allocation teardown remain mandatory at every retained step.
    quality-scoped ctx4096 owners then cuts ordinary/compensated 128K leaves
    **8.466%/6.126%** and improves complete 128K another **1.051%**, reaching
    **76.135%** Vulkan parity while 64K and below retain their prior routes.
-   Next replace the remaining score/denominator/PV ownership structurally or
-   increase value-stream concurrency; merge and dormant
-   scalar repair are not active targets.
+   Finally, overlapping four chronological operands in ordinary ctx4096 PV
+   and sixteen in compensated PV cuts those 128K leaves another
+   **4.536%/9.360%** and improves complete 128K another **1.249%** to
+   **77.086%** Vulkan parity, with the full 512-64K guard noise-flat. Local
+   prefetch depth is now screened and closed. Next replace the remaining
+   score/denominator/PV ownership structurally or increase value-stream
+   concurrency; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

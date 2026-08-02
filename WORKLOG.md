@@ -198299,3 +198299,43 @@ Vulkan local sizes verbatim will close the measured gap.
   standalone 128K commands then passed.
 - Canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json`.
+
+## 2026-08-03 03:06 JST — Retain mixed ctx4096 operand prefetch
+
+- Added RED then GREEN coverage for ordered operand prefetch in the deep
+  D64/V64 ctx4096 partial-PV owner. The template loads p4/p8/p16
+  probability/BF16-V groups before replaying the original positive-weight
+  branches and chronological ordinary or Kahan F32 recurrence. Score,
+  denominator, merge, gate, BF16 rounding, non-temporal K/V, `KVLiveSpans`,
+  and metadata-aware eviction fallback are unchanged.
+- The complete cached 5-warmup/9-sample/burst10 p4/p8/p16 screen at live
+  4,097/16,448/65,664/131,200 is F32/BF16 byte-exact. Ordinary p4 changes
+  retained prefetch1 **-26.822%/-4.691%/-5.867%/-4.536%** and ties the best
+  128K schedule with the smallest operand window. Compensated p16 changes
+  prefetch1 **-31.166%/-10.335%/-10.274%/-9.360%** and wins 128K. Raw
+  selected SHA-256 values are
+  `2944242fbab0fd5afc4034a62e0a892d51258dd123858f0e3bf36eae4ec3c9fd`
+  and `756ecef403784db5d3adde33069c58fb27251f4355fcc5351e0f7650353fb24a`;
+  the canonical artifact records all six arms and hashes.
+- gfx1151 now selects ordinary p4 for layers 32/36/40/44 and compensated p16
+  for layer 28 only at live >=98,304 while dense-initial identity is valid.
+  Explicit eviction omits both prefetch suffixes. The four losing public
+  screening surfaces (ordinary p8/p16 and compensated p4/p8) are removed.
+  Cached tracing names ordinary `<false,64,true,true,4>` at
+  local512/VGPR32/SGPR128/LDS19,456/scratch0 and compensated
+  `<true,64,true,true,16>` at local512/VGPR40/SGPR128/LDS19,456/scratch0.
+- The complete 512/1K/4K/16K/64K guard is exact and noise-flat at
+  **23.211299/23.064718/21.672613/20.034959/14.232457 tok/s
+  (+0.105%/+0.012%/-0.037%/-0.035%/-0.038%)**. Mandatory 128K improves
+  **10.839382 -> 10.974722 tok/s (+1.249%)**, cuts the 127-transition wall
+  **11.716535 -> 11.572047 s (-1.233%)**, and raises same-GGUF Vulkan parity
+  **76.135% -> 77.086%**. Every established token/hash/position is unchanged
+  and all three processes free all **87,407,934,744 bytes / 1,452
+  allocations**. Raw production SHA-256 values are
+  `43b1b130f62fa33f67e9093ed5250b7b830bc3041424862ed74b89fd355954b9`,
+  `5cf1514845d30d94102e1ab10b8459b41e6927f54595c794be08c0535aefba7e`,
+  and `89991e047ac64a50b3ff991cbffc5cd819a18c2a719253f98c850d1548003739`.
+- Final focused GPU differential, selector/fallback, and gfx1151 capability
+  tests pass **3/3** after rebuilding the pruned final source. Canonical
+  evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json`.

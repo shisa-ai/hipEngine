@@ -78,18 +78,18 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 The current long-decode checkpoint extends dense-initial KV identity through
 the exact token-loop4 D32/V80 owner, uses non-temporal aligned BF16 K/V loads,
 and prefetches sixteen chronological probability/V operand pairs per output
-wave. Prefetch16 is **1.690-2.248%** faster than prefetch8 at live4K-128K
-and F32/BF16 byte-exact. The five quality-scoped ctx4096 owners now stream
-aligned K/V non-temporally too: formal ordinary/compensated 128K leaves fall
-**8.466%/6.126%**, and complete 128K advances
-**10.726607 -> 10.839382 tok/s (+1.051%)**, reaching **76.135%** of
-same-GGUF Vulkan. Current 16K/64K remain **20.041884/14.237877 tok/s** and
-**92.238%/80.270%** of Vulkan because the ctx4096 route is inactive below
-98,304 live slots. The 512/1K/4K guard is exact and noise-flat at
-**23.187/23.062/21.681 tok/s**; explicit eviction still selects
+wave. The five quality-scoped ctx4096 owners now overlap their own partial-PV
+loads too: ordinary layers 32/36/40/44 use ordered prefetch4, while compensated
+layer 28 uses prefetch16. Their formal 128K leaves fall another
+**4.536%/9.360%**, F32/BF16 output remains byte-exact, and complete 128K
+advances **10.839382 -> 10.974722 tok/s (+1.249%)**, reaching **77.086%** of
+same-GGUF Vulkan. The inactive 4K/16K/64K guards change only
+**-0.037%/-0.035%/-0.038%** at **21.673/20.035/14.232 tok/s**; 512/1K are
+also noise-flat at **23.211/23.065 tok/s**. Explicit eviction still selects
 metadata-aware temporal owners. The ctx4096 merge's repair mask remains
 diagnostic only; production does not launch scalar repair, and the earlier
 grouped repair screen was slower than the exact owner.
+[`ctx4096 operand-prefetch production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json),
 [`ctx4096 non-temporal K+V production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json),
 [`dense V80 prefetch16 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json),
 [`dense V80 prefetch8 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json),

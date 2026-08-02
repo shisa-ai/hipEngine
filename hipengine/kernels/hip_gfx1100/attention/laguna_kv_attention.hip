@@ -2705,7 +2705,7 @@ void laguna_global_attention_split_exact_qhead_dim32_direct_pv_kernel(
 // per-split scalar-F32 FMA order; only cross-split accumulation association
 // differs from the exact fallback.
 template <bool kCompensated, int kDimTile, bool kDensePrefix = false,
-          bool kNonTemporal = false>
+          bool kNonTemporal = false, int kOperandPrefetch = 1>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     const uint16_t* value_cache,
@@ -2894,20 +2894,65 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     if (active_output) {
       const uint16_t* stage_value =
           shared_value + stage_parity * kValueStage * kDimTile;
-      for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
-        const float weight =
-            shared_probability[stage_parity][query_in_group][stage_token];
-        if (!(weight > 0.0f)) continue;
-        const float value = laguna_bf16_bits_to_float(
-            stage_value[stage_token * kDimTile + dim_in_tile]);
-        const float product = weight * value;
-        if constexpr (kCompensated) {
-          const float corrected = product - correction;
-          const float next = acc + corrected;
-          correction = (next - acc) - corrected;
-          acc = next;
-        } else {
-          acc += product;
+      if constexpr (kOperandPrefetch == 1) {
+        for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
+          const float weight =
+              shared_probability[stage_parity][query_in_group][stage_token];
+          if (!(weight > 0.0f)) continue;
+          const float value = laguna_bf16_bits_to_float(
+              stage_value[stage_token * kDimTile + dim_in_tile]);
+          const float product = weight * value;
+          if constexpr (kCompensated) {
+            const float corrected = product - correction;
+            const float next = acc + corrected;
+            correction = (next - acc) - corrected;
+            acc = next;
+          } else {
+            acc += product;
+          }
+        }
+      } else {
+        int stage_token = 0;
+        for (; stage_token + kOperandPrefetch - 1 < stage_count;
+             stage_token += kOperandPrefetch) {
+          float weight[kOperandPrefetch];
+          float value[kOperandPrefetch];
+#pragma unroll
+          for (int item = 0; item < kOperandPrefetch; ++item) {
+            weight[item] = shared_probability[stage_parity][query_in_group]
+                                              [stage_token + item];
+            value[item] = laguna_bf16_bits_to_float(
+                stage_value[(stage_token + item) * kDimTile + dim_in_tile]);
+          }
+#pragma unroll
+          for (int item = 0; item < kOperandPrefetch; ++item) {
+            if (!(weight[item] > 0.0f)) continue;
+            const float product = weight[item] * value[item];
+            if constexpr (kCompensated) {
+              const float corrected = product - correction;
+              const float next = acc + corrected;
+              correction = (next - acc) - corrected;
+              acc = next;
+            } else {
+              acc += product;
+            }
+          }
+        }
+        for (; stage_token < stage_count; ++stage_token) {
+          const float weight =
+              shared_probability[stage_parity][query_in_group][stage_token];
+          if (!(weight > 0.0f)) continue;
+          const float value = laguna_bf16_bits_to_float(
+              stage_value[stage_token * kDimTile + dim_in_tile]);
+          const float product = weight * value;
+          if constexpr (kCompensated) {
+            const float corrected = product - correction;
+            const float next = acc + corrected;
+            correction = (next - acc) - corrected;
+            acc = next;
+          } else {
+            acc += product;
+          }
         }
       }
     }
@@ -10353,7 +10398,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
 
 template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false,
           bool kDeferredNorm = false, bool kDensePrefixScore = false,
-          bool kNonTemporalKeyValue = false>
+          bool kNonTemporalKeyValue = false, int kOperandPrefetch = 1>
 static int
 laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
     const float* query,
@@ -10483,7 +10528,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<kCompensated, kDimTile, kDensePrefixScore, kNonTemporalKeyValue>),
+      (laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<kCompensated, kDimTile, kDensePrefixScore, kNonTemporalKeyValue, kOperandPrefetch>),
       dim3(8 * (128 / kDimTile), static_cast<unsigned int>(num_splits)),
       dim3(512),
       0,
@@ -10618,6 +10663,24 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096
   return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
       true, 64, true, true, true, true>(LAGUNA_CTX4096_FORWARD);
 }
+
+#define LAGUNA_CTX4096_NONTEMPORAL_PREFETCH_WRAPPER(NAME, COMPENSATED, PREFETCH) \
+  extern "C" int NAME(LAGUNA_CTX4096_ARGUMENTS) {                              \
+    return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl< \
+        COMPENSATED, 64, true, true, true, true, PREFETCH>(                     \
+        LAGUNA_CTX4096_FORWARD);                                                 \
+  }
+
+LAGUNA_CTX4096_NONTEMPORAL_PREFETCH_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+    false,
+    4)
+LAGUNA_CTX4096_NONTEMPORAL_PREFETCH_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    true,
+    16)
+
+#undef LAGUNA_CTX4096_NONTEMPORAL_PREFETCH_WRAPPER
 
 #undef LAGUNA_CTX4096_FORWARD
 #undef LAGUNA_CTX4096_ARGUMENTS

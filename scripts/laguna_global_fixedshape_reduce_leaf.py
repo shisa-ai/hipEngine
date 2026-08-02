@@ -70,6 +70,8 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans,
     laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_nontemporal_key_value_bf16_spans,
     laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_nontemporal_key_value_bf16_spans,
+    laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+    laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
 )
 from hipengine.loading.laguna_gguf import FULL_ATTENTION
 from hipengine.quant.gguf import bf16_to_float32
@@ -122,6 +124,8 @@ def _parse_args() -> argparse.Namespace:
             "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-dense-prefix",
             "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-dense-prefix-nontemporal-key-value",
             "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-dense-prefix-nontemporal-key-value",
+            "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-prefetch4-dense-prefix-nontemporal-key-value",
+            "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-prefetch16-dense-prefix-nontemporal-key-value",
             "fused-gqa1",
             "fused-gqa2-vstage64",
             "fused-gqa2-vstage64-vec16",
@@ -489,6 +493,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 == "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-dense-prefix-nontemporal-key-value"
             ):
                 control_kernel = laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans
+            elif "ctx4096-tokenloop4-deferrednorm-compensated-prefetch" in args.candidate:
+                control_kernel = laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_nontemporal_key_value_bf16_spans
+            elif "ctx4096-tokenloop4-deferrednorm-prefetch" in args.candidate:
+                control_kernel = laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_nontemporal_key_value_bf16_spans
             candidate_kernel = {
                 "fixedshape": laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans,
                 "split-gqa6-dim32-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
@@ -516,6 +524,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-dense-prefix": laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans,
                 "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_nontemporal_key_value_bf16_spans,
                 "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_nontemporal_key_value_bf16_spans,
+                "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-prefetch4-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+                "split-gqa6-dim64-vstage64-ctx4096-tokenloop4-deferrednorm-compensated-prefetch16-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
                 "fused-gqa1": laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans,
                 "fused-gqa2-vstage64-vec16": laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_vec16_fixedshape_bf16_spans,

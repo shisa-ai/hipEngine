@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-03
 
+- [accepted byte-exact gfx1151 Laguna ctx4096 operand prefetch] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: keep four chronological probability/V operands in flight for ordinary layers 32/36/40/44 and sixteen for compensated layer 28, cutting their 128K leaves **4.536%/9.360%** and moving mandatory d128K **10.839382 -> 10.974722 tok/s (+1.249%)** with exact recurrent state, noise-flat 512/1K/4K/16K/64K, full lifecycle recovery, and metadata-aware temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json`.
+
 - [accepted byte-exact gfx1151 Laguna ctx4096 non-temporal K+V] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: bypass cache for aligned K/V streams in only the five dense-prefix quality-scoped ctx4096 owners, cutting ordinary/compensated 128K leaves **8.466%/6.126%** and moving mandatory d128K **10.726607 -> 10.839382 tok/s (+1.051%)** with exact recurrent state, noise-flat 512/1K/4K, full lifecycle recovery, and metadata-aware temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json`.
 
 - [rejected byte-exact gfx1151 Laguna prefetch16 cndmask PV] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: replacing the positive-weight branch with zero-cndmask operands plus an unconditional ordered FMA improves only the inactive live4K leaf but regresses admitted live16K/64K/128K **1.126%/1.290%/1.290%**, so remove the candidate without production timing and retain prefetch16; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-prefetch16-cndmask-rejected.json`.
