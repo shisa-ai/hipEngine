@@ -198233,3 +198233,24 @@ Vulkan local sizes verbatim will close the measured gap.
   launch is dormant and not an optimization target.
 - Canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json`.
+
+## 2026-08-03 01:55 JST — Reject prefetch16 cndmask PV
+
+- Added a RED/GREEN experimental sibling that replaced every prefetch16
+  `weight > 0` branch with cndmask-style zeroed weight/value operands and an
+  unconditional ordered FMA. This preserves the skip result for non-positive
+  and NaN weights without changing any positive-weight FMA order.
+- The GPU differential and CPU-reference test are F32/BF16 byte-exact.
+  Cached 3-warmup/5-sample/burst10 live4,097/16,448/65,664/131,200 changes
+  retained prefetch16 **0.152294/0.582477/2.229447/4.414108 ms** to cndmask
+  **0.144507/0.589037/2.258213/4.471029 ms
+  (-5.113%/+1.126%/+1.290%/+1.290%)**.
+- The live4K gain is on the inactive production band, while every admitted
+  long-context shape regresses. Removed the template parameter, HIP export,
+  Python wrapper/registry entry, harness route, and test invocation. No
+  production or 128K prompt run is warranted; production remains the exact
+  prefetch16 checkpoint from `b5f7e4653`.
+- Raw SHA-256 is
+  `7ccaad79e16b32937f1b023d104c6d963dac8ce54a9d14b606fab4c14462b77a`;
+  canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-prefetch16-cndmask-rejected.json`.

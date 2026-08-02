@@ -10303,6 +10303,28 @@ The remaining attention sequence is:
      [`dense V80 prefetch16 production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json),
      [`sparse repair rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-sparse-repair-rejected.json).
 
+238. Replace the prefetch16 positive-weight branch with cndmask-style guarded
+     operands and an unconditional ordered FMA. **Rejected at the leaf and
+     removed.**
+
+     The candidate maps non-positive or NaN weights and their paired values to
+     `+0.0f`, then issues the same ordered FMA. It is F32/BF16 byte-exact on
+     every natural leaf and the CPU-reference test, but the extra cndmask/FMA
+     work loses once context is large:
+
+     | Live slots | Prefetch16 branch | Cndmask FMA | Delta |
+     | ---: | ---: | ---: | ---: |
+     | 4,097 | 0.152294 ms | **0.144507 ms** | -5.113% |
+     | 16,448 | **0.582477 ms** | 0.589037 ms | +1.126% |
+     | 65,664 | **2.229447 ms** | 2.258213 ms | +1.290% |
+     | 131,200 | **4.414108 ms** | 4.471029 ms | +1.290% |
+
+     All admitted long shapes fail direction, so remove the HIP template
+     switch, wrapper, registry entry, harness route, and test invocation. No
+     production or 128K prompt run is warranted; prefetch16 remains the sole
+     dense-initial owner:
+     [`cndmask rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-prefetch16-cndmask-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
