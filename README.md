@@ -1013,33 +1013,24 @@ Remove every H7V implementation/RED/key surface, retain H6U and production
 **437.189 tok/s**, and do not salvage rowbatch4 or rerun
 ([H7V rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
 
-The clean committed post-H7V reprofile selects target-only **WPF-H7W exact H6T
-output-partition P128 crossover**. Five exact fixed-harness requests measure
-**437.836 tok/s** (the generic comparator harness measures **434.611 tok/s**),
-and a fresh compiler-free selected-region trace records **1,153.347 ms / 2,286
-dispatches**. The remaining matched gaps are Q5 **177.673 ms**, IQ-down
-**119.203 ms**, attention **94.094 ms**, and Q6 **60.051 ms**. H6T's 45 IQ3
-down calls own a median **264.428 ms**, or **96.802%** of IQ-down.
+**WPF-H7W is rejected after its sole immutable all-45-layer screen.** The one
+**469,056-byte** object passes every frozen physical gate: P128 and retained
+P256 are both **7,920 B / 1,384 slots / VGPR101 / SGPR78 / LDS384 / spill0**
+with exact **216 FMA, 24 permlanex16, 96 DPP adds, 24 LDS-b128 loads, 12 LDS
+stores, and two barriers**. GREEN passes **12/12**. Cache-only tracing names
+exact **45 H7W P128 + two unchanged IQ4 / 2,286 dispatches**, local128,
+grid16,384×64, runtime VGPR104/LDS512/scratch0, one queue, and zero compiler.
 
-H7W keeps H6T's complete triple-output staged-wave DPP-peer fused-add body and
-expert partition P64, changing only `OUTPUT_PARTITIONS=256→128`. This halves
-the runtime grid **32,768×64→16,384×64** and workgroups per launch
-**16,384→8,192**, raises outputs per workgroup **12→24**, and halves modeled
-activation b128 records
-**68,704,256→34,352,128**; unchanged weight records limit the modeled total
-record reduction to **5.882%**. Dispatch count, allocation, workspace,
-arithmetic, and the H6T production owner remain unchanged. The old H5Z P128
-screen is not transferable: it used the earlier single-output body, won only
-**39/45** layers on both clocks, and was **0.971x/0.970x** the selected P256
-body on event/wall.
-
-Freeze RED before adding any H7W surface. Require complete H6T/CPU bytes across
-rows, output-partition and routing tails, sole-first-object physical bounds,
-exact 45-H7W/two-IQ4/2,286-dispatch cache-only tracing, and one immutable
-**45/45 plus aggregate both-clock** screen. Any miss removes all H7W surfaces
-without subset, retune, rewrite, recompile, or favorable-rerun salvage. No
-candidate has run and no H7W speed/default claim exists
-([post-H7V / H7W target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
+All 45 outputs are byte-exact and lifecycle-clean, but only **16/45** layers
+win both clocks. H6T P256→H7W P128 moves the all-layer event sum
+**260.663→261.392 ms (+0.280%, 0.99721x)** and synchronized wall
+**260.731→262.135 ms (+0.538%, 0.99464x)**. This fails both the per-layer and
+aggregate gates. Remove every H7W export/wrapper/key/RED/backend-exclusion
+surface, retain H6T P256 and production **437.189 tok/s**, and forbid
+layer/expert/routing/prompt/length subset, partition-retune, rewrite,
+recompile, or favorable-rerun salvage
+([H7W rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-output-p128-rejected.json) ·
+[target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
