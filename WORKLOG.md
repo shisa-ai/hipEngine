@@ -197838,3 +197838,38 @@ Vulkan local sizes verbatim will close the measured gap.
   backend tests pass **3/3**. Production still does not dispatch the dormant
   scalar repair kernel. The next bounded seam is exact deferred normalization
   inside ctx4096, followed by a fresh component trace of partial PV and merge.
+
+## 2026-08-02 20:28 JST — Retain ctx4096 parallel-max deferred normalization
+
+- Moved both token-loop4 ctx4096 leaves onto the already-retained parallel
+  exact-max denominator. It stores unnormalized exp32 values and 48 FP32
+  reciprocals, then applies the reciprocal in the D64/V64 partial-PV loader.
+  The 192-byte reciprocal array and shifted partial buffer reuse existing
+  scratch; resident allocation is unchanged.
+- Ordinary live4K/16K/64K/128K improves
+  **0.326938/0.750797/3.248607/6.290250 ->
+  0.284682/0.560716/2.252598/4.278564 ms
+  (-12.925%/-25.317%/-30.660%/-31.981%)**. Compensated improves
+  **0.356789/0.750019/3.247044/6.316829 ->
+  0.307998/0.574117/2.289356/4.331359 ms
+  (-13.675%/-23.453%/-29.494%/-31.431%)**. F32 and BF16 outputs are
+  byte-exact. Raw SHA-256 values are
+  `e27779d2fd08911688891c25e964c5f26f28063c318cd1d2f181019dd5ad22a6`
+  and `7f8659af3f3670ccf6ce32b4c02de8c744210b7cb330adad7a47743258d6f234`.
+- Cached tracing measures the stale normalization kernel at **769.985 us**
+  cross-depth median versus **201.538 us** for the parallel denominator;
+  both are local256/VGPR56/LDS512/scratch0. D64 PV remains
+  local512/VGPR32/LDS19,456/scratch0. CSV SHA-256 is
+  `3fc16a5822c610d05f355f179aff4c54f1d15000a0de14b32a4a8af2d7f2683b`.
+- Mandatory d128K improves **8.688850 -> 9.505380 tok/s (+9.397%)**, reducing
+  its 127-transition wall **14.616434 -> 13.360855 s**, with exact
+  **874 / c8307c... / position 131,198** and full lifecycle recovery. The
+  inactive 512/1K/4K guard is noise-flat at
+  **23.201880/23.065973/21.682607 tok/s**, with established hashes and all
+  **87,407,934,744 bytes / 1,452 allocations** recovered. Raw production
+  SHA-256 values are
+  `e3bc5eaf59ac7e1289e4442335490b32819fbc927d2e88c94508d119e8dcb590`
+  and `211b2532645c0474d47008027844c7945dd8b4b1d8aedaaa98e3081ade018517`.
+- Focused large-capacity byte-exact, selector/resource-route, and gfx1151
+  backend tests pass **3/3**. Normalized token-loop4 remains registered
+  rollback. Next profile the current context-partial PV and merge balance.
