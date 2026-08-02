@@ -4644,6 +4644,7 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_bf16_spans,
+        laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
@@ -4817,6 +4818,30 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
             assert np.array_equal(candidate, control)
             assert np.array_equal(candidate_gate_bits, control_gate_bits)
             laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_bf16_spans(
+                *common,
+                candidate_out.ptr,
+                gate_device.ptr,
+                candidate_gated.ptr,
+                *tail,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            candidate = np.empty_like(query)
+            candidate_gate_bits = np.empty(query.shape, dtype=np.uint16)
+            for host, device in (
+                (candidate, candidate_out),
+                (candidate_gate_bits, candidate_gated),
+            ):
+                copy_device_to_host(
+                    host_array_ptr(host),
+                    device,
+                    host.nbytes,
+                    runtime=runtime,
+                )
+            assert np.array_equal(candidate, control)
+            assert np.array_equal(candidate_gate_bits, control_gate_bits)
+            laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans(
                 *common,
                 candidate_out.ptr,
                 gate_device.ptr,
@@ -5151,9 +5176,9 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
             "producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_"
             "vstage64_vec16_direct_assume_exp_fixedshape_spans"
         ),
-        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_spans",
-        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_spans",
-        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_spans",
+        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
+        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
+        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
             "compensated_spans"

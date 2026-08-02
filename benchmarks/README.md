@@ -75,6 +75,16 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
+The current long-decode checkpoint widens only the exact global PV stage from
+V64 to V80. Relative to retained token-loop4 production, 512/1K/4K remains
+noise-flat at **23.213/23.072/21.678 tok/s**, while 16K/64K/128K improves
+**19.259/12.450/8.255 -> 19.481/12.848/8.438 tok/s
+(+1.155%/+3.195%/+2.212%)**. All recurrent hashes and lifecycle accounting
+remain exact. Same-GGUF Vulkan is **21.728/17.737/14.237 tok/s** at those long
+depths, so current parity is **89.658%/72.436%/59.266%**. The ctx4096 merge's
+repair mask remains diagnostic only; production does not launch scalar repair.
+[`V80 exact PV production`](results/2026-08-02-gfx1151-laguna-long-global-vstage80-retained.json).
+
 Long decode still does not preserve short parity, but the first structural
 seam is closed. The exact fused global owner now follows live work and LDS
 bounds instead of requiring allocation capacity 4,096. With real capacity

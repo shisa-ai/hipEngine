@@ -67,6 +67,10 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VS
     "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_"
     "tokenloop4_deferrednorm_dim32_vstage64_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 = (
+    "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_"
+    "tokenloop4_deferrednorm_dim32_vstage80_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TILE4_DIM32_VSTAGE64 = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tile4_"
     "dim32_vstage64_bf16_spans"
@@ -1919,6 +1923,82 @@ def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
     fn = getattr(
         library,
         _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 13
+        + [ctypes.c_int64] * 8
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(gated_out_ptr),
+        ctypes.c_void_p(score_scratch_ptr),
+        ctypes.c_void_p(physical_scratch_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(parsed_scan),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact tokenloop4 scores with deferred D32/V80 staged PV."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    if int(max_context_len) != capacity:
+        raise ValueError("max_context_len must equal the global span capacity")
+    parsed_scan = _check_split_scan_slots(scan_slots, capacity)
+    if (
+        int(num_q_heads) != 48
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+    ):
+        raise ValueError(
+            "GQA6/tokenloop4/deferrednorm/D32/V80 attention requires 48 "
+            "query heads, 8 KV heads, and D128"
+        )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80,
     )
     fn.argtypes = (
         [ctypes.c_void_p] * 13
@@ -8684,6 +8764,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
+            laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_gated_gqa6_dim64_vstage64_spans",
             laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
         ),
@@ -9292,6 +9377,7 @@ __all__ = [
     "laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_bf16_spans",
+    "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans",

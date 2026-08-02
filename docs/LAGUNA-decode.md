@@ -9820,6 +9820,47 @@ The remaining attention sequence is:
      four-token owner and skip production timing:
      [`token-loop8 rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop8-rejected.json).
 
+225. Widen the exact D32 PV stage from 64 to 80 tokens.
+     **Retained and production-default; LC-D3 tenth checkpoint.**
+
+     Post-token-loop4 tracing makes PV the dominant exact leaf component at
+     **61-63%** from live4K through 128K. Parameterizing only its staged
+     probability/V tile preserves every score, denominator, chronological
+     scalar-F32 FMA, gate, and BF16 store. V80 reduces the number of stages
+     and barriers by 20% without crossing the observed long-depth resource
+     optimum:
+
+     | Live slots | V64 | V80 | Delta | Exact |
+     | ---: | ---: | ---: | ---: | :---: |
+     | 4,097 | 0.169318 ms | **0.168604 ms** | -0.421% | Yes |
+     | 16,448 | 0.736582 ms | **0.700515 ms** | **-4.897%** | Yes |
+     | 65,664 | 3.085750 ms | **2.864355 ms** | **-7.175%** | Yes |
+     | 131,200 | 6.229004 ms | **5.762437 ms** | **-7.490%** | Yes |
+
+     V92/V96 give back **1.68-1.85%** of V80 at 64K/128K, and the earlier
+     V128 screen is mixed, so V80 is the measured optimum among
+     64/80/92/96/128. Cached tracing names the V80 template at local512,
+     VGPR32, LDS14,336, and scratch0. V64 remains registered rollback and peer
+     backends remain unchanged.
+
+     | Decode depth | Token-loop4 V64 | V80 | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.210538 | **23.212639 tok/s** | +0.009% | 23.386100 | 99.258% |
+     | 1K | 23.050173 | **23.071784 tok/s** | +0.094% | 23.366122 | 98.740% |
+     | 4K | 21.679950 | **21.678087 tok/s** | -0.009% | 23.037017 | 94.101% |
+     | 16K | 19.258829 | **19.481236 tok/s** | **+1.155%** | 21.728347 | 89.658% |
+     | 64K | 12.450417 | **12.848251 tok/s** | **+3.195%** | 17.737473 | 72.436% |
+     | 128K | 8.255068 | **8.437685 tok/s** | **+2.212%** | 14.237076 | 59.266% |
+
+     Every established token/hash/position matches, including mandatory 128K
+     **874 / c8307c... / 131,198**, and all runs recover
+     **87,407,934,744 bytes / 1,452 allocations**. At >=98,304 live slots the
+     last five global layers still use the unchanged quality-scoped ctx4096
+     approximation; its merge writes a dormant repair mask, but production
+     does not dispatch scalar repair. The exact V80 win applies to the earlier
+     seven global layers:
+     [`V80 exact PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-vstage80-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9837,7 +9878,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Nine milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Ten milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9866,9 +9907,13 @@ allocation teardown remain mandatory at every retained step.
    retains exact 16K/64K and context-parallel 128K. A single exact wave now
    reuses all six GQA query vectors across four KV tokens, reducing score
    workgroups 4x and improving complete 16K/64K/128K another
-   **1.653%/4.698%/4.111%**. Next profile the new score/denominator/PV split and
-   pursue the remaining probability/physical-plane traffic without reducing
-   output-wave ownership.
+   **1.653%/4.698%/4.111%**. The resulting profile assigns **61-63%** of the
+   exact leaf to PV. Widening only its staged tile from V64 to V80 improves the
+   exact leaf another **0.42-7.49%** and complete 16K/64K/128K another
+   **1.155%/3.195%/2.212%** with noise-flat 512/1K/4K. V92/V96/V128 are
+   closed. Next profile current production at 128K to separate the seven V80
+   exact layers from the five quality-scoped ctx4096 layers, then attack the
+   dominant PV/value-transport owner rather than the dormant scalar repair.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

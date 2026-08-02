@@ -210,6 +210,14 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80 = bool(
+            self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage64
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80",
+                False,
+            )
+        )
         ctx4096_min_layer = backend_package_capability(
             backend,
             "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
@@ -840,6 +848,15 @@ class LagunaKVCache:
                         and live_count
                         >= self.global_split_gqa6_ctx4096_min_live
                         and layer_id >= self.global_split_gqa6_ctx4096_min_layer
+                    )
+                    else (
+                        "global_context_split_exact_gated_gqa6_"
+                        "tokenloop4_deferrednorm_dim32_vstage80_spans"
+                    )
+                    if (
+                        use_gated
+                        and self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80
+                        and state.q_heads == 48
                     )
                     else (
                         "global_context_split_exact_gated_gqa6_"
