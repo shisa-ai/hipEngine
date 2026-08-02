@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_tokenloop4_retention",
+  "created_at": "2026-08-02T18:44:51+09:00",
+  "status": "retained",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "scope": "exact deferred-normalization GQA6 score producer only",
+    "before": "one local32 wave per KV token; reload six query vectors for every token",
+    "after": "one local32 wave loops over four consecutive KV tokens while retaining all six query vectors",
+    "unchanged": "four ordered dot products, wave32 reduction tree, score scale/location, exp32 denominator, ordered-prefetch4 D32/V64 PV, and quality-scoped ctx4096 schedule"
+  },
+  "leaf": {
+    "protocol": {
+      "warmups": 5,
+      "samples": 9,
+      "burst": 10,
+      "capacity": 131328
+    },
+    "rows": [
+      {"live": 4097, "before_ms": 0.185720396, "after_ms": 0.169846594, "delta_percent": -8.547150},
+      {"live": 16448, "before_ms": 0.813814545, "after_ms": 0.738180685, "delta_percent": -9.293746},
+      {"live": 65664, "before_ms": 3.416600800, "after_ms": 3.090991974, "delta_percent": -9.530198},
+      {"live": 131200, "before_ms": 6.882758331, "after_ms": 6.229044342, "delta_percent": -9.497849}
+    ],
+    "all_context_f32_byte_exact": true,
+    "all_gated_bf16_byte_exact": true,
+    "raw_sha256": "4567ba194db8ae484a72dc4eedd3c0e84601bc95bd43bd1eb51708b4c80aed9b"
+  },
+  "kernel_trace": {
+    "kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel",
+    "workgroups_at_live4097": 1025,
+    "control_workgroups_at_live4097": 4097,
+    "local_size": 32,
+    "vgpr_count": 40,
+    "scratch_bytes": 0,
+    "median_duration_us": 42.360,
+    "control_median_duration_us": 58.190,
+    "csv_sha256": "1a501ecb7f6dabbdc6161e26717b3abe921ef63c6201281be892b2e0055081e4"
+  },
+  "production": [
+    {"depth": 512, "before_tok_s": 23.205876, "after_tok_s": 23.210538, "delta_percent": 0.020089, "vulkan_tok_s": 23.386100, "vulkan_parity_percent": 99.249289, "final_token": 74825, "generated_ids_sha256": "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa"},
+    {"depth": 1024, "before_tok_s": 23.067535, "after_tok_s": 23.050173, "delta_percent": -0.075268, "vulkan_tok_s": 23.366122, "vulkan_parity_percent": 98.647831, "final_token": 6273, "generated_ids_sha256": "18974f08ba7986767262103cb4c200ad36d3e8f675aad526887fad745bdc488c"},
+    {"depth": 4096, "before_tok_s": 21.684921, "after_tok_s": 21.679950, "delta_percent": -0.022925, "vulkan_tok_s": 23.037017, "vulkan_parity_percent": 94.109189, "final_token": 6436, "generated_ids_sha256": "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31"},
+    {"depth": 16384, "before_tok_s": 18.945635, "after_tok_s": 19.258829, "delta_percent": 1.653121, "vulkan_tok_s": 21.728347, "vulkan_parity_percent": 88.634581, "final_token": 13815, "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6"},
+    {"depth": 65536, "before_tok_s": 11.891734, "after_tok_s": 12.450417, "delta_percent": 4.698076, "vulkan_tok_s": 17.737473, "vulkan_parity_percent": 70.192731, "final_token": 1869, "generated_ids_sha256": "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f"},
+    {"depth": 131072, "before_tok_s": 7.929078, "after_tok_s": 8.255068, "delta_percent": 4.111322, "vulkan_tok_s": 14.237076, "vulkan_parity_percent": 57.982889, "final_token": 874, "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"}
+  ],
+  "correctness": {
+    "focused_cpu_reference_test_passed": true,
+    "all_established_generated_hashes_match": true,
+    "all_final_positions_exact": true,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452
+  },
+  "commands": {
+    "leaf": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage64 --capacity 131328 --live-counts 4097,16448,65664,131200 --warmups 5 --samples 9 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-tokenloop4-final-leaf.json",
+    "short": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-tokenloop4-production-short.json",
+    "mid_long": "same command with --lengths 16384,65536 and --output /tmp/laguna-tokenloop4-production-mid-long.json",
+    "mandatory_128k": "same command with --lengths 131072 and --output /tmp/laguna-tokenloop4-production-128k.json"
+  },
+  "raw_sha256": {
+    "short": "21cda8a44cd2970f71cb4a3ac8f9d40cc3e7833bd35ab865b2e4fdc1626037dc",
+    "mid_long": "1c39acde1b0e43a8233d8a0c217fdf29d76b3349f11ea327bb081e7074776395",
+    "mandatory_128k": "b77908ee9ee1132be2589f4f279c3a5c60dfab3a96aa3c7f9dffcc6bd19ec7c0"
+  }
+}

@@ -230,6 +230,20 @@ Tracked-clean d16K confirms **18.945635 tok/s**, **+0.078%** over the prior
 production anchor and within **-0.107%** of the directional row, with exact
 state and teardown.
 
+The ninth LC-D3 checkpoint reduces exact score ownership from one wave per KV
+token to one wave per four consecutive tokens while retaining all six GQA
+query vectors in registers. The dot-product order, wave32 reduction, exp32
+denominator, ordered-prefetch4 PV, and quality-scoped ctx4096 route are
+unchanged. Exact live4K/16K/64K/128K leaves improve **8.55-9.53%**; native
+tracing shows **4,097 -> 1,025 workgroups**, local32, VGPR40, and scratch0.
+Complete d16K/d64K/d128K advances
+**18.945635/11.891734/7.929078 -> 19.258829/12.450417/8.255068 tok/s
+(+1.653%/+4.698%/+4.111%)**. The 512/1K/4K guard is noise-flat at
+**23.210538/23.050173/21.679950 tok/s**, all established hashes/positions
+match, and all allocations recover. Same-GGUF Vulkan parity is now
+**88.635%/70.193%/57.983%** at 16K/64K/128K.
+[`token-loop4 exact score production`](results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

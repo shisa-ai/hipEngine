@@ -9770,6 +9770,46 @@ The remaining attention sequence is:
      within **-0.107%** of the dirty directional row. Token/hash/position and
      complete teardown remain exact.
 
+223. Reuse the six exact GQA query vectors across four KV tokens.
+     **Retained and production-default; LC-D3 ninth checkpoint.**
+
+     The prior exact score producer launched one local32 wave per KV token and
+     reloaded the same six D128 query vectors in every workgroup. One wave now
+     keeps those 24 per-lane query scalars in registers and visits four
+     consecutive tokens. Every token retains the original four ordered dot
+     products, wave32 reduction tree, scale, and scratch location; denominator
+     and PV arithmetic are unchanged. This is deliberately distinct from the
+     rejected four-wave tile: it reduces score workgroups by 4x rather than
+     merely packing them into a larger block.
+
+     | Live slots | Prior exact owner | Token-loop4 | Delta | Exact |
+     | ---: | ---: | ---: | ---: | :---: |
+     | 4,097 | 0.185720 ms | **0.169847 ms** | **-8.547%** | Yes |
+     | 16,448 | 0.813815 ms | **0.738181 ms** | **-9.294%** | Yes |
+     | 65,664 | 3.416601 ms | **3.090992 ms** | **-9.530%** | Yes |
+     | 131,200 | 6.882758 ms | **6.229044 ms** | **-9.498%** | Yes |
+
+     Native tracing confirms the intended live4K score grid
+     **4,097 -> 1,025 workgroups**, local32, VGPR40, and scratch0; median score
+     duration is **58.190 -> 42.360 us**. The retained production sweep is:
+
+     | Decode depth | Prior | Token-loop4 | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.205876 | **23.210538 tok/s** | +0.020% | 23.386100 | 99.249% |
+     | 1K | 23.067535 | **23.050173 tok/s** | -0.075% | 23.366122 | 98.648% |
+     | 4K | 21.684921 | **21.679950 tok/s** | -0.023% | 23.037017 | 94.109% |
+     | 16K | 18.945635 | **19.258829 tok/s** | **+1.653%** | 21.728347 | 88.635% |
+     | 64K | 11.891734 | **12.450417 tok/s** | **+4.698%** | 17.737473 | 70.193% |
+     | 128K | 7.929078 | **8.255068 tok/s** | **+4.111%** | 14.237076 | 57.983% |
+
+     The 512/1K/4K deltas are bounded run noise and preserve the established
+     tokens/hashes. The mandatory 128K row remains
+     **874 / c8307c... / position 131,198**, and every run returns all
+     **87,407,934,744 bytes / 1,452 allocations**. The five quality-scoped
+     ctx4096 layers at live >=98,304 remain unchanged; token-loop4 improves
+     only the exact global layers:
+     [`token-loop4 exact score production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9787,7 +9827,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Seven milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Nine milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9813,8 +9853,12 @@ allocation teardown remain mandatory at every retained step.
    16K/64K/128K another **4.313%/9.400%/12.851%** with exact recurrent state.
    Prefetch8, direct probability loads, FMAC, the denominator sentinel, and
    grouped sparse repair are now closed. The re-gated **98,304-live** crossover
-   retains exact 16K/64K and context-parallel 128K. Next pursue a complete
-   exact score/probability traffic pass without reducing output-wave ownership.
+   retains exact 16K/64K and context-parallel 128K. A single exact wave now
+   reuses all six GQA query vectors across four KV tokens, reducing score
+   workgroups 4x and improving complete 16K/64K/128K another
+   **1.653%/4.698%/4.111%**. Next profile the new score/denominator/PV split and
+   pursue the remaining probability/physical-plane traffic without reducing
+   output-wave ownership.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

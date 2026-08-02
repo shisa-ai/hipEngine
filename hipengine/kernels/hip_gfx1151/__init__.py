@@ -373,6 +373,10 @@ LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64 = True
 # Defer the exact normalization product into each shared-probability load,
 # removing one full score-plane pass without changing its F32 bits.
 LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = True
+# Keep six query vectors resident while one exact wave scores four consecutive
+# KV tokens. The natural-depth leaf is byte-exact and 8.6-9.6% faster from
+# 4K through 128K on gfx1151.
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64 = True
 # Ordered-prefetch4 moved the exact/context-PV crossover above 64K. Keep the
 # quality-scoped layer schedule only at the measured deep-context band; shorter
 # long contexts use exact deferred-normalization GQA6.
@@ -985,6 +989,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE",
