@@ -1773,6 +1773,22 @@ every H7X surface without subset, distance retune, rewrite, recompile, or rerun.
 No code/build/execution/speed result exists
 ([H7X target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+Reject **WPF-H7X** at first-object physical analysis, before any candidate
+execution. The sole object is resource-clean: H7X is **5,320 B / 931 slots /
+VGPR54 / SGPR44 / LDS0 / spill0**, unchanged H6W is **4,984 B / 871 / VGPR54 /
+SGPR40**, and all bpermute/record/exp/FMA/FMAC/store counts satisfy the frozen
+bounds. But each steady next-slot K and V four-u16 clause immediately drains
+`vmcnt(3→0)`, with **zero current-slot instructions** between final load and
+first wait. The compiler therefore preserves neither intended overlap.
+
+Run no H7X correctness/GREEN, named trace, timing, runtime, or source gate.
+Remove every candidate and RED/exclusion surface; restored H6W passes **10/10**
+cache-only with zero compiler. Retain **437.189 tok/s / 1,153.347 ms / 2,286
+dispatches** and forbid start/layer/head/prompt/length subset, distance retune,
+rewrite, recompile, or rerun salvage
+([H7X rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

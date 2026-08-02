@@ -2343,6 +2343,25 @@ prefetch-distance retune, rewrite, recompile, or favorable rerun. Runtime/source
 qualification remains separate; no candidate or H7X speed claim exists
 ([H7X target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+Reject **WPF-H7X** from `attention/laguna_kv_attention.hip` at first-object
+physical analysis. The sole **674,768-byte** object has H7X at **5,320 B / 931
+slots / VGPR54 / SGPR44 / LDS0 / private0 / spill0** and unchanged H6W at
+**4,984 B / 871 / VGPR54 / SGPR40**. H7X remains under every resource ceiling
+and preserves exact **32 bpermutes / one b128 score-record load+store / four exp
+/ 56 FMA / 41 FMAC / 16 output stores / zero barriers or scratch**.
+
+Codegen emits four four-u16 clauses: K prologue, K steady-next, V prologue, and
+V steady-next. Both steady-next clauses are `4 × global_load_u16` followed
+immediately by `s_waitcnt vmcnt(3)`, then the rest of the drain; there are
+**zero instructions** between final load and first wait. The required K/QK and
+V/PV software-pipeline overlap is absent, so resource cleanliness cannot admit
+the leaf. Consume no candidate correctness, trace, timing, runtime, or source
+gate. Delete the body/export/Python symbol+wrapper+key/gfx1151 exclusion and
+RED; retain exact H6W and **437.189 tok/s**. Do not rewrite, recompile, retune
+prefetch distance, salvage any subset, or favorably rerun
+([H7X rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

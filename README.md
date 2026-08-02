@@ -1064,6 +1064,19 @@ and one inseparable starts256/384 plus aggregate dual-clock 5/15/5 screen. No
 candidate exists and no H7X speed claim has been made
 ([post-H7W / H7X target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+**WPF-H7X is rejected at its sole first-object physical gate, before candidate
+execution.** The object is otherwise clean: H7X is **5,320 B / 931 slots /
+VGPR54 / SGPR44 / LDS0 / spill0**, versus unchanged H6W **4,984 B / 871 slots
+/ VGPR54 / SGPR40**, and preserves the declared bpermute/record/exp/FMA/FMAC/
+store structure. But each steady next-slot four-u16 K and V clause is followed
+immediately by `vmcnt(3→0)`: there are **zero current-slot instructions**
+between its final load and first wait. Thus neither intended overlap exists.
+Remove all H7X code/RED/backend-exclusion surfaces, run no correctness/trace/
+timing/runtime/source gate, forbid rewrite/recompile/subset/rerun salvage, and
+retain H6W plus production **437.189 tok/s**
+([H7X physical rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
+[target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
