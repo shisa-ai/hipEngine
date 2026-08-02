@@ -2697,6 +2697,25 @@ H7C/CPU bytes, first-object bounds, named cache-only execution, and immutable-
 screen replay before standalone admission
 ([post-H7H residual / H7I target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
+Admit standalone H7I after the RED-first **22/22** matrix, exact first-object
+physical gate, immutable actual-weight replay, and named cache-only trace all
+pass without tuning. Add only one sibling HIP body, exact-M512 launch path, two
+Python wrappers/registry variants, and two gfx1151 exclusions. H7C kernel and
+Python source hashes, complete H7C package/live map, runtime dispatch, and
+workspace remain unchanged; no H7I capability exists.
+
+The repository object exactly reproduces BF16/F32 code/slots **4,060/623** and
+**4,032/631**, metadata VGPR **69/64**, LDS512, and spill/scratch0. M512 H7I is
+byte-exact to H7C and sampled CPU values; rows1/7/8/9 retain complete H7C
+fallback and invalid rows/shapes fail before HIP loading. The non-adjudicative
+replay improves weighted event/wall **35.432/34.617 -> 20.089/21.762 ms
+(-43.302%/-37.135%)**, every role positive. Rocprof names exact **2 BF16 + 1
+F32** H7I calls at runtime VGPR72/64 with zero compiler. Production remains
+H7H/H7C **427.407 tok/s**. Next freeze a separate bounded-runtime capability
+RED; only after it passes may complete state/topology/fixed/512/1K/4K timing
+qualify H7I ownership
+([H7I candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

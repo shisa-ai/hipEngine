@@ -1,0 +1,647 @@
+{
+  "authority_files": {
+    "README.md": "4f26f920b616f7438cfd406b7d2751fd1c7812af59a93ea838d71555c9d6cf2e",
+    "WORKLOG.md": "537abecd60aee54be4fb12917d8ac9151c114852f89e143cdf4f59e46ea14b79",
+    "benchmarks/CHANGELOG.md": "37f4a5fb550ec98c7eb3eb602ba9b159eb8c9ef041fa44a0163c9608b2872b7f",
+    "benchmarks/README.md": "c4ce413389df2c9a619952c779851459af1f9e9575987036dd435398f23aa011",
+    "docs/KERNELS.md": "5a2f2993af0c1470d263ee3f6034e93536d3ebbeac941aa1e08d26f43d0eee4f",
+    "docs/LAGUNA-prefill.md": "c488226322ed561e02443c2308566b9de92e573fdec6a71efa46a3565d615ec3",
+    "docs/PLAN.md": "17de1c13f1b02b97bd7d504a99404cca7bb0edfc513f25fe9a5dcf9907edf0b2"
+  },
+  "builder_sha256": "dcac20b97c3da627dc5ff3242b926f863a8b9547a8888c11ca776d7bf7ad7cbb",
+  "commands": {
+    "build": "hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip -o <cache>/gguf_k_gemv.so",
+    "green": "GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_laguna_h7i_raw_q6_full_group_compute.py",
+    "replay": "GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/laguna_wpfh7i_repo_immutable_replay.py",
+    "trace": "GPU_MAX_HW_QUEUES=1 rocprofv3 --kernel-trace -f csv -d <out> -o h7i-leaf -- env GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PATH=/usr/bin:/bin .venv/bin/python /tmp/laguna_wpfh7i_named_trace.py"
+  },
+  "correctness": {
+    "fallback_rows": [
+      1,
+      7,
+      8,
+      9
+    ],
+    "green": {
+      "failed": 0,
+      "nodes": 22,
+      "passed": 22
+    },
+    "m512": "complete H7I bytes equal H7C for all three roles; sampled CPU gate passes",
+    "negative_paths": "wrong K/N and threads64 reject before HIP loading",
+    "poison_finite_lifecycle": true,
+    "red": {
+      "failed": 9,
+      "failure_kind": "AttributeError absent named H7I wrappers",
+      "nodes": 22,
+      "passed": 13,
+      "revision": "e5964a684ca2141c7c6890cbe5f32b1d571016b8"
+    },
+    "rejected_rows": [
+      1,
+      7,
+      8,
+      9,
+      511,
+      513
+    ],
+    "workspace_bytes": 161120256
+  },
+  "created_at": "2026-08-02T09:50:00+09:00",
+  "decision": {
+    "correctness_claim": "exact M512 H7I equality plus complete H7C short-row fallback",
+    "h7i_standalone_admitted": true,
+    "next_action": "Freeze a separate bounded-runtime H7I capability RED before adding any package/runtime owner.",
+    "performance_claim": "standalone_three_role_leaf_only",
+    "production_changed": false,
+    "runtime_qualified": false,
+    "source_promoted": false
+  },
+  "guards": {
+    "applicable_h7i_h7c_raw_rowtile": {
+      "failed": 0,
+      "new_compiler_processes": 0,
+      "passed": 82
+    },
+    "excluded_preexisting_q5_fixture": {
+      "diagnostic_failures": 1,
+      "node": "tests/test_gguf_k_rowtile_gemv.py::test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped",
+      "reason": "fixture expects H5Y while committed H7H source has been live since 4fd68fd6f; H7I changes no Q5 file or policy"
+    },
+    "runner_gfx1151_registry": {
+      "failed": 0,
+      "passed": 65
+    }
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "implementation": {
+    "gfx1151_excluded": true,
+    "h7c_source_frozen": true,
+    "kernel": "gguf_q6_k_prefill_out_coltile_rowbatch_dpp_wave_reduction_full_group_compute_kernel",
+    "package_and_runtime_unchanged": true,
+    "roles": [
+      {
+        "calls": 1,
+        "k": 12288,
+        "n": 3072,
+        "output_dtype": "bf16"
+      },
+      {
+        "calls": 1,
+        "k": 3072,
+        "n": 9216,
+        "output_dtype": "f32"
+      },
+      {
+        "calls": 1,
+        "k": 9216,
+        "n": 3072,
+        "output_dtype": "bf16"
+      }
+    ],
+    "rows": 512,
+    "scope": "one H7I sibling body and exact-M512 launch path, two Python wrappers/registry variants, and two gfx1151 exclusions",
+    "variants": [
+      "dpp_wave_reduction_full_group_compute_coltile4_rowbatch8_bf16_bf16_out",
+      "dpp_wave_reduction_full_group_compute_coltile2_rowbatch16_bf16_f32_out"
+    ]
+  },
+  "implementation_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "377f3f966968350f63956516faa539e616ac031d362b6e6312d8b35572362336",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "9943de24fb179770480921811ebc83456d4ac42a3e584e1e280bfc72bb6a808d",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe",
+    "tests/test_laguna_h7i_raw_q6_full_group_compute.py": "e81652d10b690ffea0b066f0ced4b45013e48ce3fc5d7712b3b705e38151816a"
+  },
+  "kind": "gfx1100_laguna_q2_xl_raw_q6_full_group_compute_candidate",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, exact selector-unset H7H full-group Q5 source"
+  },
+  "named_trace": {
+    "compiler_monitor": {
+      "baseline_count": 0,
+      "new": {}
+    },
+    "dispatches": 3,
+    "failed_gates": [],
+    "gates": {
+      "bf16_count": true,
+      "bf16_durations_positive": true,
+      "bf16_grid": true,
+      "bf16_lds_512": true,
+      "bf16_local_128": true,
+      "bf16_scratch_0": true,
+      "bf16_sgpr_128": true,
+      "bf16_vgpr": true,
+      "f32_count": true,
+      "f32_durations_positive": true,
+      "f32_grid": true,
+      "f32_lds_512": true,
+      "f32_local_128": true,
+      "f32_scratch_0": true,
+      "f32_sgpr_128": true,
+      "f32_vgpr": true
+    },
+    "kernel_id_counts": {
+      "31": 1,
+      "46": 2
+    },
+    "kind": "laguna_wpfh7i_named_cache_only_trace_summary",
+    "queues": [
+      "1"
+    ],
+    "raw_evidence_sha256": {
+      "/tmp/laguna-h7i-leaf-rocprof-1s0GHi/h7i-leaf_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "/tmp/laguna-h7i-leaf-rocprof-1s0GHi/h7i-leaf_kernel_trace.csv": "9781d846def4db3ddc65eb90660405d090a7842f8d5f124847dd54cb255b38dc",
+      "/tmp/laguna-h7i-trace-compiler-monitor.json": "992577d917ab6d9adadbce8dc6af97108db11b87a6d9494752b60d1f20bf69f9",
+      "/tmp/laguna-wpfh7i-named-trace.json": "ea1341d356709ad98e520e1239ff19188831be42ec75ae41d716a521d3c43505"
+    },
+    "schema": 1,
+    "streams": [
+      "0"
+    ],
+    "summaries": {
+      "bf16": {
+        "count": 2,
+        "durations_ns": [
+          8647041,
+          6166811
+        ],
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q6_k_prefill_out_coltile_rowbatch_dpp_wave_reduction_full_group_compute_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)"
+        ],
+        "resources": {
+          "grid": [
+            98304,
+            64,
+            1
+          ],
+          "lds_bytes": 512,
+          "local": 128,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 72
+        }
+      },
+      "f32": {
+        "count": 1,
+        "durations_ns": [
+          5586193
+        ],
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q6_k_prefill_out_coltile_rowbatch_dpp_wave_reduction_full_group_compute_kernel<float, 2, 16>(unsigned short const*, unsigned char const*, float*, int, int, int)"
+        ],
+        "resources": {
+          "grid": [
+            589824,
+            32,
+            1
+          ],
+          "lds_bytes": 512,
+          "local": 128,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 64
+        }
+      }
+    },
+    "trace_gate_passed": true,
+    "tracked_returned_to_baseline": true
+  },
+  "physical": {
+    "failed_gates": [],
+    "gates": {
+      "bf16_candidate_code_smaller": true,
+      "bf16_candidate_row_comparisons_fewer": true,
+      "bf16_candidate_slots_fewer": true,
+      "bf16_candidate_vgpr_le_72": true,
+      "f32_candidate_code_smaller": true,
+      "f32_candidate_row_comparisons_fewer": true,
+      "f32_candidate_slots_fewer": true,
+      "f32_candidate_vgpr_le_72": true,
+      "h7c_bf16_barriers_1": true,
+      "h7c_bf16_code_bytes_4228": true,
+      "h7c_bf16_dpp_add_128": true,
+      "h7c_bf16_ds_bpermute_b32_0": true,
+      "h7c_bf16_ds_load_2addr_b32_2": true,
+      "h7c_bf16_ds_store_b128_8": true,
+      "h7c_bf16_dual_fmac_1": true,
+      "h7c_bf16_dynamic_stack_false": true,
+      "h7c_bf16_global_loads_24": true,
+      "h7c_bf16_global_stores_1": true,
+      "h7c_bf16_instruction_slots_681": true,
+      "h7c_bf16_lds_512": true,
+      "h7c_bf16_ordered_fma_operations_32": true,
+      "h7c_bf16_permlanex16_32": true,
+      "h7c_bf16_private_0": true,
+      "h7c_bf16_row_comparisons_9": true,
+      "h7c_bf16_scalar_fmac_31": true,
+      "h7c_bf16_scratch_instructions_0": true,
+      "h7c_bf16_sgpr_50": true,
+      "h7c_bf16_sgpr_spills_0": true,
+      "h7c_bf16_vgpr_60": true,
+      "h7c_bf16_vgpr_spills_0": true,
+      "h7c_f32_barriers_1": true,
+      "h7c_f32_code_bytes_4452": true,
+      "h7c_f32_dpp_add_128": true,
+      "h7c_f32_ds_bpermute_b32_0": true,
+      "h7c_f32_ds_load_2addr_b32_2": true,
+      "h7c_f32_ds_store_b128_8": true,
+      "h7c_f32_dual_fmac_1": true,
+      "h7c_f32_dynamic_stack_false": true,
+      "h7c_f32_global_loads_24": true,
+      "h7c_f32_global_stores_1": true,
+      "h7c_f32_instruction_slots_749": true,
+      "h7c_f32_lds_512": true,
+      "h7c_f32_ordered_fma_operations_32": true,
+      "h7c_f32_permlanex16_32": true,
+      "h7c_f32_private_0": true,
+      "h7c_f32_row_comparisons_17": true,
+      "h7c_f32_scalar_fmac_31": true,
+      "h7c_f32_scratch_instructions_0": true,
+      "h7c_f32_sgpr_69": true,
+      "h7c_f32_sgpr_spills_0": true,
+      "h7c_f32_vgpr_55": true,
+      "h7c_f32_vgpr_spills_0": true,
+      "h7i_bf16_barriers_1": true,
+      "h7i_bf16_code_bytes_4060": true,
+      "h7i_bf16_dpp_add_128": true,
+      "h7i_bf16_ds_bpermute_b32_0": true,
+      "h7i_bf16_ds_load_2addr_b32_2": true,
+      "h7i_bf16_ds_store_b128_8": true,
+      "h7i_bf16_dual_fmac_10": true,
+      "h7i_bf16_dynamic_stack_false": true,
+      "h7i_bf16_global_loads_24": true,
+      "h7i_bf16_global_stores_1": true,
+      "h7i_bf16_instruction_slots_623": true,
+      "h7i_bf16_lds_512": true,
+      "h7i_bf16_ordered_fma_operations_32": true,
+      "h7i_bf16_permlanex16_32": true,
+      "h7i_bf16_private_0": true,
+      "h7i_bf16_row_comparisons_2": true,
+      "h7i_bf16_scalar_fmac_14": true,
+      "h7i_bf16_scratch_instructions_0": true,
+      "h7i_bf16_sgpr_44": true,
+      "h7i_bf16_sgpr_spills_0": true,
+      "h7i_bf16_vgpr_69": true,
+      "h7i_bf16_vgpr_spills_0": true,
+      "h7i_f32_barriers_1": true,
+      "h7i_f32_code_bytes_4032": true,
+      "h7i_f32_dpp_add_128": true,
+      "h7i_f32_ds_bpermute_b32_0": true,
+      "h7i_f32_ds_load_2addr_b32_2": true,
+      "h7i_f32_ds_store_b128_8": true,
+      "h7i_f32_dual_fmac_11": true,
+      "h7i_f32_dynamic_stack_false": true,
+      "h7i_f32_global_loads_24": true,
+      "h7i_f32_global_stores_1": true,
+      "h7i_f32_instruction_slots_631": true,
+      "h7i_f32_lds_512": true,
+      "h7i_f32_ordered_fma_operations_32": true,
+      "h7i_f32_permlanex16_32": true,
+      "h7i_f32_private_0": true,
+      "h7i_f32_row_comparisons_2": true,
+      "h7i_f32_scalar_fmac_16": true,
+      "h7i_f32_scratch_instructions_0": true,
+      "h7i_f32_sgpr_54": true,
+      "h7i_f32_sgpr_spills_0": true,
+      "h7i_f32_vgpr_64": true,
+      "h7i_f32_vgpr_spills_0": true
+    },
+    "kind": "laguna_wpfh7i_repository_first_object_physical",
+    "physical_gate_passed": true,
+    "raw_evidence_sha256": {
+      "/tmp/analyze_laguna_h7c_physical.py": "1285a004f61d23d4be935e5dd69b0464f3257bf169ab9da5e05a44b502c30d73",
+      "/tmp/h7i-repo-first-code-object.co": "4012b1a59d4efe09d837efb478c9c51c3493671429ddf36f4869c95b9001f575",
+      "/tmp/h7i-repo-first-full.isa": "42fc7824f0d8040f864754095d9804f9275c326beaf38a7681832bed61871476",
+      "/tmp/h7i-repo-first-h7c-bf16.isa": "f0d99eaa98e1645a1b8915d6409adfbfe600abbbd6ae69b5a243bbf78f14e772",
+      "/tmp/h7i-repo-first-h7c-f32.isa": "f46e209034610463642e23d4b913cf6e92d8c220e4bd5c542438edff3e223b84",
+      "/tmp/h7i-repo-first-h7i-bf16.isa": "838e243ce072b6596db36fa5eae2855bea412c2d8c2eb6a997090707fc2b9d46",
+      "/tmp/h7i-repo-first-h7i-f32.isa": "3048ab8a833ff4b32defd865fc0de303b36d29a1dbc887f9a5556b733de90f01",
+      "/tmp/h7i-repo-first-readobj.txt": "818a480002041baa9a6d876f06c1e1bf3111131b16f6572f16ed89aed3dec4ac"
+    },
+    "schema": 1,
+    "summaries": {
+      "h7c": {
+        "bf16": {
+          "barriers": 1,
+          "code_bytes": 4228,
+          "dpp_add": 128,
+          "ds_bpermute_b32": 0,
+          "ds_load_2addr_b32": 2,
+          "ds_store_b128": 8,
+          "dual_fmac": 1,
+          "dynamic_stack": false,
+          "global_loads": 24,
+          "global_stores": 1,
+          "instruction_slots": 681,
+          "lds_bytes": 512,
+          "ordered_fma_operations": 32,
+          "permlanex16": 32,
+          "private_bytes": 0,
+          "row_comparisons": 9,
+          "scalar_fmac": 31,
+          "scratch_instructions": 0,
+          "sgpr": 50,
+          "sgpr_spills": 0,
+          "vgpr": 60,
+          "vgpr_spills": 0
+        },
+        "f32": {
+          "barriers": 1,
+          "code_bytes": 4452,
+          "dpp_add": 128,
+          "ds_bpermute_b32": 0,
+          "ds_load_2addr_b32": 2,
+          "ds_store_b128": 8,
+          "dual_fmac": 1,
+          "dynamic_stack": false,
+          "global_loads": 24,
+          "global_stores": 1,
+          "instruction_slots": 749,
+          "lds_bytes": 512,
+          "ordered_fma_operations": 32,
+          "permlanex16": 32,
+          "private_bytes": 0,
+          "row_comparisons": 17,
+          "scalar_fmac": 31,
+          "scratch_instructions": 0,
+          "sgpr": 69,
+          "sgpr_spills": 0,
+          "vgpr": 55,
+          "vgpr_spills": 0
+        }
+      },
+      "h7i": {
+        "bf16": {
+          "barriers": 1,
+          "code_bytes": 4060,
+          "dpp_add": 128,
+          "ds_bpermute_b32": 0,
+          "ds_load_2addr_b32": 2,
+          "ds_store_b128": 8,
+          "dual_fmac": 10,
+          "dynamic_stack": false,
+          "global_loads": 24,
+          "global_stores": 1,
+          "instruction_slots": 623,
+          "lds_bytes": 512,
+          "ordered_fma_operations": 32,
+          "permlanex16": 32,
+          "private_bytes": 0,
+          "row_comparisons": 2,
+          "scalar_fmac": 14,
+          "scratch_instructions": 0,
+          "sgpr": 44,
+          "sgpr_spills": 0,
+          "vgpr": 69,
+          "vgpr_spills": 0
+        },
+        "f32": {
+          "barriers": 1,
+          "code_bytes": 4032,
+          "dpp_add": 128,
+          "ds_bpermute_b32": 0,
+          "ds_load_2addr_b32": 2,
+          "ds_store_b128": 8,
+          "dual_fmac": 11,
+          "dynamic_stack": false,
+          "global_loads": 24,
+          "global_stores": 1,
+          "instruction_slots": 631,
+          "lds_bytes": 512,
+          "ordered_fma_operations": 32,
+          "permlanex16": 32,
+          "private_bytes": 0,
+          "row_comparisons": 2,
+          "scalar_fmac": 16,
+          "scratch_instructions": 0,
+          "sgpr": 54,
+          "sgpr_spills": 0,
+          "vgpr": 64,
+          "vgpr_spills": 0
+        }
+      }
+    }
+  },
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json": "c3b4d6b08c11dd8dde8f1178552ea450a1b54cef8015220e6a2dee9bc2424856",
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json": "de2a4dea81389eb13aae89aa67fc5ebfbaf149b023ab5eec9b8fde155c2b3f65"
+  },
+  "production": {
+    "component_gap_ms": {
+      "attention": 94.71491500000002,
+      "gate_up": 1.8782909999999333,
+      "iq_down": 119.71718499999997,
+      "q5": 178.87077799999994,
+      "q6": 67.23250500000003,
+      "remaining": 8.674400999999975
+    },
+    "component_ms": {
+      "attention": 116.22736200000003,
+      "gate_up": 399.6832139999999,
+      "iq_down": 273.577096,
+      "q5": 237.18486799999994,
+      "q6": 81.90010300000003,
+      "remaining": 76.52383999999998
+    },
+    "dispatches": 2192,
+    "kernel_sum_ms": 1185.0964830000012,
+    "llamacpp_over_production": 1.6162358354888953,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "raw_q6_h7c": {
+      "bf16_calls": 2,
+      "calls": 3,
+      "f32_calls": 1,
+      "median_ms": 28.481514,
+      "share_of_q6_percent": 34.775919634679816
+    },
+    "top_four_gap_share_percent": 97.75993225895155,
+    "wall_tok_s": 427.407303335186
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h7i_named_trace.py": "dfda48f28dd177566757214535a5613dfa61fbddbe30e27ad5470e5eecd0679b",
+    "/tmp/analyze_laguna_h7i_repo_first_physical.py": "2d50247ea278dbd61054edbb94a58f02592f896edee9621433022d55e3d8e1db",
+    "/tmp/h7i-repo-first-code-object.co": "4012b1a59d4efe09d837efb478c9c51c3493671429ddf36f4869c95b9001f575",
+    "/tmp/h7i-repo-first-h7c-bf16.isa": "f0d99eaa98e1645a1b8915d6409adfbfe600abbbd6ae69b5a243bbf78f14e772",
+    "/tmp/h7i-repo-first-h7c-f32.isa": "f46e209034610463642e23d4b913cf6e92d8c220e4bd5c542438edff3e223b84",
+    "/tmp/h7i-repo-first-h7i-bf16.isa": "838e243ce072b6596db36fa5eae2855bea412c2d8c2eb6a997090707fc2b9d46",
+    "/tmp/h7i-repo-first-h7i-f32.isa": "3048ab8a833ff4b32defd865fc0de303b36d29a1dbc887f9a5556b733de90f01",
+    "/tmp/h7i-repo-first-readobj.txt": "818a480002041baa9a6d876f06c1e1bf3111131b16f6572f16ed89aed3dec4ac",
+    "/tmp/laguna-h7i-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7i-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-green.stdout": "e2289c230135b682d66e48107f8caab30f5b37878e8daf2e9fb92df9aebb1375",
+    "/tmp/laguna-h7i-leaf-rocprof-1s0GHi/h7i-leaf_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h7i-leaf-rocprof-1s0GHi/h7i-leaf_kernel_trace.csv": "9781d846def4db3ddc65eb90660405d090a7842f8d5f124847dd54cb255b38dc",
+    "/tmp/laguna-h7i-leaf-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7i-leaf-rocprof.stderr": "cecd0d3a061a4221be07fbd013c7cf916c02e0aac964dc8aa408e1b304e79bae",
+    "/tmp/laguna-h7i-leaf-rocprof.stdout": "e128cad71b378a61fa40bd7d1baeb8241cd81c2f160c27d6843317734b5e2247",
+    "/tmp/laguna-h7i-named-trace-summary.json": "57bc30b3910173993d927eb3efce77c63c3e8712f3e1c96b6165ee62f653bcbb",
+    "/tmp/laguna-h7i-red.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h7i-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-red.stdout": "62ea70ef9bab1fc437b2751556494dd7028dea56385e756ddab943f55c7030a2",
+    "/tmp/laguna-h7i-repo-first-physical.json": "d4f51efaed0b669dfb385d5a7f225b08fedd93572d82c450d3bdbff72b90a682",
+    "/tmp/laguna-h7i-repo-first-physical.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7i-repo-first-physical.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-repo-first-physical.stdout": "0f24b10a10465a04406f4175f8b0b4ac0f02a783ec91dda1e0060a84a628fd98",
+    "/tmp/laguna-h7i-repo-replay.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7i-repo-replay.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-repo-replay.stdout": "d844aae50c696b7eabe11aa1143769a76ad4ea85f67fbd0115a0ff35a3db72fa",
+    "/tmp/laguna-h7i-runner-clean.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7i-runner-clean.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-runner-clean.stdout": "55c823246eb78aa7433a1726dc60eafc4b2d57bcf5526ee5a7307de2bfb3651b",
+    "/tmp/laguna-h7i-standalone-adjacency.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7i-standalone-adjacency.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-standalone-adjacency.stdout": "4bed8cc624113743771e380f4fea7f09ec8586d03d46684c5c3a9889a2038305",
+    "/tmp/laguna-h7i-standalone-guards.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h7i-standalone-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7i-standalone-guards.stdout": "81c883d0ddc276cd18d985b8cc43688577a4ad07ddda5ce8da5c241674267dd6",
+    "/tmp/laguna-h7i-standalone.patch": "a9a24c8b908091d5885e88dc87171d63ddc10ce69844a65409741890f425e9fa",
+    "/tmp/laguna-h7i-trace-compiler-monitor.json": "028d705fa76978ebceeae0e081d57e54a806e6eed119152c491a689349ae5959",
+    "/tmp/laguna-wpfh7i-repository-immutable-replay.json": "4b385c00faddf2e6e4419d13177943250a625c9f6c62193d11d9203c2c981375",
+    "/tmp/laguna_wpfh7i_named_trace.py": "8229521ca0e629ee018e0be68d424ddd31116ac21c0a2aabdff88c3a630d2839",
+    "/tmp/laguna_wpfh7i_repo_immutable_replay.py": "0a84fadf966a5416f64d8cdcead481f750a60a33e47dff80f4c99f909861d3ef",
+    "/tmp/monitor_h7i_trace_compiler_execs.py": "446ccca0e033390b48a85bf8efb3fd67896b01a2e5cb1d4e0d7eb4d49af63f7e",
+    "/tmp/validate_laguna_h7i_candidate.py": "68e447e0bcecbafd05f5f5ee725735136d585be41708e78d8bc05ffc865e3338"
+  },
+  "repo": {
+    "library_cache_key": "996f66f94e3a2a8faf79b6e8a20b313fe3b932a8961a2dfee4bb89f74765db70",
+    "library_sha256": "6bc9f252b4ed11202f9198c1448a660ad8dd1f18156c7c4b7ab0e66395e1e495",
+    "live_raw_q6_policy": "H7C exact three-role map",
+    "production_code_changed": false,
+    "red_revision": "e5964a684ca2141c7c6890cbe5f32b1d571016b8",
+    "runtime_capability_added": false,
+    "source_policy_changed": false
+  },
+  "repository_replay": {
+    "adjudicative": false,
+    "aggregate": {
+      "event_percent_change": -43.30207660871873,
+      "event_speedup": 1.7637330261618984,
+      "h7c_event_weighted_ms": 35.43215408325195,
+      "h7c_wall_weighted_ms": 34.61665576323867,
+      "h7i_event_weighted_ms": 20.08929557800293,
+      "h7i_wall_weighted_ms": 21.761896228417754,
+      "wall_percent_change": -37.13460833057158,
+      "wall_speedup": 1.5907003415462728
+    },
+    "all_candidate_bytes_exact": true,
+    "all_candidate_finite": true,
+    "all_roles_both_clock_positive": true,
+    "protocol": {
+      "actual_weights": true,
+      "adjudicative": false,
+      "candidate": "H7I exact raw-Q6 full-group unconditional-compute DPP-add wave reduction",
+      "control": "production H7C exact raw-Q6 DPP-add wave reduction",
+      "counter_rotated_repetitions": 15,
+      "deterministic_bf16_input": true,
+      "event_and_synchronized_wall": true,
+      "launches_per_sample": 5,
+      "mode_starts_per_role": {
+        "h7c": 8,
+        "h7i": 7
+      },
+      "one_shot_only": true,
+      "production_invocations": 3,
+      "purpose": "non-adjudicative replay of the immutable accepted screen",
+      "rows": 512,
+      "selection_rule": "all three roles and their three-call weighted aggregate must improve on both clocks",
+      "unique_configurations": 3,
+      "warmups": 5
+    },
+    "rows": [
+      {
+        "both_clock_positive": true,
+        "byte_exact": true,
+        "candidate_event_ms": 8.126718139648437,
+        "candidate_sha256": "4de196e1b320a0719d617f8c5bb806ce7255a33604b8ee6b50e4949eff73aaac",
+        "candidate_wall_ms": 8.870826428756118,
+        "control_event_ms": 13.742127990722656,
+        "control_sha256": "4de196e1b320a0719d617f8c5bb806ce7255a33604b8ee6b50e4949eff73aaac",
+        "control_wall_ms": 13.45886499620974,
+        "event_speedup": 1.6909812490823193,
+        "finite": true,
+        "geometry": "coltile4_rowbatch8",
+        "output_dtype": "bf16",
+        "role": "layer-0-dense-ffn-down",
+        "shape_n_k": [
+          3072,
+          12288
+        ],
+        "tensor": "blk.0.ffn_down.weight",
+        "wall_speedup": 1.517205313879303
+      },
+      {
+        "both_clock_positive": true,
+        "byte_exact": true,
+        "candidate_event_ms": 5.642051315307617,
+        "candidate_sha256": "adffe375373f14a493380d859db7de113590f4a64ffbf8cd4b672e20fb550afb",
+        "candidate_wall_ms": 6.388197001069784,
+        "control_event_ms": 10.991315460205078,
+        "control_sha256": "adffe375373f14a493380d859db7de113590f4a64ffbf8cd4b672e20fb550afb",
+        "control_wall_ms": 10.661548795178533,
+        "event_speedup": 1.9481062553231683,
+        "finite": true,
+        "geometry": "coltile2_rowbatch16",
+        "output_dtype": "f32",
+        "role": "layer-47-attention-q",
+        "shape_n_k": [
+          9216,
+          3072
+        ],
+        "tensor": "blk.47.attn_q.weight",
+        "wall_speedup": 1.6689448984420991
+      },
+      {
+        "both_clock_positive": true,
+        "byte_exact": true,
+        "candidate_event_ms": 6.320526123046875,
+        "candidate_sha256": "56c64249da4b600905733b87b6dd32743b569605388f28fe0b4eefccac287d43",
+        "candidate_wall_ms": 6.502872798591852,
+        "control_event_ms": 10.698710632324218,
+        "control_sha256": "56c64249da4b600905733b87b6dd32743b569605388f28fe0b4eefccac287d43",
+        "control_wall_ms": 10.496241971850395,
+        "event_speedup": 1.6926930486550689,
+        "finite": true,
+        "geometry": "coltile4_rowbatch8",
+        "output_dtype": "bf16",
+        "role": "layer-47-attention-output",
+        "shape_n_k": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.47.attn_output.weight",
+        "wall_speedup": 1.6140930780813176
+      }
+    ],
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 64118784,
+      "peak_allocations": 4,
+      "total_allocated_bytes": 152911872,
+      "total_freed_bytes": 152911872
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "schema": 1,
+  "status": "admitted_standalone_exact_h7i_leaf"
+}
