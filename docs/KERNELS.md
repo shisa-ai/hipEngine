@@ -2073,6 +2073,22 @@ H6U/H7I plus **431.310 tok/s**, and do not retry direct raw-Q6 ordered-consumer
 replacement without a new cross-tile reuse/decode operation
 ([H7N rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json)).
 
+**WPF-H7O exact raw-Q6 full-group geometry crossover is rejected out of
+tree.** H7O swaps H7I's constant-32 role geometry without changing decode or
+arithmetic: BF16 c4r8 -> c2r16 and F32 c2r16 -> c4r8. The immutable first
+object passes all frozen physical gates. BF16 is **4,060 B / 634 slots /
+VGPR64 / SGPR54**, F32 is **4,032 B / 620 / VGPR69 / SGPR44**, and both are
+local128/LDS512/private/spill/scratch0 with exact **32 ordered FMAs / 32
+permlanex16 / 128 DPP adds / 24 global loads / one barrier**.
+
+Every actual-role output is byte-exact and lifecycle-clean. Both BF16 roles win
+(**1.077x/1.063x** and **1.093x/1.080x** event/wall), but F32 loses
+(**0.912x/0.913x**). Aggregate event/wall improves **21.909/21.905 ->
+21.314/21.488 ms**, but the predeclared all-three-role rule forbids favorable
+BF16-only salvage after timing. Add no body/export/wrapper/key/test/exclusion,
+retain H7I plus **431.310 tok/s**, and do not reopen H7O subsets
+([H7O rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-geometry-crossover-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
