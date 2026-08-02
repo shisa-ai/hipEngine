@@ -605,17 +605,17 @@ def test_h8a_owner_failed_setup_rolls_back_without_publishing_partial_map(
     assert after["active_allocations"] == before["active_allocations"]
 
 
-def test_h8a_default_off_shared_session_dispatch_and_unshared_fallback(
+def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
 
     assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
-    # Intentional RED at the absent default-off package/session resolver.
+    # Source selection keeps explicit disable and unshared transient fallbacks.
     policy_resolver = getattr(runner_module, _RESOLVER)
     assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is False
-    assert policy_resolver("hip_gfx1100", None) is False
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
+    assert policy_resolver("hip_gfx1100", None) is True
     assert policy_resolver("hip_gfx1100", False) is False
     assert policy_resolver("hip_gfx1100", True) is True
     assert policy_resolver("hip_gfx1151", None) is False
