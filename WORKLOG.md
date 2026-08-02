@@ -198136,3 +198136,22 @@ Vulkan local sizes verbatim will close the measured gap.
   Focused GPU differential, runtime selector/fallback, and gfx1151 capability
   tests pass. Canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json`.
+
+## 2026-08-03 00:28 JST — Reject exact D16 long-global PV ownership
+
+- Added RED then GREEN coverage for an isolated D16/V80 dense-prefix sibling
+  on top of the retained 65K+ non-temporal K+V path. It doubled exact PV
+  workgroups **32 -> 64**, reduced per-block value LDS, and preserved every
+  output's chronological FMA chain. The GPU differential was F32/BF16
+  byte-exact at all four natural leaves with zero repair outputs.
+- Cached 3-warmup/5-sample/burst10 live4,097/16,448/65,664/131,200 changes
+  D32 **0.167899/0.636697/2.443834/4.836937 ms** to D16
+  **0.186061/0.713529/2.753912/5.464432 ms
+  (+10.817%/+12.067%/+12.688%/+12.973%)**. The doubled probability traffic
+  and half-idle output waves dominate the extra grid at every depth.
+- Removed the D16 symbol, wrapper, harness route, template plumbing, and test
+  invocation. Production remains the retained D32/K+V non-temporal owner;
+  no production timing or 128K prefill is warranted. Raw SHA-256 is
+  `b992f11d9e5e21c3e519c6e20e6eb6d9b5e51bbd3a0662edb5f936cdc5bab0c4`;
+  canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-dim16-rejected.json`.
