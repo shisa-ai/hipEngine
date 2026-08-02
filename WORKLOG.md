@@ -198444,3 +198444,49 @@ Vulkan local sizes verbatim will close the measured gap.
 - The required lineage command remains blocked by the missing read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; no external code was
   ported.
+
+## 2026-08-03 04:48 JST — Retain exact V128 float4 probability transport
+
+- RED first failed import on the absent wrapper. GREEN templates only the
+  probability loader of the dense-initial D32/V128/prefetch16 exact PV owner:
+  each aligned float4 is loaded once from the F32 score plane, multiplied
+  lane-wise by the unchanged inverse denominator, and stored once to the
+  shared V128 stage. Tokenloop4 QK, max/exp/sum order, all probability values,
+  chronological probability/BF16-V FMAs, gating, BF16 rounding, allocations,
+  and `KVLiveSpans` behavior are unchanged.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 changes scalar V128
+  **0.148034/0.566599/2.179859/4.318969 ->
+  0.146395/0.549916/2.104589/4.170506 ms
+  (-1.107%/-2.944%/-3.453%/-3.437%)**. F32 context and gated BF16 are
+  byte-exact with zero repair false negatives. Raw SHA-256 is
+  `5775545bb7676ad845b13b4190830bb8292e3672d1ecdc3f3684fd310eecad74`.
+- Cached tracing proves scalar/candidate PV
+  `<128,true,true,16,false/true>` ran at identical
+  local512/VGPR56/SGPR128/LDS22,528/scratch0 and changes the median
+  **2,491.917 -> 2,353.578 us (-5.551%)**. Score/denominator remain
+  **1,258.302/519.876 us**; trace SHA-256 is
+  `f08c95263f5a353d7f3ea805de4213f59b742e12304eca2c1f710cb321e8228c`.
+- Complete production 512/1K/4K is exact and noise-flat at
+  **23.191679/23.049201/21.675782 tok/s
+  (-0.042%/+0.011%/+0.011%)**. Active 16K/64K improves
+  **20.135472/14.404054 -> 20.181043/14.620180 tok/s
+  (+0.226%/+1.500%)**. Mandatory 128K improves
+  **11.093431 -> 11.233382 tok/s (+1.262%)**, cuts 127-transition wall
+  **11.448216 -> 11.305589 s (-1.246%)**, raises same-GGUF Vulkan parity
+  **77.919% -> 78.902%**, and narrows the gap
+  **19.904 -> 18.781 ms/token**. All established tokens/hashes/positions are
+  unchanged and all three processes free all **87,407,934,744 bytes / 1,452
+  allocations**. Raw production SHA-256 values are
+  `ec3612dc51c17150ea23173e51241a6672bf960274aecc8fe9ff2b51054f0e6b`,
+  `7d9414865f8fff1af0d5af4a909ad6f1776983fcceca1c66d78dc85c68dc939e`,
+  and `6bc59bae4cfa9fcf5de6cd83a84b27ff8e0b9b236f3b4cda1a896cbd31c366d4`.
+- The production selector requires a score stride divisible by four; a focused
+  unaligned-capacity test proves it selects scalar V128 instead of returning
+  the candidate wrapper's alignment error. Explicit eviction and peer
+  backends retain V80. Focused GPU differential/selector/capability validation
+  passes **3/3** after the stride guard. Canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-probability-vec4-retained.json`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  by the missing read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout;
+  this work ports no external code.

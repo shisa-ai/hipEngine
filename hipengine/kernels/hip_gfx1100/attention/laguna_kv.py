@@ -100,6 +100,11 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VS
     "tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_"
     "nontemporal_key_value_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = (
+    "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_"
+    "tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_"
+    "dense_prefix_nontemporal_key_value_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TILE4_DIM32_VSTAGE64 = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tile4_"
     "dim32_vstage64_bf16_spans"
@@ -2346,6 +2351,19 @@ def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
     """Run dense exact D32/V128 PV with p16 and non-temporal K/V."""
 
     kwargs["_symbol"] = _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+    laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans(
+        *args,
+        **kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Load and stage contiguous exact V128 probabilities as float4 vectors."""
+
+    kwargs["_symbol"] = _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
     laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans(
         *args,
         **kwargs,
@@ -9275,6 +9293,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_spans",
+            laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_gated_gqa6_dim64_vstage64_spans",
             laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
         ),
@@ -9963,6 +9986,7 @@ __all__ = [
     "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans",
+    "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans",

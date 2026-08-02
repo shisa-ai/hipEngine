@@ -548,6 +548,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value = False
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value = False
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value = False
+    active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value = False
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_dim_tile = 32
     active_global_split_gqa6_ctx4096_deferrednorm = False
@@ -808,6 +809,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value = (
             owner.kv_cache.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value
+        )
+        active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value = (
+            owner.kv_cache.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value
         )
         active_global_split_gqa6_ctx4096_compensated_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_compensated_layer
@@ -1386,6 +1390,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value": (
                 active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value
             ),
+            "global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value": (
+                active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value
+            ),
             "global_split_gqa6_ctx4096_min_layer": (
                 active_global_split_gqa6_ctx4096_min_layer
             ),
@@ -1531,7 +1538,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "through 6000); larger live contexts use GQA6 score "
                 "ownership, ordered exp/sum reduction, deferred exact "
                 "normalization, and dimension-sharded staged-V PV (V128 "
-                "while dense-initial identity remains valid on gfx1151); "
+                "with exact float4 probability transport while dense-initial "
+                "identity remains valid on gfx1151); "
                 "gfx1151 "
                 "quality-gates the 4,096-token split only at live >= "
                 f"{active_global_split_gqa6_ctx4096_min_live:,}, with a "
