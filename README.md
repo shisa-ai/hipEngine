@@ -1148,6 +1148,21 @@ selection, not a speed claim. Freeze an all-or-nothing RED owner and complete
 family and every layer/prompt subset remain forbidden
 ([H8A target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
 
+H8A now qualifies as a bounded default-off owner. Its Python-only implementation
+keeps the HIP source/object byte-identical and publishes one immutable **24-plane
+/ 1,811,939,328-byte** raw-pointer map. Every real plane matches a fresh retained
+producer over all **75,497,472 bytes**; complete M512 is KL0/top-1 100% and
+byte-exact across all 48 hidden boundaries, logits, final/post hidden, KV/spans,
+repeat, and teardown. The named request proves **24 setup / 0 request producers
++ 24 target packs + 24 H7G consumers / 2,262 application dispatches** on one
+queue/stream with zero compiler. Fixed C4096/M512 improves **436.765→438.368
+tok/s (+0.367%, 5/5 paired wins)**; clean 512/1K/4K medians improve
+**+0.748%/+0.332%/+0.257%**, each with 3/3 paired wins and exact state. Source
+production remains H6Z/H6W **437.189 tok/s** pending a separately frozen source-
+default gate
+([H8A runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
+[H8A target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

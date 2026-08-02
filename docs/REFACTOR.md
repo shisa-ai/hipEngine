@@ -64,12 +64,16 @@ should be removed or collapsed.
   `attn_q` and `attn_output` raw-Q5 tensors. Explicit child sharing reuses the
   same owner; every disabled, unsupported, unshared, allocation-failed, or
   non-target route keeps the registered transient producer + H7G fallback.
-- Remove the complete candidate owner/composite/capability/selector/test surface
-  if any frozen state, topology, fixed, or clean 512/1K/4K median gate fails.
-  If source promotion passes, remove the public positive selector and duplicate
-  default-off capability after one clean committed production checkpoint while
+- Bounded qualification passes: all 24 complete planes, natural-M512 state,
+  exact **24 setup / 0 request producer / 2,262-dispatch** topology, fixed
+  C4096/M512, and clean 512/1K/4K medians are positive and exact. Retain the
+  owner default-off while source promotion is separately RED-gated. If source
+  promotion passes, remove the public positive selector and duplicate default-
+  off capability after one clean committed production checkpoint while
   retaining the immutable cache owner, raw-pointer lookup, required unfused H7G
-  fallback, and explicit opt-out only while it remains useful for bisection.
+  fallback, and explicit opt-out only while it remains useful for bisection. If
+  source fails, keep only the bounded diagnostic while a materially different
+  mechanism still needs it, then remove the complete H8A candidate surface.
 
 ## Laguna H6Z bounded default-off global-attention capability
 
