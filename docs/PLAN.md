@@ -3121,6 +3121,37 @@ workgroup/activation-record reduction is not a speed result
 ([H7W rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-output-p128-rejected.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
 
+Select target-only **WPF-H7X exact H6W one-slot BF16 K/V software pipeline**
+after the clean H7W rejection. Production remains **437.189 tok/s / 1,153.347
+ms / 2,286 dispatches**, **1.58007×** behind matched llama.cpp HIP **690.791
+tok/s / 714.008 ms**. Current campaign-start→production→llama component times
+are Q5 **1,270.458→235.987→58.314 ms**, IQ-down
+**557.091→273.063→153.860**, attention **488.304→115.607→21.512**, Q6
+**157.073→74.719→14.668**, gate/up **460.143→400.672→397.805**, and
+remaining **68.623→53.299→67.849**.
+
+H6W owns **72 calls / 62.656 ms**, **54.198%** of attention and **14.262%** of
+the total matched kernel gap. Its local32/wave32 body is **4,984 B / 871 slots
+/ metadata VGPR54 / runtime VGPR56 / LDS0 / spill0**. Both steady-state K and V
+paths issue four BF16 loads then immediately drain `vmcnt(3→0)` before useful
+current-slot work. Across both natural starts and all 36 SWA layers,
+**63,866,880 / 64,032,768 slots (99.7409%)** per K pass and per V pass have a
+next slot.
+
+Freeze RED before adding a separately named gfx1100 H6W-equivalent sibling.
+Preload slot0, issue next-slot K before complete current-slot ordered
+QK/reduction/max/store work, and independently issue next-slot V before current
+exp/denominator/broadcast/PV work. Preserve every consumed value and arithmetic
+order, score records, all `KVLiveSpans` fields, allocation/workspace, request
+dispatches, H6W source/default, and fallback. Require sole-object local32,
+VGPR≤64, LDS/private/spill/scratch0 and physical next-slot overlap; complete
+starts256/384 H6W+CPU identity; exact **72 H7X + 72 H6A + 24 H6N + 24 H6Z /
+2,286-dispatch** tracing; then one starts256/384 plus weighted-aggregate
+both-clock 5/15/5 screen. Any miss removes H7X without start/layer/head/prompt/
+length subset, prefetch-distance retune, rewrite, recompile, or favorable rerun.
+No candidate has been built or executed and no speed result exists
+([H7X target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
