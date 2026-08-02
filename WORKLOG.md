@@ -198155,3 +198155,38 @@ Vulkan local sizes verbatim will close the measured gap.
   `b992f11d9e5e21c3e519c6e20e6eb6d9b5e51bbd3a0662edb5f936cdc5bab0c4`;
   canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-dim16-rejected.json`.
+
+## 2026-08-03 01:04 JST — Retain exact dense V80 prefetch8 after non-temporal K/V
+
+- Re-opened the previously rejected ordered prefetch8 only because the
+  retained V80 and non-temporal K/V path changed its latency-hiding regime.
+  Added RED then GREEN direct-wrapper coverage, a separately registered
+  rollback-safe candidate, gfx1151 capability, dense-initial runtime
+  selection, harness/protocol fields, and unchanged metadata-aware fallback
+  after eviction.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 changes prefetch4
+  **0.166440/0.634374/2.441526/4.835521 ->
+  0.154891/0.591009/2.272412/4.501263 ms
+  (-6.939%/-6.836%/-6.927%/-6.913%)**. F32 context and gated BF16 output are
+  byte-exact at every shape with zero repair outputs. Raw SHA-256 is
+  `b04f64dd6d131fb0714c0d9f3f935879fb7fdc747831554a47e48095c3175ccd`.
+- The inactive 512/1K/4K guard is exact and noise-flat at
+  **23.209873/23.056986/21.652083 tok/s
+  (+0.050%/+0.052%/-0.090%)**. Active 16K/64K improves
+  **19.782509/13.849289 -> 19.991285/14.170088 tok/s
+  (+1.055%/+2.316%)**. Mandatory 128K improves
+  **10.446265 -> 10.673232 tok/s (+2.173%)** and cuts 127-transition wall
+  **12.157455 -> 11.898926 s (-2.127%)**, preserving
+  **874 / c8307c... / position 131,198**. Every run frees all
+  **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256 values
+  are `acd7035a0fe3a0eb352e9549034a09b4a8633ee79d8c62971e1b189fcd9808bd`,
+  `aa4c5e4e6aa4654847332d230be7b06f30898606a60eb5f7c0497c471b009eca`,
+  and `2569e037383c1fe9f85b7090acfa75f649d9a1207939997590633a83e7d3faee`.
+- Cached tracing names prefetch8 PV `<80,true,true,8>` at
+  local512/VGPR40/SGPR128/LDS14,336/scratch0 versus prefetch4 VGPR32, and
+  changes mixed-depth PV median **948.660 -> 840.618 us**. Trace CSV SHA-256
+  is `4aeb45bcfb52ddc859fa8b4f8f6a41370bbdf092783ec61f527fa7978e8ceee8`.
+  Focused exactness, selector/fallback, and gfx1151 capability tests pass
+  **3/3**. Canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json`.
