@@ -779,6 +779,27 @@ export/exclusion surface is removed. Production remains H7H/H7I
 **431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP
 ([H7K physical rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json)).
 
+The post-H7K rerank selects target-only **WPF-H7L exact IQ3 full-batch/live-tail
+split**. An actual-routing replay over all **45** IQ3 layers finds **230,400**
+live compact rows represented by **33,547** rowbatch8 iterations: **24,650
+(73.479%)** are complete and cover **197,200 rows (85.590%)**, while **8,897**
+tails contain **33,200** live plus **37,976** inactive compute slots. H7L keeps
+H6T's complete-batch interleaved VOPD math and fused-DPP publication unchanged,
+then computes and publishes only the final tail's 1..7 live rows in the same
+per-row FMA/reduction/store order. The modeled inactive work is **4.200B FMA +
+2.333B exchange wave operations**; this is source-operation rationale, not a
+speed claim.
+
+Freeze strict K1024/N3072/E256/P256/P64/local128/rowbatch8 ownership, complete
+rows1/7/8/9/M512 plus all tail sizes and reversed-P64 controls, unchanged
+compaction/ABI/workspace/maps/gfx1151, first-object VGPR/LDS/spill/code bounds,
+named cache-only execution, and one immutable all-45-layer 5/15/5 screen. Every
+layer and the aggregate must win HIP-event and synchronized-wall clocks; any
+miss removes H7L without subset salvage, tuning, recompile, or favorable rerun.
+Production remains **431.310 tok/s / 1,172.241 ms**, **1.60161x** behind matched
+llama.cpp HIP, and no H7L implementation or speed result exists before RED
+([post-H7K residual / H7L target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

@@ -2799,6 +2799,37 @@ surfaces. Production remains H7H/H7I **431.310 tok/s / 1,172.241 ms** with no
 metric change. Rerank a materially different exact operation
 ([H7K physical rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json)).
 
+Select target-only **WPF-H7L exact IQ3 full-batch/live-tail split** after the
+post-H7K rerank. IQ-down is the largest distinct actionable family at
+**272.309 ms / 118.449-ms matched gap** after Q5's measured closure and H7K's
+attention physical miss. Actual natural-M512 routing across all 45 IQ3 layers
+contains **230,400** live rows in **33,547** rowbatch8 iterations. **24,650
+(73.479%)** iterations are full and cover **197,200 rows (85.590%)**; **8,897**
+tails contain **33,200** live rows and **37,976** inactive slots, so H6T spends
+**14.150%** of its row-slot compute on values that cannot be stored.
+
+H7L changes only rowbatch ownership inside one separately named H6T sibling.
+Split every expert into unconditional complete batches plus at most one bounded
+tail. Keep the complete path's interleaved VOPD/FMA order, fused-DPP wave
+publication, serial wave sum, and BF16 stores exact. The tail processes only
+1..7 live rows but preserves each row's eight ordered magnitude FMAs, scale
+multiply, permlanex16+DPP 8/4/2/1 sequence, serial wave0..3 sum, and store.
+Keep compaction, row layout, metadata, ABI, allocation/workspace, package/
+runtime/source maps, H6T, and gfx1151 unchanged. The **4.200B FMA / 2.333B
+exchange** inactive-wave-operation model is rationale only, not timing.
+
+Freeze RED first for every tail size plus rows1/7/8/9/M512, reversed P64/P65,
+complete H6T/CPU/poison/finite/lifecycle behavior, strict K1024/N3072/E256
+scope, and source-policy isolation. Before timing require local128/grid32768x64,
+metadata/runtime VGPR <=101/104, LDS384/512, code <=14,000 B, slots <=2,400,
+private/spill/scratch0, a bounded live-tail ISA loop, and named cache-only
+execution. Then consume one 5/15/5 actual-weight screen over all **45/45**
+layers. Every layer and aggregate must win both clocks; any miss removes all
+H7L surfaces without subset salvage, tuning, recompile, or favorable rerun.
+Runtime/source qualification remains separate. Production stays **431.310
+tok/s / 1,172.241 ms**
+([post-H7K residual / H7L target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
