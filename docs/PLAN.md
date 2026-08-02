@@ -3059,6 +3059,26 @@ closed Q5 geometry/representation, IQ residual, changed-association attention,
 or raw-Q6 direct-consumer routes
 ([H7U production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json)).
 
+Select target-only **WPF-H7V exact dequantized-Q6 full-batch/live-tail
+predicate elimination**. H6U's 142 exact F32-weight consumers own **49.191 ms /
+65.604% of Q6**. At M512, **1,757,184 / 1,763,328 workgroups (99.652%)** are
+complete, but the shared H6U body retains dynamic compute/store row predicates.
+Keep the activation pack, Q6-to-F32 producer, H6U FMA/DPP/LDS/store sequence,
+and allocation/workspace exact. Run one predicate-free full-prefix launch per
+role call; for the 96 rowbatch5 calls, follow it with one unchanged H6U
+remainder-2 tail. The modeled topology is **142→238 consumers** and
+**2,286→2,382 request dispatches**.
+
+This is a separate dequantized-Q6 operation from H7I/H7N/H7S raw decode, H7J Q5
+full-grid, and physically rejected H7L IQ3 live-tail. Freeze RED before code.
+Require all-role complete bytes/CPU/full+tail recomposition, strict fallbacks,
+first-object no-row-compare and H6U resource/opcode bounds, cache-only
+142-pack/143-producer/142-full/96-tail topology, and one all-three-role plus
+weighted-aggregate both-clock 5/15/5 screen. Any miss removes H7V without role,
+output-type, layer, prompt, length, retune, recompile, or favorable-rerun
+salvage; no candidate or speed result exists
+([H7V target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

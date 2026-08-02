@@ -1,0 +1,230 @@
+{
+  "admission": {
+    "correctness": "for all three 2/46/94-call roles, preserve complete H6U primitive/composite bytes and sampled CPU values at rows17/33/M512; prove full-prefix plus exact H6U tail recomposes M512 byte-for-byte; retain activation pack, Q6-to-F32 producer, FMA/reduction/store order, poison, finiteness, strict preflight, deterministic repeat, and lifecycle",
+    "fallback": "rows other than exact M512, wrong role/shape/quant/registration/backend, and every explicit request retain H6U; rowbatch5 remainder2 uses the unchanged H6U kernel on offset input/output pointers",
+    "no_salvage": "reject/remove on any correctness, physical, trace, per-role, or aggregate miss; no r4-only/r5-only/output-type/layer/prompt/length subset, geometry retune, rewrite, recompile, or favorable rerun",
+    "physical": "build exactly one object; each H7V full-group role must keep H6U local128/wave32/LDS1024-or1536/private0/spill0/scratch0, exact 64-or80 FMA and permlanex16/DPP counts, one barrier, serial wave0..3 publication/store, no row-bound compare in the full kernel, and code/slots/VGPR no worse than H6U",
+    "red_first": "freeze a focused RED before any H7V HIP body, wrapper, registry key, package capability, or candidate execution",
+    "runtime_source_separate": true,
+    "timing": "consume one immutable actual-weight five-warmup/15-counter-rotated/five-launch screen; each of BF16 K3072/N1024 r5, BF16 K1024/N3072 r4, F32 K3072/N1024 r5, and the weighted 2/46/94 aggregate must improve HIP-event and synchronized-wall clocks inclusive of tail launches",
+    "trace": "cache-only one-queue actual-role trace must preserve 142 packs and 143 Q6-to-F32 producers, name 142 H7V full launches plus exactly 96 H6U remainder2 tail launches, total 238 consumer launches and 2,382 request dispatches, with positive durations and zero compiler"
+  },
+  "authority_sha256": {
+    "README.md": "5a88c8d3694bed2b675a34171e7b09cc32b21f11dc1738ebb80816c097e3de88",
+    "benchmarks/CHANGELOG.md": "9ac33a1265fc20b7a64359d822d348b7180ae386dc335220e41aa318c9251ff5",
+    "benchmarks/README.md": "c7f0f43ff07d694f6bb0807519c4061e03bad3cfad5c9d4d5959274111de2ef4",
+    "docs/KERNELS.md": "a702518bff5285fd7796e8413cf27a644336a5eb22320e4fd76dfa4c6f993059",
+    "docs/LAGUNA-prefill.md": "2a12ba3c533ed22a9e14ac6ede9041eec4d5682f66832d230692c93684a0e195",
+    "docs/PLAN.md": "38e95b149f27d6ade95ef3709c41d7d56d694ccdd3e61fd447d9cdd1e831e5c3"
+  },
+  "date": "2026-08-02",
+  "decision": {
+    "candidate_executed": false,
+    "candidate_implemented": false,
+    "next_action": "commit this target-only boundary, then freeze RED before implementation or candidate execution",
+    "performance_claim": "target_selection_only",
+    "production_changed": false,
+    "speed_result_exists": false,
+    "target_selected": true
+  },
+  "distinction": {
+    "from_h7i": "H7I specializes three raw-Q6 c4r8/c2r16 calls; H7V keeps the separate 142-call H6U exact-F32-weight producer/pack/consumer pipeline",
+    "from_h7j": "H7J is a rejected two-role Q5 full-grid sibling; H7V is a three-role dequantized-Q6 DPP composite with an explicit rowbatch5 exact tail launch and a fresh all-role gate",
+    "from_h7l": "H7L is a physically rejected active-IQ3 full-batch/live-tail kernel; H7V targets the much smaller H6U Q6 consumer and must independently pass first-object resources before timing",
+    "from_h7n_h7s": "H7N/H7S replace the ordered pipeline with direct raw-Q6 decode and lose; H7V preserves the exact producer, packed activation, H6U FMA/reduction/store body, and only removes full-group predicates"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7u_q6_full_batch_live_tail_target",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "production": {
+    "dispatches": 2286,
+    "kernel_sum_ms": 1160.833477,
+    "llamacpp_over_production": 1.5800730750452894,
+    "matched_llamacpp_hip_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "wall_tok_s": 437.1892736544479
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json": "57ff2d0bbfaf8114063954eea59ef919fe088fc5d0e291922b6d7c74a3d7036c",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json": "19f172ae20ded62e6bb4a7f71e20bb71fe307d5ea1e6e6fa51f6b0c69c3bb3a3",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json": "7982364ec43d486668fe3d00afcb63d23a3ebd12dbe7e2a7f8ccd60b7a60b6ea",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json": "b78267105e2a421e926cc2353365d423f28803553c7523cd419b982da555173a",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e",
+    "/tmp/analyze_laguna_post_h7u_h7v_target.py": "b09d360efc9b1e3ac11e1695d28bafde3e76ea7d1912b842c5179c4db81424ed",
+    "/tmp/laguna-h7u-source-clean-production.json": "e9171a88d6d44f58bdeaa8126f2ac81b9e521e116833c7c9e491251d202cb083",
+    "/tmp/laguna-h7u-source-clean-rocprof/h7u-source_kernel_trace.csv": "b65609dca6af21de0bb172fde566c01a9254a3d6a3959e8e3dde2f4ba6f73535",
+    "/tmp/laguna-h7u-source-clean-trace-summary.json": "4c549f386f6d85ce106c7c000c41d17294d87596f0e35097e3a27a50809da8ae",
+    "/tmp/laguna-post-h7u-h7v-target-analysis.json": "62c6554e922bc929a6896f4bbec85f861b5a6037171b48360b34564f535ecb1a",
+    "/tmp/laguna-post-h7u-h7v-target-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7u-h7v-target-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7u-h7v-target-analysis.stdout": "62c6554e922bc929a6896f4bbec85f861b5a6037171b48360b34564f535ecb1a"
+  },
+  "residual": {
+    "attribution_note": "only the compaction/remaining reduction is attributable to H7U; unchanged-family deltas are profiler noise",
+    "before_h7u_kernel_sum_ms": 1172.2412389999988,
+    "campaign_start_kernel_sum_ms": 3001.692,
+    "current_h7u_kernel_sum_ms": 1160.833477,
+    "current_total_gap_ms": 446.82506899999987,
+    "llamacpp_hip_kernel_sum_ms": 714.008408,
+    "rows": [
+      {
+        "before_h7u_ms": 235.19927099999992,
+        "campaign_start_ms": 1270.458,
+        "current_gap_ms": 178.22466299999988,
+        "current_h7u_ms": 236.53875299999987,
+        "family": "q5",
+        "label": "Q5 projections",
+        "llamacpp_hip_ms": 58.31409
+      },
+      {
+        "before_h7u_ms": 272.3088049999999,
+        "campaign_start_ms": 557.091,
+        "current_gap_ms": 121.56410400000004,
+        "current_h7u_ms": 275.42401500000005,
+        "family": "iq_down",
+        "label": "IQ3/IQ4 down",
+        "llamacpp_hip_ms": 153.859911
+      },
+      {
+        "before_h7u_ms": 115.31707599999996,
+        "campaign_start_ms": 488.304,
+        "current_gap_ms": 94.78380899999996,
+        "current_h7u_ms": 116.29625599999996,
+        "family": "attention",
+        "label": "attention",
+        "llamacpp_hip_ms": 21.512447
+      },
+      {
+        "before_h7u_ms": 74.40922200000009,
+        "campaign_start_ms": 157.073,
+        "current_gap_ms": 60.31434100000004,
+        "current_h7u_ms": 74.98193900000004,
+        "family": "q6",
+        "label": "Q6 projections",
+        "llamacpp_hip_ms": 14.667598
+      },
+      {
+        "before_h7u_ms": 398.5899390000001,
+        "campaign_start_ms": 460.143,
+        "current_gap_ms": 6.5700669999999946,
+        "current_h7u_ms": 404.37498999999997,
+        "family": "gate_up",
+        "label": "IQ2/special-IQ3 gate/up",
+        "llamacpp_hip_ms": 397.804923
+      },
+      {
+        "before_h7u_ms": 76.41692600000007,
+        "campaign_start_ms": 68.623,
+        "current_gap_ms": -14.631915000000014,
+        "current_h7u_ms": 53.21752399999999,
+        "family": "remaining",
+        "label": "remaining",
+        "llamacpp_hip_ms": 67.849439
+      }
+    ]
+  },
+  "schema": 1,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "1c941b15b941b52e252ba0a4dbc506ee35087ff0a571a8e1eb34899895ad9a4d",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "cd3f2272a341e7d854ac41b58c9041ec7d8769965c976c7c6cf3294370a79cfe",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe",
+    "hipengine/runtime/gguf_linear.py": "85e7faa7d5129a40cf5afcedfa538e8733b263d3c058f676a9aae9f9736fe8d1",
+    "tests/test_laguna_h6u_q6_dpp_wave_reduction.py": "aa3808a8f0a93bc7925724de35c20c2a5ee691ca6f04b93325c7986d80bc6b38",
+    "tests/test_laguna_h6u_runtime_policy.py": "e25a1051bf51eee905f26e671ab9d5ce1a054c74ae05d36a72062cb6ec4d2e06",
+    "tests/test_laguna_h6u_source_default.py": "86b8f5920c73137f2316fe23f0c3c2df5b354167050b47d78e8e377cdef73653"
+  },
+  "status": "accepted_target_only_no_candidate_run",
+  "target": {
+    "activation_pack_unchanged": true,
+    "candidate_consumer_launches": 238,
+    "candidate_full_launches": 142,
+    "candidate_tail_launches": 96,
+    "consumer_share_of_q6_percent": 65.60385161552033,
+    "control_consumer_launches": 142,
+    "current_consumer_calls": 142,
+    "current_consumer_ms": 49.191039999999994,
+    "current_q6_ms": 74.98193900000004,
+    "expected_candidate_request_dispatches": 2382,
+    "fma_reduction_store_order_unchanged": true,
+    "full_workgroup_percent": 99.65156794425087,
+    "full_workgroups": 1757184,
+    "id": "WPF-H7V",
+    "name": "exact dequantized-Q6 full-batch/live-tail predicate elimination",
+    "new_device_allocation_bytes": 0,
+    "new_workspace_bytes": 0,
+    "request_dispatch_delta": 96,
+    "roles": [
+      {
+        "calls": 2,
+        "current_consumer_ms": 0.603966,
+        "current_pack_ms": 0.04136,
+        "full_groups_per_call": 102,
+        "full_workgroups_per_call": 6528,
+        "groups_per_call": 103,
+        "output_tiles": 64,
+        "role": "bf16_k3072_n1024_r5",
+        "row_batch": 5,
+        "rows": 512,
+        "tail_rows": 2,
+        "tail_workgroups_per_call": 64,
+        "trace_role": "bf16_16x5",
+        "weighted_full_workgroups": 13056,
+        "weighted_tail_workgroups": 128,
+        "weighted_workgroups": 13184,
+        "workgroups_per_call": 6592
+      },
+      {
+        "calls": 46,
+        "current_consumer_ms": 20.562137999999997,
+        "current_pack_ms": 0.38288500000000003,
+        "full_groups_per_call": 128,
+        "full_workgroups_per_call": 24576,
+        "groups_per_call": 128,
+        "output_tiles": 192,
+        "role": "bf16_k1024_n3072_r4",
+        "row_batch": 4,
+        "rows": 512,
+        "tail_rows": 0,
+        "tail_workgroups_per_call": 0,
+        "trace_role": "bf16_16x4",
+        "weighted_full_workgroups": 1130496,
+        "weighted_tail_workgroups": 0,
+        "weighted_workgroups": 1130496,
+        "workgroups_per_call": 24576
+      },
+      {
+        "calls": 94,
+        "current_consumer_ms": 28.024935999999997,
+        "current_pack_ms": 1.902979000000001,
+        "full_groups_per_call": 102,
+        "full_workgroups_per_call": 6528,
+        "groups_per_call": 103,
+        "output_tiles": 64,
+        "role": "f32_k3072_n1024_r5",
+        "row_batch": 5,
+        "rows": 512,
+        "tail_rows": 2,
+        "tail_workgroups_per_call": 64,
+        "trace_role": "f32_16x5",
+        "weighted_full_workgroups": 613632,
+        "weighted_tail_workgroups": 6016,
+        "weighted_workgroups": 619648,
+        "workgroups_per_call": 6592
+      }
+    ],
+    "rowbatch5_calls": 96,
+    "tail_uses_exact_h6u_fallback": true,
+    "tail_workgroups": 6144,
+    "total_workgroups": 1763328,
+    "weight_producer_unchanged": true
+  }
+}

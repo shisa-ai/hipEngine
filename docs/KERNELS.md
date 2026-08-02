@@ -2251,6 +2251,23 @@ serial **25.187 ms**. Clean matched production is **437.189 tok/s** and the
 representative kernel sum is **1,160.833 ms**
 ([H7U production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json)).
 
+The next target-only kernel is **WPF-H7V dequantized-Q6 H6U full-batch/live-
+tail** in `quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}`. The current local128
+DPP body has two `row < rows` predicates inside every exact role and one outer
+row/output guard. At M512, rowbatch4 has 128/128 full groups; each rowbatch5
+call has 102 full groups plus one remainder-2 group. Weighted across 2/46/94
+calls, **1,757,184/1,763,328 workgroups (99.652%)** are full.
+
+H7V must keep one predicate-free full kernel plus the unchanged H6U kernel as
+its rowbatch5 tail/fallback. Expected source topology is 142 H7V full launches,
+96 H6U tail launches, unchanged 142 activation packs and 143 exact Q6-to-F32
+producers, and **2,382 request dispatches**. The full object must retain
+local128/wave32, LDS **1,024/1,536 B**, exact 64/80 FMA and permlanex16/DPP
+counts, one barrier, serial four-wave sum/store, and private/spill/scratch0,
+with no row-bound compare and no worse code/slots/VGPR than H6U. Freeze RED and
+all-role timing before implementation; no candidate has run
+([H7V target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

@@ -1683,6 +1683,24 @@ versus prior serial **25.187 ms**. Representative kernel sum/span is
 Q5/IQ-down/attention/Q6 remain the four dominant gaps
 ([H7U production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json)).
 
+Post-H7U, select target-only **WPF-H7V exact dequantized-Q6 full-batch/live-tail
+predicate elimination**. Current H6U activation-pack + exact Q6-to-F32 + DPP
+consumer topology remains **2/46/94** calls; the consumers total **49.191 ms**,
+**65.604%** of current Q6. M512 rowbatch4 is wholly full, and rowbatch5 has 102
+full groups plus one remainder2. Thus **99.652%** of weighted workgroups are
+full but still carry compute/store row predicates.
+
+Preserve all producers, packed activation bytes, ordered FMAs, permlanex16/DPP,
+LDS wave publication, serial wave sum/store, ABI, workspace, and H6U fallback.
+One H7V full-prefix launch per call plus one H6U tail for each of 96 rowbatch5
+calls changes only consumer topology **142→238** and request dispatches
+**2,286→2,382**. H7V is distinct from raw-Q6 H7I/H7N/H7S and from rejected Q5
+H7J/IQ3 H7L families. Freeze RED, physical no-row-compare/resource gates,
+full+tail exactness, named cache-only topology, and an inseparable three-role
+plus aggregate both-clock screen before runtime/source work. No candidate or
+speed result exists
+([H7V target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
