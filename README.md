@@ -768,6 +768,17 @@ H7H/H7I **431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP; no H7K
 repository surface or performance result exists before RED
 ([post-H7J residual / H7K target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7j-matched-swa-weight-publication-target.json)).
 
+**WPF-H7K is rejected at its frozen first-object physical gate.** The first and
+only repository object keeps H6W unchanged and passes code/slots/VGPR
+**5,048 B / 875 / 54**, 28 bpermutes, four exponentials, 56 FMAs, two b128
+record stores, and spill/scratch0. However, both required aligned `float4`
+record reads scalarize to **0 b128 + 2 b32 sites**, failing the predeclared
+**2 b128-load** premise. No candidate correctness, trace, or timing screen is
+consumed; recompilation/tuning is forbidden, and every H7K source/test/key/
+export/exclusion surface is removed. Production remains H7H/H7I
+**431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP
+([H7K physical rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

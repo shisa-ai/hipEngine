@@ -2785,6 +2785,20 @@ Runtime and source qualification remain separate. Production stays H7H/H7I
 **431.310 tok/s / 1,172.241 ms**, **1.60161x** behind matched llama.cpp HIP
 ([post-H7J residual / H7K target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7j-matched-swa-weight-publication-target.json)).
 
+Reject **WPF-H7K** at its first-object physical gate. The immutable object keeps
+H6W exact and meets H7K code/slots/VGPR **5,048 B / 875 / 54**, emits the frozen
+8 u16 K/V loads, 16 output stores, 28 bpermutes, four exponentials, 56 FMAs,
+two b128 record stores, and stays LDS/private/spill/scratch/barrier0. It fails
+the binding aligned-record premise: both score/weight reads scalarize to
+**0 b128 + 2 b32 load sites** instead of the required two b128 loads.
+
+The frozen no-rerun rule is binding. Do not alter source spelling, recompile,
+time a favorable start, or salvage a subset. Skip candidate correctness, named
+trace, and the 5/15/5 screen; remove all H7K source/test/key/export/gfx1151
+surfaces. Production remains H7H/H7I **431.310 tok/s / 1,172.241 ms** with no
+metric change. Rerank a materially different exact operation
+([H7K physical rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

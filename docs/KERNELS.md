@@ -1985,6 +1985,19 @@ No start/layer/prompt subset, recompile, tuning, or favorable rerun is allowed.
 No H7K source/test/key/export/exclusion exists before RED
 ([post-H7J residual / H7K target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7j-matched-swa-weight-publication-target.json)).
 
+**WPF-H7K is rejected at the frozen first-object physical gate.** The first
+same-source repository object is **674,512 bytes** and SHA-256
+`4cdcf8ea...ef67`. H6W remains exact at **4,984 B / 871 slots / VGPR54**. H7K
+meets code/slot/VGPR bounds at **5,048 B / 875 / 54**, emits exact 8 u16 K/V
+loads, 16 output stores, 28 bpermutes, four exponentials, 56 FMAs, two b128
+record stores, and LDS/private/spill/scratch/barrier0. The binding failure is
+record reads: both aligned `float4` phases scalarize to **0 b128 + 2 b32 load
+sites**, violating the frozen requirement for two b128 record loads. Do not
+recompile or rewrite after this miss. Skip candidate correctness, trace, and
+timing; remove all H7K body/export/wrapper/key/test/gfx1151 surfaces and retain
+H6W/H6Z production
+([rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
