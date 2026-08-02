@@ -58,11 +58,11 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _NORMALIZED_PACKAGE_SHA256 = (
-    "0c87bb5a2dac91afbad9c7704ee4147e42b405acc5a900da23961276bce20719"
+    "e5d9f2ba7dae8504900a153d7349df14fc3f0fcbd227786365fc45c8530ba312"
 )
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
-        "0e018f37c0fe60ae3121019a4f67184a58ca2a05d49f41de05c4b52ff8878b2d"
+        "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e"
     ),
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": (
         "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110"
@@ -74,7 +74,7 @@ _SOURCE_SHA256 = {
         "f9ebb089b31937dcaea27f8bb43bfc2936b294d541c2841465c498d6f6dbd363"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "c7c865094a375d0445e1f7cc72be15e9cd76b0f07991104a13fb5decda51f803"
+        "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
     ),
     "tests/test_laguna_h8a_resident_q5_global_cache.py": (
         "fca107c250f9f510c43c1bd324c9e0d464040fdd28046bb60aff80e76ffb8dd8"

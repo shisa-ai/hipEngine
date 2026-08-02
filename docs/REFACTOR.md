@@ -74,6 +74,22 @@ should be removed or collapsed.
   explicit transient-H7G rollback. Remove that false opt-out after one later Q5
   family checkpoint if no rollback is needed.
 
+## Laguna H8B bounded scoped activation-pack reuse owner
+
+- Added 2026-08-03 for complete all-class qualification. The temporary gfx1100
+  `LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED` capability admits an explicit
+  positive selector while `LAGUNA_ACTIVATION_PACK_REUSE=False` keeps source
+  production on H8A. One generic one-entry context-local cache is valid only
+  inside attention Q/K/V, dense gate/up, or shared-expert gate/up scopes and
+  publishes the exact pointer/geometry/stream key only after a successful pack.
+- If complete state, exact **330→223 pack / 2,262→2,155 dispatch** topology, or
+  any fixed/512–4K median fails, remove both capabilities, the resolver/session
+  field, all three runtime scopes, and the generic cache utility if no other
+  qualified owner uses it. If source promotion and clean committed production
+  pass, remove the duplicate `_SUPPORTED` capability and explicit positive
+  selector in a separate cleanup; retain explicit false only while H8A rollback
+  remains useful.
+
 ## Laguna H6Z bounded default-off global-attention capability
 
 - Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact

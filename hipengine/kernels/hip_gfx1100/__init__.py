@@ -92,6 +92,11 @@ LAGUNA_Q5_SHARED_FIXED_METADATA = True
 # length, and committed-production gates admit source ownership; explicit
 # disable retains transient H7G.
 LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE = True
+# WPF-H8B can reuse an exact H5Y/H6U activation pack only within one explicit
+# immutable projection group. The bounded owner is default-off until complete
+# state, exact 223-pack topology, and fixed/length timing gates all pass.
+LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED = True
+LAGUNA_ACTIVATION_PACK_REUSE = False
 # Exact mixed Q5/Q6 and corrected Q6/Q8 projection quads pass actual layers,
 # full state, both clean context orders, and both complete category orders.
 # Explicit disable retains the registered Q5/Q6 pair and Q8 singleton chain.
@@ -543,6 +548,8 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_ACTIVATION_PACK_REUSE",
+    "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",

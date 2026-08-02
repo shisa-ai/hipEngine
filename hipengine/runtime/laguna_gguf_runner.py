@@ -19,6 +19,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
+from hipengine.kernels.activation_pack import activation_pack_reuse_scope
 from hipengine.kernels.backends import (
     backend_package_capability,
     hip_target_arch_environment,
@@ -1978,6 +1979,34 @@ def resolve_laguna_q5_f32_resident_global_cache(
     return source_enabled if requested is None else False
 
 
+def resolve_laguna_activation_pack_reuse(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve the bounded H8B owner or its source default."""
+
+    supported = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED",
+            False,
+        )
+    )
+    if requested is True and not supported:
+        raise ValueError(
+            f"activation-pack reuse is not supported on backend {backend!r}"
+        )
+    if requested is not None:
+        return bool(requested) and supported
+    return supported and bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_ACTIVATION_PACK_REUSE",
+            False,
+        )
+    )
+
+
 def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
     """Detect bounded H5Y ownership from the quant-keyed package policy."""
 
@@ -2651,6 +2680,7 @@ class LagunaGGUFResidentSession:
         raw_k_prefill_rowbatch: int | None = None,
         use_q5_f32_resident_global_cache: bool | None = None,
         resident_q5_f32_cache: LagunaQ5F32ResidentGlobalCache | None = None,
+        use_activation_pack_reuse: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2831,6 +2861,10 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "a shared resident Q5 cache requires its source-qualified backend"
             )
+        self.use_activation_pack_reuse = resolve_laguna_activation_pack_reuse(
+            self.backend,
+            use_activation_pack_reuse,
+        )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
                 self.backend,
@@ -4422,28 +4456,33 @@ class LagunaGGUFResidentSession:
         assert self.libraries is not None
         config = self.weights.config
         if self.f16_prefill_mode == "retained":
-            launch_laguna_attention_projections(
-                layer.weight("attn_q"),
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                layer.weight("attn_gate"),
-                scratch.norm.ptr,
-                scratch.query.ptr,
-                scratch.key.ptr,
-                scratch.value.ptr,
-                scratch.gate_logits.ptr,
-                rows,
-                config.hidden_size,
-                q_width,
-                kv_width,
-                kv_width,
-                heads,
-                backend=self.backend,
-                stream=stream,
-                libraries=self.libraries,
-                runtime=self.runtime,
-                compensated_wmma_eligible=layer.attention_type == SLIDING_ATTENTION,
-            )
+            with activation_pack_reuse_scope(
+                enabled=self.use_activation_pack_reuse
+            ):
+                launch_laguna_attention_projections(
+                    layer.weight("attn_q"),
+                    layer.weight("attn_k"),
+                    layer.weight("attn_v"),
+                    layer.weight("attn_gate"),
+                    scratch.norm.ptr,
+                    scratch.query.ptr,
+                    scratch.key.ptr,
+                    scratch.value.ptr,
+                    scratch.gate_logits.ptr,
+                    rows,
+                    config.hidden_size,
+                    q_width,
+                    kv_width,
+                    kv_width,
+                    heads,
+                    backend=self.backend,
+                    stream=stream,
+                    libraries=self.libraries,
+                    runtime=self.runtime,
+                    compensated_wmma_eligible=(
+                        layer.attention_type == SLIDING_ATTENTION
+                    ),
+                )
             return
 
         route = self._ensure_f16_hipblaslt()
@@ -5056,22 +5095,28 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         scratch = self.rows_scratch
         linear_libraries = self.libraries.linear
-        for slot, output in (("ffn_gate", scratch.dense_gate), ("ffn_up", scratch.dense_up)):
-            launch_gguf_linear(
-                layer.weight(slot),
-                scratch.norm.ptr,
-                output.ptr,
-                rows,
-                config.hidden_size,
-                config.feed_forward_length,
-                backend=self.backend,
-                stream=stream,
-                libraries=linear_libraries,
-                runtime=self.runtime,
-                use_wmma_prefill=False,
-                use_gemv_decode=rows == 1,
-                use_q4_pack8_wmma=self.dense_q4_prefill_mode == "wmma_pack8",
-            )
+        with activation_pack_reuse_scope(enabled=self.use_activation_pack_reuse):
+            for slot, output in (
+                ("ffn_gate", scratch.dense_gate),
+                ("ffn_up", scratch.dense_up),
+            ):
+                launch_gguf_linear(
+                    layer.weight(slot),
+                    scratch.norm.ptr,
+                    output.ptr,
+                    rows,
+                    config.hidden_size,
+                    config.feed_forward_length,
+                    backend=self.backend,
+                    stream=stream,
+                    libraries=linear_libraries,
+                    runtime=self.runtime,
+                    use_wmma_prefill=False,
+                    use_gemv_decode=rows == 1,
+                    use_q4_pack8_wmma=(
+                        self.dense_q4_prefill_mode == "wmma_pack8"
+                    ),
+                )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
             scratch.dense_up.ptr,
@@ -5139,6 +5184,7 @@ class LagunaGGUFResidentSession:
                 self.q4_precomputed_activation_sums
             ),
             shared_after_router=self.moe_shared_after_router,
+            use_activation_pack_reuse=self.use_activation_pack_reuse,
             shared_stream=(
                 self._moe_shared_stream
                 if self.moe_branch_concurrency and rows > 1
@@ -6083,6 +6129,7 @@ __all__ = [
     "launch_laguna_mixed_attention_projections",
     "launch_laguna_moe_tail_next_rmsnorm",
     "load_laguna_eager_libraries",
+    "resolve_laguna_activation_pack_reuse",
     "resolve_laguna_eager_kernel_plan",
     "resolve_laguna_head_kv_fusion",
     "resolve_laguna_iq2_grid64",

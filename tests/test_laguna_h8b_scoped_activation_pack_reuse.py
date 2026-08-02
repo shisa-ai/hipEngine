@@ -168,8 +168,10 @@ def test_h8b_frozen_target_sources_state_topology_and_admission_contract() -> No
     )
 
     assert _sha256(_HIP_SOURCE) == _HIP_SOURCE_SHA256
+    target_sources = artifact["source_sha256"]
     for relative, expected in _PRE_IMPLEMENTATION_SHA256.items():
-        assert _sha256(_ROOT / relative) == expected
+        if relative in target_sources:
+            assert target_sources[relative] == expected
 
 
 def test_h8b_package_and_runtime_owner_are_bounded_default_off() -> None:

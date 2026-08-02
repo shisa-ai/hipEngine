@@ -8,6 +8,7 @@ from pathlib import Path
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.rocblas import Rocblas, get_rocblas
+from hipengine.kernels.activation_pack import launch_scoped_activation_pack
 from hipengine.kernels.hip_gfx1100.convert.cast import (
     bf16_to_f32,
     f32_to_bf16,
@@ -958,6 +959,7 @@ def _make_q5_activation_tile_k_row_composite(
     primitive,
     *,
     col_tile: int,
+    row_batch: int,
 ):
     def launch(
         x_ptr: int,
@@ -979,11 +981,13 @@ def _make_q5_activation_tile_k_row_composite(
         if outputs % col_tile != 0:
             raise ValueError(f"out_features must be divisible by {col_tile}")
         runtime = runtime or get_hip_runtime()
-        activation_pack(
+        launch_scoped_activation_pack(
+            activation_pack,
             x_ptr,
             activation_ptr,
             parsed_rows,
             hidden,
+            row_batch=row_batch,
             stream=stream,
             library=library,
             runtime=runtime,
@@ -1192,6 +1196,7 @@ def _make_q5_padded_compute_composite(
         weight_dequantize,
         primitive,
         col_tile=col_tile,
+        row_batch=row_batch,
     )
 
     def launch(
@@ -1265,11 +1270,13 @@ def _make_q5_resident_padded_compute_composite(
             role_label="resident-padded-compute",
         )
         runtime = runtime or get_hip_runtime()
-        activation_pack(
+        launch_scoped_activation_pack(
+            activation_pack,
             x_ptr,
             activation_ptr,
             parsed_rows,
             hidden,
+            row_batch=row_batch,
             stream=stream,
             library=library,
             runtime=runtime,
@@ -1535,11 +1542,13 @@ def _make_q6_activation_tile_k_row_composite(
             out_features=out_features,
         )
         runtime = runtime or get_hip_runtime()
-        activation_pack(
+        launch_scoped_activation_pack(
+            activation_pack,
             x_ptr,
             activation_ptr,
             parsed_rows,
             hidden,
+            row_batch=row_batch,
             stream=stream,
             library=library,
             runtime=runtime,
@@ -1801,6 +1810,7 @@ for (
         _weight_dequantize,
         _primitive,
         col_tile=_col_tile,
+        row_batch=_row_batch,
     )
     _pack.__name__ = _pack_name
     _primitive.__name__ = _primitive_name
