@@ -1919,8 +1919,17 @@ physical fields unchanged. The non-adjudicative actual-weight replay remains
 byte-exact and improves weighted event/wall **35.432/34.617 -> 20.089/21.762
 ms (-43.302%/-37.135%)**. Cache-only rocprof records exact **2 BF16 + 1 F32**
 H7I names at local128, runtime VGPR72/64, LDS512, scratch0, and zero compiler.
-Admit only the leaf; runtime/source remain separate
-([H7I candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
+
+The complete exact three-role package capability is now a qualified bounded
+runtime owner while `GGUF_RAW_K_PREFILL_ROLE_VARIANTS` remains H7C. Complete
+M512 H7C/H7I/repeat state is KL0 and byte-exact across logits, all **48/48**
+hidden boundaries, full KV/`KVLiveSpans`, unchanged scratch, and teardown.
+Fixed C4096/M512 improves **426.583 -> 429.000 tok/s (+0.567%, 5/5)**; clean
+512/1K/4K gains **+0.763%/+0.441%/+0.194%**, all 3/3. Cache-only integration
+records exact **2 BF16 + 1 F32 H7I**, zero H7C, **2,925** total dispatches, and
+zero compiler. Keep H7C as named complete source/rollback until the separate
+source-default gate
+([H7I candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

@@ -2711,10 +2711,19 @@ fallback and invalid rows/shapes fail before HIP loading. The non-adjudicative
 replay improves weighted event/wall **35.432/34.617 -> 20.089/21.762 ms
 (-43.302%/-37.135%)**, every role positive. Rocprof names exact **2 BF16 + 1
 F32** H7I calls at runtime VGPR72/64 with zero compiler. Production remains
-H7H/H7C **427.407 tok/s**. Next freeze a separate bounded-runtime capability
-RED; only after it passes may complete state/topology/fixed/512/1K/4K timing
-qualify H7I ownership
-([H7I candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
+H7H/H7C **427.407 tok/s**.
+
+The separately frozen bounded-runtime contract then adds only a complete named
+three-role gfx1100 capability; live source remains H7C. Complete M512
+H7C/H7I/repeat state is KL0/byte-exact across logits, all **48/48** hidden
+boundaries, full KV/`KVLiveSpans`, unchanged scratch, and teardown. Fixed
+C4096/M512 improves **426.583 -> 429.000 tok/s (+0.567%, 5/5)**; clean
+512/1K/4K gains **+0.763%/+0.441%/+0.194%**, all 3/3. Cache-only integration
+records exact **2 BF16 + 1 F32 H7I**, zero H7C, **2,925** total dispatches, and
+zero compiler. Qualify bounded ownership and next freeze a separate
+source-default RED retaining the complete named H7C rollback; production
+remains H7H/H7C **427.407 tok/s** until that source gate
+([H7I candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent

@@ -73,6 +73,14 @@ _H7C_POLICY = {
         "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out"
     ),
 }
+_H7I_POLICY = {
+    role: variant.replace(
+        "dpp_wave_reduction_",
+        "dpp_wave_reduction_full_group_compute_",
+        1,
+    )
+    for role, variant in _H7C_POLICY.items()
+}
 _EXPECTED_SELECTION = {
     "revision": "4fd68fd6f+out-of-tree-h7i-selection-probe",
     "rows": 512,
@@ -404,7 +412,7 @@ def test_h7i_source_registry_package_workspace_and_backend_isolation(
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS == {}
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS == _H7C_POLICY
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == _H7C_POLICY
-    assert not hasattr(hip_gfx1100, "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS")
+    assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS == _H7I_POLICY
     assert not hasattr(hip_gfx1151, "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS")
     assert LagunaQ5F32OrderedScratch.planned_nbytes(
         max_rows=512,
