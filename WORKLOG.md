@@ -198414,3 +198414,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
   before this screen because `/home/lhl/amd-gpu-tuning/reference/atlas` is
   missing; no external source was ported.
+
+## 2026-08-03 04:09 JST — Reject FP16 post-exp probability sidecar
+
+- Audited the review's proposed 16-bit score/probability plane against the
+  retained deferred-normalization dataflow. In-place packing would overwrite
+  F32 scores before all denominator threads consume them. The already
+  allocated `48 * capacity` INT32 physical scratch has enough unused space for
+  a disjoint 48-head FP16 probability sidecar after the physical map and 48
+  inverse sums, so the diagnostic adds no allocation or residency.
+- RED first failed import on the absent diagnostic wrapper. GREEN leaves QK,
+  maximum, exp32, and denominator accumulation in F32, writes only post-exp
+  weights to the FP16 sidecar, and converts them back before the retained
+  inverse multiply and chronological D32/V128 PV recurrence. The large-capacity
+  fixture is finite and within local tolerance. Across live4K/16K/64K/128K,
+  maximum context error is **1.015e-6/5.641e-7/2.895e-7/2.058e-7** and gated
+  BF16 mismatches are **498/501/500/549 of 6,144**.
+- The user-authorized one-pass screen changes the complete retained V128 leaf
+  **0.158778/0.571232/2.193917/4.417010 ->
+  0.155532/0.588264/2.212633/4.578833 ms
+  (-2.044%/+2.982%/+0.853%/+3.664%)**. It fails every active long-depth
+  performance gate, so full-model KL/recurrent and production timing stop.
+  FP16 conversion plus separate-sidecar transport costs more than the narrower
+  repeated probability reads save.
+- Removed every diagnostic code/test/harness surface; the four touched files
+  are byte-identical to `73737a451`, and production remains unchanged at the
+  exact V128 checkpoint. Evidence:
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-fp16-probability-rejected.json`.
+- The required lineage command remains blocked by the missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; no external code was
+  ported.

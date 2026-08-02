@@ -10481,6 +10481,31 @@ The remaining attention sequence is:
      is justified:
      [`tokenloop128 producer-max rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-tokenloop128-producermax-rejected.json).
 
+243. Store post-exp probabilities in a separate FP16 sidecar. **Rejected at
+     every active long depth and fully removed; LC-D3 twenty-fifth screen.**
+
+     This isolates the review's reduced-width probability-plane premise
+     without corrupting unread F32 scores: QK, maximum, exp32, and denominator
+     accumulation remain F32, while only the already-consumed post-exp weights
+     use an FP16 sidecar carved from unused physical scratch. PV converts those
+     weights back to F32 before the retained inverse multiply and chronological
+     D32/V128 recurrence. No allocation or resident bytes are added.
+
+     | V128 leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Retained FP32 probability | 0.158778 ms | 0.571232 ms | 2.193917 ms | 4.417010 ms |
+     | FP16 probability sidecar | 0.155532 ms | 0.588264 ms | 2.212633 ms | 4.578833 ms |
+     | Delta | -2.044% | **+2.982%** | **+0.853%** | **+3.664%** |
+
+     The candidate is locally stable—maximum F32 context error falls from
+     **1.015e-6** at 4K to **2.058e-7** at 128K—but it changes roughly
+     500/6,144 gated BF16 values and therefore would require the complete
+     quality lane. It fails performance first: conversion and separate-sidecar
+     transport cost more than narrower PV probability reads save. The HIP
+     template/export, Python wrapper/registry, harness route, and RED/GREEN
+     test call are removed without running full-model quality or production:
+     [`FP16 probability rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-fp16-probability-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10499,7 +10524,8 @@ allocation teardown remain mandatory at every retained step.
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
 3. **LC-D3 — replace the full score-plane/reducer path. Twenty-three milestones
-   retained plus one structural rejection; active.** Exact GQA6 ownership and dimension-sharded staged V cut
+   retained plus two structural rejections; active.** Exact GQA6 ownership and
+   dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
    4K/16K/64K/128K another **0.036%/1.078%/1.490%/2.190%**, all byte-exact.
@@ -10586,9 +10612,11 @@ allocation teardown remain mandatory at every retained step.
    screened and closed. A byte-exact tokenloop128 score producer that publishes
    per-head atomic maxima is also closed after regressing every leaf
    **7.943-46.989%**: the denominator max traversal is too small to repay its
-   reset/atomic cost and lost score parallelism. Next replace the remaining
-   score/denominator/PV ownership structurally or increase value-stream
-   concurrency; merge and dormant scalar repair are not active targets.
+   reset/atomic cost and lost score parallelism. A separate FP16 post-exp
+   probability sidecar is closed too after regressing the active 16K/64K/128K
+   leaves **2.982%/0.853%/3.664%** before quality gating. Next replace the
+   remaining score/denominator/PV ownership structurally or increase
+   value-stream concurrency; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
