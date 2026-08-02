@@ -10163,7 +10163,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool kCompensated, int kDimTile>
+template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false>
 static int
 laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
     const float* query,
@@ -10210,26 +10210,49 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   float* partial_out =
       reinterpret_cast<float*>(physical_scratch + capacity);
   int32_t* repair_mask = reinterpret_cast<int32_t*>(partial_out);
-  hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_gqa6_scores_kernel,
-      dim3(8, static_cast<unsigned int>(scan_slots)),
-      dim3(32),
-      0,
-      stream,
-      query,
-      key_cache,
-      score_scratch,
-      physical_scratch,
-      base_offsets,
-      live_counts,
-      token_positions,
-      evict_mask,
-      row_positions,
-      capacity,
-      block_size,
-      scratch_stride,
-      scan_slots,
-      scale);
+  if constexpr (kTokenLoop4) {
+    hipLaunchKernelGGL(
+        laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel,
+        dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
+        dim3(32),
+        0,
+        stream,
+        query,
+        key_cache,
+        score_scratch,
+        physical_scratch,
+        base_offsets,
+        live_counts,
+        token_positions,
+        evict_mask,
+        row_positions,
+        capacity,
+        block_size,
+        scratch_stride,
+        scan_slots,
+        scale);
+  } else {
+    hipLaunchKernelGGL(
+        laguna_global_attention_split_exact_gqa6_scores_kernel,
+        dim3(8, static_cast<unsigned int>(scan_slots)),
+        dim3(32),
+        0,
+        stream,
+        query,
+        key_cache,
+        score_scratch,
+        physical_scratch,
+        base_offsets,
+        live_counts,
+        token_positions,
+        evict_mask,
+        row_positions,
+        capacity,
+        block_size,
+        scratch_stride,
+        scan_slots,
+        scale);
+  }
   int error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
@@ -10325,6 +10348,20 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096
     LAGUNA_CTX4096_ARGUMENTS) {
   return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
       true, 64>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      false, 64, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      true, 64, true>(LAGUNA_CTX4096_FORWARD);
 }
 
 #undef LAGUNA_CTX4096_FORWARD

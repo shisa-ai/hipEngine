@@ -544,6 +544,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80 = False
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_dim_tile = 32
+    active_global_split_gqa6_ctx4096_tokenloop4 = False
     active_global_split_gqa6_ctx4096_min_live = 6_001
     active_global_split_gqa6_ctx4096_min_layer: int | None = None
     active_global_fused_fixedshape = False
@@ -785,6 +786,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_ctx4096_dim_tile = (
             owner.kv_cache.global_split_gqa6_ctx4096_dim_tile
+        )
+        active_global_split_gqa6_ctx4096_tokenloop4 = (
+            owner.kv_cache.global_split_gqa6_ctx4096_tokenloop4
         )
         active_global_split_gqa6_ctx4096_min_live = (
             owner.kv_cache.global_split_gqa6_ctx4096_min_live
@@ -1332,6 +1336,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_split_gqa6_ctx4096_dim_tile": (
                 active_global_split_gqa6_ctx4096_dim_tile
+            ),
+            "global_split_gqa6_ctx4096_tokenloop4": (
+                active_global_split_gqa6_ctx4096_tokenloop4
             ),
             "global_split_gqa6_ctx4096_min_live": (
                 active_global_split_gqa6_ctx4096_min_live

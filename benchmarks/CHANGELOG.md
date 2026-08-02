@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted byte-exact gfx1151 Laguna ctx4096 token-loop4 score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: reuse six resident GQA queries across four KV tokens in both ordinary and compensated context-split leaves, cutting active leaves **3.93-9.69%** and mandatory d128K **8.438 -> 8.689 tok/s (+2.977%)** with noise-flat exact 512/1K/4K, the established 128K trajectory, and full lifecycle recovery; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-tokenloop4-retained.json`.
+
 - [accepted byte-exact gfx1151 Laguna V80 exact PV decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: widen only the token-loop4 exact D32 PV stage from 64 to 80 tokens, improving exact leaves **0.42-7.49%** and d16K/d64K/d128K **19.259/12.450/8.255 -> 19.481/12.848/8.438 tok/s (+1.155%/+3.195%/+2.212%)** with noise-flat 512/1K/4K, exact mandatory trajectory, and full lifecycle recovery; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-vstage80-retained.json`.
 
 - [rejected byte-exact gfx1151 Laguna token-loop8 exact score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: extending the retained one-wave score loop from four to eight tokens regresses token-loop4 **2.043%/0.242%/0.328%** at 4K/16K/128K and is only noise-positive **0.057%** at 64K, so restore four-token ownership without production timing; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop8-rejected.json`.

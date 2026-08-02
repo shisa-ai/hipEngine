@@ -9861,6 +9861,43 @@ The remaining attention sequence is:
      seven global layers:
      [`V80 exact PV production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-vstage80-retained.json).
 
+226. Reuse token-loop4 score ownership in the ctx4096 branches.
+     **Retained and production-default; LC-D3 eleventh checkpoint.**
+
+     The quality-scoped context-split route still used one local32 wave per KV
+     token after the exact route had moved to four-token ownership. Both the
+     ordinary late-four branch and compensated layer-28 branch now retain all
+     six GQA queries and score four consecutive tokens per wave. Normalization,
+     D64/V64 partial PV, merge association, gate, and BF16 storage are
+     unchanged:
+
+     | Leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Ordinary control | 0.341130 ms | 0.816171 ms | 3.547299 ms | 6.940900 ms |
+     | Ordinary token-loop4 | **0.327719 ms** | **0.738694 ms** | **3.219906 ms** | **6.268094 ms** |
+     | Delta | -3.931% | **-9.493%** | **-9.229%** | **-9.693%** |
+     | Compensated control | 0.366452 ms | 0.842950 ms | 3.591359 ms | 6.976824 ms |
+     | Compensated token-loop4 | **0.350413 ms** | **0.766675 ms** | **3.269447 ms** | **6.323521 ms** |
+     | Delta | -4.377% | **-9.049%** | **-8.964%** | **-9.364%** |
+
+     F32 context and gated BF16 output are byte-exact at every leaf depth.
+     Cached tracing names the intended local32/VGPR40/LDS0/scratch0 producer
+     and shows **4,097 -> 1,025** score workgroups at live4,097; D64 PV remains
+     local512/VGPR32/LDS19,456/scratch0.
+
+     | Decode depth | V80 checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.212639 | **23.205556 tok/s** | -0.031% | 23.386100 | 99.228% |
+     | 1K | 23.071784 | **23.060987 tok/s** | -0.047% | 23.366122 | 98.692% |
+     | 4K | 21.678087 | **21.684575 tok/s** | +0.030% | 23.037017 | 94.129% |
+     | 128K | 8.437685 | **8.688850 tok/s** | **+2.977%** | 14.237076 | **61.030%** |
+
+     The short routes are structurally inactive and noise-flat. Mandatory
+     128K preserves **874 / c8307c... / position 131,198**, and both runs
+     recover all **87,407,934,744 bytes / 1,452 allocations**. The dormant
+     repair mask remains diagnostic; no scalar repair kernel is launched:
+     [`ctx4096 token-loop4 production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-tokenloop4-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9878,7 +9915,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Ten milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Eleven milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -9911,9 +9948,13 @@ allocation teardown remain mandatory at every retained step.
    exact leaf to PV. Widening only its staged tile from V64 to V80 improves the
    exact leaf another **0.42-7.49%** and complete 16K/64K/128K another
    **1.155%/3.195%/2.212%** with noise-flat 512/1K/4K. V92/V96/V128 are
-   closed. Next profile current production at 128K to separate the seven V80
-   exact layers from the five quality-scoped ctx4096 layers, then attack the
-   dominant PV/value-transport owner rather than the dormant scalar repair.
+   closed. The five quality-scoped ctx4096 layers now reuse token-loop4 score
+   ownership too, improving their ordinary/compensated leaves **3.93-9.69%**
+   and complete 128K another **2.977%** with exact recurrent state and
+   noise-flat 512/1K/4K. Next remove the ctx4096 normalized-score traffic by
+   carrying the exact inverse denominator into partial PV, then profile the
+   remaining context-PV/value-transport and merge owners. The dormant scalar
+   repair is not an active optimization target.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

@@ -107,6 +107,14 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_COMPENSATED = (
     "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
     "vstage64_ctx4096_compensated_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4 = (
+    "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
+    "vstage64_ctx4096_tokenloop4_bf16_spans"
+)
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_COMPENSATED = (
+    "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
+    "vstage64_ctx4096_tokenloop4_compensated_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_FIXEDSHAPE = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_fixedshape_"
     "bf16_spans"
@@ -2531,6 +2539,36 @@ def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compe
 
     kwargs["_symbol"] = (
         _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_COMPENSATED
+    )
+    laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+        *args,
+        **kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Run D64 ctx4096 PV with exact four-token score ownership."""
+
+    kwargs["_symbol"] = (
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4
+    )
+    laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+        *args,
+        **kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Run compensated D64 ctx4096 PV with token-loop4 scores."""
+
+    kwargs["_symbol"] = (
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_COMPENSATED
     )
     laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
         *args,
@@ -8800,6 +8838,19 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_spans",
+            laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            (
+                "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
+                "tokenloop4_compensated_spans"
+            ),
+            laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_gated_fixedshape_spans",
             (
                 laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans
@@ -9383,6 +9434,8 @@ __all__ = [
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_compensated_bf16_spans",
+    "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_bf16_spans",
+    "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_compensated_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans",
