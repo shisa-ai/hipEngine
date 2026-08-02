@@ -2671,6 +2671,32 @@ mechanism
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
 
+Select target-only **WPF-H7I exact raw-Q6 full-group compute** after reranking
+the clean H7H residual. Do not reopen Q5 compact reconstruction/source-MMQ,
+IQ3 source-MMQ/load geometry, FlashAttention/wider-qrow attention, or Q6 F16/
+ordered-role H7F arithmetic. H7C's three raw-Q6 roles instead expose one
+untried exact boundary: natural M512 is divisible by rowbatch8/16, but the
+kernel still checks `row < rows` in every unrolled K/row FMA group. Those roles
+own **28.482 ms / 34.776%** of current Q6.
+
+Freeze all three roles before timing with no subset salvage. The first and only
+actual-weight 5/15/5 screen is byte-exact, finite, lifecycle-clean, and improves
+BF16 K12288 event/wall **14.052/13.588 -> 8.191/8.944 ms**, F32 K3072/N9216
+**11.047/10.718 -> 5.750/6.471 ms**, and BF16 K9216
+**10.741/10.548 -> 6.381/6.559 ms**. Weighted event/wall improves
+**35.840/34.854 -> 20.323/21.974 ms (-43.295%/-36.954%)**.
+
+The first same-flags object removes only the inner compute predicate. BF16/F32
+code/slots fall **4,228/681 -> 4,060/623** and **4,452/749 -> 4,032/631**;
+row comparisons fall **9/17 -> 2/2** and dual-FMAC sites rise **1/1 -> 10/11**.
+Memory/reduction operations remain unchanged, metadata VGPR **69/64 <=72**, and
+private/spill/scratch are zero. Production remains H7H/H7C **427.407 tok/s /
+1,185.096 ms**. Next freeze a three-role RED, keep strict M512/full-group
+selection and H7C fallback, add no runtime/source owner, and require complete
+H7C/CPU bytes, first-object bounds, named cache-only execution, and immutable-
+screen replay before standalone admission
+([post-H7H residual / H7I target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

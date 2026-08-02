@@ -673,6 +673,25 @@ matched kernel gap
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json) ·
 [H7G rollback production](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json)).
 
+The post-H7H rerank selects target-only **WPF-H7I exact raw-Q6 full-group
+compute**. H7C's three natural-M512 raw-Q6 roles are exactly divisible by their
+rowbatch8/16 geometries yet still evaluate `row < rows` inside every unrolled
+FMA group. They own **28.482 ms / 34.776%** of current Q6. A frozen first-and-
+only actual-weight 5/15/5 screen requires all three roles and their aggregate
+to win both clocks; H7C -> H7I improves weighted event
+**35.840 -> 20.323 ms (-43.295%, 1.764x)** and synchronized wall
+**34.854 -> 21.974 ms (-36.954%, 1.586x)**. Every output is byte-exact, finite,
+and allocation-clean; no role subset is admissible.
+
+The first out-of-tree object reduces BF16/F32 code **4,228 -> 4,060 / 4,452 ->
+4,032 bytes**, slots **681 -> 623 / 749 -> 631**, scalar row comparisons
+**9 -> 2 / 17 -> 2**, and raises dual-FMAC sites **1 -> 10 / 1 -> 11**. It
+preserves 24 global loads, one store, the exact DPP/LDS reduction, and
+private/spill/scratch0; metadata VGPR **69/64** stays within the frozen 72-VGPR
+ceiling. Production remains H7H/H7C at **427.407 tok/s / 1,185.096 ms**. Freeze
+a separate three-role RED before adding any named H7I surface
+([post-H7H residual / H7I target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

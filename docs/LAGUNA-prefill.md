@@ -39,8 +39,9 @@ late-SWA scaled-score replay at complete-byte exactness, H7B rejects exact
 lane-parallel IQ3 final-row publication at its metadata-VGPR gate, H7C promotes
 exact DPP-add reduction for the three raw-Q6 fallbacks, H7D closes exact Q5 row-
 interleaved VOPD scheduling, H7E rejects residual-D4 runtime ownership at the
-mandatory complete quality gate, and H7G publishes exact padded-row Q5 with a
-complete named H5Y rollback; 16K+ remains deferred**.
+mandatory complete quality gate, H7G remains complete-map rollback beneath H7H
+exact full-group Q5 source, and H7I is selected target-only for exact raw-Q6
+full-group compute; 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -1299,6 +1300,31 @@ Final exact guards pass **83/83** plus **65/65** runner/backend/registry nodes
 ([production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json) ·
 [candidate/runtime](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7g-matched-full-group-q5-target.json)).
+
+Post-H7H, select target-only **WPF-H7I exact raw-Q6 full-group compute** on all
+three H7C roles together. Natural M512 is exactly divisible by BF16 rowbatch8
+and F32 rowbatch16, yet H7C retains a dynamic `row < rows` predicate inside
+every K/row FMA group. The two BF16 and one F32 roles own **28.482 ms /
+34.776%** of current Q6. H7I must remove only that inner compute predicate,
+preserve H7C's outer group/final-store guards, raw decode, 32 ordered FMAs,
+DPP/LDS reduction, map, ABI, workspace, and fallback, and fail closed outside
+the strict M512/full-group role set.
+
+The frozen first-and-only actual-weight 5/15/5 screen requires every role and
+the aggregate positive on event and synchronized wall. BF16 K12288 improves
+**14.052/13.588 -> 8.191/8.944 ms**, F32 K3072/N9216
+**11.047/10.718 -> 5.750/6.471 ms**, and BF16 K9216
+**10.741/10.548 -> 6.381/6.559 ms**; weighted event/wall improves
+**35.840/34.854 -> 20.323/21.974 ms (-43.295%/-36.954%)**. All outputs are
+byte-exact/finite and lifecycle recovers.
+
+First-object BF16/F32 code/slots fall **4,228/681 -> 4,060/623** and
+**4,452/749 -> 4,032/631**; row comparisons fall **9/17 -> 2/2** and dual-
+FMAC sites rise **1/1 -> 10/11**. Memory/reduction operations remain unchanged,
+metadata VGPR **69/64** stays within the frozen 72 ceiling, and
+private/spill/scratch remain zero. Production stays H7H/H7C at **427.407 tok/s
+/ 1,185.096 ms** pending RED-first standalone admission
+([post-H7H residual / H7I target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
