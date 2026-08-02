@@ -1508,9 +1508,11 @@ void laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel(
             static_cast<int64_t>(q_head) * scratch_stride + logical_slot;
         score_scratch[scratch_idx] =
             physical_slot >= 0 ? acc * scale : -3.4028234663852886e38f;
-        if (kv_head == 0 && q_local == 0) {
-          physical_scratch[logical_slot] =
-              static_cast<int32_t>(physical_slot);
+        if constexpr (!kDensePrefix) {
+          if (kv_head == 0 && q_local == 0) {
+            physical_scratch[logical_slot] =
+                static_cast<int32_t>(physical_slot);
+          }
         }
       }
     }
@@ -2158,6 +2160,7 @@ void laguna_global_attention_split_exact_exp32_normalize_kernel(
 // Exact normalization sibling that defers only the final per-token multiply
 // to the staged-PV loader. The reciprocal and unnormalized exp values are
 // produced with the identical reduction/order as the ordinary exact path.
+template <bool kDensePrefix = false>
 __global__ __launch_bounds__(256)
 void laguna_global_attention_split_exact_exp32_denominator_kernel(
     float* score_scratch,
@@ -2214,9 +2217,13 @@ void laguna_global_attention_split_exact_exp32_denominator_kernel(
     const bool in_range = token < context_len;
     float lane_weight = 0.0f;
     if (in_range) {
-      lane_weight = physical_scratch[token] >= 0
-          ? expf(score_scratch[scratch_base + token] - max_score)
-          : 0.0f;
+      if constexpr (kDensePrefix) {
+        lane_weight = expf(score_scratch[scratch_base + token] - max_score);
+      } else {
+        lane_weight = physical_scratch[token] >= 0
+            ? expf(score_scratch[scratch_base + token] - max_score)
+            : 0.0f;
+      }
       score_scratch[scratch_base + token] = lane_weight;
     }
 #pragma unroll
@@ -2648,7 +2655,7 @@ void laguna_global_attention_split_exact_qhead_dim32_direct_pv_kernel(
 // chronological order. This preserves QK, probability, value conversion, and
 // per-split scalar-F32 FMA order; only cross-split accumulation association
 // differs from the exact fallback.
-template <bool kCompensated, int kDimTile>
+template <bool kCompensated, int kDimTile, bool kDensePrefix = false>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     const uint16_t* value_cache,
@@ -2734,19 +2741,27 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     const int stage_token = vector_idx / kVectorsPerSlot;
     const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
     const int64_t token = token_begin + stage_token;
-    const int physical_slot = physical_scratch[token];
-    if (physical_slot >= 0) {
+    if constexpr (kDensePrefix) {
       const int64_t value_offset =
-          (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
-              kHeadDim +
+          (token * kNumKvHeads + kv_head) * kHeadDim +
           dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
       first_stage_vectors[vector_idx] =
           *reinterpret_cast<const uint4*>(value_cache + value_offset);
     } else {
-      auto* shared_words =
-          reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
+      const int physical_slot = physical_scratch[token];
+      if (physical_slot >= 0) {
+        const int64_t value_offset =
+            (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+                kHeadDim +
+            dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
+        first_stage_vectors[vector_idx] =
+            *reinterpret_cast<const uint4*>(value_cache + value_offset);
+      } else {
+        auto* shared_words =
+            reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
 #pragma unroll
-      for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+        for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+      }
     }
   }
   __syncthreads();
@@ -2793,19 +2808,27 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
         const int stage_token = vector_idx / kVectorsPerSlot;
         const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
         const int64_t token = token_begin + next_stage_base + stage_token;
-        const int physical_slot = physical_scratch[token];
-        if (physical_slot >= 0) {
+        if constexpr (kDensePrefix) {
           const int64_t value_offset =
-              (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
-                  kHeadDim +
+              (token * kNumKvHeads + kv_head) * kHeadDim +
               dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
           next_stage_vectors[vector_idx] =
               *reinterpret_cast<const uint4*>(value_cache + value_offset);
         } else {
-          auto* shared_words =
-              reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
+          const int physical_slot = physical_scratch[token];
+          if (physical_slot >= 0) {
+            const int64_t value_offset =
+                (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+                    kHeadDim +
+                dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
+            next_stage_vectors[vector_idx] =
+                *reinterpret_cast<const uint4*>(value_cache + value_offset);
+          } else {
+            auto* shared_words =
+                reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
 #pragma unroll
-          for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+            for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+          }
         }
       }
     }
@@ -9505,7 +9528,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim
   int error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_exp32_denominator_kernel,
+      (laguna_global_attention_split_exact_exp32_denominator_kernel<false>),
       dim3(48),
       dim3(256),
       0,
@@ -9600,7 +9623,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   int error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_exp32_denominator_kernel,
+      (laguna_global_attention_split_exact_exp32_denominator_kernel<false>),
       dim3(48),
       dim3(256),
       0,
@@ -9695,7 +9718,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   int error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_exp32_denominator_kernel,
+      (laguna_global_attention_split_exact_exp32_denominator_kernel<false>),
       dim3(48),
       dim3(256),
       0,
@@ -10290,7 +10313,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   if (error != static_cast<int>(hipSuccess)) return error;
   if constexpr (kDeferredNorm) {
     hipLaunchKernelGGL(
-        laguna_global_attention_split_exact_exp32_denominator_kernel,
+        (laguna_global_attention_split_exact_exp32_denominator_kernel<kDensePrefixScore>),
         dim3(48),
         dim3(256),
         0,
@@ -10321,7 +10344,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<kCompensated, kDimTile>),
+      (laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<kCompensated, kDimTile, kDensePrefixScore>),
       dim3(8 * (128 / kDimTile), static_cast<unsigned int>(num_splits)),
       dim3(512),
       0,
