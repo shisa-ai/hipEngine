@@ -712,6 +712,38 @@ and **2,925** total dispatches at runtime VGPR72/64 with zero compiler.
 Production remains H7H/H7C **427.407 tok/s** pending the separate source gate
 ([H7I candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
+**WPF-H7I exact raw-Q6 full-group compute is now the retained gfx1100 raw-Q6
+source**, with complete named H7C rollback. Fresh selector-unset H7C -> H7I
+qualification is KL0/byte-exact across all **48/48** hidden boundaries,
+complete state, repeat, unchanged **161,120,256/600,141,856-byte** workspace/
+scratch, and teardown. Fixed C4096/M512 improves **427.903 -> 429.434 tok/s
+(+0.358%, 5/5 wins)**; clean 512/1K/4K improves
+**396.414/315.253/195.754 -> 398.219/316.228/196.385 tok/s
+(+0.455%/+0.309%/+0.322%)** with positive medians and exact state throughout.
+
+Clean production reaches **431.310 tok/s** from
+**431.143/431.948/431.310/431.479/430.607**, **+0.913%** over H7H/H7C and
+**1.60161x** behind matched llama.cpp HIP **690.791 tok/s**. Every one of five
+profiled requests preserves **2,192 dispatches** and exact **2 BF16 + 1 F32
+H7I** raw-Q6 topology; the representative kernel sum/span is
+**1,172.241/1,193.552 ms**, with zero compiler.
+
+| Matched M512 component | Campaign start | Before H7I | Current H7I | llama.cpp HIP | Current gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 ms | 237.185 ms | **235.199 ms** | 58.314 ms | **176.885 ms** |
+| IQ3/IQ4 down | 557.091 | 273.577 | **272.309** | 153.860 | **118.449** |
+| Attention | 488.304 | 116.227 | **115.317** | 21.512 | **93.805** |
+| Q6 projections | 157.073 | 81.900 | **74.409** | 14.668 | **59.742** |
+| IQ2/special-IQ3 gate/up | 460.143 | 399.683 | **398.590** | 397.805 | **0.785** |
+| Remaining | 68.623 | 76.524 | **76.417** | 67.849 | **8.567** |
+| **Kernel sum** | **3,001.692** | **1,185.096** | **1,172.241** | **714.008** | **458.233** |
+
+Only Q6's reduction is attributable to H7I; unchanged-family deltas are profile
+noise. Q5/IQ-down/attention/Q6 own **97.959%** of the matched kernel gap
+([H7I production](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json) ·
+[candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) ·
+[target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

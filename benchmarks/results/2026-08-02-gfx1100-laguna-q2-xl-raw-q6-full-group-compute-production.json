@@ -1,0 +1,578 @@
+{
+  "commands": {
+    "clean_production": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_post_h7i_clean_matched_c4096_m512.py",
+    "clean_profile": "prewarm then GPU_MAX_HW_QUEUES=1 cache-only rocprofv3 --kernel-trace /tmp/laguna_post_h7i_clean_matched_c4096_m512_rocprof.py",
+    "guards": "93/93 exact source plus 65/65 runner/backend/registry",
+    "source_qualification": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh7i_source_publication.py",
+    "source_trace": "prewarm then GPU_MAX_HW_QUEUES=1 cache-only rocprofv3 --kernel-trace /tmp/laguna_wpfh7i_source_trace.py"
+  },
+  "correctness": {
+    "complete_logits_hidden_kv_live_spans_exact": true,
+    "hidden_boundaries_exact": 48,
+    "hidden_boundaries_total": 48,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "quality_gate": true,
+    "source_repeat_exact": true,
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top1_agreement": 1.0,
+    "total_scratch_bytes": 600141856,
+    "tracked_allocations_recovered": true,
+    "workspace_bytes": 161120256
+  },
+  "created_at": "2026-08-02T01:51:35.389486+00:00",
+  "date": "2026-08-02",
+  "decision": {
+    "generic_fallback_retained": true,
+    "h7c_rollback_retained": true,
+    "next_action": "Continue parity from Q5, IQ-down, attention, and Q6 with a materially new exact mechanism and matched no-gaming gates.",
+    "production_changed": true,
+    "reason": "complete KL0/exact state, positive fresh source-selected fixed and 512/1K/4K gates, exact compiler-free 2 BF16 + 1 F32 H7I topology, and clean raw-Q6/kernel/wall reductions",
+    "remaining_gap_priority_ms": {
+      "attention": 93.80462899999995,
+      "iq_down": 118.44889399999988,
+      "q5": 176.88518099999993,
+      "q6": 59.74162400000009
+    },
+    "source_promoted": true
+  },
+  "guards": {
+    "compiler_executables": 0,
+    "exact_source_nodes": 93,
+    "exact_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exact_stdout_sha256": "15d45ee89dd77c1573712d174e175e1369a0daf3ca0e6acdebef061ce046e96d",
+    "failed": 0,
+    "runner_backend_registry_nodes": 65,
+    "runner_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runner_stdout_sha256": "55c823246eb78aa7433a1726dc60eafc4b2d57bcf5526ee5a7307de2bfb3651b"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h7i_raw_q6_full_group_compute_production",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, exact selector-unset H7H Q5 plus H7I raw-Q6 full-group source"
+  },
+  "prior_evidence": {
+    "candidate_artifact": "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json",
+    "candidate_artifact_sha256": "640fe7c58d71a775ebe98a0d7934d3ad46ecae56982cb324bd2e120f49154eea",
+    "candidate_status": "qualified_bounded_default_off_runtime_owner"
+  },
+  "production": {
+    "component_table_ms": {
+      "attention": {
+        "before_h7i_ms": 116.227362,
+        "before_to_current_delta_ms": -0.9102860000000419,
+        "campaign_start_ms": 488.304,
+        "current_gap_ms": 93.80462899999995,
+        "current_h7i_ms": 115.31707599999996,
+        "llamacpp_hip_ms": 21.512447
+      },
+      "gate_up": {
+        "before_h7i_ms": 399.683214,
+        "before_to_current_delta_ms": -1.0932749999999487,
+        "campaign_start_ms": 460.143,
+        "current_gap_ms": 0.7850160000000983,
+        "current_h7i_ms": 398.5899390000001,
+        "llamacpp_hip_ms": 397.804923
+      },
+      "iq_down": {
+        "before_h7i_ms": 273.577096,
+        "before_to_current_delta_ms": -1.2682910000000902,
+        "campaign_start_ms": 557.091,
+        "current_gap_ms": 118.44889399999988,
+        "current_h7i_ms": 272.3088049999999,
+        "llamacpp_hip_ms": 153.859911
+      },
+      "q5": {
+        "before_h7i_ms": 237.184868,
+        "before_to_current_delta_ms": -1.9855970000000696,
+        "campaign_start_ms": 1270.458,
+        "current_gap_ms": 176.88518099999993,
+        "current_h7i_ms": 235.19927099999992,
+        "llamacpp_hip_ms": 58.31409
+      },
+      "q6": {
+        "before_h7i_ms": 81.900103,
+        "before_to_current_delta_ms": -7.490880999999916,
+        "campaign_start_ms": 157.073,
+        "current_gap_ms": 59.74162400000009,
+        "current_h7i_ms": 74.40922200000009,
+        "llamacpp_hip_ms": 14.667598
+      },
+      "remaining": {
+        "before_h7i_ms": 76.52384,
+        "before_to_current_delta_ms": -0.10691399999993223,
+        "campaign_start_ms": 68.623,
+        "current_gap_ms": 8.567487000000071,
+        "current_h7i_ms": 76.41692600000007,
+        "llamacpp_hip_ms": 67.849439
+      }
+    },
+    "profile": {
+      "before_h7i_kernel_sum_ms": 1185.0964830000012,
+      "dispatches_per_request": 2192,
+      "kernel_sum_delta_ms": -12.855244000002358,
+      "matched_llamacpp_kernel_sum_ms": 714.008408,
+      "new_compiler_executables": 0,
+      "q5_expected_role_counts_each_request": {
+        "h7g-bf16-k3072-n12288-r12": 2,
+        "h7g-bf16-k6144-n3072-r5": 12,
+        "h7g-f32-k3072-n6144-r5": 12,
+        "h7g-f32-k3072-n9216-r10": 35,
+        "h7h-bf16-k3072-n1024-r4": 92,
+        "h7h-bf16-k9216-n3072-r8": 35
+      },
+      "q5_observed_role_counts_each_request": [
+        {
+          "h7g-bf16-k3072-n12288-r12": 2,
+          "h7g-bf16-k6144-n3072-r5": 12,
+          "h7g-f32-k3072-n6144-r5": 12,
+          "h7g-f32-k3072-n9216-r10": 35,
+          "h7h-bf16-k3072-n1024-r4": 92,
+          "h7h-bf16-k9216-n3072-r8": 35
+        },
+        {
+          "h7g-bf16-k3072-n12288-r12": 2,
+          "h7g-bf16-k6144-n3072-r5": 12,
+          "h7g-f32-k3072-n6144-r5": 12,
+          "h7g-f32-k3072-n9216-r10": 35,
+          "h7h-bf16-k3072-n1024-r4": 92,
+          "h7h-bf16-k9216-n3072-r8": 35
+        },
+        {
+          "h7g-bf16-k3072-n12288-r12": 2,
+          "h7g-bf16-k6144-n3072-r5": 12,
+          "h7g-f32-k3072-n6144-r5": 12,
+          "h7g-f32-k3072-n9216-r10": 35,
+          "h7h-bf16-k3072-n1024-r4": 92,
+          "h7h-bf16-k9216-n3072-r8": 35
+        },
+        {
+          "h7g-bf16-k3072-n12288-r12": 2,
+          "h7g-bf16-k6144-n3072-r5": 12,
+          "h7g-f32-k3072-n6144-r5": 12,
+          "h7g-f32-k3072-n9216-r10": 35,
+          "h7h-bf16-k3072-n1024-r4": 92,
+          "h7h-bf16-k9216-n3072-r8": 35
+        },
+        {
+          "h7g-bf16-k3072-n12288-r12": 2,
+          "h7g-bf16-k6144-n3072-r5": 12,
+          "h7g-f32-k3072-n6144-r5": 12,
+          "h7g-f32-k3072-n9216-r10": 35,
+          "h7h-bf16-k3072-n1024-r4": 92,
+          "h7h-bf16-k9216-n3072-r8": 35
+        }
+      ],
+      "raw_q6_role_counts_each_request": {
+        "h7c_raw": 0,
+        "h7i_raw_bf16": 2,
+        "h7i_raw_f32": 1
+      },
+      "representative_kernel_span_ms": 1193.552259,
+      "representative_kernel_sum_ms": 1172.2412389999988,
+      "representative_request_index": 4,
+      "requests": 5,
+      "top_four_gap_share_percent": 97.95900634627401,
+      "total_kernel_gap_ms": 458.2328309999988
+    },
+    "wall": {
+      "all_exact": true,
+      "all_finite": true,
+      "all_sessions_recovered": true,
+      "before_h7i_tok_s": 427.407303335186,
+      "campaign_start_tok_s": 169.516,
+      "gain_over_campaign_start_percent": 154.4362564654278,
+      "gain_over_h7h_h7c_percent": 0.9131479842046097,
+      "llamacpp_over_production": 1.6016107591271218,
+      "matched_llamacpp_hip_tok_s": 690.791,
+      "median_seconds": 1.1870807649102062,
+      "median_tok_s": 431.31016450993457,
+      "samples_tok_s": [
+        431.14295990073026,
+        431.94780773302836,
+        431.31016450993457,
+        431.479043769513,
+        430.60658780303663
+      ]
+    }
+  },
+  "provenance": {
+    "authority_sha256": {
+      "README.md": "7cb5c2a60c263841e9e2ac8fea0dd51bcfcd865371b91491a08f74affcfa7c49",
+      "WORKLOG.md": "9e3ecc8f4e8927bcdda34db1e9d763b4759b78b74fe4ef6759cdefa6108dc906",
+      "benchmarks/CHANGELOG.md": "fcf7c0db9ae030f1745f60ac1bbcd07b8aa1a676406ad5521259b1907751bd04",
+      "benchmarks/README.md": "c5549c87aff24e761d5d76e38f3174dd1167c6f704e1d31fbc01b0fc123f2395",
+      "docs/KERNELS.md": "acfcdaf9430089d17a8a49856348d2e1ab22ea0cfe53dbae367aa150ba488051",
+      "docs/LAGUNA-prefill.md": "4b7603dde8e667f13ac2792923a5a7ece29a222c84fcb89a1b6651f9cba83346",
+      "docs/PLAN.md": "2d8e71f54121e0fe8027efdb10994d7c4d9fecaa46ee624a72a282f0b2be3a8d"
+    },
+    "builder_sha256": "4cb955ee346139f0187da4ed8ad6808b931bdf6c8e121fd477808f879e4777f4",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf",
+      "tests/test_laguna_h7c_raw_q6_dpp_wave_reduction.py": "0124f2a3768347fd914d97cfefa8c4af16e70757016ce3b61c5da47efa3840c8",
+      "tests/test_laguna_h7c_runtime_policy.py": "dbd4c2c77365280aca50ecab6ef48caf95084df0cc1e18e1e18f9a6f28c87f19",
+      "tests/test_laguna_h7c_source_default.py": "8f74cd9bc80ae0a2a59ec159aae0f011c217c3e1d0c16c572a5d3d47c6859de8",
+      "tests/test_laguna_h7i_raw_q6_full_group_compute.py": "2b64b6e1a41f30ba00eddc2a56359d5bddd4ef50257b312402e078eaec043154",
+      "tests/test_laguna_h7i_runtime_policy.py": "cfd62070b008e0cc713724f1c9db6872966e4451cb854fc03e3029cfcdb447e8",
+      "tests/test_laguna_h7i_source_default.py": "637c02be44aab9fb178dc05362edcf751b0bb0d75d1f38cae45675c8976f750f"
+    },
+    "raw_evidence_sha256": {
+      "/tmp/analyze_laguna_h7i_source_trace.py": "e27e1bba6d79d7e857474801ace01dd737de664fd9a0201217fb764bba2c0ce6",
+      "/tmp/analyze_laguna_post_h7i_matched.py": "ae96249e7cc3bd84d302cd248428e7f666aa27ebf29b618f4722820a1dde19ad",
+      "/tmp/laguna-h7i-clean-compiler-monitor.json": "dccba50b7d1d9d26ea1c22336995af286d20116f6820279faf69a2e09a5146d0",
+      "/tmp/laguna-h7i-clean-profile-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-clean-profile-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7i-clean-profile-analysis.stdout": "bb03c37558b3ffb770ed0c80cec9916c4e493bf8474539d75fdfc19e42acb026",
+      "/tmp/laguna-h7i-clean-profile-compiler-monitor.json": "73882ffc421e7d01cfd6a4765615020f3a5f632990156a17c7563c52dd3ab354",
+      "/tmp/laguna-h7i-clean-rocprof-prewarm.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-clean-rocprof-prewarm.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-h7i-clean-rocprof-prewarm.stdout": "cee613609060745d390a0f425839ec48a88bd0d9ae2b8b3d5d6470a7939fdec1",
+      "/tmp/laguna-h7i-clean-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-clean-rocprof.stderr": "be75231878531c6a7ee1e1ab779a9acbd4a8b4afeb64f4c2e92eba9cbdffbeca",
+      "/tmp/laguna-h7i-clean-rocprof.stdout": "2e8c11494878c543a6d10273d005f703eb1990221708f3e4fe30ff24fd3649a1",
+      "/tmp/laguna-h7i-clean.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-clean.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-h7i-clean.stdout": "566333c69b55906385fe44bec04be9ab482d0fe39aeacd41fdf3a89817724b4c",
+      "/tmp/laguna-h7i-runner-clean.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-runner-clean.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7i-runner-clean.stdout": "55c823246eb78aa7433a1726dc60eafc4b2d57bcf5526ee5a7307de2bfb3651b",
+      "/tmp/laguna-h7i-source-broad-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-source-broad-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7i-source-broad-guards.stdout": "15d45ee89dd77c1573712d174e175e1369a0daf3ca0e6acdebef061ce046e96d",
+      "/tmp/laguna-h7i-source-compiler-monitor.json": "7c5066205c1be7bc4ba1ced829864897a4912f4c02a437643ce4116541496e31",
+      "/tmp/laguna-h7i-source-guards-compiler-monitor.json": "3852ee5e0750bb61f6df0b758c02dc2558c600a2646d2a57020d74f8f9145320",
+      "/tmp/laguna-h7i-source-production.patch": "8b53ca3a214dd8a2d2e8413e54756a6a88fdf7037cad970b481c4476793ce043",
+      "/tmp/laguna-h7i-source-publication.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-source-publication.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-h7i-source-publication.stdout": "237baf2310b4c51751c0daf93d8f20382424ed9ed46caf9af9f2dcc0b7c504cc",
+      "/tmp/laguna-h7i-source-red.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "/tmp/laguna-h7i-source-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7i-source-red.stdout": "4d8856fa6e7cd6e015dc13833d99c86dcc649c44e6110b9f8724b50304d7cb95",
+      "/tmp/laguna-h7i-source-rocprof-0737-1/h7i-source_results.db": "b15b017a391902f1ffa9255c356f8e6065d93639e406cced0db2bb25ee8612a2",
+      "/tmp/laguna-h7i-source-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-source-rocprof.stderr": "0649669b1cb5b5f556b01681bad948a6da5526956ee9ef95b03f527d2817b31f",
+      "/tmp/laguna-h7i-source-rocprof.stdout": "31951c4ad865c2f7e18a2bbed5347aed8c903d9e4200aff0ed1cd9d6b5608a6d",
+      "/tmp/laguna-h7i-source-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-source-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7i-source-trace-analysis.stdout": "551407763be8455059fe6a758a2ad0c7517ab10121dea19caa568237fa0a6cd3",
+      "/tmp/laguna-h7i-source-trace-compiler-monitor.json": "4d5b3bfbd5bca476f8c393099af4a792641eaab0d9daf88b8e0e097384feeeb7",
+      "/tmp/laguna-h7i-source-trace-prewarm.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7i-source-trace-prewarm.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-h7i-source-trace-prewarm.stdout": "31951c4ad865c2f7e18a2bbed5347aed8c903d9e4200aff0ed1cd9d6b5608a6d",
+      "/tmp/laguna-h7i-source-trace-summary.json": "9578456b9ad25932185bd92b5340a863991cee694c4a7ba2e11aecb21442b139",
+      "/tmp/laguna-post-h7i-clean-matched-c4096-m512-rocprof-child.json": "2c327facf81ec42c5ead3d5a0bfa4a7694ecd541cce474b7105590224c9d45fc",
+      "/tmp/laguna-post-h7i-clean-matched-c4096-m512-trace-summary.json": "2fd0ed027face00bfbe43ebe84262a97fd833e5fd9813c436967f5c6285a3748",
+      "/tmp/laguna-post-h7i-clean-matched-c4096-m512.json": "70ce88ccc949af3f9727eb44a2a6c9a3074a2d9e0222b209590d26c30c1a725b",
+      "/tmp/laguna-post-h7i-clean-rocprof-0737-1/h7i-clean_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "/tmp/laguna-post-h7i-clean-rocprof-0737-1/h7i-clean_kernel_trace.csv": "0d78ad2724f55cbc873fa558bc4b5190c68c2c85e131ffb6e7329b83f6ad737b",
+      "/tmp/laguna-wpfh7i-source-publication.json": "ecb5cfc972583492aae4848aa249c8ed086b29c4e89cd2bf99208b21309b8998",
+      "/tmp/laguna_post_h7i_clean_matched_c4096_m512.py": "51c95333dad79ce7898450802f5274bb04b009bc7499b18b14d711d4f6f5f512",
+      "/tmp/laguna_post_h7i_clean_matched_c4096_m512_rocprof.py": "7946d2202403f2ce79d398f9504ac4b1824d0d0f933f0aa01451101bf11a3be5",
+      "/tmp/laguna_wpfh7i_source_publication.py": "d2ebc04cf0293cebf6058d51d43c746f5cbb9a19d8c5675f9d8eaf7f1baf3fc7",
+      "/tmp/laguna_wpfh7i_source_trace.py": "cbd333ccf2b5919db009f7b2111d7a173e31fd9feb9811a2f2579addfe40936b",
+      "/tmp/monitor_h7i_clean_compiler_execs.py": "ba51521d7d19565f816dff6225503a5f621c17c2a84de8caccd9435181e83fae",
+      "/tmp/monitor_h7i_clean_profile_compiler_execs.py": "a262da754223c24af13c42a5b2952e9d231dede4d7e7979e90bfde610f1ed103",
+      "/tmp/monitor_h7i_source_compiler_execs.py": "ade35969eb9aa59bf1119e89890f9c9844c1f9f52e691131ec21131c198f082c",
+      "/tmp/monitor_h7i_source_guards_compiler_execs.py": "fcdbf12efd3e35b3f3b5ddd17cc4cb6581682aa2f6afc1f6eb55498830a1615e",
+      "/tmp/monitor_h7i_source_trace_compiler_execs.py": "e3fdceb7d73e816305db420a019912a04abc7d4314f82d4d68c2ce7e0ad30d1f"
+    },
+    "validator_sha256": "25ff9998686682d9b4a4eb2caddc8d208b0ae210101c0583aaa8f53e231b256e"
+  },
+  "schema": 1,
+  "source": {
+    "generic_fallback_policy": [],
+    "gfx1151_excluded": true,
+    "h7c_rollback_policy": [
+      [
+        [
+          "gguf_q6_k",
+          "bf16_bf16_out",
+          512,
+          9216,
+          3072
+        ],
+        "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out"
+      ],
+      [
+        [
+          "gguf_q6_k",
+          "bf16_bf16_out",
+          512,
+          12288,
+          3072
+        ],
+        "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out"
+      ],
+      [
+        [
+          "gguf_q6_k",
+          "bf16_f32_out",
+          512,
+          3072,
+          9216
+        ],
+        "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out"
+      ]
+    ],
+    "h7i_changed_call_count": 3,
+    "h7i_changed_roles": [
+      [
+        "gguf_q6_k",
+        "bf16_bf16_out",
+        512,
+        9216,
+        3072
+      ],
+      [
+        "gguf_q6_k",
+        "bf16_bf16_out",
+        512,
+        12288,
+        3072
+      ],
+      [
+        "gguf_q6_k",
+        "bf16_f32_out",
+        512,
+        3072,
+        9216
+      ]
+    ],
+    "h7i_source_policy": [
+      [
+        [
+          "gguf_q6_k",
+          "bf16_bf16_out",
+          512,
+          9216,
+          3072
+        ],
+        "dpp_wave_reduction_full_group_compute_coltile4_rowbatch8_bf16_bf16_out"
+      ],
+      [
+        [
+          "gguf_q6_k",
+          "bf16_bf16_out",
+          512,
+          12288,
+          3072
+        ],
+        "dpp_wave_reduction_full_group_compute_coltile4_rowbatch8_bf16_bf16_out"
+      ],
+      [
+        [
+          "gguf_q6_k",
+          "bf16_f32_out",
+          512,
+          3072,
+          9216
+        ],
+        "dpp_wave_reduction_full_group_compute_coltile2_rowbatch16_bf16_f32_out"
+      ]
+    ],
+    "id": "WPF-H7I",
+    "kernel_wrapper_registry_unchanged": true,
+    "live_policy_name": "GGUF_RAW_K_PREFILL_ROLE_VARIANTS",
+    "new_allocation_bytes": 0,
+    "new_dispatches_per_request": 0,
+    "new_workspace_bytes": 0,
+    "primitive_rollback_policy_name": "GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS",
+    "rollback_policy_name": "GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS",
+    "runtime_selector_unchanged": true,
+    "source_patch_sha256": "8b53ca3a214dd8a2d2e8413e54756a6a88fdf7037cad970b481c4476793ce043",
+    "source_policy_name": "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS",
+    "source_red_revision": "07379a4cc6b013af7a2bb304cbb4c9062fdc13d7"
+  },
+  "source_qualification": {
+    "acceptance": {
+      "clean_all_medians_positive": true,
+      "full_state_exact": true,
+      "matched_m512_all_pairs_win": true,
+      "matched_m512_median_positive": true,
+      "owner_recovered": true,
+      "passed": true,
+      "timing_state_exact": true
+    },
+    "clean_512_1k_4k": {
+      "1024": {
+        "all_finite": true,
+        "all_sessions_recovered": true,
+        "candidate_median_seconds": 3.2381655420176685,
+        "candidate_median_tok_s": 316.2284283224001,
+        "control_median_seconds": 3.2481872781645507,
+        "control_median_tok_s": 315.2527586336187,
+        "exact_all_repetitions": true,
+        "gain_percent": 0.3094880733193639,
+        "paired_candidate_wins": 3,
+        "speedup": 1.0030948807331936,
+        "total_scratch_bytes": [
+          600141856
+        ],
+        "workspace_bytes": [
+          161120256
+        ]
+      },
+      "4096": {
+        "all_finite": true,
+        "all_sessions_recovered": true,
+        "candidate_median_seconds": 20.857038015965372,
+        "candidate_median_tok_s": 196.3845487966531,
+        "control_median_seconds": 20.924233050085604,
+        "control_median_tok_s": 195.75388929169102,
+        "exact_all_repetitions": true,
+        "gain_percent": 0.3221695912372535,
+        "paired_candidate_wins": 3,
+        "speedup": 1.0032216959123725,
+        "total_scratch_bytes": [
+          600141856
+        ],
+        "workspace_bytes": [
+          161120256
+        ]
+      },
+      "512": {
+        "all_finite": true,
+        "all_sessions_recovered": true,
+        "candidate_median_seconds": 1.2857255360577255,
+        "candidate_median_tok_s": 398.2187377018952,
+        "control_median_seconds": 1.2915789259131998,
+        "control_median_tok_s": 396.4140245149903,
+        "exact_all_repetitions": true,
+        "gain_percent": 0.45525967178203786,
+        "paired_candidate_wins": 2,
+        "speedup": 1.0045525967178204,
+        "total_scratch_bytes": [
+          600141856
+        ],
+        "workspace_bytes": [
+          161120256
+        ]
+      }
+    },
+    "integrated_trace": {
+      "all_queue_ids": [
+        1
+      ],
+      "all_stream_ids": [
+        0
+      ],
+      "analyzer_sha256": "e27e1bba6d79d7e857474801ace01dd737de664fd9a0201217fb764bba2c0ce6",
+      "compiler_monitor": {
+        "baseline_count": 0,
+        "new": {}
+      },
+      "gpu_agents": [
+        {
+          "name": "gfx1100",
+          "product_name": "AMD Radeon Pro W7900",
+          "type": "GPU"
+        }
+      ],
+      "h7c_dispatches": 0,
+      "h7i_dispatches": 3,
+      "harness_sha256": "cbd333ccf2b5919db009f7b2111d7a173e31fd9feb9811a2f2579addfe40936b",
+      "kind": "laguna_wpfh7i_source_selected_integrated_trace",
+      "monitor_sha256": "4d5b3bfbd5bca476f8c393099af4a792641eaab0d9daf88b8e0e097384feeeb7",
+      "passed": true,
+      "roles": {
+        "h7i-bf16": {
+          "count": 2,
+          "dispatch_ids": [
+            572,
+            2706
+          ],
+          "expected_count": 2,
+          "grid": [
+            98304,
+            64,
+            1
+          ],
+          "lds_bytes": 512,
+          "local": [
+            128,
+            1,
+            1
+          ],
+          "max_duration_ns": 7658612,
+          "median_duration_ns": 6997464.0,
+          "min_duration_ns": 6336316,
+          "queue_ids": [
+            1
+          ],
+          "runtime_sgpr": 128,
+          "runtime_vgpr": 72,
+          "scratch_bytes": 0,
+          "stream_ids": [
+            0
+          ],
+          "sum_duration_ns": 13994928
+        },
+        "h7i-f32": {
+          "count": 1,
+          "dispatch_ids": [
+            2691
+          ],
+          "expected_count": 1,
+          "grid": [
+            589824,
+            32,
+            1
+          ],
+          "lds_bytes": 512,
+          "local": [
+            128,
+            1,
+            1
+          ],
+          "max_duration_ns": 6397957,
+          "median_duration_ns": 6397957,
+          "min_duration_ns": 6397957,
+          "queue_ids": [
+            1
+          ],
+          "runtime_sgpr": 128,
+          "runtime_vgpr": 64,
+          "scratch_bytes": 0,
+          "stream_ids": [
+            0
+          ],
+          "sum_duration_ns": 6397957
+        }
+      },
+      "schema": 1,
+      "total_dispatches": 2925,
+      "trace": "/tmp/laguna-h7i-source-rocprof-0737-1/h7i-source_results.db",
+      "trace_format": "rocprofv3 rocpd SQLite",
+      "trace_sha256": "b15b017a391902f1ffa9255c356f8e6065d93639e406cced0db2bb25ee8612a2"
+    },
+    "matched_c4096_m512": {
+      "all_finite": true,
+      "all_sessions_recovered": true,
+      "candidate_median_seconds": 1.192266897065565,
+      "candidate_median_tok_s": 429.4340480811355,
+      "control_median_seconds": 1.1965326850768179,
+      "control_median_tok_s": 427.90306222778145,
+      "exact_all_repetitions": true,
+      "gain_percent": 0.3577880105328779,
+      "paired_candidate_wins": 5,
+      "speedup": 1.0035778801053288,
+      "total_scratch_bytes": [
+        600141856
+      ],
+      "workspace_bytes": [
+        161120256
+      ]
+    }
+  },
+  "status": "retained_source_production_clean_reprofiled"
+}

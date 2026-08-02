@@ -649,9 +649,17 @@ def test_h7c_registry_source_policy_and_generic_immutability(
             role_out_features,
         ) in _ROLES
     }
+    expected_h7i_policy = {
+        role: variant.replace(
+            "dpp_wave_reduction_",
+            "dpp_wave_reduction_full_group_compute_",
+            1,
+        )
+        for role, variant in expected_h7c_policy.items()
+    }
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS == {}
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS == expected_h7c_policy
-    assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == expected_h7c_policy
+    assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == expected_h7i_policy
     monkeypatch.setattr(
         hip_gfx1100,
         "GGUF_RAW_K_PREFILL_ROLE_VARIANTS",
