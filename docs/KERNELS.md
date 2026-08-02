@@ -2190,6 +2190,32 @@ favorable-rerun salvage
 ([H7T rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
 [H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
+Select target-only **WPF-H7U exact stable parallel MoE active compaction** in
+`moe/group_scatter.{hip,py}`. Current gfx1100 intentionally selects
+`active_experts`: one local256 workgroup counts by scanning all **5,120** lanes
+for each of 256 experts, serially publishes starts/active IDs, then scans lanes
+again for each active expert. The clean production trace records **47 calls /
+25.187 ms**. The separately registered `active_experts_source_rows_parallel`
+wrapper already launches one local256 count workgroup per expert, one local256
+fixed-256 Blelloch prefix with wave ballots, and one local256 stable ballot-
+scatter workgroup per expert. It preserves ascending lane order and exact
+`expert_start`, active IDs/count, sorted lanes, source rows, and weights.
+
+H7U changes only the gfx1100 package capability after admission: **47 serial →
+141 parallel** stages (net **+94**, modeled request total **2,286**), while the
+47-call **7.717-ms** packed-hidden gather, MMQ tile map, router, gate/up/down
+arithmetic, allocation, and workspace remain unchanged. Prior gfx1151
+production measured exact metadata/MoE output, **7/7** paired wins, and
+**2.564-ms** parallel tracing; that is transfer rationale, not gfx1100
+admission. Freeze RED before any gfx1100 owner change. Then require complete
+natural-M512 all-47 metadata and full-state bytes, private/spill/scratch0
+physical inspection, exact 47 count + 47 prefix + 47 scatter / zero serial /
+unchanged 47 gather cache-only trace, and one immutable all-layer plus aggregate
+both-clock 5/15/5 screen. No layer/expert/routing-pattern/length subset,
+local-size retune, rewrite, recompile, or favorable rerun is allowed. Production
+remains **431.310 tok/s** and no W7900 candidate result exists
+([H7U target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

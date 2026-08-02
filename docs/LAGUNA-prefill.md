@@ -1610,6 +1610,41 @@ allowed
 ([H7T rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
 [H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
+Post-H7T, select target-only **WPF-H7U exact stable parallel MoE active
+compaction**. The representative clean production request records the serial
+`qwen35_moe_group_compact_active_kernel` **47 times / 25.186825 ms**, followed
+by the distinct packed-hidden gather **47 times / 7.717388 ms**. Serial
+compaction is **32.9597%** of the **76.416927-ms** remaining bucket and
+**5.4965%** of the full **458.232831-ms** matched kernel gap. This is the first
+materially distinct exact operation after closing changed-association
+attention, Q5 geometry/representation, IQ residual repair/ownership, and raw-Q6
+direct ordered-consumer routes.
+
+The implementation body already exists and is registered. Its count stage gives
+each of 256 experts a local256 workgroup; its local256 Blelloch prefix publishes
+exact starts and ascending active IDs; its per-expert local256 scatter uses
+wave32 ballots to preserve ascending lane order, source rows, and F32 routing
+weights. gfx1151 has qualified this same source mechanism, but gfx1100 still
+explicitly selects serial. H7U therefore needs no new HIP/Python/registry body,
+allocation, or workspace: after qualification it changes only the gfx1100
+package capability. Replace **47 serial** launches with **47 count + 47 prefix
++ 47 scatter** (net **+94**, expected request **2,286**) and leave the gather,
+MMQ tile map, router, and all gate/up/down arithmetic unchanged.
+
+Prior gfx1151 metadata/MoE byte identity, **7/7** clean paired wins, and
+**2.564-ms** parallel trace are transfer rationale only. Before any gfx1100
+owner change, freeze RED over empty/uneven/all-active stable ordering and every
+natural M512 layer's starts, active IDs/count, sorted lanes/source rows/weights,
+tile map, packed hidden, complete MoE output, all hidden/logit/KV/span/token
+state, repeat, and teardown. Require private/spill/scratch0 physical inspection,
+a compiler-free one-queue trace with exact **47+47+47**, zero serial, unchanged
+47 gather, and one immutable actual-routing 5/15/5 screen where all 47 layers
+and the aggregate win event and synchronized wall. No layer/expert/pattern/
+length subset, local-size tuning, rewrite, recompile, or favorable rerun is
+admissible. Production remains **431.310 tok/s / 1,172.241 ms**; no gfx1100
+candidate has run
+([H7U target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

@@ -2996,6 +2996,30 @@ routes
 ([H7T rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
 [H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
+Select target-only **WPF-H7U exact stable parallel MoE active compaction** after
+reranking outside those closed arithmetic routes. The current one-workgroup
+active compactor owns **25.187 ms / 47 calls**, or **32.960%** of the
+**76.417-ms** remaining bucket and **5.497%** of the complete matched kernel
+gap. The following **7.717-ms / 47-call** packed-hidden gather remains a
+separate unchanged operation. hipEngine already registers a materially
+distinct stable three-stage sibling—per-expert count, fixed-256 Blelloch prefix
+plus active-ID ballots, and per-expert ballot-ordered scatter—but gfx1100 still
+explicitly defaults to serial while gfx1151 owns the qualified parallel mode.
+
+Transfer only that existing scheduler to gfx1100: preserve exact starts, active
+IDs/count, sorted lanes/source rows/weights, MMQ tile map, packed hidden,
+router, gate/up/down arithmetic, allocation, and workspace. The topology changes
+**47 serial launches to 141 parallel stages** (net **+94**, expected request
+**2,286**); this is acceptable because measured work, not launch count, is the
+premise. Prior gfx1151 exact **7/7** wall wins and **2.564-ms** parallel trace
+are rationale only. Freeze RED before a gfx1100 package-capability change, then
+require all-47 natural metadata/full-state identity, named cache-only
+47+47+47/zero-serial tracing, and one all-layer plus aggregate both-clock 5/15/5
+gate. Forbid layer/expert/routing-pattern/length subsets, retuning, rewrite,
+recompile, or favorable reruns. Production remains **431.310 tok/s**; no W7900
+candidate or speed claim exists
+([H7U target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
