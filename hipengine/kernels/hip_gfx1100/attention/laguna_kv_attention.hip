@@ -9873,6 +9873,13 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
     true,
     8)
 
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    true,
+    true,
+    true,
+    16)
+
 #undef HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER
 
 extern "C" int

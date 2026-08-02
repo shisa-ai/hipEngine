@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-03
 
+- [accepted byte-exact gfx1151 Laguna dense V80 prefetch16] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: deepen exact output-wave operand prefetch from eight to sixteen while retaining non-temporal K/V and chronological FMA order, cutting the leaf **1.690-2.248%** and moving d16K/d64K/d128K **19.991/14.170/10.673 -> 20.042/14.238/10.727 tok/s (+0.253%/+0.478%/+0.500%)** with exact trajectories, non-regressive 512/1K/4K, full lifecycle recovery, and metadata-aware temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json`.
+
 - [accepted byte-exact gfx1151 Laguna dense V80 prefetch8] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: deepen the exact D32/V80 output-wave operand prefetch from four to eight after non-temporal K/V raises transport latency, cutting the leaf **6.836-6.939%** and moving d16K/d64K/d128K **19.783/13.849/10.446 -> 19.991/14.170/10.673 tok/s (+1.055%/+2.316%/+2.173%)** with exact trajectories, noise-flat 512/1K/4K, full lifecycle recovery, and metadata-aware temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json`.
 
 - [rejected byte-exact gfx1151 Laguna D16 long PV] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: doubling the current non-temporal K+V PV grid from 32 D32 workgroups to 64 D16 workgroups regresses the exact leaf **10.817-12.973%** at every depth, so remove the candidate without production timing and retain D32; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-dim16-rejected.json`.

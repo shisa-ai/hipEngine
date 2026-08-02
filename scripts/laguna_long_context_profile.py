@@ -546,6 +546,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live: int | None = None
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_key_value = False
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value = False
+    active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value = False
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_dim_tile = 32
     active_global_split_gqa6_ctx4096_deferrednorm = False
@@ -797,6 +798,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value = (
             owner.kv_cache.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value
+        )
+        active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value = (
+            owner.kv_cache.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value
         )
         active_global_split_gqa6_ctx4096_compensated_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_compensated_layer
@@ -1359,6 +1363,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value": (
                 active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value
+            ),
+            "global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value": (
+                active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value
             ),
             "global_split_gqa6_ctx4096_min_layer": (
                 active_global_split_gqa6_ctx4096_min_layer

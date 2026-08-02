@@ -10259,6 +10259,50 @@ The remaining attention sequence is:
      remains exact and within 0.10% noise:
      [`dense V80 prefetch8 production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json).
 
+237. Deepen ordered exact-PV operand prefetch from eight to sixteen.
+     **Retained and production-default; LC-D3 twentieth checkpoint.**
+
+     Prefetch8 leaves local512 at VGPR40 with no scratch, so one more bounded
+     ILP step can cover additional non-temporal value latency without changing
+     ownership, shared-memory traffic, or arithmetic. Prefetch16 loads sixteen
+     chronological probability/BF16-V pairs, then replays the same sixteen
+     ordered F32 FMAs.
+
+     | Exact dense V80 leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Prefetch8, non-temporal K+V | 0.157223 ms | 0.591342 ms | 2.272160 ms | 4.502133 ms |
+     | Prefetch16, non-temporal K+V | **0.153688 ms** | **0.581351 ms** | **2.229801 ms** | **4.413907 ms** |
+     | Delta | **-2.248%** | **-1.690%** | **-1.864%** | **-1.960%** |
+
+     F32 context and gated BF16 remain byte-exact at every shape. Cached
+     tracing names candidate PV `<80,true,true,16>` at
+     local512/VGPR56/SGPR128/LDS14,336/scratch0 versus prefetch8 VGPR40; the
+     trace contains plausible launches at every natural depth and no compiler
+     work.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.209873 | **23.213823 tok/s** | +0.017% (inactive) | 23.386100 | 99.263% |
+     | 1K | 23.056986 | **23.057078 tok/s** | +0.000% (inactive) | 23.366122 | 98.677% |
+     | 4K | 21.652083 | **21.683758 tok/s** | +0.146% (inactive) | 23.037017 | 94.126% |
+     | 16K | 19.991285 | **20.041884 tok/s** | **+0.253%** | 21.728347 | **92.238%** |
+     | 64K | 14.170088 | **14.237877 tok/s** | **+0.478%** | 17.737473 | **80.270%** |
+     | 128K | 10.673232 | **10.726607 tok/s** | **+0.500%** | 14.237076 | **75.343%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **11.898926 -> 11.839717 s (-0.498%)**, preserves
+     **874 / c8307c... / position 131,198**, and recovers all
+     **87,407,934,744 bytes / 1,452 allocations**. Short routes remain exact
+     and non-regressive; explicit eviction and the five quality-scoped
+     ctx4096 layers are unchanged. The ctx4096 merge writes an ambiguity mask,
+     but production deliberately does not launch scalar repair: the closed
+     sparse-repair screen found **208 / 6,144** flagged synthetic outputs at
+     live131,200 yet the grouped repair path was still **10.833 ms** versus
+     **6.986 ms** for the exact control. Do not optimize a dormant repair
+     launch:
+     [`dense V80 prefetch16 production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json),
+     [`sparse repair rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-sparse-repair-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10276,7 +10320,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Nineteen milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10300,8 +10344,9 @@ allocation teardown remain mandatory at every retained step.
    prefetch then overlaps LDS/BF16 conversion with the unchanged recurrent FMA
    chain, improving exact leaves **23.13-34.03%** and complete
    16K/64K/128K another **4.313%/9.400%/12.851%** with exact recurrent state.
-   Prefetch8, direct probability loads, FMAC, the denominator sentinel, and
-   grouped sparse repair are now closed. The re-gated **98,304-live** crossover
+   The original prefetch8 regime, direct probability loads, FMAC, the
+   denominator sentinel, and grouped sparse repair were closed at that
+   checkpoint. The re-gated **98,304-live** crossover
    retains exact 16K/64K and context-parallel 128K. A single exact wave now
    reuses all six GQA query vectors across four KV tokens, reducing score
    workgroups 4x and improving complete 16K/64K/128K another
@@ -10342,9 +10387,15 @@ allocation teardown remain mandatory at every retained step.
    **78.079%/73.374%** Vulkan parity, with the same measured crossover and
    exact state. Re-opening prefetch8 under that new latency regime improves
    complete 16K/64K/128K another **1.055%/2.316%/2.173%**, reaching
-   **92.006%/79.888%/74.968%** Vulkan parity with exact state. Next replace
-   the remaining score/denominator/PV ownership
-   structurally or increase value-stream concurrency; merge and dormant
+   **92.006%/79.888%/74.968%** Vulkan parity with exact state. Deepening that
+   ordered prefetch to sixteen then improves the exact leaf another
+   **1.690-2.248%** and complete 16K/64K/128K another
+   **0.253%/0.478%/0.500%**, reaching
+   **92.238%/80.270%/75.343%** Vulkan parity. Prefetch16 consumes VGPR56
+   without scratch, but the diminishing production return closes blind
+   prefetch-depth doubling. Next replace the remaining
+   score/denominator/PV ownership structurally or increase value-stream
+   concurrency; merge and dormant
    scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
