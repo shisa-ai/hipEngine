@@ -2056,6 +2056,23 @@ repository body/export/wrapper/key/test/exclusion exists; keep local128/four-wav
 H6T and close one-/two-wave K-partition collapse absent a new reuse operation
 ([H7M rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-two-wave-k-partition-rejected.json)).
 
+**WPF-H7N exact raw-Q6 c16r4 direct ordered consumption is rejected
+out-of-tree.** H7N instantiates a full-group DPP c16r4 consumer for all three
+H6U roles and removes their activation-pack and Q6-to-F32 producer launches.
+The same immutable BF16/F32 object is **8,900/8,872 B / 1,393/1,390 slots /
+VGPR112 / SGPR60 / LDS1,024 / spill0**, with exact 64-FMA, 64-permlanex16, and
+256-DPP-add structure. A pre-timing analyzer formula was reconciled from an
+incorrect 96 to the emitted **68 load sites** against that unchanged object,
+without source change or recompile.
+
+All three actual-role outputs are byte-exact and lifecycle-clean, but each
+inclusive comparison loses both clocks by **3.95–5.46x**. The 142-call event
+aggregate regresses **48.267 -> 233.861 ms (0.206x)** and wall **48.520 ->
+231.238 ms (0.210x)**. Add no body/export/wrapper/key/test/exclusion, retain
+H6U/H7I plus **431.310 tok/s**, and do not retry direct raw-Q6 ordered-consumer
+replacement without a new cross-tile reuse/decode operation
+([H7N rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

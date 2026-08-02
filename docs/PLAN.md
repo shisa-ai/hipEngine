@@ -2859,6 +2859,23 @@ production, and do not retry one-/two-wave K-partition collapse without a new
 cross-tile reuse premise
 ([H7M rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-two-wave-k-partition-rejected.json)).
 
+Reject out-of-tree **WPF-H7N exact raw-Q6 c16r4 direct ordered
+consumption**. Unlike H7F's existing ordered-F32 rowbatch edit, H7N removes the
+entire activation-pack/Q6-to-F32 producer leg for all three H6U roles. Its
+immutable BF16/F32 object is physically bounded at **8,900/8,872 B /
+1,393/1,390 slots / VGPR112 / LDS1,024 / spill0** and keeps the exact
+64-FMA/64-permlanex16/256-DPP structure. Reconcile the analyzer's pre-timing
+load-site formula from 96 to the emitted **68** against this same object; no
+source change, recompile, or candidate timing precedes the correction.
+
+All three actual roles remain byte-exact and lifecycle-clean, but each loses
+both clocks. Inclusive H6U -> H7N weighted event regresses **48.267 -> 233.861
+ms (+384.516%, 0.206x)** and wall regresses **48.520 -> 231.238 ms (+376.583%,
+0.210x)** across **142 calls**. Add no repository/RED/runtime/source surface,
+retain H6U/H7I and **431.310 tok/s**, and close direct raw-Q6 ordered-consumer
+replacement absent a new decode/reuse premise
+([H7N rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
