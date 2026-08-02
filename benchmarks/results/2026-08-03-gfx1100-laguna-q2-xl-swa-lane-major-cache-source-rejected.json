@@ -1,0 +1,133 @@
+{
+  "schema": "hipengine.laguna.wpfh7y_source_rejection.v1",
+  "date": "2026-08-03",
+  "kind": "gfx1100_laguna_q2_xl_wpf_h7y_lane_major_swa_cache_source_rejection",
+  "status": "rejected_at_frozen_source_fixed_median",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL"
+  },
+  "provenance": {
+    "bounded_runtime_revision": "4aff9bf9d",
+    "source_red_revision": "5d3738bfb",
+    "runtime_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json",
+    "runtime_artifact_sha256": "359a1c1fc85037a2b0b4147ffc53b9bf65464998dd5d567f2b143de72eceddbd",
+    "source_red_test_sha256": "63c80f9bd89560be58a3651b97322ac916d6acd6d73e9e58cffcabee5c8fdf97"
+  },
+  "candidate": {
+    "id": "WPF-H7Y",
+    "attempted_source_change": "one active role-map copy from H6Z/H6W to H7Y",
+    "source_patch_sha256": "06703afd4b91a5a0899eed58cba34f8ed98de6673982ffcabd48883228563926",
+    "mirror_bytes": 75497472,
+    "mirror_allocations": 72,
+    "workspace_bytes": 161120256,
+    "total_scratch_bytes": 600141856,
+    "score_scratch_bytes": 18874368,
+    "control_policy": {
+      "global_m128_c4096_first_fill_exact": "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans",
+      "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+    },
+    "candidate_policy": {
+      "global_m128_c4096_first_fill_exact": "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans",
+      "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_lane_major_global_score_replay_exact_spans"
+    }
+  },
+  "source_red": {
+    "result": "1 passed / 1 intentional active-source failure",
+    "compiler_processes": 0,
+    "artifact_and_implementation_controls_passed": true,
+    "normalized_one_line_source_seam_passed": true,
+    "only_failure": "active source still selected H6Z/H6W before promotion"
+  },
+  "selector_unset_complete_state": {
+    "status": "pass",
+    "context_length": 4096,
+    "rows": 512,
+    "next_token_id": 2930,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "hidden_boundaries_exact": 48,
+    "logits_exact": true,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "kv_and_spans_exact": true,
+    "repeat_exact": true,
+    "workspace_unchanged": true,
+    "mirror_owner_exact": true,
+    "lifecycle_recovered": true,
+    "compiler_processes": 0
+  },
+  "selector_unset_fixed_c4096_m512": {
+    "status": "fail",
+    "warmups_per_arm": 1,
+    "samples_per_arm": 5,
+    "control_median_tok_s": 436.40298532476663,
+    "candidate_median_tok_s": 436.2745175282901,
+    "speedup": 0.9997056211785973,
+    "gain_percent": -0.029437882140270766,
+    "paired_candidate_wins": 2,
+    "exact_all_samples": true,
+    "finite_all_samples": true,
+    "lifecycle_recovered_all_samples": true,
+    "compiler_processes": 0,
+    "acceptance": "candidate median must be strictly greater than control median",
+    "accepted": false
+  },
+  "later_gates": {
+    "selector_unset_512_1k_4k_run": false,
+    "source_named_trace_run": false,
+    "post_commit_wall_run": false,
+    "post_commit_profile_run": false,
+    "reason": "binding source fixed median failed; no subset, favorable rerun, or later-gate salvage"
+  },
+  "restored_production": {
+    "source": "H6Z global plus natural-cache H6W SWA",
+    "retained_wall_tok_s": 437.1892736544479,
+    "kernel_sum_ms": 1153.3470579999982,
+    "application_dispatches": 2286,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "llamacpp_over_current": 1.5800730750452894,
+    "source_default_changed": false,
+    "bounded_h7y_runtime_candidate_retained": true,
+    "source_red_removed": true
+  },
+  "decision": {
+    "source_rejected": true,
+    "active_h6z_h6w_restored": true,
+    "bounded_default_off_owner_retained": true,
+    "standalone_h7y_leaf_retained": true,
+    "source_red_removed": true,
+    "no_rerun_or_subset_salvage": true,
+    "next_action": "Reprofile restored committed production and select a materially different exact target."
+  },
+  "restored_source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "bbd2e9f32c5cee8e1c720c8a065dae3e2460ade1614c4ec522995a02a74b3031",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "77398def2dca3430a544e390d8f8f588adcfb69b82940536b3b13f3306c773a8",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5ac3c0825de4ccdc1f22eea25a9bc2e541bb76402bf73c348c643446a43fe83",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "54e9b72005e919ce5f738b4ad4c8b81604138378e0a4fff65fdd172bf2800758",
+    "hipengine/runtime/laguna_kv.py": "97d168047053f0c57ef1e00b776ccc943f22febeee5f103f2ab7f2cf97ca337c",
+    "tests/test_laguna_h7y_swa_lane_major_cache.py": "afea1ffb432f448cd1e8ffbee9e855ed2c4b7e6d18622950f3d273471624354d"
+  },
+  "evidence_sha256": {
+    "source_complete_state_harness": "6ed2ef1c738477f5a34bf334cf1617998168fd6fcb783d49c0b8fbc115b00423",
+    "source_complete_state": "70f3bd1d7bf8cd7f6e261db851c96a3b562c75d93d4cf629bedc0c8d8c984c07",
+    "source_complete_state_monitor": "349e51fa691b8862b9191ef0e158e5102d843efb35bc2f6871c8e41fa01dcaf7",
+    "source_fixed_harness": "35f04d88a560d6742dbb893270241ca8f17019ecd0625cf6c3851ed460b399ae",
+    "source_fixed_result": "8d406e13a83f81b2a4c0f9554a0fd755d4a944099217289f248f03cdd9de8401",
+    "source_fixed_monitor": "0fbe704e2106d195621f2f985f8d5125b15bd1e5a1424e79dab4748589245471"
+  },
+  "commands": {
+    "source_complete_state": "GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_h7y_source_m512_full_state.py",
+    "source_fixed": "GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_h7y_source_matched_c4096_m512.py",
+    "retained_guards": "cached H7Y runtime/standalone plus H6W/H6Z rollback bundle"
+  }
+}
