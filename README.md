@@ -1157,11 +1157,24 @@ repeat, and teardown. The named request proves **24 setup / 0 request producers
 + 24 target packs + 24 H7G consumers / 2,262 application dispatches** on one
 queue/stream with zero compiler. Fixed C4096/M512 improves **436.765→438.368
 tok/s (+0.367%, 5/5 paired wins)**; clean 512/1K/4K medians improve
-**+0.748%/+0.332%/+0.257%**, each with 3/3 paired wins and exact state. Source
-production remains H6Z/H6W **437.189 tok/s** pending a separately frozen source-
-default gate
+**+0.748%/+0.332%/+0.257%**, each with 3/3 paired wins and exact state
 ([H8A runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
 [H8A target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
+H8A is now retained gfx1100 source production at clean commit `c4ea62347`.
+Selector-unset source qualification repeats complete 24-plane/state exactness,
+improves fixed transient-H7G rollback **435.272→437.286 tok/s (+0.463%, 5/5)**,
+and wins clean 512/1K/4K by **+0.290%/+0.142%/+0.215%**. The frozen clean
+post-commit wall is **440.353 tok/s** from **440.298/441.248/440.550/440.034/
+440.353**, all exact token 2930 and lifecycle-clean. Five-request tracing records
+**2,262 dispatches**, **1,151.215-ms** representative kernel sum, and
+**1,174.598-ms** median span with exact **24 setup / 0 request coltile16
+producers**, one queue/stream, and zero compiler activity. This is **+0.724%**
+over retained H7U/H6Z/H6W **437.189 tok/s**, **+159.771%** over campaign start,
+and **1.56872×** behind matched llama.cpp HIP **690.791 tok/s / 714.008 ms**.
+The remaining kernel gaps are Q5 **173.395 ms**, IQ-down **120.186**, attention
+**94.231**, and Q6 **59.985**
+([H8A production](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

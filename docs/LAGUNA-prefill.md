@@ -1916,12 +1916,22 @@ M512 improves **436.765→438.368 tok/s (+0.367%, 5/5 paired wins)**. Clean
 512/1K/4K improves **404.037→407.059 (+0.748%)**, **320.179→321.242 (+0.332%)**,
 and **197.671→198.179 tok/s (+0.257%)**, each exact and 3/3 paired wins.
 
-Admit only the bounded owner. Active source stays H6Z/H6W **437.189 tok/s**;
-retain transient H7G, allocation-failure, unshared, wrong-shape, and gfx1151
-fallbacks. Freeze a separate source-default RED before changing the package
-capability and forbid role/layer/prompt/length/size/rerun salvage
+At the bounded checkpoint, active source stayed H6Z/H6W **437.189 tok/s** and
+source promotion remained separately RED-gated
 ([H8A runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
 [H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
+Source promotion now passes every frozen gate. Selector-unset all-24 plane and
+complete-state checks remain exact. Transient H7G rollback→H8A source improves
+fixed **435.272→437.286 tok/s (+0.463%, 5/5)** and clean 512/1K/4K by
+**+0.290%/+0.142%/+0.215%**, all 3/3. Clean commit `c4ea62347` reaches
+**440.353 tok/s** from five exact samples, **+0.724%** over retained 437.189.
+Five-request tracing records **2,262 dispatches**, **1,151.215-ms**
+representative sum / **1,174.598-ms** median span, exact **24 setup / zero
+request coltile16 producers**, one queue/stream, and zero compiler. Retain
+transient H7G, allocation-failure, unshared, wrong-shape, and gfx1151 fallbacks;
+no role/layer/prompt/length/size subset is introduced
+([H8A production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

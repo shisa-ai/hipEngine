@@ -55,7 +55,7 @@ should be removed or collapsed.
   focused runtime test when no further materially different source mechanism
   needs the layout; never allocate mirrors on the active H6Z/H6W path.
 
-## Laguna H8A bounded default-off resident global-Q5 F32 cache
+## Laguna H8A resident global-Q5 F32 cache production cleanup
 
 - Added 2026-08-03 for exact owner-inclusive qualification. The temporary
   `use_q5_f32_resident_global_cache` session selector and gfx1100
@@ -64,16 +64,17 @@ should be removed or collapsed.
   `attn_q` and `attn_output` raw-Q5 tensors. Explicit child sharing reuses the
   same owner; every disabled, unsupported, unshared, allocation-failed, or
   non-target route keeps the registered transient producer + H7G fallback.
-- Bounded qualification passes: all 24 complete planes, natural-M512 state,
-  exact **24 setup / 0 request producer / 2,262-dispatch** topology, fixed
-  C4096/M512, and clean 512/1K/4K medians are positive and exact. Retain the
-  owner default-off while source promotion is separately RED-gated. If source
-  promotion passes, remove the public positive selector and duplicate default-
-  off capability after one clean committed production checkpoint while
-  retaining the immutable cache owner, raw-pointer lookup, required unfused H7G
-  fallback, and explicit opt-out only while it remains useful for bisection. If
-  source fails, keep only the bounded diagnostic while a materially different
-  mechanism still needs it, then remove the complete H8A candidate surface.
+- Bounded and source qualification pass: all 24 complete planes, natural-M512
+  state, exact **24 setup / 0 request producer / 2,262-dispatch** topology,
+  fixed C4096/M512, and clean 512/1K/4K medians are positive and exact. Clean
+  committed production reaches **440.353 tok/s** with a **1,151.215-ms**
+  representative kernel sum, one queue, and zero compiler activity.
+- The clean checkpoint trigger is satisfied. In the immediate cleanup unit,
+  remove the public positive selector and duplicate `_SUPPORTED` capability
+  while retaining the immutable cache owner, raw-pointer lookup, required
+  transient H7G/allocation-failure fallback, and an explicit false opt-out only
+  while it remains useful for bisection. Remove that opt-out after one later Q5
+  family checkpoint if no rollback is needed.
 
 ## Laguna H6Z bounded default-off global-attention capability
 

@@ -2481,11 +2481,21 @@ request producers + 24 target packs + 24 H7G consumers / 2,262 application
 dispatches** on one queue/stream with zero compiler. Setup is excluded from
 request timing. Fixed C4096/M512 improves **436.765→438.368 tok/s (+0.367%,
 5/5)** and clean 512/1K/4K medians improve **+0.748%/+0.332%/+0.257%**, each
-3/3. Keep source false and the pack+transient producer+H7G fallback until the
-separate source-default RED; gfx1151 and every partial/wrong-shape/allocation-
-failed route remain fail-closed
+3/3. At this bounded checkpoint source remained false pending its separate RED;
+gfx1151 and every partial/wrong-shape/allocation-failed route remain fail-closed
 ([H8A runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
 [H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
+H8A now owns the gfx1100 source path after selector-unset complete-plane/state,
+fixed, length-transfer, topology, and clean committed production gates. Fixed
+transient-H7G rollback→source improves **435.272→437.286 tok/s (+0.463%, 5/5)**;
+clean 512/1K/4K improves **+0.290%/+0.142%/+0.215%**, all 3/3. Clean commit
+`c4ea62347` reaches **440.353 tok/s**, and five exact profiled requests record
+**2,262 dispatches**, **1,151.215-ms** representative sum / **1,174.598-ms**
+median span, exact **24 setup / zero request coltile16 producers**, one
+queue/stream, and zero compiler. Retain transient H7G as explicit opt-out and
+all fail-closed fallbacks; source promotion changes no device body or object
+([H8A production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
