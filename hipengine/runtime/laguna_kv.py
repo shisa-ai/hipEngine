@@ -346,6 +346,32 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value_prefetch = int(
+            backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH",
+                1,
+            )
+            if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value
+            else 1
+        )
+        self.global_split_gqa6_ctx4096_compensated_dense_prefix_nontemporal_key_value_prefetch = int(
+            backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH",
+                1,
+            )
+            if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value
+            else 1
+        )
+        for prefetch in (
+            self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value_prefetch,
+            self.global_split_gqa6_ctx4096_compensated_dense_prefix_nontemporal_key_value_prefetch,
+        ):
+            if prefetch not in (1, 4, 8, 16):
+                raise ValueError(
+                    "Laguna ctx4096 operand prefetch must be 1, 4, 8, or 16"
+                )
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -902,6 +928,7 @@ class LagunaKVCache:
                         f"vstage64_ctx4096{'_tokenloop4' if self.global_split_gqa6_ctx4096_tokenloop4 else ''}"
                         f"{'_deferrednorm' if self.global_split_gqa6_ctx4096_deferrednorm else ''}"
                         "_compensated"
+                        f"{'_prefetch' + str(self.global_split_gqa6_ctx4096_compensated_dense_prefix_nontemporal_key_value_prefetch) if self.global_split_gqa6_ctx4096_compensated_dense_prefix_nontemporal_key_value_prefetch > 1 and self._dense_initial_metadata_valid else ''}"
                         f"{'_dense_prefix' if self.global_split_gqa6_ctx4096_dense_prefix_score and self._dense_initial_metadata_valid else ''}"
                         f"{'_nontemporal_key_value' if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value and self._dense_initial_metadata_valid else ''}"
                         "_spans"
@@ -924,6 +951,7 @@ class LagunaKVCache:
                         f"dim{self.global_split_gqa6_ctx4096_dim_tile}_"
                         f"vstage64_ctx4096{'_tokenloop4' if self.global_split_gqa6_ctx4096_tokenloop4 else ''}"
                         f"{'_deferrednorm' if self.global_split_gqa6_ctx4096_deferrednorm else ''}"
+                        f"{'_prefetch' + str(self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value_prefetch) if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value_prefetch > 1 and self._dense_initial_metadata_valid else ''}"
                         f"{'_dense_prefix' if self.global_split_gqa6_ctx4096_dense_prefix_score and self._dense_initial_metadata_valid else ''}"
                         f"{'_nontemporal_key_value' if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value and self._dense_initial_metadata_valid else ''}"
                         "_spans"

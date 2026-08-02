@@ -166,6 +166,16 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_DEFE
     "vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_"
     "nontemporal_key_value_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_DEFERREDNORM_PREFETCH4_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = (
+    "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
+    "vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_"
+    "nontemporal_key_value_bf16_spans"
+)
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_DEFERREDNORM_COMPENSATED_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = (
+    "hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_"
+    "vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_"
+    "dense_prefix_nontemporal_key_value_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_FIXEDSHAPE = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_fixedshape_"
     "bf16_spans"
@@ -2945,6 +2955,44 @@ def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_token
     laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
         *args,
         **kwargs,
+    )
+
+
+def _laguna_global_attention_decode_split_gated_gqa6_ctx4096_symbol(
+    symbol: str,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> None:
+    kwargs["_symbol"] = symbol
+    laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
+        *args,
+        **kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Run ordinary ctx4096 with ordered four-operand PV prefetch."""
+
+    _laguna_global_attention_decode_split_gated_gqa6_ctx4096_symbol(
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_DEFERREDNORM_PREFETCH4_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
+        args,
+        kwargs,
+    )
+
+
+def laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans(
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """Run compensated ctx4096 with ordered sixteen-operand PV prefetch."""
+
+    _laguna_global_attention_decode_split_gated_gqa6_ctx4096_symbol(
+        _SYMBOL_GLOBAL_ATTENTION_SPLIT_GATED_GQA6_DIM64_VSTAGE64_CTX4096_TOKENLOOP4_DEFERREDNORM_COMPENSATED_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
+        args,
+        kwargs,
     )
 
 
@@ -9298,6 +9346,16 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_spans",
+            laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_spans",
+            laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_gated_fixedshape_spans",
             (
                 laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans
@@ -9894,6 +9952,8 @@ __all__ = [
     "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_nontemporal_key_value_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_nontemporal_key_value_bf16_spans",
+    "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans",
+    "laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_gqa1_fixedshape_bf16_spans",
     "laguna_global_attention_decode_fused_exact_gated_gqa2_vstage64_fixedshape_bf16_spans",
