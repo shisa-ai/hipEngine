@@ -373,14 +373,12 @@ LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64 = True
 # Defer the exact normalization product into each shared-probability load,
 # removing one full score-plane pass without changing its F32 bits.
 LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = True
-# The bounded 4,096-token partial-PV merge changes only BF16 attention-output
-# boundaries. A 127-step resident-model gate admits it on the final four global
-# layers (32/36/40/44) at max KL 0.04257 and 100% top-1, while an all-layer
-# route exceeds the quality ceiling. Earlier global layers retain exact GQA6.
+# Ordered-prefetch4 moved the exact/context-PV crossover above 64K. Keep the
+# quality-scoped layer schedule only at the measured deep-context band; shorter
+# long contexts use exact deferred-normalization GQA6.
 LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER = 32
-# The isolated quality/trajectory gate admits compensated split accumulation
-# only at layer 28 while preserving the final-four arithmetic unchanged.
 LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER = 28
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE = 98_304
 # Share each staged probability/value tile across two output-dimension waves.
 # D64 is byte-identical to D32 and reduces the active long-context leaf by
 # 17.3%/10.7%/10.9% at 16K/64K/128K on gfx1151.
@@ -989,6 +987,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",

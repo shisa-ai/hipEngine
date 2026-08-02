@@ -197700,3 +197700,22 @@ Vulkan local sizes verbatim will close the measured gap.
   128K, removed every repair/dispatch change, and restored production exactly.
   The next screen re-gates the five retained context-parallel layers against
   today's ordered-prefetch4 exact owner.
+
+## 2026-08-02 18:00 JST — Retain depth-aware exact/context-PV crossover
+
+- Re-gated the five quality-scoped ctx4096 layers after exact ordered-prefetch4
+  moved the leaf crossover. Blanket all-exact improves d16K/d64K to
+  **18.965937/11.891734 tok/s (+0.186%/+0.198%)**, with exact hashes, but the
+  mandatory d128K row regresses **7.976295 -> 7.936474 tok/s (-0.499%)**.
+- Added gfx1151 capability `LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE=98_304`.
+  Exact deferred GQA6 runs below the threshold; the unchanged compensated
+  layer 28 and ordinary layers 32/36/40/44 run above it. Runtime telemetry now
+  records the threshold, and the selector test covers both sides.
+- Fresh thresholded d128K preserves **874 / c8307c... / position 131,198** and
+  all **87,407,934,744 bytes / 1,452 allocations** at **7.929078 tok/s**. The
+  unchanged deep route shares the run-level drop seen in the immediately prior
+  all-exact sample; no candidate work executes there.
+- Explicit 512/1K/4K guard is
+  **23.205876/23.067535/21.684921 tok/s**, within
+  **-0.064%/-0.003%/+0.097%** of quiet anchors with all hashes and teardown.
+  Focused backend/selector coverage passes **24 tests**.

@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_depth_crossover_retention",
+  "created_at": "2026-08-02T18:00:44+09:00",
+  "status": "retained",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "change": {
+    "ctx4096_min_live_before": 6001,
+    "ctx4096_min_live_after": 98304,
+    "below_threshold": "exact deferred-normalization GQA6 with ordered prefetch4",
+    "at_or_above_threshold": "compensated D64 ctx4096 at layer 28 and ordinary D64 ctx4096 at layers 32/36/40/44"
+  },
+  "directional_rows": [
+    {"depth": 4096, "prior_tok_s": 21.663871, "candidate_tok_s": 21.653957, "delta_percent": -0.045764, "route_changed": false, "final_token": 6436},
+    {"depth": 16384, "prior_tok_s": 18.930785, "candidate_tok_s": 18.965937, "delta_percent": 0.185687, "route_changed": true, "final_token": 13815},
+    {"depth": 65536, "prior_tok_s": 11.868234, "candidate_tok_s": 11.891734, "delta_percent": 0.197999, "route_changed": true, "final_token": 1869}
+  ],
+  "mandatory_128k": {
+    "candidate_tok_s": 7.929078,
+    "prior_sample_tok_s": 7.976295,
+    "delta_percent": -0.591969,
+    "route_changed": false,
+    "final_token": 874,
+    "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed",
+    "final_position": 131198,
+    "interpretation": "unchanged retained route; same-session all-exact sample was also 0.50% below the prior anchor, so one-run wall difference is run variance rather than candidate work"
+  },
+  "short_guard": [
+    {"depth": 512, "tok_s": 23.205876, "quiet_anchor_tok_s": 23.220755, "delta_percent": -0.064077, "final_token": 74825},
+    {"depth": 1024, "tok_s": 23.067535, "quiet_anchor_tok_s": 23.068316, "delta_percent": -0.003385, "final_token": 6273},
+    {"depth": 4096, "tok_s": 21.684921, "prefetch4_anchor_tok_s": 21.663871, "delta_percent": 0.097167, "final_token": 6436}
+  ],
+  "correctness": {
+    "all_established_generated_hashes_match": true,
+    "all_final_positions_exact": true,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "focused_tests_passed": 24
+  },
+  "commands": {
+    "directional": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-all-exact-post-prefetch4-directional.json",
+    "mandatory_128k": "same command with --lengths 131072 and --output /tmp/laguna-hybrid-exact-ctx98304-128k-gate.json",
+    "short_guard": "same command with --lengths 512,1024,4096 and --output /tmp/laguna-hybrid-exact-ctx98304-short-guard.json"
+  },
+  "raw_sha256": {
+    "directional": "7a6cace5e8296562c73d080bd80de0a5d9b4e52ebd1832b27beabf921f9f9b78",
+    "all_exact_128k_rejection": "73f97c2547ebbe4748477ef39c0c69d0b27b14d651ba269cfa60bec40ca4935a",
+    "hybrid_128k": "db7e433219af22d6200109f4b8a70bceb27eee7872ce9fa8c1c938b1b1001de8",
+    "short_guard": "a94247157fcdb48db391652cb696074433b5db35444c19244b7123c88e4d7bc6"
+  }
+}

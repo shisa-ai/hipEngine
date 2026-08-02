@@ -9739,6 +9739,32 @@ The remaining attention sequence is:
      rewrite:
      [`sparse-repair rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-sparse-repair-rejected.json).
 
+222. Re-gate context parallelism after ordered-prefetch4.
+     **Retained and production-default; LC-D3 eighth checkpoint.**
+
+     Blanket all-exact dispatch improves active d16K/d64K
+     **18.930785/11.868234 -> 18.965937/11.891734 tok/s
+     (+0.186%/+0.198%)**, but mandatory d128K regresses
+     **7.976295 -> 7.936474 tok/s (-0.499%)**. The crossover is real rather
+     than one route dominating every depth.
+
+     gfx1151 therefore keeps exact deferred-normalization GQA6 below
+     **98,304 live slots** and activates the existing compensated layer 28
+     plus ordinary layers 32/36/40/44 only at or above that threshold. The
+     deep route and arithmetic are unchanged. A fresh thresholded 128K run
+     preserves **874 / c8307c... / position 131,198** and complete
+     **87,407,934,744-byte / 1,452-allocation** recovery. Its one-run
+     **7.929078 tok/s** is below the older 7.976295 sample, but the immediately
+     preceding unchanged-environment all-exact control is similarly low at
+     7.936474; no candidate work executes on the thresholded 128K path.
+
+     The explicit 512/1K/4K guard measures
+     **23.205876/23.067535/21.684921 tok/s**, preserves all hashes, and is
+     within **-0.064%/-0.003%/+0.097%** of the quiet short anchors. This
+     checkpoint improves 16K/64K, strengthens their arithmetic to exact, and
+     preserves short and deep behavior:
+     [`depth-crossover production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9781,11 +9807,9 @@ allocation teardown remain mandatory at every retained step.
    chain, improving exact leaves **23.13-34.03%** and complete
    16K/64K/128K another **4.313%/9.400%/12.851%** with exact recurrent state.
    Prefetch8, direct probability loads, FMAC, the denominator sentinel, and
-   grouped sparse repair are now closed. Because ordered-prefetch4 changed the
-   crossover after context parallelism was admitted, first re-gate the five
-   approximate layers against the current exact owner; only then pursue a
-   complete exact score/probability traffic pass without reducing output-wave
-   ownership.
+   grouped sparse repair are now closed. The re-gated **98,304-live** crossover
+   retains exact 16K/64K and context-parallel 128K. Next pursue a complete
+   exact score/probability traffic pass without reducing output-wave ownership.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

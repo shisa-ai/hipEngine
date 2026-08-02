@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted gfx1151 Laguna long-global depth crossover] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: move ctx4096 activation from live **6,001 -> 98,304**, so ordered-prefetch4 exact improves d16K/d64K **18.931/11.868 -> 18.966/11.892 tok/s (+0.186%/+0.198%)** while the unchanged deep route passes mandatory 128K and 512/1K/4K show no regression; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json`.
+
 - [rejected gfx1151 Laguna ctx4096 sparse repair] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: GQA-shared repair makes the synthetic BF16 gate exact but costs **0.451/1.402/5.860/11.594 ms** versus today's exact **0.186/0.831/3.461/6.986 ms**, and all-global production changes the 16K final token **13,815 -> 855**; remove repair/promotion and re-gate retained context layers against ordered-prefetch4 exact; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-sparse-repair-rejected.json`.
 
 - [rejected byte-exact gfx1151 Laguna exact-denominator score sentinel] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d4K-d64K: deriving invisible weights from `-FLT_MAX` removes the physical-map read and improves exact leaves **0.20-1.08%**, but complete decode regresses **0.012%/0.137%/0.284%** at 4K/16K/64K, so restore the physical check and skip 128K; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-denominator-sentinel-rejected.json`.
