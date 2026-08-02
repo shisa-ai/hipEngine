@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-03
+
+- [accepted byte-exact gfx1151 Laguna 65K+ non-temporal K+V] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: once the measured cache-bypass route is active, replace four scalar BF16 K reads with one aligned 8-byte non-temporal lane load while retaining non-temporal V, moving d64K/d128K **13.673/10.316 -> 13.849/10.446 tok/s (+1.287%/+1.265%)** with exact trajectories, noise-flat unchanged 16K-and-below dispatch, full lifecycle recovery, and temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json`.
+
 ## 2026-08-02
 
 - [accepted byte-exact gfx1151 Laguna 65K+ non-temporal V80] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: bypass cache only for one-pass dense-prefix D32/V80 BF16 value loads at live >=65,536, moving d64K/d128K **13.575/10.239 -> 13.673/10.316 tok/s (+0.724%/+0.751%)** with exact trajectories, unchanged 16K-and-below dispatch, full lifecycle recovery, and temporal fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json`.

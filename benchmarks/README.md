@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-02**
+Last updated: **2026-08-03**
 
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -76,18 +76,18 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
 The current long-decode checkpoint extends dense-initial KV identity through
-the exact token-loop4 D32/V80 owner and, from **65,536 live tokens**, marks its
-one-pass 16-byte BF16 V loads non-temporal. The threshold leaves the temporal
-owner at 16K and below; explicit eviction still selects the metadata-aware
-temporal fallback. The cache-policy leaf changes
-**+0.181%/-3.625%/-1.449%/-1.988%** at live4K/16K/64K/128K and is F32/BF16
-byte-exact. Complete 64K/128K decode advances
-**13.575071/10.238829 -> 13.673356/10.315773 tok/s
-(+0.724%/+0.751%)**, reaching **77.087%/72.457%** of same-GGUF Vulkan.
-The 512/1K/4K guard remains exact and noise-flat at
-**23.206/23.067/21.684 tok/s**; 16K stays on the retained
-**19.791449 tok/s** route. The ctx4096 merge's repair mask remains diagnostic
-only; production does not launch scalar repair.
+the exact token-loop4 D32/V80 owner and, from **65,536 live tokens**, marks
+both its aligned 8-byte BF16 K lane loads and 16-byte BF16 V loads
+non-temporal. The threshold leaves the temporal owner at 16K and below;
+explicit eviction still selects the metadata-aware temporal fallback. The
+incremental K-bypass leaf is **3.263%/3.578%** faster at live64K/128K and
+F32/BF16 byte-exact. Complete 64K/128K decode advances
+**13.673356/10.315773 -> 13.849289/10.446265 tok/s
+(+1.287%/+1.265%)**, reaching **78.079%/73.374%** of same-GGUF Vulkan.
+The unchanged temporal 512/1K/4K/16K routes remain exact and noise-flat at
+**23.198/23.045/21.672/19.783 tok/s**. The ctx4096 merge's repair mask remains
+diagnostic only; production does not launch scalar repair.
+[`dense V80 non-temporal K+V production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json),
 [`dense V80 non-temporal production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json),
 [`dense V80 identity production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json),
 [`dense value-identity production`](results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json),

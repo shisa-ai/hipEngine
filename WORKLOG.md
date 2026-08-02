@@ -198096,3 +198096,43 @@ Vulkan local sizes verbatim will close the measured gap.
   Focused GPU differential, runtime selector/fallback, and gfx1151 capability
   tests pass. Canonical evidence is
   `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json`.
+
+## 2026-08-03 00:25 JST — Retain 65K+ non-temporal dense V80 key and value loads
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not audit
+  the external catalog because the configured read-only Atlas checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. A narrow Laguna
+  pattern selects no external kernel parent; this change is in-tree evolution
+  of the retained exact owner and copies no external code.
+- Added RED coverage for a separately registered dense-prefix successor whose
+  score lane combines the four adjacent scalar BF16 K reads into one aligned
+  8-byte `__builtin_nontemporal_load` and unpacks the original bits. It keeps
+  the retained non-temporal 16-byte V load, exact tokenloop4 GQA6 arithmetic,
+  full `KVLiveSpans`, and temporal metadata-aware eviction fallback.
+- Formal cached 5-warmup/9-sample/burst10 against the V-only sibling at live
+  4,097/16,448/65,664/131,200 changes
+  **0.159034/0.613295/2.524653/5.017943 ->
+  0.166068/0.633108/2.442274/4.838403 ms
+  (+4.422%/+3.231%/-3.263%/-3.578%)**. F32 context and gated BF16 are
+  byte-exact at every shape with zero repair outputs. Production therefore
+  reuses the existing **65,536-live** crossover and keeps temporal K/V below
+  it. Raw SHA-256 is
+  `d14773792e5f37aaa02a3a21b8948694eed1dff64b1afbfd37166aab4162f08a`.
+- The unchanged temporal 512/1K/4K/16K routes remain exact and noise-flat at
+  **23.198386/23.045113/21.671542/19.782509 tok/s
+  (-0.033%/-0.095%/-0.056%/-0.045%)**. Active 64K improves
+  **13.673356 -> 13.849289 tok/s (+1.287%)**. Mandatory 128K improves
+  **10.315773 -> 10.446265 tok/s (+1.265%)** and cuts its 127-transition wall
+  **12.311244 -> 12.157455 s (-1.249%)** while preserving
+  **874 / c8307c... / position 131,198**. Every run frees all
+  **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256 values
+  are `59de5d314d579f34112af072db5abd156a46a6bf84b87e048d3974a0a251587a`,
+  `e12d2ec994c3f851403b320c4efdc76bceb5a41114896e8a59e6c0edfa833a89`,
+  and `4e466cbdc573a5c4db543386596fbe84dbdc23415d77f56b6708ede4cc66940b`.
+- Cached tracing names candidate score `<true,true>` at
+  local32/VGPR40/SGPR128/LDS0/scratch0 and PV `<80,true,true>` at
+  local512/VGPR32/SGPR128/LDS14,336/scratch0. CSV SHA-256 is
+  `27e750fea9d9c0fed92e266e7cb4cd0b8f99049ba8f4c1f84ec6695057cb6d7c`.
+  Focused GPU differential, runtime selector/fallback, and gfx1151 capability
+  tests pass. Canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json`.
