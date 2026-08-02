@@ -1120,6 +1120,21 @@ owner stays default-off
 [standalone](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
+Two actual-state, no-timing repair audits close the next changed-arithmetic
+premises before repository implementation. H5A exact-value Q5 SGEMM differs on
+only **123,111 / 134,742,016 BF16 outputs (0.0914%)**, but mismatches reach the
+center of the candidate BF16 cell: complete candidate-distance recall requires
+selecting **100%** of BF16 outputs, while **96.737%** of its F32 outputs differ.
+The retained H2 source-FlashAttention leaf differs after the real softplus gate
+on **44,171,810 / 207,618,048 BF16 outputs (21.276%)** and touches **405,132 /
+405,504 exact qrow4/head workgroups (99.908%)**. Even an omniscient, zero-
+overhead linear repair model costs **20.971 + 115.285 = 136.255 ms**, versus
+current exact attention **115.385 ms (0.8468×)**. All 48 candidate calls leave
+exact query/KV/span/gated state unchanged, final token 2930 and lifecycle pass,
+and no compiler runs. Reject both repairs, add no runtime/source surface, and
+retain H6Z/H6W production
+([repair-audit rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

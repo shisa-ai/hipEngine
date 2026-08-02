@@ -2436,6 +2436,17 @@ production **437.189 tok/s** and retain the bounded H7Y owner default-off
 [standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
+No kernel is added for the post-H7Y Q5/attention repair audit. H5A SGEMM's
+BF16 mismatch density is only **0.0914%**, but complete candidate-distance
+coverage is **100%** and its F32 mismatch density is **96.737%**. The retained
+H2 source-F16-WMMA attention leaf changes **21.276%** of post-gate BF16 values
+and touches **99.908%** of current exact qrow4/head workgroups. Even ideal
+linear exact repair plus the retained **20.971-ms** candidate is **136.255 ms**,
+slower than current H6N/H6Z/H6A/H6W **115.385 ms** before detection/queue/merge
+cost. Keep both leaves diagnostic-only, add no repair kernel/runtime owner, and
+do not treat single-prompt mismatch sparsity as a dispatch policy
+([repair-audit rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
