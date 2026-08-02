@@ -3228,6 +3228,20 @@ without rerun or subset salvage
 [standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
+Reject the next two changed-arithmetic repair premises before adding code. On
+the exact natural-M512 trajectory, H5A Q5 SGEMM changes only **123,111 /
+134,742,016 BF16 outputs (0.0914%)**, but candidate-boundary mismatches reach
+cell center and complete recall selects **all BF16 outputs**; its F32 roles
+change **197,527,937 / 204,189,696 outputs (96.737%)**. H2 source-F16-WMMA
+attention changes **44,171,810 / 207,618,048 (21.276%)** post-softplus-gate
+BF16 values and touches **405,132 / 405,504 (99.908%)** exact qrow4/head groups.
+An omniscient zero-overhead group-repair lower bound is **136.255 ms** versus
+current exact attention **115.385 ms**, so no prompt-independent certificate
+can restore positive economics. Exact live state remains unchanged after every
+candidate call, token/lifecycle pass, and no compiler runs. Add no guard, queue,
+repair, runtime, or source surface; rerank outside both premises
+([repair-audit rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

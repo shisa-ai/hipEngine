@@ -1847,6 +1847,36 @@ tok/s**, and retain H7Y default-off only
 [standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
+Fresh restored production measures **438.005 tok/s** unprofiled and **1,154.744
+ms / 2,286 dispatches** under selected-region profiling, versus matched
+llama.cpp HIP **690.791 tok/s / 714.008 ms**. Current Q5/IQ-down/attention/Q6
+are **237.024/273.380/115.385/74.667 ms**; these two audits test materially
+changed repair premises without timing or adding repository surfaces.
+
+First, all **141 BF16 + 82 F32** source-qualified H5A Q5 SGEMM calls observe the
+exact activation and restore the exact output before continuation. BF16 differs
+on **123,111 / 134,742,016 outputs (0.091368%)**, but mismatch boundary distance
+reaches the BF16-cell center and the first complete threshold selects **100%**
+of BF16 outputs. F32 differs on **197,527,937 / 204,189,696 outputs (96.737%)**.
+Reject candidate-distance repair before a guard/queue/kernel.
+
+Second, run retained H2 source-F16-WMMA attention on separate buffers at all
+**12 global + 36 SWA** exact-state boundaries, then compare the real post-
+softplus-gate BF16 output. Candidate output differs on **44,171,810 /
+207,618,048 values (21.276%)**. The mismatch mask touches **405,132 / 405,504
+exact qrow4/head groups (99.908%)**: global is **99.495%**, SWA **100%**. A
+boundary group guard reaches complete recall at 1/64 cell only by selecting
+**all groups**. The deliberately omniscient, zero-overhead linear lower bound
+charges retained H2 **20.971 ms** plus **115.285 ms** of exact repair, totaling
+**136.255 ms**, versus current exact attention **115.385 ms (0.8468×)**.
+
+Every candidate call preserves exact query/gate/K/V/all-five-span/gated-output
+hashes, the request returns token 2930 at position511, lifecycle recovers, and
+both compiler monitors observe zero processes. Reject both repairs, preserve
+H6Z/H6W production and the default-off H7Y owner, and rerank outside these
+premises without prompt/layer/token conditioning
+([repair-audit rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
