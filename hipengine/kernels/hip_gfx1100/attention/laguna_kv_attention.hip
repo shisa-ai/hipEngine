@@ -2085,6 +2085,63 @@ __global__ void laguna_swa_write_kv_rows_f32_bf16_kernel(
   }
 }
 
+__global__ __launch_bounds__(256) void laguna_swa_write_kv_rows_natural_lane_major_f32_bf16_kernel(
+    const float* key,
+    const float* value,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    uint16_t* lane_major_key_cache,
+    uint16_t* lane_major_value_cache,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows) return;
+  const int64_t position = row_positions[0] + row;
+  if (position < 0) return;
+  const int64_t logical_slot = position % capacity;
+  const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+  if (physical_slot < 0 || physical_slot >= capacity) return;
+
+  const int64_t width = num_kv_heads * head_dim;
+  const int64_t row_offset = row * width;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < width;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t cache_offset = physical_slot * width + idx;
+    const int64_t head = idx >> 7;
+    const int64_t dim = idx & 127;
+    const int64_t lane = dim & 31;
+    const int64_t part = dim >> 5;
+    const int64_t mirror_offset =
+        (physical_slot * num_kv_heads + head) * head_dim + lane * 4 + part;
+    const uint16_t natural_key_bits =
+        laguna_float_to_bf16_bits(key[row_offset + idx]);
+    const uint16_t natural_value_bits =
+        laguna_float_to_bf16_bits(value[row_offset + idx]);
+    key_cache[cache_offset] = natural_key_bits;
+    value_cache[cache_offset] = natural_value_bits;
+    lane_major_key_cache[mirror_offset] = natural_key_bits;
+    lane_major_value_cache[mirror_offset] = natural_value_bits;
+  }
+
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    token_positions[logical_slot] = position;
+    evict_mask[logical_slot] = 0;
+    if (row == rows - 1) {
+      const int64_t old_count = live_counts[0];
+      const int64_t position_count = position + 1 < capacity ? position + 1 : capacity;
+      live_counts[0] = old_count > position_count ? old_count : position_count;
+    }
+  }
+}
+
 __global__ __launch_bounds__(128) void laguna_swa_attention_decode_bf16_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -6961,6 +7018,61 @@ extern "C" int hipengine_laguna_swa_write_kv_rows_f32_bf16_spans(
       value,
       key_cache,
       value_cache,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      capacity,
+      num_kv_heads,
+      head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_swa_write_kv_rows_natural_lane_major_f32_bf16_spans(
+    const float* key,
+    const float* value,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    uint16_t* lane_major_key_cache,
+    uint16_t* lane_major_value_cache,
+    const int32_t* base_offsets,
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (key == nullptr || value == nullptr || key_cache == nullptr ||
+      value_cache == nullptr || lane_major_key_cache == nullptr ||
+      lane_major_value_cache == nullptr || base_offsets == nullptr ||
+      live_counts == nullptr || token_positions == nullptr ||
+      evict_mask == nullptr || row_positions == nullptr || rows <= 0 ||
+      rows > capacity || capacity != 512 || num_kv_heads != 8 ||
+      head_dim != 128 ||
+      (reinterpret_cast<unsigned long long>(lane_major_key_cache) & 7ULL) != 0 ||
+      (reinterpret_cast<unsigned long long>(lane_major_value_cache) & 7ULL) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t width = num_kv_heads * head_dim;
+  const int threads = 256;
+  const int blocks = static_cast<int>((width + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      laguna_swa_write_kv_rows_natural_lane_major_f32_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      0,
+      stream,
+      key,
+      value,
+      key_cache,
+      value_cache,
+      lane_major_key_cache,
+      lane_major_value_cache,
       base_offsets,
       live_counts,
       token_positions,

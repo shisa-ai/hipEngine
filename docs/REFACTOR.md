@@ -39,6 +39,21 @@ should be removed or collapsed.
   and rejection evidence; reopen only with a materially different repair or
   representation and a fresh RED/complete-quality contract.
 
+## Laguna H7Y bounded default-off lane-major SWA cache owner
+
+- Added 2026-08-03 for writer-inclusive qualification of the admitted H7Y
+  standalone leaf. The temporary
+  `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS` map owns exact
+  **72 MiB / 72 allocations** of SWA K/V mirrors and selects one fused
+  natural+lane-major rows writer without adding dispatches.
+- Qualification is complete: full state, exact **2,286-dispatch** topology,
+  writer-inclusive fixed C4096/M512, and clean 512/1K/4K medians all pass. The
+  active source remains H6Z/H6W only until a separate source-default RED/gate.
+  On promotion, copy H7Y into the one active source capability, retain named
+  H6Z/H6W/H6A natural rollbacks, and remove the duplicate candidate map after
+  one clean committed production checkpoint. Never retain two evolving mirror
+  owners or allocate mirrors on unsupported backends/shapes.
+
 ## Laguna H6Z bounded default-off global-attention capability
 
 - Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact

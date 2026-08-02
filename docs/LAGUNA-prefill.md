@@ -1822,11 +1822,23 @@ compiler. Every actual-layer output and score plane is byte-exact.
 
 The immutable H6W→H7Y screen improves start256 **1.00246x event / 1.00067x
 wall**, start384 **1.00891x / 1.00693x**, and aggregate **56.607→56.259 ms
-event (-0.616%) / 56.559→56.317 wall (-0.428%)**. Production remains
-**437.189 tok/s**. Runtime/source are still separate: next freeze a writer-
-inclusive exact-**72 MiB** mirror owner, retain H6A/H6W rollback and unchanged
-**144 writer calls / 2,286 dispatches**, then require fixed and 512/1K/4K wins
-([standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+event (-0.616%) / 56.559→56.317 wall (-0.428%)**.
+
+The separately frozen bounded owner qualifies default-off. Exact **72 MiB / 72
+allocations** of SWA K/V mirrors are populated by one fused natural+lane-major
+writer with no extra dispatch. The first writer object is **1,724 B / 357 slots
+/ metadata VGPR23 / SGPR53**, exactly two F32 loads and four BF16 stores,
+LDS/private/spill/scratch0; focused GREEN passes **7/7**. Complete M512 is KL0
+and byte-exact across all 48 boundaries, logits, K/V/spans, repeat, and teardown.
+
+Named tracing records exact **144 fused writers + 72 H7Y + 72 H6A + 24 H6N +
+24 H6Z / 2,286 dispatches**, one queue/stream, zero compiler. H7Y is runtime
+VGPR56/LDS0/scratch0 and the writer VGPR24/LDS0/scratch0. Writer-inclusive fixed
+C4096/M512 improves **436.120→436.785 tok/s (+0.152%)**; clean 512/1K/4K
+medians improve **+0.0530%/+0.1217%/+0.0043%**, all exact. Production remains
+H6Z/H6W **437.189 tok/s** until a separate source-default gate
+([runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
+[standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening

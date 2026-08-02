@@ -3205,12 +3205,21 @@ planes are byte-exact.
 
 The first immutable all-72 screen improves H6W→H7Y aggregate **56.607→56.259
 ms event (-0.616%) / 56.559→56.317 wall (-0.428%)**, with starts256 and384 each
-positive on both clocks. Keep runtime/source separate: production stays
-**437.189 tok/s**, and only the next RED-gated owner may allocate exact **72
-MiB** mirrors and add a fused natural+mirror writer. Preserve natural H6A/H6W
-fallback and exact **144 writer calls / 2,286 request dispatches**; require
-writer-inclusive fixed plus 512/1K/4K wins before source promotion
-([standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+positive on both clocks.
+
+The separately RED-gated bounded owner now qualifies default-off. It adds exact
+**72 MiB / 72 allocations** of SWA mirrors and one fused natural+lane-major
+writer without increasing dispatches. The first writer object is **1,724 B /
+357 slots / metadata VGPR23 / SGPR53**, two F32 loads, four BF16 stores, and
+LDS/private/spill/scratch0. Complete M512 is KL0/byte-exact across **48/48**
+boundaries, logits, K/V/spans, repeat, and lifecycle. Named tracing is exact
+**144 fused writers + 72 H7Y + 72 H6A + 24 H6N + 24 H6Z / 2,286 dispatches**,
+one queue/stream and zero compiler. Writer-inclusive fixed C4096/M512 improves
+**436.120→436.785 tok/s (+0.152%)**; 512/1K/4K medians improve
+**+0.0530%/+0.1217%/+0.0043%**. Production remains H6Z/H6W **437.189 tok/s**
+pending the separate source-default gate
+([runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
+[standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,

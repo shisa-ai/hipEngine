@@ -48,6 +48,18 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
     ),
 }
+# WPF-H7Y's bounded 72-MiB mirror owner and fused writer are qualified but
+# remain default-off pending source promotion. H6Z/H6W stay the source rollback.
+LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS = {
+    "global_m128_c4096_first_fill_exact": (
+        "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+        "exact_spans"
+    ),
+    "swa_qrow4_m128_c512_no_wrap_exact": (
+        "swa_context_rows_qrow4_dense_initial_lane_major_"
+        "global_score_replay_exact_spans"
+    ),
+}
 LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = dict(
     LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS
 )
@@ -543,6 +555,7 @@ __all__ = [
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS",
+    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
     "LAGUNA_PREFILL_KV_PREAPPEND",
     "LAGUNA_PREFILL_MATRIX_ROWS",
