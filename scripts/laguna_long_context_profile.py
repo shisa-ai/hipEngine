@@ -542,6 +542,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_deferrednorm_dim32_vstage64 = False
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_dim_tile = 32
+    active_global_split_gqa6_ctx4096_min_live = 6_001
     active_global_split_gqa6_ctx4096_min_layer: int | None = None
     active_global_fused_fixedshape = False
     active_global_gqa2_vstage64_fixedshape = False
@@ -776,6 +777,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_ctx4096_dim_tile = (
             owner.kv_cache.global_split_gqa6_ctx4096_dim_tile
+        )
+        active_global_split_gqa6_ctx4096_min_live = (
+            owner.kv_cache.global_split_gqa6_ctx4096_min_live
         )
         active_global_split_gqa6_ctx4096_min_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_min_layer
@@ -1315,6 +1319,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_gqa6_ctx4096_dim_tile": (
                 active_global_split_gqa6_ctx4096_dim_tile
             ),
+            "global_split_gqa6_ctx4096_min_live": (
+                active_global_split_gqa6_ctx4096_min_live
+            ),
             "global_fused_fixedshape": active_global_fused_fixedshape,
             "global_gqa2_vstage64_fixedshape": (
                 active_global_gqa2_vstage64_fixedshape
@@ -1433,8 +1440,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "through 6000); larger live contexts use GQA6 score "
                 "ownership, ordered exp/sum reduction, deferred exact "
                 "normalization, and dimension-sharded staged-V PV; gfx1151 "
-                "quality-gates a compensated 4,096-token split at global "
-                "layer 28 and the uncompensated split at layers "
+                "quality-gates the 4,096-token split only at live >= "
+                f"{active_global_split_gqa6_ctx4096_min_live:,}, with a "
+                "compensated owner at global layer 28 and the ordinary split "
+                "at layers "
                 "32/36/40/44, with byte-identical D64 PV geometry for all "
                 "five admitted layers.",
             ]

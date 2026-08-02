@@ -228,6 +228,17 @@ class LagunaKVCache:
             )
             else None
         )
+        self.global_split_gqa6_ctx4096_min_live = int(
+            backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE",
+                6_001,
+            )
+        )
+        if self.global_split_gqa6_ctx4096_min_live <= 6_000:
+            raise ValueError(
+                "Laguna 4,096-token context split must begin above 6,000 live slots"
+            )
         ctx4096_dim_tile = int(
             backend_package_capability(
                 backend,
@@ -803,6 +814,8 @@ class LagunaKVCache:
                             is not None
                         )
                         and state.q_heads == 48
+                        and live_count
+                        >= self.global_split_gqa6_ctx4096_min_live
                         and layer_id
                         == self.global_split_gqa6_ctx4096_compensated_layer
                     )
@@ -816,6 +829,8 @@ class LagunaKVCache:
                         and self.global_split_gqa6_deferrednorm_dim32_vstage64
                         and self.global_split_gqa6_ctx4096_min_layer is not None
                         and state.q_heads == 48
+                        and live_count
+                        >= self.global_split_gqa6_ctx4096_min_live
                         and layer_id >= self.global_split_gqa6_ctx4096_min_layer
                     )
                     else (

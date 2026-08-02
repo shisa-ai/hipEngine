@@ -215,6 +215,18 @@ explicitly ordered implementation is retained. Tracked-clean d16K confirms
 over the prior parallel-max default, with the same trajectory and teardown.
 [`ordered-prefetch exact PV production`](results/2026-08-02-gfx1151-laguna-long-global-exact-pv-prefetch4-retained.json).
 
+The eighth LC-D3 checkpoint re-measures the quality-scoped context-PV route
+after ordered-prefetch4 changed its crossover. gfx1151 now keeps exact
+deferred GQA6 below **98,304 live slots** and uses the retained layer-28/
+late-four D64 ctx4096 schedule only above that threshold. Exact d16K/d64K
+improves **18.930785/11.868234 -> 18.965937/11.891734 tok/s
+(+0.186%/+0.198%)**. The unchanged deep route passes the mandatory 128K
+token/hash/position and lifecycle gate; its one-run **7.929 tok/s** is within
+the same run-level variance that also moved the immediately preceding
+all-exact control. The explicit 512/1K/4K guard is
+**23.205876/23.067535/21.684921 tok/s**, with established hashes and no short
+regression. [`depth-crossover production`](results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json).
+
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
 same-resident p512/d128 pairs improve

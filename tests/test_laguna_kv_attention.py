@@ -5078,7 +5078,7 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(
         _production_config(),
-        context_length=8192,
+        context_length=131200,
         backend="hip_gfx1151",
         runtime=runtime,
     )
@@ -5099,6 +5099,9 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache.position = 6000
         cache.attend(0, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.attend(28, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.attend(32, 1, 2, gate_ptr=3, gated_out_ptr=4)
+        cache.position = 98303
         cache.attend(28, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache.attend(32, 1, 2, gate_ptr=3, gated_out_ptr=4)
         cache._dense_initial_metadata_valid = False
@@ -5123,6 +5126,8 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
             "producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_"
             "vstage64_vec16_direct_assume_exp_fixedshape_spans"
         ),
+        "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
+        "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
         "global_context_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_spans",
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
