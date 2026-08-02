@@ -917,6 +917,21 @@ tok/s**
 ([H7T quality rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
 [H7T target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
+The clean rerank selects target-only **WPF-H7U exact stable parallel MoE active
+compaction**. The current one-workgroup scheduler scans all **5,120 routed
+lanes** across 256 experts and owns **25.187 ms / 47 calls**, **32.960%** of
+the 76.417-ms remaining bucket; the following **7.717-ms** packed-hidden gather
+is explicitly unchanged. H7U transfers the already registered stable
+count→Blelloch-prefix→ballot-scatter sibling from gfx1151 to gfx1100, replacing
+47 serial launches with 141 parallel stages at zero allocation/workspace or
+model-arithmetic change. Prior gfx1151 exact production is rationale only, not
+a W7900 result. Production remains **431.310 tok/s / 1,172.241 ms / 2,192
+dispatches**; no gfx1100 candidate has run. Freeze RED first, then require all
+metadata/full-state bytes, named **47+47+47** cache-only tracing, and one
+inseparable all-47-layer both-clock gate without layer/expert/length/rerun
+salvage
+([H7U target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7t-parallel-moe-compaction-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
