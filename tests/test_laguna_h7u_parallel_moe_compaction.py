@@ -50,6 +50,20 @@ _H7U_PACKAGE_BLOCK = (
     "# serial until complete standalone/runtime/source qualification.\n"
     'LAGUNA_MOE_GROUP_COMPACT_H7U_MODE = "parallel"\n'
 )
+_H7U_SOURCE_BLOCK = (
+    "# WPF-H7U promotes exact stable parallel active-route compaction after full\n"
+    "# standalone, bounded-runtime, fixed, length, and source-trace qualification.\n"
+    "# Explicit serial remains the registered rollback; peer backends stay local.\n"
+    'LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"\n'
+)
+_OLD_MODE_TEST_BLOCK = (
+    '    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"\n'
+)
+_SOURCE_MODE_TEST_BLOCK = (
+    '    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "parallel"\n'
+    '    assert resolve_laguna_group_compact_mode("hip_gfx1100", "serial") == "serial"\n'
+    '    assert resolve_laguna_group_compact_mode("hip_gfx1100", "parallel") == "parallel"\n'
+)
 _EXPERTS = 256
 _TOP_K = 10
 _M512_TOKENS = 512
@@ -96,10 +110,11 @@ def _hip_available() -> bool:
     return True
 
 
-def _candidate_mode() -> str:
-    # Intentional RED boundary. Adding this package-only capability exposes the
-    # already registered sibling without changing the live serial source owner.
-    mode = getattr(hip_gfx1100, _H7U_CAPABILITY)
+def _parallel_mode() -> str:
+    bounded = getattr(hip_gfx1100, _H7U_CAPABILITY, None)
+    source = getattr(hip_gfx1100, _SOURCE_CAPABILITY, None)
+    assert (bounded, source) in (("parallel", None), (None, "parallel"))
+    mode = bounded or source
     assert mode == "parallel"
     assert resolve_laguna_group_compact_mode("hip_gfx1100", mode) == "parallel"
     return mode
@@ -390,12 +405,26 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
 
     for relative, expected in artifact["source_sha256"].items():
         path = _ROOT / relative
+        if relative == "tests/test_laguna_moe_gpu.py":
+            test_source = path.read_text()
+            old_count = test_source.count(_OLD_MODE_TEST_BLOCK)
+            source_count = test_source.count(_SOURCE_MODE_TEST_BLOCK)
+            assert (old_count, source_count) in ((1, 0), (0, 1))
+            normalized = test_source.replace(
+                _SOURCE_MODE_TEST_BLOCK, _OLD_MODE_TEST_BLOCK
+            )
+            assert hashlib.sha256(normalized.encode()).hexdigest() == expected
+            continue
         if relative != "hipengine/kernels/hip_gfx1100/__init__.py":
             assert _sha256(path) == expected
             continue
         package_source = path.read_text()
-        assert package_source.count(_H7U_PACKAGE_BLOCK) in (0, 1)
-        normalized = package_source.replace(_H7U_PACKAGE_BLOCK, "")
+        bounded_count = package_source.count(_H7U_PACKAGE_BLOCK)
+        source_count = package_source.count(_H7U_SOURCE_BLOCK)
+        assert bounded_count + source_count in (0, 1)
+        normalized = package_source.replace(_H7U_PACKAGE_BLOCK, "").replace(
+            _H7U_SOURCE_BLOCK, ""
+        )
         assert hashlib.sha256(normalized.encode()).hexdigest() == expected
 
 
@@ -426,17 +455,16 @@ def test_h7u_existing_registered_leaf_and_immutable_source_are_complete() -> Non
     assert "__popcll(" in source
 
 
-def test_h7u_bounded_capability_keeps_serial_source_and_gfx1151_isolation() -> None:
-    assert not hasattr(hip_gfx1100, _SOURCE_CAPABILITY)
-    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
+def test_h7u_package_mode_keeps_serial_rollback_and_gfx1151_isolation() -> None:
+    bounded = getattr(hip_gfx1100, _H7U_CAPABILITY, None)
+    source = getattr(hip_gfx1100, _SOURCE_CAPABILITY, None)
+    assert (bounded, source) in (("parallel", None), (None, "parallel"))
+    expected_default = "serial" if bounded is not None else "parallel"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100") == expected_default
     assert resolve_laguna_group_compact_mode("hip_gfx1100", "serial") == "serial"
+    assert _parallel_mode() == "parallel"
     assert getattr(hip_gfx1151, _SOURCE_CAPABILITY) == "parallel"
     assert not hasattr(hip_gfx1151, _H7U_CAPABILITY)
-
-    # Intentional RED only after source rollback and peer isolation are proven.
-    assert _candidate_mode() == "parallel"
-    assert not hasattr(hip_gfx1100, _SOURCE_CAPABILITY)
-    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -444,8 +472,7 @@ def test_h7u_bounded_capability_keeps_serial_source_and_gfx1151_isolation() -> N
 def test_h7u_stable_edge_metadata_matches_cpu_and_serial(
     fixture_factory: Any,
 ) -> None:
-    # Intentional RED before building/loading HIP or allocating device memory.
-    mode = _candidate_mode()
+    mode = _parallel_mode()
     assert mode == "parallel"
     library = build_qwen35_moe_group_scatter(load=True)
     selected, weights = fixture_factory()
@@ -634,8 +661,7 @@ def _run_m512_pipeline(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_h7u_natural_m512_metadata_tile_map_packed_hidden_repeat_and_lifecycle() -> None:
-    # Intentional RED before constructing the natural-shape fixture or loading HIP.
-    mode = _candidate_mode()
+    mode = _parallel_mode()
     assert mode == "parallel"
     library = build_qwen35_moe_group_scatter(load=True)
     selected, weights = _m512_routes()

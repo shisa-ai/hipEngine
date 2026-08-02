@@ -3039,6 +3039,26 @@ and proceed to a separate runtime/source RED. Require fixed C4096/M512 and clean
 production remains **431.310 tok/s / 1,172.241 ms / 2,192 dispatches**
 ([H7U candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
 
+Promote H7U after the separate source RED and complete request-level gates.
+Atomically replace the bounded H7U capability with
+`LAGUNA_MOE_GROUP_COMPACT_MODE="parallel"`; retain explicit serial rollback and
+leave gfx1151 local. The bounded fixed C4096/M512 gate is exact and improves
+**430.412→436.602 tok/s (+1.438%, 5/5 wins)**. Clean source-default 512/1K/4K
+improves **+1.371%/+1.245%/+0.626%**, with exact state, lifecycle recovery, and
+**3/3** wins at every length.
+
+Clean matched production is **437.189 tok/s / 1,171.117-ms wall**, **+1.363%**
+over H7I and **1.58007x** behind matched llama.cpp HIP **690.791 tok/s**. The
+five-request selected-region trace proves exact **47+47+47**, zero serial,
+unchanged 47 gather, **2,286 dispatches**, one queue, and zero compiler.
+Compaction falls **25.187→1.155 ms**; representative kernel sum falls
+**1,172.241→1,160.833 ms**. Remaining now beats the matched comparator, while
+Q5/IQ-down/attention/Q6 gaps remain **178.225/121.564/94.784/60.314 ms**.
+Continue only with a materially distinct exact mechanism; do not reopen the
+closed Q5 geometry/representation, IQ residual, changed-association attention,
+or raw-Q6 direct-consumer routes
+([H7U production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
