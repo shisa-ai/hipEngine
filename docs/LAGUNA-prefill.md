@@ -42,8 +42,8 @@ interleaved VOPD scheduling, H7E rejects residual-D4 runtime ownership at the
 mandatory complete quality gate, H7G remains complete-map rollback beneath H7H
 exact full-group Q5 source, and H7I is the retained exact raw-Q6 full-group
 source with complete H7C rollback, H7K/H7L are removed after frozen physical
-misses, H7M/H7N/H7O and H7P/H7Q/H7R are rejected, and H7S is the selected exact
-raw-Q6 packed-activation cross-row-reuse target; 16K+ remains deferred**.
+misses, and H7M through H7S are rejected under their exact no-salvage gates;
+16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -1572,6 +1572,18 @@ geometry, prompt, tuning, recompile, or favorable-rerun salvage is allowed.
 Production remains **431.310 tok/s**, and no H7S code or speed result exists
 before RED
 ([post-H7R residual / H7S target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
+
+Reject H7S after its single frozen screen. The first object is physically exact
+at BF16/F32 **5,912/5,884 B / 864/860 slots / VGPR112 / SGPR24 / LDS1,024 /
+spill0**, with four b128 activation loads, eight raw-Q6 field loads, 64 FMAs,
+64 permlanex16, 256 DPP adds, and scratch0. GREEN is **8/8** and tracing names
+three pack→consumer pairs, no producer, and no compiler. Byte exactness is not
+enough: the three role speedups are only **0.290/0.320**, **0.402/0.411**, and
+**0.293/0.304** event/wall. Weighted H6U→H7S regresses **49.193→149.544 ms
+event (0.329x)** and **49.721→146.161 ms wall (0.340x)**. Remove the candidate,
+RED, and gfx1151 exclusion completely; keep H6U and **431.310 tok/s** and do not
+reopen H7S role/geometry subsets
+([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

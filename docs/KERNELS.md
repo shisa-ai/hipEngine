@@ -2154,6 +2154,20 @@ role/c4r16/c8r8/prompt subset, tuning, recompile, or favorable rerun is allowed.
 Runtime/source qualification remains separate
 ([post-H7R residual / H7S target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
 
+Reject **WPF-H7S** after the first and only immutable all-role screen. Its first
+object realizes the declared form exactly: BF16/F32 code is **5,912/5,884 B**
+at **864/860 slots**, both **VGPR112 / SGPR24 / LDS1,024 / spill/scratch0**,
+with **4 b128 + 8 raw-Q6 loads, 64 ordered FMAs, 64 permlanex16, 256 DPP
+adds**, and one barrier. GREEN passes **8/8**; named tracing shows exactly pack
+then H7S consumer for all roles, no F32 producer, and zero compiler. Complete
+outputs are byte-exact and finite. The economics fail decisively: role
+speedups are **0.290/0.320**, **0.402/0.411**, and **0.293/0.304** event/wall,
+and weighted H6U→H7S regresses **49.193→149.544 ms event (0.329x)** and
+**49.721→146.161 ms wall (0.340x)**. Remove every body/export/wrapper/key/RED/
+gfx1151 exclusion, retain exact H6U and **431.310 tok/s**, and do not salvage a
+role or nearby c4r16/c8r8 geometry after timing
+([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
