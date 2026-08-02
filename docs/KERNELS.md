@@ -2268,6 +2268,23 @@ with no row-bound compare and no worse code/slots/VGPR than H6U. Freeze RED and
 all-role timing before implementation; no candidate has run
 ([H7V target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
 
+Reject **WPF-H7V** after its first immutable all-role screen. The predicate-free
+object passes every declared physical gate: BF16-r4 is **5,808 B / 873 slots /
+VGPR108**, BF16-r5 **6,960 / 1,001 / 139**, and F32-r5 **6,928 / 996 / 139**,
+all no worse than H6U and exact at **64/80 FMAs, 64/80 permlanex16, 256/320 DPP
+adds, one barrier, LDS1,024/1,280, private/spill/scratch0**. GREEN passes
+**9/9**. Full-request rocprof names exact **142 packs + 143 producers + 142 H7V
+full + 96 H6U tail consumers**, **2,382 dispatches**, one queue/stream, runtime
+VGPR112/144 and LDS1,024/1,536, scratch0, with zero compiler.
+
+Complete outputs are byte-exact/finite/lifecycle-clean. The r4 role improves
+**1.00255x/1.00495x**, but BF16-r5 is **0.97542x/0.97618x** and F32-r5
+**0.97309x/0.97499x** event/wall. Weighted H6U→H7V therefore regresses
+**47.949→48.680 ms event (0.985x)** and **48.522→49.162 ms wall (0.987x)**.
+Delete every H7V body/export/wrapper/key/RED surface, retain H6U and **437.189
+tok/s**, and forbid r4-only salvage, rewrite, recompile, or favorable rerun
+([H7V rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

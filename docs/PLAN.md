@@ -3079,6 +3079,19 @@ output-type, layer, prompt, length, retune, recompile, or favorable-rerun
 salvage; no candidate or speed result exists
 ([H7V target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
 
+Reject **WPF-H7V** after the first immutable all-role timing screen. The one
+object passes all frozen physical gates at **5,808/6,960/6,928 B**,
+**873/1,001/996 slots**, and metadata **VGPR108/139/139** for BF16-r4,
+BF16-r5, and F32-r5, respectively; FMA, permlanex16, DPP, barrier, LDS,
+private/spill/scratch, and complete outputs remain exact. GREEN passes **9/9**
+and tracing records exact **142 full + 96 H6U tail / 2,382 dispatches** with
+zero compiler. Rowbatch4 improves **1.00255x/1.00495x**, but both rowbatch5
+roles lose both clocks and cannot be salvaged. Weighted H6U→H7V regresses
+**47.949→48.680 ms event (0.985x)** and **48.522→49.162 ms wall (0.987x)**.
+Remove every H7V kernel/wrapper/key/RED surface, skip runtime/source work,
+retain H6U plus **437.189 tok/s**, and rerank a materially different operation
+([H7V rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

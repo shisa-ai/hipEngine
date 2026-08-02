@@ -1000,6 +1000,19 @@ inseparable all-three-role plus weighted-aggregate both-clock 5/15/5 gate. No
 candidate has run and no speed claim exists
 ([post-H7U / H7V target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
 
+**WPF-H7V is rejected after its first immutable all-role screen.** The sole
+object passes every physical gate and shrinks H6U: BF16 r4 is **5,808 B / 873
+slots / VGPR108**, BF16 r5 **6,960 / 1,001 / 139**, and F32 r5 **6,928 / 996 /
+139**, with exact FMA/permlanex16/DPP/barrier/LDS structure and no spills.
+GREEN is **9/9**; full-request tracing proves **142 packs + 143 producers + 142
+H7V full + 96 exact H6U tail consumers / 2,382 dispatches**, one queue, and zero
+compiler. Outputs are byte-exact and lifecycle-clean, but both rowbatch5 roles
+lose both clocks. The 142-call H6U→H7V aggregate regresses **47.949→48.680 ms
+event (+1.524%, 0.985x)** and **48.522→49.162 ms wall (+1.318%, 0.987x)**.
+Remove every H7V implementation/RED/key surface, retain H6U and production
+**437.189 tok/s**, and do not salvage rowbatch4 or rerun
+([H7V rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
