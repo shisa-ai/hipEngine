@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_prefetch16_cndmask_rejection",
+  "created_at": "2026-08-03T01:55:00+09:00",
+  "status": "rejected",
+  "performance_claim": false,
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "candidate": "replace each prefetch16 positive-weight branch with cndmask-style zeroed weight/value operands and an unconditional ordered FMA",
+  "control": "retained exact dense D32/V80 prefetch16 with non-temporal K/V",
+  "protocol": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-prefetch16-cndmask-dense-prefix-nontemporal-key-value --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 5 --warmups 3 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-prefetch16-cndmask-screen.json",
+  "rows": [
+    {"live_count": 4097, "control_ms": 0.152294, "candidate_ms": 0.144507, "delta_percent": -5.113},
+    {"live_count": 16448, "control_ms": 0.582477, "candidate_ms": 0.589037, "delta_percent": 1.126},
+    {"live_count": 65664, "control_ms": 2.229447, "candidate_ms": 2.258213, "delta_percent": 1.290},
+    {"live_count": 131200, "control_ms": 4.414108, "candidate_ms": 4.471029, "delta_percent": 1.290}
+  ],
+  "correctness": {
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "cpu_reference_test_passed": true
+  },
+  "decision": "reject and remove all candidate code because every admitted long-context shape regresses; retain prefetch16 branch semantics and skip production timing",
+  "production_before_and_after": "unchanged at 23.213823/23.057078/21.683758/20.041884/14.237877/10.726607 tok/s for d512/d1K/d4K/d16K/d64K/d128K",
+  "raw_sha256": "7ccaad79e16b32937f1b023d104c6d963dac8ce54a9d14b606fab4c14462b77a"
+}
