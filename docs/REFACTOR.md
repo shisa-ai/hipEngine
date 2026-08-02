@@ -57,23 +57,21 @@ should be removed or collapsed.
 
 ## Laguna H8A resident global-Q5 F32 cache production cleanup
 
-- Added 2026-08-03 for exact owner-inclusive qualification. The temporary
-  `use_q5_f32_resident_global_cache` session selector and gfx1100
-  `LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE{,_SUPPORTED}` capabilities own one
-  immutable **24-allocation / 1,811,939,328-byte** map for all 12 global
-  `attn_q` and `attn_output` raw-Q5 tensors. Explicit child sharing reuses the
-  same owner; every disabled, unsupported, unshared, allocation-failed, or
-  non-target route keeps the registered transient producer + H7G fallback.
+- Added 2026-08-03 for exact owner-inclusive qualification. The gfx1100 source
+  `LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE` capability owns one immutable
+  **24-allocation / 1,811,939,328-byte** map for all 12 global `attn_q` and
+  `attn_output` raw-Q5 tensors. Explicit child sharing reuses the same owner;
+  every disabled, unsupported, unshared, allocation-failed, or non-target route
+  keeps the registered transient producer + H7G fallback.
 - Bounded and source qualification pass: all 24 complete planes, natural-M512
   state, exact **24 setup / 0 request producer / 2,262-dispatch** topology,
   fixed C4096/M512, and clean 512/1K/4K medians are positive and exact. Clean
   committed production reaches **440.353 tok/s** with a **1,151.215-ms**
   representative kernel sum, one queue, and zero compiler activity.
-- The clean checkpoint trigger is satisfied. In the immediate cleanup unit,
-  remove the public positive selector and duplicate `_SUPPORTED` capability
-  while retaining the immutable cache owner, raw-pointer lookup, required
-  transient H7G/allocation-failure fallback, and an explicit false opt-out only
-  while it remains useful for bisection. Remove that opt-out after one later Q5
+- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`
+  capability and explicit positive selector are removed. Source ownership is
+  the sole positive route; `use_q5_f32_resident_global_cache=False` remains the
+  explicit transient-H7G rollback. Remove that false opt-out after one later Q5
   family checkpoint if no rollback is needed.
 
 ## Laguna H6Z bounded default-off global-attention capability

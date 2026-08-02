@@ -7,6 +7,8 @@ import inspect
 import json
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parents[1]
 _RUNTIME_ARTIFACT = _ROOT / (
     "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-"
@@ -16,8 +18,10 @@ _RUNTIME_ARTIFACT_SHA256 = (
     "50ed3cd81a5a350ac39e70eaed3560d88144251e40f07198acbbb10e2ae1a325"
 )
 _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
-_SUPPORTED_CAPABILITY = "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED"
 _SOURCE_CAPABILITY = "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE"
+_REMOVED_SUPPORTED_CAPABILITY = (
+    "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED"
+)
 _PLANE_BYTES = 75_497_472
 _PLANE_COUNT = 24
 _RESIDENT_BYTES = 1_811_939_328
@@ -54,7 +58,7 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _NORMALIZED_PACKAGE_SHA256 = (
-    "6831c534068781f7b61c8889f7e89d3e9958801cb140f9936894d3cb65e26f1b"
+    "0c87bb5a2dac91afbad9c7704ee4147e42b405acc5a900da23961276bce20719"
 )
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
@@ -70,10 +74,10 @@ _SOURCE_SHA256 = {
         "f9ebb089b31937dcaea27f8bb43bfc2936b294d541c2841465c498d6f6dbd363"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "d5517098484e00beae981aed3f374cfe956595250716bfe33cdfb0196292dbec"
+        "c7c865094a375d0445e1f7cc72be15e9cd76b0f07991104a13fb5decda51f803"
     ),
     "tests/test_laguna_h8a_resident_q5_global_cache.py": (
-        "f98f44a97cf57af0f1cba7967c27180a7847b47569aaacaf996be590670558a1"
+        "fca107c250f9f510c43c1bd324c9e0d464040fdd28046bb60aff80e76ffb8dd8"
     ),
 }
 
@@ -160,8 +164,8 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         "candidate_capability_cleanup_after_checkpoint": True,
         "no_subset_or_favorable_rerun": True,
     }
-    assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) in (False, True)
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
+    assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
     assert "resident_q5_f32_cache" in parameters
@@ -186,15 +190,17 @@ def test_h8a_source_default_selects_owner_and_preserves_transient_rollback() -> 
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
 
-    # Intentional RED after the qualified artifact, immutable implementation,
-    # ownership/topology contract, normalized package seam, and rollback gates:
-    # source remains false until this test-only boundary is committed.
+    # Source ownership is now the sole positive policy; explicit false keeps
+    # transient H7G rollback and the former positive candidate seam is removed.
     assert live_source is True
-    assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
+    assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
-    assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
+    assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
     assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", None) is True
-    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", True) is True
     assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", False) is False
     assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1151", None) is False
+    with pytest.raises(ValueError, match="positive selector was removed"):
+        resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", True)
+    with pytest.raises(ValueError, match="positive selector was removed"):
+        resolve_laguna_q5_f32_resident_global_cache("hip_gfx1151", True)
     assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256

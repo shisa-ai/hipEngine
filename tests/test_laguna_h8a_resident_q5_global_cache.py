@@ -85,8 +85,10 @@ _PLANE_BYTES = 3_072 * 6_144 * np.dtype(np.float32).itemsize
 _PLANE_COUNT = 24
 _RESIDENT_BYTES = _PLANE_COUNT * _PLANE_BYTES
 
-_SUPPORTED_CAPABILITY = "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED"
 _SOURCE_CAPABILITY = "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE"
+_REMOVED_SUPPORTED_CAPABILITY = (
+    "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED"
+)
 _OWNER_CLASS = "LagunaQ5F32ResidentGlobalCache"
 _RESOLVER = "resolve_laguna_q5_f32_resident_global_cache"
 _SESSION_CACHE_PARAMETER = "resident_q5_f32_cache"
@@ -610,16 +612,17 @@ def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
 ) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
 
-    assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
+    assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
+    assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
     # Source selection keeps explicit disable and unshared transient fallbacks.
     policy_resolver = getattr(runner_module, _RESOLVER)
-    assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
     assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
     assert policy_resolver("hip_gfx1100", None) is True
     assert policy_resolver("hip_gfx1100", False) is False
-    assert policy_resolver("hip_gfx1100", True) is True
     assert policy_resolver("hip_gfx1151", None) is False
-    with pytest.raises(ValueError, match="not supported"):
+    with pytest.raises(ValueError, match="positive selector was removed"):
+        policy_resolver("hip_gfx1100", True)
+    with pytest.raises(ValueError, match="positive selector was removed"):
         policy_resolver("hip_gfx1151", True)
 
     parameters = inspect.signature(
