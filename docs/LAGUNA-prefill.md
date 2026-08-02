@@ -1900,6 +1900,29 @@ length, layout, or favorable-rerun salvage. Add no HIP body and keep source
 promotion separate
 ([H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
 
+The Python-only H8A owner now qualifies bounded default-off at committed
+revision `63c4cd6bb`; the HIP source and cached object remain byte-identical.
+The all-or-nothing owner allocates **24 × 75,497,472 = 1,811,939,328 bytes**,
+publishes one immutable raw-pointer map, and shares it explicitly without child
+ownership. Every complete actual plane is byte-equal to a fresh retained
+producer. Natural M512 is KL0/top-1 100% and exact across all **48/48** hidden
+boundaries, logits, final/post hidden, KV/spans, repeat, and teardown.
+
+A cache-only trace names exact **24 setup producers** before any request. The
+selected M512 request has **0 coltile16 producers**, **24 target activation
+packs** immediately feeding **12 F32 + 12 BF16 H7G consumers**, and **2,262
+application dispatches** on one queue/stream with zero compiler. Fixed C4096/
+M512 improves **436.765→438.368 tok/s (+0.367%, 5/5 paired wins)**. Clean
+512/1K/4K improves **404.037→407.059 (+0.748%)**, **320.179→321.242 (+0.332%)**,
+and **197.671→198.179 tok/s (+0.257%)**, each exact and 3/3 paired wins.
+
+Admit only the bounded owner. Active source stays H6Z/H6W **437.189 tok/s**;
+retain transient H7G, allocation-failure, unshared, wrong-shape, and gfx1151
+fallbacks. Freeze a separate source-default RED before changing the package
+capability and forbid role/layer/prompt/length/size/rerun salvage
+([H8A runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
+[H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

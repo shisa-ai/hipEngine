@@ -3257,6 +3257,21 @@ state, setup/request topology, fixed and 512/1K/4K both-clock RED gates; source
 promotion remains separate and the full-family sidecar remains forbidden
 ([H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
 
+H8A's separately committed Python-only owner now qualifies bounded default-off.
+The HIP source/object remain byte-identical. One immutable all-or-nothing map
+owns exact **24 × 75,497,472 = 1,811,939,328 bytes**; every actual plane matches
+a fresh retained producer over all bytes. Complete M512 is KL0/top-1 100% and
+byte-exact across **48/48** boundaries, logits, hidden state, KV/spans, repeat,
+and lifecycle. Named tracing records exact **24 setup / zero request producers +
+24 target packs + 24 H7G consumers / 2,262 dispatches**, one queue/stream and
+zero compiler. Fixed C4096/M512 improves **436.765→438.368 tok/s (+0.367%,
+5/5)**; clean 512/1K/4K medians improve **+0.748%/+0.332%/+0.257%**, all 3/3
+paired wins. Retain H6Z/H6W source production **437.189 tok/s** and the transient
+H7G/allocation-failure fallback; freeze source promotion separately with no
+subset or favorable rerun
+([H8A runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
+[H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

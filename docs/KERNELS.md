@@ -2467,6 +2467,26 @@ partial maps, wrong shapes, and unavailable memory fail closed. Full-family,
 role-only, layer, prompt, token, and favorable-rerun subsets are forbidden
 ([H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
 
+H8A now qualifies as a bounded default-off Python owner with no new device body,
+JIT key, or changed HIP source/object. Its two registered resident composites
+reuse the exact tile-K-row pack and H7G coltile16 padded-compute primitives.
+The weight-owning session publishes one immutable **24-entry / 1,811,939,328-
+byte** raw-pointer map after all retained producers finish; explicit children
+share it read-only and never own/free it. Every actual plane matches a fresh
+producer over all **75,497,472 bytes**. Complete M512 and all **48/48** hidden
+boundaries/logits/KV/spans/repeat are exact with lifecycle recovery.
+
+The named trace records **24 setup producers** before requests and exact **zero
+request producers + 24 target packs + 24 H7G consumers / 2,262 application
+dispatches** on one queue/stream with zero compiler. Setup is excluded from
+request timing. Fixed C4096/M512 improves **436.765→438.368 tok/s (+0.367%,
+5/5)** and clean 512/1K/4K medians improve **+0.748%/+0.332%/+0.257%**, each
+3/3. Keep source false and the pack+transient producer+H7G fallback until the
+separate source-default RED; gfx1151 and every partial/wrong-shape/allocation-
+failed route remain fail-closed
+([H8A runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-runtime-candidate.json) ·
+[H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
