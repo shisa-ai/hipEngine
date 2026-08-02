@@ -9713,6 +9713,32 @@ The remaining attention sequence is:
      skip the mandatory 128K run because every directional row fails:
      [`denominator sentinel rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-exact-denominator-sentinel-rejected.json).
 
+221. Revisit the dormant context-merge repair path.
+     **Rejected against the current exact owner; production unchanged.**
+
+     The merge writes a repair mask, but production does **not** dispatch the
+     existing scalar repair kernel. The mask is sparse by output at
+     live4K/16K/64K/128K (**48/79/141/208 of 6,144**), yet those flags spread
+     across **20/28/31/32 of 32** GQA/D32 tiles and **30/37/47/47** query
+     heads. The dormant per-head implementation therefore streams almost the
+     full V plane repeatedly despite repairing little arithmetic.
+
+     A direct-V sparse replay is BF16-exact on the synthetic fixture but costs
+     **1.230/5.615/25.015/49.917 ms**. Sharing coalesced D32 V tiles across all
+     six GQA queries reduces that to **0.451/1.402/5.860/11.594 ms**; D64
+     partial ownership plus D32 repair reaches
+     **0.454/1.240/5.520/10.833 ms**. This still loses badly to the current
+     ordered-prefetch4 exact owner at
+     **0.186/0.831/3.461/6.986 ms**. An all-global production screen also
+     changes the 16K recurrent final token **13,815 -> 855** and is stopped
+     before 64K/128K. All repair dispatch and promotion changes are removed.
+
+     This comparison exposes a useful stale decision: exact PV became much
+     faster after the context-parallel schedule was admitted. Re-gate the five
+     approximate layers against today's exact owner before another kernel
+     rewrite:
+     [`sparse-repair rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-sparse-repair-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9754,8 +9780,12 @@ allocation teardown remain mandatory at every retained step.
    prefetch then overlaps LDS/BF16 conversion with the unchanged recurrent FMA
    chain, improving exact leaves **23.13-34.03%** and complete
    16K/64K/128K another **4.313%/9.400%/12.851%** with exact recurrent state.
-   The next step increases safe ordered prefetch distance or removes a complete
-   exact score/probability traffic pass without reducing output-wave ownership.
+   Prefetch8, direct probability loads, FMAC, the denominator sentinel, and
+   grouped sparse repair are now closed. Because ordered-prefetch4 changed the
+   crossover after context parallelism was admitted, first re-gate the five
+   approximate layers against the current exact owner; only then pursue a
+   complete exact score/probability traffic pass without reducing output-wave
+   ownership.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

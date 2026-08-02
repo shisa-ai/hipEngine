@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_sparse_repair_rejection",
+  "created_at": "2026-08-02T17:08:53+09:00",
+  "status": "rejected",
+  "performance_claim": false,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "observation_correction": {
+    "production_repair_kernel_dispatched": false,
+    "merge_writes_repair_mask": true,
+    "dormant_repair_is_per_output_arithmetic_but_per_active_head_full_v_stream": true
+  },
+  "mask_density": [
+    {"live_count": 4097, "repair_outputs": 48, "query_heads": 30, "gqa_dim32_tiles": 20, "false_negatives_synthetic": 0},
+    {"live_count": 16448, "repair_outputs": 79, "query_heads": 37, "gqa_dim32_tiles": 28, "false_negatives_synthetic": 0},
+    {"live_count": 65664, "repair_outputs": 141, "query_heads": 47, "gqa_dim32_tiles": 31, "false_negatives_synthetic": 0},
+    {"live_count": 131200, "repair_outputs": 208, "query_heads": 47, "gqa_dim32_tiles": 32, "false_negatives_synthetic": 0}
+  ],
+  "candidate_screens": {
+    "per_head_sparse_direct_v_ms": [1.230157, 5.615400, 25.014622, 49.916708],
+    "gqa_shared_dim32_repair_ms": [0.451465, 1.402383, 5.859956, 11.594238],
+    "gqa_shared_dim64_partial_plus_dim32_repair_ms": [0.453647, 1.239593, 5.520239, 10.833306],
+    "production_exact_deferred_gqa6_ms": [0.185749, 0.831084, 3.460723, 6.985522],
+    "live_counts": [4097, 16448, 65664, 131200],
+    "gqa_repair_gated_bf16_byte_exact_on_synthetic_fixture": true
+  },
+  "production_directional": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-allglobal-ctx4096-repair-directional.json",
+    "depth_4096_tok_s": 21.654,
+    "depth_4096_final_token": 6436,
+    "depth_16384_tok_s": 17.702,
+    "depth_16384_expected_final_token": 13815,
+    "depth_16384_candidate_final_token": 855,
+    "depth_65536_skipped": true,
+    "depth_131072_skipped": true,
+    "termination": "stopped after recurrent trajectory failure"
+  },
+  "decision": "remove repair launch and all-layer promotion; retain production unchanged",
+  "next": "re-gate the five retained context-parallel layers against the now-faster ordered-prefetch4 exact owner",
+  "raw_sha256": {
+    "mask_density": "44d6d74f0c1f6b2efecc936353cea00be03d4a053d335de4268d2a84db2724e6",
+    "mask_tiles": "5232968fb3c58fec7d39a68b7f168bb73ccd35f6fc9da69b721d1689ea679446",
+    "sparse_direct": "5365b2b4712964420601a5c85fb87863a04723e35589f3baf2b40f47e8382489",
+    "grouped_dim32": "24185cf32bf4ee7f98b49aa6b82f53f831c2780143fc576756b4c2b99797d361",
+    "grouped_dim64": "2b6ae01fc44173189eb1b6d96436c6ed44a841620cd0c7df0f2dfc0c48d1cf56",
+    "exact_control": "611f19fb33b11c72135d0014bd2f0e592c89c0eae373e4728370414ce58026fe"
+  }
+}
