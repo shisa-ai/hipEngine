@@ -10196,6 +10196,28 @@ The remaining attention sequence is:
      unchanged temporal route:
      [`65K+ non-temporal K+V production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json).
 
+235. Double exact PV workgroups with D16 ownership at the admitted long
+     depths. **Rejected at the leaf and removed.**
+
+     D32 launches 32 long-running PV workgroups on the 40-CU device. A
+     separately compiled D16 sibling doubled that grid to 64 and reduced each
+     block's value LDS while preserving dense identity, non-temporal K/V,
+     every score/denominator value, and each output's chronological FMA chain.
+     The additional blocks duplicate probability transport and leave half of
+     each output wave inactive. Those costs dominate at every depth:
+
+     | Exact non-temporal K+V leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Retained D32 | **0.167899 ms** | **0.636697 ms** | **2.443834 ms** | **4.836937 ms** |
+     | Candidate D16 | 0.186061 ms | 0.713529 ms | 2.753912 ms | 5.464432 ms |
+     | Delta | +10.817% | +12.067% | +12.688% | +12.973% |
+
+     F32 context and gated BF16 outputs are byte-exact with zero repairs, but
+     both admitted long shapes fail direction decisively. All candidate code
+     is removed without production timing or another 128K prefill. Keep D32;
+     increasing global workgroups by dimension undersubscription is closed:
+     [`D16 rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-dim16-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move

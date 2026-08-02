@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_dense_v80_dim16_rejected",
+  "status": "rejected",
+  "decision": "remove_candidate_and_retain_dim32",
+  "performance_claim": false,
+  "created_at": "2026-08-03T00:28:00+09:00",
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "7.15.0-0000000",
+    "queues": 2
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "summary": "Split each D32 PV tile into two D16 tiles, doubling exact PV workgroups from 32 to 64 while preserving the retained non-temporal K/V path and chronological FMA chains.",
+    "runtime_selected": false,
+    "code_retained": false
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop4-deferrednorm-dim16-vstage80-dense-prefix-nontemporal-key-value --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 5 --warmups 3 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-dense-v80-dim16-screen.json"
+  },
+  "leaf": {
+    "live_counts": [4097, 16448, 65664, 131200],
+    "control_dim32_ms": [0.167899, 0.636697, 2.443834, 4.836937],
+    "candidate_dim16_ms": [0.186061, 0.713529, 2.753912, 5.464432],
+    "latency_delta_percent": [10.817, 12.067, 12.688, 12.973],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "repair_outputs": 0,
+    "raw_sha256": "b992f11d9e5e21c3e519c6e20e6eb6d9b5e51bbd3a0662edb5f936cdc5bab0c4"
+  },
+  "reason": "The extra probability traffic and half-idle output waves dominate any occupancy benefit. Every depth regresses decisively, including both active 65K+ production shapes, so production timing and the mandatory 128K gate are unnecessary."
+}
