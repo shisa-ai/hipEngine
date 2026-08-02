@@ -3196,12 +3196,22 @@ poison/repeat/lifecycle identity, then one immutable all-72 actual-state 5/15/5
 screen where both starts and aggregate win event and wall. Forbid subset,
 packing-width retune, rewrite, recompile, or favorable rerun salvage.
 
-Keep runtime/source separate. Standalone mirrors are caller-owned; only an
-admitted leaf may allocate exact **72 MiB** SWA K/V mirrors and add a fused
-natural+mirror writer under a writer-inclusive bounded gate. Preserve natural
-H6A/H6W fallback and exact **144 writer calls / 2,286 request dispatches**.
-No candidate has been built or executed and no H7Y speed result exists
-([H7Y target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+H7Y is now admitted as an explicit standalone leaf. Its sole object is **4,900
+B / 855 slots / metadata VGPR54 / SGPR40 / spill0**, with exactly **2 b64 / 0
+u16 / 2 waits** and unchanged record/reduction/math/store opcodes. GREEN passes
+**6/6**; actual-cache tracing records exact **72 H7Y** at runtime VGPR56/LDS0/
+scratch0 on one queue with zero compiler. All 72 actual-layer outputs and score
+planes are byte-exact.
+
+The first immutable all-72 screen improves H6W→H7Y aggregate **56.607→56.259
+ms event (-0.616%) / 56.559→56.317 wall (-0.428%)**, with starts256 and384 each
+positive on both clocks. Keep runtime/source separate: production stays
+**437.189 tok/s**, and only the next RED-gated owner may allocate exact **72
+MiB** mirrors and add a fused natural+mirror writer. Preserve natural H6A/H6W
+fallback and exact **144 writer calls / 2,286 request dispatches**; require
+writer-inclusive fixed plus 512/1K/4K wins before source promotion
+([standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent

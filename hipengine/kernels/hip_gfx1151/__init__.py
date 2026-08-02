@@ -566,6 +566,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "bf16",
             "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans",
         ),
+        # WPF-H7Y's lane-major SWA cache consumer is W7900-only pending an
+        # independent gfx1151 resource/performance gate and runtime owner.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_initial_lane_major_global_score_replay_exact_spans",
+        ),
         # WPF-H5M exact source-qualified qrow4 is W7900-only pending an
         # independent gfx1151 resource/performance gate.
         (

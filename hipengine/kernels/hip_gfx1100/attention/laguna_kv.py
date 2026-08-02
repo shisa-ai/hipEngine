@@ -139,6 +139,10 @@ _SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_GLOBAL_SCORE_REPLAY_EXACT = (
     "hipengine_laguna_swa_attention_prefill_qrow4_"
     "dense_initial_global_score_replay_exact_bf16_spans"
 )
+_SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_EXACT = (
+    "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_"
+    "global_score_replay_exact_bf16_spans"
+)
 _SYMBOL_SWA_PREFILL_QROW4_CACHED_META_ONLINE = (
     "hipengine_laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans"
 )
@@ -3274,6 +3278,102 @@ def laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_b
     _check_launch(runtime, err)
 
 
+def laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_global_score_replay_exact_bf16_spans(
+    query_ptr: int,
+    current_key_ptr: int,
+    current_value_ptr: int,
+    lane_major_key_cache_ptr: int,
+    lane_major_value_cache_ptr: int,
+    out_ptr: int,
+    score_scratch_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    score_scratch_nbytes: int,
+    lane_major_cache_nbytes: int,
+    sliding_window: int | None = None,
+    start_position: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Replay exact late-start SWA dots from lane-major BF16 mirrors."""
+
+    parsed_start = None if start_position is None else int(start_position)
+    lane_major_key_cache_ptr = int(lane_major_key_cache_ptr)
+    lane_major_value_cache_ptr = int(lane_major_value_cache_ptr)
+    score_scratch_ptr = int(score_scratch_ptr)
+    if (
+        int(rows) != 128
+        or int(num_q_heads) != 72
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+        or parsed_start not in {256, 384}
+        or lane_major_key_cache_ptr <= 0
+        or lane_major_key_cache_ptr % 8 != 0
+        or lane_major_value_cache_ptr <= 0
+        or lane_major_value_cache_ptr % 8 != 0
+        or int(lane_major_cache_nbytes) != 1_048_576
+        or score_scratch_ptr <= 0
+        or score_scratch_ptr % 16 != 0
+        or int(score_scratch_nbytes) != 18_874_368
+    ):
+        raise ValueError(
+            "lane-major global-score replay exact SWA requires "
+            "M128/H72/KV8/D128 at start 256 or 384 with aligned exact "
+            "1,048,576-byte K/V mirrors and one aligned 18,874,368-byte "
+            "score plane"
+        )
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if capacity != 512 or window != 512 or parsed_start + int(rows) > capacity:
+        raise ValueError(
+            "lane-major global-score replay exact SWA requires "
+            "C512/window512 first fill"
+        )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _SYMBOL_SWA_PREFILL_QROW4_DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_EXACT,
+    )
+    fn.argtypes = (
+        [ctypes.c_void_p] * 12
+        + [ctypes.c_int64] * 7
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(current_key_ptr),
+        ctypes.c_void_p(current_value_ptr),
+        ctypes.c_void_p(lane_major_key_cache_ptr),
+        ctypes.c_void_p(lane_major_value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(score_scratch_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(parsed_start),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans(
     query_ptr: int,
     current_key_ptr: int,
@@ -4453,6 +4553,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_prefill",
+            "swa_context_rows_qrow4_dense_initial_lane_major_global_score_replay_exact_spans",
+            laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_global_score_replay_exact_bf16_spans,
+        ),
+        (
+            "laguna_attention_prefill",
             "swa_context_rows_qrow4_cached_meta_online_spans",
             laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans,
         ),
@@ -4634,6 +4739,7 @@ __all__ = [
     "laguna_swa_attention_prefill_qrow4_cached_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_dense_initial_cached_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_spans",
+    "laguna_swa_attention_prefill_qrow4_dense_initial_lane_major_global_score_replay_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_dense_initial_online_bf16_spans",
     "laguna_swa_attention_prefill_qrow4_cached_online_bf16_spans",
