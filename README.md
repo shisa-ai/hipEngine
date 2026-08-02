@@ -1176,6 +1176,21 @@ The remaining kernel gaps are Q5 **173.395 ms**, IQ-down **120.186**, attention
 **94.231**, and Q6 **59.985**
 ([H8A production](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
+The post-H8A exact audit selects **WPF-H8B scoped activation-pack reuse** without
+changing a device body, arithmetic, plane, allocation, or source owner. One
+cache-only natural-M512 request records **330** H5Y/H6U tile-K-row packs and
+proves **107** are consecutive byte-identical recomputations inside complete
+immutable projection groups: 12 full-attention Q/K/V triples remove 24, 35 SWA
+K/V pairs remove 35, 46 shared-Q5 gate/up pairs remove 46, and the dense-Q5 plus
+layer-47 shared-Q6 pairs remove two. The complete target models **330→223 packs
+/ 2,262→2,155 dispatches** and **2.342 ms** removable profile time; its
+zero-overhead **441.242 tok/s (+0.202%)** ceiling is not a candidate claim. The
+audit remains exact at token2930/position511 with finite state, lifecycle
+recovery, and zero compiler. Freeze scope/key/failure semantics and all 95
+recurrence runs together before implementation; no layer, role, prompt,
+length, or favorable-rerun subset is admissible
+([H8B target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

@@ -1933,6 +1933,27 @@ transient H7G, allocation-failure, unshared, wrong-shape, and gfx1151 fallbacks;
 no role/layer/prompt/length/size subset is introduced
 ([H8A production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-q5-global-f32-cache-production.json)).
 
+Post-H8A, select **WPF-H8B exact scoped activation-pack reuse** from one
+execution-unchanged, cache-only natural-M512 audit. The request launches **330**
+tile-K-row packs. Exactly **95** consecutive equal-key immutable groups expose
+**107** redundant copies: 12 full-attention Q/K/V triples remove 24, 35 SWA K/V
+pairs remove 35, 46 shared-Q5 gate/up pairs remove 46, and layer 0 dense-Q5 plus
+layer 47 shared-Q6 pairs remove one each. Production roles remain complete;
+there is no observed-prompt, arbitrary-layer, tensor, or quant subset.
+
+The future cache may exist only inside an explicit projection/FFN scope. It may
+reuse only a successfully published identical `(x, activation, rows, K,
+rowbatch, stream)` plane; scope exit, any key change, stream change, producer
+failure, unsupported shape, disabled policy, or backend miss forces the
+retained pack. No device source/object, consumer, weight producer, allocation,
+workspace, output association, or fallback changes. The profile-derived model
+is **330→223 packs / 2,262→2,155 dispatches** and **2.342313 ms** removed,
+which gives a no-cost **441.242 tok/s (+0.202%)** ceiling rather than a speed
+claim. Freeze RED, exact all-group/state/failure semantics, named topology, and
+fixed plus 512/1K/4K admission before source promotion; no group subset or
+favorable rerun is allowed
+([H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
