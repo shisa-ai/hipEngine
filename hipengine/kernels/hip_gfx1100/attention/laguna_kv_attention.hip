@@ -9763,9 +9763,9 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool kDensePrefix, bool kNonTemporal = false,
+template <int kValueStage, bool kDensePrefix, bool kNonTemporal = false,
           bool kNonTemporalKey = false, int kOperandPrefetch = 4>
-int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl(
+int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage_impl(
     const float* query,
     const uint16_t* key_cache,
     const uint16_t* value_cache,
@@ -9839,7 +9839,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80, kDensePrefix, kNonTemporal, kOperandPrefetch>),
+      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<kValueStage, kDensePrefix, kNonTemporal, kOperandPrefetch>),
       dim3(32),
       dim3(512),
       0,
@@ -9859,8 +9859,9 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
   return static_cast<int>(hipGetLastError());
 }
 
-#define HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(                       \
-    NAME, DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY, OPERAND_PREFETCH)       \
+#define HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(                    \
+    NAME, VALUE_STAGE, DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY,            \
+    OPERAND_PREFETCH)                                                          \
   extern "C" int NAME(                                                       \
       const float* query,                                                     \
       const uint16_t* key_cache,                                              \
@@ -9885,7 +9886,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
       int64_t head_dim,                                                       \
       float scale,                                                            \
       hipStream_t stream) {                                                   \
-    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl<DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY, OPERAND_PREFETCH>( \
+    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage_impl<VALUE_STAGE, DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY, OPERAND_PREFETCH>( \
         query, key_cache, value_cache, out, gate, gated_out, score_scratch,   \
         physical_scratch, base_offsets, live_counts, token_positions,         \
         evict_mask, row_positions, capacity, block_size, block_table_len,     \
@@ -9893,49 +9894,63 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
         scale, stream);                                                       \
   }
 
-HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans,
+    80,
     false,
     false,
     false,
     4)
 
-HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans,
+    80,
     true,
     false,
     false,
     4)
 
-HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_bf16_spans,
+    80,
     true,
     true,
     false,
     4)
 
-HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_key_value_bf16_spans,
+    80,
     true,
     true,
     true,
     4)
 
-HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value_bf16_spans,
+    80,
     true,
     true,
     true,
     8)
 
-HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    80,
     true,
     true,
     true,
     16)
 
-#undef HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    128,
+    true,
+    true,
+    true,
+    16)
+
+#undef HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER
 
 extern "C" int
 hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans(

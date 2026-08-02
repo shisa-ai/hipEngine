@@ -198339,3 +198339,48 @@ Vulkan local sizes verbatim will close the measured gap.
   tests pass **3/3** after rebuilding the pruned final source. Canonical
   evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json`.
+
+## 2026-08-03 03:49 JST — Retain exact dense V128 prefetch16
+
+- Reopened exact PV stage width only because dense identity, non-temporal K/V,
+  and prefetch16 changed the latency regime since the old V128 rejection. RED
+  first failed import on the absent V128 wrapper. GREEN templates the existing
+  D32 staged-PV body on value-stage width without changing tokenloop4 score,
+  exact denominator, chronological F32 PV, gate/BF16 rounding, or
+  `KVLiveSpans` behavior. V80 remains registered rollback after explicit
+  eviction and on peer backends.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 changes V80 p16
+  **0.153023/0.579646/2.232006/4.415272 ->
+  0.149737/0.565933/2.182268/4.313096 ms
+  (-2.148%/-2.366%/-2.228%/-2.314%)** with F32/BF16 byte equality and zero
+  repair false negatives. V160 is exact but collapses from **-2.847%** at 4K
+  to **-0.291%** at 128K; its HIP export, Python wrapper/registry, harness
+  route, and test call are removed. Raw V128/V160 SHA-256 values are
+  `284218e22d0be7231a382014b24f292c6305e6ba2c55503c6e450cebe366cfcd`
+  and `9a3bdf5de52cddd81619b42e80ffde1a03269904b1092db7f3e2eba2cd86d863`.
+- Cached tracing names selected PV `<128,true,true,16>` at
+  local512/VGPR56/SGPR128/LDS22,528/scratch0 and changes its median
+  **2,606.169 -> 2,527.341 us**. The same live131,200 trace measures the
+  unchanged tokenloop4 score and complete denominator at
+  **1,261.647/517.511 us**. This bounds the review's suggested producer-max
+  ceiling: a naïve score-producer implementation would add roughly 1.57M
+  atomics/layer, while the complete denominator—not merely max—is only
+  0.518 ms/layer. Trace CSV SHA-256 is
+  `dd0d23d94267c4df70c2f94cc5862ea59b80ebdeabc74710520a4959ba9832da`.
+- Complete production 512/1K/4K is exact and noise-flat at
+  **23.201460/23.046564/21.673361 tok/s
+  (-0.042%/-0.079%/+0.003%)**. Active 16K/64K improves
+  **20.034959/14.232457 -> 20.135472/14.404054 tok/s
+  (+0.502%/+1.206%)**. Mandatory 128K improves
+  **10.974722 -> 11.093431 tok/s (+1.082%)**, cuts 127-transition wall
+  **11.572047 -> 11.448216 s (-1.070%)**, and raises same-GGUF Vulkan parity
+  **77.086% -> 77.919%**. All established tokens/hashes/positions are
+  unchanged and all three processes free all **87,407,934,744 bytes / 1,452
+  allocations**. Raw production SHA-256 values are
+  `19a9ff83de69acd446ac0b2148586ef62606739a730a85eb416f2bf6c476e79a`,
+  `d7f0582a71fddb8d6b5273657483b48d630899f13d054668a729bfdaf3b219a7`,
+  and `595ba5f27fb74ff437459d772c1f1174c2aeda668fead5e47a2554f676421145`.
+- Focused GPU differential, selector/fallback, and gfx1151 capability tests
+  pass **3/3**. Canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json`.
