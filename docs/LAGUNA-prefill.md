@@ -1534,6 +1534,20 @@ prompt-independent error-size certificate is not adjudicated; retain H6T and
 **431.310 tok/s**
 ([H7P rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
 
+Reject no-code/no-timing **WPF-H7Q/H7R third-plane residual certificates**.
+H7Q's actual D4x2/D4x3 BF16 disagreement selects **2.30385%** and catches
+**99.7364%** of D4x2 errors, but leaves **42,981** wrong. A complete union with
+D4x3 boundary distance repairs **99.7205%** of all outputs; the already measured
+producer-inclusive D4x3 path has only **1.0063x** exact headroom and **27/45**
+layer wins. H7R's distinct outward-rounded residual-scale × exact-IQ3-L1 bound
+captures every observed mismatch at K64/K128/K256/K1024, but selects
+**74.5071%/81.1992%/86.4963%/92.8985%** of **707,788,800** outputs. Only
+**30.6591%** repair can break even before guard work. Best ideal speed is
+**0.695x** after deleting every guard cost and **0.610x** with declared read
+ceilings. Add no guard/sidecar/queue/repair/runtime/source surface, retain H6T
+and **431.310 tok/s**, and leave IQ3 residual repair
+([H7Q/H7R rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

@@ -2104,6 +2104,20 @@ prompt-independent error-size signal; H6T remains production at **431.310
 tok/s**
 ([H7P rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
 
+**WPF-H7Q/H7R third-plane residual certificates are rejected without repository
+code or candidate timing.** H7Q's D4x2/D4x3 disagreement set is sparse at
+**2.30385%** and catches **99.7364%** of mismatches, but leaves **42,981** wrong;
+adding D4x3 boundary distance becomes complete only at **99.7205%** repair
+density. H7R instead outward-rounds producer residual maxima and multiplies
+prompt-independent exact-IQ3 L1 sidecars over K64/K128/K256/K1024 bins. All
+four zero-margin bounds capture every observed mismatch, but select
+**74.5071%/81.1992%/86.4963%/92.8985%** of outputs. Break-even allows only
+**30.6591%** exact repair before any guard work. The best free-guard ideal is
+**0.695x** exact and the declared read-ceiling best is **0.610x**. Add no
+sidecar, guard, queue, sparse-exact leaf, key, runtime, or source owner; retain
+H6T at **431.310 tok/s** and do not implement H7Q/H7R
+([H7Q/H7R rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
