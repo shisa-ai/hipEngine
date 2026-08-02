@@ -198190,3 +198190,46 @@ Vulkan local sizes verbatim will close the measured gap.
   Focused exactness, selector/fallback, and gfx1151 capability tests pass
   **3/3**. Canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json`.
+
+## 2026-08-03 01:42 JST — Retain exact dense V80 prefetch16
+
+- Added RED then GREEN direct-wrapper coverage for a prefetch16 sibling of
+  the retained dense-initial D32/V80 prefetch8 owner. The only device change
+  is loading sixteen chronological probability/BF16-V operands before
+  replaying the same sixteen ordered F32 FMAs; token-loop4 score ownership,
+  exact denominator, non-temporal K/V, `KVLiveSpans`, output rounding, and
+  eviction fallback are unchanged.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 changes prefetch8
+  **0.157223/0.591342/2.272160/4.502133 ->
+  0.153688/0.581351/2.229801/4.413907 ms
+  (-2.248%/-1.690%/-1.864%/-1.960%)**. F32 context and gated BF16 are
+  byte-exact at every shape. Raw leaf SHA-256 is
+  `b9cbd19a56e1fb5b95df2d995f25bbd8df10eda5c3ef8f8ac2e723246bcb3c20`.
+- Production 512/1K/4K is exact and non-regressive at
+  **23.213823/23.057078/21.683758 tok/s
+  (+0.017%/+0.000%/+0.146%)**. Active 16K/64K improves
+  **19.991285/14.170088 -> 20.041884/14.237877 tok/s
+  (+0.253%/+0.478%)**. Mandatory 128K improves
+  **10.673232 -> 10.726607 tok/s (+0.500%)** and cuts 127-transition wall
+  **11.898926 -> 11.839717 s (-0.498%)**, preserving
+  **874 / c8307c... / position 131,198**. All three processes free every one
+  of **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256
+  values are `b78e7040276dd09fc66753e4250eb6cfa0747604d3361aeea37da3853288932e`,
+  `0a86f3b5c00734d09f4898fbee3294f1a6576b6f266dd93ab3c3f31e1fa1142d`,
+  and `44d56d8d7ff6ab9d566d7f91a4d4599f3761f899d7df69cea50466c10afd9693`.
+- Cached tracing names prefetch16 PV `<80,true,true,16>` at
+  local512/VGPR56/SGPR128/LDS14,336/scratch0 versus prefetch8 VGPR40. The
+  mixed-depth trace median changes **840.017 -> 809.579 us** and the CSV
+  SHA-256 is
+  `0ec469e215c54eedc80f018cd92d9c7cd203000c3ef028d5f2d24fcd2430be28`.
+  Focused exactness, selector/fallback, and gfx1151 capability tests pass
+  **3/3** after one zero-test invocation used two stale node names.
+- Review correction: the ctx4096 merge writes a per-output repair mask, but
+  production does **not** dispatch the scalar repair kernel. The already
+  closed sparse-repair screen observes 208/6,144 flagged synthetic outputs at
+  live131,200, yet grouped repair costs **10.833 ms** versus **6.986 ms** for
+  exact control and all-layer promotion fails recurrent state. The repair
+  launch is dormant and not an optimization target.
+- Canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json`.

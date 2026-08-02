@@ -77,16 +77,18 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 
 The current long-decode checkpoint extends dense-initial KV identity through
 the exact token-loop4 D32/V80 owner, uses non-temporal aligned BF16 K/V loads,
-and prefetches eight chronological probability/V operand pairs per output
-wave. Prefetch8 is **6.836-6.939%** faster than the retained prefetch4 leaf at
-live4K-128K and F32/BF16 byte-exact. Complete 16K/64K/128K decode advances
-**19.782509/13.849289/10.446265 ->
-19.991285/14.170088/10.673232 tok/s
-(+1.055%/+2.316%/+2.173%)**, reaching
-**92.006%/79.888%/74.968%** of same-GGUF Vulkan. Short fused routes remain
-exact and noise-flat at **23.210/23.057/21.652 tok/s**; explicit eviction
+and prefetches sixteen chronological probability/V operand pairs per output
+wave. Prefetch16 is **1.690-2.248%** faster than prefetch8 at live4K-128K
+and F32/BF16 byte-exact. Complete 16K/64K/128K decode advances
+**19.991285/14.170088/10.673232 ->
+20.041884/14.237877/10.726607 tok/s
+(+0.253%/+0.478%/+0.500%)**, reaching
+**92.238%/80.270%/75.343%** of same-GGUF Vulkan. Short routes remain exact
+and non-regressive at **23.214/23.057/21.684 tok/s**; explicit eviction
 still selects metadata-aware temporal V80. The ctx4096 merge's repair mask
-remains diagnostic only; production does not launch scalar repair.
+remains diagnostic only; production does not launch scalar repair, and the
+earlier grouped repair screen was slower than the exact owner.
+[`dense V80 prefetch16 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json),
 [`dense V80 prefetch8 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch8-retained.json),
 [`dense V80 non-temporal K+V production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v80-nontemporal-key-value-retained.json),
 [`dense V80 non-temporal production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json),
