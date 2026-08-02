@@ -1718,6 +1718,39 @@ kernel/export/wrapper/key/RED surfaces, run no runtime/source gate, and retain
 H6U plus **437.189 tok/s**
 ([H7V rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
 
+The clean post-H7V reprofile is exact at **437.836 tok/s** in the fixed harness
+and **434.611 tok/s** in the generic comparator harness. Five cache-only
+selected-region traces retain the H7U/H7G/H7H/H7I topology, one queue, zero
+compiler, and **2,286 dispatches**; median kernel sum/span is
+**1,153.347/1,176.625 ms**. Current matched Q5/IQ-down/attention/Q6 gaps are
+**177.673/119.203/94.094/60.051 ms**.
+
+Select target-only **WPF-H7W exact H6T output-partition P128 crossover**. H6T's
+45 IQ3 down calls own median **264.428 ms**, **96.802%** of IQ-down. Preserve
+the full rowbatch8 triple-output body: active-expert P64 partitioning,
+row-interleaved VOPD computation, staged-wave publication, DPP peer exchange,
+fused final add, operation order, ABI, workspace, allocation, and P256 source.
+Instantiate only `OUTPUT_PARTITIONS=128`, halving the runtime grid
+**32,768×64→16,384×64**, workgroups per launch **16,384→8,192**, and modeled
+activation b128 records
+**68,704,256→34,352,128** while doubling outputs per workgroup **12→24**.
+Unchanged weight records make the modeled combined record reduction only
+**5.882%**; dispatches remain **2,286**.
+
+This is not a reopening of H5Q's expert-partition sweep or the old H5Z P128
+screen. H5Z used the earlier single-output body, won only **39/45** layers on
+both clocks, and was **0.97087x event / 0.96971x wall** its selected P256
+sibling. Freeze RED before any H7W code or execution. Require complete
+rows1/7/8/9/M512 H6T and independent-CPU bytes, output-partition and routing
+tails, strict shape rejection, poison/repeat/finite/lifecycle, sole-first-
+object opcode/resource bounds, named exact **45 H7W + two IQ4 / 2,286-dispatch**
+cache-only topology, and one immutable actual-weight **45/45 plus aggregate**
+both-clock screen. On any miss remove every H7W export/wrapper/key/RED/backend
+surface without subset, retune, rewrite, recompile, or favorable rerun.
+Runtime/source qualification remains separate; no candidate or H7W speed claim
+exists
+([H7W target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

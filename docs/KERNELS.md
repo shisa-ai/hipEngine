@@ -2285,6 +2285,44 @@ Delete every H7V body/export/wrapper/key/RED surface, retain H6U and **437.189
 tok/s**, and forbid r4-only salvage, rewrite, recompile, or favorable rerun
 ([H7V rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
 
+The next target-only kernel is **WPF-H7W exact H6T output-partition P128
+crossover** in `quant/gguf_iq_selected_prefill.{hip,py}`. Fresh clean H7U
+source measures **437.836 tok/s** in the fixed harness and **434.611 tok/s** in
+the generic comparator harness; cache-only tracing remains **2,286 dispatches**
+and records **1,153.347 ms**. The existing H6T P256 template owns **45 calls /
+264.428 ms**, **96.802%** of IQ-down, at runtime local128/VGPR104/SGPR128/
+LDS512/scratch0 and grid **32,768×64**.
+
+H7W must add only one separately named export/wrapper/registry key that
+instantiates the unchanged H6T triple-output staged-wave DPP-peer fused-add
+template at `OUTPUT_PARTITIONS=128`; P256 remains source. Expert partitions
+stay P64, the runtime grid becomes **16,384×64**, workgroups per launch halve
+**16,384→8,192**, triple epochs per workgroup become eight, and outputs per
+workgroup become 24. Modeled activation b128 records halve
+**68,704,256→34,352,128** while **515,281,920** weight records stay unchanged,
+so combined records fall only **5.882%**. Allocation, workspace, arithmetic,
+ABI, launch count, and request dispatches remain unchanged.
+
+Freeze RED before any H7W implementation or execution. The sole first object
+must name the H6T template `<128>` and retain local128/wave32, physical/runtime
+LDS **384/512 B**, metadata/runtime VGPR **<=101/104**, metadata SGPR **<=78**,
+exact **216 useful FMAs, 24 permlanex16, 96 DPP adds, 24 LDS b128 loads, 12 LDS
+stores, and two barriers**, private/spill/scratch0, code <=7,920 B, and slots
+<=1,384. Complete rows1/7/8/9/M512, output-partition/routing-tail, H6T-byte,
+independent-CPU, poison/repeat/finite/lifecycle, and strict-shape gates are
+binding. Cache-only tracing must name exact **45 H7W P128 + two unchanged IQ4**
+calls at grid16,384×64/local128, **2,286 dispatches**, one queue, and zero
+compiler.
+
+The old H5Z P128 screen used the earlier single-output body, won only **39/45**
+layers on both clocks, and was **0.97087x/0.96971x** its P256 sibling; it neither
+admits nor rejects H7W. Consume one immutable all-45-layer actual-weight
+5/15/5 screen after correctness/physical/trace, requiring every layer and the
+aggregate to improve both clocks. Any miss removes all H7W surfaces without
+subset, partition retune, rewrite, recompile, or favorable rerun. No candidate
+or speed result exists
+([H7W target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
