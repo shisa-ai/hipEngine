@@ -75,19 +75,22 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
-The current long-decode checkpoint widens the dense-initial exact token-loop4
-owner from D32/V80 to D32/V128 while retaining non-temporal aligned BF16 K/V
-and sixteen chronological probability/V operands in flight. V128 reduces
-stage/barrier rounds by 37.5%, stays at local512/VGPR56/LDS22,528/scratch0,
-and improves the exact leaf **2.148-2.366%** across live4K/16K/64K/128K; V160
-falls to **0.291%** at 128K and is removed. Complete 16K/64K/128K advances
-**20.034959/14.232457/10.974722 -> 20.135472/14.404054/11.093431 tok/s
-(+0.502%/+1.206%/+1.082%)**, reaching **92.669%/81.207%/77.919%** of
+The current long-decode checkpoint vectorizes aligned groups of four exact
+FP32 probabilities while loading and storing the shared D32/V128 PV stage.
+It retains token-loop4 GQA6 ownership, non-temporal aligned BF16 K/V, and
+sixteen chronological probability/V operands in flight. The PV kernel remains
+local512/VGPR56/LDS22,528/scratch0 and improves **5.551%** at live131,200;
+the complete exact leaf improves **1.107-3.453%** across
+live4K/16K/64K/128K. Complete 16K/64K/128K advances
+**20.135472/14.404054/11.093431 -> 20.181043/14.620180/11.233382 tok/s
+(+0.226%/+1.500%/+1.262%)**, reaching **92.879%/82.425%/78.902%** of
 same-GGUF Vulkan. The 512/1K/4K guard is noise-flat at
-**23.201/23.047/21.673 tok/s**, every generated hash is unchanged, and explicit
-eviction still selects metadata-aware temporal V80. The five quality-scoped
-ctx4096 owners remain ordinary prefetch4 at layers 32/36/40/44 and compensated
+**23.192/23.049/21.676 tok/s**, every generated hash is unchanged, and
+unaligned score strides fail closed to scalar V128 while explicit eviction
+still selects metadata-aware temporal V80. The five quality-scoped ctx4096
+owners remain ordinary prefetch4 at layers 32/36/40/44 and compensated
 prefetch16 at layer 28; their repair mask is diagnostic only.
+[`V128 float4 probability production`](results/2026-08-03-gfx1151-laguna-long-global-v128-probability-vec4-retained.json),
 [`dense V128 prefetch16 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json),
 [`ctx4096 operand-prefetch production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json),
 [`ctx4096 non-temporal K+V production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json),

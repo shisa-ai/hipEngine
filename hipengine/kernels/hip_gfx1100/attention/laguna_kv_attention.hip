@@ -10,6 +10,7 @@ namespace {
 
 typedef uint16_t laguna_bf16_t;
 typedef laguna_bf16_t __attribute__((ext_vector_type(16))) laguna_bf16x16_t;
+typedef float __attribute__((ext_vector_type(4))) laguna_float4_t;
 typedef float __attribute__((ext_vector_type(8))) laguna_float8_t;
 using laguna_half_t = _Float16;
 
@@ -2274,7 +2275,8 @@ laguna_global_attention_load_value_uint4(const laguna_uint32x4* address) {
 }
 
 template <int kValueStage, bool kDensePrefix = false,
-          bool kNonTemporal = false, int kOperandPrefetch = 4>
+          bool kNonTemporal = false, int kOperandPrefetch = 4,
+          bool kProbabilityVec4 = false>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
     const uint16_t* value_cache,
@@ -2320,20 +2322,58 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
 
   const int first_stage_count = static_cast<int>(
       context_len < kValueStage ? context_len : kValueStage);
-  for (int probability_idx = tid;
-       probability_idx < kQueryGroup * first_stage_count;
-       probability_idx += static_cast<int>(blockDim.x)) {
-    const int probability_query = probability_idx / first_stage_count;
-    const int stage_token = probability_idx - probability_query * first_stage_count;
-    const int64_t scratch_base =
-        static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
-        scratch_stride;
-    float probability = score_scratch[scratch_base + stage_token];
-    if (inverse_sums != nullptr) {
-      probability *=
-          inverse_sums[kv_head * kQueryGroup + probability_query];
+  if constexpr (kProbabilityVec4) {
+    const int probability_vectors = (first_stage_count + 3) / 4;
+    for (int probability_vector = tid;
+         probability_vector < kQueryGroup * probability_vectors;
+         probability_vector += static_cast<int>(blockDim.x)) {
+      const int probability_query = probability_vector / probability_vectors;
+      const int stage_token =
+          (probability_vector - probability_query * probability_vectors) * 4;
+      const int64_t scratch_base =
+          static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
+          scratch_stride;
+      const float inverse_sum = inverse_sums != nullptr
+          ? inverse_sums[kv_head * kQueryGroup + probability_query]
+          : 1.0f;
+      if (stage_token + 3 < first_stage_count) {
+        laguna_float4_t probability =
+            *reinterpret_cast<const laguna_float4_t*>(
+                score_scratch + scratch_base + stage_token);
+#pragma unroll
+        for (int item = 0; item < 4; ++item) {
+          probability[item] *= inverse_sum;
+        }
+        *reinterpret_cast<laguna_float4_t*>(
+            &shared_probability[0][probability_query][stage_token]) =
+            probability;
+      } else {
+#pragma unroll
+        for (int item = 0; item < 4; ++item) {
+          if (stage_token + item < first_stage_count) {
+            shared_probability[0][probability_query][stage_token + item] =
+                score_scratch[scratch_base + stage_token + item] * inverse_sum;
+          }
+        }
+      }
     }
-    shared_probability[0][probability_query][stage_token] = probability;
+  } else {
+    for (int probability_idx = tid;
+         probability_idx < kQueryGroup * first_stage_count;
+         probability_idx += static_cast<int>(blockDim.x)) {
+      const int probability_query = probability_idx / first_stage_count;
+      const int stage_token =
+          probability_idx - probability_query * first_stage_count;
+      const int64_t scratch_base =
+          static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
+          scratch_stride;
+      float probability = score_scratch[scratch_base + stage_token];
+      if (inverse_sums != nullptr) {
+        probability *=
+            inverse_sums[kv_head * kQueryGroup + probability_query];
+      }
+      shared_probability[0][probability_query][stage_token] = probability;
+    }
   }
   auto* first_stage_vectors =
       reinterpret_cast<laguna_uint32x4*>(shared_value);
@@ -2387,23 +2427,63 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
           context_len - next_stage_base < kValueStage
               ? context_len - next_stage_base
               : kValueStage);
-      for (int probability_idx = loader_tid;
-           probability_idx < kQueryGroup * next_stage_count;
-           probability_idx += kLoaderThreads) {
-        const int probability_query = probability_idx / next_stage_count;
-        const int stage_token =
-            probability_idx - probability_query * next_stage_count;
-        const int64_t scratch_base =
-            static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
-            scratch_stride;
-        float probability = score_scratch[
-            scratch_base + next_stage_base + stage_token];
-        if (inverse_sums != nullptr) {
-          probability *=
-              inverse_sums[kv_head * kQueryGroup + probability_query];
+      if constexpr (kProbabilityVec4) {
+        const int probability_vectors = (next_stage_count + 3) / 4;
+        for (int probability_vector = loader_tid;
+             probability_vector < kQueryGroup * probability_vectors;
+             probability_vector += kLoaderThreads) {
+          const int probability_query =
+              probability_vector / probability_vectors;
+          const int stage_token =
+              (probability_vector - probability_query * probability_vectors) * 4;
+          const int64_t scratch_base =
+              static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
+              scratch_stride;
+          const float inverse_sum = inverse_sums != nullptr
+              ? inverse_sums[kv_head * kQueryGroup + probability_query]
+              : 1.0f;
+          if (stage_token + 3 < next_stage_count) {
+            laguna_float4_t probability =
+                *reinterpret_cast<const laguna_float4_t*>(
+                    score_scratch + scratch_base + next_stage_base + stage_token);
+#pragma unroll
+            for (int item = 0; item < 4; ++item) {
+              probability[item] *= inverse_sum;
+            }
+            *reinterpret_cast<laguna_float4_t*>(
+                &shared_probability[stage_parity ^ 1][probability_query]
+                                   [stage_token]) = probability;
+          } else {
+#pragma unroll
+            for (int item = 0; item < 4; ++item) {
+              if (stage_token + item < next_stage_count) {
+                shared_probability[stage_parity ^ 1][probability_query]
+                                  [stage_token + item] =
+                    score_scratch[scratch_base + next_stage_base + stage_token +
+                                  item] * inverse_sum;
+              }
+            }
+          }
         }
-        shared_probability[stage_parity ^ 1][probability_query][stage_token] =
-            probability;
+      } else {
+        for (int probability_idx = loader_tid;
+             probability_idx < kQueryGroup * next_stage_count;
+             probability_idx += kLoaderThreads) {
+          const int probability_query = probability_idx / next_stage_count;
+          const int stage_token =
+              probability_idx - probability_query * next_stage_count;
+          const int64_t scratch_base =
+              static_cast<int64_t>(kv_head * kQueryGroup + probability_query) *
+              scratch_stride;
+          float probability = score_scratch[
+              scratch_base + next_stage_base + stage_token];
+          if (inverse_sums != nullptr) {
+            probability *=
+                inverse_sums[kv_head * kQueryGroup + probability_query];
+          }
+          shared_probability[stage_parity ^ 1][probability_query][stage_token] =
+              probability;
+        }
       }
       auto* next_stage_vectors = reinterpret_cast<laguna_uint32x4*>(
           shared_value + (stage_parity ^ 1) * kValueStage * kDimTile);
@@ -9764,7 +9844,8 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
 }
 
 template <int kValueStage, bool kDensePrefix, bool kNonTemporal = false,
-          bool kNonTemporalKey = false, int kOperandPrefetch = 4>
+          bool kNonTemporalKey = false, int kOperandPrefetch = 4,
+          bool kProbabilityVec4 = false>
 int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage_impl(
     const float* query,
     const uint16_t* key_cache,
@@ -9797,6 +9878,11 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
       scratch_stride < scan_slots || scan_slots <= 0 || scan_slots > capacity ||
       num_q_heads != 48 || num_kv_heads != 8 || head_dim != 128) {
     return static_cast<int>(hipErrorInvalidValue);
+  }
+  if constexpr (kProbabilityVec4) {
+    if ((scratch_stride & 3) != 0) {
+      return static_cast<int>(hipErrorInvalidValue);
+    }
   }
   float* inverse_sums =
       reinterpret_cast<float*>(physical_scratch + capacity);
@@ -9839,7 +9925,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<kValueStage, kDensePrefix, kNonTemporal, kOperandPrefetch>),
+      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<kValueStage, kDensePrefix, kNonTemporal, kOperandPrefetch, kProbabilityVec4>),
       dim3(32),
       dim3(512),
       0,
@@ -9861,7 +9947,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
 
 #define HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(                    \
     NAME, VALUE_STAGE, DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY,            \
-    OPERAND_PREFETCH)                                                          \
+    OPERAND_PREFETCH, PROBABILITY_VEC4)                                        \
   extern "C" int NAME(                                                       \
       const float* query,                                                     \
       const uint16_t* key_cache,                                              \
@@ -9886,7 +9972,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
       int64_t head_dim,                                                       \
       float scale,                                                            \
       hipStream_t stream) {                                                   \
-    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage_impl<VALUE_STAGE, DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY, OPERAND_PREFETCH>( \
+    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage_impl<VALUE_STAGE, DENSE_PREFIX, NONTEMPORAL, NONTEMPORAL_KEY, OPERAND_PREFETCH, PROBABILITY_VEC4>( \
         query, key_cache, value_cache, out, gate, gated_out, score_scratch,   \
         physical_scratch, base_offsets, live_counts, token_positions,         \
         evict_mask, row_positions, capacity, block_size, block_table_len,     \
@@ -9900,7 +9986,8 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     false,
     false,
     false,
-    4)
+    4,
+    false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans,
@@ -9908,7 +9995,8 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     true,
     false,
     false,
-    4)
+    4,
+    false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_bf16_spans,
@@ -9916,7 +10004,8 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     true,
     true,
     false,
-    4)
+    4,
+    false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_key_value_bf16_spans,
@@ -9924,7 +10013,8 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     true,
     true,
     true,
-    4)
+    4,
+    false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value_bf16_spans,
@@ -9932,7 +10022,8 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     true,
     true,
     true,
-    8)
+    8,
+    false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
@@ -9940,7 +10031,8 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     true,
     true,
     true,
-    16)
+    16,
+    false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
@@ -9948,7 +10040,17 @@ HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
     true,
     true,
     true,
-    16)
+    16,
+    false)
+
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    128,
+    true,
+    true,
+    true,
+    16,
+    true)
 
 #undef HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_VSTAGE_WRAPPER
 

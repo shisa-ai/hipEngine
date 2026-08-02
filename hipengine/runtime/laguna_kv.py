@@ -272,6 +272,14 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value = bool(
+            self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE",
+                False,
+            )
+        )
         ctx4096_min_layer = backend_package_capability(
             backend,
             "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
@@ -977,7 +985,14 @@ class LagunaKVCache:
                         "global_context_split_exact_gated_gqa6_"
                         "tokenloop4_deferrednorm_dim32_"
                         + (
-                            "vstage128_prefetch16_dense_prefix_nontemporal_key_value"
+                            (
+                                "vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value"
+                                if (
+                                    self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value
+                                    and (state.capacity & 3) == 0
+                                )
+                                else "vstage128_prefetch16_dense_prefix_nontemporal_key_value"
+                            )
                             if (
                                 self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value
                                 and self._dense_initial_metadata_valid

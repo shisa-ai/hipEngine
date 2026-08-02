@@ -10506,6 +10506,48 @@ The remaining attention sequence is:
      test call are removed without running full-model quality or production:
      [`FP16 probability rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-fp16-probability-rejected.json).
 
+244. Vectorize exact FP32 probability transport into the shared V128 stage.
+     **Retained; LC-D3 twenty-sixth screen and twenty-fourth production
+     checkpoint.**
+
+     The scalar V128 loader issued one global FP32 load and one LDS store per
+     probability even though each query row and 128-token stage are aligned.
+     The retained sibling loads four contiguous probabilities, applies the
+     same inverse denominator lane-wise, and stores one float4 to LDS. It does
+     not narrow or reassociate a value, and it leaves the chronological
+     prefetch16 probability/BF16-V FMA chain unchanged. The selector requires
+     a score stride divisible by four; arbitrary unaligned capacities fail
+     closed to scalar V128, and explicit eviction still uses temporal V80.
+
+     | Exact V128 leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Scalar probability transport | 0.148034 ms | 0.566599 ms | 2.179859 ms | 4.318969 ms |
+     | Float4 probability transport | **0.146395 ms** | **0.549916 ms** | **2.104589 ms** | **4.170506 ms** |
+     | Delta | **-1.107%** | **-2.944%** | **-3.453%** | **-3.437%** |
+
+     F32 context and gated BF16 are byte-exact at all four depths, with zero
+     repair false negatives. Cached tracing names scalar/candidate PV
+     `<128,true,true,16,false/true>` at the same
+     local512/VGPR56/SGPR128/LDS22,528/scratch0 and changes the 128K median
+     **2,491.917 -> 2,353.578 us (-5.551%)**; score and denominator remain
+     **1,258.302/519.876 us**.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.201460 | 23.191679 tok/s | -0.042% (inactive/noise) | 23.386100 | 99.169% |
+     | 1K | 23.046564 | 23.049201 tok/s | +0.011% (inactive) | 23.366122 | 98.644% |
+     | 4K | 21.673361 | 21.675782 tok/s | +0.011% (inactive) | 23.037017 | 94.091% |
+     | 16K | 20.135472 | **20.181043 tok/s** | **+0.226%** | 21.728347 | **92.879%** |
+     | 64K | 14.404054 | **14.620180 tok/s** | **+1.500%** | 17.737473 | **82.425%** |
+     | 128K | 11.093431 | **11.233382 tok/s** | **+1.262%** | 14.237076 | **78.902%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **11.448216 -> 11.305589 s (-1.246%)** and the same-GGUF Vulkan gap
+     **19.904 -> 18.781 ms/token**. Every established token/hash/position is
+     unchanged and all three production processes recover all
+     **87,407,934,744 bytes / 1,452 allocations**:
+     [`V128 float4 probability production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-probability-vec4-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10523,7 +10565,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twenty-three milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty-four milestones
    retained plus two structural rejections; active.** Exact GQA6 ownership and
    dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
@@ -10614,9 +10656,14 @@ allocation teardown remain mandatory at every retained step.
    **7.943-46.989%**: the denominator max traversal is too small to repay its
    reset/atomic cost and lost score parallelism. A separate FP16 post-exp
    probability sidecar is closed too after regressing the active 16K/64K/128K
-   leaves **2.982%/0.853%/3.664%** before quality gating. Next replace the
-   remaining score/denominator/PV ownership structurally or increase
-   value-stream concurrency; merge and dormant scalar repair are not active targets.
+   leaves **2.982%/0.853%/3.664%** before quality gating. Exact float4
+   probability transport into the shared V128 stage then cuts the leaf
+   **1.107-3.453%** and improves complete 16K/64K/128K another
+   **0.226%/1.500%/1.262%**, reaching
+   **92.879%/82.425%/78.902%** Vulkan parity with exact recurrent state and
+   noise-flat short guards. Next replace the remaining
+   score/denominator/PV ownership structurally or increase value-stream
+   concurrency; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

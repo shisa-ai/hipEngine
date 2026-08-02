@@ -54,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_t256_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans,
     laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
@@ -110,6 +111,7 @@ def _parse_args() -> argparse.Namespace:
             "split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-prefetch8-dense-prefix-nontemporal-key-value",
             "split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-prefetch16-dense-prefix-nontemporal-key-value",
             "split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-prefetch16-dense-prefix-nontemporal-key-value",
+            "split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-probability-vec4-prefetch16-dense-prefix-nontemporal-key-value",
             "split-gqa6-dim32-vstage64-t256",
             "split-gqa6-tile4-dim32-vstage64",
             "split-gqa6-dim64-vstage64",
@@ -453,6 +455,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 == "split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-prefetch16-dense-prefix-nontemporal-key-value"
             ):
                 control_kernel = laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans
+            if (
+                args.candidate
+                == "split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-probability-vec4-prefetch16-dense-prefix-nontemporal-key-value"
+            ):
+                control_kernel = laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans
             if args.candidate == "split-gqa6-dim64-vstage64-ctx4096":
                 control_kernel = laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans
             elif (
@@ -516,6 +523,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-prefetch8-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch8_dense_prefix_nontemporal_key_value_bf16_spans,
                 "split-gqa6-tokenloop4-deferrednorm-dim32-vstage80-prefetch16-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
                 "split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-prefetch16-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+                "split-gqa6-tokenloop4-deferrednorm-dim32-vstage128-probability-vec4-prefetch16-dense-prefix-nontemporal-key-value": laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
                 "split-gqa6-dim32-vstage64-t256": laguna_global_attention_decode_split_exact_gated_gqa6_dim32_vstage64_t256_bf16_spans,
                 "split-gqa6-tile4-dim32-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans,
                 "split-gqa6-dim64-vstage64": laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
