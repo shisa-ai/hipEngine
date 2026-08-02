@@ -41,9 +41,9 @@ exact DPP-add reduction for the three raw-Q6 fallbacks, H7D closes exact Q5 row-
 interleaved VOPD scheduling, H7E rejects residual-D4 runtime ownership at the
 mandatory complete quality gate, H7G remains complete-map rollback beneath H7H
 exact full-group Q5 source, and H7I is the retained exact raw-Q6 full-group
-source with complete H7C rollback, H7K is removed after its aligned-read
-physical miss, and H7L is the selected exact IQ3 full-batch/live-tail target;
-16K+ remains deferred**.
+source with complete H7C rollback, H7K/H7L are removed after frozen physical
+misses, H7M/H7N/H7O and H7P/H7Q/H7R are rejected, and H7S is the selected exact
+raw-Q6 packed-activation cross-row-reuse target; 16K+ remains deferred**.
 This section is the
 authority for the Radeon Pro W7900 / `hip_gfx1100` Laguna `UD-Q2_K_XL` port.
 The longer gfx1151/Q4 campaign record begins below and remains evidence, not a source of automatic defaults or tile
@@ -1547,6 +1547,31 @@ captures every observed mismatch at K64/K128/K256/K1024, but selects
 ceilings. Add no guard/sidecar/queue/repair/runtime/source surface, retain H6T
 and **431.310 tok/s**, and leave IQ3 residual repair
 ([H7Q/H7R rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json)).
+
+Post-H7R, select target-only **WPF-H7S exact raw-Q6 c2r32 packed-activation
+cross-row reuse**. The three strict-M512 H6U roles execute **2/46/94 = 142**
+activation-pack + exact Q6-to-F32 producer + ordered DPP consumer triples,
+weighted at **48.267/48.520 ms** event/wall. H7N's one-launch row-major c16r4
+body was byte-exact but 4–5x slower despite its lower byte model, exposing
+repeated raw-Q6 decode/load instructions as the new premise. H7S reuses the
+existing activation-plane ABI at rowbatch32 and decodes only two output columns
+per 64-accumulator workgroup. Four aligned b128 activation records replace 32
+conceptual scalar row reads, reducing H7N's source form from **16 decodes / 68
+load sites** to **2 decodes / 12 sites**.
+
+Keep every output's `tid+128n` FMA order, exact signed scale*quant conversion,
+H6U permlanex16+DPP reduction, serial wave0..3 sum, and BF16/F32 store. Remove
+only the F32 producer launch; model **142 fewer request dispatches (2,192 ->
+2,050)** and **0.937x** current logical input bytes. These are source models,
+not physical or speed claims. Freeze RED over all roles together, complete
+H6U/CPU/pack/poison/finite/lifecycle and fail-closed shapes, unchanged fallback/
+workspace/maps/gfx1151, first-object b128/opcode/VGPR/LDS/spill bounds, and a
+named compiler-free pack+consumer trace. One immutable actual-weight 5/15/5
+screen must win each role and the weighted aggregate on both clocks; no role,
+geometry, prompt, tuning, recompile, or favorable-rerun salvage is allowed.
+Production remains **431.310 tok/s**, and no H7S code or speed result exists
+before RED
+([post-H7R residual / H7S target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7r-matched-raw-q6-cross-row-reuse-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

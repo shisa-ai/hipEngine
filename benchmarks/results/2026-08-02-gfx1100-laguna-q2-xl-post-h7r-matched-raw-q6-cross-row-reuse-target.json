@@ -1,0 +1,252 @@
+{
+  "authority_links": [
+    "README.md",
+    "WORKLOG.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/KERNELS.md",
+    "docs/PLAN.md",
+    "docs/LAGUNA-prefill.md"
+  ],
+  "builder_sha256": "2f541e86e6795ff6cb5bb7289d2168d34a0546e4ae0643c19b6e478fa0a6ef0d",
+  "closed_controls": {
+    "attention": "H7K failed its frozen aligned-read physical premise; exact H6N/H6Z and H6A/H6W owners remain",
+    "iq_down": "H7P/Q/R close candidate-distance, third-plane-disagreement, and residual-L1 repair; H7L/H7M scheduling forms are closed",
+    "q5": "source-MMQ/SGEMM, exact plane/geometry/persistence/prefetch/reduction/full-group/full-grid routes are measured closed; no subset salvage",
+    "q6": "H7N closes one-launch row-major c16r4 direct consumption and explicitly permits a new cross-row reuse/decode premise; H7O role subsets remain forbidden"
+  },
+  "commands": {
+    "analysis": "PYTHONPATH=. .venv/bin/python /tmp/analyze_laguna_post_h7r_h7s_raw_q6_cross_row_target.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "next_red": "HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q tests/test_laguna_h7s_raw_q6_cross_row_reuse.py"
+  },
+  "created_at": "2026-08-02T16:45:00+09:00",
+  "date": "2026-08-02",
+  "decision": {
+    "candidate_implemented": false,
+    "correctness_claim": "none_before_red_and_candidate_implementation",
+    "h7s_target_selected": true,
+    "next_action": "Commit target, freeze H7S RED, then build and screen exactly one c2r32 candidate object under the frozen all-role rule.",
+    "performance_claim": "target_selection_only",
+    "production_changed": false
+  },
+  "h6u_control": {
+    "current_launches": [
+      "rowbatch4_or_5_activation_pack",
+      "exact_q6_to_f32_producer",
+      "h6u_ordered_dpp_consumer"
+    ],
+    "current_launches_per_invocation": 3,
+    "production_invocations": 142,
+    "roles": [
+      {
+        "control_row_batch": 5,
+        "current_three_launch_input_bytes_model": 1635213312,
+        "h7n_c16r4_one_launch_input_bytes_model": 531628032,
+        "h7s_c2r32_two_launch_input_bytes_model": 1651900416,
+        "h7s_over_current_input_bytes_ratio": 1.0102048484301966,
+        "h7s_over_h7n_input_bytes_ratio": 3.1072485207100593,
+        "in_features": 3072,
+        "matrix_elements": 3145728,
+        "out_features": 1024,
+        "output_dtype": "bf16",
+        "production_invocations": 2,
+        "raw_weight_bytes": 2580480,
+        "tensor": "blk.47.ffn_gate_shexp.weight"
+      },
+      {
+        "control_row_batch": 4,
+        "current_three_launch_input_bytes_model": 2028429312,
+        "h7n_c16r4_one_launch_input_bytes_model": 531628032,
+        "h7s_c2r32_two_launch_input_bytes_model": 1651900416,
+        "h7s_over_current_input_bytes_ratio": 0.8143741594678751,
+        "h7s_over_h7n_input_bytes_ratio": 3.1072485207100593,
+        "in_features": 1024,
+        "matrix_elements": 3145728,
+        "out_features": 3072,
+        "output_dtype": "bf16",
+        "production_invocations": 46,
+        "raw_weight_bytes": 2580480,
+        "tensor": "blk.1.ffn_down_shexp.weight"
+      },
+      {
+        "control_row_batch": 5,
+        "current_three_launch_input_bytes_model": 1635213312,
+        "h7n_c16r4_one_launch_input_bytes_model": 531628032,
+        "h7s_c2r32_two_launch_input_bytes_model": 1651900416,
+        "h7s_over_current_input_bytes_ratio": 1.0102048484301966,
+        "h7s_over_h7n_input_bytes_ratio": 3.1072485207100593,
+        "in_features": 3072,
+        "matrix_elements": 3145728,
+        "out_features": 1024,
+        "output_dtype": "f32",
+        "production_invocations": 94,
+        "raw_weight_bytes": 2580480,
+        "tensor": "blk.0.attn_k.weight"
+      }
+    ],
+    "weighted_event_ms": 48.26689233779907,
+    "weighted_input_bytes_model": 250288226304,
+    "weighted_wall_ms": 48.519960790872574
+  },
+  "h7n_control": {
+    "activation_load_sites_per_k_iteration": 4,
+    "all_outputs_byte_exact": true,
+    "candidate": "raw-Q6 c16r4 one-launch row-major direct consumer",
+    "event_speedup": 0.20639157699660393,
+    "interpretation": "H7N had the lowest modeled bytes but lost 4-5x, so repeated scalar raw-Q6 decode/load instruction count, not the byte model alone, is the binding premise for H7S selection.",
+    "q6_column_decodes_per_k_iteration": 16,
+    "static_global_load_sites": 68,
+    "wall_speedup": 0.20982708447451523,
+    "weighted_input_bytes_model": 75491180544
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7r_matched_raw_q6_cross_row_reuse_target",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, selector-unset H7H Q5 and H7I raw-Q6 source"
+  },
+  "production": {
+    "current_repo_revision": "dd6ccb916",
+    "dispatches": 2192,
+    "family_gap_ms": {
+      "attention": 93.80462899999995,
+      "gate_up": 0.7850160000000983,
+      "iq_down": 118.44889399999988,
+      "q5": 176.88518099999993,
+      "q6": 59.74162400000009,
+      "remaining": 8.567487000000071
+    },
+    "family_ms": {
+      "attention": 115.31707599999996,
+      "gate_up": 398.5899390000001,
+      "iq_down": 272.3088049999999,
+      "q5": 235.19927099999992,
+      "q6": 74.40922200000009,
+      "remaining": 76.41692600000007
+    },
+    "kernel_sum_ms": 1172.2412389999988,
+    "llamacpp_over_hipengine": 1.6016107591271218,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "revision": "407f5c972",
+    "wall_tok_s": 431.31016450993457
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-residual-certificates-rejected.json": "7c11b3356d8326dccfdff224bf803a877973028d8efa663e4e19f4689fab276f",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json": "ba09b5f56ca7d80a16c4cb04ecd88d88498470d9d2f77e1fd5e37c80d2c9c27d",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e",
+    "/tmp/analyze_laguna_post_h7r_h7s_raw_q6_cross_row_target.py": "7578a1e3c207057d9963f1c670f6395648747bb907417cb58e03bf211fc8b7d8",
+    "/tmp/build_laguna_wpfh7n_raw_q6_c16r4_source.py": "29ba7f692db061d61866d617eb64e37cfc7758cadbb450ee99676413a8cb86bf",
+    "/tmp/laguna-h7n-raw-q6-c16r4-physical.json": "4eb7f228888e5ca7af2b3097260379892b49e45762426cd0191de3b507f73327",
+    "/tmp/laguna-h7n-raw-q6-c16r4-source.json": "b77fdf302a5cdbbf7f7024c6ecc843c762b9107569742ce807e3694f0701459e",
+    "/tmp/laguna-h7s-target-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7s-target-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7s-target-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-post-h7r-h7s-raw-q6-cross-row-target-analysis.json": "149bc613c145d4ded7578415c8fa53fb2db24a00347706da2915689f922c367f",
+    "/tmp/laguna-post-h7r-h7s-raw-q6-cross-row-target-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7r-h7s-raw-q6-cross-row-target-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7r-h7s-raw-q6-cross-row-target-analysis.stdout": "149bc613c145d4ded7578415c8fa53fb2db24a00347706da2915689f922c367f",
+    "/tmp/laguna-wpfh7n-raw-q6-c16r4-actual-role-screen.json": "93df9ce85fb8f6f5d38f8274c4f1be9f89fd46b50e3932e6e81f2028e67ac3f7",
+    "/tmp/laguna_wpfh7n_raw_q6_c16r4_actual_role_screen.py": "3c074654c66d760e1ddae6ac5609be55586644eddfa6720c59eb40855c75ff0e"
+  },
+  "repo": {
+    "h6u_consumer_body_sha256": "f4c70eb4b9b78b785abfa69a897cb7949124ba799d4e1846c3fbba9de06b1df4",
+    "h6u_live_source": true,
+    "h6u_reduce_body_sha256": "b71f4a713ffed5f1702b04fc383587892baee35fac324577b2654f26469d4555",
+    "h7s_implementation_absent": true,
+    "h7s_markers": [
+      "raw_q6_c2r32_activation_tile",
+      "c2r32_packed_activation_direct",
+      "test_laguna_h7s_raw_q6_cross_row_reuse"
+    ],
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "377f3f966968350f63956516faa539e616ac031d362b6e6312d8b35572362336",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "9943de24fb179770480921811ebc83456d4ac42a3e584e1e280bfc72bb6a808d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "cd3f2272a341e7d854ac41b58c9041ec7d8769965c976c7c6cf3294370a79cfe",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe",
+      "hipengine/runtime/gguf_linear.py": "85e7faa7d5129a40cf5afcedfa538e8733b263d3c058f676a9aae9f9736fe8d1"
+    },
+    "pack_body_sha256": "ec2806349b837140ab3b2b90435975741b55d86faf323e11cc55319c6ae6a714",
+    "q6_exact_value_body_sha256": "7465a1f8252ebd34483f8148f40797b89f8900209425d4cf8892beec9e9ed332",
+    "raw_q6_decode_body_sha256": "ee59e5d1970e11f6af737df2cf92a52814ec17eae7c984d84be1546571d4e8ba"
+  },
+  "schema": 1,
+  "status": "accepted_matched_production_rerank_and_exact_h7s_target",
+  "target": {
+    "admission": {
+      "correctness": "all three 2/46/94-call strict-M512 roles together; complete H6U primitive/composite and sampled CPU bytes; exact rowbatch32 pack; poison, finite, lifecycle",
+      "fallback": "H6U pack + exact Q6-to-F32 producer + ordered DPP consumer remains numerically equivalent unfused fallback; allocation/workspace/package/runtime/source maps unchanged",
+      "no_salvage": "all roles and c2r32 are inseparable; no role/c4r16/c8r8/prompt subset, tuning, recompile, or favorable rerun after any miss",
+      "physical": "first object consumer local128/wave32/LDS1024, VGPR<=136, SGPR<=96, code<=14000 B, slots<=2400, private/spill/scratch0, barrier1, 64 FMA, 64 permlanex16, 256 DPP adds, 4 b128 activation + 8 Q6 field load sites; pack local256/scratch0",
+      "preflight": "rows exactly 512, c2r32/local128, only BF16 K3072/N1024 + K1024/N3072 and F32 K3072/N1024; rows511/513 and wrong shapes fail closed to H6U",
+      "red_first": true,
+      "reject": "remove every H7S body/export/wrapper/key/RED/gfx1151-exclusion surface on any correctness/physical/trace/per-role/aggregate miss",
+      "runtime_and_source_separate": true,
+      "timing": "one immutable five-warmup/15-counter-rotated/five-launch actual-weight screen; each role and weighted 142-call aggregate must win HIP-event and synchronized-wall clocks",
+      "trace": "named cache-only rowbatch32 pack then H7S consumer, no exact-Q6-to-F32 producer, positive duration, intended resources, zero compiler executable"
+    },
+    "geometry": {
+      "accumulators_per_thread": 64,
+      "col_tile": 2,
+      "local_size": 128,
+      "row_batch": 32,
+      "row_groups_at_m512": 16,
+      "wavefront_size": 32
+    },
+    "id": "WPF-H7S",
+    "implementation_absent": true,
+    "name": "exact raw-Q6 c2r32 packed-activation cross-row reuse",
+    "operation": "Reuse the existing tile-K-row activation ABI at rowbatch32, decode two raw-Q6 output columns per thread/K step, apply those two exact producer values to 32 packed BF16 rows, preserve each output thread-local K order, H6U permlanex16+DPP tree, serial wave0..3 sum, and BF16/F32 store, and remove only the exact Q6-to-F32 producer launch.",
+    "physical_gate": {
+      "consumer_activation_global_load_b128_sites": 4,
+      "consumer_barriers": 1,
+      "consumer_code_bytes_max": 14000,
+      "consumer_dpp_add_operations": 256,
+      "consumer_instruction_slots_max": 2400,
+      "consumer_lds_bytes": 1024,
+      "consumer_local_size": 128,
+      "consumer_metadata_sgpr_max": 96,
+      "consumer_metadata_vgpr_max": 136,
+      "consumer_ordered_fma_operations": 64,
+      "consumer_permlanex16_operations": 64,
+      "consumer_private_spill_scratch_bytes": 0,
+      "consumer_raw_q6_field_load_sites": 8,
+      "consumer_total_global_load_sites": 12,
+      "consumer_wavefront_size": 32,
+      "pack_local_size": 256,
+      "pack_private_spill_scratch_bytes": 0
+    },
+    "scope": "all three strict natural-M512 H6U roles together (2/46/94 calls); one separately named gfx1100 composite and primitive; H6U remains exact fallback; package/runtime/source maps and gfx1151 remain unchanged before qualification",
+    "source_operation_model": {
+      "aligned_activation_b128_load_sites_per_k_iteration": 4,
+      "candidate_launches_per_invocation": 2,
+      "decode_reduction_vs_h7n": 8.0,
+      "dpp_add_operations": 256,
+      "global_load_site_reduction_vs_h7n": 5.666666666666667,
+      "ordered_fma_operations": 64,
+      "permlanex16_operations": 64,
+      "q6_column_decodes_per_k_iteration": 2,
+      "q6_field_load_sites_per_k_iteration": 8,
+      "removed_producer_launches_per_request": 142,
+      "request_dispatches_if_selected_model": 2050,
+      "total_global_load_sites_per_k_iteration": 12,
+      "warning": "Static source/load-site and logical-byte models only; not physical ISA, cache traffic, elapsed-time forecast, or speed claim.",
+      "weighted_input_bytes_model": 234569859072,
+      "weighted_input_bytes_ratio_vs_current": 0.9371989347476998,
+      "weighted_input_bytes_ratio_vs_h7n": 3.1072485207100593
+    }
+  },
+  "validator_sha256": "421b9e1c804594d9e10bbf283953a44861b2653d1fd51495f92185067ae518a9"
+}
