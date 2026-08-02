@@ -2521,6 +2521,24 @@ source-default gate. No attention/shared/layer/role/prompt/length subset or
 favorable rerun is admissible
 ([H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+H8B now qualifies bounded default-off. The backend-neutral one-entry scope
+cache and complete runtime ownership pass **103/103** retained tests without a
+new compiler process; the HIP source/object and every pack/dequant/compute body
+remain unchanged. Complete M512 executes exact **223 packs (24 resident + 199
+transient)** and preserves token2930/position511 plus every frozen state digest.
+The committed cache-only trace proves **330→223 packs / 2,262→2,155
+application dispatches**, removed geometry `{r4:46,r5:60,r12:1}`, unchanged
+non-pack kernel names/counts, expected H8A producer/consumer resources, one
+queue/stream, and zero compiler.
+
+Fixed C4096/M512 improves **438.412→438.919 tok/s (+0.116%, 4/5)**. Clean
+512/1K/4K improves **406.770→407.374 (+0.148%)**, **321.625→322.189
+(+0.175%)**, and **198.586→198.888 tok/s (+0.152%)**, all exact and
+lifecycle-clean. Keep the source capability false and H8A production at
+**440.353 tok/s** until a separately frozen source-default gate passes
+([H8B runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
+[H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

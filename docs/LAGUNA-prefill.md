@@ -1,6 +1,6 @@
 # Laguna S 2.1 Prefill Attack Plans
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 
 ## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
 
@@ -1953,6 +1953,22 @@ claim. Freeze RED, exact all-group/state/failure semantics, named topology, and
 fixed plus 512/1K/4K admission before source promotion; no group subset or
 favorable rerun is allowed
 ([H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
+The H8B owner now qualifies bounded default-off. Generic scope/failure/nesting
+coverage and the retained GPU bundle pass **103/103**. Complete actual-model
+M512 is exact at token2930/position511 and executes **223 packs**, split **24
+resident + 199 transient**, with no compiler activity. The named trace proves
+exact **330→223 packs / 2,262→2,155 dispatches**, all non-pack kernel names and
+counts unchanged, expected resources, and one queue/stream.
+
+The frozen fixed gate improves **438.412→438.919 tok/s (+0.116%, 4/5)**.
+Clean 512/1K/4K medians improve **+0.148%/+0.175%/+0.152%** with exact
+state and lifecycle. This admits the complete owner only; source remains H8A
+**440.353 tok/s** and `LAGUNA_ACTIVATION_PACK_REUSE=False` pending separate
+source RED and selector-unset qualification. No subset or favorable rerun is
+introduced
+([H8B runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
+[H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
