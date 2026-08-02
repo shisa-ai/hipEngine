@@ -1701,6 +1701,23 @@ plus aggregate both-clock screen before runtime/source work. No candidate or
 speed result exists
 ([H7V target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
 
+Reject **WPF-H7V** without subset or rerun salvage. The first object preserves
+exact 64/80 FMA, 64/80 permlanex16, 256/320 DPP-add, one-barrier, LDS, and
+private/spill/scratch0 structure while shrinking BF16-r4/BF16-r5/F32-r5 to
+**5,808/6,960/6,928 B**, **873/1,001/996 slots**, and metadata
+**VGPR108/139/139**. GREEN is **9/9**. The cache-only full-request trace is
+exactly **142 packs, 143 Q6-to-F32 producers, 142 H7V full consumers, 96 H6U
+tails, 2,382 dispatches**, one queue, and zero compiler.
+
+All actual-role outputs are byte-exact/finite/lifecycle-clean. Rowbatch4 wins
+**1.00255x event / 1.00495x wall**, but BF16/F32 rowbatch5 lose at
+**0.97542x/0.97618x** and **0.97309x/0.97499x**. The frozen 142-call aggregate
+regresses **47.949→48.680 ms event (+1.524%, 0.985x)** and
+**48.522→49.162 ms wall (+1.318%, 0.987x)**. Remove all H7V
+kernel/export/wrapper/key/RED surfaces, run no runtime/source gate, and retain
+H6U plus **437.189 tok/s**
+([H7V rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q6-full-batch-live-tail-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
