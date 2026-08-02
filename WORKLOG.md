@@ -197680,3 +197680,23 @@ Vulkan local sizes verbatim will close the measured gap.
   `7d1c2240f7c508e9a442496d80cdea26689df15ee576f934f904658ce4ebaf61`.
 - Restored the committed physical-map check. All directional production gates
   fail, so mandatory 128K is not justified.
+
+## 2026-08-02 17:08 JST — Reject ctx4096 sparse exact repair
+
+- Confirmed the context-merge repair kernel is dormant in production:
+  `repair_kernel_dispatched=false`; only the mask is written. Extended the
+  leaf harness with output/head/GQA-D32-tile density and false-negative counts.
+- The synthetic mask marks **48/79/141/208** outputs at
+  live4,097/16,448/65,664/131,200, but reaches **20/28/31/32** of 32 tiles and
+  **30/37/47/47** query heads. A direct sparse-V replay is exact but costs
+  **1.230/5.615/25.015/49.917 ms**.
+- A GQA-shared coalesced D32 replay is synthetic-BF16-exact and improves the
+  repair route to **0.451/1.402/5.860/11.594 ms**; D64 partials plus D32 repair
+  reach **0.454/1.240/5.520/10.833 ms**. The correct production exact
+  comparator is already **0.186/0.831/3.461/6.986 ms**, not the generic serial
+  reducer previously selected by the ctx harness.
+- An all-global directional run reaches **21.654 tok/s** at 4K but changes the
+  16K final token **13,815 -> 855** at **17.702 tok/s**. Stopped before 64K and
+  128K, removed every repair/dispatch change, and restored production exactly.
+  The next screen re-gates the five retained context-parallel layers against
+  today's ordered-prefetch4 exact owner.

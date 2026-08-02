@@ -459,6 +459,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 )
             else:
                 repair_mask_host.fill(0)
+            repair_mask_2d = repair_mask_host.reshape(Q_HEADS, HEAD_DIM) != 0
+            repair_tile_mask = repair_mask_2d.reshape(
+                KV_HEADS, Q_HEADS // KV_HEADS, HEAD_DIM // 32, 32
+            ).any(axis=(1, 3))
             context_exact = np.array_equal(
                 control_context_host, candidate_context_host
             )
@@ -561,6 +565,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         "context_max_abs": context_max_abs,
                         "gated_bf16_mismatches": gated_mismatches,
                         "repair_outputs": int(np.count_nonzero(repair_mask_host)),
+                        "repair_query_heads": int(
+                            np.count_nonzero(repair_mask_2d.any(axis=1))
+                        ),
+                        "repair_gqa_dim32_tiles": int(
+                            np.count_nonzero(repair_tile_mask)
+                        ),
+                        "repair_false_negative_outputs": int(
+                            np.count_nonzero(mismatch_mask & ~repair_mask_2d.reshape(-1))
+                        ),
                         "rounding_diagnostics": rounding_diagnostics,
                         "context_sha256": hashlib.sha256(
                             candidate_context_host.tobytes()
