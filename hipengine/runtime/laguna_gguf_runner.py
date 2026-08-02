@@ -70,6 +70,7 @@ from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     Q5F32OrderedPrefillSession,
+    Q5F32ResidentPlane,
     launch_gguf_linear,
     launch_gguf_linear_pair,
     q5_f32_ordered_prefill_session,
@@ -735,6 +736,171 @@ class LagunaQ5F32OrderedScratch:
             return
         self._closed = True
         free(self.buffer, runtime=runtime)
+
+
+class LagunaQ5F32ResidentGlobalCacheAllocationError(RuntimeError):
+    """Raised when H8A cannot allocate its all-or-nothing resident plane set."""
+
+
+@dataclass
+class LagunaQ5F32ResidentGlobalCache:
+    """One immutable 24-plane global-attention Q5 cache shared by sessions."""
+
+    weights: LagunaGGUFResidentWeights
+    backend: str
+    buffers: tuple[DeviceBuffer, ...]
+    resident_planes: Mapping[int, Q5F32ResidentPlane]
+    _closed: bool = False
+
+    _LAYERS = tuple(range(0, 48, 4))
+    _ROLES = (
+        ("attn_q", "f32", 3_072, 6_144, (6_144, 3_072)),
+        ("attn_output", "bf16", 6_144, 3_072, (3_072, 6_144)),
+    )
+    _COL_TILE = 16
+    _ROW_BATCH = 5
+    _WEIGHT_LAYOUT = "tile_k_col"
+    _PLANE_NBYTES = 3_072 * 6_144 * _F32_NBYTES
+
+    @classmethod
+    def allocate(
+        cls,
+        weights: LagunaGGUFResidentWeights,
+        *,
+        backend: str,
+        library: object,
+        runtime: HipRuntime,
+        stream: int = 0,
+    ) -> "LagunaQ5F32ResidentGlobalCache":
+        resolved_backend = resolve_backend(backend)
+        if weights.backend != resolved_backend:
+            raise ValueError("resident Q5 cache backend must match resident weights")
+        if not backend_package_capability(
+            resolved_backend,
+            "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED",
+            False,
+        ):
+            raise ValueError(
+                f"resident global-Q5 F32 cache is not supported on {resolved_backend!r}"
+            )
+        targets: list[tuple[int, str, int, int, Callable]] = []
+        raw_ptrs: set[int] = set()
+        for layer_id in cls._LAYERS:
+            layer = weights.layer(layer_id)
+            if layer.attention_type != FULL_ATTENTION:
+                raise ValueError(
+                    "resident Q5 cache requires the complete global-attention layer class"
+                )
+            for slot, output_dtype, in_features, out_features, source_shape in cls._ROLES:
+                weight = layer.weight(slot)
+                if (
+                    weight.backend != resolved_backend
+                    or weight.spec.quant_key != "gguf_q5_k"
+                    or weight.spec.layout != LAYOUT_RAW_GGUF
+                    or tuple(weight.spec.source.shape) != source_shape
+                ):
+                    raise ValueError(
+                        "resident Q5 cache target weight does not match its exact role"
+                    )
+                raw_ptr = int(weight.allocation("raw").tensor.ptr)
+                if raw_ptr <= 0 or raw_ptr in raw_ptrs:
+                    raise ValueError(
+                        "resident Q5 cache requires unique positive raw-weight pointers"
+                    )
+                raw_ptrs.add(raw_ptr)
+                suffix = (
+                    f"coltile{cls._COL_TILE}_rowbatch{cls._ROW_BATCH}_"
+                    f"bf16_{output_dtype}_out"
+                )
+                producer = resolve(
+                    backend=resolved_backend,
+                    layer="dequant",
+                    quant="gguf_q5_k",
+                    variant=f"raw_f32_exact_tile_k_col_{suffix}",
+                )
+                targets.append(
+                    (
+                        raw_ptr,
+                        output_dtype,
+                        in_features,
+                        out_features,
+                        producer,
+                    )
+                )
+        if len(targets) != 24 or len(raw_ptrs) != 24:
+            raise ValueError("resident Q5 cache requires exactly 24 target tensors")
+
+        buffers: list[DeviceBuffer] = []
+        try:
+            for _target in targets:
+                buffers.append(malloc(cls._PLANE_NBYTES, runtime=runtime))
+        except BaseException as exc:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            raise LagunaQ5F32ResidentGlobalCacheAllocationError(
+                "unable to allocate the complete resident global-Q5 F32 cache"
+            ) from exc
+
+        planes: dict[int, Q5F32ResidentPlane] = {}
+        try:
+            for target, buffer in zip(targets, buffers, strict=True):
+                (
+                    raw_ptr,
+                    output_dtype,
+                    in_features,
+                    out_features,
+                    producer,
+                ) = target
+                producer(
+                    raw_ptr,
+                    buffer.ptr,
+                    in_features,
+                    out_features,
+                    stream=int(stream),
+                    library=library,
+                    runtime=runtime,
+                )
+                planes[raw_ptr] = Q5F32ResidentPlane(
+                    raw_weight_ptr=raw_ptr,
+                    weight_f32_ptr=buffer.ptr,
+                    weight_f32_nbytes=buffer.nbytes,
+                    in_features=in_features,
+                    out_features=out_features,
+                    output_dtype=output_dtype,
+                    weight_layout=cls._WEIGHT_LAYOUT,
+                    col_tile=cls._COL_TILE,
+                    row_batch=cls._ROW_BATCH,
+                )
+            runtime.device_synchronize()
+        except BaseException:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            raise
+        return cls(
+            weights=weights,
+            backend=resolved_backend,
+            buffers=tuple(buffers),
+            resident_planes=MappingProxyType(dict(planes)),
+        )
+
+    @property
+    def allocation_count(self) -> int:
+        return len(self.buffers)
+
+    @property
+    def nbytes(self) -> int:
+        return sum(buffer.nbytes for buffer in self.buffers)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
 
 
 @dataclass(frozen=True)
@@ -1790,6 +1956,35 @@ def _resolve_laguna_f32_ordered_prefill_quants(backend: str) -> frozenset[str]:
     return selected
 
 
+def resolve_laguna_q5_f32_resident_global_cache(
+    backend: str,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve H8A's default-off gfx1100 resident global-Q5 cache owner."""
+
+    supported = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED",
+            False,
+        )
+    )
+    enabled = bool(
+        backend_package_capability(
+            backend,
+            "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE",
+            False,
+        )
+        if requested is None
+        else requested
+    )
+    if enabled and not supported:
+        raise ValueError(
+            f"resident global-Q5 F32 cache is not supported on {backend!r}"
+        )
+    return enabled
+
+
 def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
     """Detect bounded H5Y ownership from the quant-keyed package policy."""
 
@@ -2461,6 +2656,8 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
+        use_q5_f32_resident_global_cache: bool | None = None,
+        resident_q5_f32_cache: LagunaQ5F32ResidentGlobalCache | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -2620,6 +2817,25 @@ class LagunaGGUFResidentSession:
         )
         self._q5_activation_tile_k_row = (
             _resolve_laguna_q5_activation_tile_k_row(self.backend)
+        )
+        if (
+            resident_q5_f32_cache is not None
+            and use_q5_f32_resident_global_cache is False
+        ):
+            raise ValueError(
+                "a shared resident Q5 cache cannot be supplied while disabled"
+            )
+        resident_cache_request = (
+            True
+            if resident_q5_f32_cache is not None
+            and use_q5_f32_resident_global_cache is None
+            else use_q5_f32_resident_global_cache
+        )
+        self.use_q5_f32_resident_global_cache = (
+            resolve_laguna_q5_f32_resident_global_cache(
+                self.backend,
+                resident_cache_request,
+            )
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
@@ -2944,6 +3160,8 @@ class LagunaGGUFResidentSession:
         self.rows_moe_scratch: LagunaMoEScratch | None = None
         self.q5_f32_ordered_scratch: LagunaQ5F32OrderedScratch | None = None
         self.q5_f32_ordered_dispatch: Q5F32OrderedPrefillSession | None = None
+        self.q5_f32_resident_cache: LagunaQ5F32ResidentGlobalCache | None = None
+        self._owns_q5_f32_resident_cache = False
         self.verifier_scratch: LagunaVerifierScratch | None = None
         self.full_rope: LagunaDeviceRoPETables | None = None
         self.swa_rope: LagunaDeviceRoPETables | None = None
@@ -3155,6 +3373,33 @@ class LagunaGGUFResidentSession:
                     )
                 )
                 q5_scratch = self.q5_f32_ordered_scratch
+                if resident_q5_f32_cache is not None:
+                    if (
+                        resident_q5_f32_cache.closed
+                        or resident_q5_f32_cache.weights is not self.weights
+                        or resident_q5_f32_cache.backend != self.backend
+                    ):
+                        raise ValueError(
+                            "shared resident Q5 cache must be open and own these exact weights"
+                        )
+                    self.q5_f32_resident_cache = resident_q5_f32_cache
+                elif (
+                    self.use_q5_f32_resident_global_cache
+                    and self._owns_weights
+                ):
+                    try:
+                        self.q5_f32_resident_cache = (
+                            LagunaQ5F32ResidentGlobalCache.allocate(
+                                self.weights,
+                                backend=self.backend,
+                                library=self.libraries.q5_f32_ordered,
+                                runtime=self.runtime,
+                            )
+                        )
+                    except LagunaQ5F32ResidentGlobalCacheAllocationError:
+                        self.q5_f32_resident_cache = None
+                    else:
+                        self._owns_q5_f32_resident_cache = True
                 self.q5_f32_ordered_dispatch = Q5F32OrderedPrefillSession(
                     min_rows=512,
                     max_rows=q5_scratch.max_rows,
@@ -3165,6 +3410,11 @@ class LagunaGGUFResidentSession:
                         q5_scratch.activation_bf16_nbytes
                     ),
                     library=self.libraries.q5_f32_ordered,
+                    resident_weight_f32_planes=(
+                        self.q5_f32_resident_cache.resident_planes
+                        if self.q5_f32_resident_cache is not None
+                        else None
+                    ),
                 )
                 if self.kv_cache.prefill_score_scratch_required:
                     self.kv_cache.bind_prefill_score_scratch(
@@ -3457,6 +3707,11 @@ class LagunaGGUFResidentSession:
             + self.rows_scratch.nbytes
             + self.rows_moe_scratch.nbytes
             + (self.verifier_scratch.nbytes if self.verifier_scratch is not None else 0)
+            + (
+                self.q5_f32_resident_cache.nbytes
+                if self.q5_f32_resident_cache is not None
+                else 0
+            )
             + (
                 self.attention_hipblaslt.scratch_nbytes
                 if self.attention_hipblaslt is not None
@@ -5527,6 +5782,16 @@ class LagunaGGUFResidentSession:
             self.swa_attention_hipblaslt = None
             release(route.close)
         self.q5_f32_ordered_dispatch = None
+        if (
+            self.q5_f32_resident_cache is not None
+            and self._owns_q5_f32_resident_cache
+        ):
+            cache = self.q5_f32_resident_cache
+            self.q5_f32_resident_cache = None
+            self._owns_q5_f32_resident_cache = False
+            release(lambda: cache.free(runtime=self.runtime))
+        else:
+            self.q5_f32_resident_cache = None
         if self.q5_f32_ordered_scratch is not None:
             scratch = self.q5_f32_ordered_scratch
             self.q5_f32_ordered_scratch = None
