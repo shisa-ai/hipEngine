@@ -1746,6 +1746,33 @@ rewrite, recompile, or favorable rerun
 ([H7W rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-output-p128-rejected.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
 
+Select target-only **WPF-H7X exact H6W one-slot BF16 K/V software pipeline**.
+Retained/fresh fixed/matched llama.cpp HIP wall rates are **437.189/437.836/
+690.791 tok/s**; representative production is **1,153.347 ms / 2,286
+dispatches**. Component campaign-start→current→llama times are Q5
+**1,270.458→235.987→58.314 ms**, IQ-down **557.091→273.063→153.860**,
+attention **488.304→115.607→21.512**, Q6 **157.073→74.719→14.668**,
+gate/up **460.143→400.672→397.805**, and remaining
+**68.623→53.299→67.849**.
+
+H6W is the dominant attention leaf at **72 calls / 62.656 ms (54.198%)**.
+Current local32 code is **4,984 B / 871 slots / metadata VGPR54 / runtime
+VGPR56 / LDS0 / spill0**. Its K and V clauses each issue four BF16 loads and
+immediately drain `vmcnt(3→0)` before current-slot work. Both natural starts
+together expose **63,866,880 / 64,032,768 (99.7409%)** next-slot opportunities
+per K pass and per V pass.
+
+Freeze RED before implementation. H7X may only rotate one alternate K/V
+register set, preloading slot0 and issuing slot n+1 before the complete ordered
+slot-n QK or PV work. Preserve H6W bytes/arithmetic/masks/records, all spans,
+allocation/workspace, dispatches, source owner, and fallback. Require one
+VGPR≤64/spill0 object with physical load overlap, complete starts256/384
+H6W+CPU identity, exact **72 H7X + 72 H6A + 24 H6N + 24 H6Z / 2,286** named
+trace, then starts256/384 and aggregate dual-clock admission. Any miss removes
+every H7X surface without subset, distance retune, rewrite, recompile, or rerun.
+No code/build/execution/speed result exists
+([H7X target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

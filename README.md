@@ -1032,6 +1032,38 @@ recompile, or favorable-rerun salvage
 ([H7W rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-output-p128-rejected.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
 
+The clean post-H7W rerank selects target-only **WPF-H7X exact H6W one-slot
+BF16 K/V software pipeline**. Matched status is:
+
+| Component | Campaign start (ms) | Current (ms) | llama.cpp HIP (ms) |
+| --- | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 | 235.987 | 58.314 |
+| IQ3/IQ4 down | 557.091 | 273.063 | 153.860 |
+| Attention | 488.304 | 115.607 | 21.512 |
+| Q6 projections | 157.073 | 74.719 | 14.668 |
+| IQ2/special-IQ3 gate/up | 460.143 | 400.672 | 397.805 |
+| Remaining | 68.623 | 53.299 | 67.849 |
+| **Kernel sum** | **3,001.692** | **1,153.347** | **714.008** |
+
+Retained wall throughput is **169.516→437.189 tok/s** versus matched llama.cpp
+HIP **690.791 tok/s**; hipEngine remains **1.58007× behind**. H6W alone owns
+**72 calls / 62.656 ms**, **54.198%** of attention. Its current local32/wave32
+body is **4,984 B / 871 slots / metadata VGPR54 / runtime VGPR56 / LDS0 /
+spill0**. In each steady K and V path it issues four BF16 loads and immediately
+drains `vmcnt(3→0)` before current-slot arithmetic. At natural M512,
+**63,866,880 / 64,032,768 slots (99.7409%)** have a next slot available.
+
+H7X adds one separately named gfx1100 H6W-equivalent sibling: preload slot 0,
+issue slot *n+1* K before complete slot-*n* QK/reduction/max/store work, and
+independently issue slot *n+1* V before slot-*n* exp/denominator/PV work. It
+preserves bytes, arithmetic order, `KVLiveSpans`, allocation/workspace,
+dispatches, H6W source/default, and every fallback. Freeze RED first; then
+require one object at VGPR≤64/spill0, physical next-slot load overlap, complete
+starts256/384 H6W+CPU identity, exact **72 H7X / 2,286-dispatch** named tracing,
+and one inseparable starts256/384 plus aggregate dual-clock 5/15/5 screen. No
+candidate exists and no H7X speed claim has been made
+([post-H7W / H7X target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

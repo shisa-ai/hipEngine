@@ -2311,6 +2311,38 @@ the body, recompile, or favorably rerun this family
 ([H7W rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-output-p128-rejected.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7v-iq3-output-p128-target.json)).
 
+Select target-only **WPF-H7X exact H6W one-slot BF16 K/V software pipeline** in
+`attention/laguna_kv_attention.hip`. Current H6W
+`laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernel`
+is **72 calls / 62.656 ms**, **54.198%** of attention. Its current physical
+shape is local32/wave32, **4,984 B / 871 slots / VGPR54 / SGPR40 / LDS0 /
+private0 / spill0**; runtime reports VGPR56/LDS0/scratch0. ISA has eight static
+BF16 load sites and eight `vmcnt` waits: each four-load K or V clause drains
+`vmcnt(3→0)` before current-slot QK or PV work.
+
+H7X may add only one separately named gfx1100 H6W-equivalent body/export/wrapper/
+registry key and one gfx1151 exclusion. Preload the initial K/V slot and rotate
+one alternate four-BF16 register set so next-slot loads overlap current exact
+arithmetic. Do not change masking, score-record bytes/order, max/exp/denominator
+order, broadcasts, PV order, divide, output, ABI, spans, allocation/workspace,
+dispatches, package owner, or H6W fallback. At natural M512, both K and V have
+**63,866,880 / 64,032,768 (99.7409%)** prefetchable slots per request.
+
+Before build, freeze starts256/384 and fail-closed starts0/128/wrong-shape RED.
+The sole first object must be local32/wave32, code≤8,000 B, slots≤1,400,
+metadata/runtime VGPR≤64/64, metadata SGPR≤64, LDS/private/spill/scratch0, no
+barriers, and must show next-slot K and V loads before substantial current-slot
+QK/PV work and delayed waits without premature use. GREEN must prove complete
+H6W and independent CPU bytes, exact score records, poison/repeat/finiteness,
+immutable spans, and lifecycle. Cache-only tracing must name **72 H7X + 72 H6A
++ 24 H6N + 24 H6Z**, **2,286 application dispatches**, one queue/stream, and
+zero compiler. Consume one all-72 actual-state 5/15/5 screen only after those
+gates; starts256, starts384, and the weighted aggregate must each win event and
+wall. On any miss remove every H7X/RED/exclusion surface without subset,
+prefetch-distance retune, rewrite, recompile, or favorable rerun. Runtime/source
+qualification remains separate; no candidate or H7X speed claim exists
+([H7X target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
