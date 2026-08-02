@@ -197758,3 +197758,14 @@ Vulkan local sizes verbatim will close the measured gap.
   `21cda8a44cd2970f71cb4a3ac8f9d40cc3e7833bd35ab865b2e4fdc1626037dc`,
   `1c39acde1b0e43a8233d8a0c217fdf29d76b3349f11ea327bb081e7074776395`,
   and `b77908ee9ee1132be2589f4f279c3a5c60dfab3a96aa3c7f9dffcc6bd19ec7c0`.
+
+## 2026-08-02 18:51 JST — Reject exact GQA6 token-loop8 score ownership
+
+- Temporarily extended only the retained single-wave token loop from four to
+  eight KV tokens. F32 context and BF16 gated output remain byte-exact at all
+  four natural live depths.
+- Versus committed token-loop4, live4K/16K/64K/128K latency changes
+  **+2.043%/+0.242%/-0.057%/+0.328%**. Three depths regress and 64K is only
+  noise-positive, so restored token-loop4 exactly and skipped production/128K
+  timing. Raw SHA-256 is
+  `c66e29909efb1b405443d646984e54f1102db0d76722aa353d54a735ea6dde8a`.
