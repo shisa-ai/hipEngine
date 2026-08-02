@@ -326,6 +326,41 @@ GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS = {
         3_072,
     ): "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
 }
+# WPF-H7I is a separately qualified, default-off capability for the same exact
+# three M512 roles. It removes only H7C's redundant inner live-row predicate;
+# the live source map remains H7C until the source-default gate passes.
+GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS = {
+    (
+        "gguf_q6_k",
+        "bf16_bf16_out",
+        512,
+        12_288,
+        3_072,
+    ): (
+        "dpp_wave_reduction_full_group_compute_"
+        "coltile4_rowbatch8_bf16_bf16_out"
+    ),
+    (
+        "gguf_q6_k",
+        "bf16_f32_out",
+        512,
+        3_072,
+        9_216,
+    ): (
+        "dpp_wave_reduction_full_group_compute_"
+        "coltile2_rowbatch16_bf16_f32_out"
+    ),
+    (
+        "gguf_q6_k",
+        "bf16_bf16_out",
+        512,
+        9_216,
+        3_072,
+    ): (
+        "dpp_wave_reduction_full_group_compute_"
+        "coltile4_rowbatch8_bf16_bf16_out"
+    ),
+}
 GGUF_RAW_K_PREFILL_ROLE_VARIANTS = dict(GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS)
 # WPF-H5D promotes the exact H5C producer/ordered-consumer chain after KL0,
 # byte-identical complete state, and clean +7.235%/+6.519% M512/M1024 gates.
@@ -557,6 +592,7 @@ __all__ = [
     "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
     "GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS",
     "GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS",
+    "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS",
     "GGUF_RAW_K_PREFILL_ROLE_VARIANTS",
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",

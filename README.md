@@ -692,18 +692,25 @@ ceiling. Production remains H7H/H7C at **427.407 tok/s / 1,185.096 ms**. Freeze
 a separate three-role RED before adding any named H7I surface
 ([post-H7H residual / H7I target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
-Standalone **WPF-H7I is admitted** without changing package/runtime/source
-policy. Its RED-first **22/22** matrix proves exact-M512 H7I bytes against H7C
-plus sampled CPU values while rows1/7/8/9 retain complete H7C fallback;
-rows511/513 and every wrong role fail before HIP loading. The first repository
-object reproduces the selected BF16/F32 code/slots **4,060/623** and
-**4,032/631**, metadata VGPR **69/64**, LDS512, and spill/scratch0 exactly.
-A non-adjudicative actual-weight replay remains byte-exact and improves weighted
-event/wall **35.432/34.617 -> 20.089/21.762 ms (1.764x/1.591x)**. Cache-only
-rocprof names exactly **2 BF16 + 1 F32** H7I launches at runtime VGPR72/64 with
-zero compiler. Production remains H7H/H7C **427.407 tok/s** pending separate
-bounded-runtime and source gates
-([H7I candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
+Standalone **WPF-H7I is admitted**, and its exact three-role package capability
+is now a qualified bounded default-off runtime owner; live source remains H7C.
+Its RED-first **22/22** matrix proves exact-M512 H7I bytes against H7C plus
+sampled CPU values while rows1/7/8/9 retain complete H7C fallback; rows511/513
+and every wrong role fail before HIP loading. The first repository object
+reproduces BF16/F32 code/slots **4,060/623** and **4,032/631**, metadata VGPR
+**69/64**, LDS512, and spill/scratch0 exactly. A non-adjudicative actual-weight
+replay remains byte-exact and improves weighted event/wall
+**35.432/34.617 -> 20.089/21.762 ms (1.764x/1.591x)**.
+
+Bounded H7C -> H7I qualification is KL0/byte-exact across all **48/48** hidden
+boundaries, complete logits/KV/`KVLiveSpans`, repeat, scratch, and teardown.
+Fixed C4096/M512 improves **426.583 -> 429.000 tok/s (+0.567%, 5/5 wins)**;
+clean 512/1K/4K improves **396.104/315.021/195.729 ->
+399.127/316.409/196.109 tok/s (+0.763%/+0.441%/+0.194%)**, all **3/3** exact
+wins. Cache-only integration records exactly **2 BF16 + 1 F32 H7I**, zero H7C,
+and **2,925** total dispatches at runtime VGPR72/64 with zero compiler.
+Production remains H7H/H7C **427.407 tok/s** pending the separate source gate
+([H7I candidate/runtime](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

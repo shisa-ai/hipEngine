@@ -8,10 +8,10 @@ summarized below in
 with its bounded runtime packet and complete H7G rollback in
 [`2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-candidate.json) and
 [`2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-padded-compute-production.json).
-The admitted standalone post-H7H H7I raw-Q6 full-group leaf and its target are
-recorded in
+The admitted post-H7H H7I raw-Q6 full-group leaf, now-qualified bounded
+runtime owner, and its target are recorded in
 [`2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json`](results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json) and
-[`2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json); production remains H7H/H7C pending separate runtime/source qualification.
+[`2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json`](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json); production remains H7H/H7C pending only the separate source gate.
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
 rejection are also summarized below; the rejection packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),
@@ -804,20 +804,29 @@ Production stays H7H/H7C at **427.407 tok/s / 1,185.096 ms** pending a separate
 RED and standalone admission
 ([post-H7H residual / H7I target](results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
-Standalone **WPF-H7I is admitted** with no runtime/package/source-policy change.
-RED-first correctness is **22/22**: the three exact-M512 roles are byte-exact
-against H7C and sampled CPU values, rows1/7/8/9 retain complete H7C fallback,
-and invalid rows/shapes reject before HIP loading. The first repository object
-exactly reproduces selected BF16/F32 code/slots **4,060/623** and
-**4,032/631**, metadata VGPR **69/64**, LDS512, and spill/scratch0. The one-time
-repository replay remains byte-exact/all-role both-clock positive and improves
-weighted event/wall **35.432/34.617 -> 20.089/21.762 ms
-(-43.302%/-37.135%)**. Cache-only rocprof records exact **2 BF16 + 1 F32** H7I
-names at local128/LDS512/runtime-VGPR72/64/scratch0 with zero compiler. Retained
-adjacency passes **82/82** after excluding one documented pre-existing stale
+Standalone **WPF-H7I is admitted**, and its exact three-role package capability
+is now a qualified bounded default-off runtime owner while H7C remains live
+source. RED-first correctness is **22/22**: the three exact-M512 roles are byte-
+exact against H7C and sampled CPU values, rows1/7/8/9 retain complete H7C
+fallback, and invalid rows/shapes reject before HIP loading. The first
+repository object exactly reproduces selected BF16/F32 code/slots
+**4,060/623** and **4,032/631**, metadata VGPR **69/64**, LDS512, and
+spill/scratch0. The one-time repository replay remains byte-exact/all-role both-
+clock positive and improves weighted event/wall **35.432/34.617 ->
+20.089/21.762 ms (-43.302%/-37.135%)**.
+
+Complete bounded H7C -> H7I M512 state/repeat is KL0/byte-exact across logits,
+all **48/48** hidden boundaries, full KV/`KVLiveSpans`, unchanged
+**161,120,256/600,141,856-byte** workspace/scratch, and teardown. Fixed
+C4096/M512 improves **426.583 -> 429.000 tok/s (+0.567%, 5/5 wins)**; clean
+512/1K/4K improves **396.104/315.021/195.729 -> 399.127/316.409/196.109 tok/s
+(+0.763%/+0.441%/+0.194%)**, all **3/3** exact wins. Cache-only integration
+records exactly **2 BF16 + 1 F32 H7I**, zero H7C, and **2,925** total dispatches
+at local128/LDS512/runtime-VGPR72/64/scratch0 with zero compiler. Retained
+adjacency passes **92/92** after excluding one documented pre-existing stale
 Q5/H7H expectation; runner/backend/registry passes **65/65**. Production stays
-H7H/H7C **427.407 tok/s** pending bounded runtime/source qualification
-([H7I candidate](results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
+H7H/H7C **427.407 tok/s** pending only source qualification
+([H7I candidate/runtime](results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
 
 **WPF-H6M exact explicit wait-split Q5 K-record pipelining is rejected.** The
 frozen rows17/33/M512 matrix and both actual roles are complete-byte/CPU/plane

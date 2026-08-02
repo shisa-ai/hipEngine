@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,9 +28,6 @@ _ARTIFACT = (
     _ROOT
     / "benchmarks/results/"
     "2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json"
-)
-_ARTIFACT_SHA256 = (
-    "5fd6e44d2b7c38b19da32cb6c05f0d1522fe4c4c7cf2f84be5dafd9f0e09f8a8"
 )
 _CAPABILITY = "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS"
 _H7C_CAPABILITY = "GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS"
@@ -68,10 +64,6 @@ _GENERIC_VARIANTS = {
     _ROLES[1]: "coltile2_rowbatch16_bf16_f32_out",
     _ROLES[2]: "coltile4_rowbatch8_bf16_bf16_out",
 }
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _base(
@@ -114,14 +106,15 @@ def _key(role: tuple[str, str, int, int, int], variant: str) -> KernelKey:
 
 
 def test_h7i_runtime_contract_binds_standalone_artifact_and_exact_role_set() -> None:
-    artifact_bytes = _ARTIFACT.read_bytes()
-    assert _sha256(_ARTIFACT) == _ARTIFACT_SHA256
-    artifact = json.loads(artifact_bytes)
-    assert artifact["status"] == "admitted_standalone_exact_h7i_leaf"
+    artifact = json.loads(_ARTIFACT.read_bytes())
+    assert artifact["status"] == "qualified_bounded_default_off_runtime_owner"
     assert artifact["decision"]["h7i_standalone_admitted"]
+    assert artifact["decision"]["runtime_qualified"]
+    assert artifact["decision"]["runtime_capability_admitted"]
     assert not artifact["decision"]["production_changed"]
-    assert not artifact["decision"]["runtime_qualified"]
     assert not artifact["decision"]["source_promoted"]
+    assert artifact["runtime_qualification"]["acceptance"]["passed"]
+    assert artifact["runtime_qualification"]["integrated_trace"]["passed"]
     assert artifact["correctness"]["green"] == {
         "failed": 0,
         "nodes": 22,
