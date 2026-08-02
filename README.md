@@ -841,6 +841,19 @@ regresses to **0.912x event / 0.913x wall**. The three-role aggregate improves
 salvage. No repository surface is added and production stays **431.310 tok/s**
 ([H7O rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-geometry-crossover-rejected.json)).
 
+**WPF-H7P candidate-distance-only IQ3 D4x2 boundary repair is rejected before
+repository code or candidate timing.** A prompt-independent audit compares H7E's
+pre-BF16 FP32 accumulators with exact H6T over all **45** natural-M512 IQ3
+layers: **16,306,295 / 707,788,800 values (2.30384%)** round differently. A
+1/16-cell guard repairs **6.234%** of outputs but catches only **43.799%** of
+mismatches; a 1/4-cell guard repairs **24.931%** yet leaves **5,206,620** wrong
+values. Even the 1.0-cell guard selects **99.719%** of outputs, still misses
+**14,702** mismatches, and is only **0.592x** exact in the ideal zero-overhead
+linear model. No tested threshold is complete, so do not implement or time this
+distance-only guard. A materially different prompt-independent error-size
+certificate remains a separate hypothesis; production stays **431.310 tok/s**
+([H7P rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-boundary-repair-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
