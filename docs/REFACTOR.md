@@ -14,19 +14,18 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Laguna H7U bounded default-off parallel MoE compactor
+## Laguna H7U parallel MoE compactor
 
-- Added 2026-08-02 after standalone gfx1100 admission. The package-only
-  `LAGUNA_MOE_GROUP_COMPACT_H7U_MODE="parallel"` capability exposes an existing
-  registered exact count→prefix→stable-scatter wrapper while the live
-  `LAGUNA_MOE_GROUP_COMPACT_MODE` source owner remains absent/serial. No new
-  kernel, wrapper, registry key, allocation, or workspace exists.
-- Remove or collapse when: task #726 finishes. If fixed C4096/M512 or clean
-  512/1K/4K runtime/source gates miss, remove H7U capability and its focused
-  RED after publishing rejection. If all gates pass, promote the live source
-  owner to parallel, retain explicit serial rollback only while useful for
-  bisection, then delete this candidate-only capability and any duplicate
-  selector test path in one atomic cleanup.
+- Cleanup completed 2026-08-02. Exact bounded fixed, source-default
+  512/1K/4K, five-request wall, and selected-region topology gates promoted
+  `LAGUNA_MOE_GROUP_COMPACT_MODE="parallel"` on gfx1100. The temporary
+  `LAGUNA_MOE_GROUP_COMPACT_H7U_MODE` capability was deleted atomically; there
+  is one live package owner and no duplicate runtime selector or allocation.
+- Keep the explicit registered serial scheduler and
+  `set_group_compact_mode("serial")` only as the required exact rollback and
+  correctness oracle. Remove no fallback while it remains useful for backend
+  qualification or regression bisection; any future collapse must preserve an
+  unfused/numerically equivalent path under the project fallback policy.
 
 ## Laguna H7E bounded default-off IQ3 residual-D4 owner
 

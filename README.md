@@ -950,6 +950,39 @@ serial→parallel aggregate is **20.508→1.297 ms event (15.813x)** and
 runtime and clean source-default gates pass
 ([H7U candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
 
+**WPF-H7U stable parallel MoE compaction is now the retained gfx1100 source
+owner**, with the serial scheduler preserved as an explicit rollback. The
+bounded fixed C4096/M512 gate is byte-exact and improves **430.412→436.602
+tok/s (+1.438%, 5/5 paired wins)**. Fresh source-default 512/1K/4K gates remain
+exact, finite, and lifecycle-clean while improving
+**398.781→404.250 (+1.371%) / 316.758→320.700 (+1.245%) /
+196.636→197.866 tok/s (+0.626%)**, with **3/3** paired wins at every length.
+
+Clean matched C4096/direct-M512 production reaches **437.189 tok/s** from
+**436.223/437.801/437.337/436.568/437.189**, **+1.363%** over H7I and
+**1.58007x behind** matched llama.cpp HIP **690.791 tok/s**. Selected-region
+tracing records exact **47 count + 47 prefix + 47 scatter**, zero serial,
+unchanged 47 gather, **2,286 dispatches**, one queue, and zero compiler in every
+one of five requests. Parallel compaction is **1.155 ms** versus the prior
+serial **25.187 ms**; representative kernel sum falls
+**1,172.241→1,160.833 ms** despite unrelated-family trace noise.
+
+| Matched M512 component | Campaign start | Before H7U | Current H7U | llama.cpp HIP | Current gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q5 projections | 1,270.458 ms | 235.199 ms | **236.539 ms** | 58.314 ms | **178.225 ms** |
+| IQ3/IQ4 down | 557.091 | 272.309 | **275.424** | 153.860 | **121.564** |
+| Attention | 488.304 | 115.317 | **116.296** | 21.512 | **94.784** |
+| Q6 projections | 157.073 | 74.409 | **74.982** | 14.668 | **60.314** |
+| IQ2/special-IQ3 gate/up | 460.143 | 398.590 | **404.375** | 397.805 | **6.570** |
+| Remaining | 68.623 | 76.417 | **53.218** | 67.849 | **-14.632 ms** |
+| **Kernel sum** | **3,001.692** | **1,172.241** | **1,160.833** | **714.008** | **446.825 ms** |
+
+Only the compaction/remaining reduction is attributable to H7U; deltas in
+unchanged families are profiler noise. The still-actionable gap is concentrated
+in Q5, IQ-down, attention, and Q6
+([H7U production](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json) ·
+[bounded candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

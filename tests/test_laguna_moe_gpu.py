@@ -410,7 +410,9 @@ def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
 
 
 def test_laguna_group_compact_mode_is_backend_qualified() -> None:
-    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "parallel"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100", "serial") == "serial"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100", "parallel") == "parallel"
     assert resolve_laguna_group_compact_mode("hip_gfx1151") == "parallel"
     assert resolve_laguna_group_compact_mode("hip_gfx1151", "serial") == "serial"
     assert (

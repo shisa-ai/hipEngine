@@ -2235,6 +2235,22 @@ dispatches** on one queue/stream. The immutable all-layer 5/15/5 screen wins
 separate runtime/source gates qualify fixed and 512/1K/4K requests
 ([H7U candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
 
+H7U is now the gfx1100 source default. Replace the bounded package seam with
+`LAGUNA_MOE_GROUP_COMPACT_MODE="parallel"`; `set_group_compact_mode("serial")`
+remains the exact rollback and backend peers remain independent. Bounded fixed
+C4096/M512 is exact at **430.412→436.602 tok/s (+1.438%, 5/5)**, and clean
+source-default 512/1K/4K improves **+1.371%/+1.245%/+0.626%** with **3/3** wins
+per length.
+
+The source-selected trace names **47** count, **47** prefix, and **47** scatter
+calls, zero serial, unchanged 47 gather, **2,286 dispatches**, one queue, and
+zero compiler in all five requests. Runtime LDS allocations are reported in
+512-byte granules as **2,048/2,560/512 B**; the frozen object records logical
+**2,048/2,120/80 B**. The three stages total **1.155 ms**, versus the prior
+serial **25.187 ms**. Clean matched production is **437.189 tok/s** and the
+representative kernel sum is **1,160.833 ms**
+([H7U production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

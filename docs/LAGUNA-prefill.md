@@ -1666,6 +1666,23 @@ not runtime/source ownership. Preserve serial rollback and run separate fixed
 C4096/M512 plus clean 512/1K/4K gates before promotion
 ([H7U candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
 
+The separate source-default gate promotes H7U on gfx1100 while preserving
+explicit serial rollback. The bounded fixed request is exact and improves
+**430.412→436.602 tok/s (+1.438%, 5/5 wins)**. Fresh source 512/1K/4K improves
+**398.781→404.250 / 316.758→320.700 / 196.636→197.866 tok/s**, with exact full
+state, finite logits, lifecycle recovery, and **3/3** paired wins at every
+length. No allocation, workspace, HIP body, wrapper, or registry key changes.
+
+Clean C4096/direct-M512 production reaches **437.189 tok/s** from five exact
+samples, **+1.363%** over H7I and **1.58007x** behind matched llama.cpp HIP.
+Selected-region tracing proves the source route in all five requests: exact
+**47 count + 47 prefix + 47 scatter**, zero serial, 47 gather, **2,286
+dispatches**, one queue, and zero compiler. Parallel stages total **1.155 ms**
+versus prior serial **25.187 ms**. Representative kernel sum/span is
+**1,160.833/1,180.677 ms**; the remaining family falls **76.417→53.218 ms**.
+Q5/IQ-down/attention/Q6 remain the four dominant gaps
+([H7U production](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
