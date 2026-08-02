@@ -2756,6 +2756,35 @@ changes no production metric. Keep H7H/H7I at **431.310 tok/s** and rerank a
 materially different exact operation
 ([rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
 
+Select target-only **WPF-H7K exact late-start SWA score-to-weight publication**
+after the post-H7J closure audit. Q5 source-MMQ/SGEMM, plane/geometry,
+persistence, replay, prefetch, reduction, full-group compute, and bounds routes
+are measured closed; H7F also forbids favorable Q6-rowbatch5 salvage. The
+largest materially new exact boundary is H6W's starts256/384 SWA score-replay
+owner at **72 calls / 62.627 ms**, **54.309%** of current attention.
+
+H7K must retain H6W's first-pass unscaled dots/maxima, fused
+`dot*scale-max`, token-order lane-0 denominator, token-order unnormalized PV,
+and final divide. Split only score-to-weight publication: lane 0 overwrites each
+aligned `float4` record with four weights in denominator order, then all lanes
+consume records in a separate PV pass. The model removes **255,135,744** dynamic
+weight broadcasts while adding **128,065,536** aligned record operations /
+**2.049 GB** logical record traffic; treat that as instruction-form rationale,
+not physical traffic or a speed result.
+
+Freeze starts256/384 as inseparable before implementation. RED must bind exact
+M128/C512/window512/H72/KV8/D128 preflight, the existing **18,874,368-byte**
+aligned plane, H6W/H6A fallback, unchanged maps/workspace/gfx1151, complete
+H6W and sampled CPU output, complete finite/nonnegative causal record bytes,
+all `KVLiveSpans` fields, poison, and lifecycle. The first repository object
+must pass the frozen local32/grid2304x32 opcode/code/slot/VGPR/scratch bounds
+before cache-only named tracing or one 5/15/5 screen. Both starts and their
+72-call aggregate must win HIP event and synchronized wall; any miss removes all
+H7K surfaces without subset salvage, tuning, recompile, or favorable rerun.
+Runtime and source qualification remain separate. Production stays H7H/H7I
+**431.310 tok/s / 1,172.241 ms**, **1.60161x** behind matched llama.cpp HIP
+([post-H7J residual / H7K target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7j-matched-swa-weight-publication-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

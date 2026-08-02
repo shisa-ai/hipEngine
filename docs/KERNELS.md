@@ -1960,6 +1960,31 @@ were predeclared inseparable, so `r8`-only salvage is inadmissible. Keep H7H
 source and do not reopen or subset H7J
 ([rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
 
+Target-only **WPF-H7K exact late-start SWA score-to-weight publication** is the
+next materially distinct gfx1100 boundary in
+`attention/laguna_kv_attention.hip`. H6W's starts256/384 score-only replay owns
+**72 calls / 62.627 ms**, **54.309%** of current attention. H7K must preserve
+H6W's first-pass unscaled-dot records/max updates, fused `dot*scale-max`, lane-0
+token-order denominator accumulation, all-lane token-order unnormalized PV,
+and final divide. It may only overwrite each aligned `float4` score record with
+four weights in a middle pass, then consume those weights in a separate PV pass.
+
+The dynamic rationale removes **255,135,744** lane-0 weight broadcasts and adds
+**128,065,536** aligned record operations / **2.049 GB** logical record traffic;
+this is not a physical-traffic or speed claim. Freeze starts256/384 together,
+strict M128/C512/window512/H72/KV8/D128 preflight, the existing aligned
+**18,874,368-byte** plane, H6W/H6A fallback, and unchanged runtime/source policy.
+Before timing, the first repository object must retain local32/grid2304x32,
+8 u16 K/V loads, 16 F32 query loads, 16 F32 output stores, 2 b128 record loads
+and stores, 28 bpermutes, 4 exponentials, 56 FMAs, code <=5,500 B, slots <=950,
+metadata/runtime VGPR <=54/56, and LDS/private/spill/scratch/barrier0. Then
+require complete H6W/CPU bytes, complete finite/nonnegative causal record bytes,
+immutable `KVLiveSpans`, poison/lifecycle, named cache-only trace, and one
+5/15/5 screen where both starts and the 72-call aggregate win event and wall.
+No start/layer/prompt subset, recompile, tuning, or favorable rerun is allowed.
+No H7K source/test/key/export/exclusion exists before RED
+([post-H7J residual / H7K target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7j-matched-swa-weight-publication-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
