@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [accepted gfx1151 Laguna dense ctx4096 value identity] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: extend dense-initial identity through the exact denominator and partial-PV value transport, cutting ordinary/compensated leaves up to **11.337%/8.948%** and mandatory d128K **9.716 -> 9.839 tok/s (+1.259%)** with exact trajectories, noise-flat 512/1K/4K, unchanged lifecycle, and metadata-aware fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json`.
+
 - [accepted gfx1151 Laguna dense-prefix long-score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: bypass token-position, eviction-mask, and block-base metadata only while dense-initial KV identity remains valid, cutting the score producer **12.8-14.6%**, active ordinary/compensated leaves **1.95-5.28%**, and mandatory d128K **9.595 -> 9.716 tok/s (+1.263%)** with exact trajectories, noise-positive 512/1K/4K, unchanged lifecycle, and generic fallback after eviction; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json`.
 
 - [accepted byte-exact gfx1151 Laguna fixed256 token-loop4 score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: expose the wrapper-enforced 256-token block size to replace four unrolled 64-bit mapping divisions with shift/mask arithmetic, shrinking score ISA **31.169%**, cutting active ordinary/compensated leaves **1.18-2.83%**, and moving mandatory d128K **9.505 -> 9.595 tok/s (+0.944%)** with noise-flat exact 512/1K/4K and unchanged lifecycle; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json`.

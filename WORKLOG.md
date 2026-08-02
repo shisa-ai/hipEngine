@@ -197968,3 +197968,44 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused large-capacity exactness, dense/generic selector fallback, and
   gfx1151 capability tests pass **3/3**. Canonical evidence is
   `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json`.
+
+## 2026-08-02 22:12 JST — Retain dense ctx4096 denominator/value identity
+
+- Extended the existing dense-initial ctx4096 specialization beyond score.
+  The dense score owner no longer publishes the physical-slot scratch plane;
+  the exact denominator treats each in-range logical token as valid; D64/V64
+  partial PV addresses BF16 values directly by logical token. The complete
+  `KVLiveSpans` ABI remains intact, and explicit eviction continues to select
+  the unchanged metadata-aware fixed256 route.
+- Formal cached 5-warmup/9-sample/burst10 ordinary live
+  4,097/16,448/65,664/131,200 improves
+  **0.280951/0.547311/2.194072/4.174607 ->
+  0.274294/0.486320/1.953108/3.701343 ms
+  (-2.369%/-11.144%/-10.983%/-11.337%)**. Compensated improves
+  **0.301982/0.560968/2.241266/4.239176 ->
+  0.294985/0.524195/2.050735/3.859837 ms
+  (-2.317%/-6.555%/-8.501%/-8.948%)**. F32 context and gated BF16 are
+  byte-exact. Raw SHA-256 values are
+  `d20edf743808c8b4f51e7fa09e055c2d89d1a378efe861287f24811e4f11681f`
+  and `ea434a478f633b9d032ef6c2344c1b0beda80689214b0937628426eb7dfb928f`.
+- Cached `rocprofv3 --kernel-trace` confirms the dense score, denominator,
+  and PV templates at local32/VGPR40/LDS0, local256/VGPR56/LDS512, and
+  local512/VGPR32/LDS19,456 respectively; every kernel remains scratch0.
+  At 128K the PV median falls **1,946.773 -> 1,724.076 us**. Merge is about
+  **4.469 us** and no scalar repair kernel launches. CSV SHA-256 is
+  `3aa066501abf87ffc00dab1463d020af29ef8e3fa443e7df95b61a33422cb20c`.
+- Production 512/1K/4K remains exact and noise-flat at
+  **23.203829/23.063689/21.686794 tok/s
+  (-0.020%/-0.034%/-0.027%)**. Mandatory d128K improves
+  **9.716297 -> 9.838646 tok/s (+1.259%)**, cutting the 127-transition wall
+  **13.070823 -> 12.908280 s (-1.244%)** while preserving
+  **874 / c8307c... / position 131,198**. Every run recovers all
+  **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256 values
+  are `54703521320e31d0939718a018f4e3ee3e740025415e3ba53802a781f030bd1a`
+  and `756385bfd6f5380c70bb38de5f6e24785f313e91a8196734ba65966cf5b18abe`.
+- Exact production command for the mandatory gate:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty`.
+- Focused GPU differential test
+  `tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact`
+  passes. Canonical evidence is
+  `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json`.

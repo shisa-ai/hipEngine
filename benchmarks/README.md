@@ -75,19 +75,20 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
-The current long-decode checkpoint specializes the retained token-loop4 score
-producer for dense-initial KV identity. While that invariant holds it maps
-logical slots directly and skips token-position, eviction-mask, and block-base
-metadata reads; explicit eviction selects the registered metadata-aware
-fixed256 fallback. The score producer improves **12.8-14.6%** and the active
-ordinary/compensated leaves improve **1.95-5.28%**. Mandatory 128K advances
-**9.595115 -> 9.716297 tok/s (+1.263%)** with the established recurrent hash
-and lifecycle, reaching **68.246%** of same-GGUF Vulkan's
+The current long-decode checkpoint carries dense-initial KV identity through
+the retained ctx4096 score, exact denominator, and partial-PV stages. It no
+longer publishes or replays a physical-slot plane and addresses BF16 values
+directly by logical token; explicit eviction still selects the registered
+metadata-aware fixed256 fallback. Complete ordinary/compensated leaves improve
+up to **11.337%/8.948%**. Mandatory 128K advances
+**9.716297 -> 9.838646 tok/s (+1.259%)** with the established recurrent hash
+and lifecycle, reaching **69.106%** of same-GGUF Vulkan's
 **14.237076 tok/s**. The route-inactive 512/1K/4K guard is exact and
-noise-positive at **23.208/23.071/21.693 tok/s**. Retained 16K/64K remain
+noise-flat at **23.204/23.064/21.687 tok/s**. Retained 16K/64K remain
 **19.481/12.848 tok/s**, or **89.658%/72.436%** of Vulkan. The ctx4096
 merge's repair mask remains diagnostic only; production does not launch
 scalar repair.
+[`dense value-identity production`](results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json),
 [`dense-prefix score production`](results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json),
 [`fixed256 token-loop4 production`](results/2026-08-02-gfx1151-laguna-long-global-tokenloop4-fixed256-retained.json),
 [`ctx4096 deferred-normalization production`](results/2026-08-02-gfx1151-laguna-long-global-ctx4096-deferrednorm-retained.json),
