@@ -2844,6 +2844,21 @@ rerank a materially different exact operation. Production remains H7H/H7I
 **431.310 tok/s / 1,172.241 ms**
 ([H7L physical rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json)).
 
+Reject out-of-tree **WPF-H7M exact IQ3 two-wave/two-K256-partition replay**.
+This is distinct from H5T's one-wave/four-partition collapse and H7L's tail
+split: two physical waves preserve H6T's four independent K256 trees and serial
+0..3 sum. Before timing, a frozen no-spill/minimum-VGPR rule selects LDS
+activation at **12,744 B / 2,171 slots / VGPR113 / LDS16,768** over register
+activation at **13,132 B / 2,172 / VGPR166 / LDS384**.
+
+All **45/45** actual IQ3 layers remain byte-exact, but every layer loses both
+clocks. Aggregate event regresses **246.763 -> 392.180 ms (+58.929%, 0.629x)**
+and wall regresses **261.551 -> 377.358 ms (+44.277%, 0.693x)**. Add no
+repository/RED/runtime/source surface, retain H6T and **431.310 tok/s**
+production, and do not retry one-/two-wave K-partition collapse without a new
+cross-tile reuse premise
+([H7M rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-two-wave-k-partition-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

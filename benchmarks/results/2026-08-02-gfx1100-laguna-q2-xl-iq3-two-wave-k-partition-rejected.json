@@ -1,0 +1,252 @@
+{
+  "authority_files": {
+    "README.md": "4386b887e04c7559bcd2e47e0de0afee0fa891b0feb854a99c7cd01ec5289466",
+    "WORKLOG.md": "279cf119b0617ae70936976c5c8d6f84e578672c998c1e89e427682d70cd42d3",
+    "benchmarks/CHANGELOG.md": "e5c44ae9d3bc16741fc66ce462da2a3a3fc6874c529422855db2fba2dad9560e",
+    "benchmarks/README.md": "2e84ae432962b6cc899d6c6cd839f9c5052e31af07d201e3d2e4ffb88914e1e9",
+    "docs/KERNELS.md": "fd50de832b81b029ab3472645fa937db803dc94189dba47d78c1840a79f4b1a4",
+    "docs/LAGUNA-prefill.md": "cdb0b2fdd90420555cb97c97b11b051f0ba2fc6990398545248cfd755b70f636",
+    "docs/PLAN.md": "6ac15b78faa748ffde9c6eccf9766d9b66c18ea55b4e6dd553bde674c05b6ad9"
+  },
+  "builder_sha256": "55ea5da38b3d95785a3c4344f5d06148d3566a8bc848fc06c55d1e3311dd4bb5",
+  "created_at": "2026-08-02T13:57:00+09:00",
+  "decision": {
+    "candidate_admitted": false,
+    "next_action": "Continue the clean residual rerank; do not retry one-/two-wave IQ3 K-partition collapse without new cross-tile reuse.",
+    "production_changed": false,
+    "red_added": false,
+    "rejection_reason": "all 45 actual layers regress both HIP-event and synchronized-wall clocks",
+    "repository_surface_added": false,
+    "runtime_or_source_changed": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_iq3_two_wave_k_partition_rejection",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "all 45 IQ3 actual weights and natural-M512 routing distributions, P64/P256, rowbatch8"
+  },
+  "operation": {
+    "candidate": "local64 two-wave/two-independent-K256-partitions-per-wave with serial logical partition0..3 sum",
+    "control": "H6T local128 four-wave/one-K256-partition-per-wave",
+    "distinct_from": [
+      "H5T one-wave/four-partition collapse",
+      "H7L full-batch/live-tail split"
+    ],
+    "id": "WPF-H7M",
+    "preserved": "IQ3 decode, ordered per-partition FMAs, permlanex16+DPP tree, final serial partition order, P64/P256 rowbatch8 ownership, tails, BF16 stores, ABI, workspace"
+  },
+  "physical": {
+    "candidates": {
+      "lds": {
+        "code_bytes": 12744,
+        "instruction_slots": 2171,
+        "isa": {
+          "barriers_static": 3,
+          "dpp_instructions": 192,
+          "ds_opcodes": {
+            "ds_load_b128": 40,
+            "ds_store_2addr_b32": 24,
+            "ds_store_b128": 16
+          },
+          "fma_issue_slots": 355,
+          "fma_operations": 432,
+          "global_load_instructions": 46,
+          "global_store_instructions": 24,
+          "permlanex16": 48,
+          "scratch_instructions": 0,
+          "vopd_slots": 160
+        },
+        "metadata": {
+          "lds_bytes": 16768,
+          "max_workgroup_size": 64,
+          "private_bytes": 0,
+          "sgpr": 91,
+          "sgpr_spills": 0,
+          "uses_dynamic_stack": false,
+          "vgpr": 113,
+          "vgpr_spills": 0,
+          "wavefront_size": 32
+        },
+        "name": "_ZN12_GLOBAL__N_1238gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_two_wave_two_partition_lds_activation_triple_output_rowbatch8_kernelILi256EEEvPKtPKlS4_S4_PKhPtiii"
+      },
+      "register": {
+        "code_bytes": 13132,
+        "instruction_slots": 2172,
+        "isa": {
+          "barriers_static": 2,
+          "dpp_instructions": 192,
+          "ds_opcodes": {
+            "ds_load_b128": 24,
+            "ds_store_2addr_b32": 24
+          },
+          "fma_issue_slots": 361,
+          "fma_operations": 432,
+          "global_load_instructions": 46,
+          "global_store_instructions": 24,
+          "permlanex16": 48,
+          "scratch_instructions": 0,
+          "vopd_slots": 196
+        },
+        "metadata": {
+          "lds_bytes": 384,
+          "max_workgroup_size": 64,
+          "private_bytes": 0,
+          "sgpr": 91,
+          "sgpr_spills": 0,
+          "uses_dynamic_stack": false,
+          "vgpr": 166,
+          "vgpr_spills": 0,
+          "wavefront_size": 32
+        },
+        "name": "_ZN12_GLOBAL__N_1243gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_two_wave_two_partition_register_activation_triple_output_rowbatch8_kernelILi256EEEvPKtPKlS4_S4_PKhPtiii"
+      }
+    },
+    "checks": {
+      "lds": {
+        "code_bytes_le_14000": true,
+        "dynamic_stack_false": true,
+        "four_barriers_or_fewer": true,
+        "instruction_slots_le_2400": true,
+        "max_workgroup_size_eq_64": true,
+        "metadata_lds_le_20480": true,
+        "metadata_vgpr_le_192": true,
+        "private_bytes_eq_0": true,
+        "scratch_instructions_eq_0": true,
+        "sgpr_spills_eq_0": true,
+        "vgpr_spills_eq_0": true,
+        "wavefront_size_eq_32": true
+      },
+      "register": {
+        "code_bytes_le_14000": true,
+        "dynamic_stack_false": true,
+        "four_barriers_or_fewer": true,
+        "instruction_slots_le_2400": true,
+        "max_workgroup_size_eq_64": true,
+        "metadata_lds_le_20480": true,
+        "metadata_vgpr_le_192": true,
+        "private_bytes_eq_0": true,
+        "scratch_instructions_eq_0": true,
+        "sgpr_spills_eq_0": true,
+        "vgpr_spills_eq_0": true,
+        "wavefront_size_eq_32": true
+      }
+    },
+    "selected": "lds",
+    "selection_rule": "among no-spill bounded candidates, minimize metadata VGPR, then LDS, then code bytes before any timing",
+    "timing_informed_selection": false
+  },
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json": "19f172ae20ded62e6bb4a7f71e20bb71fe307d5ea1e6e6fa51f6b0c69c3bb3a3"
+  },
+  "production": {
+    "dispatches": 2192,
+    "kernel_sum_ms": 1172.2412389999988,
+    "llamacpp_over_hipengine": 1.6016107591271218,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "production_changed": false,
+    "revision": "407f5c972",
+    "wall_tok_s": 431.31016450993457
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h7m_two_wave_physical.py": "49f9babce5f96723e9fff3a86bd9804f5af48f06ee70b5c595f0ccd3c7596cbc",
+    "/tmp/generate_laguna_h7m_two_wave_sources.py": "1541126b067166973ec48a2cc7beb9bf92a3bf342888f598c47086dd4b43a9eb",
+    "/tmp/laguna-h7m-rejection-hip.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-rejection-hip.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-rejection-hip.stdout": "25e8b4aeab2132ef660c7925876b0e1679b6816abdb261faa7937fde4236bf87",
+    "/tmp/laguna-h7m-rejection-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-rejection-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-rejection-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h7m-screen-compiler-monitor.json": "2c00884abe57f0c5941aa1eb4290eac87a4b060f374db1a3f44212577889dea1",
+    "/tmp/laguna-h7m-two-wave-build/h7m-lds.so": "f0771b92ff2eb7ceafe407328b51fd544b07d4af3df8b0b0d22a181111fb9799",
+    "/tmp/laguna-h7m-two-wave-build/h7m-lds.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-two-wave-build/h7m-lds.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-two-wave-build/h7m-lds.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-two-wave-build/h7m-register.so": "c29282c578de287ed1c3eecfb5aa12db66d2eb9065b6154a38a1a3cc64e4fb04",
+    "/tmp/laguna-h7m-two-wave-build/h7m-register.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-two-wave-build/h7m-register.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-two-wave-build/h7m-register.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-two-wave-generation.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-two-wave-generation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-two-wave-generation.stdout": "808a81d5c08989ce0c3f92ee49ddc98f1a12da89bdaa80906f2cf7d2a13aea02",
+    "/tmp/laguna-h7m-two-wave-physical.json": "d9b69a3128989e9284eea17885993d82b91b46f437c7019ea8f3c4f53f37db29",
+    "/tmp/laguna-h7m-two-wave-physical.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-two-wave-physical.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7m-two-wave-physical.stdout": "b8830a459411298a198084e79d3ec062517efe611feafabf4331a00a3854e435",
+    "/tmp/laguna-h7m-two-wave-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7m-two-wave-screen.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h7m-two-wave-screen.stdout": "c323575af13b6aca88e0d2cc7da07f308160df63dee8a66b925af5dd2f70d80c",
+    "/tmp/laguna-h7m-two-wave-sources/generation.json": "808a81d5c08989ce0c3f92ee49ddc98f1a12da89bdaa80906f2cf7d2a13aea02",
+    "/tmp/laguna-h7m-two-wave-sources/gguf_iq_selected_prefill_h7m_lds.hip": "410937cc2270dd15021764429cec5cac80f79035546c6c7dd626de3de5c42582",
+    "/tmp/laguna-h7m-two-wave-sources/gguf_iq_selected_prefill_h7m_register.hip": "b214d001f3de09b2b8818b7a8079495e01383aea62a8e5365ca0644d2e93a398",
+    "/tmp/laguna-wpfh7m-iq3-two-wave-actual-m512.json": "7c0569d949af6730973ee2d2ad5eb1011a4c91153c433f26cffcb9e85e6f814d",
+    "/tmp/laguna_wpfh7m_iq3_two_wave_actual_screen.py": "67815f2d4f3eaa4f9d50e3f82bf6250cb3449fe80e74d69c86708060c8e687e7",
+    "/tmp/monitor_h7m_screen_compiler_execs.py": "a4640f0cebe98da232620b47cea0f3542e50b91b9b460a1d38797e1b0742fa5a"
+  },
+  "repo": {
+    "base_revision": "8d48519ff0a4a6a27acdb70debcabe26dc9489ab",
+    "h7m_names_absent": [
+      "two_wave_two_partition",
+      "h7m_iq3_dot_publish"
+    ],
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe"
+    }
+  },
+  "schema": 1,
+  "screen": {
+    "aggregate": {
+      "all_layers_both_clock_positive": false,
+      "both_clock_positive_layers": 0,
+      "candidate_event_sum_ms": 392.1797622680664,
+      "candidate_wall_sum_ms": 377.3584635928273,
+      "event_percent_change": 58.92942302745807,
+      "event_speedup": 0.629210111602325,
+      "h6t_event_sum_ms": 246.76347198486332,
+      "h6t_wall_sum_ms": 261.55139645561576,
+      "layers": 45,
+      "wall_percent_change": 44.276982920587685,
+      "wall_speedup": 0.6931112501502861
+    },
+    "all_byte_exact": true,
+    "both_clock_positive_layers": 0,
+    "compiler_baseline": 0,
+    "compiler_new": 0,
+    "event_positive_layers": 0,
+    "event_speedup_min_median_max": [
+      0.6210800897069643,
+      0.6285734353740435,
+      0.6427152417617977
+    ],
+    "protocol": {
+      "clocks": [
+        "hip_event",
+        "synchronized_wall"
+      ],
+      "launches_per_sample": 5,
+      "layers": 45,
+      "order": "counter_rotated",
+      "repetitions": 15,
+      "warmups": 5
+    },
+    "tracked_returned_to_baseline": true,
+    "wall_positive_layers": 0,
+    "wall_speedup_min_median_max": [
+      0.6839034445264665,
+      0.6932813343499261,
+      0.7050532537910205
+    ]
+  },
+  "status": "rejected_all_45_layers_both_clocks",
+  "validator_sha256": "7f92b1c3def20063186c114bfab06e4830043b535b10890456bd2263be765694"
+}

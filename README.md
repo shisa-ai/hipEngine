@@ -810,6 +810,16 @@ every H7L body/export/wrapper/key/RED/gfx1151 surface is removed. Production
 remains H7H/H7I **431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP
 ([H7L physical rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-live-tail-physical-rejected.json)).
 
+**WPF-H7M exact two-wave/two-K256-partition IQ3 is rejected.** Physical-only
+preselection chooses a no-spill LDS-activation form at **12,744 B / 2,171 slots
+/ VGPR113 / LDS16,768** over the no-spill VGPR166 register form before timing.
+The selected local64 body remains byte-exact on all **45/45** actual IQ3 layers,
+but loses every layer on both clocks: H6T -> H7M aggregate event is **246.763 ->
+392.180 ms (+58.929%, 0.629x)** and wall is **261.551 -> 377.358 ms (+44.277%,
+0.693x)**. No repository/runtime/source surface is added and production stays
+**431.310 tok/s**
+([H7M rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-two-wave-k-partition-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
