@@ -550,6 +550,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_dim_tile = 32
     active_global_split_gqa6_ctx4096_deferrednorm = False
+    active_global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value = False
     active_global_split_gqa6_ctx4096_tokenloop4 = False
     active_global_split_gqa6_ctx4096_min_live = 6_001
     active_global_split_gqa6_ctx4096_min_layer: int | None = None
@@ -810,6 +811,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_ctx4096_deferrednorm = (
             owner.kv_cache.global_split_gqa6_ctx4096_deferrednorm
+        )
+        active_global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value = (
+            owner.kv_cache.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value
         )
         active_global_split_gqa6_ctx4096_tokenloop4 = (
             owner.kv_cache.global_split_gqa6_ctx4096_tokenloop4
@@ -1379,6 +1383,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "global_split_gqa6_ctx4096_deferrednorm": (
                 active_global_split_gqa6_ctx4096_deferrednorm
             ),
+            "global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value": (
+                active_global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value
+            ),
             "global_split_gqa6_ctx4096_tokenloop4": (
                 active_global_split_gqa6_ctx4096_tokenloop4
             ),
@@ -1508,7 +1515,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "compensated owner at global layer 28 and the ordinary split "
                 "at layers "
                 "32/36/40/44, with byte-identical D64 PV geometry for all "
-                "five admitted layers.",
+                "five admitted layers and non-temporal aligned K/V streaming "
+                "while dense-initial identity remains valid.",
             ]
         ),
     }

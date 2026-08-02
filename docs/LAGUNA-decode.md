@@ -10325,6 +10325,47 @@ The remaining attention sequence is:
      dense-initial owner:
      [`cndmask rejection`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-prefetch16-cndmask-rejected.json).
 
+239. Stream aligned K/V non-temporally in the five deep ctx4096 owners.
+     **Retained and production-default; LC-D3 twenty-first checkpoint.**
+
+     The exact V80 owner already bypasses cache, but the quality-scoped D64/V64
+     context-split route still used temporal K/V at 128K. Those lines are
+     streamed once and are not reused after the score and split-PV launches,
+     so the new siblings change only load cache policy. Score arithmetic,
+     exact denominator, ordinary or Kahan partial association, chronological
+     merge, gate, BF16 rounding, full `KVLiveSpans`, and metadata-aware
+     fallback are unchanged.
+
+     | Live slots | Ordinary cached | Ordinary NT K+V | Delta | Compensated cached | Compensated NT K+V | Delta |
+     | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 4,097 | **0.275333 ms** | 0.283272 ms | +2.883% | **0.298733 ms** | 0.306319 ms | +2.539% |
+     | 16,448 | 0.487507 ms | **0.482826 ms** | -0.960% | 0.525061 ms | **0.521006 ms** | -0.772% |
+     | 65,664 | 1.961376 ms | **1.832875 ms** | -6.552% | 2.060234 ms | **1.955738 ms** | -5.072% |
+     | 131,200 | 3.718874 ms | **3.404027 ms** | **-8.466%** | 3.877387 ms | **3.639854 ms** | **-6.126%** |
+
+     F32 context and gated BF16 outputs are byte-exact at every shape. The
+     short-shape regression is outside production because ctx4096 remains
+     gated to live >=98,304. Cached tracing proves both candidate owners ran:
+     score `<true,true>` is local32/VGPR40/SGPR128/LDS0/scratch0 and PV
+     `<false,64,true,true>` is local512/VGPR32/SGPR128/LDS19,456/scratch0.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.213823 | 23.186925 tok/s | -0.116% (inactive/noise) | 23.386100 | 99.148% |
+     | 1K | 23.057078 | 23.061912 tok/s | +0.021% (inactive) | 23.366122 | 98.698% |
+     | 4K | 21.683758 | 21.680655 tok/s | -0.014% (inactive) | 23.037017 | 94.113% |
+     | 16K | 20.041884 | 20.041884 tok/s | unchanged dispatch | 21.728347 | 92.238% |
+     | 64K | 14.237877 | 14.237877 tok/s | unchanged dispatch | 17.737473 | 80.270% |
+     | 128K | 10.726607 | **10.839382 tok/s** | **+1.051%** | 14.237076 | **76.135%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **11.839717 -> 11.716535 s (-1.040%)**, preserves
+     **874 / c8307c... / position 131,198**, explicitly reports the new
+     capability active, and recovers all **87,407,934,744 bytes / 1,452
+     allocations**. Explicit eviction disables dense identity and therefore
+     retains the temporal metadata-aware owner:
+     [`ctx4096 non-temporal K+V production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10342,7 +10383,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twenty milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty-one milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10415,9 +10456,12 @@ allocation teardown remain mandatory at every retained step.
    **0.253%/0.478%/0.500%**, reaching
    **92.238%/80.270%/75.343%** Vulkan parity. Prefetch16 consumes VGPR56
    without scratch, but the diminishing production return closes blind
-   prefetch-depth doubling. Next replace the remaining
-   score/denominator/PV ownership structurally or increase value-stream
-   concurrency; merge and dormant
+   prefetch-depth doubling. Applying non-temporal K/V to the remaining five
+   quality-scoped ctx4096 owners then cuts ordinary/compensated 128K leaves
+   **8.466%/6.126%** and improves complete 128K another **1.051%**, reaching
+   **76.135%** Vulkan parity while 64K and below retain their prior routes.
+   Next replace the remaining score/denominator/PV ownership structurally or
+   increase value-stream concurrency; merge and dormant
    scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.

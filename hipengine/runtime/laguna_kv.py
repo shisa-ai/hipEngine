@@ -338,6 +338,14 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value = bool(
+            self.global_split_gqa6_ctx4096_dense_prefix_score
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE",
+                False,
+            )
+        )
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -895,6 +903,7 @@ class LagunaKVCache:
                         f"{'_deferrednorm' if self.global_split_gqa6_ctx4096_deferrednorm else ''}"
                         "_compensated"
                         f"{'_dense_prefix' if self.global_split_gqa6_ctx4096_dense_prefix_score and self._dense_initial_metadata_valid else ''}"
+                        f"{'_nontemporal_key_value' if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value and self._dense_initial_metadata_valid else ''}"
                         "_spans"
                     )
                     if (
@@ -915,7 +924,9 @@ class LagunaKVCache:
                         f"dim{self.global_split_gqa6_ctx4096_dim_tile}_"
                         f"vstage64_ctx4096{'_tokenloop4' if self.global_split_gqa6_ctx4096_tokenloop4 else ''}"
                         f"{'_deferrednorm' if self.global_split_gqa6_ctx4096_deferrednorm else ''}"
-                        f"{'_dense_prefix' if self.global_split_gqa6_ctx4096_dense_prefix_score and self._dense_initial_metadata_valid else ''}_spans"
+                        f"{'_dense_prefix' if self.global_split_gqa6_ctx4096_dense_prefix_score and self._dense_initial_metadata_valid else ''}"
+                        f"{'_nontemporal_key_value' if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value and self._dense_initial_metadata_valid else ''}"
+                        "_spans"
                     )
                     if (
                         use_gated

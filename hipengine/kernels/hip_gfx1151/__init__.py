@@ -418,6 +418,10 @@ LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM = True
 # long-context token-loop owner bypass those metadata streams while retaining
 # the full KVLiveSpans ABI and the generic fallback after any explicit eviction.
 LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE = True
+# The deep ctx4096 route streams each K/V line once. Bypass the cache only for
+# that dense-prefix owner; the formal 128K leaf wins 8.47% ordinary and 6.13%
+# compensated without changing F32 or BF16 output bits.
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
 # The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
 # removes the score plane/launch while preserving reduction association.
 LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
@@ -1030,6 +1034,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
