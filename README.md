@@ -753,6 +753,21 @@ subset after timing is forbidden. Production therefore remains H7H/H7I at
 **431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP
 ([H7J rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json)).
 
+The post-H7J rerank selects target-only **WPF-H7K exact late-start SWA
+score-to-weight publication**. H6W's starts256/384 score-replay owner accounts
+for **72 calls / 62.627 ms**, or **54.309%** of current attention. H7K keeps
+H6W's first-pass unscaled dots/maxima, fused `dot*scale-max`, token-order
+denominator, token-order unnormalized PV, and final divide exactly; it only
+publishes four weights per aligned record between denominator and PV passes.
+The operation removes **255,135,744** dynamic lane-0 weight broadcasts while
+adding **128,065,536** aligned record operations (**2.049 GB** logical record
+traffic; rationale only, not a speed claim). Starts256/384 are inseparable, and
+the first object must pass complete-byte/CPU, physical-resource, named-trace,
+and both-clock per-start plus weighted gates with no salvage. Production stays
+H7H/H7I **431.310 tok/s**, **1.60161x** behind matched llama.cpp HIP; no H7K
+repository surface or performance result exists before RED
+([post-H7J residual / H7K target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7j-matched-swa-weight-publication-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
