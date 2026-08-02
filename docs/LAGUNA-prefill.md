@@ -1789,6 +1789,38 @@ rewrite, recompile, or rerun salvage
 ([H7X rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+Post-H7X production is byte-identical to the fresh post-H7W boundary:
+**437.189 tok/s / 1,153.347-ms kernel sum / 2,286 dispatches**, **1.58007x**
+behind matched llama.cpp HIP. Q5/IQ-down/attention/Q6 remain
+**235.987/273.063/115.607/74.719 ms** versus
+**58.314/153.860/21.512/14.668 ms**; gate/up is at parity and remaining is
+ahead.
+
+Select target-only **WPF-H7Y exact H6W lane-major BF16 K/V mirror loads**.
+H6W's 72 starts256/384 calls own **62.656 ms**. Their natural head layout is
+`[part4][lane32]` for the exact wave reduction, so each K and V pass uses four
+`u16` loads and four staged waits to collect dimensions `lane + 32*part`.
+H7Y consumes caller-provided `[lane32][part4]` mirrors with exact mapping
+`mirror[base + lane*4 + part] = natural[base + part*32 + lane]`; one aligned
+b64 per pass recovers the same four BF16 bits before every unchanged H6W
+operation.
+
+The complete route models **512,262,144→128,065,536 (-75%)** global-load issue
+slots and the same **384,196,608-slot** wait reduction at unchanged
+**32,784,777,216-byte** logical K/V payload. Freeze RED first. Require the sole
+object at exactly **2 b64 / 0 u16 / ≤2 waits**, unchanged record/reduction/math/
+store opcodes, local32/wave32/VGPR≤56/spill0; complete transpose/H6W/CPU/record/
+span/poison/repeat/lifecycle bytes; and one inseparable all-72 starts256/384 plus
+aggregate dual-clock 5/15/5 screen. Any miss removes H7Y without subset,
+packing-width retune, rewrite, recompile, or rerun.
+
+Standalone mirrors are caller-owned and production remains unchanged. Only an
+admitted leaf may enter the separate writer-inclusive runtime gate: exact
+**72 MiB** SWA K/V mirrors, one fused natural+mirror writer, retained natural
+H6A/H6W rollback, and unchanged **144 writer calls / 2,286 dispatches**. No H7Y
+code, build, execution, or speed result exists
+([H7Y target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

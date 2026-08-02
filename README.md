@@ -1077,6 +1077,28 @@ retain H6W plus production **437.189 tok/s**
 ([H7X physical rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+The clean post-H7X rerank keeps the component table above unchanged and selects
+target-only **WPF-H7Y exact H6W lane-major BF16 K/V mirror loads**. H6W's
+natural cache presents each wave as `[part4][lane32]`, forcing **8 static
+`global_load_u16` + 8 staged `vmcnt` waits** across its K and V passes. A
+separately named H7Y leaf consumes caller-provided `[lane32][part4]` mirrors,
+so every lane reads its same four BF16 values with one aligned `b64` per pass
+before the unchanged QK/score-replay/PV arithmetic.
+
+Across the exact 72-call starts256/384 route, the operation model changes
+**512,262,144 → 128,065,536 global-load issue slots (-75%)** and removes the
+same **384,196,608 wait-issue slots**, while the **32,784,777,216-byte** K/V
+payload is unchanged. This is selection arithmetic, not speed evidence. Freeze
+RED first, then require one object with exactly **2 b64 / 0 u16 / ≤2 waits**,
+unchanged H6W opcodes/resources, complete transpose/H6W/CPU/record/span bytes,
+and one inseparable all-72 per-start+aggregate dual-clock 5/15/5 screen.
+Standalone mirrors are caller-owned. Only after leaf admission may a separate
+runtime gate add an exact **72 MiB** K/V mirror plus one fused natural+mirror
+writer at unchanged **144 writer calls / 2,286 request dispatches**; H6A/H6W
+natural-cache rollback remains mandatory. No H7Y implementation, build,
+execution, or speed result exists
+([post-H7X / H7Y target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
