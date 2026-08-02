@@ -1903,6 +1903,25 @@ or live-map change exists. Freeze RED first with strict M512/full-group
 preflight and complete H7C fallback; runtime/source remain separate
 ([post-H7H residual / H7I target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7h-matched-raw-q6-full-group-target.json)).
 
+Standalone **WPF-H7I is admitted** as two separately registered gfx1100-only
+raw-Q6 wrappers/exports in `quant/gguf_k_gemv.{hip,py}`. The BF16 wrapper owns
+both K12288 and K9216/N3072 roles; the F32 wrapper owns K3072/N9216. Both require
+rows exactly 512 and threads128 before HIP loading. H7C remains the complete
+fallback and live package map, no H7I capability/source owner exists, and
+gfx1151 explicitly excludes both keys.
+
+RED-first correctness passes **22/22** across exact M512 candidate equality and
+rows1/7/8/9 H7C/CPU/poison/finite/lifecycle fallback. The first repository code
+object reproduces selected BF16/F32 code/slots **4,060/623** and **4,032/631**,
+row comparisons **2/2**, dual/scalar FMAC **10/14 and 11/16**, metadata VGPR
+**69/64**, SGPR **44/54**, LDS512, and private/spill/scratch0 while leaving H7C
+physical fields unchanged. The non-adjudicative actual-weight replay remains
+byte-exact and improves weighted event/wall **35.432/34.617 -> 20.089/21.762
+ms (-43.302%/-37.135%)**. Cache-only rocprof records exact **2 BF16 + 1 F32**
+H7I names at local128, runtime VGPR72/64, LDS512, scratch0, and zero compiler.
+Admit only the leaf; runtime/source remain separate
+([H7I candidate](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-candidate.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

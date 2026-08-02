@@ -507,6 +507,20 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q6_k",
             "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
         ),
+        # WPF-H7I removes H7C's inner live-row predicate only for exactly-full
+        # W7900 natural-M512 role groups; gfx1151 remains unscreened.
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_full_group_compute_"
+            "coltile4_rowbatch8_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_full_group_compute_"
+            "coltile2_rowbatch16_bf16_f32_out",
+        ),
         # WPF-H5U and H6A local256 cached-only global leaves are W7900-only
         # pending independent gfx1151 resource/performance gates.
         (
