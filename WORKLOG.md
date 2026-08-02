@@ -198384,3 +198384,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused GPU differential, selector/fallback, and gfx1151 capability tests
   pass **3/3**. Canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json`.
+
+## 2026-08-03 04:01 JST — Reject exact tokenloop128 producer-max
+
+- Audited the external long-attention review against the retained V128
+  checkpoint. The current 128K gap is about **19.904 ms/token**, not the stale
+  55 ms figure; production already admits compensated layer 28 plus ordinary
+  layers 32/36/40/44, while compensated layer 24 previously failed at
+  **0.235600 max KL**. The repair mask is diagnostic and does not launch a
+  scalar replay in production.
+- Tested the review's remaining bounded exact proposal: widen the dense score
+  owner from tokenloop4 to tokenloop128, reduce six per-owner maxima, publish
+  them with per-head atomics after a reset, and let the denominator skip its
+  max traversal. RED first failed import on the absent diagnostic wrapper;
+  GREEN passed the large-capacity F32/BF16 byte-exact fixture with zero repair
+  false negatives.
+- The user-authorized one-pass architectural screen at live
+  4,097/16,448/65,664/131,200 changes the complete V128 leaf
+  **0.164539/0.571833/2.209106/4.302394 ->
+  0.241854/0.635232/2.438897/4.644117 ms
+  (+46.989%/+11.087%/+10.402%/+7.943%)**. It fails every natural-depth gate:
+  the saved portion of the retained **0.518 ms/layer** denominator cannot pay
+  for reset/atomic overhead and the 32x loss of score-grid parallelism.
+- Removed the HIP export/template generalization, reset/atomic kernels, Python
+  wrapper/registry, harness route, and test call. All four code/test files are
+  byte-identical to `cbb59e52c`; production was never changed and no expensive
+  production timing is warranted. Evidence:
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-tokenloop128-producermax-rejected.json`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  before this screen because `/home/lhl/amd-gpu-tuning/reference/atlas` is
+  missing; no external source was ported.

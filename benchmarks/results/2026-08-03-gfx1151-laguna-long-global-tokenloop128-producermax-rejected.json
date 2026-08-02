@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_global_attention_leaf_rejection",
+  "status": "rejected_and_removed",
+  "timestamp": "2026-08-03T03:57:00+09:00",
+  "source_revision": "cbb59e52c6dffab49c84a92ea445af6b90424257",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "Poolside Laguna S 2.1",
+  "quant": "Q4_K_M",
+  "kv_dtype": "BF16",
+  "experiment": {
+    "control": "exact dense tokenloop4 score + parallel max/exp denominator + D32/V128 prefetch16 non-temporal K/V PV",
+    "candidate": "exact dense tokenloop128 score with per-head atomic-max publication + max-scan-free denominator + unchanged D32/V128 prefetch16 non-temporal K/V PV",
+    "intent": "Remove the denominator score-plane max traversal without changing QK, exp, denominator-sum, PV, gate, or BF16 association."
+  },
+  "protocol": {
+    "warmups": 1,
+    "samples": 1,
+    "burst": 1,
+    "capacity": 131328,
+    "live_counts": [4097, 16448, 65664, 131200],
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-tokenloop128-producermax-deferrednorm-dim32-vstage128-prefetch16-dense-prefix-nontemporal-key-value --capacity 131328 --live-counts 4097,16448,65664,131200 --warmups 1 --samples 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty --output /tmp/laguna-tokenloop128-producermax-prebuild.json",
+    "note": "A one-pass directional screen is sufficient because the architectural candidate regressed all four depths by 7.9-47.0%; the user explicitly authorized one-run rough passes for large long-context changes."
+  },
+  "correctness": {
+    "fixture": "tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact",
+    "fixture_result": "passed",
+    "context_f32_byte_exact_all_shapes": true,
+    "gated_bf16_byte_exact_all_shapes": true,
+    "repair_false_negative_outputs": 0
+  },
+  "rows": [
+    {
+      "live_count": 4097,
+      "control_ms": 0.16453899443149567,
+      "candidate_ms": 0.2418539971113205,
+      "latency_change_percent": 46.9888630029365
+    },
+    {
+      "live_count": 16448,
+      "control_ms": 0.5718330144882202,
+      "candidate_ms": 0.6352319717407227,
+      "latency_change_percent": 11.086970434759413
+    },
+    {
+      "live_count": 65664,
+      "control_ms": 2.209105968475342,
+      "candidate_ms": 2.438896894454956,
+      "latency_change_percent": 10.40198746727432
+    },
+    {
+      "live_count": 131200,
+      "control_ms": 4.302393913269043,
+      "candidate_ms": 4.6441168785095215,
+      "latency_change_percent": 7.94262385381701
+    }
+  ],
+  "decision": {
+    "gate": "Positive latency result at every natural depth before production timing.",
+    "result": "failed_all_shapes",
+    "reason": "The max traversal removed from the 0.518 ms complete denominator does not repay the reset launch, atomic publication, and severe loss of QK score parallelism from tokenloop4 to tokenloop128.",
+    "production_timing": "not_run",
+    "production_changed": false,
+    "candidate_surface": "removed"
+  },
+  "raw_output_sha256": "06b9e1c5482b6aa1412b28125a76fdc22f91c447b247060a5e65454ea539fbc2"
+}
