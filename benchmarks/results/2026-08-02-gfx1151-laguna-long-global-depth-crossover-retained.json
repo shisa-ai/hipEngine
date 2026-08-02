@@ -48,6 +48,20 @@
     "peak_allocations": 1452,
     "focused_tests_passed": 24
   },
+  "clean_confirmation": {
+    "revision": "e17762e212633a0247f6f8636b5fd015b80ef20d",
+    "tracked_clean": true,
+    "depth": 16384,
+    "decode_tok_s": 18.945635,
+    "delta_vs_prior_production_percent": 0.078447,
+    "delta_vs_dirty_directional_percent": -0.107034,
+    "final_token": 13815,
+    "generated_ids_sha256": "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+    "final_position": 16510,
+    "tracked_total_allocated_and_freed_bytes": 87407934744,
+    "peak_allocations": 1452,
+    "raw_sha256": "f1eed886f0250c2f3bb3a7f14abbb9b7e1621f03098cf8359e13b2b445a2d0fb"
+  },
   "commands": {
     "directional": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/laguna-all-exact-post-prefetch4-directional.json",
     "mandatory_128k": "same command with --lengths 131072 and --output /tmp/laguna-hybrid-exact-ctx98304-128k-gate.json",
@@ -57,6 +71,7 @@
     "directional": "7a6cace5e8296562c73d080bd80de0a5d9b4e52ebd1832b27beabf921f9f9b78",
     "all_exact_128k_rejection": "73f97c2547ebbe4748477ef39c0c69d0b27b14d651ba269cfa60bec40ca4935a",
     "hybrid_128k": "db7e433219af22d6200109f4b8a70bceb27eee7872ce9fa8c1c938b1b1001de8",
-    "short_guard": "a94247157fcdb48db391652cb696074433b5db35444c19244b7123c88e4d7bc6"
+    "short_guard": "a94247157fcdb48db391652cb696074433b5db35444c19244b7123c88e4d7bc6",
+    "clean_16k": "f1eed886f0250c2f3bb3a7f14abbb9b7e1621f03098cf8359e13b2b445a2d0fb"
   }
 }

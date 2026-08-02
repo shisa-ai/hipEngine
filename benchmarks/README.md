@@ -226,6 +226,9 @@ the same run-level variance that also moved the immediately preceding
 all-exact control. The explicit 512/1K/4K guard is
 **23.205876/23.067535/21.684921 tok/s**, with established hashes and no short
 regression. [`depth-crossover production`](results/2026-08-02-gfx1151-laguna-long-global-depth-crossover-retained.json).
+Tracked-clean d16K confirms **18.945635 tok/s**, **+0.078%** over the prior
+production anchor and within **-0.107%** of the directional row, with exact
+state and teardown.
 
 The latest gfx1151 default marks one-pass source-F16 projection weights
 non-temporal. All four natural leaves improve **3.015-3.509%**, and all seven
