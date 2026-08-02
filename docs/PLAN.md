@@ -3171,6 +3171,38 @@ H6W plus **437.189 tok/s / 1,153.347 ms / 2,286 dispatches**
 ([H7X rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+Select target-only **WPF-H7Y exact H6W lane-major BF16 K/V mirror loads** from
+the byte-identical post-H7X production boundary. Retain **437.189 tok/s /
+1,153.347 ms / 2,286 dispatches** and the matched **690.791 tok/s / 714.008
+ms** comparator. H6W owns **72 calls / 62.656 ms** and currently reads each
+head as `[part4][lane32]`, issuing four `u16` loads plus four staged waits in
+each K or V pass so each lane receives dimensions `lane + 32*part`.
+
+H7Y changes only caller-provided cache layout to `[lane32][part4]`, mapping
+`mirror[base + lane*4 + part] = natural[base + part*32 + lane]`. Each lane's
+same four BF16 values form one aligned 8-byte record, enabling one required b64
+load per pass before the unchanged H6W QK/score/max/exp/denominator/PV/divide
+order. Across the complete route, load-issue slots model
+**512,262,144→128,065,536 (-75%)**, removing **384,196,608** load and
+**384,196,608** wait issue slots at unchanged **32,784,777,216-byte** K/V
+payload. This is target arithmetic, not speed evidence.
+
+Freeze RED and the sole-object physical contract before implementation:
+exactly **2 b64 / 0 u16 / ≤2 vmcnt waits**, unchanged b128 record, bpermute,
+exp/FMA/FMAC/store counts, local32/wave32, code≤5,200 B, slots≤900,
+metadata/runtime VGPR≤56/56, SGPR≤48, and LDS/private/spill/scratch0. Require
+complete transpose round-trip plus starts256/384 H6W/CPU/output/record/span/
+poison/repeat/lifecycle identity, then one immutable all-72 actual-state 5/15/5
+screen where both starts and aggregate win event and wall. Forbid subset,
+packing-width retune, rewrite, recompile, or favorable rerun salvage.
+
+Keep runtime/source separate. Standalone mirrors are caller-owned; only an
+admitted leaf may allocate exact **72 MiB** SWA K/V mirrors and add a fused
+natural+mirror writer under a writer-inclusive bounded gate. Preserve natural
+H6A/H6W fallback and exact **144 writer calls / 2,286 request dispatches**.
+No candidate has been built or executed and no H7Y speed result exists
+([H7Y target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

@@ -2362,6 +2362,49 @@ prefetch distance, salvage any subset, or favorably rerun
 ([H7X rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+Select target-only **WPF-H7Y exact H6W lane-major BF16 K/V mirror loads** in
+`attention/laguna_kv_attention.hip`. Production remains **437.189 tok/s /
+1,153.347 ms / 2,286 dispatches**, **1.58007x** behind matched llama.cpp HIP.
+H6W remains **72 calls / 62.656 ms**. Its natural head bytes are logically
+`[part4][lane32]` for this wave-owned reduction: every K or V pass emits four
+coalesced `global_load_u16` sites and four staged `vmcnt` waits so lane *l*
+receives dimensions `l + 32p`.
+
+H7Y may add only one separately named gfx1100 H6W-equivalent leaf consuming
+caller-provided `[lane32][part4]` mirrors. The exact mapping is
+`mirror[base + lane*4 + part] = natural[base + part*32 + lane]`; each 8-byte
+lane record is naturally aligned. One `uint2`/`global_load_b64` must recover
+the same four BF16 bits in pass one and independently in pass two, before the
+unchanged ordered QK reduction, unscaled score record, max, fused scale-minus-
+max, exp/denominator, lane-0 broadcast, token-order PV, divide, and stores.
+No GQA-head sharing, key split, changed association, or H7X prefetch scheduling
+is reopened.
+
+Across starts256/384, 32 qrow4 groups, 72 heads, and 36 SWA layers, each pass
+executes **64,032,768** logical wave slots. H6W's eight K+V load sites model
+**512,262,144** dynamic load-issue slots; H7Y's required two b64 sites model
+**128,065,536**, removing **384,196,608 (-75%)** plus the same number of wait-
+issue slots. The **32,784,777,216-byte** logical attention payload is unchanged.
+This is an operation model only, not physical traffic or speed evidence.
+
+Freeze RED before code. The sole first object must contain exactly **2
+`global_load_b64`, 0 `global_load_u16`, ≤2 vmcnt waits**, unchanged one b128
+score-record load/store, 32 bpermutes, four exp, 56 FMA, 41 FMAC, 16 output
+stores, barrier0, and local32/wave32/code≤5,200 B/slots≤900/VGPR≤56/SGPR≤48/
+LDS-private-spill-scratch0. Prove the 128-element transpose round-trip,
+starts256/384 complete H6W+CPU output, records, poison/repeat/finiteness,
+immutable `KVLiveSpans`, and lifecycle. Then consume one all-72 actual-state
+5/15/5 screen with mirrors prepared outside timing; each start and aggregate
+must win event and wall. Any miss removes H7Y without subset, packing-width
+retune, rewrite, recompile, or favorable rerun.
+
+Runtime/source qualification is separate. Only an admitted leaf may add exact
+**72 MiB** SWA K/V mirrors and a separately named fused natural+mirror writer;
+the bounded gate must retain natural H6A/H6W fallback, unchanged **144 writer
+calls / 2,286 dispatches**, and include writer cost. No H7Y code/build/execution
+or speed claim exists
+([H7Y target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
