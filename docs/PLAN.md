@@ -3152,6 +3152,25 @@ length subset, prefetch-distance retune, rewrite, recompile, or favorable rerun.
 No candidate has been built or executed and no speed result exists
 ([H7X target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
 
+Reject **WPF-H7X** at the sole first-object physical-overlap gate before any
+candidate execution. H7X passes all resource/opcode ceilings at **5,320 B / 931
+slots / metadata VGPR54 / SGPR44 / LDS0 / private0 / spill0**, while H6W stays
+exactly **4,984 B / 871 / VGPR54 / SGPR40**. The candidate adds the expected
+second static K and V four-u16 clauses while preserving 32 bpermutes, one b128
+record load+store, four exp, 56 FMA, 41 FMAC, 16 output stores, and no barrier/
+scratch.
+
+The binding overlap requirement fails twice: in both steady next-slot clauses,
+the final `global_load_u16` is immediately followed by `s_waitcnt vmcnt(3)` and
+the remaining `vmcnt(2→0)` drains, with **zero current-slot instructions**
+before the first wait. Therefore no next-K/current-QK or next-V/current-PV
+overlap survived codegen. Consume no correctness/GREEN, trace, timing, runtime,
+or source gate. Remove every H7X body/export/wrapper/key/gfx1151-exclusion and
+RED, forbid subset/distance-retune/rewrite/recompile/rerun salvage, and retain
+H6W plus **437.189 tok/s / 1,153.347 ms / 2,286 dispatches**
+([H7X rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-kv-prefetch-physical-rejected.json) ·
+[target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7w-swa-kv-prefetch-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
