@@ -2252,7 +2252,7 @@ void laguna_global_attention_split_exact_exp32_denominator_kernel(
 // is streamed by exactly one block and reused by all six query heads. The six
 // output waves preserve every dimension's chronological scalar-F32 FMA chain;
 // idle waves prefetch the next probability/V tile into ping-pong LDS.
-template <int kValueStage>
+template <int kValueStage, bool kDensePrefix = false>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
     const uint16_t* value_cache,
@@ -2319,19 +2319,28 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
        vector_idx += static_cast<int>(blockDim.x)) {
     const int stage_token = vector_idx / kVectorsPerSlot;
     const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
-    const int physical_slot = physical_scratch[stage_token];
-    if (physical_slot >= 0) {
+    if constexpr (kDensePrefix) {
       const int64_t value_offset =
-          (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+          (static_cast<int64_t>(stage_token) * kNumKvHeads + kv_head) *
               kHeadDim +
           dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
       first_stage_vectors[vector_idx] =
           *reinterpret_cast<const uint4*>(value_cache + value_offset);
     } else {
-      auto* shared_words =
-          reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
+      const int physical_slot = physical_scratch[stage_token];
+      if (physical_slot >= 0) {
+        const int64_t value_offset =
+            (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+                kHeadDim +
+            dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
+        first_stage_vectors[vector_idx] =
+            *reinterpret_cast<const uint4*>(value_cache + value_offset);
+      } else {
+        auto* shared_words =
+            reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
 #pragma unroll
-      for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+        for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+      }
     }
   }
   __syncthreads();
@@ -2377,19 +2386,27 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
         const int stage_token = vector_idx / kVectorsPerSlot;
         const int vector_in_slot = vector_idx - stage_token * kVectorsPerSlot;
         const int64_t token = next_stage_base + stage_token;
-        const int physical_slot = physical_scratch[token];
-        if (physical_slot >= 0) {
+        if constexpr (kDensePrefix) {
           const int64_t value_offset =
-              (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
-                  kHeadDim +
+              (token * kNumKvHeads + kv_head) * kHeadDim +
               dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
           next_stage_vectors[vector_idx] =
               *reinterpret_cast<const uint4*>(value_cache + value_offset);
         } else {
-          auto* shared_words =
-              reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
+          const int physical_slot = physical_scratch[token];
+          if (physical_slot >= 0) {
+            const int64_t value_offset =
+                (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
+                    kHeadDim +
+                dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
+            next_stage_vectors[vector_idx] =
+                *reinterpret_cast<const uint4*>(value_cache + value_offset);
+          } else {
+            auto* shared_words =
+                reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
 #pragma unroll
-          for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+            for (int word = 0; word < 4; ++word) shared_words[word] = 0;
+          }
         }
       }
     }
@@ -9659,8 +9676,8 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int
-hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans(
+template <bool kDensePrefix>
+int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl(
     const float* query,
     const uint16_t* key_cache,
     const uint16_t* value_cache,
@@ -9696,7 +9713,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   float* inverse_sums =
       reinterpret_cast<float*>(physical_scratch + capacity);
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<false>),
+      (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<kDensePrefix>),
       dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
       dim3(32),
       0,
@@ -9718,7 +9735,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   int error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_exact_exp32_denominator_kernel<false>),
+      (laguna_global_attention_split_exact_exp32_denominator_kernel<kDensePrefix>),
       dim3(48),
       dim3(256),
       0,
@@ -9734,7 +9751,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80>,
+      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80, kDensePrefix>),
       dim3(32),
       dim3(512),
       0,
@@ -9753,6 +9770,49 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
       scan_slots);
   return static_cast<int>(hipGetLastError());
 }
+
+#define HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(NAME, DENSE_PREFIX)     \
+  extern "C" int NAME(                                                       \
+      const float* query,                                                     \
+      const uint16_t* key_cache,                                              \
+      const uint16_t* value_cache,                                            \
+      float* out,                                                             \
+      const float* gate,                                                      \
+      uint16_t* gated_out,                                                    \
+      float* score_scratch,                                                   \
+      int32_t* physical_scratch,                                              \
+      const int32_t* base_offsets,                                            \
+      const int64_t* live_counts,                                             \
+      const int64_t* token_positions,                                         \
+      const uint8_t* evict_mask,                                              \
+      const int64_t* row_positions,                                           \
+      int64_t capacity,                                                       \
+      int64_t block_size,                                                     \
+      int64_t block_table_len,                                                \
+      int64_t scratch_stride,                                                 \
+      int64_t scan_slots,                                                     \
+      int64_t num_q_heads,                                                    \
+      int64_t num_kv_heads,                                                   \
+      int64_t head_dim,                                                       \
+      float scale,                                                            \
+      hipStream_t stream) {                                                   \
+    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl<DENSE_PREFIX>( \
+        query, key_cache, value_cache, out, gate, gated_out, score_scratch,   \
+        physical_scratch, base_offsets, live_counts, token_positions,         \
+        evict_mask, row_positions, capacity, block_size, block_table_len,     \
+        scratch_stride, scan_slots, num_q_heads, num_kv_heads, head_dim,      \
+        scale, stream);                                                       \
+  }
+
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans,
+    false)
+
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans,
+    true)
+
+#undef HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER
 
 extern "C" int
 hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans(

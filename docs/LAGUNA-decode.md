@@ -10074,6 +10074,46 @@ The remaining attention sequence is:
      preserves every established trajectory and is noise-flat:
      [`dense value-identity production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json).
 
+232. Carry dense-initial identity through the exact D32/V80 owner.
+     **Retained and production-default; LC-D3 sixteenth checkpoint.**
+
+     The preceding dense specialization covered only the five quality-scoped
+     ctx4096 layers at 128K. The exact token-loop4 D32/V80 route still
+     published and replayed its physical-slot plane even though normal append
+     has the same identity mapping. A separately registered dense sibling now
+     compiles metadata and physical-map traffic out of score, exact
+     denominator, and partial PV. It serves all 12 global layers at 16K/64K
+     and the first seven at 128K; explicit eviction selects the unchanged
+     metadata-aware V80 sibling.
+
+     | Exact leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Metadata-aware V80 | 0.165314 ms | 0.688183 ms | 2.818015 ms | 5.667609 ms |
+     | Dense-identity V80 | **0.158028 ms** | **0.636626 ms** | **2.559802 ms** | **5.119093 ms** |
+     | Delta | **-4.407%** | **-7.492%** | **-9.163%** | **-9.678%** |
+
+     F32 context and gated BF16 output are byte-exact at all four shapes.
+     Cached tracing names generic and dense score/denominator/PV template
+     pairs. At 128K their medians fall **1,510.194 -> 1,317.192 us**,
+     **675.788 -> 629.100 us**, and **3,447.671 -> 3,142.298 us** with
+     unchanged local/VGPR/LDS resources and scratch0.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.203829 | **23.209219 tok/s** | +0.023% | 23.386100 | 99.244% |
+     | 1K | 23.063689 | **23.057426 tok/s** | -0.027% | 23.366122 | 98.679% |
+     | 4K | 21.686794 | **21.691256 tok/s** | +0.021% | 23.037017 | 94.158% |
+     | 16K | 19.481236 | **19.791449 tok/s** | **+1.592%** | 21.728347 | **91.086%** |
+     | 64K | 12.848251 | **13.575071 tok/s** | **+5.657%** | 17.737473 | **76.533%** |
+     | 128K | 9.838646 | **10.238829 tok/s** | **+4.067%** | 14.237076 | **71.917%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **12.908280 -> 12.403762 s (-3.908%)**, preserves
+     **874 / c8307c... / position 131,198**, and all six depths retain their
+     established hashes while recovering all **87,407,934,744 bytes / 1,452
+     allocations**:
+     [`dense V80 identity production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10091,7 +10131,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Fifteen milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Sixteen milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10144,10 +10184,14 @@ allocation teardown remain mandatory at every retained step.
    exact denominator and partial-PV value transport cuts complete
    ordinary/compensated leaves up to **11.337%/8.948%** and mandatory 128K
    another **1.259%**, again with exact state and noise-flat short guards.
-   Next extend identity through the exact V80 route used by the first seven
-   global layers at 128K and all global layers at 16K/64K, or replace the
-   remaining score/denominator/PV ownership structurally; merge and dormant
-   scalar repair are not active targets.
+   Extending identity through the exact V80 route used by all global layers at
+   16K/64K and the first seven at 128K then cuts that leaf
+   **4.407-9.678%** and improves complete 16K/64K/128K another
+   **1.592%/5.657%/4.067%**, reaching
+   **91.086%/76.533%/71.917%** Vulkan parity. Next replace the remaining
+   score/denominator/PV ownership structurally or attack its key/value
+   streaming efficiency; merge and dormant scalar repair are not active
+   targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

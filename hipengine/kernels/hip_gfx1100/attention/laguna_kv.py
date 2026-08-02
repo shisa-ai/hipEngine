@@ -71,6 +71,10 @@ _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VS
     "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_"
     "tokenloop4_deferrednorm_dim32_vstage80_bf16_spans"
 )
+_SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX = (
+    "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_"
+    "tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans"
+)
 _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TILE4_DIM32_VSTAGE64 = (
     "hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tile4_"
     "dim32_vstage64_bf16_spans"
@@ -2003,6 +2007,7 @@ def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _symbol: str = _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80,
 ) -> None:
     """Run exact tokenloop4 scores with deferred D32/V80 staged PV."""
 
@@ -2023,7 +2028,7 @@ def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
     runtime = runtime or get_hip_runtime()
     fn = getattr(
         library,
-        _SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80,
+        _symbol,
     )
     fn.argtypes = (
         [ctypes.c_void_p] * 13
@@ -2057,6 +2062,52 @@ def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    gate_ptr: int,
+    gated_out_ptr: int,
+    score_scratch_ptr: int,
+    physical_scratch_ptr: int,
+    spans: KVLiveSpans,
+    scan_slots: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact D32/V80 attention with dense-prefix identity transport."""
+
+    laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        out_ptr,
+        gate_ptr,
+        gated_out_ptr,
+        score_scratch_ptr,
+        physical_scratch_ptr,
+        spans,
+        scan_slots,
+        max_context_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_GLOBAL_ATTENTION_SPLIT_EXACT_GATED_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX,
+    )
 
 
 def laguna_global_attention_decode_split_exact_gated_gqa6_tile4_dim32_vstage64_bf16_spans(
@@ -8884,6 +8935,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_decode",
+            "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_spans",
+            laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
             "global_context_split_exact_gated_gqa6_dim64_vstage64_spans",
             laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans,
         ),
@@ -9538,6 +9594,7 @@ __all__ = [
     "laguna_global_attention_decode_split_exact_gated_gqa6_deferrednorm_dim32_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans",
+    "laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans",
     "laguna_global_attention_decode_split_exact_gated_gqa6_dim64_vstage64_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans",
     "laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans",

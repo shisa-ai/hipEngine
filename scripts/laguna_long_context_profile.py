@@ -542,6 +542,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_global_split_gqa6_deferrednorm_dim32_vstage64 = False
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage64 = False
     active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80 = False
+    active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix = False
     active_global_split_gqa6_ctx4096_compensated_layer: int | None = None
     active_global_split_gqa6_ctx4096_dim_tile = 32
     active_global_split_gqa6_ctx4096_deferrednorm = False
@@ -781,6 +782,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80 = (
             owner.kv_cache.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80
+        )
+        active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix = (
+            owner.kv_cache.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix
         )
         active_global_split_gqa6_ctx4096_compensated_layer = (
             owner.kv_cache.global_split_gqa6_ctx4096_compensated_layer
@@ -1331,6 +1335,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80": (
                 active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80
+            ),
+            "global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix": (
+                active_global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix
             ),
             "global_split_gqa6_ctx4096_min_layer": (
                 active_global_split_gqa6_ctx4096_min_layer

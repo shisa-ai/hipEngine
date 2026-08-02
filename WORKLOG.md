@@ -198009,3 +198009,50 @@ Vulkan local sizes verbatim will close the measured gap.
   `tests/test_laguna_kv_attention.py::test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact`
   passes. Canonical evidence is
   `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json`.
+
+## 2026-08-02 22:51 JST — Retain exact dense-prefix D32/V80 identity
+
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not audit
+  external lineage because the configured read-only Atlas checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. This is a reference
+  environment blocker, not in-tree drift; no external code was copied.
+- Added RED coverage for a separately registered exact tokenloop4
+  deferred-normalization D32/V80 dense-prefix owner, gfx1151 capability, and
+  runtime dense/generic selection. The initial focused collection failed on
+  the intentionally absent capability import; the implemented tests pass.
+- The dense owner keeps the complete `KVLiveSpans` ABI but removes metadata
+  and physical-slot-plane traffic from score, exact denominator, and V80 PV.
+  Explicit eviction selects the prior metadata-aware V80 route. The first
+  combined production invocation was rejected before load because the harness
+  does not admit `512,1024,4096,16384,65536`; it was replaced by canonical
+  512/1K/4K and 16K/64K bundles.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 improves
+  **0.165314/0.688183/2.818015/5.667609 ->
+  0.158028/0.636626/2.559802/5.119093 ms
+  (-4.407%/-7.492%/-9.163%/-9.678%)**. F32 context and gated BF16 are
+  byte-exact. Raw SHA-256 is
+  `244996c290b6c7b075ae63ff0b9506d2cd4bfc099039f0d19d4110a5f9e072e1`.
+- Cached tracing names generic/dense score, denominator, and PV templates. At
+  128K their medians improve **1,510.194 -> 1,317.192 us**,
+  **675.788 -> 629.100 us**, and **3,447.671 -> 3,142.298 us**. Resources
+  remain score local32/VGPR40/LDS0, denominator local256/VGPR56/LDS512, and
+  PV local512/VGPR32/LDS14,336; all scratch0. CSV SHA-256 is
+  `09b8b486b77b9a76f8273f21606b7cb790e49765a0149d618a0010742d88c856`.
+- Production 512/1K/4K is exact and noise-flat at
+  **23.209219/23.057426/21.691256 tok/s
+  (+0.023%/-0.027%/+0.021%)**. Active 16K/64K improves
+  **19.481236/12.848251 -> 19.791449/13.575071 tok/s
+  (+1.592%/+5.657%)**. Mandatory 128K improves
+  **9.838646 -> 10.238829 tok/s (+4.067%)**, cutting its 127-transition wall
+  **12.908280 -> 12.403762 s (-3.908%)**. Every established token/hash/position
+  is unchanged and each run frees all **87,407,934,744 bytes / 1,452
+  allocations**. Raw production SHA-256 values are
+  `ff096606a470d793cccd8f54cd9492a92943de7e5ad0e609ac783c898d993f5b`,
+  `66be8946d858dce311082a42e335ea2b08d71a61ad243a7009fa393aa3ab151c`,
+  and `f665e768044bfca4b76b7b19e6d9fa42901825d1ebe46112773ea49b710ce62d`.
+- Mandatory command:
+  `GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty`.
+- Focused GPU differential, backend capability, and runtime selector tests pass.
+  Canonical evidence is
+  `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json`.
