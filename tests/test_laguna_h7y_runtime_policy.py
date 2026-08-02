@@ -520,10 +520,10 @@ def test_h7y_runtime_allocates_exact_mirrors_routes_late_starts_and_rolls_back(
         ]
         for launch in writer_launches:
             args = launch[1]
+            assert args[4] > 0
             assert args[5] > 0
-            assert args[6] > 0
+            assert args[4] % 8 == 0
             assert args[5] % 8 == 0
-            assert args[6] % 8 == 0
             assert launch[2]["lane_major_cache_nbytes"] == (
                 _MIRROR_BYTES_PER_TENSOR_PER_LAYER
             )
