@@ -76,18 +76,19 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
 The current long-decode checkpoint extends dense-initial KV identity through
-the exact token-loop4 D32/V80 owner used by every global layer at 16K/64K and
-the first seven global layers at 128K. Score, denominator, and partial PV no
-longer publish or replay a physical-slot plane, while explicit eviction still
-selects the registered metadata-aware V80 fallback. The exact leaf improves
-**4.407-9.678%**. Production 16K/64K/128K advances
-**19.481236/12.848251/9.838646 ->
-19.791449/13.575071/10.238829 tok/s
-(+1.592%/+5.657%/+4.067%)** with every established trajectory and lifecycle,
-reaching **91.086%/76.533%/71.917%** of same-GGUF Vulkan. The
-512/1K/4K guard is exact and noise-flat at **23.209/23.057/21.691 tok/s**.
-The ctx4096 merge's repair mask remains diagnostic only; production does not
-launch scalar repair.
+the exact token-loop4 D32/V80 owner and, from **65,536 live tokens**, marks its
+one-pass 16-byte BF16 V loads non-temporal. The threshold leaves the temporal
+owner at 16K and below; explicit eviction still selects the metadata-aware
+temporal fallback. The cache-policy leaf changes
+**+0.181%/-3.625%/-1.449%/-1.988%** at live4K/16K/64K/128K and is F32/BF16
+byte-exact. Complete 64K/128K decode advances
+**13.575071/10.238829 -> 13.673356/10.315773 tok/s
+(+0.724%/+0.751%)**, reaching **77.087%/72.457%** of same-GGUF Vulkan.
+The 512/1K/4K guard remains exact and noise-flat at
+**23.206/23.067/21.684 tok/s**; 16K stays on the retained
+**19.791449 tok/s** route. The ctx4096 merge's repair mask remains diagnostic
+only; production does not launch scalar repair.
+[`dense V80 non-temporal production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json),
 [`dense V80 identity production`](results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json),
 [`dense value-identity production`](results/2026-08-02-gfx1151-laguna-long-global-dense-value-identity-retained.json),
 [`dense-prefix score production`](results/2026-08-02-gfx1151-laguna-long-global-dense-prefix-score-retained.json),

@@ -226,6 +226,19 @@ class LagunaKVCache:
                 False,
             )
         )
+        dense_prefix_nontemporal_min_live = backend_package_capability(
+            backend,
+            "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE",
+            None,
+        )
+        self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live = (
+            int(dense_prefix_nontemporal_min_live)
+            if (
+                self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix
+                and dense_prefix_nontemporal_min_live is not None
+            )
+            else None
+        )
         ctx4096_min_layer = backend_package_capability(
             backend,
             "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
@@ -891,7 +904,23 @@ class LagunaKVCache:
                     else (
                         "global_context_split_exact_gated_gqa6_"
                         "tokenloop4_deferrednorm_dim32_vstage80"
-                        f"{'_dense_prefix' if self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix and self._dense_initial_metadata_valid else ''}_spans"
+                        + (
+                            "_dense_prefix"
+                            + (
+                                "_nontemporal"
+                                if (
+                                    self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live
+                                    is not None
+                                    and live_count
+                                    >= self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_min_live
+                                )
+                                else ""
+                            )
+                            if self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix
+                            and self._dense_initial_metadata_valid
+                            else ""
+                        )
+                        + "_spans"
                     )
                     if (
                         use_gated

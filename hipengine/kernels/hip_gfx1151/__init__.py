@@ -384,6 +384,9 @@ LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 = True
 # Dense initial caches do not need the physical-slot plane in the exact V80
 # owner. Preserve the complete spans ABI and fall back after explicit eviction.
 LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX = True
+# Non-temporal V loads are neutral at 4K but win the exact dense V80 leaf at
+# 16K/64K/128K. Keep the temporal owner below the measured crossover.
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE = 65_536
 # Ordered-prefetch4 moved the exact/context-PV crossover above 64K. Keep the
 # quality-scoped layer schedule only at the measured deep-context band; shorter
 # long contexts use exact deferred-normalization GQA6.
@@ -1010,6 +1013,7 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64",
     "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80",
     "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX",
+    "LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM",

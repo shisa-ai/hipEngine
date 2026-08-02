@@ -10114,6 +10114,47 @@ The remaining attention sequence is:
      allocations**:
      [`dense V80 identity production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json).
 
+233. Bypass cache for one-pass dense V80 value streams only at the measured
+     long-context crossover. **Retained and production-default at live
+     >=65,536; LC-D3 seventeenth checkpoint.**
+
+     After dense identity removed physical-map traffic, the exact D32/V80 PV
+     phase still dominated the active leaf and sustained only about 85 GB/s
+     from the BF16 value cache. A separately registered sibling preserves the
+     same 16-byte vector transaction, LDS stage, chronological scalar-F32 FMA
+     chain, complete `KVLiveSpans` ABI, and output rounding while marking only
+     those one-pass value loads non-temporal.
+
+     | Exact dense V80 leaf / live slots | 4,097 | 16,448 | 65,664 | 131,200 |
+     | --- | ---: | ---: | ---: | ---: |
+     | Temporal | 0.157492 ms | 0.637152 ms | 2.564496 ms | 5.120340 ms |
+     | Non-temporal | 0.157776 ms | **0.614056 ms** | **2.527339 ms** | **5.018554 ms** |
+     | Delta | +0.181% | **-3.625%** | **-1.449%** | **-1.988%** |
+
+     F32 context and gated BF16 output are byte-exact at all four shapes.
+     The first broad production screen showed that the isolated 16K win did
+     not transfer (**19.791449 -> 19.736506 tok/s, -0.278%**), whereas 64K
+     improved **13.575071 -> 13.673356 tok/s (+0.724%)**. Production therefore
+     switches only at **65,536 live tokens**; 16K and below remain on temporal
+     V80, and explicit eviction remains on the metadata-aware temporal owner.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.209219 | **23.206131 tok/s** | -0.013% | 23.386100 | 99.230% |
+     | 1K | 23.057426 | **23.067114 tok/s** | +0.042% | 23.366122 | 98.720% |
+     | 4K | 21.691256 | **21.683673 tok/s** | -0.035% | 23.037017 | 94.125% |
+     | 16K | 19.791449 | **19.791449 tok/s** | unchanged route | 21.728347 | 91.086% |
+     | 64K | 13.575071 | **13.673356 tok/s** | **+0.724%** | 17.737473 | **77.087%** |
+     | 128K | 10.238829 | **10.315773 tok/s** | **+0.751%** | 14.237076 | **72.457%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **12.403762 -> 12.311244 s (-0.746%)**, preserves
+     **874 / c8307c... / position 131,198**, and recovers all
+     **87,407,934,744 bytes / 1,452 allocations**. Cached tracing names the
+     `<80,true,true>` PV template at local512/VGPR32/SGPR128/LDS14,336/
+     scratch0:
+     [`65K+ non-temporal V80 production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10131,7 +10172,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Sixteen milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Seventeen milestones
    retained; active.** Exact GQA6 ownership and dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10188,10 +10229,13 @@ allocation teardown remain mandatory at every retained step.
    16K/64K and the first seven at 128K then cuts that leaf
    **4.407-9.678%** and improves complete 16K/64K/128K another
    **1.592%/5.657%/4.067%**, reaching
-   **91.086%/76.533%/71.917%** Vulkan parity. Next replace the remaining
-   score/denominator/PV ownership structurally or attack its key/value
-   streaming efficiency; merge and dormant scalar repair are not active
-   targets.
+   **91.086%/76.533%/71.917%** Vulkan parity. Marking only the dense V80
+   one-pass value vectors non-temporal from the measured **65,536-live**
+   crossover then improves complete 64K/128K another **0.724%/0.751%** to
+   **77.087%/72.457%** Vulkan parity while leaving 16K and below on temporal
+   V80. Next replace the remaining score/denominator/PV ownership
+   structurally or increase value-stream concurrency; merge and dormant
+   scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

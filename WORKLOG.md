@@ -198056,3 +198056,43 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused GPU differential, backend capability, and runtime selector tests pass.
   Canonical evidence is
   `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-identity-retained.json`.
+
+## 2026-08-02 23:40 JST — Retain 65K+ non-temporal dense V80 value loads
+
+- Added RED coverage for a separately registered exact dense-prefix D32/V80
+  sibling whose only arithmetic-independent change is a non-temporal cache
+  policy on the existing 16-byte BF16 value vector loads. HIP's `uint4`
+  wrapper was rejected by Clang's non-temporal builtin, so the implementation
+  uses an ABI-equivalent native four-lane `uint32_t` vector. The resulting
+  kernel compiles for gfx1151 and the focused large-capacity F32/BF16
+  differential test passes byte-exactly.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 changes retained dense V80
+  **0.157492/0.637152/2.564496/5.120340 ->
+  0.157776/0.614056/2.527339/5.018554 ms
+  (+0.181%/-3.625%/-1.449%/-1.988%)**. F32 context and gated BF16 outputs are
+  byte-exact at every shape. Raw SHA-256 is
+  `625daf055551a8a6066cd0ccdf26c60b7be38a83e1bba18a2879441d1b92f1e2`.
+- The first broad production screen proved the cache crossover matters:
+  selecting the candidate at 16K regressed **19.791449 -> 19.736506 tok/s
+  (-0.278%)**, while 64K improved **13.575071 -> 13.673356 tok/s
+  (+0.724%)**. gfx1151 therefore selects the sibling only at live
+  **>=65,536**. Temporal dense V80 remains the owner below that threshold;
+  explicit eviction retains metadata-aware temporal V80.
+- The short 512/1K/4K guard is exact and noise-flat at
+  **23.206131/23.067114/21.683673 tok/s
+  (-0.013%/+0.042%/-0.035%)**. Mandatory 128K improves
+  **10.238829 -> 10.315773 tok/s (+0.751%)**, cutting 127-transition wall
+  **12.403762 -> 12.311244 s (-0.746%)**, preserving
+  **874 / c8307c... / position 131,198**, and recovering all
+  **87,407,934,744 bytes / 1,452 allocations**. Raw production SHA-256 values
+  are `9d4e24121fa1a4fbf91b8c7924905e385c0da20cba845bc696358bffa12e5c5a`,
+  `1ec108a90ecfe2209088b47680461f93fb9170c9a8527d7b1fda2bce40cee806`,
+  and `8163136ded33c7055baa2175c48aa139500fe50bd4bcd49f0f10c33af89d82b1`.
+- Cached tracing names the candidate
+  `laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80,true,true>`
+  at local512/VGPR32/SGPR128/LDS14,336/scratch0. Trace CSV SHA-256 is
+  `d7d783b49ffa248ccee009d1030aeec1d667885c9a9146cff7b4d6ad7badfaf9`.
+  Focused GPU differential, runtime selector/fallback, and gfx1151 capability
+  tests pass. Canonical evidence is
+  `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-dense-v80-nontemporal-retained.json`.

@@ -2252,7 +2252,19 @@ void laguna_global_attention_split_exact_exp32_denominator_kernel(
 // is streamed by exactly one block and reused by all six query heads. The six
 // output waves preserve every dimension's chronological scalar-F32 FMA chain;
 // idle waves prefetch the next probability/V tile into ping-pong LDS.
-template <int kValueStage, bool kDensePrefix = false>
+typedef uint32_t laguna_uint32x4 __attribute__((ext_vector_type(4)));
+
+template <bool kNonTemporal>
+__device__ __forceinline__ laguna_uint32x4
+laguna_global_attention_load_value_uint4(const laguna_uint32x4* address) {
+  if constexpr (kNonTemporal) {
+    return __builtin_nontemporal_load(address);
+  }
+  return *address;
+}
+
+template <int kValueStage, bool kDensePrefix = false,
+          bool kNonTemporal = false>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
     const uint16_t* value_cache,
@@ -2313,7 +2325,8 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
     }
     shared_probability[0][probability_query][stage_token] = probability;
   }
-  auto* first_stage_vectors = reinterpret_cast<uint4*>(shared_value);
+  auto* first_stage_vectors =
+      reinterpret_cast<laguna_uint32x4*>(shared_value);
   for (int vector_idx = tid;
        vector_idx < first_stage_count * kVectorsPerSlot;
        vector_idx += static_cast<int>(blockDim.x)) {
@@ -2325,7 +2338,9 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
               kHeadDim +
           dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
       first_stage_vectors[vector_idx] =
-          *reinterpret_cast<const uint4*>(value_cache + value_offset);
+          laguna_global_attention_load_value_uint4<kNonTemporal>(
+              reinterpret_cast<const laguna_uint32x4*>(
+                  value_cache + value_offset));
     } else {
       const int physical_slot = physical_scratch[stage_token];
       if (physical_slot >= 0) {
@@ -2334,7 +2349,9 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
                 kHeadDim +
             dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
         first_stage_vectors[vector_idx] =
-            *reinterpret_cast<const uint4*>(value_cache + value_offset);
+            laguna_global_attention_load_value_uint4<kNonTemporal>(
+                reinterpret_cast<const laguna_uint32x4*>(
+                    value_cache + value_offset));
       } else {
         auto* shared_words =
             reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
@@ -2378,7 +2395,7 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
         shared_probability[stage_parity ^ 1][probability_query][stage_token] =
             probability;
       }
-      auto* next_stage_vectors = reinterpret_cast<uint4*>(
+      auto* next_stage_vectors = reinterpret_cast<laguna_uint32x4*>(
           shared_value + (stage_parity ^ 1) * kValueStage * kDimTile);
       for (int vector_idx = loader_tid;
            vector_idx < next_stage_count * kVectorsPerSlot;
@@ -2391,7 +2408,9 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
               (token * kNumKvHeads + kv_head) * kHeadDim +
               dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
           next_stage_vectors[vector_idx] =
-              *reinterpret_cast<const uint4*>(value_cache + value_offset);
+              laguna_global_attention_load_value_uint4<kNonTemporal>(
+                  reinterpret_cast<const laguna_uint32x4*>(
+                      value_cache + value_offset));
         } else {
           const int physical_slot = physical_scratch[token];
           if (physical_slot >= 0) {
@@ -2400,7 +2419,9 @@ void laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel(
                     kHeadDim +
                 dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
             next_stage_vectors[vector_idx] =
-                *reinterpret_cast<const uint4*>(value_cache + value_offset);
+                laguna_global_attention_load_value_uint4<kNonTemporal>(
+                    reinterpret_cast<const laguna_uint32x4*>(
+                        value_cache + value_offset));
           } else {
             auto* shared_words =
                 reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
@@ -9676,7 +9697,7 @@ hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_defer
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool kDensePrefix>
+template <bool kDensePrefix, bool kNonTemporal = false>
 int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl(
     const float* query,
     const uint16_t* key_cache,
@@ -9751,7 +9772,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80, kDensePrefix>),
+      (laguna_global_attention_split_exact_gqa6_dim32_vstage64_pv_kernel<80, kDensePrefix, kNonTemporal>),
       dim3(32),
       dim3(512),
       0,
@@ -9771,7 +9792,8 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
   return static_cast<int>(hipGetLastError());
 }
 
-#define HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(NAME, DENSE_PREFIX)     \
+#define HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(                       \
+    NAME, DENSE_PREFIX, NONTEMPORAL)                                          \
   extern "C" int NAME(                                                       \
       const float* query,                                                     \
       const uint16_t* key_cache,                                              \
@@ -9796,7 +9818,7 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
       int64_t head_dim,                                                       \
       float scale,                                                            \
       hipStream_t stream) {                                                   \
-    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl<DENSE_PREFIX>( \
+    return laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_impl<DENSE_PREFIX, NONTEMPORAL>( \
         query, key_cache, value_cache, out, gate, gated_out, score_scratch,   \
         physical_scratch, base_offsets, live_counts, token_positions,         \
         evict_mask, row_positions, capacity, block_size, block_table_len,     \
@@ -9806,10 +9828,17 @@ int laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednor
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_bf16_spans,
+    false,
     false)
 
 HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
     hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_bf16_spans,
+    true,
+    false)
+
+HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_dense_prefix_nontemporal_bf16_spans,
+    true,
     true)
 
 #undef HIPENGINE_LAGUNA_GLOBAL_TOKENLOOP4_V80_WRAPPER
