@@ -820,6 +820,17 @@ but loses every layer on both clocks: H6T -> H7M aggregate event is **246.763 ->
 **431.310 tok/s**
 ([H7M rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-two-wave-k-partition-rejected.json)).
 
+**WPF-H7N exact raw-Q6 c16r4 direct ordered consumption is rejected.** The
+immutable first object is physically clean at **8,900/8,872 B**, **1,393/1,390
+slots**, **VGPR112**, **LDS1,024**, and spill/scratch0 for BF16/F32. All three
+actual roles remain byte-exact, and one launch replaces inclusive H6U
+activation-pack + Q6-to-F32 producer + ordered-consumer triples, but each role
+is **3.95–5.46x slower**. The 142-call event aggregate regresses **48.267 ->
+233.861 ms (+384.516%, 0.206x)** and wall regresses **48.520 -> 231.238 ms
+(+376.583%, 0.210x)**. Add no repository surface; production stays **431.310
+tok/s**
+([H7N rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-c16r4-direct-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
