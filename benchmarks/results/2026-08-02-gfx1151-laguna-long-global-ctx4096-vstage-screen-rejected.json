@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_ctx4096_value_stage_screen",
+  "created_at": "2026-08-02T20:35:00+09:00",
+  "status": "rejected",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "shape": "48Q/8KV/D128, BF16 KV, capacity 131328",
+  "live_counts": [4097, 16448, 65664, 131200],
+  "vstage80": {
+    "vstage64_control_ms": [0.284586, 0.561097, 2.253946, 4.279312],
+    "candidate_ms": [0.284602, 0.575572, 2.307679, 4.381283],
+    "delta_percent": [0.006, 2.580, 2.384, 2.383],
+    "f32_context_byte_exact": true,
+    "bf16_gated_byte_exact": true,
+    "raw_sha256": "9d0c1fe6a317828c99a4b3f4dda15664e96190b688d96b3b177e03a5ea535cf2"
+  },
+  "vstage48": {
+    "vstage64_control_ms": [0.284943, 0.557366, 2.248929, 4.273566],
+    "candidate_ms": [0.288994, 0.581676, 2.349149, 4.455305],
+    "delta_percent": [1.422, 4.361, 4.456, 4.253],
+    "f32_context_byte_exact": true,
+    "bf16_gated_byte_exact": true,
+    "raw_sha256": "b00db0c9c891f3ba206beb9441f36d50e3c55990724c554f04a0a80fa089d9f5"
+  },
+  "protocol": {
+    "warmups": 5,
+    "samples": 9,
+    "burst": 10,
+    "command": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage{80,48}-ctx4096-tokenloop4-deferrednorm --capacity 131328 --live-counts 4097,16448,65664,131200 --samples 9 --warmups 5 --burst 10 --compiler-version-file /tmp/laguna_hipcc_version.txt --allow-dirty"
+  },
+  "decision": "Reject V80 and V48 at the leaf gate and remove their kernels, wrappers, registry entries, selectors, telemetry, and tests. Retain D64/V64; simple context-PV stage sizing is closed."
+}

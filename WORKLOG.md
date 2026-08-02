@@ -197873,3 +197873,20 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused large-capacity byte-exact, selector/resource-route, and gfx1151
   backend tests pass **3/3**. Normalized token-loop4 remains registered
   rollback. Next profile the current context-partial PV and merge balance.
+
+## 2026-08-02 20:35 JST — Reject ctx4096 D64 V80/V48 stage sizing
+
+- Parsed the cached post-deferred trace by split count. At live131,200 the
+  current leaf is **1.606-ms score + 0.672-ms denominator + 1.952-ms partial
+  PV + 0.012-ms merge = 4.244 ms**. Merge is complete; score and PV own
+  **37.9%/46.0%** of the leaf.
+- Templated only the D64 partial-PV stage and screened both sides of V64 with
+  5 warmups, 9 samples, and burst10. V80 changes complete leaf latency by
+  **+0.006%/+2.580%/+2.384%/+2.383%** at live4K/16K/64K/128K. V48 changes it
+  by **+1.422%/+4.361%/+4.456%/+4.253%**. Both F32/BF16 outputs remain
+  byte-exact.
+- Removed all V80/V48 kernel, wrapper, registry, capability, telemetry,
+  harness, and test changes. Production remains committed D64/V64. Raw
+  SHA-256 values are
+  `9d0c1fe6a317828c99a4b3f4dda15664e96190b688d96b3b177e03a5ea535cf2`
+  and `b00db0c9c891f3ba206beb9441f36d50e3c55990724c554f04a0a80fa089d9f5`.

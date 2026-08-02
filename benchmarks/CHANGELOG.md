@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-02
 
+- [rejected byte-exact gfx1151 Laguna ctx4096 PV stage screen] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-d128K: D64/V80 regresses retained V64 **0.006-2.580%** and D64/V48 regresses **1.422-4.456%** at every depth, so remove both candidate paths and close simple stage sizing with production unchanged; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-vstage-screen-rejected.json`.
+
 - [accepted byte-exact gfx1151 Laguna ctx4096 deferred-normalization decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: replace the stale serial-max normalized-score pass in all five admitted ctx4096 layers with the retained parallel exact-max denominator and apply its reciprocal in partial PV, cutting ordinary/compensated leaves **12.9-32.0% / 13.7-31.4%** and mandatory d128K **8.689 -> 9.505 tok/s (+9.397%)** with noise-flat exact 512/1K/4K and unchanged lifecycle; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-deferrednorm-retained.json`.
 
 - [accepted byte-exact gfx1151 Laguna ctx4096 token-loop4 score decode] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: reuse six resident GQA queries across four KV tokens in both ordinary and compensated context-split leaves, cutting active leaves **3.93-9.69%** and mandatory d128K **8.438 -> 8.689 tok/s (+2.977%)** with noise-flat exact 512/1K/4K, the established 128K trajectory, and full lifecycle recovery; `benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-tokenloop4-retained.json`.

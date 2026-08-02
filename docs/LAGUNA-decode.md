@@ -9939,6 +9939,18 @@ The remaining attention sequence is:
      rollback:
      [`ctx4096 deferred-normalization production`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-deferrednorm-retained.json).
 
+228. Screen smaller and larger ctx4096 partial-PV stages.
+     **Rejected; production remains D64/V64.**
+
+     After deferred normalization, the 128K leaf divides into
+     **1.606-ms score + 0.672-ms denominator + 1.952-ms PV + 0.012-ms merge**.
+     V80 reduces barriers but crosses the useful LDS-residency balance and
+     regresses V64 **0.006%/2.580%/2.384%/2.383%** at live4K/16K/64K/128K.
+     V48 reduces LDS but adds stages/barriers and regresses
+     **1.422%/4.361%/4.456%/4.253%**. Both remain F32/BF16 byte-exact. Remove
+     both candidates, keep V64, and close simple stage-size tuning:
+     [`ctx4096 V-stage rejection`](../benchmarks/results/2026-08-02-gfx1151-laguna-long-global-ctx4096-vstage-screen-rejected.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -9995,8 +10007,10 @@ allocation teardown remain mandatory at every retained step.
    noise-flat 512/1K/4K. Reusing the parallel exact-max denominator and
    carrying its inverse into partial PV then improves those leaves another
    **12.9-32.0%** and complete 128K another **9.397%**, also byte-exact. Next
-   profile the remaining context-PV/value-transport and merge owners. The
-   dormant scalar repair is not an active optimization target.
+   profile assigns the 128K leaf **37.9% score / 15.8% denominator / 46.0%
+   partial PV / 0.3% merge**. V48 and V80 both regress, closing simple PV
+   stage sizing around V64. Next attack score/value transport or a fused
+   ownership change; merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a
