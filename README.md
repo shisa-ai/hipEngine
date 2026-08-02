@@ -900,23 +900,22 @@ Remove all H7S code/keys/RED/exclusion surfaces, forbid role/geometry/rerun
 salvage, and retain production **431.310 tok/s**
 ([H7S rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
 
-The clean post-H7S rerank selects target-only **WPF-H7T quality-gated late-
-start QK-only tensorized score replay**. Existing H6W SWA plus H6Z global
-starts256/384 own **72 + 24 = 96 calls / 74.826 ms**, **64.887%** of current
-attention. H7T may reassociate only packed F32 QK score production into the
-existing **18,874,368-byte** plane; it must preserve H6W/H6Z causal masking,
-scale/exp, denominator order, BF16-V reads, token-order PV, divide, and output
-layout. This is materially narrower than rejected H5B, which reassociated QK,
-softmax, and PV and reached maximum KL **0.444675**.
+**WPF-H7T late-start QK-only tensorized score replay is rejected at the
+complete quality gate.** The immutable first object and named trace pass:
+global/SWA consumers are **3,968/4,224 bytes**, **683/744 slots**, metadata
+**VGPR49/53**, local/wave32, and spill/scratch0; all four cache-only chains are
+key-widen→query-pack→one-QK→consumer with no PV/value-widen/standalone-softmax
+or compiler. Standalone correctness is **10/10**.
 
-Freeze RED, first-object and named key-widen→query-pack→QK→consumer tracing,
-then run the full committed **18-prompt / 576-step** code/general-English/
-general-Japanese/mixed heldout quality gate before any timing (**KL <= 0.05,
-top-1 >= 90%**). Only if quality passes may one immutable all-global/SWA,
-both-start, both-clock 5/15/5 screen run. No start/head/layer/prompt subset or
-favorable rerun is admissible. Production remains **431.310 tok/s** and no H7T
-implementation or speed result exists
-([post-H7S residual / H7T target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
+The binding **18-prompt / 576-step** four-category lane executes exactly
+**7,008/7,008** H7T calls but reaches maximum KL **0.393845 > 0.05**. Top-1 is
+**562/576 (97.569%)**, every category remains above 90% top-1, deterministic
+repeats/oracle/lifecycle pass, but all four categories exceed the KL ceiling.
+Run no H7T 5/15/5 admission timing, remove every implementation/RED/gfx1151
+surface without subset or rerun salvage, and retain production **431.310
+tok/s**
+([H7T quality rejection](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
+[H7T target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

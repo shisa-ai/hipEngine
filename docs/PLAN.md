@@ -2975,27 +2975,26 @@ and forbid role/geometry/recompile/rerun salvage. Rerank outside direct raw-Q6
 ordered-consumer shapes and IQ residual repair
 ([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
 
-Select target-only **WPF-H7T quality-gated late-start QK-only tensorized score
-replay**. Exact Q5/IQ-down/raw-Q6 mechanisms are closed or blocked, while H6W
-SWA + H6Z global starts256/384 own **96 calls / 74.826 ms (64.887% of current
-attention)**. H5B proved packed F32 QK/PV fast but failed complete quality at
-maximum KL **0.444675**. H7T is materially narrower: reassociate only packed
-F32 QK into the existing **18,874,368-byte** score plane, then retain H6W/H6Z
-causal masking, scale/exp, denominator order, BF16-V reads, token-order PV,
-divide, and output layout.
+Reject **WPF-H7T quality-gated late-start QK-only tensorized score replay**.
+The immutable source passes RED→GREEN **10/10**, first-object resource limits,
+and a compiler-free four-role key-widen→query-pack→one-QK→consumer trace with
+no PV/value-widen/standalone-softmax. The complete **18-prompt / 576-step**
+code/general-English/general-Japanese/mixed heldout lane observes all
+**7,008/7,008** expected global/SWA starts256/384 calls. It is finite and keeps
+**562/576 (97.569%)** top-1 with every category >=90%, deterministic repeats,
+oracle, and exact lifecycle recovery, but maximum KL reaches **0.393845**, above
+the mandatory **0.05** ceiling in every category.
 
-Freeze RED before implementation. Require split-stage CPU/reference behavior,
-exact H6W/H6Z-score consumer bytes, complete spans/lifecycle, strict M128
-starts256/384 contexts384/512 H48/H72 KV8 D128 preflight, unchanged workspace/
-source/fallback/gfx1151, and no prompt/layer/head/start selection. The full
-committed **18-prompt / 576-step** code/general-English/general-Japanese/mixed
-heldout lane must pass KL <=0.05 and top-1 >=90% before physical or timing work;
-quality failure rejects without timing. If admitted, require first-object and
-named key-widen→query-pack→one-QK→consumer trace with no BLAS PV/value-widen/
-standalone-softmax/compiler, then one immutable all-role+96-call aggregate
-both-clock 5/15/5 gate. Any miss removes H7T without subset, retune, recompile,
-or favorable rerun; runtime/source qualification remains separate
-([post-H7S residual / H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
+Consume no H7T 5/15/5 admission timing. Remove every candidate body/export/
+wrapper/key/owner/RED/gfx1151 exclusion and restore the seven target-state
+implementation hashes plus H6W/H6Z **10/10** cache-only controls. Production
+remains **431.310 tok/s / 1,172.241 ms**, **1.60161x** behind matched llama.cpp
+HIP. Do not salvage a family/start/head/layer/prompt subset, retune BLAS,
+rewrite/recompile, or favorably rerun H7T; rerank clean production outside
+changed-association attention and the already closed exact Q5/IQ-down/raw-Q6
+routes
+([H7T rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
+[H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent

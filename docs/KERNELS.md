@@ -2168,26 +2168,27 @@ gfx1151 exclusion, retain exact H6U and **431.310 tok/s**, and do not salvage a
 role or nearby c4r16/c8r8 geometry after timing
 ([H7S rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-cross-row-reuse-rejected.json)).
 
-Select target-only **WPF-H7T quality-gated late-start QK-only tensorized score
-replay** outside H7S geometry salvage. H6W SWA and H6Z global starts256/384 own
-**72 + 24 = 96 calls / 74.826 ms**, **64.887%** of current attention. Reuse the
-existing **18,874,368-byte** score plane: key-only BF16→F32 widening, exact
-query packing, one packed F32 hipBLASLt QK, then a separately named local32
-consumer. Only QK may reassociate. Keep H6W/H6Z causal visibility, scale/exp,
-denominator order, BF16 value-cache reads, token-order PV, divide, output layout,
-source bodies, and complete H6A/H6N fallbacks unchanged.
+Reject **WPF-H7T quality-gated late-start QK-only tensorized score replay** at
+the complete quality gate. Its sole repository object satisfies the frozen
+physical contract: global/SWA consumers are **3,968/4,224 bytes**, **683/744
+slots**, metadata **VGPR49/53 / SGPR50/44**, local/wave32, and LDS/private/
+spill/scratch0. GREEN passes **10/10**. Named cache-only tracing records all
+four global/SWA starts256/384 chains in exact key-widen→query-pack→one-QK→
+consumer order on one queue/stream, with no BLAS PV, value widening, standalone
+softmax, or compiler.
 
-RED must bind split-stage CPU/reference behavior, exact consumer bytes when fed
-H6W/H6Z scores, `KVLiveSpans`, strict late-start preflight, score-plane reuse,
-no workspace growth, and gfx1151 isolation. Before timing, the complete
-**18-prompt / 576-step** four-category heldout lane must pass KL <=0.05 and
-top-1 >=90%; any miss rejects without timing. Then require a first consumer
-object at local32/wave32/LDS0/VGPR<=64/spill/scratch0 and a cache-only trace of
-key widen→query pack→one QK→consumer with no BLAS PV, value widen, standalone
-softmax, or compiler. One immutable all-global/SWA, both-start 5/15/5 screen
-must win every role and the 96-call aggregate on event and wall. No family/
-start/head/layer/prompt subset or favorable rerun is allowed
-([post-H7S residual / H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
+The full committed **18-prompt / 576-step** lane executes exactly
+**7,008/7,008** H7T launches with frozen algorithms 1/3 at contexts384/512.
+Finiteness, **562/576 (97.569%)** top-1, every-category top-1 >=90%, same-mode
+repeat determinism, oracle, and lifecycle all pass. Maximum KL reaches
+**0.393845 > 0.05**, however, and all four categories exceed the ceiling. Run
+no H7T 5/15/5 admission timing; remove the key-widen/consumer bodies, exports,
+wrappers, registry keys, zero-allocation owner, RED, and gfx1151 exclusions.
+Retain exact H6W/H6Z/H6A/H6N production and **431.310 tok/s**, and forbid
+family/start/head/layer/prompt subset, BLAS-retune, rewrite, recompile, or
+favorable-rerun salvage
+([H7T rejection](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json) ·
+[H7T target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
