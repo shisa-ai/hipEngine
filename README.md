@@ -1191,6 +1191,21 @@ recurrence runs together before implementation; no layer, role, prompt,
 length, or favorable-rerun subset is admissible
 ([H8B target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+H8B now qualifies as a bounded default-off owner with no device, arithmetic,
+allocation, workspace, or H8A ownership change. One generic scope-local cache
+publishes only a successfully produced exact pointer/geometry/stream key and
+owns the complete attention-Q/K/V, dense-gate/up, and shared-expert-gate/up
+class set. Complete M512 remains exact at token2930/position511 and executes
+**223 packs (24 resident + 199 transient)**. The named trace proves exact
+**330→223 packs / 2,262→2,155 application dispatches**, unchanged non-pack
+kernel names/counts, one queue/stream, and zero compiler. Fixed C4096/M512
+improves **438.412→438.919 tok/s (+0.116%, 4/5 paired wins)**; clean
+512/1K/4K medians improve **+0.148%/+0.175%/+0.152%**, all exact. Source
+remains H8A **440.353 tok/s** pending a separately frozen H8B source-default
+gate
+([H8B runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
+[H8B target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

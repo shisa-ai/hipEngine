@@ -82,13 +82,14 @@ should be removed or collapsed.
   production on H8A. One generic one-entry context-local cache is valid only
   inside attention Q/K/V, dense gate/up, or shared-expert gate/up scopes and
   publishes the exact pointer/geometry/stream key only after a successful pack.
-- If complete state, exact **330→223 pack / 2,262→2,155 dispatch** topology, or
-  any fixed/512–4K median fails, remove both capabilities, the resolver/session
-  field, all three runtime scopes, and the generic cache utility if no other
-  qualified owner uses it. If source promotion and clean committed production
-  pass, remove the duplicate `_SUPPORTED` capability and explicit positive
-  selector in a separate cleanup; retain explicit false only while H8A rollback
-  remains useful.
+- Bounded qualification passes: complete state and exact **330→223 pack /
+  2,262→2,155 dispatch** topology are preserved, fixed C4096/M512 improves
+  **+0.116%**, and clean 512/1K/4K improves **+0.148%/+0.175%/+0.152%**.
+  Keep the complete owner and generic utility while source remains separately
+  RED-gated. If source promotion and clean committed production pass, remove
+  the duplicate `_SUPPORTED` capability and explicit positive selector in a
+  separate cleanup; retain explicit false only while H8A rollback remains
+  useful.
 
 ## Laguna H6Z bounded default-off global-attention capability
 

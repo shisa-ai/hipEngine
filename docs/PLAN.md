@@ -3306,6 +3306,19 @@ attention-only, shared-only, layer, role, prompt, token, length, or favorable-
 rerun salvage
 ([H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+H8B now passes bounded qualification without changing a device body, object,
+allocation, workspace, or output byte. Scope/runtime and retained coverage is
+**103/103**; complete M512 remains exact at token2930/position511 and executes
+**223 packs (24 resident + 199 transient)**. The committed named trace proves
+**330→223 packs / 2,262→2,155 application dispatches**, unchanged non-pack
+kernel names/counts, one queue/stream, expected resources, and zero compiler.
+Fixed C4096/M512 improves **438.412→438.919 tok/s (+0.116%, 4/5)**, while
+clean 512/1K/4K improves **+0.148%/+0.175%/+0.152%** with exact state and
+lifecycle. Retain the complete owner default-off and freeze source promotion
+separately; H8A remains production **440.353 tok/s**
+([H8B runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
+[H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
