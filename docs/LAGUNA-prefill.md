@@ -1877,6 +1877,29 @@ H6Z/H6W production and the default-off H7Y owner, and rerank outside these
 premises without prompt/layer/token conditioning
 ([repair-audit rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-attention-repair-audits-rejected.json)).
 
+The next exact target is **WPF-H8A resident global-Q5 tile-K-col F32 cache**.
+The model has exactly 12 full-attention `attn_q` K3072/N6144 tensors and 12
+`attn_output` K6144/N3072 tensors. Building their ordinary exact coltile16
+planes once with the retained producer requires **24 × 75,497,472 =
+1,811,939,328 bytes (1.6875 GiB)**. Each request then keeps the existing BF16
+activation pack and H7G padded-compute consumer but removes the complete
+**24-call / 5.596-ms** coltile16 producer family, modeling **2,286→2,262**
+dispatches. The zero-replacement-cost wall ceiling is **440.112 tok/s
+(+0.481%)**, explicitly not a candidate claim.
+
+A live no-candidate feasibility run loads the normal weight owner plus a shared-
+weight child, allocates all 24 buffers, and completes exact natural M512 at
+token2930/position511 with finite logits, **4,167,041,024 bytes** free, zero
+compiler, and exact tracked recovery. Freeze RED before implementation: publish
+only a complete immutable raw-pointer→resident-plane map; partial allocation or
+sharing fails closed to the registered pack+transient-producer+H7G chain. All
+24 real planes, complete M512 state, exact setup/request trace (**24 setup / 0
+request producers / 2,262 dispatches**), fixed and 512/1K/4K both-clock gates
+must pass together. Forbid attn_q-only, attn_output-only, layer, prompt, token,
+length, layout, or favorable-rerun salvage. Add no HIP body and keep source
+promotion separate
+([H8A target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h7y-resident-q5-global-f32-cache-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
