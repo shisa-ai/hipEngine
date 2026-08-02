@@ -55,6 +55,22 @@ should be removed or collapsed.
   focused runtime test when no further materially different source mechanism
   needs the layout; never allocate mirrors on the active H6Z/H6W path.
 
+## Laguna H8A bounded default-off resident global-Q5 F32 cache
+
+- Added 2026-08-03 for exact owner-inclusive qualification. The temporary
+  `use_q5_f32_resident_global_cache` session selector and gfx1100
+  `LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE{,_SUPPORTED}` capabilities own one
+  immutable **24-allocation / 1,811,939,328-byte** map for all 12 global
+  `attn_q` and `attn_output` raw-Q5 tensors. Explicit child sharing reuses the
+  same owner; every disabled, unsupported, unshared, allocation-failed, or
+  non-target route keeps the registered transient producer + H7G fallback.
+- Remove the complete candidate owner/composite/capability/selector/test surface
+  if any frozen state, topology, fixed, or clean 512/1K/4K median gate fails.
+  If source promotion passes, remove the public positive selector and duplicate
+  default-off capability after one clean committed production checkpoint while
+  retaining the immutable cache owner, raw-pointer lookup, required unfused H7G
+  fallback, and explicit opt-out only while it remains useful for bisection.
+
 ## Laguna H6Z bounded default-off global-attention capability
 
 - Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact

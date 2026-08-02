@@ -7,8 +7,10 @@ import ctypes
 import os
 from contextvars import ContextVar
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Iterator, Mapping
 
+from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.kernels.backends import (
     backend_package_capability,
@@ -208,8 +210,76 @@ _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
 
 
 @dataclass(frozen=True)
+class Q5F32ResidentPlane:
+    """Immutable exact F32 plane selected by its resident raw-Q5 pointer."""
+
+    raw_weight_ptr: int
+    weight_f32_ptr: int
+    weight_f32_nbytes: int
+    in_features: int
+    out_features: int
+    output_dtype: str
+    weight_layout: str
+    col_tile: int
+    row_batch: int
+
+    def __post_init__(self) -> None:
+        raw_ptr = int(self.raw_weight_ptr)
+        plane_ptr = int(self.weight_f32_ptr)
+        hidden = int(self.in_features)
+        outputs = int(self.out_features)
+        col_tile = int(self.col_tile)
+        row_batch = int(self.row_batch)
+        if raw_ptr <= 0:
+            raise ValueError("resident Q5 raw-weight pointer must be positive")
+        if plane_ptr <= 0 or plane_ptr % 16:
+            raise ValueError(
+                "resident Q5 F32 plane must be a positive 16-byte-aligned pointer"
+            )
+        if hidden <= 0 or hidden % 256:
+            raise ValueError("resident Q5 in_features must be a positive multiple of 256")
+        if outputs <= 0 or col_tile <= 0 or outputs % col_tile:
+            raise ValueError("resident Q5 out_features must fit its positive col tile")
+        if row_batch <= 0:
+            raise ValueError("resident Q5 row batch must be positive")
+        if self.output_dtype not in {GGUF_OUTPUT_BF16, GGUF_OUTPUT_F32}:
+            raise ValueError("resident Q5 output dtype must be bf16 or f32")
+        if self.weight_layout != "tile_k_col":
+            raise ValueError("resident Q5 weight layout must be tile_k_col")
+        expected_nbytes = hidden * outputs * DType.FP32.itemsize
+        if int(self.weight_f32_nbytes) != expected_nbytes:
+            raise ValueError(
+                "resident Q5 F32 plane extent must exactly match K*N*4 bytes"
+            )
+
+    @property
+    def ordered_geometry(self) -> str:
+        return (
+            f"weight_major_{self.weight_layout}_activation_tile_k_row_"
+            f"padded_compute_coltile{self.col_tile}_rowbatch{self.row_batch}"
+        )
+
+    def matches(
+        self,
+        *,
+        raw_weight_ptr: int,
+        in_features: int,
+        out_features: int,
+        output_dtype: str,
+        ordered_geometry: str,
+    ) -> bool:
+        return (
+            int(self.raw_weight_ptr) == int(raw_weight_ptr)
+            and int(self.in_features) == int(in_features)
+            and int(self.out_features) == int(out_features)
+            and self.output_dtype == str(output_dtype)
+            and self.ordered_geometry == str(ordered_geometry)
+        )
+
+
+@dataclass(frozen=True)
 class Q5F32OrderedPrefillSession:
-    """Caller-owned exact F32 weight plane for one ordered raw-K projection."""
+    """Caller-owned transient and optional immutable resident Q5 F32 planes."""
 
     max_rows: int
     weight_f32_ptr: int
@@ -218,6 +288,7 @@ class Q5F32OrderedPrefillSession:
     min_rows: int = 512
     activation_bf16_ptr: int = 0
     activation_bf16_nbytes: int = 0
+    resident_weight_f32_planes: Mapping[int, Q5F32ResidentPlane] | None = None
 
     def __post_init__(self) -> None:
         if not 0 < int(self.min_rows) <= int(self.max_rows):
@@ -234,6 +305,43 @@ class Q5F32OrderedPrefillSession:
             raise ValueError(
                 "Q5 F32 ordered activation plane pointer/bytes must be both set or zero"
             )
+        normalized: dict[int, Q5F32ResidentPlane] = {}
+        for raw_ptr, plane in (self.resident_weight_f32_planes or {}).items():
+            key = int(raw_ptr)
+            if not isinstance(plane, Q5F32ResidentPlane):
+                raise TypeError("resident Q5 plane map values must be Q5F32ResidentPlane")
+            if key != int(plane.raw_weight_ptr):
+                raise ValueError("resident Q5 plane map key must equal raw-weight pointer")
+            if key in normalized:
+                raise ValueError("resident Q5 plane map contains a duplicate raw pointer")
+            normalized[key] = plane
+        object.__setattr__(
+            self,
+            "resident_weight_f32_planes",
+            MappingProxyType(normalized),
+        )
+
+    def resident_plane(
+        self,
+        raw_weight_ptr: int,
+        *,
+        in_features: int,
+        out_features: int,
+        output_dtype: str,
+        ordered_geometry: str,
+    ) -> Q5F32ResidentPlane | None:
+        planes = self.resident_weight_f32_planes
+        assert planes is not None
+        plane = planes.get(int(raw_weight_ptr))
+        if plane is None or not plane.matches(
+            raw_weight_ptr=raw_weight_ptr,
+            in_features=in_features,
+            out_features=out_features,
+            output_dtype=output_dtype,
+            ordered_geometry=ordered_geometry,
+        ):
+            return None
+        return plane
 
 
 _q5_f32_ordered_prefill_session: ContextVar[
@@ -763,6 +871,7 @@ def _raw_k_f32_ordered_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
+    weight: GGUFDeviceWeight | None = None,
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
@@ -830,6 +939,34 @@ def _raw_k_f32_ordered_prefill_dispatch(
             or activation_required > int(session.activation_bf16_nbytes)
         ):
             return dispatch
+    raw_weight_ptr = (
+        int(weight.allocation("raw").tensor.ptr)
+        if weight is not None
+        else 0
+    )
+    resident_plane = (
+        session.resident_plane(
+            raw_weight_ptr,
+            in_features=in_features,
+            out_features=out_features,
+            output_dtype=output_dtype,
+            ordered_geometry=geometry,
+        )
+        if raw_weight_ptr > 0
+        else None
+    )
+    if resident_plane is not None:
+        resident_key = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            f"f32_resident_ordered_{geometry}_bf16_{output_dtype}_out",
+        )
+        if is_registered(resident_key):
+            return GGUFLinearDispatch(
+                resident_key,
+                "raw_k_f32_resident_activation_tile_k_row",
+            )
     key = KernelKey(
         dispatch.key.backend,
         dispatch.key.layer,
@@ -1033,6 +1170,11 @@ def launch_gguf_linear(
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
     q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
+    raw_weight_ptr = (
+        int(weight.allocation("raw").tensor.ptr)
+        if weight.spec.layout == LAYOUT_RAW_GGUF
+        else None
+    )
     cache_key = (
         generation(),
         weight.spec.layout,
@@ -1057,6 +1199,7 @@ def launch_gguf_linear(
             if q5_f32_ordered_session is None
             else id(q5_f32_ordered_session)
         ),
+        raw_weight_ptr,
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -1104,6 +1247,7 @@ def launch_gguf_linear(
         dispatch = _raw_k_f32_ordered_prefill_dispatch(
             dispatch,
             rows=rows,
+            weight=weight,
             in_features=in_features,
             out_features=out_features,
         )
@@ -2345,6 +2489,45 @@ def _launch_raw_k_f32_ordered_activation_tile_k_row(
     )
 
 
+def _launch_raw_k_f32_resident_activation_tile_k_row(
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    session = _q5_f32_ordered_prefill_session.get()
+    if session is None or int(session.activation_bf16_ptr) <= 0:
+        raise RuntimeError(
+            "resident Q5 activation-tile-K-row dispatch escaped its owner session"
+        )
+    raw_weight_ptr = int(weight.allocation("raw").tensor.ptr)
+    planes = session.resident_weight_f32_planes
+    assert planes is not None
+    plane = planes.get(raw_weight_ptr)
+    if (
+        plane is None
+        or int(plane.in_features) != int(in_features)
+        or int(plane.out_features) != int(out_features)
+    ):
+        raise RuntimeError("resident Q5 dispatch has no exact raw-pointer plane")
+    fn(
+        x_ptr,
+        plane.weight_f32_ptr,
+        out_ptr,
+        session.activation_bf16_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=kwargs.get("stream", 0),
+        library=session.library,
+        runtime=kwargs.get("runtime"),
+    )
+
+
 def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     # The WMMA prefill wrapper has the same (x, qweight, out, rows, in_f, out_f)
     # raw-pointer signature as _launch_raw, but accepts (tile_m, tile_n, stream)
@@ -2399,6 +2582,9 @@ _LAUNCH_ABI = {
     "raw_k_f32_ordered_activation_tile_k_row": (
         _launch_raw_k_f32_ordered_activation_tile_k_row
     ),
+    "raw_k_f32_resident_activation_tile_k_row": (
+        _launch_raw_k_f32_resident_activation_tile_k_row
+    ),
     "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
@@ -2412,6 +2598,7 @@ __all__ = [
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
     "Q5F32OrderedPrefillSession",
+    "Q5F32ResidentPlane",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",

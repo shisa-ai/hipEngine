@@ -937,6 +937,18 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 10, "f32", "tile_k_col"),
             )
         ),
+        # H8A's resident-plane composites remain gfx1100-only; gfx1151 has no
+        # package capability or independently qualified owner/cache policy.
+        *(
+            (
+                "linear",
+                "gguf_q5_k",
+                "f32_resident_ordered_weight_major_tile_k_col_"
+                "activation_tile_k_row_padded_compute_coltile16_rowbatch5_"
+                f"bf16_{output_dtype}_out",
+            )
+            for output_dtype in ("bf16", "f32")
+        ),
         # H7H exact full-group Q5 consumers are separately scoped to gfx1100.
         *(
             (
