@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-03
 
+- [accepted byte-exact gfx1151 Laguna ctx4096 non-temporal K+V] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: bypass cache for aligned K/V streams in only the five dense-prefix quality-scoped ctx4096 owners, cutting ordinary/compensated 128K leaves **8.466%/6.126%** and moving mandatory d128K **10.726607 -> 10.839382 tok/s (+1.051%)** with exact recurrent state, noise-flat 512/1K/4K, full lifecycle recovery, and metadata-aware temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json`.
+
 - [rejected byte-exact gfx1151 Laguna prefetch16 cndmask PV] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live4K-128K: replacing the positive-weight branch with zero-cndmask operands plus an unconditional ordered FMA improves only the inactive live4K leaf but regresses admitted live16K/64K/128K **1.126%/1.290%/1.290%**, so remove the candidate without production timing and retain prefetch16; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-prefetch16-cndmask-rejected.json`.
 
 - [accepted byte-exact gfx1151 Laguna dense V80 prefetch16] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: deepen exact output-wave operand prefetch from eight to sixteen while retaining non-temporal K/V and chronological FMA order, cutting the leaf **1.690-2.248%** and moving d16K/d64K/d128K **19.991/14.170/10.673 -> 20.042/14.238/10.727 tok/s (+0.253%/+0.478%/+0.500%)** with exact trajectories, non-regressive 512/1K/4K, full lifecycle recovery, and metadata-aware temporal fallback after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-dense-v80-prefetch16-retained.json`.

@@ -198254,3 +198254,48 @@ Vulkan local sizes verbatim will close the measured gap.
   `7ccaad79e16b32937f1b023d104c6d963dac8ce54a9d14b606fab4c14462b77a`;
   canonical evidence is
   `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-prefetch16-cndmask-rejected.json`.
+
+## 2026-08-03 02:23 JST — Retain ctx4096 non-temporal K/V
+
+- Added RED then GREEN byte-exact siblings for the ordinary and compensated
+  dense-prefix D64/V64 ctx4096 owners. The only device change is aligned
+  non-temporal K and V loads; score/denominator arithmetic, partial and merge
+  association, Kahan policy, gate/rounding, `KVLiveSpans`, and the temporal
+  metadata-aware eviction fallback are unchanged. The initial lineage command
+  is blocked by the missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; in-tree lineage and
+  ownership were inspected directly.
+- Formal cached 5-warmup/9-sample/burst10 live
+  4,097/16,448/65,664/131,200 changes the ordinary leaf
+  **0.275333/0.487507/1.961376/3.718874 ->
+  0.283272/0.482826/1.832875/3.404027 ms
+  (+2.883%/-0.960%/-6.552%/-8.466%)** and compensated
+  **0.298733/0.525061/2.060234/3.877387 ->
+  0.306319/0.521006/1.955738/3.639854 ms
+  (+2.539%/-0.772%/-5.072%/-6.126%)**. F32 context and gated BF16 are
+  byte-exact at every shape. Formal raw SHA-256 values are
+  `4443235418bf49a321f0c54c63e372c4017bed3b9bb7ae084a22fe88a2b679d8`
+  and `4e776fe90d5fc41e116391dc5bdd1590db20972026bb902872842f8128b93170`.
+- The canonical 512/1K/4K guard is exact and noise-flat at
+  **23.186925/23.061912/21.680655 tok/s
+  (-0.116%/+0.021%/-0.014%)**. Mandatory 128K improves
+  **10.726607 -> 10.839382 tok/s (+1.051%)**, cuts the 127-transition wall
+  **11.839717 -> 11.716535 s (-1.040%)**, and raises same-GGUF Vulkan parity
+  **75.343% -> 76.135%**. It preserves
+  **874 / c8307c... / position 131,198**, reports the new capability active,
+  and both processes free all **87,407,934,744 bytes / 1,452 allocations**.
+  Raw production SHA-256 values are
+  `db10f17d90a24112b7c228167ed1cee8fd01031c6615b2f8949b459995c854d7`
+  and `48e045a99d95231c59a6482527ec2dfe6346d8c7d04a73bb831e47e7cf825e24`.
+- Cached tracing names score `<true,true>` at
+  local32/VGPR40/SGPR128/LDS0/scratch0 and PV `<false,64,true,true>` at
+  local512/VGPR32/SGPR128/LDS19,456/scratch0. Their medians change
+  **1,330.377 -> 1,259.884 us** and **1,707.044 -> 1,580.366 us**; trace
+  SHA-256 is
+  `5bd6bd7c2bac37218899f3c1220f232029e7e0979b2d628cf6839be591cbb710`.
+  Focused exactness, selector/fallback, and gfx1151 capability tests pass
+  **3/3**. One attempted combined short+128K command was rejected immediately
+  by the protocol's allowed-shape guard before model load; canonical short and
+  standalone 128K commands then passed.
+- Canonical evidence is
+  `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-ctx4096-nontemporal-key-value-retained.json`.

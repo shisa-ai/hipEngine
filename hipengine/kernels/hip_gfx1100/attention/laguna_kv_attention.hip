@@ -2704,7 +2704,8 @@ void laguna_global_attention_split_exact_qhead_dim32_direct_pv_kernel(
 // chronological order. This preserves QK, probability, value conversion, and
 // per-split scalar-F32 FMA order; only cross-split accumulation association
 // differs from the exact fallback.
-template <bool kCompensated, int kDimTile, bool kDensePrefix = false>
+template <bool kCompensated, int kDimTile, bool kDensePrefix = false,
+          bool kNonTemporal = false>
 __global__ __launch_bounds__(512)
 void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     const uint16_t* value_cache,
@@ -2783,7 +2784,8 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
     }
     shared_probability[0][probability_query][stage_token] = probability;
   }
-  auto* first_stage_vectors = reinterpret_cast<uint4*>(shared_value);
+  auto* first_stage_vectors =
+      reinterpret_cast<laguna_uint32x4*>(shared_value);
   for (int vector_idx = tid;
        vector_idx < first_stage_count * kVectorsPerSlot;
        vector_idx += static_cast<int>(blockDim.x)) {
@@ -2795,7 +2797,9 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
           (token * kNumKvHeads + kv_head) * kHeadDim +
           dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
       first_stage_vectors[vector_idx] =
-          *reinterpret_cast<const uint4*>(value_cache + value_offset);
+          laguna_global_attention_load_value_uint4<kNonTemporal>(
+              reinterpret_cast<const laguna_uint32x4*>(
+                  value_cache + value_offset));
     } else {
       const int physical_slot = physical_scratch[token];
       if (physical_slot >= 0) {
@@ -2804,7 +2808,9 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
                 kHeadDim +
             dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
         first_stage_vectors[vector_idx] =
-            *reinterpret_cast<const uint4*>(value_cache + value_offset);
+            laguna_global_attention_load_value_uint4<kNonTemporal>(
+                reinterpret_cast<const laguna_uint32x4*>(
+                    value_cache + value_offset));
       } else {
         auto* shared_words =
             reinterpret_cast<uint32_t*>(first_stage_vectors + vector_idx);
@@ -2849,7 +2855,7 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
         shared_probability[stage_parity ^ 1][probability_query][stage_token] =
             probability;
       }
-      auto* next_stage_vectors = reinterpret_cast<uint4*>(
+      auto* next_stage_vectors = reinterpret_cast<laguna_uint32x4*>(
           shared_value + (stage_parity ^ 1) * kValueStage * kDimTile);
       for (int vector_idx = loader_tid;
            vector_idx < next_stage_count * kVectorsPerSlot;
@@ -2862,7 +2868,9 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
               (token * kNumKvHeads + kv_head) * kHeadDim +
               dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
           next_stage_vectors[vector_idx] =
-              *reinterpret_cast<const uint4*>(value_cache + value_offset);
+              laguna_global_attention_load_value_uint4<kNonTemporal>(
+                  reinterpret_cast<const laguna_uint32x4*>(
+                      value_cache + value_offset));
         } else {
           const int physical_slot = physical_scratch[token];
           if (physical_slot >= 0) {
@@ -2871,7 +2879,9 @@ void laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel(
                     kHeadDim +
                 dim_tile * kDimTile + vector_in_slot * kValuesPerVector;
             next_stage_vectors[vector_idx] =
-                *reinterpret_cast<const uint4*>(value_cache + value_offset);
+                laguna_global_attention_load_value_uint4<kNonTemporal>(
+                    reinterpret_cast<const laguna_uint32x4*>(
+                        value_cache + value_offset));
           } else {
             auto* shared_words =
                 reinterpret_cast<uint32_t*>(next_stage_vectors + vector_idx);
@@ -10342,7 +10352,8 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
 }
 
 template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false,
-          bool kDeferredNorm = false, bool kDensePrefixScore = false>
+          bool kDeferredNorm = false, bool kDensePrefixScore = false,
+          bool kNonTemporalKeyValue = false>
 static int
 laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
     const float* query,
@@ -10396,7 +10407,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   int32_t* repair_mask = reinterpret_cast<int32_t*>(partial_out);
   if constexpr (kTokenLoop4) {
     hipLaunchKernelGGL(
-        (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<kDensePrefixScore>),
+        (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<kDensePrefixScore, kNonTemporalKeyValue>),
         dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
         dim3(32),
         0,
@@ -10472,7 +10483,7 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   error = static_cast<int>(hipGetLastError());
   if (error != static_cast<int>(hipSuccess)) return error;
   hipLaunchKernelGGL(
-      (laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<kCompensated, kDimTile, kDensePrefixScore>),
+      (laguna_global_attention_split_gqa6_vstage64_ctx4096_pv_kernel<kCompensated, kDimTile, kDensePrefixScore, kNonTemporalKeyValue>),
       dim3(8 * (128 / kDimTile), static_cast<unsigned int>(num_splits)),
       dim3(512),
       0,
@@ -10592,6 +10603,20 @@ hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096
     LAGUNA_CTX4096_ARGUMENTS) {
   return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
       true, 64, true, true, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_dense_prefix_nontemporal_key_value_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      false, 64, true, true, true, true>(LAGUNA_CTX4096_FORWARD);
+}
+
+extern "C" int
+hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_nontemporal_key_value_bf16_spans(
+    LAGUNA_CTX4096_ARGUMENTS) {
+  return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl<
+      true, 64, true, true, true, true>(LAGUNA_CTX4096_FORWARD);
 }
 
 #undef LAGUNA_CTX4096_FORWARD
