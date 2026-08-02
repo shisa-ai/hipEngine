@@ -777,11 +777,12 @@ class LagunaQ5F32ResidentGlobalCache:
             raise ValueError("resident Q5 cache backend must match resident weights")
         if not backend_package_capability(
             resolved_backend,
-            "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED",
+            "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE",
             False,
         ):
             raise ValueError(
-                f"resident global-Q5 F32 cache is not supported on {resolved_backend!r}"
+                "resident global-Q5 F32 cache requires its source-qualified "
+                f"backend, got {resolved_backend!r}"
             )
         targets: list[tuple[int, str, int, int, Callable]] = []
         raw_ptrs: set[int] = set()
@@ -1960,29 +1961,21 @@ def resolve_laguna_q5_f32_resident_global_cache(
     backend: str,
     requested: bool | None = None,
 ) -> bool:
-    """Resolve H8A's default-off gfx1100 resident global-Q5 cache owner."""
+    """Resolve H8A source ownership or its explicit transient-H7G rollback."""
 
-    supported = bool(
-        backend_package_capability(
-            backend,
-            "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED",
-            False,
+    if requested is True:
+        raise ValueError(
+            "the resident global-Q5 F32 cache positive selector was removed; "
+            "use the source-qualified backend default"
         )
-    )
-    enabled = bool(
+    source_enabled = bool(
         backend_package_capability(
             backend,
             "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE",
             False,
         )
-        if requested is None
-        else requested
     )
-    if enabled and not supported:
-        raise ValueError(
-            f"resident global-Q5 F32 cache is not supported on {backend!r}"
-        )
-    return enabled
+    return source_enabled if requested is None else False
 
 
 def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
@@ -2825,18 +2818,19 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "a shared resident Q5 cache cannot be supplied while disabled"
             )
-        resident_cache_request = (
-            True
-            if resident_q5_f32_cache is not None
-            and use_q5_f32_resident_global_cache is None
-            else use_q5_f32_resident_global_cache
-        )
         self.use_q5_f32_resident_global_cache = (
             resolve_laguna_q5_f32_resident_global_cache(
                 self.backend,
-                resident_cache_request,
+                use_q5_f32_resident_global_cache,
             )
         )
+        if (
+            resident_q5_f32_cache is not None
+            and not self.use_q5_f32_resident_global_cache
+        ):
+            raise ValueError(
+                "a shared resident Q5 cache requires its source-qualified backend"
+            )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
                 self.backend,

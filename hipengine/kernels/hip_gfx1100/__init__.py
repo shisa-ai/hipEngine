@@ -88,9 +88,9 @@ LAGUNA_Q5_FIXED_METADATA = True
 # orders. Explicit disable restores the registered local128 pack8 pair.
 LAGUNA_Q5_SHARED_FIXED_METADATA = True
 # WPF-H8A builds exact F32 tile-K-col planes once for the complete global
-# attn_q/attn_output class. Complete-plane/state/topology plus fixed and clean-
-# length gates admit source ownership; explicit disable retains transient H7G.
-LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED = True
+# attn_q/attn_output class. Complete-plane/state/topology plus fixed, clean-
+# length, and committed-production gates admit source ownership; explicit
+# disable retains transient H7G.
 LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE = True
 # Exact mixed Q5/Q6 and corrected Q6/Q8 projection quads pass actual layers,
 # full state, both clean context orders, and both complete category orders.
@@ -568,7 +568,6 @@ __all__ = [
     "LAGUNA_Q4_LM_HEAD_LOCAL32_FIXED_METADATA",
     "LAGUNA_Q5_FIXED_METADATA",
     "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE",
-    "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE_SUPPORTED",
     "LAGUNA_Q5_SHARED_FIXED_METADATA",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
