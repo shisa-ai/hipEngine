@@ -983,6 +983,23 @@ in Q5, IQ-down, attention, and Q6
 ([H7U production](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-production.json) ·
 [bounded candidate](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-parallel-moe-compaction-candidate.json)).
 
+The post-H7U rerank selects target-only **WPF-H7V exact dequantized-Q6 full-
+batch/live-tail predicate elimination**. The existing 142 H6U consumers own
+**49.191 ms**, **65.604%** of current Q6. Across the 2/46/94-call rowbatch5/4/5
+roles, **1,757,184 / 1,763,328 workgroups (99.652%)** are complete groups yet
+retain two dynamic row predicates. H7V keeps the activation pack, exact
+Q6-to-F32 producer, every ordered FMA/DPP/LDS/store operation, and H6U itself as
+fallback. Rowbatch4 uses one full launch; rowbatch5 uses one full-prefix launch
+plus one exact remainder-2 H6U tail, modeling **142→238 consumer launches** and
+**2,286→2,382 request dispatches** at zero allocation/workspace growth.
+
+This is not H7I/H7N/H7S raw-Q6 replacement, H7J Q5 full-grid salvage, or H7L
+IQ3 live-tail retry. Freeze RED first, require one clean physical object, exact
+full+tail recomposition, named producer/pack/full/tail topology, and one
+inseparable all-three-role plus weighted-aggregate both-clock 5/15/5 gate. No
+candidate has run and no speed claim exists
+([post-H7U / H7V target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7u-q6-full-batch-live-tail-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
