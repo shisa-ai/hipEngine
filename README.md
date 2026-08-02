@@ -1097,10 +1097,20 @@ B / 855 slots / metadata VGPR54 / SGPR40 / spill0**, with exactly **2 b64 / 0
 u16 / 2 waits**; named execution is runtime VGPR56/LDS0/scratch0. All **72
 actual-layer** outputs and score planes are byte-exact. The immutable screen
 moves H6W→H7Y **56.607→56.259 ms event (-0.616%)** and **56.559→56.317 ms
-wall (-0.428%)**, with both starts positive. Production remains **437.189
-tok/s**: only the separate next gate may add the exact **72 MiB** mirrors and
-fused natural+mirror writer while retaining H6A/H6W rollback
-([standalone](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
+wall (-0.428%)**, with both starts positive.
+
+The separate bounded runtime owner now also qualifies default-off. It adds exact
+**72 MiB / 72 allocations** of SWA K/V mirrors and one fused natural+lane-major
+writer without changing the **2,286-dispatch** request topology. Complete M512
+state is KL0 and byte-exact across all **48/48** boundaries, logits, K/V/spans,
+repeat, and teardown. The named request contains exact **144 fused writers + 72
+H7Y + 72 H6A + 24 H6N + 24 H6Z** on one queue with zero compiler; H7Y is
+VGPR56/LDS0/scratch0 and the writer is VGPR24/LDS0/scratch0. Writer-inclusive
+fixed C4096/M512 improves **436.120→436.785 tok/s (+0.152%)**. Clean 512/1K/4K
+medians improve **+0.0530%/+0.1217%/+0.0043%**, all exact and lifecycle-clean.
+Production remains **437.189 tok/s** until the separate source-default gate
+([runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-runtime-candidate.json) ·
+[standalone](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
 Both short

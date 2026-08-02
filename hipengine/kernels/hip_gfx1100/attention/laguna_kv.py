@@ -72,6 +72,9 @@ _SYMBOL_GLOBAL_PREFILL_QROW6_DENSE_INITIAL_ONLINE = (
 )
 _SYMBOL_SWA_WRITE = "hipengine_laguna_swa_write_kv_f32_bf16_spans"
 _SYMBOL_SWA_WRITE_ROWS = "hipengine_laguna_swa_write_kv_rows_f32_bf16_spans"
+_SYMBOL_SWA_WRITE_ROWS_NATURAL_LANE_MAJOR = (
+    "hipengine_laguna_swa_write_kv_rows_natural_lane_major_f32_bf16_spans"
+)
 _SYMBOL_SWA_ATTENTION = "hipengine_laguna_swa_attention_decode_bf16_spans"
 _SYMBOL_SWA_ATTENTION_TOKEN4_EXACT = (
     "hipengine_laguna_swa_attention_decode_token4_exact_bf16_spans"
@@ -1870,6 +1873,85 @@ def laguna_swa_write_kv_rows_f32_spans(
         ctypes.c_void_p(value_ptr),
         ctypes.c_void_p(key_cache_ptr),
         ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_write_kv_rows_natural_lane_major_f32_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    lane_major_key_cache_ptr: int,
+    lane_major_value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    lane_major_cache_nbytes: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append F32 K/V rows to exact natural and lane-major BF16 mirrors."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_prefill_rows(spans, rows, capacity)
+    lane_major_key_cache_ptr = int(lane_major_key_cache_ptr)
+    lane_major_value_cache_ptr = int(lane_major_value_cache_ptr)
+    if (
+        capacity != 512
+        or int(num_kv_heads) != 8
+        or int(head_dim) != 128
+        or lane_major_key_cache_ptr <= 0
+        or lane_major_key_cache_ptr % 8 != 0
+        or lane_major_value_cache_ptr <= 0
+        or lane_major_value_cache_ptr % 8 != 0
+        or int(lane_major_cache_nbytes) != 1_048_576
+    ):
+        raise ValueError(
+            "natural+lane-major SWA writer requires C512/KV8/D128 with "
+            "aligned exact 1,048,576-byte K/V mirrors"
+        )
+    assert spans.token_positions is not None
+    assert spans.evict_mask is not None
+    assert spans.row_positions is not None
+    _check_nonzero_device_pointers(
+        ("key_ptr", key_ptr),
+        ("value_ptr", value_ptr),
+        ("key_cache_ptr", key_cache_ptr),
+        ("value_cache_ptr", value_cache_ptr),
+        ("lane_major_key_cache_ptr", lane_major_key_cache_ptr),
+        ("lane_major_value_cache_ptr", lane_major_value_cache_ptr),
+        ("base_offsets_ptr", spans.base_offsets.ptr),
+        ("live_counts_ptr", spans.live_counts.ptr),
+        ("token_positions_ptr", spans.token_positions.ptr),
+        ("evict_mask_ptr", spans.evict_mask.ptr),
+        ("row_positions_ptr", spans.row_positions.ptr),
+    )
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_WRITE_ROWS_NATURAL_LANE_MAJOR)
+    fn.argtypes = [ctypes.c_void_p] * 11 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(lane_major_key_cache_ptr),
+        ctypes.c_void_p(lane_major_value_cache_ptr),
         ctypes.c_void_p(spans.base_offsets.ptr),
         ctypes.c_void_p(spans.live_counts.ptr),
         ctypes.c_void_p(spans.token_positions.ptr),
@@ -4342,6 +4424,11 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
             laguna_swa_write_kv_rows_f32_spans,
         ),
         (
+            "laguna_kv_write",
+            "swa_f32_rows_natural_lane_major_spans",
+            laguna_swa_write_kv_rows_natural_lane_major_f32_spans,
+        ),
+        (
             "laguna_attention_decode",
             "global_context_spans",
             laguna_global_attention_decode_bf16_spans,
@@ -4752,6 +4839,7 @@ __all__ = [
     "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_swa_write_kv_f32_spans",
     "laguna_swa_write_kv_rows_f32_spans",
+    "laguna_swa_write_kv_rows_natural_lane_major_f32_spans",
     "plan_laguna_kv_attention_build",
     "register_laguna_kv_attention_kernels",
 ]

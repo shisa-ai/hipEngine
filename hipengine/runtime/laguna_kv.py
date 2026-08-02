@@ -98,6 +98,14 @@ _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT = (
 _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT = (
     "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
 )
+_DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_lane_major_"
+    "global_score_replay_exact_spans"
+)
+_SWA_ROWS_NATURAL_LANE_MAJOR_WRITE_VARIANT = (
+    "swa_f32_rows_natural_lane_major_spans"
+)
+_SWA_LANE_MAJOR_MIRROR_NBYTES = 1_048_576
 _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT = (
     "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
     "exact_spans"
@@ -117,6 +125,7 @@ _PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
         {
             _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT,
             _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+            _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
         }
     ),
 }
@@ -143,6 +152,8 @@ class LagunaKVLayerState:
     physical_capacity: int
     key_cache: DeviceBuffer
     value_cache: DeviceBuffer
+    lane_major_key_cache: DeviceBuffer | None
+    lane_major_value_cache: DeviceBuffer | None
     append_spans: KVLiveSpans
     spans: KVLiveSpans
     write_variant: str
@@ -223,6 +234,29 @@ class LagunaKVCache:
     @property
     def allocation_count(self) -> int:
         return len(self._buffers)
+
+    @property
+    def lane_major_mirror_nbytes(self) -> int:
+        return sum(
+            buffer.nbytes
+            for state in self.layers
+            for buffer in (
+                state.lane_major_key_cache,
+                state.lane_major_value_cache,
+            )
+            if buffer is not None
+        )
+
+    @property
+    def lane_major_mirror_allocation_count(self) -> int:
+        return sum(
+            buffer is not None
+            for state in self.layers
+            for buffer in (
+                state.lane_major_key_cache,
+                state.lane_major_value_cache,
+            )
+        )
 
     @property
     def closed(self) -> bool:
@@ -443,19 +477,42 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         fn = self._resolve("laguna_kv_write", state.write_rows_variant)
-        fn(
-            key_ptr,
-            value_ptr,
-            state.key_cache.ptr,
-            state.value_cache.ptr,
-            spans,
-            int(rows),
-            _LAGUNA_KV_HEADS,
-            _LAGUNA_HEAD_DIM,
-            stream=stream,
-            library=library,
-            runtime=self.runtime,
-        )
+        if state.write_rows_variant == _SWA_ROWS_NATURAL_LANE_MAJOR_WRITE_VARIANT:
+            if (
+                state.lane_major_key_cache is None
+                or state.lane_major_value_cache is None
+            ):
+                raise RuntimeError("Laguna lane-major SWA mirrors are unavailable")
+            fn(
+                key_ptr,
+                value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                state.lane_major_key_cache.ptr,
+                state.lane_major_value_cache.ptr,
+                spans,
+                int(rows),
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                lane_major_cache_nbytes=state.lane_major_key_cache.nbytes,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        else:
+            fn(
+                key_ptr,
+                value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                spans,
+                int(rows),
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
 
     def attend(
         self,
@@ -742,6 +799,7 @@ class LagunaKVCache:
                 not in {
                     _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT,
                     _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+                    _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
                 }
                 or self._dense_initial_metadata_valid
             )
@@ -907,16 +965,26 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         start_position = int(self._pending_positions[int(row_offset)])
-        if (
-            role_variant
-            == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
-        ):
-            role_variant = (
-                _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
-                if (
-                    start_position in _PREFILL_GLOBAL_SCORE_REPLAY_STARTS
-                    and self.prefill_score_scratch_bound
+        if role_variant in {
+            _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+            _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+        }:
+            late_score_replay = (
+                start_position in _PREFILL_GLOBAL_SCORE_REPLAY_STARTS
+                and self.prefill_score_scratch_bound
+            )
+            if (
+                role_variant
+                == _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+            ):
+                late_score_replay = (
+                    late_score_replay
+                    and state.lane_major_key_cache is not None
+                    and state.lane_major_value_cache is not None
                 )
+            role_variant = (
+                role_variant
+                if late_score_replay
                 else _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT
             )
         elif (
@@ -1017,6 +1085,37 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 **extra,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif (
+            variant
+            == _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        ):
+            if (
+                state.lane_major_key_cache is None
+                or state.lane_major_value_cache is None
+            ):
+                raise RuntimeError("Laguna lane-major SWA mirrors are unavailable")
+            fn(
+                query_ptr,
+                current_key_ptr,
+                current_value_ptr,
+                state.lane_major_key_cache.ptr,
+                state.lane_major_value_cache.ptr,
+                out_ptr,
+                self._prefill_score_scratch_ptr,
+                spans,
+                int(rows),
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                score_scratch_nbytes=self._prefill_score_scratch_nbytes,
+                lane_major_cache_nbytes=state.lane_major_key_cache.nbytes,
+                sliding_window=self.sliding_window,
+                start_position=start_position,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,
@@ -1677,9 +1776,17 @@ def allocate_laguna_kv_cache(
 
         states: list[LagunaKVLayerState] = []
         element_bytes = DType.BF16.itemsize
+        use_lane_major_mirrors = (
+            parsed_prefill_preappend_role_variants.get(
+                _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+            )
+            == _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        )
         for layer_id, (attention_type, q_heads) in enumerate(
             zip(layer_types, head_counts, strict=True)
         ):
+            lane_major_key_cache = None
+            lane_major_value_cache = None
             if attention_type == FULL_ATTENTION:
                 capacity = context
                 physical_capacity = global_physical_capacity
@@ -1722,6 +1829,13 @@ def allocate_laguna_kv_cache(
                 payload_elements = capacity * _LAGUNA_KV_HEADS * _LAGUNA_HEAD_DIM
                 key_cache = allocate_raw(payload_elements * element_bytes)
                 value_cache = allocate_raw(payload_elements * element_bytes)
+                if use_lane_major_mirrors:
+                    lane_major_key_cache = allocate_raw(
+                        _SWA_LANE_MAJOR_MIRROR_NBYTES
+                    )
+                    lane_major_value_cache = allocate_raw(
+                        _SWA_LANE_MAJOR_MIRROR_NBYTES
+                    )
                 live_counts = metadata(
                     (ctypes.c_int64 * 1)(0),
                     (1,),
@@ -1748,7 +1862,11 @@ def allocate_laguna_kv_cache(
                 )
                 append_spans = decode_spans
                 write_variant = "swa_f32_spans"
-                write_rows_variant = "swa_f32_rows_spans"
+                write_rows_variant = (
+                    _SWA_ROWS_NATURAL_LANE_MAJOR_WRITE_VARIANT
+                    if use_lane_major_mirrors
+                    else "swa_f32_rows_spans"
+                )
                 attention_variant = parsed_swa_decode_variant
                 attention_prefill_variant = parsed_swa_prefill_variant
             states.append(
@@ -1760,6 +1878,8 @@ def allocate_laguna_kv_cache(
                     physical_capacity=physical_capacity,
                     key_cache=key_cache,
                     value_cache=value_cache,
+                    lane_major_key_cache=lane_major_key_cache,
+                    lane_major_value_cache=lane_major_value_cache,
                     append_spans=append_spans,
                     spans=decode_spans,
                     write_variant=write_variant,
