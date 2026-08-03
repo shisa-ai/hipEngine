@@ -1262,6 +1262,19 @@ favorably rerun another numerical class. Production remains H8B **440.893
 tok/s / 2,155 dispatches**
 ([H8E rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
 
+**WPF-H8F targets exact resident shared-Q5 F32-plane publication.** The clean
+H8B trace contains exactly **92** K3072×N1024 coltile8 producers per request,
+**3.439745 ms** median across five requests, before the unchanged 92 H7H
+consumers; H8B already reduces their activation packs to 46. A source-unchanged
+live audit holds all **92 × 12,582,912 = 1,157,627,904 bytes (1.078125 GiB)**
+alongside H8A, completes M512 at token2930, and leaves **2.802734 GiB** free.
+The target extends the immutable resident map **24→116** planes and models
+**2,155→2,063** request dispatches without changing consumer arithmetic. This
+is target/ceiling evidence only, not a speed claim: freeze the complete
+92-tensor class before implementation and forbid partial-plane, layer, role,
+prompt, token, route, length, or favorable-rerun salvage
+([H8F target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

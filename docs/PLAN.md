@@ -3380,6 +3380,27 @@ algorithm map, owner, or source promotion. Do not try another numerical class
 post-result; retain H8B **440.893 tok/s / 2,155 dispatches**
 ([H8E rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
 
+Select **WPF-H8F exact resident shared-Q5 tile-K-col F32 cache** as the next
+materially distinct target. The complete architecture class is both
+`ffn_gate_shexp` and `ffn_up_shexp` across layers1–46: **92** immutable raw-Q5
+K3072×N1024 tensors, each using the retained coltile8/rowbatch4 BF16-output
+producer and unchanged H7H consumer. The clean H8B trace observes exactly 92
+small-grid producers in each of five requests at **3.439745 ms median**; H8B
+already shares their activation into 46 packs. H8F changes plane lifetime only,
+not consumer arithmetic, and models request dispatches **2,155→2,063**.
+
+A source-unchanged live audit holds all **92 allocations / 1,157,627,904 bytes
+(1.078125 GiB)** alongside H8A and exact M512, reaches token2930/position511,
+remains finite, recovers all tracked allocation, sees zero compiler, and leaves
+**3,009,413,120 bytes (2.802734 GiB)** free. Extend H8A's immutable map
+all-or-nothing from **24→116** planes; any H8F allocation/setup failure retains
+the admitted 24 global planes and complete transient shared path. Commit this
+target before RED, change no HIP body/object, and require all 92 planes,
+complete state/topology, fixed C4096/M512, and clean 512/1K/4K both-clock wins.
+No partial-plane, layer, role, prompt, token, route, length, threshold, or
+favorable-rerun salvage is allowed
+([H8F target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
