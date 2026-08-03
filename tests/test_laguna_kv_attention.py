@@ -4652,6 +4652,7 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
         laguna_global_attention_decode_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+        laguna_global_attention_decode_allwave_gqa6_tile1024_dense_prefix_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_compensated_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_bf16_spans,
@@ -5058,6 +5059,37 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
             )
             np.testing.assert_allclose(candidate, expected, rtol=3e-4, atol=3e-4)
             if scan_slots == 4097:
+                laguna_global_attention_decode_allwave_gqa6_tile1024_dense_prefix_bf16_spans(
+                    *common,
+                    candidate_out.ptr,
+                    gate_device.ptr,
+                    candidate_gated.ptr,
+                    *tail,
+                    library=library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                copy_device_to_host(
+                    host_array_ptr(candidate),
+                    candidate_out,
+                    candidate.nbytes,
+                    runtime=runtime,
+                )
+                copy_device_to_host(
+                    host_array_ptr(candidate_gate_bits),
+                    candidate_gated,
+                    candidate_gate_bits.nbytes,
+                    runtime=runtime,
+                )
+                np.testing.assert_allclose(
+                    candidate,
+                    expected,
+                    rtol=3e-4,
+                    atol=3e-4,
+                )
+                assert np.array_equal(candidate, control)
+                assert np.array_equal(candidate_gate_bits, control_gate_bits)
+                assert np.isfinite(candidate).all()
                 laguna_global_attention_decode_split_gated_gqa6_dim32_vstage64_ctx4096_bf16_spans(
                     *common,
                     candidate_out.ptr,
@@ -5521,7 +5553,7 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_spans",
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_spans",
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_spans",
-        "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_spans",
+        "global_context_allwave_gqa6_tile1024_dense_prefix_spans",
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
             "tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_"
@@ -5752,6 +5784,11 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             is True
         )
         assert gfx1151_cache.global_dense_prefix is True
+        assert gfx1151_cache.global_split_gqa6_allwave_tile1024_dense_prefix
+        assert (
+            gfx1151_cache.global_split_gqa6_allwave_tile1024_dense_prefix_min_live
+            == 32_768
+        )
         assert gfx1151_cache.global_dense_prefix_idle_double_buffer is True
         assert gfx1151_cache.global_local1024 is True
         assert gfx1151_cache.swa_split_wave_local

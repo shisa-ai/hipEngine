@@ -198490,3 +198490,66 @@ Vulkan local sizes verbatim will close the measured gap.
 - `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
   by the missing read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout;
   this work ports no external code.
+
+## 2026-08-04 01:02 JST — Reject online approximations; retain exact all-wave K1024 QK
+
+- Rebuilt the long-global core instead of continuing score-plane micro-tuning.
+  The full-F32 local1024/K1024 online owner coalesces K across all six GQA
+  queries and covers all 6x128 PV outputs. With chronological scalar PV it
+  changes the retained exact leaf **0.557206/4.158527 ->
+  0.365766/2.417338 ms (-34.354%/-41.869%)** at live16K/128K, but changes
+  **6/31 of 6,144** gated BF16 outputs. Global layers 0-24 fail the 16K/127
+  recurrent quality gate at **0.749636 max KL** despite 127/127 top-1.
+  Layer-24-only chronological PV still fails teacher80 at **0.208390 max KL**;
+  carrying F32 through the following projection worsens it to **0.329693 max
+  KL / 79/80 top-1**.
+- An exact raw-score/denominator boundary-repair owner restores byte parity but
+  replays 222 outputs and regresses live128K **4.169147 -> 10.951599 ms
+  (+162.677%)**. Cooperative BF16 K128/K512 variants are approximately
+  **15.5-20.5 ms** against the **4.16-ms** exact leaf. All online, repair,
+  F32-handoff, and cooperative prototypes/exports/wrappers/routes/tests were
+  removed. Canonical rejection evidence is
+  `benchmarks/results/2026-08-04-gfx1151-laguna-online-fused-attention-rejected.json`.
+- Retained only the approximation-independent ownership win: one local1024
+  workgroup per KV head and K1024 split produces the same F32 QK score plane,
+  then the existing exact denominator and chronological D32/V128 PV run
+  unchanged. Formal 5-warmup/9-sample/burst10 changes the complete exact leaf
+  at live4,097/16,448/65,664/131,072
+  **0.147000/0.550709/2.109751/4.180345 ->
+  0.147236/0.561506/2.078156/4.111131 ms
+  (+0.161%/+1.960%/-1.498%/-1.656%)**. A separate live32,768 gate is positive
+  at **1.065756 -> 1.062169 ms (-0.337%)**, so gfx1151 selects the owner only
+  from 32,768 live slots, only for dense-initial 48Q/8KV/D128 full attention,
+  and only when exact V128 float4 probability transport would otherwise run.
+  All screened F32 context and gated BF16 outputs are byte-identical.
+- Cached `rocprofv3 --kernel-trace` names
+  `laguna_global_attention_gqa6_tile1024_dense_prefix_scores_kernel` at
+  local1024/VGPR48/SGPR128/LDS0/scratch0 and cuts its 128K median
+  **1,261.046 -> 1,201.495 us (-4.722%)**. Trace CSV SHA-256 is
+  `13f0e763e66158e90f26fa59f540ffa85a8a3a68a441a1cff94383a757c06496`.
+- One-run production 512/1K/4K is exact and noise-flat at
+  **23.191279/23.040813/21.667573 tok/s
+  (-0.002%/-0.036%/-0.038%)**. Inactive 16K is noise-positive at
+  **20.249486 tok/s (+0.339%)**. Active 64K/128K improves
+  **14.620180/11.233382 -> 14.758786/11.318784 tok/s
+  (+0.948%/+0.760%)**, reaching **83.207%/79.502%** same-GGUF Vulkan parity.
+  Mandatory 128K cuts 127-transition wall **11.305589 -> 11.220286 s
+  (-0.755%)**, preserves **874 / c8307c... / position 131,198**, and every
+  shape preserves its established token/hash/position. All three processes
+  free all **87,407,934,744 bytes / 1,452 allocations**. Raw production
+  SHA-256 values are
+  `7a4e5244047e2a6e2d47e4c333ca8aec40b3a06fdae091f612aa9342444b2f9b`,
+  `10fedec9b5275eb0c8e9ffb1f0102852d04c60824ef3f11ab6d0795369eaa050`,
+  and `27e665d6050706314140d1e5c0b5197baa16cd4c5f30358ee1c0fd6b2894d7df`.
+- Production commands use cached gfx1151 builds and the retained protocols:
+  `scripts/laguna_long_context_profile.py --context-length 131200 --lengths
+  512,1024,4096 ...`, `--lengths 4096,16384,65536 ...`, and `--lengths
+  131072 ...`, all with `--chunk-size 2048 --decode-output-tokens 128
+  --repetitions 1 --warmup-rows 128`. Focused GPU differential, selector/
+  fallback, and backend capability tests pass **3/3**; JSON validation,
+  `py_compile`, and `git diff --check` pass. Canonical retained evidence is
+  `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json`.
+- The required `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  remains blocked because read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external code was
+  ported.

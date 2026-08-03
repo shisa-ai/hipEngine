@@ -17,6 +17,12 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-04
+
+- [accepted byte-exact gfx1151 Laguna all-wave K1024 QK] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: replace only tokenloop4 QK from the measured 32K crossover with a local1024 all-wave dense score owner, cutting its 128K median **1,261.046 -> 1,201.495 us (-4.722%)** and moving d64K/d128K **14.620/11.233 -> 14.759/11.319 tok/s (+0.948%/+0.760%)** with byte-exact leaves, exact recurrent trajectories, noise-flat 512/1K/4K, and full lifecycle recovery; `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json`.
+
+- [rejected gfx1151 Laguna online/fused approximation family] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live16K-128K: a full-F32 local1024 online core cuts the leaf **34-42%** but fails 16K recurrent quality at **0.749636 max KL**; single-layer chronological PV and F32 handoff also fail, exact sparse replay regresses the 128K leaf **162.677%**, and cooperative BF16 K128/K512 loses 3.7-4.9x, so remove every approximate/repair prototype; `benchmarks/results/2026-08-04-gfx1151-laguna-online-fused-attention-rejected.json`.
+
 ## 2026-08-03
 
 - [accepted byte-exact gfx1151 Laguna V128 float4 probability transport] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: load/store aligned groups of four FP32 probabilities into the shared V128 stage while preserving every probability value and chronological FMA, cutting the 128K PV kernel **2,491.917 -> 2,353.578 us (-5.551%)** and moving d16K/d64K/d128K **20.135/14.404/11.093 -> 20.181/14.620/11.233 tok/s (+0.226%/+1.500%/+1.262%)** with exact trajectories, noise-flat 512/1K/4K, full lifecycle recovery, scalar-V128 fallback for unaligned strides, and temporal V80 after eviction; `benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-probability-vec4-retained.json`.

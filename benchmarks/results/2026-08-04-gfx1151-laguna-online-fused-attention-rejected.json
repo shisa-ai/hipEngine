@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_online_fused_attention_rejected",
+  "created_at": "2026-08-04T00:20:00+09:00",
+  "status": "rejected",
+  "decision": "remove_all_approximate_and_repair_prototypes",
+  "performance_claim": false,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "7.15.0-0000000",
+    "source_revision": "b441897407676e3b8b62735fe8f6ceaf2d89f5e7"
+  },
+  "routes": [
+    {
+      "name": "full_f32_online_tile1024",
+      "design": "One local1024 workgroup per KV head and K1024 split computes all six QK rows, online softmax state, and all 6x128 unnormalized PV outputs; a second kernel merges F32 split partials.",
+      "leaf": {
+        "live_counts": [16448, 131072],
+        "control_exact_ms": [0.557206, 4.158527],
+        "candidate_ms": [0.365766, 2.417338],
+        "delta_percent": [-34.354, -41.869],
+        "gated_bf16_mismatches_of_6144": [6, 31]
+      },
+      "quality": {
+        "scope": "global layers 0/4/8/12/16/20/24 at 16K over 127 recurrent transitions",
+        "max_kl": 0.749636,
+        "top1": "127/127",
+        "pass": false
+      },
+      "decision": "reject because cross-split F32 association crosses Laguna BF16 boundaries and compounds recurrently"
+    },
+    {
+      "name": "chronological_scalar_pv_layer24",
+      "design": "Preserve the chronological scalar-F32 PV chain inside each split and scope the route to only global layer 24.",
+      "quality": {
+        "scope": "16K teacher80",
+        "max_kl": 0.208390,
+        "top1": "80/80",
+        "pass": false
+      },
+      "decision": "reject because exact intra-split PV does not remove cross-split softmax/merge association drift"
+    },
+    {
+      "name": "f32_downstream_handoff_layer24",
+      "design": "Keep the attention gate result in F32 through the downstream source-F16 projection seam instead of rounding at the retained BF16 boundary.",
+      "quality": {
+        "scope": "16K teacher80",
+        "max_kl": 0.329693,
+        "top1": "79/80",
+        "pass": false
+      },
+      "decision": "reject because changing the model's admitted BF16 boundary worsens trajectory quality"
+    },
+    {
+      "name": "exact_boundary_repair",
+      "design": "Use the exact raw score plane and denominator, flag BF16-boundary-ambiguous outputs, and replay their chronological scalar-F32 PV chains.",
+      "leaf": {
+        "live_count": 131072,
+        "control_exact_ms": 4.169147,
+        "candidate_repaired_ms": 10.951599,
+        "delta_percent": 162.677,
+        "repaired_outputs_of_6144": 222,
+        "gated_bf16_mismatches": 0
+      },
+      "decision": "reject because sparse O(context) replay is slower than the retained exact attention core"
+    },
+    {
+      "name": "cooperative_bf16_wmma_k128_k512",
+      "design": "Use cooperative BF16 matrix terms for QK/PV with K128 or K512 online split ownership, then merge compact numerator/state records.",
+      "leaf": {
+        "live_count": 131072,
+        "retained_exact_ms": 4.16,
+        "candidate_range_ms": [15.5, 20.5]
+      },
+      "decision": "reject before model quality because conversion, state, and merge overhead lose 3.7-4.9x"
+    }
+  ],
+  "raw_evidence_sha256": {
+    "online_scalar_pv_leaf": "eed5f4b587839e69c2364cb4580b2eb45090a50f376611233ca56252cc6b0363",
+    "online_quality_first7": "db0ca6dc7a7bed28dc8ebe6f08e41fbdb48679343780587aaa9b65f0e476fe8d",
+    "online_quality_layer24": "1eef9527882c7af545eef16337549a9cc166c87c70c5db724d6a6199b6b3ef86",
+    "f32_handoff_quality_layer24": "6c09063ac7a5b5fa5062441ac72d5dbd1e1db733218dc5da484ee0e8c492ab",
+    "exact_boundary_repair_leaf": "bb6a208cedee55db3e1cb77fa73f5749f88df6d89244b47d8949b15d166efad5"
+  },
+  "cleanup": {
+    "online_kernels_and_exports_removed": true,
+    "wmma_k128_k512_kernels_and_exports_removed": true,
+    "f32_projection_handoff_removed": true,
+    "runtime_production_unchanged_by_rejected_routes": true
+  }
+}

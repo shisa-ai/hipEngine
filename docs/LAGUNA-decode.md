@@ -10548,6 +10548,64 @@ The remaining attention sequence is:
      **87,407,934,744 bytes / 1,452 allocations**:
      [`V128 float4 probability production`](../benchmarks/results/2026-08-03-gfx1151-laguna-long-global-v128-probability-vec4-retained.json).
 
+245. Rebuild the fused/online core, then retain only exact all-wave QK.
+     **Fused and cooperative approximate routes rejected; exact score-owner
+     sibling retained at 32K+; LC-D3 twenty-seventh screen and twenty-fifth
+     production checkpoint.**
+
+     The full-F32 online prototype assigns one local1024 workgroup to each
+     KV head and 1,024-token split. Its 32 waves coalesce K once for all six
+     GQA queries, form split-local online-softmax state, and cover all 6x128
+     numerator outputs before a compact F32 merge. Chronological scalar PV is
+     much faster than the materialized exact leaf—**0.365766 vs 0.557206 ms**
+     at 16K and **2.417338 vs 4.158527 ms** at 128K—but changes **6/31 of
+     6,144** gated BF16 outputs. That small leaf drift is not admissible in the
+     recurrent model: global layers 0-24 fail at **0.749636 max KL** over 127
+     transitions. Scoping chronological PV to layer 24 still fails at
+     **0.208390 max KL**; carrying F32 through the next projection worsens it
+     to **0.329693 max KL** and **79/80 top-1**. Exact boundary repair restores
+     byte parity but takes **10.951599 vs 4.169147 ms** at 128K while replaying
+     222 outputs. BF16 cooperative K128/K512 variants are slower still at
+     roughly **15.5-20.5 ms**. All online, repair, F32-handoff, and cooperative
+     prototypes are removed:
+     [`online/fused rejection`](../benchmarks/results/2026-08-04-gfx1151-laguna-online-fused-attention-rejected.json).
+
+     The reusable part is exact: replace only tokenloop4 QK with one
+     local1024 all-wave score owner per KV head/K1024 split, then keep the
+     retained exact denominator and chronological D32/V128 PV untouched.
+     F32 context and gated BF16 outputs are byte-identical at every screened
+     depth.
+
+     | Exact leaf / live slots | 4,097 | 16,448 | 32,768 | 65,664 | 131,072 |
+     | --- | ---: | ---: | ---: | ---: | ---: |
+     | Tokenloop4 QK | 0.147000 ms | 0.550709 ms | 1.065756 ms | 2.109751 ms | 4.180345 ms |
+     | All-wave K1024 QK | 0.147236 ms | 0.561506 ms | **1.062169 ms** | **2.078156 ms** | **4.111131 ms** |
+     | Delta | +0.161% | +1.960% | **-0.337%** | **-1.498%** | **-1.656%** |
+
+     Cached tracing confirms the intended producer at
+     local1024/VGPR48/SGPR128/LDS0/scratch0 and cuts its 128K median
+     **1,261.046 -> 1,201.495 us (-4.722%)**. gfx1151 therefore selects it
+     only from the measured **32,768-live** crossover, only while
+     dense-initial identity remains valid, and only when exact V128 float4
+     probability transport would otherwise run. Explicit eviction and peer
+     backends retain the prior owner.
+
+     | Decode depth | Prior checkpoint | Current | Delta | Vulkan | Vulkan parity |
+     | ---: | ---: | ---: | ---: | ---: | ---: |
+     | 512 | 23.191679 | 23.191279 tok/s | -0.002% (inactive/noise) | 23.386100 | 99.167% |
+     | 1K | 23.049201 | 23.040813 tok/s | -0.036% (inactive/noise) | 23.366122 | 98.608% |
+     | 4K | 21.675782 | 21.667573 tok/s | -0.038% (inactive/noise) | 23.037017 | 94.055% |
+     | 16K | 20.181043 | 20.249486 tok/s | +0.339% (inactive/noise) | 21.728347 | 93.194% |
+     | 64K | 14.620180 | **14.758786 tok/s** | **+0.948%** | 17.737473 | **83.207%** |
+     | 128K | 11.233382 | **11.318784 tok/s** | **+0.760%** | 14.237076 | **79.502%** |
+
+     Mandatory 128K cuts the 127-transition wall
+     **11.305589 -> 11.220286 s (-0.755%)** and narrows the same-GGUF Vulkan
+     gap **18.781 -> 18.110 ms/token**. Every established token, generated
+     hash, and final position is unchanged; all three production processes
+     recover all **87,407,934,744 bytes / 1,452 allocations**:
+     [`all-wave K1024 production`](../benchmarks/results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10565,8 +10623,8 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twenty-four milestones
-   retained plus two structural rejections; active.** Exact GQA6 ownership and
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty-five milestones
+   retained; the fused-online approximation family is closed; active.** Exact GQA6 ownership and
    dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
    then removes one score-plane writeback/read pass and improves complete
@@ -10661,9 +10719,17 @@ allocation teardown remain mandatory at every retained step.
    **1.107-3.453%** and improves complete 16K/64K/128K another
    **0.226%/1.500%/1.262%**, reaching
    **92.879%/82.425%/78.902%** Vulkan parity with exact recurrent state and
-   noise-flat short guards. Next replace the remaining
-   score/denominator/PV ownership structurally or increase value-stream
-   concurrency; merge and dormant scalar repair are not active targets.
+   noise-flat short guards. A rebuilt full-F32 online owner then proves the
+   remaining structural limit: it cuts the leaf **34-42%** but fails recurrent
+   quality even at a single intermediate global layer, while exact sparse
+   repair regresses **162.677%**. Retaining only that design's exact all-wave
+   K1024 score ownership cuts its producer **4.722%** and improves complete
+   64K/128K another **0.948%/0.760%**, reaching
+   **83.207%/79.502%** Vulkan parity with exact recurrent state and noise-flat
+   512/1K/4K guards. Next attack the exact V stream or develop an association-
+   preserving scoreless owner; do not reopen split-local online softmax,
+   F32 handoff, cooperative BF16, or sparse replay without a new numerical
+   argument. Merge and dormant scalar repair are not active targets.
    The stretch gate remains **<=5 ms/token** at 16K, and every structural step
    must repeat the directional depths plus mandatory 128K before promotion.
 4. **LC-D4 — use cooperative Vulkan geometry as a comparator, not as a

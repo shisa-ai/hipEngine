@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_allwave_qk1024_retained",
+  "created_at": "2026-08-04T00:59:53+09:00",
+  "status": "accepted",
+  "decision": "retained_production_default_at_live_ge_32768",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "7.15.0-0000000",
+    "source_revision": "b441897407676e3b8b62735fe8f6ceaf2d89f5e7"
+  },
+  "change": {
+    "summary": "Replace only the exact tokenloop4 QK score producer with one local1024 workgroup per KV head and 1024-token split so all 32 wave32s coalesce the K stream across all six GQA query heads.",
+    "scope": "Select only for gfx1151 dense-initial 48Q/8KV/D128 full attention at live >=32768 when the exact V128 float4-probability route would otherwise run.",
+    "unchanged": "The F32 score values, exact maximum/exp/sum denominator, V128 float4 probability transport, chronological prefetch16 probability/BF16-V FMA chain, softplus gate, BF16 rounding, allocations, KVLiveSpans ABI, peer backends, and explicit-eviction fallback."
+  },
+  "protocol": {
+    "leaf": "PYTHONPATH=. python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate allwave-gqa6-tile1024-dense-prefix --live-counts 4097,16448,65664,131072 --capacity 131200 --warmups 5 --samples 9 --burst 10 --allow-dirty --output /tmp/laguna-allwave-qk1024-exact-clean-formal.json",
+    "leaf_32k": "PYTHONPATH=. python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate allwave-gqa6-tile1024-dense-prefix --live-counts 32768 --capacity 131200 --warmups 5 --samples 9 --burst 10 --allow-dirty --output /tmp/laguna-allwave-qk1024-exact-32k-formal.json",
+    "trace": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-allwave-qk1024-trace-20260804 --output-file allwave-qk1024 -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate allwave-gqa6-tile1024-dense-prefix --capacity 131200 --live-counts 131072 --samples 1 --warmups 1 --burst 1 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_short": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 512,1024,4096 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-allwave-qk1024-production-short.json",
+    "production_long": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 4096,16384,65536 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-allwave-qk1024-production-long.json",
+    "production_128k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-allwave-qk1024-production-128k.json"
+  },
+  "leaf_screen": {
+    "live_counts": [4097, 16448, 32768, 65664, 131072],
+    "control_tokenloop4_ms": [0.147000, 0.550709, 1.065756, 2.109751, 4.180345],
+    "candidate_allwave_ms": [0.147236, 0.561506, 1.062169, 2.078156, 4.111131],
+    "delta_percent": [0.161, 1.960, -0.337, -1.498, -1.656],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "raw_sha256": {
+      "natural": "295437e20c43ef9b163c9a2b0f0f6a86d1d9cb3d79855a1372c57f7807ac253b",
+      "32k": "471dc55d8549f062b8b70a75a836cb77a146b62352cec648228748b7a4a8a4f4"
+    }
+  },
+  "production": {
+    "lengths": [512, 1024, 4096, 16384, 65536, 131072],
+    "before_tok_s": [23.191679, 23.049201, 21.675782, 20.181043, 14.620180, 11.233382],
+    "after_tok_s": [23.191279, 23.040813, 21.667573, 20.249486, 14.758786, 11.318784],
+    "delta_percent": [-0.002, -0.036, -0.038, 0.339, 0.948, 0.760],
+    "vulkan_tok_s": [23.386100, 23.366122, 23.037017, 21.728347, 17.737473, 14.237076],
+    "vulkan_parity_percent": [99.167, 98.608, 94.055, 93.194, 83.207, 79.502],
+    "decode_128k_seconds_before": 11.305589,
+    "decode_128k_seconds_after": 11.220286,
+    "decode_128k_wall_delta_percent": -0.755,
+    "final_token_ids": [74825, 6273, 6436, 13815, 1869, 874],
+    "generated_ids_sha256": [
+      "1840dd35ce3d5e5e2dc21a55347805eae2fd102ba119c852ad128087b85956fa",
+      "18974f08ba7986767262103cb4c200ad36d3e8f675aad526887fad745bdc488c",
+      "38b02b0847652c483792271c886a9fd7ddf3610cb0ab1de1ec348d696781ec31",
+      "b105695002a5306bbc0eea8aa10fcaa811103bfc3b0e9f0c87405ab8278919f6",
+      "de3114a08de51b45495a5d09322f74944a364db6d1b4a58e5a5683f81d50af9f",
+      "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed"
+    ],
+    "final_positions": [638, 1150, 4222, 16510, 65662, 131198],
+    "lifecycle": {
+      "allocated_bytes": 87407934744,
+      "freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "raw_sha256": {
+      "short": "7a4e5244047e2a6e2d47e4c333ca8aec40b3a06fdae091f612aa9342444b2f9b",
+      "long": "10fedec9b5275eb0c8e9ffb1f0102852d04c60824ef3f11ab6d0795369eaa050",
+      "128k": "27e665d6050706314140d1e5c0b5197baa16cd4c5f30358ee1c0fd6b2894d7df"
+    }
+  },
+  "trace": {
+    "control_kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<true,true>",
+    "candidate_kernel": "laguna_global_attention_gqa6_tile1024_dense_prefix_scores_kernel",
+    "control_score_median_us": 1261.046,
+    "candidate_score_median_us": 1201.495,
+    "score_delta_percent": -4.722,
+    "candidate_resources": "local1024/VGPR48/SGPR128/LDS0/scratch0",
+    "csv_sha256": "13f0e763e66158e90f26fa59f540ffa85a8a3a68a441a1cff94383a757c06496"
+  },
+  "validation": {
+    "focused_tests": "3 passed",
+    "cpu_reference_and_retained_kernel_byte_parity": true,
+    "runtime_threshold_and_eviction_fallback_tested": true,
+    "jit_cached_during_trace_and_production": true,
+    "lineage_audit": "blocked by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout"
+  }
+}

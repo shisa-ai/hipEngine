@@ -280,6 +280,21 @@ class LagunaKVCache:
                 False,
             )
         )
+        self.global_split_gqa6_allwave_tile1024_dense_prefix = bool(
+            self.global_split_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX",
+                False,
+            )
+        )
+        self.global_split_gqa6_allwave_tile1024_dense_prefix_min_live = int(
+            backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX_MIN_LIVE",
+                32_768,
+            )
+        )
         ctx4096_min_layer = backend_package_capability(
             backend,
             "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
@@ -1439,6 +1454,20 @@ class LagunaKVCache:
                     )
                     + "vstage128_"
                     "vec16_direct_assume_exp_fixed512_spans"
+                )
+            if (
+                state.attention_type == FULL_ATTENTION
+                and use_gated
+                and self.global_split_gqa6_allwave_tile1024_dense_prefix
+                and self._dense_initial_metadata_valid
+                and state.q_heads == 48
+                and live_count
+                >= self.global_split_gqa6_allwave_tile1024_dense_prefix_min_live
+                and variant
+                == "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage128_probability_vec4_prefetch16_dense_prefix_nontemporal_key_value_spans"
+            ):
+                variant = (
+                    "global_context_allwave_gqa6_tile1024_dense_prefix_spans"
                 )
             fn = self._resolve("laguna_attention_decode", variant)
             gated_args = (
